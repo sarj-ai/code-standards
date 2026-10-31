@@ -906,8 +906,15 @@ def _join(left: dict[str, _Origin], right: dict[str, _Origin]) -> dict[str, _Ori
 
 
 def _node_is_suppressed(source_lines: list[str], node: ast.AST, code: str) -> bool:
-    start = getattr(node, "lineno", 0)
-    end = getattr(node, "end_lineno", None) or start
+    start = getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit optional suppression-range source locations.
+        node, "lineno", 0
+    )
+    end = (
+        getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit optional suppression-range source locations.
+            node, "end_lineno", None
+        )
+        or start
+    )
     return any(is_suppressed(source_lines, line, code) for line in range(start, end + 1))
 
 

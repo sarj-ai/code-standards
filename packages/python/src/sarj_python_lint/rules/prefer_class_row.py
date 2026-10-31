@@ -299,7 +299,17 @@ def _active_nodes(nodes: tuple[ast.AST, ...], variable: str, start: int) -> tupl
     return tuple(
         node
         for node in nodes
-        if getattr(node, "lineno", start) > start and (end is None or getattr(node, "lineno", end) < end)
+        if getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit source locations; preserve the interval fallback.
+            node, "lineno", start
+        )
+        > start
+        and (
+            end is None
+            or getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit source locations; preserve the interval fallback.
+                node, "lineno", end
+            )
+            < end
+        )
     )
 
 

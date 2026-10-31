@@ -116,7 +116,9 @@ def _attach_worker_error(interruption: BaseException, error: BaseException, labe
         if not isinstance(current, ProcessCancelledError):
             message = f"{current_label}: {type(current).__name__}: {current}".replace(str(root), ".")
             interruption.add_note(message)
-        if hasattr(current, "__notes__"):
+        if hasattr(  # sarj-noqa: SARJ499 -- Exception notes are optional until add_note is called; preserve available failure details.
+            current, "__notes__"
+        ):
             for note in current.__notes__:
                 interruption.add_note(f"{current_label}: {note}".replace(str(root), "."))
         if current.__context__ is not None:

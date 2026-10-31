@@ -227,7 +227,16 @@ def _value_bindings(bindings: Sequence[ast.AST]) -> list[ast.AST]:
 def _visible_bindings(bindings: Sequence[ast.AST], scope: ast.AST, at: ast.AST, *, deferred: bool) -> Sequence[ast.AST]:
     if deferred:
         return bindings
-    earlier = [binding for binding in bindings if getattr(binding, "lineno", 0) <= getattr(at, "lineno", 0)]
+    earlier = [
+        binding
+        for binding in bindings
+        if getattr(  # sarj-noqa: SARJ557 -- Order heterogeneous AST bindings whose marker nodes can omit source locations.
+            binding, "lineno", 0
+        )
+        <= getattr(  # sarj-noqa: SARJ557 -- Order heterogeneous AST bindings whose marker nodes can omit source locations.
+            at, "lineno", 0
+        )
+    ]
     # A future function local cannot fall back to an outer name, whereas a
     # class or module lookup can still use a prior enclosing import.
     if earlier or not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):

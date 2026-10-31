@@ -337,6 +337,8 @@ def test_metadata_and_release_helpers_do_not_load_the_sdk(tmp_path: Path) -> Non
 def test_sdk_exports_and_star_import_contract_remain_available(tmp_path: Path, missing: str) -> None:
     assert "Standards" in dir(sarj_standards)
     with pytest.raises(AttributeError, match="has no attribute"):
-        getattr(sarj_standards, missing)
+        getattr(  # sarj-noqa: SARJ557 -- Exercise the public module missing-attribute contract with a parameterized attribute name.
+            sarj_standards, missing
+        )
     script = "from sarj_standards import *; from sarj_standards import api; assert Standards is api.Standards; assert to_json is api.to_json"
     assert run_process((sys.executable, "-c", script), cwd=tmp_path, capture_output=True).returncode == 0

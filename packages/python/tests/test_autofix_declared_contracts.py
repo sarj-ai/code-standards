@@ -55,7 +55,10 @@ def _function(source: str, name: str, namespace: Mapping[str, object] | None = N
     declaration = next(item for item in parsed.body if isinstance(item, ast.FunctionDef) and item.name == name)
     scope = {} if namespace is None else dict(namespace)
     exec(  # ruff: ignore[exec-builtin] -- trusted fixture declarations require real Python lazy annotation behavior.
-        compile(ast.Module(body=[declaration], type_ignores=[]), str(_PATH), "exec", dont_inherit=True), scope
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            ast.Module(body=[declaration], type_ignores=[]), str(_PATH), "exec", dont_inherit=True
+        ),
+        scope,
     )
     function = scope[name]
     assert isinstance(function, FunctionType)
@@ -73,7 +76,9 @@ def test_declared_contract_autofix_exact_native_output_and_convergence(newline: 
     assert _fixed(expected, RuleId(rule_id)) == expected
     assert fix_source(_PATH, source, rule_ids=[rule_id]) == expected
     assert fix_source(_PATH, source, rule_ids=[]) == source
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
 
 
 @pytest.mark.parametrize("lookup", ["importlib.__dict__['import_module']", "importlib.import_module"])

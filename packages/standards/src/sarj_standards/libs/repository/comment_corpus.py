@@ -63,9 +63,35 @@ _BOUNDARY_RE = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
 _SQL_DOLLAR_TAG_RE: re.Pattern[str] = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
 _SECOND_SENTENCE = 2
-_DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+_DIRECTORY_FLAGS = (
+    os.O_RDONLY
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_DIRECTORY", 0
+    )
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_NOFOLLOW", 0
+    )
+)
+_READ_FLAGS = (
+    os.O_RDONLY
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_CLOEXEC", 0
+    )
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_NOFOLLOW", 0
+    )
+)
+_WRITE_FLAGS = (
+    os.O_WRONLY
+    | os.O_CREAT
+    | os.O_EXCL
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_CLOEXEC", 0
+    )
+    | getattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        os, "O_NOFOLLOW", 0
+    )
+)
 
 
 class Record(TypedDict):
@@ -104,7 +130,12 @@ class _FenceState:
 
 
 def _require_supported_platform() -> None:
-    if os.name == "nt" or not hasattr(os, "fwalk"):
+    if (
+        os.name == "nt"
+        or not hasattr(  # sarj-noqa: SARJ499 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+            os, "fwalk"
+        )
+    ):
         msg = "comment-corpus maintenance requires POSIX descriptor-relative filesystem operations"
         raise OSError(msg)
 

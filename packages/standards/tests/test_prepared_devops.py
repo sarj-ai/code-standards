@@ -123,7 +123,12 @@ def test_native_null_clean_report_is_complete(tmp_path: Path) -> None:
     assert not reports[0].diagnostics
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes require POSIX")
+@pytest.mark.skipif(
+    not hasattr(  # sarj-noqa: SARJ499 -- Run the FIFO safety test only when the native OS provides named pipes.
+        os, "mkfifo"
+    ),
+    reason="named pipes require POSIX",
+)
 def test_fifo_receipt_fails_without_waiting_for_a_writer(tmp_path: Path) -> None:
     path = tmp_path / "receipt.json"
     os.mkfifo(path)

@@ -234,8 +234,12 @@ def _run_batch(
             stdout_truncated=completed.stdout.truncated,
             stderr_truncated=completed.stderr.truncated,
         ),
-        getattr(completed.stdout, "data", b""),
-        getattr(completed.stderr, "data", b""),
+        getattr(  # sarj-noqa: SARJ557 -- Accept legacy bounded-process capture records without an optional retained byte payload.
+            completed.stdout, "data", b""
+        ),
+        getattr(  # sarj-noqa: SARJ557 -- Accept legacy bounded-process capture records without an optional retained byte payload.
+            completed.stderr, "data", b""
+        ),
     )
 
 

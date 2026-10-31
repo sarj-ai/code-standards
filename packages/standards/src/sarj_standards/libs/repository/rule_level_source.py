@@ -43,7 +43,9 @@ def prepare(root: Path, selector: RuleSelector, relative_source: str, level: Def
     else:
         rendered = _python(before, selector.engine, level)
     if selector.engine is not RuleEngine.ESLINT:
-        compile(rendered.source, str(path), "exec", dont_inherit=True)
+        compile(  # sarj-noqa: SARJ557 -- Compile rewritten rule metadata for validation without executing it.
+            rendered.source, str(path), "exec", dont_inherit=True
+        )
     return LevelEdit(path=path, before=before, after=rendered.source, current=rendered.current)
 
 

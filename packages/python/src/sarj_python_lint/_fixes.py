@@ -65,5 +65,7 @@ def apply_fixes(source: str, fixes: Sequence[Fix]) -> str:
     result.append(raw[previous:])
     fixed = b"".join(result).decode("utf-8")
     tree = ast.parse(fixed)
-    compile(tree, "<native-fix>", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Reject compiler-invalid fixes without executing the generated code object.
+        tree, "<native-fix>", "exec"
+    )
     return prefix + fixed

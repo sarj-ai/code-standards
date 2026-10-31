@@ -344,5 +344,8 @@
   "SARJ553": "require-constrained-api-integer",
   "SARJ554": "no-redundant-attribute-unpacking",
   "SARJ555": "no-mutating-input-with-result",
-  "SARJ556": "service-singleton-delegates-to-bulk"
+  "SARJ556": "service-singleton-delegates-to-bulk",
+  "SARJ557": "no-dynamic-builtins",
+  "SARJ558": "no-sys-path-mutation",
+  "SARJ559": "no-shared-mutable-default"
 }

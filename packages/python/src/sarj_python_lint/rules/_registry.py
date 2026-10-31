@@ -240,6 +240,7 @@ from sarj_python_lint.rules.no_custom_control_flow_exception import NoCustomCont
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
 from sarj_python_lint.rules.no_discarded_tagged_outcome import NoDiscardedTaggedOutcome
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
+from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_hasattr import NoHasattr
@@ -251,7 +252,9 @@ from sarj_python_lint.rules.no_recording_store import NoRecordingStore
 from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
 from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
+from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
+from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
 from sarj_python_lint.rules.prefer_application_model_joins import PreferApplicationModelJoins
@@ -283,6 +286,9 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoSharedMutableDefault.id: NoSharedMutableDefault,
+        NoSysPathMutation.id: NoSysPathMutation,
+        NoDynamicBuiltins.id: NoDynamicBuiltins,
         ServiceSingletonDelegatesToBulk.id: ServiceSingletonDelegatesToBulk,
         NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,

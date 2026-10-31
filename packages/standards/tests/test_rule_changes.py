@@ -440,6 +440,18 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("python", "service-singleton-delegates-to-bulk", "off", 1),
         ("eslint", "service-singleton-delegates-to-bulk", "error", 1),
         ("python", "service-singleton-delegates-to-bulk-extra", "error", 1),
+        ("python", "no-dynamic-builtins", "error", 0),
+        ("python", "no-dynamic-builtins", "off", 1),
+        ("eslint", "no-dynamic-builtins", "error", 1),
+        ("python", "no-dynamic-builtins-extra", "error", 1),
+        ("python", "no-shared-mutable-default", "error", 0),
+        ("python", "no-shared-mutable-default", "off", 1),
+        ("eslint", "no-shared-mutable-default", "error", 1),
+        ("python", "no-shared-mutable-default-extra", "error", 1),
+        ("python", "no-sys-path-mutation", "error", 0),
+        ("python", "no-sys-path-mutation", "off", 1),
+        ("eslint", "no-sys-path-mutation", "error", 1),
+        ("python", "no-sys-path-mutation-extra", "error", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(

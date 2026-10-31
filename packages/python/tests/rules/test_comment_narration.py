@@ -152,7 +152,14 @@ def test_accumulation_errors_keep_the_four_line_autofix_boundary(count: int, new
         assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(
             ast.parse(source), include_attributes=True
         )
-        assert compile(fixed, str(_PATH), "exec") == compile(source, str(_PATH), "exec")
+        assert (
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                fixed, str(_PATH), "exec"
+            )
+            == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                source, str(_PATH), "exec"
+            )
+        )
         assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed
 
 

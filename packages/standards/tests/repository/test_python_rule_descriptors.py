@@ -390,7 +390,12 @@ def test_registered_source_missing_from_stale_table_remains_preparable_and_synca
         assert all(path.is_file() for path, _ in plan.files)
         namespace: dict[str, object] = {"__name__": "sarj_python_lint.rules.new_clock_rule"}
         implementation = plan.files[0][0]
-        exec(compile(implementation.read_text(encoding="utf-8"), str(implementation), "exec"), namespace)  # ruff: ignore[exec-builtin] -- exercise the actual authored source rather than invent a rule metadata stub.
+        exec(  # ruff: ignore[exec-builtin] -- exercise the actual authored source rather than invent a rule metadata stub.
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                implementation.read_text(encoding="utf-8"), str(implementation), "exec"
+            ),
+            namespace,
+        )
         rule = namespace["NewClockRule"]
         assert isinstance(rule, type)
         assert issubclass(rule, PythonRule)

@@ -74,6 +74,7 @@
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
       "no-duplicate-field-validator-body",
+      "no-dynamic-builtins",
       "no-exception-text-in-500-detail",
       "no-excessive-cognitive-complexity",
       "no-fastapi-on-event",
@@ -125,10 +126,12 @@
       "no-service-behavior-in-settings",
       "no-shallow-container-type-guard",
       "no-shallow-record-type-guard",
+      "no-shared-mutable-default",
       "no-slash-collection-root-under-prefix",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
+      "no-sys-path-mutation",
       "no-test-comments",
       "no-test-method-grafting",
       "no-trailing-numeric-unit-assignment-comment",
@@ -650,7 +653,10 @@
       "SARJ553",
       "SARJ554",
       "SARJ555",
-      "SARJ556"
+      "SARJ556",
+      "SARJ557",
+      "SARJ558",
+      "SARJ559"
     ],
     "sql": [
       "SARJ101",
