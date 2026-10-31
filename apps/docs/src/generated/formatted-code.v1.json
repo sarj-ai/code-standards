@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a9824e6f95271b042b61767d8fb3751cdcc3cc0651628bb02b446c16e0c51067",
-  "cliSha256": "120ff412a9d57a7d78e7864e170186d6ccb29f576c77402f033f12eca9926376",
+  "catalogSha256": "8e4ffba7864837534a42696fb97421f7aabc081dcdd3cae9db009b81c3c2c657",
+  "cliSha256": "e8fcc8f4b98a9c52cd8b87c1cfe98f28d398734d9fedce558fae1d1d7b606d0b",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -850,7 +850,37 @@
           "id": "svg-enabled",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not enable active SVG delivery"
+          "title": "SVG opt-in requires explicit hardening under this policy"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "next.config.mjs",
+              "source": "export default {\n  images: {\n    dangerouslyAllowSVG: true,\n    contentDispositionType: \"attachment\",\n    contentSecurityPolicy: \"script-src 'none'; sandbox;\",\n  },\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "next.config.mjs",
+          "id": "svg-explicit-hardening",
+          "outcome": "accept",
+          "scenarioId": "explicit-hardening",
+          "title": "Allow SVG delivery with explicit hardening"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "next.config.mjs",
+              "source": "export default {\n  images: {\n    dangerouslyAllowSVG: true,\n    contentDispositionType: \"attachment\",\n    contentSecurityPolicy: \"script-src 'unsafe-inline'; script-src 'none'; sandbox;\",\n  },\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "next.config.mjs",
+          "id": "svg-unsafe-first-directive",
+          "outcome": "reject",
+          "scenarioId": "explicit-hardening",
+          "title": "A later duplicate cannot replace the effective policy"
         }
       ],
       "optionsSchemaSource": null

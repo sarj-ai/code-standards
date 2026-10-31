@@ -165,6 +165,62 @@ CASES = (
     _case("generated", "# @generated\nfrom functools import cache\n@cache\nasync def load():\n    return 1\n"),
     _case("malformed", "from functools import cache\n@cache\nasync def load(:\n"),
     _case("string-and-comment", "# @cache async def load\nsource = '@cache async def load'\n"),
+    *(
+        _case(
+            f"proven-{import_id}-{decorator_id}",
+            f"{statement}\n@{target}{arguments}\nasync def load():\n    return 1\n",
+            matches=True,
+        )
+        for decorator_id, symbol, arguments in (
+            ("cache", "cache", ""),
+            ("property", "cached_property", ""),
+            ("lru-bare", "lru_cache", ""),
+            ("lru-default", "lru_cache", "()"),
+            ("lru-unbounded", "lru_cache", "(None)"),
+            ("lru-sized", "lru_cache", "(maxsize=8)"),
+        )
+        for import_id, statement, target in (
+            ("direct", f"from functools import {symbol}", symbol),
+            ("member-alias", f"from functools import {symbol} as memo", "memo"),
+            ("module", "import functools", f"functools.{symbol}"),
+            ("module-alias", "import functools as ft", f"ft.{symbol}"),
+        )
+    ),
+    *(
+        _case(
+            f"provider-invalidated-{case_id}",
+            f"import functools as ft\n{mutation}\n@ft.cache\nasync def load():\n    return 1\n",
+        )
+        for case_id, mutation in (
+            ("member-assignment", "ft.cache = identity"),
+            ("member-delete", "del ft.cache"),
+            ("setattr", "setattr(ft, 'cache', identity)"),
+            ("aliased-setattr", "from builtins import setattr as replace\nreplace(ft, 'cache', identity)"),
+            ("delattr", "delattr(ft, 'cache')"),
+            ("aliased-delattr", "from builtins import delattr as remove\nremove(ft, 'cache')"),
+            ("module-alias", "tools = ft"),
+            ("module-argument", "configure(ft)"),
+            ("module-container", "tools = [ft]"),
+            ("provider-alias", "memo = ft.cache"),
+            ("provider-argument", "configure(ft.cache)"),
+            ("provider-container", "decorators = [ft.cache]"),
+            ("alternate-module", "import functools as other\nother.cache = identity"),
+            ("alternate-member", "from functools import cache as other\nother.enabled = False"),
+            ("alternate-escape", "from functools import cache as other\nconfigure(other)"),
+            ("dynamic-member", "configure(getattr(ft, selected))"),
+            ("module-magic-setter", "ft.__setattr__('cache', identity)"),
+            ("module-magic-deleter", "ft.__delattr__('cache')"),
+            ("provider-magic-setter", "ft.cache.__setattr__('enabled', False)"),
+            ("provider-magic-deleter", "ft.cache.__delattr__('enabled')"),
+            ("module-namespace", "ft.__dict__['cache'] = identity"),
+            ("vars-namespace", "vars(ft)['cache'] = identity"),
+        )
+    ),
+    _case(
+        "unrelated-local-name-rebind",
+        "import functools as ft\ncache = identity\n@ft.cache\nasync def load():\n    return 1\n",
+        matches=True,
+    ),
 )
 
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const CONFIG = fileURLToPath(new URL("../vitest.config.ts", import.meta.url));
 const CLI = fileURLToPath(new URL("../node_modules/vitest/dist/cli.js", import.meta.url));
@@ -12,15 +12,33 @@ const VITEST = new URL("../node_modules/vitest/dist/index.js", import.meta.url).
 const PREVIEW_START = "First failed test (preview; complete details remain in the final report):";
 const PREVIEW_END = "[End of first failure preview]";
 
+let privateCache: string | undefined;
+
+async function fixtureEnvironment(): Promise<NodeJS.ProcessEnv> {
+  if (process.env.NODE_COMPILE_CACHE !== undefined || process.env.NODE_DISABLE_COMPILE_CACHE !== undefined ||
+      process.env.NODE_V8_COVERAGE !== undefined) {
+    return { ...process.env };
+  }
+  privateCache ??= await mkdtemp(join(tmpdir(), "sarj-first-failure-compile-cache-"));
+  return { ...process.env, NODE_COMPILE_CACHE: privateCache };
+}
+
+afterAll(async () => {
+  if (privateCache !== undefined) await rm(privateCache, { recursive: true, force: true });
+});
+
 async function runFixture(source: string, options: { arguments?: string[]; acknowledgePreview?: boolean; collect?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), "sarj-first-failure-"));
   try {
     await mkdir(join(root, ".git"));
     await mkdir(join(root, "tests"));
     await writeFile(join(root, "tests/cases.test.ts"), `import { afterEach, beforeEach, expect, test } from ${JSON.stringify(VITEST)};\n${source}`);
+    const env = await fixtureEnvironment();
+    const started = performance.now();
     const child = spawn(process.execPath, [CLI, options.collect ? "list" : "run", "--root", root, "--config", CONFIG, "--maxWorkers=1", "--no-color", ...options.arguments ?? []], {
       timeout: 15_000,
       stdio: ["ignore", "pipe", "pipe"],
+      env,
     });
     let stdout = "";
     let stderr = "";
@@ -37,6 +55,9 @@ async function runFixture(source: string, options: { arguments?: string[]; ackno
       child.once("close", resolve);
     });
     await acknowledged;
+    if (child.signalCode !== null) {
+      throw new Error(`Fixture CLI terminated by ${child.signalCode} after ${Math.round(performance.now() - started)}ms.\n${stdout}\n${stderr}`);
+    }
     const report: unknown = options.arguments?.includes("--reporter=json")
       ? JSON.parse(await readFile(join(root, "report.json"), "utf8"))
       : undefined;

@@ -12,6 +12,7 @@ from sarj_sql_lint.rule_base import Diagnostic as SqlDiagnostic
 
 from sarj_standards.api import Standards
 from sarj_standards.libs.diagnostics import Completion, SourceDocument
+from sarj_standards.libs.linting import textlint
 from sarj_standards.libs.linting.analysis import PythonSourceDocument, normalize_native
 
 
@@ -316,3 +317,220 @@ def test_replacement_decoding_keeps_findings_without_inventing_physical_position
     else:
         assert finding.location.position is None
         assert fallback.location.position is None
+
+
+@pytest.mark.parametrize(
+    ("relative", "raw"),
+    [
+        ("config.yaml", "prefix: 😀\n# name is build\nname: build\n".encode()),
+        ("config.yaml", b"\xef\xbb\xbf" + "prefix: 😀\r\n# name is build\r\nname: build\r\n".encode()),
+        ("config.yaml", b"\xef\xbb\xbfprefix: stable\r# name is build\rname: build\r"),
+        ("config.toml", b'prefix = "stable"\r\n# name is build\r\nname = "build"\r\n'),
+    ],
+    ids=("yaml-unicode-lf", "yaml-bom-crlf", "yaml-bom-lone-cr", "toml-crlf"),
+)
+@pytest.mark.parametrize("delete_after_analysis", [False, True])
+@pytest.mark.parametrize("absolute_input", [False, True])
+def test_text_analysis_projects_its_captured_revision_and_refreshes_next_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    relative: str,
+    raw: bytes,
+    delete_after_analysis: bool,
+    absolute_input: bool,
+) -> None:
+    path = tmp_path / relative
+    path.write_bytes(raw)
+    replacement = b"name: clean\n" if path.suffix == ".yaml" else b'name = "clean"\n'
+    reads: list[Path] = []
+    captures: list[SourceCatalog] = []
+    read = Path.read_bytes
+    check = textlint.check_paths
+
+    def counting_read(target: Path) -> bytes:
+        if target == path:
+            reads.append(target)
+        return read(target)
+
+    def complete_then_change(
+        paths: Sequence[str],
+        *,
+        root: Path | None = None,
+        rule_ids: frozenset[str] | None = None,
+        sources: SourceCatalog | None = None,
+    ) -> list[textlint.Finding]:
+        result = check(paths, root=root, rule_ids=rule_ids, sources=sources)
+        assert sources is not None
+        if not captures:
+            assert len(result) == 1
+        else:
+            assert result == []
+        snapshot = sources.get(path)
+        assert snapshot is not None
+        assert snapshot.raw == (raw if not captures else replacement)
+        captures.append(sources)
+        if delete_after_analysis:
+            path.unlink()
+        else:
+            path.write_bytes(replacement)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- count physical capture reads; projection must not reopen the selected file.
+        Path, "read_bytes", counting_read
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- keep real text findings and change source only after analysis, before projection.
+        textlint, "check_paths", complete_then_change
+    )
+    standards = Standards(tmp_path)
+    selected = [str(path) if absolute_input else relative]
+    original = standards.analyze(selected, rules=["text:exact-config-comment-restatement"])
+
+    assert original.completion is Completion.COMPLETE
+    assert not original.issues
+    [finding] = original.diagnostics
+    assert finding.code == "SARJ306"
+    assert finding.location.path == relative
+    assert finding.location.position is not None
+    assert finding.location.position.byte_offset == raw.index(b"# name is build")
+    assert reads == [path]
+
+    path.write_bytes(replacement)
+    changed = standards.analyze(selected, rules=["text:exact-config-comment-restatement"])
+
+    assert changed.completion is Completion.COMPLETE
+    assert not changed.issues
+    assert not changed.diagnostics
+    assert reads == [path, path]
+    assert len(captures) == 2
+    assert captures[0] is not captures[1]
+
+
+def test_text_missing_capture_fails_without_projection_disk_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_bytes(b"# name is build\nname: build\n")
+    check = textlint.check_paths
+
+    def omit_text_handoff(
+        paths: Sequence[str],
+        *,
+        root: Path | None = None,
+        rule_ids: frozenset[str] | None = None,
+        sources: SourceCatalog | None = None,
+    ) -> list[textlint.Finding]:
+        assert sources is not None
+        result = check(paths, root=root, rule_ids=rule_ids)
+        path.unlink()
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- real findings omit the request capture; projection must fail instead of reading again.
+        textlint, "check_paths", omit_text_handoff
+    )
+
+    report = Standards(tmp_path).analyze([path.name], rules=["text:exact-config-comment-restatement"])
+
+    assert report.completion is Completion.FAILED
+    assert not report.diagnostics
+    [issue] = report.issues
+    assert issue.kind == "analyzer-failure"
+    assert "text diagnostic source was not captured" in issue.message
+
+
+def test_text_projection_keeps_captured_path_after_symlink_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "config.yaml"
+    raw = b"prefix: stable\n# name is build\nname: build\n"
+    path.write_bytes(raw)
+    replacement = tmp_path / "replacement.yaml"
+    replacement.write_bytes(b"name: clean\n")
+    check = textlint.check_paths
+
+    def replace_after_analysis(
+        paths: Sequence[str],
+        *,
+        root: Path | None = None,
+        rule_ids: frozenset[str] | None = None,
+        sources: SourceCatalog | None = None,
+    ) -> list[textlint.Finding]:
+        result = check(paths, root=root, rule_ids=rule_ids, sources=sources)
+        assert len(result) == 1
+        path.unlink()
+        path.symlink_to(replacement)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replace the real analyzed path only after its findings and bytes are captured.
+        textlint, "check_paths", replace_after_analysis
+    )
+
+    report = Standards(tmp_path).analyze([path.name], rules=["text:exact-config-comment-restatement"])
+
+    assert report.completion is Completion.COMPLETE
+    assert not report.issues
+    [finding] = report.diagnostics
+    assert finding.location.path == path.name
+    assert finding.location.position is not None
+    assert finding.location.position.byte_offset == raw.index(b"# name is build")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (b"# name is build\nname: build\n", 1),
+        (b"# sarj-noqa: SARJ306\n# name is build\nname: build\n", 0),
+        (b"# Generated by tool; DO NOT EDIT\n# name is build\nname: build\n", 0),
+        (b"# name is build\nname: [\n", 0),
+        (b"# name is build\nname: \xff\n", 0),
+    ],
+    ids=("owned", "suppressed", "generated", "malformed-yaml", "invalid-utf8"),
+)
+def test_text_capture_preserves_standalone_decoding_and_rule_boundaries(
+    tmp_path: Path, raw: bytes, expected: int
+) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_bytes(raw)
+    selected = frozenset({"exact-config-comment-restatement"})
+    standalone = textlint.check_paths([str(path)], root=tmp_path, rule_ids=selected)
+    sources = SourceCatalog()
+
+    shared = textlint.check_paths([str(path)], root=tmp_path, rule_ids=selected, sources=sources)
+
+    assert shared == standalone
+    assert len(shared) == expected
+    snapshot = sources.get(path)
+    assert snapshot is not None
+    assert snapshot.raw == raw
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_standalone_text_reads_each_occurrence_while_shared_capture_reuses_one_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, shared: bool
+) -> None:
+    path = tmp_path / "config.yaml"
+    original = b"# name is build\nname: build\n"
+    replacement = b"name: clean\n"
+    path.write_bytes(original)
+    reads: list[bytes] = []
+    read = Path.read_bytes
+
+    def replace_after_read(target: Path) -> bytes:
+        captured = read(target)
+        if target == path:
+            reads.append(captured)
+            path.write_bytes(replacement)
+        return captured
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- retain actual reads and replace the file after the selected physical capture.
+        Path, "read_bytes", replace_after_read
+    )
+    findings = textlint.check_paths(
+        [str(path), str(path)],
+        root=tmp_path,
+        rule_ids=frozenset({"exact-config-comment-restatement"}),
+        sources=SourceCatalog() if shared else None,
+    )
+
+    assert [finding.code for finding in findings] == ["SARJ306"] * (2 if shared else 1)
+    assert reads == ([original] if shared else [original, replacement])

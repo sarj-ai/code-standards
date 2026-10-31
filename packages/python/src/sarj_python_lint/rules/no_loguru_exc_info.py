@@ -18,10 +18,12 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import ambiguous_import_names as _ambiguous_import_names
+from sarj_python_lint.rules._loguru import logger_imports_untouched
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _METHODS = frozenset({"trace", "debug", "info", "success", "warning", "error", "critical", "log"})
@@ -46,8 +48,8 @@ class NoLoguruExcInfo(Rule):
             "Safe fixes handle only a direct proven Loguru logger call with literal arguments and keywords, replacing unused exc_info=True with opt(exception=True). Existing bind/opt chains, dynamic argument evaluation and commented calls remain review-only.",
             "Only unambiguous Loguru imports and immediate bind/opt chains with literal exc_info=True are checked.",
             "A literal message is required; templates using exc_info or the record, explicit exception capture, and exception() are excluded.",
-            "Unknown receivers, stored logger aliases, dynamic exc_info values, ambiguous imports, and generated files are excluded.",
-            "Runtime monkeypatches of Loguru objects or methods are not resolved.",
+            "Unknown receivers, stored logger aliases, dynamic exc_info values, ambiguous or escaped imports, and generated files are excluded.",
+            "Visible namespace or logger mutations invalidate import proof. Interprocedural effects and runtime monkeypatches are not resolved.",
             "An intentionally stored field can use a diagnostic-specific suppression. More complex logging context remains review-only.",
         ),
         examples=(
@@ -121,18 +123,22 @@ class NoLoguruExcInfo(Rule):
         shadowed = _ambiguous_import_names(context)
         if "*" in shadowed:
             return []
+        provenance: ResourceProvenance | None = None
         diagnostics: list[Diagnostic] = []
         for call in context.nodes(ast.Call):
             if not isinstance(call.func, ast.Attribute) or call.func.attr not in _METHODS:
                 continue
-            keyword = next((item for item in call.keywords if item.arg == "exc_info"), None)
-            if keyword is None or not isinstance(keyword.value, ast.Constant) or keyword.value.value is not True:
+            keyword = _unused_exc_info_keyword(call)
+            if keyword is None or is_suppressed(context.source_lines, keyword.lineno, self.code):
                 continue
-            if (
-                not _is_unconfigured_loguru(call.func.value, context, shadowed)
-                or not _has_unused_exc_info(call)
-                or is_suppressed(context.source_lines, keyword.lineno, self.code)
-            ):
+            receiver = _unconfigured_loguru_root(call.func.value, context, shadowed)
+            if receiver is None:
+                continue
+            if provenance is None:
+                provenance = context.static_resource_provenance
+                if not logger_imports_untouched(context, provenance):
+                    return []
+            if not provenance.imported(receiver, "loguru.logger"):
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -147,12 +153,23 @@ class NoLoguruExcInfo(Rule):
         return diagnostics
 
 
-def _is_unconfigured_loguru(receiver: ast.expr, context: PythonFileContext, shadowed: frozenset[str]) -> bool:
+def _unused_exc_info_keyword(call: ast.Call) -> ast.keyword | None:
+    keyword = next((item for item in call.keywords if item.arg == "exc_info"), None)
+    if keyword is None or not isinstance(keyword.value, ast.Constant) or keyword.value.value is not True:
+        return None
+    if not _has_unused_exc_info(call):
+        return None
+    return keyword
+
+
+def _unconfigured_loguru_root(
+    receiver: ast.expr, context: PythonFileContext, shadowed: frozenset[str]
+) -> ast.expr | None:
     opted = False
     while isinstance(receiver, ast.Call) and isinstance(receiver.func, ast.Attribute):
         method = receiver.func.attr
         if method not in {"bind", "opt"}:
-            return False
+            return None
         if method == "opt" and not opted:
             opted = True
             if any(
@@ -163,14 +180,16 @@ def _is_unconfigured_loguru(receiver: ast.expr, context: PythonFileContext, shad
                 )
                 for keyword in receiver.keywords
             ):
-                return False
+                return None
         receiver = receiver.func.value
     root = receiver
     while isinstance(root, ast.Attribute):
         root = root.value
-    return not (isinstance(root, ast.Name) and root.id in shadowed) and context.imports.resolves(
+    if (isinstance(root, ast.Name) and root.id in shadowed) or not context.imports.resolves(
         receiver, sources=_LOGURU, symbol="logger"
-    )
+    ):
+        return None
+    return receiver
 
 
 def _has_unused_exc_info(call: ast.Call) -> bool:

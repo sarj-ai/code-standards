@@ -38,8 +38,7 @@ describe("every shipped rule's displayed examples", () => {
     if (spec === undefined) throw new Error(`${id}: missing source-owned examples`);
     const display = DISPLAY.rules[`eslint:${id}`];
     if (display === undefined) throw new Error(`${id}: missing displayed examples`);
-    const examples = spec.examples.map((example) => {
-      if (!example.public) return example;
+    const examples = spec.examples.filter((example) => example.public === true).map((example) => {
       const formatted = display.examples.find((item) => item.id === example.id);
       if (formatted === undefined) throw new Error(`${id}:${example.id}: missing displayed example`);
       expect(formatted.focusPath).toBe(example.focusPath);

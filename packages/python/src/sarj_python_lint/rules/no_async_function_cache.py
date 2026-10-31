@@ -50,7 +50,8 @@ class NoAsyncFunctionCache(Rule):
             "Async generators, transformed functions, ambiguous or rebound imports, and generated files are excluded.",
             "Wildcard imports and names rebound by relative imports or imports outside the module body are excluded conservatively.",
             "lru_cache with disabled, dynamic, or unpacked maxsize arguments is excluded; an omitted size or literal positive integer or None is required.",
-            "Indirect wrapping calls and runtime monkeypatches are not resolved. Test code is checked because coroutine reuse fails there too.",
+            "Visible mutations, deletion, or escape of functools providers invalidate their native identity conservatively.",
+            "Indirect wrapping calls and opaque runtime or interprocedural mutations are not resolved. Test code is checked because coroutine reuse fails there too.",
             "No automatic rewrite is offered because cache lifetime, cancellation, and concurrency require an explicit design decision.",
         ),
         examples=(
@@ -98,6 +99,10 @@ class NoAsyncFunctionCache(Rule):
                 or has_own_yield(function)
                 or is_suppressed(context.source_lines, decorator.lineno, self.code)
             ):
+                continue
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            qualified = context.imports.resolved_qualified_name(target)
+            if qualified is None or not context.static_resource_provenance.imported(target, qualified):
                 continue
             diagnostics.append(
                 Diagnostic(

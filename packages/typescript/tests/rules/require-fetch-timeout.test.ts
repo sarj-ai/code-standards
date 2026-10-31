@@ -20,6 +20,16 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
   valid: [
+    { name: "a computed signal retains cancellation", code: "const key='signal'; fetch('/x', {[key]: controller.signal});" },
+    { name: "a reassigned computed key is unknown", code: "let key='signal'; key=other; fetch('/x', {[key]: null});" },
+    { name: "a shadowed computed key is unknown", code: "const key='signal'; function send(key) { fetch('/x', {[key]: null}); }" },
+    { name: "a Symbol key is unknown", code: "fetch('/x', {[Symbol('signal')]: null});" },
+    { name: "a call-derived key is unknown", code: "fetch('/x', {[key()]: null});" },
+    { name: "a later computed signal overrides null", code: "const key='signal'; fetch('/x', {signal: null, [key]: controller.signal});" },
+    { name: "a later unknown spread overrides computed null", code: "fetch('/x', {[`signal`]: null, ...options});" },
+    { name: "a computed undefined preserves a forwarded Request signal", code: "fetch(new Request('/x'), {[`signal`]: undefined});" },
+    { name: "a computed null cannot prove safety through an accessor", code: "fetch('/x', {[`signal`]: null, get headers() { return {}; }});" },
+    { name: "a computed null cannot prove safety through an unknown prototype", code: "fetch('/x', {__proto__: prototype, [`signal`]: null});" },
     { name: "native fetch alias retains a cancellation signal", code: "const { fetch: request } = globalThis; request('/items', { signal: controller.signal });" },
     { name: "local global receiver is opaque", code: "function run(globalThis) { const { fetch: request } = globalThis; request('/items'); }" },
     { name: "unknown computed global property is opaque", code: "globalThis[key]('/items');" },
@@ -250,6 +260,21 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
     },
   ],
   invalid: [
+    ...([
+      ["template signal key", "fetch('/x', {[`signal`]: null});"],
+      ["erased signal key", "fetch('/x', {['signal' as const]: null});"],
+      ["scoped signal key", "const key='signal'; fetch('/x', {[key]: null});"],
+      ["two-step signal key", "const first='signal'; const key=first; fetch('/x', {[key]: null});"],
+      ["stable let signal key", "let key='signal'; fetch('/x', {[key]: null});"],
+      ["local init with computed signal", "const key='signal'; const init={[key]: null}; fetch('/x', init);"],
+      ["proven unrelated key without signal", "const key='headers'; fetch('/x', {[key]: headers});"],
+      ["proven unrelated key after null", "const key='headers'; fetch('/x', {signal: null, [key]: headers});"],
+      ["computed null after a literal signal", "fetch('/x', {signal: controller.signal, [`signal`]: null});"],
+      ["literal null after a computed signal", "fetch('/x', {[`signal`]: controller.signal, signal: null});"],
+      ["computed null after an unknown spread", "fetch('/x', {...options, [`signal`]: null});"],
+      ["computed null resets a forwarded Request signal", "fetch(new Request('/x'), {[`signal`]: null});"],
+      ["computed __proto__ is a data key", "fetch('/x', {['__proto__']: prototype, [`signal`]: null});"],
+    ] as const).map(([name, code]) => ({ name, code, errors: [{ messageId: "missingSignal" as const }] })),
     { name: "destructured native fetch retains timeout requirement", code: "const { fetch: request } = globalThis; await request('https://api.example.com/items');", errors: [{ messageId: "missingSignal" }] },
     { name: "unrenamed window fetch is native", code: "const { fetch } = window; fetch('/items');", errors: [{ messageId: "missingSignal" }] },
     { name: "stable native fetch aliases preserve arguments", code: "const request = fetch; const send = request; send('/items');", errors: [{ messageId: "missingSignal" }] },
@@ -484,4 +509,14 @@ it("reads inherited RequestInit accessor effects before an own null signal", () 
   const request = new Request("https://example.com", init);
   controller.abort();
   expect(request.signal.aborted).toBe(true);
+});
+
+it("preserves or resets a forwarded native Request signal through computed keys", () => {
+  const controller = new AbortController();
+  const request = new Request("https://example.com", { signal: controller.signal });
+  const inherited = new Request(request, { ["signal"]: undefined });
+  const reset = new Request(request, { [`signal`]: null });
+  controller.abort();
+  expect(inherited.signal.aborted).toBe(true);
+  expect(reset.signal.aborted).toBe(false);
 });

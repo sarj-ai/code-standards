@@ -20,7 +20,7 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sarj_iac_lint.hcl import local_exec_commands
-from sarj_rule_contracts import TextEdit, apply_edits
+from sarj_rule_contracts import NewlinePolicy, SourceCatalog, SourceSnapshot, TextEdit, apply_edits
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from yaml.tokens import ScalarToken
@@ -1250,6 +1250,7 @@ def check_paths(
     *,
     root: Path | None = None,
     rule_ids: frozenset[str] | None = None,
+    sources: SourceCatalog | None = None,
 ) -> list[Finding]:
     base = (root or Path.cwd()).resolve()
     durable_patterns, excluded_patterns = _text_policy(base)
@@ -1288,7 +1289,10 @@ def check_paths(
     for raw in paths:
         path = Path(raw)
         try:
-            source = path.read_text(encoding=_TEXT_ENCODINGS.get(path.suffix.casefold(), "utf-8"))
+            snapshot = SourceSnapshot.read(path) if sources is None else sources.capture(path)
+            source = snapshot.decode(
+                _TEXT_ENCODINGS.get(path.suffix.casefold(), "utf-8"), newlines=NewlinePolicy.UNIVERSAL
+            ).text
         except UnicodeDecodeError:
             continue
         relative = _relative(path.resolve(), base)

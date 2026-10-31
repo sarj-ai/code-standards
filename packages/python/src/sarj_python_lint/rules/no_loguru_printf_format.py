@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._loguru import logger_imports_untouched
 
 
 if TYPE_CHECKING:
@@ -121,7 +122,7 @@ class NoLoguruPrintfFormat(Rule):
                 continue
             if provenance is None:
                 provenance = context.static_resource_provenance
-                if not _logger_imports_untouched(context, provenance):
+                if not logger_imports_untouched(context, provenance):
                     return []
             if not provenance.imported(receiver, "loguru.logger") or is_suppressed(
                 context.source_lines, call.lineno, self.code
@@ -138,14 +139,6 @@ class NoLoguruPrintfFormat(Rule):
                 ),
             )
         return diagnostics
-
-
-def _logger_imports_untouched(context: PythonFileContext, provenance: ResourceProvenance) -> bool:
-    for node in context.nodes(ast.Name, ast.Attribute):
-        qualified = context.imports.resolved_qualified_name(node)
-        if qualified in {"loguru", "loguru.logger"} and not provenance.imported(node, qualified):
-            return False
-    return True
 
 
 def _logger_root(receiver: ast.expr) -> ast.expr | None:

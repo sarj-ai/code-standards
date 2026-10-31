@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, override
 
@@ -15,6 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
+from sarj_python_lint.rules._loguru import logger_imports_untouched
 
 
 if TYPE_CHECKING:
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 # A whole redaction token (`token_prefix`, `password_hash`, `secret_masked`,
@@ -30,6 +33,16 @@ if TYPE_CHECKING:
 _REDACTION_TOKENS = frozenset(
     {"prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hint", "len", "length", "tag"}
 )
+_LOGURU_OPT_PARAMETERS = frozenset({"exception", "record", "lazy", "colors", "raw", "capture", "depth", "ansi"})
+_LOGURU_LOG_METHODS = frozenset(
+    {"trace", "debug", "info", "success", "warning", "error", "critical", "exception", "log"}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _OptBindingCandidate:
+    root: ast.expr
+    values: tuple[ast.expr, ...]
 
 
 def _is_raw_secret_reference(value: ast.expr) -> bool:
@@ -89,6 +102,9 @@ class NoSecretInLog(Rule):
         category=RuleCategory.SECURITY,
         limitations=(
             "Detection covers direct secret-named message and argument values, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, string concatenation, nested literal containers, literal keyword unpacking, and immediate structured-logger bindings.",
+            "Immediate opt calls on a proven untouched native Loguru logger expose only the first bind's values. Positional or expanded chain arguments, unsupported opt keyword names, custom wrappers, stored aliases, and visibly mutated or escaped imports are excluded from this added coverage.",
+            "This added coverage requires a native Loguru logging method and a positional message, with no terminal keyword or expanded arguments. Terminal fields are excluded even with capture=False, rather than evaluating option state or merging fields that may override bindings.",
+            "Earlier inner bindings are not merged: a safe outer binding hides earlier bindings, including nonconflicting fields. Opaque runtime effects remain unresolved.",
             "Logger recognition and secret classification are lexical; general aliases, arbitrary calls, dynamic containers, and interprocedural dataflow are not inspected.",
         ),
         examples=(
@@ -125,28 +141,24 @@ class NoSecretInLog(Rule):
         tree = context.tree
         if tree is None:
             return []
+        provenance: ResourceProvenance | None = None
+        untouched = False
         diags: list[Diagnostic] = []
         for node in context.nodes(ast.Call):
             function = node.func
             if not isinstance(function, ast.Attribute) or not _is_logging_call(node):
                 continue
-            message_index = 1 if function.attr == "log" else 0
-            for arg in node.args[message_index:]:
-                diags.extend(
-                    Diagnostic(
-                        path=path,
-                        line=unsafe.lineno,
-                        col=unsafe.col_offset + 1,
-                        code=self.code,
-                        message="Credential-like reference is interpolated into a log message and may expose sensitive data — omit it.",
-                    )
-                    for unsafe in _unsafe_message_values(arg)
-                )
+            _collect_message_secrets(path, node, self.code, diags)
             _collect_keyword_secrets(path, node, self.code, diags)
-            diags.extend(
-                _diagnostic(path, value, self.code, "structured logger binding")
-                for value in _bound_logger_values(function.value)
-            )
+            bound_values = _bound_logger_values(function.value)
+            candidate = _opt_binding_candidate(node)
+            if candidate is not None:
+                if provenance is None:
+                    provenance = context.static_resource_provenance
+                    untouched = logger_imports_untouched(context, provenance)
+                if untouched and provenance.imported(candidate.root, "loguru.logger"):
+                    bound_values = candidate.values
+            diags.extend(_diagnostic(path, value, self.code, "structured logger binding") for value in bound_values)
         return diags
 
 
@@ -156,6 +168,50 @@ def _bound_logger_values(receiver: ast.expr) -> tuple[ast.expr, ...]:
     if receiver.func.attr not in {"bind", "contextualize"}:
         return ()
     return tuple(secret for keyword in receiver.keywords for secret in _unsafe_message_values(keyword.value))
+
+
+def _opt_binding_candidate(call: ast.Call) -> _OptBindingCandidate | None:
+    receiver = _loguru_terminal_receiver(call)
+    if receiver is None:
+        return None
+    binding = receiver
+    if not isinstance(binding, ast.Call) or not isinstance(binding.func, ast.Attribute) or binding.func.attr != "opt":
+        return None
+    while isinstance(binding, ast.Call) and isinstance(binding.func, ast.Attribute) and binding.func.attr == "opt":
+        binding = binding.func.value
+    if not isinstance(binding, ast.Call) or not isinstance(binding.func, ast.Attribute) or binding.func.attr != "bind":
+        return None
+    values = _bound_logger_values(binding)
+    if not values:
+        return None
+    root = _loguru_chain_root(receiver)
+    if root is None:
+        return None
+    return _OptBindingCandidate(root=root, values=values)
+
+
+def _loguru_terminal_receiver(call: ast.Call) -> ast.expr | None:
+    function = call.func
+    if (
+        not isinstance(function, ast.Attribute)
+        or function.attr not in _LOGURU_LOG_METHODS
+        or len(call.args) <= int(function.attr == "log")
+        or call.keywords
+        or any(isinstance(argument, ast.Starred) for argument in call.args)
+    ):
+        return None
+    return function.value
+
+
+def _loguru_chain_root(receiver: ast.expr) -> ast.expr | None:
+    root = receiver
+    while isinstance(root, ast.Call) and isinstance(root.func, ast.Attribute):
+        if root.func.attr not in {"bind", "opt"} or root.args or any(keyword.arg is None for keyword in root.keywords):
+            return None
+        if root.func.attr == "opt" and any(keyword.arg not in _LOGURU_OPT_PARAMETERS for keyword in root.keywords):
+            return None
+        root = root.func.value
+    return root
 
 
 def _diagnostic(path: Path, value: ast.expr, code: str, context: str) -> Diagnostic:
@@ -181,6 +237,24 @@ def _unsafe_formatted_values(parts: list[ast.expr]) -> tuple[ast.expr, ...]:
     return tuple(
         part.value for part in parts if isinstance(part, ast.FormattedValue) and _is_raw_secret_reference(part.value)
     )
+
+
+def _collect_message_secrets(path: Path, node: ast.Call, code: str, diags: list[Diagnostic]) -> None:
+    function = node.func
+    if not isinstance(function, ast.Attribute):
+        return
+    message_index = 1 if function.attr == "log" else 0
+    for arg in node.args[message_index:]:
+        diags.extend(
+            Diagnostic(
+                path=path,
+                line=unsafe.lineno,
+                col=unsafe.col_offset + 1,
+                code=code,
+                message="Credential-like reference is interpolated into a log message and may expose sensitive data — omit it.",
+            )
+            for unsafe in _unsafe_message_values(arg)
+        )
 
 
 def _collect_keyword_secrets(path: Path, node: ast.Call, code: str, diags: list[Diagnostic]) -> None:
