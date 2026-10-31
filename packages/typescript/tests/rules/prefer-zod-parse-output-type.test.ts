@@ -17,13 +17,16 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-function retainedTypeResult(body: string): boolean {
+function retainedTypeResults(body: string): readonly boolean[] {
   const results: boolean[] = [];
   const probe: TSESLint.RuleModule<"probe", []> = {
     meta: { type: "problem", schema: [], messages: { probe: "Probe." } },
     defaultOptions: [],
     create(context) {
-      return { TSAsExpression(node) { results.push(retainsNamedTypeUses(context.sourceCode, node.typeAnnotation)); } };
+      return {
+        TSAsExpression(node) { results.push(retainsNamedTypeUses(context.sourceCode, node.typeAnnotation)); },
+        TSTypeAliasDeclaration(node) { results.push(retainsNamedTypeUses(context.sourceCode, node)); },
+      };
     },
   };
   const messages = new Linter().verify(`export {}; declare const value: unknown; ${body}`, {
@@ -34,7 +37,11 @@ function retainedTypeResult(body: string): boolean {
   }, { filename: "liveness.ts" });
   expect(messages).toEqual([]);
   expect(results.length).toBeGreaterThan(0);
-  return results.at(-1) ?? false;
+  return results;
+}
+
+function retainedTypeResult(body: string): boolean {
+  return retainedTypeResults(body).at(-1) ?? false;
 }
 
 describe("named reads surviving erased type regions", () => {
@@ -61,6 +68,31 @@ describe("named reads surviving erased type regions", () => {
     ["unresolved name", "value as Missing;", false],
   ] as const)("%s", (_name, code, expected) => {
     expect(retainedTypeResult(code)).toBe(expected);
+  });
+
+  it("keeps each removed range independent of cached binding facts", () => {
+    expect(retainedTypeResults("interface Target { id: string } export type Kept = Target; value as Target;"))
+      .toEqual([false, true]);
+    expect(retainedTypeResults("interface Target { id: string } export type First = Target; value as Target; export type Last = Target; value as Target;"))
+      .toEqual([true, true, true, true]);
+  });
+
+  it("keeps public value reads distinct from public type reads", () => {
+    expect(retainedTypeResults("interface Target { id: string } const Target = 1; export type Kept = typeof Target; value as Target; value as typeof Target;"))
+      .toEqual([false, false, true]);
+  });
+
+  it("distinguishes shadowed bindings with the same name", () => {
+    expect(retainedTypeResults("interface Target { id: string } export type Kept = Target; function inner() { interface Target { name: string } value as Target; } value as Target;"))
+      .toEqual([false, false, true]);
+  });
+
+  it("rebuilds source facts when another source uses the same filename", () => {
+    const retained = "interface Target { id: string } export type Kept = Target; value as Target;";
+    const soleUse = "interface Target { id: string } value as Target;";
+    expect(retainedTypeResults(retained)).toEqual([false, true]);
+    expect(retainedTypeResults(soleUse)).toEqual([false]);
+    expect(retainedTypeResults(retained)).toEqual([false, true]);
   });
 });
 
