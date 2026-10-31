@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
+from sarj_python_lint.rules._binding_inventory import binding_names, scope_binding_names
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
 
@@ -19,6 +20,12 @@ MODEL_BASES = frozenset({"pydantic.BaseModel", "pydantic.main.BaseModel"})
 SETTINGS_BASES = frozenset({"pydantic_settings.BaseSettings", "pydantic_settings.main.BaseSettings"})
 _MAX_DEPTH = 8
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+
+
+def _attribute_root(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,7 @@ class DeclaredContracts:
         self.context = context
         self._field_cache: dict[tuple[ast.ClassDef, bool], dict[str, ast.AnnAssign]] = {}
         self._module_annotations: dict[Path, AnnotationSemantics] = {}
+        self._scope_names: dict[ast.AST, frozenset[str]] = {}
         self.project = context.session.project or ProjectIndexSet.single(context.path, context.source)
         self.unit = self.project.unit(context.path)
         if self.unit is not None and self.unit.tree is not context.tree:
@@ -85,17 +93,32 @@ class DeclaredContracts:
         return DeclaredClass(source, declaration) if declaration is not None else None
 
     def _lookup_allowed(self, expression: ast.expr, owner: SourceUnit, at: ast.AST | None) -> bool:
-        if owner is not self.unit or (at or expression) not in self.context.parents:
-            return True
         root = expression
         while isinstance(root, ast.Attribute):
             root = root.value
         if not isinstance(root, ast.Name):
             return True
+        if owner is not self.unit:
+            return self._foreign_lookup_allowed(owner, root.id)
+        if (at or expression) not in self.context.parents:
+            return True
         binding = self.context.static_resource_provenance.binding(root.id, at or expression)
         return (
             isinstance(binding, ast.alias | ast.ClassDef)
             and root.id not in self.context.static_resource_provenance.mutated
+        )
+
+    def _foreign_lookup_allowed(self, owner: SourceUnit, name: str) -> bool:
+        if owner.tree is None:
+            return False
+        if name not in owner.imports:
+            return True
+        imports = self._module_semantics(owner).imports
+        if name in imports.shadowed_names:
+            return False
+        return not any(
+            isinstance(node, ast.Attribute) and not isinstance(node.ctx, ast.Load) and _attribute_root(node) == name
+            for node in ast.walk(owner.tree)
         )
 
     def _stable_declaration(self, source: SourceUnit, name: str) -> ast.ClassDef | None:
@@ -104,10 +127,14 @@ class DeclaredContracts:
         declarations = [node for node in source.tree.body if isinstance(node, ast.ClassDef) and node.name == name]
         if len(declarations) != 1 or declarations[0].keywords:
             return None
+        if any(
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name for node in source.tree.body
+        ):
+            return None
         if not self._identity_decorators(source, declarations[0]):
             return None
         if any(
-            isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store | ast.Del)
+            name in binding_names(node)
             for statement in source.tree.body
             if not isinstance(statement, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
             for node in ast.walk(statement)
@@ -174,6 +201,14 @@ class DeclaredContracts:
             semantics = AnnotationSemantics.from_imports(unit.tree, imports)
             self._module_annotations[unit.path] = semantics
         return semantics
+
+    def imports_for(self, unit: SourceUnit) -> ImportIndex:
+        return self._module_semantics(unit).imports
+
+    def bound_names(self, statement: ast.AST) -> frozenset[str]:
+        if statement not in self._scope_names:
+            self._scope_names[statement] = scope_binding_names(statement)
+        return self._scope_names[statement]
 
     def annotation(self, expression: ast.expr, unit: SourceUnit | None = None) -> DeclaredClass | None:
         semantics = self.context.annotation_semantics

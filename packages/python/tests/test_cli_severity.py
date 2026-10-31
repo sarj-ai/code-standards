@@ -37,6 +37,48 @@ def test_comprehension_reuse_advice_stays_out_of_error_baselines(
     assert json.loads(baseline.read_text()) == {}
 
 
+def test_fixture_contract_parameters_block_but_export_advice_stays_out_of_baselines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rule = REGISTRY["prefer-pytest-fixture-contract"]
+    documentation = rule.documentation
+    assert documentation is not None
+    assert documentation.default_level is Severity.ERROR
+    example = next(case for case in documentation.examples if case.example_id == "concrete-store-fixture")
+    target = tmp_path / "tests" / "test_store.py"
+    target.parent.mkdir()
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'fixture-contract-example'\nversion = '1.0'\nrequires-python = '>=3.14'\n"
+    )
+    source = example.focus_file.source + "\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n"
+    target.write_text(source)
+    assert [finding.severity for finding in analyze([rule.id], [target])] == [Severity.WARNING, Severity.ERROR]
+    command = ["check", "--rule", rule.id]
+    assert main([*command, str(target)]) == 1
+    output = capsys.readouterr().out
+    assert f"{rule.code} warning:" in output
+    assert "Injected `store`" in output
+
+    baseline = tmp_path / "baseline.json"
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {str(target): {rule.code: 1}}
+    capsys.readouterr()
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
+    remaining = capsys.readouterr().out
+    assert f"{rule.code} warning:" in remaining
+    assert "Injected `store`" not in remaining
+
+    target.write_text(
+        source.replace(
+            "def test_read(store: SqlStore) -> None:",
+            "def test_read(store: SqlStore) -> None:  # sarj-noqa: SARJ550 -- reviewed stronger concrete contract",
+        )
+    )
+    assert main([*command, str(target)]) == 0
+    assert [finding.severity for finding in analyze([rule.id], [target])] == [Severity.WARNING]
+    assert f"{rule.code} warning:" in capsys.readouterr().out
+
+
 def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

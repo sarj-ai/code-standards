@@ -93,7 +93,7 @@ def direct_call(reference: ast.Name, context: PythonFileContext) -> ast.Call | N
     return parent
 
 
-def call_matches(function: ast.FunctionDef, call: ast.Call) -> bool:
+def call_matches(function: ast.FunctionDef | ast.AsyncFunctionDef, call: ast.Call) -> bool:
     positional = [*function.args.posonlyargs, *function.args.args]
     keywords = {arg.arg for arg in (*function.args.args, *function.args.kwonlyargs)}
     required = {arg.arg for arg in positional[: len(positional) - len(function.args.defaults)]}

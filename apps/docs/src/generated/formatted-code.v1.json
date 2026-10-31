@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4b79c480c3fb1f08bd613e50f06814723fd71ac498050c162122352f7b164d81",
-  "cliSha256": "008aa24304765c9be9909429abcd61ef6655855b7c313b304abc2787d87f4034",
+  "catalogSha256": "a80038763de4777f9e561d7a5aba3a00a30cd5ea79af0a64ef60e1f87fc0fc02",
+  "cliSha256": "40ebcc4262ace047013d0cdeee435d156661c729b94783afbb4b0f16540e718e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -15834,30 +15834,30 @@
           "files": [
             {
               "path": "tests/conftest.py",
-              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> Store:\n    return SqlStore()\n"
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\nclass Router:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n\n\n@pytest.fixture\ndef router(store: Store) -> Router:\n    return Router(store=store)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/conftest.py",
-          "id": "abstract-store-fixture",
+          "id": "abstract-injected-collaborator",
           "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "The fixture constructs SQL storage and exposes its contract"
+          "scenarioId": "injected-collaborator",
+          "title": "The composition fixture accepts the existing collaborator contract"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "tests/conftest.py",
-              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n"
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\nclass Router:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n\n\n@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store=store)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/conftest.py",
-          "id": "concrete-store-fixture",
+          "id": "concrete-injected-collaborator",
           "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "The fixture exposes its storage implementation"
+          "scenarioId": "injected-collaborator",
+          "title": "A composition fixture exposes a concrete collaborator parameter"
         }
       ],
       "optionsSchemaSource": null

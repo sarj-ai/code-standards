@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "rule": "python:prefer-pytest-fixture-contract",
+  "code": "SARJ550",
+  "decision": "enforce-proven-injection",
+  "defaultLevel": "error",
+  "severity": {
+    "provenInjectedParameters": "error",
+    "fixtureExportsWithUnknownConsumers": "warning"
+  },
+  "autofix": "none",
+  "scope": "Prefer an existing source-visible ABC or Protocol for injected pytest fixture/test parameters only when the contract supports every proven consumer use. Preserve concrete-only operations and stronger guarantees.",
+  "review": {
+    "freshContextPasses": 30,
+    "method": "Thirty distinct fresh-context agents performed scoped static detector reviews. Reproduced findings were corrected and covered by native semantic regressions. Maintained-source cohort reviews were static controls; executed producer findings were inspected separately. The later selective severity promotion was checked through native CLI, policy and immutable labeled/replay cases."
+  },
+  "validation": {
+    "focusedTestsPassed": 242,
+    "authoredPythonFilesNativePreflightPassed": 10,
+    "latestChangedFilesChecked": 10,
+    "unchangedPreflightInputsReused": 0,
+    "preflight": "Full native Ruff, BasedPyright and builtin code-standards source checks; unchanged passed inputs retain their exact qualification provenance.",
+    "executableExamples": 4,
+    "publicProvenExamples": 2,
+    "privateExportAdvisoryControls": 2,
+    "globalPublicErrorExampleGate": "passed",
+    "blockingBehavior": "Proven parameter errors block direct Python CLI and normal Standards policy/CLI; error baselines include only blocking findings, exact exceptions work, and uncertain fixture-export warnings remain nonblocking.",
+    "lifecycle": "Native promote-error lifecycle and all executable example verification passed; generated artifacts synchronized."
+  },
+  "labeledEvaluation": {
+    "cases": 83,
+    "files": 99,
+    "baseline": {
+      "tp": 6,
+      "fp": 5,
+      "fn": 14,
+      "tn": 58,
+      "count_mismatches": 19
+    },
+    "candidate": {
+      "tp": 20,
+      "fp": 0,
+      "fn": 0,
+      "tn": 63,
+      "count_mismatches": 0
+    },
+    "freshCandidateFindingSeverities": {
+      "warning": 6,
+      "error": 14
+    },
+    "labelDefinition": "Labels describe the supported detector policy. Negative cases include deliberate abstentions; zero labeled false negatives does not imply complete pytest inference."
+  },
+  "privateSourceReplay": {
+    "selectedDependencyParameters": 3,
+    "candidateSelectedParameterErrors": {
+      "original": 3,
+      "contractAnnotatedVariant": 0,
+      "concreteOnlyOperationVariant": 2
+    },
+    "lateAliasNegativeCases": 2,
+    "lateAliasFindings": 0,
+    "scope": "Counts select the three pinned dependency parameter annotations. Other existing rule findings in those source files are outside this replay comparison. Private identities, paths, source and identifying hashes are retained outside this public report."
+  },
+  "corpora": {
+    "maintainedProducerFiles": 1157,
+    "fixedUnbiasedSampleFiles": 200,
+    "sampleSelection": "First 200 maintained Python paths by a fixed SHA256 path ordering, frozen before candidate analysis.",
+    "executionScope": "Standalone frozen source projections omit Git metadata. Project discovery can therefore select package metadata roots that differ from a Git checkout; native indexing may read other frozen files within those roots.",
+    "measurementProvenance": "Producer/sample scans and repeated timings preceded selective severity promotion. Their original source identities are retained privately. Detection AST identity was verified after reverting only the enumerated severity/default/documentation changes; labeled/replay severities and CLI behavior were qualified afresh on promoted source. A later main integration changed a separate nominal-ID rule and native example-fixer ID typing. This detector and its shared Python facts retain their identities; the original measurements are not relabeled as current whole-engine measurements.",
+    "producerFindings": {
+      "baseline": {
+        "sarj550_findings": 5
+      },
+      "candidate": {
+        "sarj550_findings": 0
+      }
+    },
+    "reviewedCandidateProducerFindings": 0,
+    "knownInspectedProducerFalsePositives": 0,
+    "baselineProducerContextsInspected": 5,
+    "inspection": "All five baseline producer contexts were inspected. They expose rule class objects through runtime verifier arguments or class-member access, which the nominal-identity guard treats conservatively. No candidate producer matches remain; this is not a positive live-hit precision estimate or a claim that every baseline match is a defect.",
+    "duplicateCandidateLocations": 0,
+    "sarj466SameLocationCollisions": 0,
+    "parserRejectedFiles": {
+      "baseline:producer": 0,
+      "baseline:sample": 0,
+      "baseline:labeled": 0,
+      "candidate:producer": 0,
+      "candidate:sample": 0,
+      "candidate:labeled": 0
+    }
+  },
+  "performance": {
+    "repetitions": {
+      "cold": 4,
+      "warm_per_cold": 3,
+      "profile_order": "Alternating baseline-first and candidate-first"
+    },
+    "measurements": {
+      "baseline-sample": {
+        "cold_median_seconds": 9.955186560982838,
+        "warm_median_seconds": 8.632318034186028,
+        "peak_median_kib": 152348.0,
+        "peak_maximum_kib": 152780
+      },
+      "baseline-labeled": {
+        "cold_median_seconds": 0.895767625537701,
+        "warm_median_seconds": 0.5382141445297748,
+        "peak_median_kib": 62940.0,
+        "peak_maximum_kib": 63224
+      },
+      "candidate-sample": {
+        "cold_median_seconds": 29.9163210374536,
+        "warm_median_seconds": 25.835220282431692,
+        "peak_median_kib": 152582.0,
+        "peak_maximum_kib": 152984
+      },
+      "candidate-labeled": {
+        "cold_median_seconds": 1.0055209489073604,
+        "warm_median_seconds": 0.4924202300608158,
+        "peak_median_kib": 63134.0,
+        "peak_maximum_kib": 63488
+      }
+    },
+    "producerSinglePass": {
+      "baseline": {
+        "files": 1157,
+        "analyzed_files": 1157,
+        "cold_seconds": 164.30466997041367,
+        "peak_kib": 381696
+      },
+      "candidate": {
+        "files": 1157,
+        "analyzed_files": 1157,
+        "cold_seconds": 123.42046245606616,
+        "peak_kib": 380752
+      }
+    },
+    "candidateToBaselineRatios": {
+      "sample": {
+        "cold_median_seconds": 3.0050989857592456,
+        "warm_median_seconds": 2.9928485234346196,
+        "peak_median_kib": 1.0015359571507338
+      },
+      "labeled": {
+        "cold_median_seconds": 1.1225243246581702,
+        "warm_median_seconds": 0.9149150669219813,
+        "peak_median_kib": 1.0030823006037497
+      }
+    },
+    "workerMemoryUnit": "KiB; each repetition reports the maximum worker RSS across its deterministic batches.",
+    "hostMemoryKiB": {
+      "before": {
+        "MemTotal": 32858352,
+        "MemAvailable": 8438740,
+        "SwapTotal": 33554424,
+        "SwapFree": 487716
+      },
+      "after": {
+        "MemTotal": 32858352,
+        "MemAvailable": 18520492,
+        "SwapTotal": 33554424,
+        "SwapFree": 378416
+      }
+    },
+    "completedBatchesReusedAfterBudgetInterruption": 73,
+    "method": "Native run_isolated_corpora validates each frozen inventory before and after execution. Four cold repetitions alternate baseline/candidate order; each deterministic batch runs in a fresh process with three later native calls using fresh analysis sessions. Cold includes imports, preparse and first collection. Cold/warm values sum batch timings for the selected corpus; memory is the maximum batch worker RSS. The full producer is evaluated once per engine. If a wall-clock budget interrupts orchestration, completed payloads retain their original measured timings after engine/configuration/inventory guards; only missing batches execute analysis.",
+    "isolation": "Every discovered project root is checked to remain inside its frozen corpus. Original Python/configuration digests and analyzer source identities are checked without repinning."
+  },
+  "limitations": [
+    "Private producer/sample checks use deterministic batches of at most50 files. Native project indexing may read other frozen source in their project roots; external/unresolved imports stay unknown. Labeled multi-file cases share a250-file batch.",
+    "Sample is first200 source paths by fixed SHA256 selection, frozen before candidate analysis.",
+    "Case labels are policy expectations, not claims that every concrete annotation is a runtime bug.",
+    "Cold includes import/preparse/first native collection; warm is a later native collection in the same process, with a fresh analysis session. No cross-session semantic-cache reuse or leak-free claim is made.",
+    "SARJ550 is measured alone on producer/sample; labeled runs also enable SARJ466 for overlap evidence.",
+    "Repeated timings and the complete producer comparison are measurements from before the selective severity promotion; fresh severity qualification is not a new performance benchmark.",
+    "The candidate sample cold and warm medians are approximately three times the baseline. Labeled warm timing and the single full-producer comparison have different costs; no uniform performance improvement is claimed.",
+    "Measurements ran on a shared Linux VM without clearing OS filesystem caches. Memory availability and swap pressure varied; these selected-rule timings do not estimate the complete lint pipeline.",
+    "Sample and producer scans are SARJ550-only. Labeled runs additionally enable SARJ466 to check diagnostic overlap.",
+    "Unknown imports, generic or ambiguous contracts, dynamic collection/decorators, opaque escapes and stronger concrete requirements conservatively abstain. No automatic annotation replacement is offered.",
+    "Proven injected-parameter matches block CI. Fixture-export suggestions with unknown consumers remain advisory warnings. Consumer rollout approvals remain separate."
+  ]
+}

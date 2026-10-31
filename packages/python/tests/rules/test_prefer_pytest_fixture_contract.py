@@ -5,6 +5,8 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_pytest_fixture_contract import PreferPytestFixtureContract
 
 
@@ -12,11 +14,11 @@ _CLASSES = "import pytest\nfrom abc import ABC, abstractmethod\nclass Store(ABC)
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Rule
+    from sarj_python_lint.rule_base import ProjectRule, Rule
 
 
 @pytest.fixture
-def rule() -> Rule:
+def rule() -> ProjectRule:
     return PreferPytestFixtureContract()
 
 
@@ -56,7 +58,7 @@ def test_implementation_specific_local_consumers_keep_concrete_contract(rule: Ru
         _CLASSES
         + f"@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\ndef test_read(store: SqlStore):\n    assert store.{member}()\n"
     )
-    assert len(rule.check(Path("tests/test_store.py"), source)) == (1 if member == "read" else 0)
+    assert len(rule.check(Path("tests/test_store.py"), source)) == (2 if member == "read" else 0)
 
 
 def test_protocol_contract_and_renamed_fixture(rule: Rule) -> None:
@@ -108,3 +110,428 @@ def test_fixture_contract_suppression_and_generated_source(rule: Rule) -> None:
     )
     assert rule.check(Path("tests/conftest.py"), generated) == []
     assert rule.check(Path("tests/conftest.py"), "def fixture(:") == []
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "async def test_read(*, store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "@pytest.fixture\ndef result(store: SqlStore) -> int:\n    return store.read()\n",
+        "def test_read(store: SqlStore) -> None:\n    alias = store\n    assert alias.read() == 1\n",
+        "def test_read(store: SqlStore) -> None:\n    assert store is not None\n    assert store.read() == 1\n",
+        "class TestRead:\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+    ],
+)
+def test_injected_parameters_use_the_existing_consumed_contract(rule: Rule, consumer: str) -> None:
+    findings = rule.check(Path("tests/test_store.py"), _CLASSES + consumer)
+    [finding] = findings
+    assert finding.severity is Severity.ERROR
+    assert "Injected `store`" in finding.message
+    assert "`Store` contract" in finding.message
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "def test_read(store: SqlStore = SqlStore()) -> None:\n    assert store.read() == 1\n",
+        "def test_read(store: SqlStore, /) -> None:\n    assert store.read() == 1\n",
+        "def helper(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "def test_plan(store: SqlStore) -> None:\n    assert store.explain() == 'query plan'\n",
+        "@pytest.fixture\ndef plan(store: SqlStore) -> str:\n    return store.explain()\n",
+        "def test_plan(store: SqlStore) -> None:\n    alias = store\n    assert alias.explain() == 'query plan'\n",
+        "def test_read(store: SqlStore) -> None:\n    alias: SqlStore = store\n    assert alias.read() == 1\n",
+        "def test_plan(store: SqlStore) -> None:\n    callback = lambda: store.explain()\n    assert callback()\n",
+        "def test_read(store: SqlStore) -> None:\n    consume(store)\n    assert store.read() == 1\n",
+        "def test_read(store: SqlStore) -> None:\n    assert isinstance(store, SqlStore)\n    assert store.read() == 1\n",
+        "def test_read(store: SqlStore) -> None:\n    assert type(store) is SqlStore\n",
+        "@pytest.mark.parametrize('store', [SqlStore()])\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "pytestmark = pytest.mark.parametrize('store', [SqlStore()])\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "class TestRead:\n    pytestmark = pytest.mark.parametrize('store', [SqlStore()])\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "class Helper:\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "class TestRead:\n    __test__ = False\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "class TestRead:\n    def __init__(self) -> None: pass\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\ntest_read.__test__ = False\n",
+        "from collections.abc import Iterator\ndef test_read(stores: Iterator[SqlStore]) -> None:\n    assert next(stores).read() == 1\n",
+        "@wrapper\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+    ],
+)
+def test_noninjected_and_implementation_specific_parameters_remain_concrete(rule: Rule, consumer: str) -> None:
+    assert rule.check(Path("tests/test_store.py"), _CLASSES + consumer) == []
+
+
+@pytest.mark.parametrize(("contract_result", "concrete_result"), [("object", "str"), ("int", "str")])
+def test_concrete_operation_postconditions_are_not_widened(
+    rule: Rule, contract_result: str, concrete_result: str
+) -> None:
+    source = _CLASSES.replace("def read(self) -> int: ...", f"def read(self) -> {contract_result}: ...").replace(
+        "def read(self) -> int: return 1", f"def read(self) -> {concrete_result}: return 'value'"
+    )
+    source += "def test_read(store: SqlStore) -> None:\n    assert store.read().upper() == 'VALUE'\n"
+    assert rule.check(Path("tests/test_store.py"), source) == []
+
+
+@pytest.mark.parametrize("call", ["Router(store)", "Router(store=store)"])
+def test_composition_fixture_parameters_are_independent_of_the_return_contract(rule: Rule, call: str) -> None:
+    source = _CLASSES + (
+        "class Router:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n"
+        f"@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return {call}\n"
+    )
+    [finding] = rule.check(Path("tests/conftest.py"), source)
+    assert "Injected `store`" in finding.message
+
+
+@pytest.mark.parametrize("formal", ["Store", "SqlStore", "Unknown"])
+def test_forwarding_resolves_the_callees_own_module(rule: ProjectRule, tmp_path: Path, formal: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'fixture-contract'\nversion = '0.0.0'\n", encoding="utf-8"
+    )
+    sources = {
+        "app/__init__.py": "",
+        "app/contracts.py": "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n",
+        "app/adapters.py": "from app.contracts import Store\nclass SqlStore(Store):\n    def read(self) -> int: return 1\n",
+        "app/router.py": f"from app.contracts import Store\nfrom app.adapters import SqlStore\nclass Router:\n    def __init__(self, store: {formal}) -> None:\n        self.store = store\n",
+        "tests/conftest.py": "import pytest\nfrom app.adapters import SqlStore as Backend\nfrom app.router import Router as Target\n@pytest.fixture\ndef router(store: Backend) -> Target:\n    return Target(store=store)\n",
+    }
+    paths: list[Path] = []
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    rule.prepare(ProjectIndexSet.build(paths, {tmp_path / name: source for name, source in sources.items()}))
+    focus = tmp_path / "tests/conftest.py"
+    findings = rule.check(focus, sources["tests/conftest.py"])
+    assert len(findings) == (1 if formal == "Store" else 0)
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "pytestmark: object = pytest.mark.parametrize('store', [SqlStore()])\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "class TestRead:\n    pytestmark: object = pytest.mark.parametrize('store', [SqlStore()])\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "class TestOuter:\n    pytestmark = pytest.mark.parametrize('store', [SqlStore()])\n    class TestInner:\n        def test_read(self, store: SqlStore) -> None:\n            assert store.read() == 1\n",
+        "def pytest_generate_tests(metafunc):\n    metafunc.parametrize('store', [SqlStore()])\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "__test__: bool = False\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+        "class TestRead:\n    __test__: bool = False\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n",
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\ntest_read.__test__: bool = False\n",
+        "@pytest.fixture\ndef result(store: SqlStore) -> int:\n    return store.read()\nresult = None\n",
+        "@pytest.fixture\ndef result(store: SqlStore) -> int:\n    return store.read()\ndel result\n",
+    ],
+)
+def test_collection_and_injection_review_boundaries(rule: Rule, consumer: str) -> None:
+    assert rule.check(Path("tests/test_store.py"), _CLASSES + consumer) == []
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "def keep(function): return function\n@pytest.fixture\n@keep\ndef store() -> SqlStore:\n    return SqlStore()\n",
+        "def keep(function): return function\n@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n@keep\ndef test_plan(store: SqlStore) -> None:\n    assert store.explain()\n",
+        "def keep(function): return function\n@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n@pytest.fixture\n@keep\ndef plan(store: SqlStore) -> str:\n    return store.explain()\n",
+        "EXPORTED_NAME = 'store'\n@pytest.fixture(name=EXPORTED_NAME)\ndef sql_store() -> SqlStore:\n    return SqlStore()\ndef test_plan(store: SqlStore) -> None:\n    assert store.explain()\n",
+        "from collections.abc import Iterator\n@pytest.fixture\ndef stores() -> Iterator[SqlStore]:\n    return iter([SqlStore()])\n",
+        "@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n@pytest.mark.parametrize('store', ['sql'], indirect=True)\ndef test_plan(store: SqlStore) -> None:\n    assert store.explain()\n",
+    ],
+)
+def test_fixture_exports_preserve_reviewed_concrete_consumers(rule: Rule, consumer: str) -> None:
+    assert rule.check(Path("tests/test_store.py"), _CLASSES + consumer) == []
+
+
+@pytest.mark.parametrize("indirect", ["True", "['store']", "('store',)"])
+def test_literal_indirect_parametrization_is_fixture_injection(rule: Rule, indirect: str) -> None:
+    source = _CLASSES + (
+        f"@pytest.mark.parametrize('store', ['sql'], indirect={indirect})\n"
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n"
+    )
+    [finding] = rule.check(Path("tests/test_store.py"), source)
+    assert "Injected `store`" in finding.message
+
+
+def test_constructor_new_keeps_its_concrete_input_requirement(rule: Rule) -> None:
+    source = _CLASSES + (
+        "class Router:\n"
+        "    def __new__(cls, store: SqlStore):\n        store.explain()\n        return super().__new__(cls)\n"
+        "    def __init__(self, store: Store) -> None:\n        self.store = store\n"
+        "@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n"
+    )
+    assert rule.check(Path("tests/conftest.py"), source) == []
+
+
+@pytest.mark.parametrize("concrete_use", ["", "    store.explain()\n"])
+def test_composition_checks_each_injected_collaborator_independently(rule: Rule, concrete_use: str) -> None:
+    collaborators = [
+        ("Store", "SqlStore", "store"),
+        ("Prompt", "PromptImpl", "prompt"),
+        ("Settings", "SettingsImpl", "settings"),
+        ("Catalog", "MemoryCatalog", "catalog"),
+    ]
+    fragments = ["import pytest\nfrom abc import ABC, abstractmethod\n"]
+    for contract, implementation, _name in collaborators:
+        fragments.append(
+            f"class {contract}(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n"
+            f"class {implementation}({contract}):\n    def read(self) -> int: return 1\n"
+            "    def explain(self) -> str: return 'implementation'\n"
+        )
+    source = "".join(fragments)
+    inputs = ", ".join(f"{name}: {contract}" for contract, _implementation, name in collaborators)
+    parameters = ", ".join(f"{name}: {implementation}" for _contract, implementation, name in collaborators)
+    arguments = ", ".join(f"{name}={name}" for _contract, _implementation, name in collaborators)
+    source += f"class Router:\n    def __init__(self, *, {inputs}) -> None: pass\n"
+    source += f"@pytest.fixture\ndef router({parameters}) -> Router:\n{concrete_use}    return Router({arguments})\n"
+    findings = rule.check(Path("tests/conftest.py"), source)
+    expected = {name for _contract, _implementation, name in collaborators} - ({"store"} if concrete_use else set())
+    assert len(findings) == len(expected)
+    assert all(any(f"Injected `{name}`" in finding.message for finding in findings) for name in expected)
+
+
+def test_forwarding_accepts_a_distant_abstract_ancestor(rule: Rule) -> None:
+    source = (
+        "import pytest\nfrom abc import ABC, abstractmethod\n"
+        "class Root(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n"
+        "class Middle(Root): pass\nclass Leaf(Middle): pass\n"
+        "class SqlStore(Leaf):\n    def read(self) -> int: return 1\n"
+        "def consume(store: Root) -> int:\n    return store.read()\n"
+        "@pytest.fixture\ndef result(store: SqlStore) -> int:\n    return consume(store)\n"
+    )
+    [finding] = rule.check(Path("tests/conftest.py"), source)
+    assert "`Leaf` contract" in finding.message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    def plan() -> str:\n        nonlocal store\n        return store.explain()\n    assert plan()\n",
+        "    assert [store.explain() for store in [store]]\n",
+        "    alias = store\n    def plan() -> str:\n        nonlocal alias\n        return alias.explain()\n    assert plan()\n",
+    ],
+)
+def test_hidden_captures_do_not_prove_a_complete_contract(rule: Rule, body: str) -> None:
+    source = _CLASSES + "def test_plan(store: SqlStore) -> None:\n    assert store.read() == 1\n" + body
+    assert rule.check(Path("tests/test_store.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "implementation",
+    [
+        "class Reader:\n    def sql_read(self) -> str: return 'value'\n    read = sql_read\nclass SqlStore(Reader, Store): pass\n",
+        "class SqlStore(Store):\n    def sql_read(self) -> str: return 'value'\n    read, marker = sql_read, None\n",
+        "class SqlStore(Store):\n    def sql_read(self) -> str: return 'value'\n    if True:\n        read = sql_read\n",
+        "class SqlStore(Store):\n    def __init__(instance):\n        instance.read = instance.sql_read\n    def sql_read(self) -> str: return 'value'\n",
+        "class SqlStore(Store):\n    def __init__(self):\n        instance = self\n        instance.read = instance.sql_read\n    def sql_read(self) -> str: return 'value'\n",
+        "class SqlStore(Store):\n    def read(self) -> object: return object()\n    if True:\n        def read(self) -> str: return 'value'\n",
+        "class SqlStore(Store):\n    def sql_read(self) -> str: return 'value'\n    try:\n        raise ValueError\n    except ValueError:\n        read = sql_read\n",
+        "class SqlStore(Store):\n    def sql_read(self) -> str: return 'value'\n    match 1:\n        case 1:\n            read = sql_read\n",
+        "def text_read(self) -> str: return 'value'\nclass SqlStore(Store):\n    def read(self) -> object: return object()\n    match (text_read,):\n        case (read,):\n            pass\n",
+        "class TextReader:\n    def read(self) -> str: return 'value'\nclass SqlStore(TextReader, Store):\n    def read(self) -> object: return object()\n    try:\n        raise ValueError\n    except ValueError as read:\n        pass\n",
+    ],
+)
+def test_member_masks_preserve_concrete_postconditions(rule: Rule, implementation: str) -> None:
+    source = (
+        "import pytest\nfrom typing import Protocol\nclass Store(Protocol):\n    def read(self) -> object: ...\n"
+        + implementation
+        + "def test_text(store: SqlStore) -> None:\n    assert store.read().upper() == 'VALUE'\n"
+    )
+    assert rule.check(Path("tests/test_store.py"), source) == []
+
+
+def test_inherited_metaclass_constructor_retains_its_concrete_requirement(rule: Rule) -> None:
+    source = _CLASSES + (
+        "class Meta(type):\n    def __call__(cls, store: SqlStore):\n        store.explain()\n        return super().__call__(store)\n"
+        "class Parent(metaclass=Meta): pass\nclass Router(Parent):\n    def __init__(self, store: Store) -> None: pass\n"
+        "@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n"
+    )
+    assert rule.check(Path("tests/conftest.py"), source) == []
+
+
+def test_foreign_rebound_base_cannot_supply_a_contract(rule: ProjectRule, tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'rebound-base'\nversion = '0.0.0'\n", encoding="utf-8")
+    sources = {
+        "app/__init__.py": "",
+        "app/contracts.py": "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n",
+        "app/adapters.py": "from app.contracts import Store\nclass Other:\n    def read(self) -> int: return 1\nStore = Other\nclass SqlStore(Store):\n    def read(self) -> int: return 1\n",
+        "tests/test_store.py": "from app.adapters import SqlStore\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n",
+    }
+    paths: list[Path] = []
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    rule.prepare(ProjectIndexSet.build(paths, {tmp_path / name: source for name, source in sources.items()}))
+    assert rule.check(tmp_path / "tests/test_store.py", sources["tests/test_store.py"]) == []
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\nclass Base:\n    def test_plan(self, store: SqlStore) -> None:\n        assert store.explain()\nclass TestRead(Base): pass\n",
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\ntest_read.pytestmark = pytest.mark.parametrize('store', [SqlStore()])\n",
+        "def test_read(store: SqlStore) -> None:\n    assert store.read() == 1\ntest_read.pytestmark.append(custom)\n",
+    ],
+)
+def test_inherited_consumers_and_owned_marks_remain_conservative(rule: Rule, consumer: str) -> None:
+    assert rule.check(Path("tests/test_store.py"), _CLASSES + consumer) == []
+
+
+def test_unclassified_deep_branch_does_not_become_a_single_contract(rule: Rule) -> None:
+    fragments = [
+        _CLASSES,
+        "class Other(ABC):\n    @abstractmethod\n    def other(self) -> int: ...\n",
+        "class D0(Other):\n    def other(self) -> int: return 1\n",
+    ]
+    fragments.extend(f"class D{index}(D{index - 1}): pass\n" for index in range(1, 9))
+    fragments.append(
+        "class Impl(Store, D8):\n    def read(self) -> int: return 1\n"
+        "@pytest.fixture\ndef instance() -> Impl:\n    return Impl()\n"
+    )
+    assert rule.check(Path("tests/conftest.py"), "".join(fragments)) == []
+
+
+def test_generic_fixture_exports_remain_excluded(rule: Rule) -> None:
+    source = _CLASSES.replace("class SqlStore(Store):", "class SqlStore[T](Store):")
+    source += "@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore[int]()\n"
+    assert rule.check(Path("tests/conftest.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        {
+            "app/models.py": _CLASSES,
+            "app/router.py": "from typing import TypeAlias\nfrom app.models import Store, SqlStore\nAccepted: TypeAlias = Store\nclass Router:\n    Accepted = SqlStore\n    def __init__(self, store: Accepted) -> None: pass\n",
+            "tests/conftest.py": "import pytest\nfrom app.models import SqlStore\nfrom app.router import Router\n@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n",
+        },
+        {
+            "app/kinds.py": "from typing import Self as Current\n",
+            "tests/conftest.py": "from abc import ABC, abstractmethod\nfrom app.kinds import Current\nclass Store(ABC):\n    @abstractmethod\n    def clone(self) -> Current: ...\nclass SqlStore(Store):\n    def clone(self) -> Current: return self\n    def explain(self) -> str: return 'plan'\ndef test_clone(store: SqlStore) -> None:\n    assert store.clone().explain()\n",
+        },
+    ],
+    ids=["class-alias-shadowing", "re-exported-owner-relative-self"],
+)
+def test_opaque_annotation_origins_preserve_concrete_guarantees(
+    rule: ProjectRule, tmp_path: Path, sources: dict[str, str]
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'annotation-origin'\nversion = '0.0.0'\n", encoding="utf-8"
+    )
+    sources = {"app/__init__.py": "", **sources}
+    paths: list[Path] = []
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    rule.prepare(ProjectIndexSet.build(paths, {tmp_path / name: source for name, source in sources.items()}))
+    assert rule.check(tmp_path / "tests/conftest.py", sources["tests/conftest.py"]) == []
+
+
+@pytest.mark.parametrize(("operation", "expected"), [("return source()", 1), ("yield 1", 0)])
+def test_async_generator_shape_is_part_of_the_consumed_contract(rule: Rule, operation: str, expected: int) -> None:
+    call = "await store.stream()" if expected else "store.stream()"
+    source = (
+        "from abc import ABC, abstractmethod\nfrom collections.abc import AsyncIterator\n"
+        "async def source() -> AsyncIterator[int]:\n    yield 1\n"
+        "class Store(ABC):\n    @abstractmethod\n    async def stream(self) -> AsyncIterator[int]: ...\n"
+        f"class SqlStore(Store):\n    async def stream(self) -> AsyncIterator[int]:\n        {operation}\n"
+        f"async def test_stream(store: SqlStore) -> None:\n    iterator = {call}\n    assert await anext(iterator) == 1\n"
+    )
+    assert len(rule.check(Path("tests/test_stream.py"), source)) == expected
+
+
+def test_class_creation_hooks_keep_constructor_requirements_concrete(rule: Rule) -> None:
+    source = _CLASSES + (
+        "def concrete_init(self, store: SqlStore) -> None:\n    store.explain()\n"
+        "class Parent:\n    def __init_subclass__(cls) -> None:\n        cls.__init__ = concrete_init\n"
+        "class Router(Parent):\n    def __init__(self, store: Store) -> None: pass\n"
+        "@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n"
+    )
+    assert rule.check(Path("tests/conftest.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "replacement", ["class-import", "constructor-monkeypatch", "destructured-callee", "loop-callee", "match-callee"]
+)
+def test_foreign_binding_replacements_cannot_prove_consumed_contracts(
+    rule: ProjectRule, tmp_path: Path, replacement: str
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'foreign-replacement'\nversion = '0.0.0'\n", encoding="utf-8"
+    )
+    sources = {
+        "app/__init__.py": "",
+        "app/models.py": _CLASSES,
+        "app/router.py": "from app.models import Store, SqlStore\nclass Router:\n    def __init__(self, store: Store) -> None: pass\ndef concrete_init(self, store: SqlStore) -> None:\n    store.explain()\nRouter.__init__ = concrete_init\n",
+        "app/replacements.py": "class SqlStore:\n    def read(self) -> int: return 1\n",
+    }
+    match replacement:
+        case "class-import":
+            sources["app/models.py"] += "from app.replacements import SqlStore\n"
+            sources["tests/conftest.py"] = (
+                "from app.models import SqlStore\ndef test_read(store: SqlStore) -> None:\n    assert store.read() == 1\n"
+            )
+        case "constructor-monkeypatch":
+            sources["tests/conftest.py"] = (
+                "import pytest\nfrom app.models import SqlStore\nfrom app.router import Router\n@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n"
+            )
+        case _:
+            rebindings = {
+                "destructured-callee": "(consume,) = (concrete,)\n",
+                "loop-callee": "for consume in (concrete,):\n    pass\n",
+                "match-callee": "match (concrete,):\n    case (consume,):\n        pass\n",
+            }
+            sources["app/sink.py"] = (
+                "from app.models import Store, SqlStore\ndef consume(value: Store) -> None: pass\ndef concrete(value: SqlStore) -> None:\n    value.explain()\n"
+                + rebindings[replacement]
+            )
+            sources["tests/conftest.py"] = (
+                "from app.models import SqlStore\nfrom app.sink import consume\ndef test_forward(store: SqlStore) -> None:\n    consume(store)\n"
+            )
+    paths: list[Path] = []
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    rule.prepare(ProjectIndexSet.build(paths, {tmp_path / name: source for name, source in sources.items()}))
+    assert rule.check(tmp_path / "tests/conftest.py", sources["tests/conftest.py"]) == []
+
+
+def test_shared_wide_constructor_ancestry_closes_without_path_expansion(rule: Rule) -> None:
+    fragments = [_CLASSES, "class Root: pass\n"]
+    parents = ["Root"]
+    for level in range(6):
+        bases = ", ".join(parents)
+        parents = [f"Layer{level}_{column}" for column in range(12)]
+        fragments.extend(f"class {name}({bases}): pass\n" for name in parents)
+    fragments.append(
+        f"class Router({', '.join(parents)}):\n    def __init__(self, store: Store) -> None: pass\n"
+        "@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store)\n"
+    )
+    [finding] = rule.check(Path("tests/conftest.py"), "".join(fragments))
+    assert "Injected `store`" in finding.message
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    ["", "@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n"],
+)
+def test_operation_annotations_keep_their_declaring_class_scope(rule: Rule, fixture: str) -> None:
+    source = (
+        "import pytest\nfrom abc import ABC, abstractmethod\nfrom typing import TypeAlias\n"
+        "from builtins import object as ReadResult\n"
+        "class Store(ABC):\n    ReadResult: TypeAlias = object\n    @abstractmethod\n    def read(self) -> ReadResult: ...\n"
+        "class SqlStore(Store):\n    ReadResult: TypeAlias = str\n    def read(self) -> ReadResult: return 'value'\n"
+        + fixture
+        + "def test_text(store: SqlStore) -> None:\n    assert store.read().upper() == 'VALUE'\n"
+    )
+    assert rule.check(Path("tests/test_result.py"), source) == []
+
+
+def test_external_class_collection_hook_does_not_prove_fixture_injection(rule: Rule) -> None:
+    source = _CLASSES + (
+        "class TestRead:\n    def test_read(self, store: SqlStore) -> None:\n        assert store.read() == 1\n"
+        "def generate(metafunc):\n    metafunc.parametrize('store', [SqlStore()])\n"
+        "TestRead.pytest_generate_tests = staticmethod(generate)\n"
+    )
+    assert rule.check(Path("tests/test_store.py"), source) == []

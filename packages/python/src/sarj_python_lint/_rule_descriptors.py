@@ -1507,7 +1507,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_pytest_fixture_contract",
         class_name="PreferPytestFixtureContract",
         code="SARJ550",
-        description="Expose an existing abstract service contract from pytest fixtures.",
+        description="Expose existing abstract contracts from pytest fixtures and injected parameters.",
         aliases=(),
         enabled_by_default=True,
     ),
