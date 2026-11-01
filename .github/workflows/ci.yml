@@ -721,7 +721,11 @@ jobs:
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: |
           sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
-          sudo apt-get update
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=0 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            -o APT::Update::Error-Mode=any update
           uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Run affected wheel tests (full on shared changes or scheduled/manual audits)
         if: needs.changes.outputs.reviewed-wheels != 'true'
@@ -913,7 +917,11 @@ jobs:
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: |
           sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
-          sudo apt-get update
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=0 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            -o APT::Update::Error-Mode=any update
           uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Record effective CPU capacity
         if: needs.changes.outputs.reviewed-ci != 'true'
