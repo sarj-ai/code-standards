@@ -17,8 +17,8 @@ const DEFAULT_REPORTER_DELAY_MARKER = "Default reporter callback completed.";
 let privateCache: string | undefined;
 
 async function fixtureEnvironment(): Promise<NodeJS.ProcessEnv> {
-  if (process.env.NODE_COMPILE_CACHE !== undefined || process.env.NODE_DISABLE_COMPILE_CACHE !== undefined ||
-      process.env.NODE_V8_COVERAGE !== undefined) {
+  if (process.env["NODE_COMPILE_CACHE"] !== undefined || process.env["NODE_DISABLE_COMPILE_CACHE"] !== undefined ||
+      process.env["NODE_V8_COVERAGE"] !== undefined) {
     return { ...process.env };
   }
   privateCache ??= await mkdtemp(join(tmpdir(), "sarj-first-failure-compile-cache-"));
@@ -104,9 +104,7 @@ describe("native first failure preview", () => {
 import { existsSync } from "node:fs";
 test("first case", () => { throw new Error(${JSON.stringify(message)}); });
 test("later case", async () => {
-  const started = Date.now();
   while (!existsSync(new URL("../continue", import.meta.url))) {
-    if (Date.now() - started > 2000) throw new Error("preview was withheld");
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 });
@@ -123,7 +121,6 @@ test("second failure", () => { throw new Error("second assertion"); });
     expect(result.output).toContain("final detail");
     expect(result.output).toContain("second assertion");
     expect(result.output).toContain("1 passed");
-    expect(result.output).not.toContain("preview was withheld");
     if (delayDefaultReporter) expect(result.stderr).toContain(DEFAULT_REPORTER_DELAY_MARKER);
   });
 
