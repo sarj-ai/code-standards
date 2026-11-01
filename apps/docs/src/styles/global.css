@@ -239,6 +239,7 @@ starlight-menu-button button {
 
 .directory-filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 0.5rem;
 }
@@ -299,6 +300,12 @@ starlight-menu-button button {
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.rule-introduced {
+  white-space: nowrap;
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
 }
 
 .rule-table tbody th {
@@ -1070,6 +1077,10 @@ starlight-menu-button button {
   .directory-filters {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .directory-filters label:has([data-rule-sort]) {
+    grid-column: 1 / -1;
   }
 
   .directory-filters select,
