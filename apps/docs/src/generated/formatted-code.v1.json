@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c544992db9e140bdbb9e9fa3b64278f206e3c0f5c1a42323234f0bcebe46e1c7",
+  "catalogSha256": "e1be7ae700667af7b9992c73d55b5c645f5180c5f21f0f35a2a3a6ffd5fe1de0",
   "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -5026,6 +5026,49 @@
     },
     "eslint:prefer-minimal-parameter-contract": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nconst prefix = \"Hello \";\nfunction label(prefix: string, user: { email: string; name: string }): string {\n  return prefix + user.name + user.email;\n}\nlabel(prefix, account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "auxiliary-all-used",
+          "outcome": "accept",
+          "scenarioId": "auxiliary-scalar-parameter",
+          "title": "Reading both object fields retains their requirements"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nconst prefix = \"Hello \";\nfunction label(prefix: string, user: { email: string; name: string }): string {\n  return prefix + user.name;\n}\nlabel(prefix, account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nconst prefix = \"Hello \";\nfunction label(prefix: string, user: { name: string }): string {\n  return prefix + user.name;\n}\nlabel(prefix, account);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "auxiliary-scalar",
+          "outcome": "reject",
+          "scenarioId": "auxiliary-scalar-parameter",
+          "title": "A scalar prefix does not require the object's unread email"
+        },
         {
           "expectedCount": 0,
           "files": [
