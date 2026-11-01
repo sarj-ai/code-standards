@@ -1343,6 +1343,12 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
             {"message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker.", "name": "faker"},
             {"message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass.", "name": "node-sass"},
             {"message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint.", "name": "tslint"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "multer"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "formidable"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "busboy"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "@fastify/multipart"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "express-fileupload"},
+            {"message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.", "name": "multiparty"},
             // END GENERATED LIBRARY POLICY
             {
               name: "@clerk/nextjs",
@@ -1390,6 +1396,12 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
             {"group": ["faker/*"], "message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker."},
             {"group": ["node-sass/*"], "message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass."},
             {"group": ["tslint/*"], "message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint."},
+            {"group": ["multer/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
+            {"group": ["formidable/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
+            {"group": ["busboy/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
+            {"group": ["@fastify/multipart/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
+            {"group": ["express-fileupload/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
+            {"group": ["multiparty/*"], "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."},
             // END GENERATED LIBRARY POLICY
           ],
         },
@@ -1551,6 +1563,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/prefer-immutable-module-constant": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
+      "@sarj/no-server-file-uploads": "error",
       "@sarj/enforce-file-structure": "error",
       "@sarj/prefer-semantic-colors": [
         "error",
@@ -2067,6 +2080,42 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
               "module": "tslint",
               "note": "TSLint is deprecated; use ESLint with typescript-eslint.",
               "replacement": "eslint"
+            },
+            {
+              "id": "LIB120",
+              "module": "multer",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
+            },
+            {
+              "id": "LIB120",
+              "module": "formidable",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
+            },
+            {
+              "id": "LIB120",
+              "module": "busboy",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
+            },
+            {
+              "id": "LIB120",
+              "module": "@fastify/multipart",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
+            },
+            {
+              "id": "LIB120",
+              "module": "express-fileupload",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
+            },
+            {
+              "id": "LIB120",
+              "module": "multiparty",
+              "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+              "replacement": "direct object-storage uploads with signed URLs"
             }
           ] },
       ],

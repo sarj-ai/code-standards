@@ -279,6 +279,9 @@ warns-extend-require-match-for = [
 "os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
 
 "fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
+"fastapi.File".msg                    = "Use a pre-signed URL so the client uploads directly to object storage; accept object metadata instead of file bytes."
+"fastapi.param_functions.File".msg    = "Use a pre-signed URL so the client uploads directly to object storage; accept object metadata instead of file bytes."
+"fastapi.params.File".msg             = "Use a pre-signed URL so the client uploads directly to object storage; accept object metadata instead of file bytes."
 "pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
 "typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
 "typing_extensions.cast".msg          = "Prefer discriminated unions or `isinstance` narrowing over `cast`."

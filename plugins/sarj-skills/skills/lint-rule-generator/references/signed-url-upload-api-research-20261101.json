@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-01",
+  "repository": "sarj-ai/code-standards",
+  "baseRevision": "4511f88b38cc7b0317011e5d557bdca960f5ff1f",
+  "request": {
+    "policy": "User uploads go directly to object storage using signed URLs; application servers accept authorization requests and object metadata.",
+    "javascriptBoundary": "User confirmed: ban server-side upload handling; allow browser File objects.",
+    "severityOverride": "The user explicitly requested enforced upload bans. Broader research candidates remain proposals, not new blocking rules."
+  },
+  "method": {
+    "passes": 10,
+    "scope": "Official framework, platform, cloud-provider and linter documentation, checked against the current Sarj source catalog. This is a policy review, not a production performance study.",
+    "productionIncidents": "No customer production incidents or private source corpora were assumed.",
+    "decisionRule": "Prefer the existing owner; recommend a new detector only when it has a source-semantic boundary, concrete harm and a valid-state exclusion."
+  },
+  "passes": [
+    {
+      "number": 1,
+      "topic": "Upload transport and Python API identity",
+      "sources": [
+        "https://fastapi.tiangolo.com/tutorial/request-files/",
+        "https://fastapi.tiangolo.com/reference/parameters/"
+      ],
+      "finding": "File accepts multipart request bytes; UploadFile can accept uploads without a File default. The existing root UploadFile ban misses File and its defining modules."
+    },
+    {
+      "number": 2,
+      "topic": "Browser File and server frameworks",
+      "sources": [
+        "https://developer.mozilla.org/en-US/docs/Web/API/File",
+        "https://hono.dev/examples/file-upload",
+        "https://nodejs.org/api/buffer.html#class-file"
+      ],
+      "finding": "Browser File is a valid fetch body for a direct upload. Server boundary evidence must come from directives or known framework imports; the word File or a filename alone is insufficient."
+    },
+    {
+      "number": 3,
+      "topic": "Direct-upload authorization and resumability",
+      "sources": [
+        "https://docs.cloud.google.com/storage/docs/access-control/signed-urls",
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+      ],
+      "finding": "Issue authorized, limited-lived object capabilities; validate the completed object before trusting it. Provider resumable-session URLs are also direct-upload capabilities and should not be banned for lacking a signed query string."
+    },
+    {
+      "number": 4,
+      "topic": "Upstream ownership and alternate ingress",
+      "sources": [
+        "https://docs.astral.sh/ruff/rules/banned-api/",
+        "https://eslint.org/docs/latest/rules/no-restricted-imports",
+        "https://expressjs.com/en/resources/middleware/multer/",
+        "https://github.com/fastify/fastify-multipart"
+      ],
+      "finding": "Use Ruff banned-api and the existing library-policy adapters for exact APIs and packages. Retain the runtime-load companion because ESLint no-restricted-imports only covers static imports."
+    },
+    {
+      "number": 5,
+      "topic": "Event-loop blocking",
+      "sources": [
+        "https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop",
+        "https://docs.python.org/3/library/asyncio-dev.html#running-blocking-code",
+        "https://docs.astral.sh/ruff/rules/blocking-http-call-in-async-function/",
+        "https://docs.astral.sh/ruff/rules/blocking-sleep-in-async-function/"
+      ],
+      "finding": "Python blocking async APIs and Node synchronous filesystem calls already have owners. Imported synchronous child-process, expensive crypto and compression calls in request handlers remain promising context-specific candidates."
+    },
+    {
+      "number": 6,
+      "topic": "HTTP deadlines and connection reuse",
+      "sources": [
+        "https://www.python-httpx.org/advanced/clients/",
+        "https://www.python-httpx.org/async/",
+        "https://www.python-httpx.org/advanced/timeouts/",
+        "https://docs.astral.sh/ruff/rules/request-without-timeout/"
+      ],
+      "finding": "Reuse scoped clients. HTTPX already has timeouts by default, and Ruff S113 detects explicitly disabled HTTPX request timeouts; do not invent a missing-timeout ban for all HTTPX calls."
+    },
+    {
+      "number": 7,
+      "topic": "Fanout, cancellation and backpressure",
+      "sources": [
+        "https://docs.python.org/3/library/asyncio-task.html#task-groups",
+        "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all",
+        "https://nodejs.org/api/stream.html#respecting-backpressure"
+      ],
+      "finding": "Bound work admission for dynamically sized fanout and respect stream backpressure. TaskGroup and Promise.all remain valid APIs; scheduling supervision is different from a concurrency limit."
+    },
+    {
+      "number": 8,
+      "topic": "Database round trips and pagination",
+      "sources": [
+        "https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html#lazy-loading",
+        "https://www.postgresql.org/docs/current/queries-limit.html"
+      ],
+      "finding": "Prefer declared bulk operations, explicit projections and cursor pagination where applicable. Sarj already owns bulk, SELECT-star and OFFSET findings; ORM access alone cannot establish an N+1 defect."
+    },
+    {
+      "number": 9,
+      "topic": "Durability, retries and cache lifetime",
+      "sources": [
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#caveat",
+        "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+        "https://docs.python.org/3/library/functools.html#functools.lru_cache"
+      ],
+      "finding": "Durable workflows need explicit queue/retry contracts. BackgroundTasks, create_task, cache and retry libraries have valid uses and should not receive unconditional bans."
+    },
+    {
+      "number": 10,
+      "topic": "Adversarial boundaries and adoption review",
+      "sources": [
+        "https://github.com/sarj-ai/code-standards/blob/main/plugins/sarj-skills/skills/lint-rule-generator/SKILL.md"
+      ],
+      "finding": "Test aliases, local File classes, type-only imports, client directives, inline server actions, suppression, malformed input and duplicate ownership. Preserve ordinary forms and object-storage SDKs. Publish no runtime speedup claim without application measurements."
+    }
+  ],
+  "findings": [
+    {
+      "id": "UPLOAD-PY",
+      "status": "implemented",
+      "apis": [
+        "fastapi.File",
+        "fastapi.param_functions.File",
+        "fastapi.params.File"
+      ],
+      "owner": "Ruff banned-api (TID251)",
+      "harm": "Multipart bytes occupy application workers and can be fully buffered when declared as bytes.",
+      "validBoundary": "Unrelated File symbols, Body/Form metadata, downloads and explained local exceptions remain valid.",
+      "fix": "Return an authorized upload capability; accept an object key and metadata."
+    },
+    {
+      "id": "UPLOAD-PY-EXISTING",
+      "status": "retain-existing",
+      "apis": [
+        "fastapi.UploadFile"
+      ],
+      "owner": "Ruff banned-api (TID251)",
+      "gap": "Already banned at the public root.",
+      "validBoundary": "The pre-existing downloaded-file constructor case from fastapi.datastructures remains allowed; a blanket ban on every UploadFile implementation path would also reject local adapters. Route-aware annotation detection is a separate future gap."
+    },
+    {
+      "id": "UPLOAD-JS",
+      "status": "implemented",
+      "apis": [
+        "native File references within explicit server boundaries"
+      ],
+      "owner": "@sarj/no-server-file-uploads",
+      "harm": "Makes file ingress and server File adaptation visible to policy.",
+      "validBoundary": "Browser File, unrelated imports/local classes, Blob, FormData and unknown environments remain allowed.",
+      "limitations": "Unknown wrappers, re-exports, unmarked Fetch handlers, raw streams and base64 payloads can bypass this syntactic policy. A clean lint result is not proof of a valid storage signature."
+    },
+    {
+      "id": "UPLOAD-LIBS",
+      "status": "implemented",
+      "apis": [
+        "multer",
+        "formidable",
+        "busboy",
+        "@fastify/multipart",
+        "express-fileupload",
+        "multiparty"
+      ],
+      "owner": "LIB120 via existing dependency, static-import and runtime-load adapters",
+      "harm": "Dedicated server multipart-upload dependencies enable the prohibited transport.",
+      "validBoundary": "FormData, outbound form-data and @aws-sdk/lib-storage are not banned. A package used solely for string fields still falls under the explicitly requested architectural dependency policy; use ordinary form parsing or a reasoned local exception."
+    },
+    {
+      "id": "UPLOAD-FORMS",
+      "status": "reject-blanket-ban",
+      "apis": [
+        "FormData",
+        "Blob",
+        "FileReader",
+        "Request.formData",
+        "HonoRequest.parseBody"
+      ],
+      "reason": "String forms, browser previews, signed POST policies and generated downloads use these APIs legitimately.",
+      "nextStep": "A future inbound-file dataflow rule must prove request provenance and a File or binary sink."
+    },
+    {
+      "id": "PY-BLOCKING",
+      "status": "already-owned",
+      "apis": [
+        "time.sleep in async def",
+        "blocking HTTP/filesystem/process calls in async def"
+      ],
+      "owner": "Ruff ASYNC rules selected by the shipped ALL policy",
+      "nextStep": "Repair a demonstrated upstream gap rather than duplicate its detector."
+    },
+    {
+      "id": "JS-FS",
+      "status": "already-owned",
+      "apis": [
+        "proven node:fs synchronous APIs"
+      ],
+      "owner": "@sarj/prefer-node-fs-promises (warning); n/prefer-promises/fs owns callback APIs",
+      "validBoundary": "Startup-only programs, synchronous plugin contracts and explicit durability calls need review.",
+      "nextStep": "Use corpus evidence before promotion; avoid n/no-sync because unrelated methods ending in Sync are valid."
+    },
+    {
+      "id": "JS-CPU-PROCESS",
+      "status": "propose",
+      "priority": 1,
+      "apis": [
+        "child_process.execSync",
+        "child_process.execFileSync",
+        "child_process.spawnSync",
+        "crypto.pbkdf2Sync",
+        "crypto.scryptSync",
+        "zlib.gzipSync",
+        "zlib.deflateSync"
+      ],
+      "harm": "Long synchronous work blocks other requests on the same event loop.",
+      "detectorBoundary": "Resolve known builtin imports and prove execution inside a request handler; distinguish true Node APIs from local lookalikes.",
+      "validBoundary": "CLI tooling, startup-only work, workers and synchronous framework contracts.",
+      "nextStep": "Create labeled request-handler and CLI corpora; start as warning after a reproduced defect."
+    },
+    {
+      "id": "HTTP-TIMEOUT",
+      "status": "already-owned",
+      "apis": [
+        "requests calls without timeout",
+        "httpx requests with timeout=None",
+        "fetch without an explicit signal"
+      ],
+      "owner": "Ruff S113 and @sarj/require-fetch-timeout",
+      "limitations": "A fetch signal is a cancellation path, not necessarily a deadline. Deliberate streaming and externally managed deadlines need exceptions.",
+      "nextStep": "Probe the pinned Ruff version before proposing a client-constructor timeout=None extension."
+    },
+    {
+      "id": "HTTP-CLIENT-CHURN",
+      "status": "propose",
+      "priority": 1,
+      "apis": [
+        "httpx.AsyncClient construction inside a request loop",
+        "repeated top-level httpx requests in a hot loop"
+      ],
+      "harm": "Recreating clients defeats connection reuse and adds repeated connection setup.",
+      "existingOwner": "no-async-client-in-constructor covers a different lifecycle defect.",
+      "detectorBoundary": "Resolve the HTTPX constructor, loop and ownership/close relationship.",
+      "validBoundary": "One-shot scripts, deliberate per-identity isolation and clients injected from a lifespan scope.",
+      "nextStep": "Add a warning candidate with loop and lifespan counterexamples."
+    },
+    {
+      "id": "UNBOUNDED-FANOUT",
+      "status": "propose",
+      "priority": 1,
+      "apis": [
+        "Promise.all(dynamicItems.map(remoteWork))",
+        "asyncio.gather over dynamically sized remote work"
+      ],
+      "harm": "Unbounded admission can exhaust sockets, pools and memory.",
+      "detectorBoundary": "Prove the native aggregate and remote work plus the absence of a declared bound; a map method name does not prove array semantics.",
+      "validBoundary": "Small fixed tuples, bounded worker pools, externally limited iterables and non-I/O tasks.",
+      "nextStep": "Prototype a warning only after a concrete unbounded workload and limiter near misses are labeled."
+    },
+    {
+      "id": "STREAM-BUFFERING",
+      "status": "propose",
+      "priority": 2,
+      "apis": [
+        "read() without size on remote streams",
+        "arrayBuffer/blob/text materialization of unbounded inbound bodies",
+        "writes ignoring backpressure"
+      ],
+      "harm": "Materializing unbounded data scales memory with payload size.",
+      "detectorBoundary": "Require remote-stream provenance and a missing validated size/admission bound.",
+      "validBoundary": "Small checked payloads, browser previews, fixture data and bounded object metadata.",
+      "nextStep": "Research type/dataflow coverage; avoid a universal ban on read or arrayBuffer."
+    },
+    {
+      "id": "DB-BULK",
+      "status": "already-owned",
+      "apis": [
+        "repeated singleton reads/writes with a declared equivalent bulk method"
+      ],
+      "owner": "prefer-bulk-upsert; service-singleton-delegates-to-bulk; store-get-delegates-to-bulk-read",
+      "validBoundary": "Order-dependent transactions, incompatible bulk semantics and small independent operations.",
+      "nextStep": "Reuse the existing declared contracts; measure query counts for opaque ORM cases."
+    },
+    {
+      "id": "DB-PAGINATION",
+      "status": "already-owned",
+      "apis": [
+        "OFFSET pagination",
+        "SELECT *"
+      ],
+      "owner": "Python/SQL no-offset-pagination and no-select-star",
+      "validBoundary": "The owning rules document supported query shapes and exceptions.",
+      "nextStep": "No additional duplicate ban."
+    },
+    {
+      "id": "DURABLE-WORK",
+      "status": "propose-with-contract",
+      "priority": 2,
+      "apis": [
+        "BackgroundTasks.add_task",
+        "detached asyncio.create_task for required business work"
+      ],
+      "harm": "Required work should not depend on the lifetime of one request worker.",
+      "detectorBoundary": "Requires an explicit durable-work contract or known business boundary; names such as payment/send do not prove it.",
+      "validBoundary": "Best-effort cleanup, supervised ephemeral tasks and noncritical notifications.",
+      "nextStep": "Design an opt-in durability contract and warning; do not ban BackgroundTasks or create_task globally."
+    },
+    {
+      "id": "RETRY-BUDGET",
+      "status": "propose-with-contract",
+      "priority": 2,
+      "apis": [
+        "unbounded retries",
+        "nested automatic retries",
+        "retries of non-idempotent operations"
+      ],
+      "harm": "Retries can amplify load and repeat side effects during failure.",
+      "existingOwner": "require-injectable-retry-sleep checks testability, not distributed retry safety.",
+      "detectorBoundary": "Known retry configuration plus explicit attempt/deadline and idempotency contracts.",
+      "validBoundary": "Durable consumers with external budgets and explicit idempotency keys.",
+      "nextStep": "Start with demonstrably infinite known-library configurations; avoid banning all retries or fixed local polling."
+    },
+    {
+      "id": "ASYNC-CACHE",
+      "status": "already-owned",
+      "apis": [
+        "functools.cache/lru_cache/cached_property on coroutine functions"
+      ],
+      "owner": "no-async-function-cache (SARJ507)",
+      "nextStep": "Do not duplicate it or ban ordinary synchronous caches."
+    },
+    {
+      "id": "UNBOUNDED-CACHE",
+      "status": "defer",
+      "apis": [
+        "functools.cache",
+        "lru_cache(maxsize=None)",
+        "process-local maps"
+      ],
+      "harm": "Unbounded cardinality can retain request-specific data indefinitely.",
+      "detectorBoundary": "Needs workload/cardinality and lifetime evidence.",
+      "validBoundary": "Finite configuration domains and intentional process-lifetime memoization.",
+      "nextStep": "Observe memory and key cardinality before designing a warning."
+    }
+  ],
+  "validation": {
+    "state": "Full native make verify passed after integration with current main; fixed-corpus and repeated timing refresh also passed.",
+    "checkedAt": "2026-11-01T22:46:17.403638+00:00",
+    "labeledJavaScriptCases": {
+      "truePositives": 25,
+      "falsePositives": 0,
+      "falseNegatives": 0,
+      "trueNegatives": 25,
+      "focusedTestsPassed": 51,
+      "entrypoint": "maintain rules prepare eslint:no-server-file-uploads; 50 labeled cases plus one executable documentation test"
+    },
+    "pythonRegressionTests": 347,
+    "javascriptPolicyIntegrationTests": 77,
+    "preflight": [
+      "Ruff full applicable source rules and format check",
+      "code-standards analyze changed Python sources/tests: 0 errors; inherited warning-stage findings retained",
+      "basedpyright changed Python sources/tests: 0 errors/warnings",
+      "TypeScript source and tools-project type checks",
+      "full applicable ESLint checks on changed TypeScript source/tests"
+    ],
+    "corpora": {
+      "public-typescript-source": {
+        "digest": "sha256:2b47ea86bfd46ce45a682780dc3f17bb30557d08f3c4791277ca9f46b3d41282",
+        "files": 214,
+        "bytes": 2299009,
+        "selection": [
+          "**/*.ts"
+        ]
+      },
+      "public-python-source": {
+        "digest": "sha256:7930c45eff419e0dadbd45aa216d0487725cfce568568a2acde2e3a4bac7a1cf",
+        "files": 316,
+        "bytes": 4877452,
+        "selection": [
+          "**/*.py"
+        ]
+      }
+    },
+    "corpusResult": {
+      "baselineFindings": 0,
+      "candidateFindings": 0,
+      "files": 530,
+      "limitations": "Public code-standards implementation source at the recorded base revision, not a representative sample of customer upload applications. Corpus files are unlabeled; the confusion matrix above belongs only to the labeled cases.",
+      "finalTypeScriptPluginSha256": "1050cc57274111fc8135133f3bb9800118a9ee0bd9eedf1e7a449b1e24f3668e",
+      "finalTypeScriptFindings": 0
+    },
+    "analyzerPerformance": {
+      "repeats": 5,
+      "roundsPerProcess": 3,
+      "pluginDigests": {
+        "baseline": "a0663e9d10f9fbf5a6a614d1127f747bdbebfcaa49279699529ea6378df22a34",
+        "candidate": "1050cc57274111fc8135133f3bb9800118a9ee0bd9eedf1e7a449b1e24f3668e"
+      },
+      "summary": {
+        "baseline": {
+          "freshProcessMedianMs": 1659.7140230000002,
+          "warmMedianMs": 879.0400534999999,
+          "peakRssMedianKiB": 496704,
+          "filesPerRound": 30,
+          "bytesPerRound": 378418
+        },
+        "candidate": {
+          "freshProcessMedianMs": 1662.931133,
+          "warmMedianMs": 843.9472350000001,
+          "peakRssMedianKiB": 506024,
+          "filesPerRound": 30,
+          "bytesPerRound": 378418
+        }
+      },
+      "limitations": [
+        "Fresh-process measurements do not flush OS caches.",
+        "Peak RSS includes imports, parsing and all three rounds in each fresh Node process.",
+        "This measures analyzer overhead on a reproducible public-source sample, not application upload throughput.",
+        "Only no-enum, require-fetch-timeout and the added upload rule are configured; this is not a full-preset performance claim.",
+        "The baseline bundle and source corpus remain pinned to the original base revision; the candidate also incorporates the recorded current-main integration."
+      ],
+      "interpretation": "Fresh-process and warm medians stayed similar on this fixed sample. Shared-VM variation and sample size prevent a precise overhead bound or application speedup claim."
+    },
+    "commands": [
+      "maintain rules prepare eslint:no-server-file-uploads",
+      "maintain rules promote-error eslint:no-server-file-uploads",
+      "pytest -q packages/standards/tests/test_type_adapter_policy.py packages/standards/tests/test_library_policy.py",
+      "vitest run tests/flat-presets.test.ts tests/rules/no-restricted-library-load.test.ts",
+      "run_isolated_corpora over immutable public source snapshots; see local qualification artifacts",
+      "make verify"
+    ],
+    "canonicalGate": "make verify TEST_JOBS=1 exited 0 with native per-phase admission; every local component passed in the same integrated run.",
+    "nativeVerification": {
+      "doctor": {
+        "sites": 24,
+        "drift": 0
+      },
+      "docs": {
+        "pagesBuilt": 524,
+        "routingTestsPassed": 21,
+        "distributionContract": "passed"
+      },
+      "formatLintTypes": "Full repository formatting, ESLint, Ruff, custom source checks and all package type checks passed. Custom source checks: 0 errors, 599 inherited warning-stage findings, 0 execution issues.",
+      "dogfood": {
+        "pythonRules": 210,
+        "pythonFiles": 1179,
+        "pythonBlockingFindings": 0,
+        "typeScriptRules": 146,
+        "typeScriptDiagnostics": 0
+      },
+      "packageTests": {
+        "typeScript": {
+          "passed": 13759,
+          "files": 231
+        },
+        "bootstrap": {
+          "passed": 52
+        },
+        "contracts": {
+          "passed": 107
+        },
+        "python": {
+          "passed": 29673
+        },
+        "sql": {
+          "passed": 3465,
+          "nativeSkipped": 4
+        },
+        "iac": {
+          "passed": 1814
+        },
+        "standardsFreshWheel": {
+          "passed": 9210,
+          "nativeSkipped": 9
+        },
+        "uniquePassedTotal": 58080,
+        "nativeSkippedTotal": 13
+      },
+      "tsconfig": "passed",
+      "repositoryPolicy": "passed",
+      "privateReferences": "delegated to trusted CI by the native gate; no local scan claimed",
+      "shellcheckAndShfmt": "passed; inherited SC2310 warnings retained",
+      "canonicalInvocation": {
+        "command": "make verify TEST_JOBS=1",
+        "exitCode": 0,
+        "integrationBase": "c9911afd913542db9fc5e48b2f6d7c3fc7912ce4"
+      }
+    },
+    "failuresAndRecovery": [
+      {
+        "failure": "Initial make verify found stale CLI-reference generation, then a stale formatted-code CLI hash.",
+        "resolution": "Regenerated projections in dependency order; all documentation checks passed.",
+        "stage": "Earlier, pre-integration qualification; preserved as history."
+      },
+      {
+        "failure": "BasedPyright exceeded the native 900-second deadline during full source verification.",
+        "resolution": "The exact checker command passed within the same deadline: 379 files, zero errors/warnings, 60.653 seconds. Full make typecheck also passed.",
+        "stage": "Earlier, pre-integration qualification; preserved as history."
+      },
+      {
+        "failure": "One Python fixture subprocess exceeded its native 30-second deadline.",
+        "resolution": "The full affected file passed serially: 14 tests. Unchanged successful package cases reused.",
+        "stage": "Earlier, pre-integration qualification; preserved as history."
+      },
+      {
+        "failure": "The initial fresh-wheel suite had 25 subprocess deadline failures and one missing calibration campaign task.",
+        "resolution": "Registered the task; all failed selectors plus both calibration checks passed in a fresh-wheel serial recovery: 27 tests, 17.91 seconds. Native deadlines and assertions were unchanged.",
+        "stage": "Earlier, pre-integration qualification; preserved as history."
+      }
+    ],
+    "calibration": "50 labeled rule cases and the pinned implementation corpora are qualified. Broader customer-application calibration remains pending in the campaign task.",
+    "integration": {
+      "baseRevision": "c9911afd913542db9fc5e48b2f6d7c3fc7912ce4",
+      "state": "Full make verify and focused preflight passed. Original corpus revision remains pinned.",
+      "focusedTypeScriptTestsPassed": 284,
+      "focusedPythonTestsPassed": 347
+    },
+    "priorQualification": {
+      "checkedAt": "2026-11-01T19:37:33.209037+00:00",
+      "canonicalGate": "Completed by native components with recorded recoveries, not by a single successful make verify invocation. Original failed logs remain preserved.",
+      "packageTestsPassed": 58047,
+      "history": "Original failed logs, focused recoveries and earlier timing/corpus artifacts are retained separately; the integrated full make verify run passed without recovery."
+    }
+  },
+  "release": {
+    "proposedCore": "8.179.0",
+    "proposedTypeScript": "16.40.0",
+    "status": "Qualified local candidate for administrator merge; publication follows the native version-changing merge workflow.",
+    "recommendation": "Blocking upload policy as explicitly requested; do not promote broader research candidates without reproduced defects and calibration."
+  }
+}
