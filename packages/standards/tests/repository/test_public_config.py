@@ -72,3 +72,47 @@ def test_retains_existing_allowed_inputs(tmp_path: Path, name: str, source: str)
     assert result.returncode == 0
     assert result.stdout == "Public credential policy passed\n"
     assert not result.stderr
+
+
+@pytest.mark.parametrize("name", ["wrangler.toml", "wrangler.json", "wrangler.jsonc"])
+def test_allows_only_posthog_public_project_tokens(tmp_path: Path, name: str) -> None:
+    token = "phc_" + "a" * 40
+    source = (
+        f'POSTHOG_API_KEY = "{token}"' if name.endswith(".toml") else f'{{"vars": {{"POSTHOG_API_KEY": "{token}"}}}}'
+    )
+    result = _check(tmp_path, {name: source})
+    assert result.returncode == 0
+    assert not result.stderr
+
+
+@pytest.mark.parametrize("prefix", ["phx_", "phs_", "pha_", "phr_", "private_"])
+def test_posthog_binding_name_cannot_hide_private_credentials(tmp_path: Path, prefix: str) -> None:
+    value = prefix + "b" * 40
+    result = _check(tmp_path, {"wrangler.toml": f'POSTHOG_API_KEY = "{value}"'})
+    assert result.returncode == 1
+    assert "POSTHOG_API_KEY" in result.stderr
+    assert value not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("value", ["phc_short", "phc_" + "a" * 129, "phc_" + "a" * 40 + " private"])
+def test_malformed_posthog_values_do_not_gain_an_exception(tmp_path: Path, value: str) -> None:
+    result = _check(tmp_path, {"wrangler.toml": f'POSTHOG_API_KEY = "{value}"'})
+    assert result.returncode == 1
+    assert value not in result.stdout + result.stderr
+
+
+def test_public_posthog_token_does_not_hide_an_adjacent_worker_secret(tmp_path: Path) -> None:
+    source = 'POSTHOG_API_KEY = "phc_' + "a" * 40 + f'"\nTOOL_AUTH_TOKEN = "{_PRIVATE_VALUE}"'
+    result = _check(tmp_path, {"wrangler.toml": source})
+    assert result.returncode == 1
+    assert "TOOL_AUTH_TOKEN" in result.stderr
+    assert "POSTHOG_API_KEY" not in result.stderr
+    assert _PRIVATE_VALUE not in result.stdout + result.stderr
+
+
+def test_posthog_project_format_does_not_exempt_a_different_binding(tmp_path: Path) -> None:
+    value = "phc_" + "a" * 40
+    result = _check(tmp_path, {"wrangler.toml": f'TOOL_AUTH_TOKEN = "{value}"'})
+    assert result.returncode == 1
+    assert "TOOL_AUTH_TOKEN" in result.stderr
+    assert value not in result.stdout + result.stderr
