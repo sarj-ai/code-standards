@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { sourceRevision } from "./source-revision";
 import { siteHref } from "./site.ts";
 import { ENGINES, validateCatalog } from "./catalog-validation";
+import { ruleIntroductions } from "./rule-introductions";
 
 export { ENGINES };
 export type Engine = (typeof ENGINES)[number];
@@ -105,6 +106,13 @@ const rawCatalog = await readGeneratedJson(
 validateCatalog(rawCatalog);
 
 export const catalog: Catalog = rawCatalog;
+const sourceCounts = new Map<string, number>();
+for (const rule of catalog.rules) sourceCounts.set(rule.source, (sourceCounts.get(rule.source) ?? 0) + 1);
+export const introductions = await ruleIntroductions(resolve(process.cwd(), '../..'), catalog.rules.map((rule) => {
+  const source = { id: rule.key, path: rule.source };
+  if ((sourceCounts.get(rule.source) ?? 0) > 1) return { ...source, marker: rule.id };
+  return source;
+}));
 export const catalogJson = `${JSON.stringify(catalog)}\n`;
 export const catalogSchema = await readGeneratedJson(
   schemaPath,
