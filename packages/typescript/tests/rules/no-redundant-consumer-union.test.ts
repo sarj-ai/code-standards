@@ -6,6 +6,8 @@ const NULLABLE_PREFIX = `${CONSUMER_PREFIX}interface Animal {readonly name: stri
 const OPTIONAL_DECLARATIONS = "interface Name {readonly name: string} interface Full extends Name {readonly email?: string}";
 const OPTIONAL_CALLER = "const input = {name: 'Ada', email: 42};";
 const OPTIONAL_PREFIX = `export {}; ${OPTIONAL_DECLARATIONS} export type KeptFull = Full; ${OPTIONAL_CALLER}`;
+const SCALAR_FUNCTION_HELPER = "function formatName(value: string): string {return '[' + value + ']';} ";
+const SCALAR_ARROW_HELPER = "const formatName = (value: string): string => '[' + value + ']'; ";
 
 const MERGED_OPTIONAL_SOURCE = "export {};\ninterface Name {readonly name: string}\ninterface Full {readonly name: string; readonly email?: string}\ninterface Full {readonly note?: string}\nexport type KeptFull = Full;\nconst full: Full = {name: 'Ada', email: 'a'};\nconst incompatibleExtra = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(full); label(incompatibleExtra);\n";
 
@@ -222,5 +224,40 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union safe source edits", rul
       code: `${PREFIX}declare const value: {name: ${type}; email: string}; function label(p: Dog | Animal): string {return p.name;} label(value);`, output: null, errors: [{messageId: "redundant" as const}]})),
     {name: "unresolved error caller field remains manual", filename: "probe.tsx", code: `${PREFIX}declare const value: {name: Missing; email: string}; function label(p: Dog | Animal): string {return p.name;} label(value);`, output: null, errors: [{messageId: "redundant"}]},
     {name: "TypeScript suppressions stay manual", filename: "probe.tsx", code: `${PREFIX}function label(p: Dog | Animal): string {return p.name;} // @ts-ignore preserve the authored checking boundary\nlabel(account);`, output: null, errors: [{messageId: "redundant"}]},
+  ],
+});
+
+PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union local scalar helpers", rule, {
+  valid: [
+    {name: "whole-object helper arguments remain unsupported", filename: "probe.tsx",
+      code: `${PREFIX}function formatAnimal(value: Animal): string {return value.name;} function label(p: Dog | Animal): string {return formatAnimal(p);} label(account);`},
+    {name: "ambient helper identity remains unsupported", filename: "probe.tsx",
+      code: `${PREFIX}declare function formatName(value: string): string; function label(p: Dog | Animal): string {return formatName(p.name);} label(account);`},
+    {name: "scalar helper permission does not enable auxiliary consumer parameters", filename: "probe.tsx",
+      code: `${PREFIX}${SCALAR_FUNCTION_HELPER}function label(p: Dog | Animal, suffix: string): string {return formatName(p.name) + suffix;} label(account, '!');`},
+    {name: "scalar helper cannot replace a required object-field read", filename: "probe.tsx",
+      code: `export {}; interface Name {readonly name?: string} interface Full extends Name {readonly email?: string} export type KeptFull = Full; const input = {email: 'a'}; ${SCALAR_FUNCTION_HELPER}function label(p: Full | Name): string {return formatName(p.name ?? '');} label(input);`},
+    {name: "original invalid caller fails the helper's native checked-source proof", filename: "probe.tsx",
+      code: `${UNION_DECLARATIONS}const input = {name: 42, email: 'a'}; ${SCALAR_FUNCTION_HELPER}function label(p: Dog | Animal): string {return formatName(p.name);} label(input); export {};`},
+  ],
+  invalid: [
+    ...([
+      ["Dog | Animal", SCALAR_FUNCTION_HELPER],
+      ["Dog | Animal", SCALAR_ARROW_HELPER],
+      ["Animal | Dog", SCALAR_FUNCTION_HELPER],
+      ["Animal | Dog", SCALAR_ARROW_HELPER],
+    ] as const).map(([contract, helper]) => {
+      const code = `${PREFIX}export type KeptDog = Dog; ${helper}function label(p: ${contract}): string {return formatName(p.name);} label(account);`;
+      return {name: "local scalar helper retains Animal: " + contract + " " + (helper === SCALAR_FUNCTION_HELPER ? "function" : "arrow"), filename: "probe.tsx", code,
+        output: code.replace(contract, "Animal"), errors: [{messageId: "redundant" as const, data: {covered: "Dog", covering: "Animal"}}]};
+    }),
+    ...["Full | Name", "Name | Full"].map((contract) => {
+      const code = `${OPTIONAL_PREFIX}${SCALAR_FUNCTION_HELPER}function label(p: ${contract}): string {return formatName(p.name);} label(input);`;
+      return {name: "local scalar helper preserves the native covering caller contract: " + contract, filename: "probe.tsx", code,
+        output: code.replace(contract, "Name"), errors: [{messageId: "redundant" as const, data: {covered: "Full", covering: "Name"}}]};
+    }),
+    {name: "local scalar helper does not bypass removed-type retention", filename: "probe.tsx",
+      code: `${PREFIX}${SCALAR_FUNCTION_HELPER}function label(p: Dog | Animal): string {return formatName(p.name);} label(account);`,
+      output: null, errors: [{messageId: "redundant"}]},
   ],
 });

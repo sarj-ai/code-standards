@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1be7ae700667af7b9992c73d55b5c645f5180c5f21f0f35a2a3a6ffd5fe1de0",
+  "catalogSha256": "2276cc9a7a0b67b5830a350dcc96730a626e9b54b6778fd1a7fc6a7feae5d095",
   "cliSha256": "2567645f9a807507c16166be47d2ecd5040907d02dea7e371e9f246420059b47",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -2945,6 +2945,30 @@
           "files": [
             {
               "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction formatName(value: string): string {\n  return \"[\" + value + \"]\";\n}\nfunction label(value: Dog | Animal): string {\n  return formatName(value.name);\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction formatName(value: string): string {\n  return \"[\" + value + \"]\";\n}\nfunction label(value: Animal): string {\n  return formatName(value.name);\n}\nlabel(dog);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "local-scalar-helper",
+          "outcome": "reject",
+          "scenarioId": "local-scalar-helper",
+          "title": "A local helper receives only the required name"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
               "source": "export {};\ninterface Animal {\n  readonly name: string | null;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name ?? \"\";\n}\nlabel(dog);\n"
             },
             {
@@ -3044,6 +3068,25 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A public union retains its observable alternatives"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction formatAnimal(value: Animal): string {\n  return value.name;\n}\nfunction label(value: Dog | Animal): string {\n  return formatAnimal(value);\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "whole-object-helper",
+          "outcome": "accept",
+          "scenarioId": "local-scalar-helper",
+          "title": "Passing the whole object remains outside the scalar helper proof"
         }
       ],
       "optionsSchemaSource": null
