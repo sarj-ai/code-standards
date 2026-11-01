@@ -85,8 +85,8 @@ export default { ...base, test: { ...base.test, reporters } };
       child.once("close", resolve);
     });
     await acknowledged;
-    if (child.signalCode !== null) {
-      throw new Error(`Fixture CLI terminated by ${child.signalCode} after ${Math.round(performance.now() - started)}ms.\n${stdout}\n${stderr}`);
+    if (child.signalCode !== null || (status !== 0 && status !== 1)) {
+      throw new Error(`Fixture CLI exited with status ${status}, signal ${child.signalCode} after ${Math.round(performance.now() - started)}ms.\n${stdout}\n${stderr}`);
     }
     const report: unknown = options.arguments?.includes("--reporter=json")
       ? JSON.parse(await readFile(join(root, "report.json"), "utf8"))
@@ -103,7 +103,8 @@ describe("native first failure preview", () => {
     const result = await runFixture(`
 import { existsSync } from "node:fs";
 test("first case", () => { throw new Error(${JSON.stringify(message)}); });
-test("later case", async () => {
+test("later case", async (context) => {
+  await context.annotate("Waiting for the first-failure preview");
   while (!existsSync(new URL("../continue", import.meta.url))) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
