@@ -518,12 +518,20 @@
       "canonicalGate": "Completed by native components with recorded recoveries, not by a single successful make verify invocation. Original failed logs remain preserved.",
       "packageTestsPassed": 58047,
       "history": "Original failed logs, focused recoveries and earlier timing/corpus artifacts are retained separately; the integrated full make verify run passed without recovery."
-    }
+    },
+    "severityLifecycleNote": "The recorded full native and timing evidence qualifies the unchanged matcher with its original error metadata. CI requires warning-level introduction; effective warning severity is checked separately before initial publication, followed by a separate error promotion."
   },
   "release": {
     "proposedCore": "8.179.0",
     "proposedTypeScript": "16.40.0",
-    "status": "Qualified local candidate for administrator merge; publication follows the native version-changing merge workflow.",
-    "recommendation": "Blocking upload policy as explicitly requested; do not promote broader research candidates without reproduced defects and calibration."
+    "status": "Warning-first introduction required by the release-ready gate; blocking JS promotion follows after publication. FastAPI and LIB120 remain blocking.",
+    "recommendation": "Blocking upload policy as explicitly requested; do not promote broader research candidates without reproduced defects and calibration.",
+    "lifecycle": {
+      "introducedJavaScriptSeverity": "warning",
+      "requestedFinalJavaScriptSeverity": "error",
+      "firstReleaseCore": "8.179.0",
+      "firstReleaseTypeScript": "16.40.0",
+      "nextStep": "Publish the warning introduction, then promote the existing rule to error in a separate release."
+    }
   }
 }

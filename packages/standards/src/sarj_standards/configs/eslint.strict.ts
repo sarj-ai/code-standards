@@ -1563,7 +1563,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/prefer-immutable-module-constant": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
-      "@sarj/no-server-file-uploads": "error",
+      "@sarj/no-server-file-uploads": "warn",
       "@sarj/enforce-file-structure": "error",
       "@sarj/prefer-semantic-colors": [
         "error",

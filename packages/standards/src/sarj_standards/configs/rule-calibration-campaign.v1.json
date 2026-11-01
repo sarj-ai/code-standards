@@ -3268,7 +3268,7 @@
       "ruleId": "no-server-file-uploads",
       "state": "pending",
       "evidence": "Fifty labeled cases (25 matches and 25 near misses) and four executable examples passed. The complete TypeScript suite passed 13,747 tests; all 146 shipped TypeScript rules produced zero dogfood diagnostics. An initial immutable 214-file public implementation corpus produced zero matches. These fixture and implementation-source results do not establish broad consumer precision or recall; application field calibration remains pending.",
-      "outcome": "Enforce the explicitly requested upload architecture at error level. Recognize explicit server directives and supported runtime server imports; preserve browser File objects, local definitions, unrelated File imports, Blob and string-only forms. Dedicated multipart-upload dependencies are owned by LIB120. URL signatures, object authorization, unmarked handlers, raw streams and opaque wrappers require separate application controls. No automatic rewrite is offered."
+      "outcome": "Introduce at warning level as required by the release gate, then promote the existing rule to the explicitly requested blocking level after publication. Recognize explicit server directives and supported runtime server imports; preserve browser File objects, local definitions, unrelated File imports, Blob and string-only forms. Dedicated multipart-upload dependencies are owned by LIB120. URL signatures, object authorization, unmarked handlers, raw streams and opaque wrappers require separate application controls. No automatic rewrite is offered."
     }
   ]
 }

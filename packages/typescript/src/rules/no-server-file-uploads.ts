@@ -13,7 +13,7 @@ type MessageIds = "serverFile";
 type Options = readonly [];
 
 export const NO_SERVER_FILE_UPLOADS_DOCUMENTATION = {
-  defaultLevel: "error",
+  defaultLevel: "warning",
   summary: "Keep native File handling outside explicit server boundaries.",
   rationale: "Accepting uploaded files routes their bytes through application workers, consuming connections, memory or temporary disk. Direct signed-URL uploads keep that transfer in object storage.",
   remediation: "Issue an authorized, short-lived signed URL; upload the browser File directly to storage, then submit its object key and metadata. Use Blob for server-generated binary content.",

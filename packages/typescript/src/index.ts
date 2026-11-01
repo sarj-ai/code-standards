@@ -436,7 +436,7 @@ const RULE_POLICY = {
   "@sarj/no-restated-jsdoc": ["warn", "both"],
   "@sarj/no-secret-in-log": ["error", "both"],
   "@sarj/no-server-env-in-client-component": ["error", "both"],
-  "@sarj/no-server-file-uploads": ["error", "both"],
+  "@sarj/no-server-file-uploads": ["warn", "both"],
   "@sarj/no-select-star": ["error", "both"],
   "@sarj/no-sentinel-return-on-catch": ["error", "both"],
   "@sarj/no-silent-promise-catch": ["error", "both"],
