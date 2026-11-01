@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 _GIT_TIMEOUT = timedelta(seconds=5)
 _ERROR_SEVERITY = 2
+_NATIVE_ERROR_DETAIL_LIMIT = 4000
 _SOURCE_MODE_MAX = 0o7777
 SUPPORTS_DIRECTIVE_REWRITES = os.name == "posix"
 type Diagnostic = tuple[bool, bool, str, int, str, str]
@@ -194,7 +195,10 @@ def _postimages(
     diagnostics: dict[str, tuple[Diagnostic, ...]] | None = None,
 ) -> dict[str, SourcePostimage]:
     if completed.returncode not in {0, 1}:
-        msg = "native ESLint failed before producing a directive-only plan"
+        msg = f"native ESLint failed before producing a directive-only plan (exit {completed.returncode})"
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        if detail:
+            msg = f"{msg}:\n{detail[:_NATIVE_ERROR_DETAIL_LIMIT]}"
         raise ValueError(msg)
     try:
         parsed = parse_unique_json(completed.stdout)
@@ -561,7 +565,12 @@ def _normalize(
     directive_formatter.validate(eslint)
     repeated = native_byte_bridge.run_bytes(eslint.invocation, normalized, run=run)
     directive_formatter.validate(eslint)
-    completed = subprocess.CompletedProcess(command.argv, repeated.returncode, repeated.stdout.decode("utf-8"), "")
+    completed = subprocess.CompletedProcess(
+        command.argv,
+        repeated.returncode,
+        repeated.stdout.decode("utf-8", errors="strict" if repeated.returncode in {0, 1} else "replace"),
+        repeated.stderr.decode("utf-8", errors="replace"),
+    )
     observed: dict[str, tuple[Diagnostic, ...]] = {}
     selected = {relative: _File(normalized, postimage.mode, (0, 0, 0, 0, 0))}
     if _postimages(root, completed, frozenset({relative}), selected, observed) or observed.get(relative) != diagnostics:
