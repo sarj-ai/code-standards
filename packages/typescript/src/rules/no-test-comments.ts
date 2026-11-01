@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-test-comments.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, ownLineCommentRemovalRange, trailingCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -29,6 +29,7 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 const DIRECTIVE = /^(?:eslint(?:-\S+)?\b|(?:biome|oxlint|jshint|jslint|c8|v8|istanbul|vitest|prettier|dprint)\b|@(?:ts-(?:check|nocheck|expect-error|ignore)|vitest-environment|jest-environment|jsx\w*|license|preserve)\b|[#!]\s*__(?:PURE|NO_SIDE_EFFECTS)__|\/\s*<(?:reference|amd-module|amd-dependency)\b)/u;
+const BEHAVIORAL_DIRECTIVE = /(?:[@#]__(?:PURE|NO_SIDE_EFFECTS)__|@vite-ignore\b|\bwebpack(?:ChunkName|Mode|Exports|FetchPriority|Include|Exclude|Prefetch|Preload|Ignore)\s*:)/u;
 const LEGAL = /(?:^|\n)\s*\*?\s*(?:Copyright\b|SPDX-License-Identifier:|Licensed under\b|@license\b|@preserve\b)/iu;
 const TYPE_CONTRACT = /@(?:type|typedef|template|param|returns?|satisfies|callback|overload|implements|extends|augments|enum|this|import)\b/u;
 
@@ -50,12 +51,13 @@ const PYTHON_EXTRA_WHITESPACE: ReadonlySet<string> = new Set(["\u001c", "\u001d"
 function hasDetectSecretsPragma(comment: TSESTree.Comment, text: string): boolean {
   if (!comment.value.includes("pragma:")) return false;
   let lineStart = Math.max(text.lastIndexOf("\r", comment.range[0] - 1), text.lastIndexOf("\n", comment.range[0] - 1)) + 1;
+  const readerLineEndings = /\r\n?|\n/gu;
+  readerLineEndings.lastIndex = lineStart;
   while (lineStart < comment.range[1]) {
-    const nextCr = text.indexOf("\r", lineStart);
-    const nextLf = text.indexOf("\n", lineStart);
-    const lineEnd = Math.min(nextCr < 0 ? text.length : nextCr, nextLf < 0 ? text.length : nextLf);
+    const ending = readerLineEndings.exec(text);
+    const lineEnd = ending?.index ?? text.length;
     if (hasPragmaInReaderLine(comment, text.slice(lineStart, lineEnd), lineStart)) return true;
-    lineStart = lineEnd + (text[lineEnd] === "\r" && text[lineEnd + 1] === "\n" ? 2 : 1);
+    lineStart = lineEnd + (ending?.[0].length ?? 1);
   }
   return false;
 }
@@ -120,26 +122,36 @@ export default createRule<[], "testComment">({
         }
         for (const [index, comment] of comments.entries()) {
           const body = comment.value.trim().replace(/^\*\s*/u, "");
-          if (DIRECTIVE.test(body) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text)) continue;
+          if (DIRECTIVE.test(body) || BEHAVIORAL_DIRECTIVE.test(comment.value) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text)) continue;
           context.report({
             node: comment,
             messageId: "testComment",
             fix: fixer => {
               const text = context.sourceCode.text;
+              const preserveLineTerminators = (edit: TSESLint.RuleFix): TSESLint.RuleFix | null => {
+                const neighbor = Math.max(0, edit.range[0] - 1);
+                const original = text.slice(neighbor, edit.range[1] + 1).match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+                const rendered = (text.slice(neighbor, edit.range[0]) + edit.text + text.slice(edit.range[1], edit.range[1] + 1))
+                  .match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+                return original.length === rendered.length && original.every((ending, position) => ending === rendered[position]) ? edit : null;
+              };
               const own = ownLineCommentRemovalRange(text, comment);
-              if (own !== null) return fixer.replaceTextRange(own.range, commentLineEndings(text, own));
+              if (own !== null) {
+                const ownEndings = commentLineEndings(text, own);
+                return ownEndings === null ? null : preserveLineTerminators(fixer.replaceTextRange(own.range, ownEndings));
+              }
               const trailing = trailingCommentRemovalRange(text, comment);
-              if (trailing !== null) return fixer.replaceTextRange(trailing.range, "");
+              if (trailing !== null) return preserveLineTerminators(fixer.replaceTextRange(trailing.range, ""));
               const endings = context.sourceCode.getText(comment).replace(/[^\r\n\u2028\u2029]/gu, "");
               if (endings.length > 0) {
                 let start = comment.range[0];
                 while (start > 0 && /[\t ]/u.test(text[start - 1] ?? "")) start--;
-                return fixer.replaceTextRange([start, comment.range[1]], endings);
+                return preserveLineTerminators(fixer.replaceTextRange([start, comment.range[1]], endings));
               }
               const before = text[comment.range[0] - 1] ?? "";
               const after = text[comment.range[1]] ?? "";
               const separator = before.length > 0 && after.length > 0 && !/\s/u.test(before + after) ? " " : "";
-              return fixer.replaceText(comment, separator);
+              return preserveLineTerminators(fixer.replaceText(comment, separator));
             },
           });
         }

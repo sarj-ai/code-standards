@@ -17,6 +17,12 @@ const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
 
 TESTER.run("no-contradictory-type-predicate", rule, {
   valid: [
+    ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map((ending) => ({
+      name: "fixed private predicate retains line terminators and converges " + JSON.stringify(ending),
+      code: `export {}; function check(v: unknown): boolean${ending} { return typeof v === "number"; }`,
+    })),
+    { name: "fixed record predicate converges with boolean return", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): boolean { return typeof v === \"object\" && v !== null; }" },
+    { name: "overload owns the separate record predicate contract", code: "export type Kept = Account; type Account = { id: string }; function check(v: Account): v is Account; function check(v: unknown): v is Account { return typeof v === \"object\"; }" },
     { name: "record property validation", code: 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null && "id" in v && typeof v.id === "string"; }' },
     { name: "optional-only record has no required field witness", code: 'type Account = { id?: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }' },
     { name: "index contract is not a named record", code: 'type Bag = Record<string, unknown>; function check(v: unknown): v is Bag { return typeof v === "object" && v !== null; }' },
@@ -85,6 +91,30 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name: "generated ownership", filename: 'guard.generated.ts', code: 'function check(v: unknown): v is string { return typeof v === "number"; }' },
   ],
   invalid: [
+    ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map((ending) => ({
+      name: "private record predicate retains every annotation terminator " + JSON.stringify(ending),
+      code: `export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is${ending}Account { return typeof v === "object"; }`,
+      output: `export type Kept = Account; type Account = { id: string }; function check(v: unknown): boolean${ending} { return typeof v === "object"; }`,
+      errors: [{ messageId: "uncheckedRecordFields" as const }],
+    })),
+    { name: "private predicate retains mixed Unicode and CRLF terminators",
+      code: "export {}; function check(v: unknown): v is string\u2028|\r\nnumber\u2029 { return typeof v === \"string\"; }",
+      output: "export {}; function check(v: unknown): boolean\u2028\r\n\u2029 { return typeof v === \"string\"; }",
+      errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "private predicate refuses an internal bare CR and separate LF merge",
+      code: "export {}; function check(v: unknown): v is string\r|\nnumber { return typeof v === \"string\"; }",
+      output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "private predicate refuses a CR and following source LF boundary merge",
+      code: "export {}; function check(v: unknown): v is\rstring\n { return typeof v === \"number\"; }",
+      output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "unused private record predicate retains independent exported type use", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === \"object\" && v !== null; }", output: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): boolean { return typeof v === \"object\" && v !== null; }", errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "unused private direct object predicate retains runtime check", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === \"object\"; }", output: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): boolean { return typeof v === \"object\"; }", errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "record predicate used by caller stays manual", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === \"object\" && v !== null; } check({});", output: null, errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "public record predicate stays manual", code: "export type Kept = Account; type Account = { id: string }; export function check(v: unknown): v is Account { return typeof v === \"object\" && v !== null; }", output: null, errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "eval can observe private record contract", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === \"object\" && v !== null; } eval(\"check\");", output: null, errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "predicate comment retains custody", code: "export type Kept = Account; type Account = { id: string }; function check(v: unknown): v is /* retain boundary */ Account { return typeof v === \"object\" && v !== null; }", output: null, errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "sole named record use stays live", code: "export {}; type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === \"object\" && v !== null; }", output: null, errors: [{ messageId: "uncheckedRecordFields" }] },
+    { name: "record predicate preserves CRLF annotation custody", code: "export type Kept = Account; type Account = { id: string };\r\nfunction check(v: unknown): v is\r\nAccount { return typeof v === \"object\"; }\r\n", output: "export type Kept = Account; type Account = { id: string };\r\nfunction check(v: unknown): boolean\r\n { return typeof v === \"object\"; }\r\n", errors: [{ messageId: "uncheckedRecordFields" }] },
     ...[
       ["named record without fields", 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object"; }'],
       ["named record with null exclusion", 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }'],

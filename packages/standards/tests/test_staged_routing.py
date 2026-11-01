@@ -75,14 +75,7 @@ def test_staged_check_uses_only_the_pending_index(
     subprocess.run(("git", "add", selected.name), cwd=repository, check=True)
     pending_before = pending_index.read_bytes()
     monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
-    for variable in (
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_CONFIG_GLOBAL",
-    ):
-        monkeypatch.setenv(variable, str(repository / "unrelated-git-state"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(repository / "unrelated-git-state"))
     monkeypatch.chdir(repository.parent)
     capsys.readouterr()
 
@@ -93,6 +86,45 @@ def test_staged_check_uses_only_the_pending_index(
     assert unrelated.name not in output.out + output.err
     assert ordinary_index.read_bytes() == ordinary_before
     assert pending_index.read_bytes() == pending_before
+
+
+@pytest.mark.parametrize("relative", [False, True], ids=("absolute-index", "relative-index"))
+@pytest.mark.parametrize(
+    ("variable", "expected"),
+    [
+        pytest.param("GIT_DIR", "foreign GIT_DIR context", id="foreign-git-dir"),
+        pytest.param("GIT_WORK_TREE", "foreign GIT_WORK_TREE context", id="foreign-worktree"),
+        pytest.param("GIT_OBJECT_DIRECTORY", "unsupported object-store context", id="object-directory"),
+        pytest.param("GIT_ALTERNATE_OBJECT_DIRECTORIES", "unsupported object-store context", id="alternate-objects"),
+    ],
+)
+def test_pending_index_cli_refuses_foreign_routing_without_mutating_state(
+    adopted_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    variable: str,
+    expected: str,
+    *,
+    relative: bool,
+) -> None:
+    repository = adopted_git_repo
+    ordinary_index = repository / ".git/index"
+    pending_index = repository / ".git/pending-index"
+    shutil.copyfile(ordinary_index, pending_index)
+    source = repository / "source.py"
+    original = source.read_bytes(), ordinary_index.read_bytes(), pending_index.read_bytes()
+    monkeypatch.delenv("SARJ_STANDARDS_INITIAL_IMPORT_SOURCE", raising=False)
+    monkeypatch.setenv("GIT_INDEX_FILE", ".git/pending-index" if relative else str(pending_index))
+    monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+    monkeypatch.setenv(variable, str(repository / "unrelated-git-state"))
+    monkeypatch.chdir(repository.parent)
+    capsys.readouterr()
+
+    assert cli.main(["--root", str(repository), "check", "--staged"]) == 2
+
+    output = capsys.readouterr()
+    assert expected in output.err
+    assert (source.read_bytes(), ordinary_index.read_bytes(), pending_index.read_bytes()) == original
 
 
 @pytest.mark.parametrize("command", ["check", "fix"])

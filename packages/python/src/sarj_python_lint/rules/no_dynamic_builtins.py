@@ -45,7 +45,7 @@ class NoDynamicBuiltins(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Ruff S307, S102, T100, B009 and qualified/imported banned-api checks retain their native owners; this rule closes bare-name and simple module-alias gaps.",
+            "Ruff S307, S102, T100, B009, B043 and qualified/imported banned-api checks retain their native owners; this rule closes bare-name and simple module-alias gaps.",
             "Locally shadowed names and unrelated methods are accepted. Arbitrary dictionary/reflection lookups and complex rebinding are not reconstructed.",
         ),
         examples=(

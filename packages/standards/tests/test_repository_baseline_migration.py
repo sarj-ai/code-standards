@@ -144,7 +144,10 @@ def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, 
 
 
 @pytest.mark.parametrize("include_warnings", [None, False, True])
-@pytest.mark.parametrize("fingerprints", [(), ("a" * 64, "f" * 64)], ids=["empty-baseline", "retained-debt"])
+@pytest.mark.parametrize(
+    "fingerprints",
+    [pytest.param((), id="empty-debt"), pytest.param(("a" * 64, "f" * 64), id="existing-debt")],
+)
 @pytest.mark.parametrize("target", [29, 30], ids=["policy29", "policy30"])
 def test_policy28_preserves_existing_debt_and_warning_choice(
     include_warnings: bool | None, fingerprints: tuple[str, ...], target: int

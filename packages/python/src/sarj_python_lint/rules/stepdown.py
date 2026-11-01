@@ -68,7 +68,7 @@ class Stepdown(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes move only unannotated module functions without decorators, type parameters, defaults or comments; class members and observable header evaluation remain review-only.",
+            "Safe fixes require immutable literal defaults, no decorators/type parameters/comments, and annotations that are absent, literal strings/None, or deferred by an explicit future import or Python 3.14 t-string syntax. Signed numeric constants and deeply immutable tuples are accepted within a small expression budget. Mutable/computed defaults, class members and other header evaluation remain review-only.",
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
             "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
@@ -121,6 +121,150 @@ class Stepdown(Rule):
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+            ),
+            RuleExample(
+                example_id="safe-postponed-annotations-autofix",
+                title="Postponed module annotations retain their signatures during a safe move",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\ndef render(value: str) -> bool:\n    return _parse(value)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="postponed-annotations",
+            ),
+            RuleExample(
+                example_id="postponed-helper-after-sole-caller",
+                title="Postponed module helper already follows its sole caller",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="postponed-annotations",
+            ),
+            RuleExample(
+                example_id="safe-autofix-literal-headers",
+                title="Literal headers preserve annotations and defaults",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n\ndef _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="literal-headers",
+            ),
+            RuleExample(
+                example_id="already-ordered-literal-headers",
+                title="Already ordered: Literal headers preserve annotations and defaults",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n\ndef _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="literal-headers",
+            ),
+            RuleExample(
+                example_id="safe-autofix-immutable-defaults",
+                title="Signed numeric and deeply immutable tuple defaults",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\ndef render() -> 'tuple':\n    return _pack()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render() -> 'tuple':\n    return _pack()\n\ndef _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="immutable-defaults",
+            ),
+            RuleExample(
+                example_id="already-ordered-immutable-defaults",
+                title="Already ordered: Signed numeric and deeply immutable tuple defaults",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render() -> 'tuple':\n    return _pack()\n\ndef _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="immutable-defaults",
+            ),
+            RuleExample(
+                example_id="safe-autofix-deferred-template",
+                title="Template syntax proves deferred module annotations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="deferred-template",
+            ),
+            RuleExample(
+                example_id="already-ordered-deferred-template",
+                title="Already ordered: Template syntax proves deferred module annotations",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="deferred-template",
             ),
         ),
     )

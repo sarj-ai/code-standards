@@ -42,7 +42,7 @@ class PreferTypedCli(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks import-proven sys.argv reads, argparse/optparse parser construction, getopt parsing and Click command construction. sys.argv[0] and its direct nonempty guard with a literal string fallback, assignment targets and forwarding through args= to a proven local Typer application are retained.",
+            "Checks import-proven sys.argv reads, argparse/optparse parser construction, getopt parsing and Click command construction. sys.argv[0] and its direct nonempty guard with a literal string fallback, assignment targets and forwarding through args= to a proven local Typer application are retained. A source-proven isolated, fixed-arity path transport with a raising guard and checked Path conversion is also retained.",
             "Checks parameters of source-visible functions passed directly to typer.run or registered with a stable local Typer application's command/callback decorator. Missing annotations and bare Any/object, including Annotated wrappers, are reported. Ordinary functions and unrelated command decorators are excluded.",
             "Stable local import and application aliases are followed. Shadowed or mutated imports, wildcard imports, dynamic namespaces and generated/vendor files abstain. Imported command functions, dynamic registrations and composite erased types require separate type checking.",
             "No automatic rewrite: positional/option compatibility and conversion behavior require review. This policy does not claim every argparse or Click program is incorrectly validated.",
@@ -205,10 +205,362 @@ def _retained_argv(node: ast.expr, facts: AnnotationOrigins) -> bool:
             )
         case _:
             pass
-    if not isinstance(parent, ast.keyword) or parent.arg != "args":
+    if isinstance(parent, ast.keyword) and parent.arg == "args":
+        call = facts.context.parents.get(parent)
+        if isinstance(call, ast.Call) and _typer_app(call.func, facts):
+            return True
+    return _isolated_path_transport(node, facts)
+
+
+def _isolated_path_transport(node: ast.expr, facts: AnnotationOrigins) -> bool:
+    selection = facts.context.parents.get(node)
+    alternative = facts.context.parents.get(selection) if selection is not None else None
+    assignment = facts.context.parents.get(alternative) if alternative is not None else None
+    function = facts.context.parents.get(assignment) if assignment is not None else None
+    if not (
+        isinstance(selection, ast.Subscript)
+        and selection.value is node
+        and isinstance(selection.slice, ast.Slice)
+        and _integer_constant(selection.slice.lower, 1)
+        and selection.slice.upper is None
+        and selection.slice.step is None
+        and isinstance(alternative, ast.IfExp)
+        and alternative.body is selection
+        and isinstance(assignment, ast.Assign)
+        and assignment.value is alternative
+        and len(assignment.targets) == 1
+        and isinstance(target := assignment.targets[0], ast.Name)
+        and isinstance(function, ast.FunctionDef)
+        and isinstance(facts.context.parents.get(function), ast.Module)
+        and not function.decorator_list
+        and not function.type_params
+    ):
         return False
-    call = facts.context.parents.get(parent)
-    return isinstance(call, ast.Call) and _typer_app(call.func, facts)
+    match function.body:
+        case [entry, ast.Expr(value=ast.Call() as guard_call), _, *_] if entry is assignment:
+            pass
+        case _:
+            return False
+    argument = _optional_argv_argument(function, facts)
+    if not (
+        argument is not None
+        and isinstance(alternative.test, ast.Compare)
+        and _same_binding(alternative.test.left, argument, facts)
+        and len(alternative.test.ops) == len(alternative.test.comparators) == 1
+        and isinstance(alternative.test.ops[0], ast.Is)
+        and isinstance(alternative.test.comparators[0], ast.Constant)
+        and alternative.test.comparators[0].value is None
+        and _same_binding(alternative.orelse, argument, facts)
+        and set(facts.provenance.binding_reads(argument.arg, argument)) == {alternative.test.left, alternative.orelse}
+    ):
+        return False
+    arity = _isolated_arity_read(_guard_condition(guard_call, facts), target, facts)
+    if arity is None:
+        return False
+    permitted = {arity}
+    offset = 2
+    if isinstance(probe := function.body[offset], ast.If):
+        if not (
+            isinstance(probe.test, ast.Compare)
+            and (read := _fixed_element(probe.test.left, target, facts)) is not None
+            and len(probe.test.ops) == len(probe.test.comparators) == 1
+            and isinstance(probe.test.ops[0], ast.Eq)
+            and isinstance(probe.test.comparators[0], ast.Constant)
+            and isinstance(probe.test.comparators[0].value, str)
+            and not probe.orelse
+            and probe.body
+            and isinstance(probe.body[-1], ast.Return)
+        ):
+            return False
+        permitted.add(read)
+        offset += 1
+    if offset >= len(function.body):
+        return False
+    transfer = function.body[offset]
+    if not (
+        isinstance(transfer, ast.Assign)
+        and len(transfer.targets) == 1
+        and isinstance(transfer.targets[0], ast.Name)
+        and isinstance(transfer.value, ast.Call)
+        and len(transfer.value.args) == 1
+        and not transfer.value.keywords
+        and (read := _fixed_element(transfer.value.args[0], target, facts)) is not None
+        and _checked_path(transfer.value, facts)
+    ):
+        return False
+    permitted.add(read)
+    return set(facts.provenance.binding_reads(target.id, target)) == permitted and not any(
+        isinstance(child, ast.Yield | ast.YieldFrom) for child in ast.walk(function)
+    )
+
+
+def _optional_argv_argument(function: ast.FunctionDef, facts: AnnotationOrigins) -> ast.arg | None:
+    parameters = (*function.args.posonlyargs, *function.args.args)
+    if len(parameters) != 1 or function.args.vararg is not None or function.args.kwarg is not None:
+        return None
+    if function.args.kwonlyargs or len(function.args.defaults) != 1:
+        return None
+    if (
+        not isinstance(function.args.defaults[0], ast.Constant)
+        or function.args.defaults[0].value is not None
+        or parameters[0].annotation is None
+    ):
+        return None
+    annotation = facts.resolve_annotation(parameters[0].annotation)
+    if (
+        annotation is None
+        or not isinstance(annotation.expression, ast.BinOp)
+        or not isinstance(annotation.expression.op, ast.BitOr)
+    ):
+        return None
+    left, right = annotation.expression.left, annotation.expression.right
+    if isinstance(left, ast.Constant) and left.value is None:
+        left, right = right, left
+    return (
+        parameters[0]
+        if isinstance(right, ast.Constant)
+        and right.value is None
+        and isinstance(left, ast.Subscript)
+        and facts.builtin(left.value, "list", annotation.at)
+        and facts.builtin(left.slice, "str", annotation.at)
+        else None
+    )
+
+
+def _isolated_arity_read(condition: ast.expr | None, target: ast.Name, facts: AnnotationOrigins) -> ast.Name | None:
+    match condition:
+        case ast.BoolOp(
+            op=ast.And(),
+            values=[
+                ast.Compare(left=isolation, ops=[ast.Eq()], comparators=[isolated_value]),
+                ast.Compare(left=ast.Call() as arity, ops=[ast.Eq()], comparators=[arity_value]),
+            ],
+        ):
+            pass
+        case _:
+            return None
+    return (
+        arity.args[0]
+        if _integer_constant(isolated_value, 1)
+        and _integer_constant(arity_value, 1)
+        and facts.qualified(isolation, isolation) == "sys.flags.isolated"
+        and facts.builtin(arity.func, "len", arity)
+        and len(arity.args) == 1
+        and not arity.keywords
+        and isinstance(arity.args[0], ast.Name)
+        and _same_binding(arity.args[0], target, facts)
+        else None
+    )
+
+
+def _guard_condition(call: ast.Call, facts: AnnotationOrigins) -> ast.expr | None:
+    function = _local_function(call, facts)
+    if (
+        function is None
+        or function.args.vararg is not None
+        or function.args.kwarg is not None
+        or function.args.defaults
+        or any(default is not None for default in function.args.kw_defaults)
+    ):
+        return None
+    match function.body:
+        case [ast.If(test=ast.UnaryOp(op=ast.Not(), operand=ast.Name() as tested), body=failure, orelse=[])]:
+            pass
+        case _:
+            return None
+    if not _raises(failure, facts):
+        return None
+    positional = (*function.args.posonlyargs, *function.args.args)
+    parameters = (*positional, *function.args.kwonlyargs)
+    values = call_arguments(call, tuple(parameter.arg for parameter in positional))
+    return (
+        values.get(tested.id)
+        if values is not None
+        and set(values) == {parameter.arg for parameter in parameters}
+        and any(_same_binding(tested, parameter, facts) for parameter in parameters)
+        and all(isinstance(value, ast.Constant) for name, value in values.items() if name != tested.id)
+        else None
+    )
+
+
+def _raises(body: list[ast.stmt], facts: AnnotationOrigins, *, seen: frozenset[ast.FunctionDef] = frozenset()) -> bool:
+    if len(body) != 1 or any(isinstance(node, ast.Yield | ast.YieldFrom) for node in ast.walk(body[0])):
+        return False
+    if isinstance(body[0], ast.Raise):
+        return True
+    return (
+        isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Call)
+        and (function := _local_function(body[0].value, facts)) is not None
+        and function not in seen
+        and len(seen) < _MAX_DEPTH
+        and _raises(function.body, facts, seen=seen | {function})
+    )
+
+
+def _local_function(call: ast.Call, facts: AnnotationOrigins) -> ast.FunctionDef | None:
+    if (
+        not isinstance(call.func, ast.Name)
+        or call.func.id in facts.provenance.mutated | facts.provenance.external_bindings
+    ):
+        return None
+    function = facts.provenance.binding(call.func.id, call)
+    return (
+        function
+        if isinstance(function, ast.FunctionDef)
+        and isinstance(facts.context.parents.get(function), ast.Module)
+        and not function.decorator_list
+        and not function.type_params
+        else None
+    )
+
+
+def _checked_path(call: ast.Call, facts: AnnotationOrigins) -> bool:
+    function = _local_function(call, facts)
+    if function is None:
+        return False
+    match function.body:
+        case [first, _, *_, last]:
+            pass
+        case _:
+            return False
+    parameters = (*function.args.posonlyargs, *function.args.args)
+    if not (
+        len(parameters) == 1
+        and function.args.vararg is None
+        and function.args.kwarg is None
+        and not function.args.defaults
+        and all(
+            isinstance(default, ast.Constant) and type(default.value) is bool for default in function.args.kw_defaults
+        )
+        and isinstance(first, ast.Assign)
+        and len(first.targets) == 1
+        and isinstance(text := first.targets[0], ast.Name)
+        and isinstance(first.value, ast.Call)
+        and len(first.value.args) == 1
+        and not first.value.keywords
+        and _same_binding(first.value.args[0], parameters[0], facts)
+        and _checked_text(first.value, facts)
+        and isinstance(last, ast.Return)
+        and isinstance(last.value, ast.Name)
+    ):
+        return False
+    constructors = [
+        statement
+        for statement in function.body
+        if isinstance(statement, ast.Assign)
+        and isinstance(statement.value, ast.Call)
+        and facts.qualified(statement.value.func, statement.value) == "pathlib.Path"
+    ]
+    if len(constructors) != 1:
+        return False
+    constructor = constructors[0]
+    if not (
+        len(constructor.targets) == 1
+        and isinstance(path := constructor.targets[0], ast.Name)
+        and isinstance(constructor.value, ast.Call)
+        and len(constructor.value.args) == 1
+        and not constructor.value.keywords
+        and _same_binding(constructor.value.args[0], text, facts)
+        and _same_binding(last.value, path, facts)
+        and set(facts.provenance.binding_reads(parameters[0].arg, parameters[0])) == {first.value.args[0]}
+        and text.id not in facts.provenance.mutated
+        and path.id not in facts.provenance.mutated
+    ):
+        return False
+    return all(
+        read is constructor.value.args[0] or _path_validation_read(read, path, facts)
+        for read in facts.provenance.binding_reads(text.id, text)
+    ) and not any(
+        (isinstance(child, ast.Return) and child is not last)
+        or isinstance(child, ast.Try | ast.TryStar | ast.With | ast.AsyncWith | ast.Yield | ast.YieldFrom)
+        for child in ast.walk(function)
+    )
+
+
+def _path_validation_read(read: ast.Name, path: ast.Name, facts: AnnotationOrigins) -> bool:
+    statement: ast.AST | None = read
+    while statement is not None and not isinstance(statement, ast.stmt):
+        statement = facts.context.parents.get(statement)
+    if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+        return False
+    condition = _guard_condition(statement.value, facts)
+    if condition is None or read not in ast.walk(condition):
+        return False
+    parent = facts.context.parents.get(read)
+    if isinstance(parent, ast.Call):
+        return facts.builtin(parent.func, "bool", parent) and parent.args == [read] and not parent.keywords
+    if not (isinstance(parent, ast.Compare) and len(parent.ops) == 1 and parent.comparators == [read]):
+        return False
+    return (
+        isinstance(parent.ops[0], ast.NotIn)
+        and isinstance(parent.left, ast.Constant)
+        and isinstance(parent.left.value, str)
+    ) or (
+        isinstance(parent.ops[0], ast.Eq)
+        and isinstance(parent.left, ast.Call)
+        and facts.builtin(parent.left.func, "str", parent.left)
+        and len(parent.left.args) == 1
+        and not parent.left.keywords
+        and _same_binding(parent.left.args[0], path, facts)
+    )
+
+
+def _checked_text(call: ast.Call, facts: AnnotationOrigins) -> bool:
+    function = _local_function(call, facts)
+    if function is None:
+        return False
+    parameters = (*function.args.posonlyargs, *function.args.args)
+    if (
+        len(parameters) != 1
+        or function.args.vararg is not None
+        or function.args.kwarg is not None
+        or function.args.kwonlyargs
+        or function.args.defaults
+    ):
+        return False
+    match function.body:
+        case [
+            ast.If(
+                test=ast.UnaryOp(
+                    op=ast.Not(), operand=ast.Call(args=[value, expected_type], keywords=[]) as validation
+                ),
+                body=failure,
+                orelse=[],
+            ),
+            ast.Return(value=ast.expr() as returned),
+        ]:
+            pass
+        case _:
+            return False
+    return (
+        facts.builtin(validation.func, "isinstance", validation)
+        and _same_binding(value, parameters[0], facts)
+        and facts.builtin(expected_type, "str", validation)
+        and _raises(failure, facts)
+        and _same_binding(returned, parameters[0], facts)
+    )
+
+
+def _same_binding(node: ast.expr, binding: ast.Name | ast.arg, facts: AnnotationOrigins) -> bool:
+    name = binding.id if isinstance(binding, ast.Name) else binding.arg
+    return isinstance(node, ast.Name) and node.id == name and facts.provenance.binding(name, node) is binding
+
+
+def _fixed_element(node: ast.expr, target: ast.Name, facts: AnnotationOrigins) -> ast.Name | None:
+    return (
+        node.value
+        if isinstance(node, ast.Subscript)
+        and isinstance(node.ctx, ast.Load)
+        and isinstance(node.value, ast.Name)
+        and _same_binding(node.value, target, facts)
+        and _integer_constant(node.slice, 0)
+        else None
+    )
+
+
+def _integer_constant(node: ast.AST | None, value: int) -> bool:
+    return isinstance(node, ast.Constant) and type(node.value) is int and node.value == value
 
 
 def _untyped_parameter(argument: ast.arg, facts: AnnotationOrigins) -> bool:

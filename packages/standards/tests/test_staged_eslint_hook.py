@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
 
 import pytest
 
-from sarj_standards.libs.adoption import lifecycle, manifest
+from sarj_standards.cli.main import main
+from sarj_standards.libs.adoption import launcher, lifecycle, manifest
 from sarj_standards.libs.repository import hooks
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -233,6 +235,64 @@ def _installed_hook_config() -> str:
     return (
         f"pre-commit:\n  parallel: false\n  piped: true\n  commands:\n    authored-eslint-fixes:\n      run: {entry}\n"
     )
+
+
+@pytest.mark.parametrize("state", ["full", "partial", "--assume-unchanged", "--skip-worktree"])
+def test_installed_staged_fixer_observes_original_worktree_and_preserves_the_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    _repository(tmp_path)
+    _git(tmp_path, "config", "core.hooksPath", ".git/hooks")
+    source = tmp_path / "settings.toml"
+    source.write_bytes(b"timeout = 10\n")
+    observer = tmp_path.parent / f"{tmp_path.name}-observer.txt"
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  parallel: false\n  piped: false\n  fail_on_changes: always\n  commands:\n"
+        "    observer:\n      run: printf '%s\\n' fixture-observer-ran {staged_files} > "
+        f"{shlex.quote(str(observer))}\n",
+        encoding="utf-8",
+    )
+    assert main(["--root", str(tmp_path), "setup", "--hooks", "lefthook", "--config", "taplo", "--no-install"]) == 0
+    assert launcher.repository_command("check", "--staged", "--fix", "--trust-repository-code") in (
+        tmp_path / "lefthook.yml"
+    ).read_text(encoding="utf-8")
+    _git(tmp_path, "add", "--all")
+    _git(tmp_path, "commit", "--quiet", "--message", "fixture")
+    transport = tmp_path.parent / f"{tmp_path.name}-transport"
+    transport.mkdir()
+    uvx = transport / "uvx"
+    script = (
+        "import sys\n"
+        "from sarj_standards.__main__ import main\n"
+        "from sarj_standards.libs.adoption.launcher import repository_argv\n"
+        "prefix = repository_argv()[1:]\n"
+        "arguments = sys.argv[1:]\n"
+        "assert tuple(arguments[:len(prefix)]) == prefix\n"
+        "raise SystemExit(main(arguments[len(prefix):]))\n"
+    )
+    uvx.write_text("#!/bin/sh\nexec " + shlex.join((sys.executable, "-c", script)) + ' "$@"\n', encoding="utf-8")
+    uvx.chmod(0o700)
+    monkeypatch.setenv("PATH", str(transport), prepend=os.pathsep)
+    hooks.install(tmp_path)
+    staged = b"# timeout = 30\ntimeout = 10\n"
+    source.write_bytes(staged)
+    _git(tmp_path, "add", "--", source.name)
+    if state != "full":
+        if state != "partial":
+            _git(tmp_path, "update-index", state, source.name)
+        source.write_bytes(staged + b"# user work\n")
+    working = source.read_bytes()
+    index = _git(tmp_path, "ls-files", "--stage", "-z")
+
+    result = subprocess.run(
+        ("git", "hook", "run", "pre-commit"), cwd=tmp_path, capture_output=True, text=True, check=False, timeout=120
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert observer.read_bytes() == b"fixture-observer-ran\nsettings.toml\n"
+    assert source.read_bytes() == (b"\ntimeout = 10\n" if state == "full" else working)
+    assert _git(tmp_path, "ls-files", "--stage", "-z") == index
+    assert _git(tmp_path, "show", f":{source.name}") == staged
 
 
 def test_installed_own_hook_builds_fresh_custom_rules_and_preserves_native_fixes_and_policy(

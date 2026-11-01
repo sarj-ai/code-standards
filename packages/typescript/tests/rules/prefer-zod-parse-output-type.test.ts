@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import type { TSESLint } from "@typescript-eslint/utils";
+import { TSESLint } from "@typescript-eslint/utils";
 import { ESLint, Linter, type Rule } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -575,7 +575,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
 });
 
 describe("prefer-zod-infer precedence", () => {
-  const eslint = new ESLint({
+  const eslint = new TSESLint.ESLint({
     overrideConfigFile: true,
     overrideConfig: [
       {
@@ -597,6 +597,10 @@ describe("prefer-zod-infer precedence", () => {
         },
       },
     ],
+  });
+
+  it("runs the native ESLint engine through the TypeScript rule interface", () => {
+    expect(eslint).toBeInstanceOf(ESLint);
   });
 
   it.each([

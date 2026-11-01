@@ -111,8 +111,10 @@ class PreferPytestFixtureContract(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.tree is None or context.generated or not is_test_path(context.path):
             return []
-        contracts = DeclaredContracts(context)
         fixtures = tuple(fixture_declarations(context.tree))
+        if not fixtures and not _has_parameter_annotations(context):
+            return []
+        contracts = DeclaredContracts(context)
         parameters = FixtureContractParameters(context, contracts, fixtures)
         hits = parameters.findings(self.code)
         for fixture in fixtures:
@@ -132,17 +134,26 @@ class PreferPytestFixtureContract(ProjectRule):
             candidates = abstract_ancestors(model, contracts)
             if len(candidates) != 1 or parameters.implementation_consumer(name, model, candidates[0]):
                 continue
+            location = function.returns if function.returns is not None else function
             hits.append(
                 Diagnostic(
                     context.path,
-                    function.returns.lineno if function.returns is not None else function.lineno,
-                    function.returns.col_offset + 1 if function.returns is not None else function.col_offset + 1,
+                    location.lineno,
+                    location.col_offset + 1,
                     self.code,
                     f"Fixture `{name}` exposes `{model.declaration.name}`; annotate its supplied instance with the existing `{candidates[0].declaration.name}` contract, or retain a reviewed implementation-specific contract.",
                     severity=Severity.WARNING,
                 )
             )
         return sorted(hits, key=lambda finding: (finding.line, finding.col))
+
+
+def _has_parameter_annotations(context: PythonFileContext) -> bool:
+    return any(
+        argument.annotation is not None
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+        for argument in (*function.args.args, *function.args.kwonlyargs)
+    )
 
 
 def _instance_annotation(

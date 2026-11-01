@@ -105,7 +105,10 @@ export default createRule<Options, MessageIds>({
           context.report({
             node: comment,
             messageId: "removeLabel",
-            fix: (fixer) => fixer.replaceTextRange(removal.range, commentLineEndings(context.sourceCode.text, removal)),
+            fix: (fixer) => {
+              const endings = commentLineEndings(context.sourceCode.text, removal);
+              return endings === null ? null : fixer.replaceTextRange(removal.range, endings);
+            },
           });
         }
       },

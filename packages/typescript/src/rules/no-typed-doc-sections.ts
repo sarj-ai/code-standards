@@ -164,7 +164,10 @@ function typedTagEdit(
   if (!removed) return null;
   while (retained[0]?.trim() === "") retained.shift();
   while (retained.at(-1)?.trim() === "") retained.pop();
-  if (retained.length === 0) return { range: removal.range, text: commentLineEndings(sourceCode.text, removal) };
+  if (retained.length === 0) {
+    const endings = commentLineEndings(sourceCode.text, removal);
+    return endings === null ? null : { range: removal.range, text: endings };
+  }
   const eol = sourceCode.text.includes("\r\n") ? "\r\n" : "\n";
   const indent = " ".repeat(comment.loc.start.column);
   return {

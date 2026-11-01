@@ -107,6 +107,12 @@ new RuleTester().run("no-typed-doc-sections", rule, {
     },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "/** @param {string} value */\nfunction f(value: string): void {}".replaceAll("\n", ending),
+      output: "\nfunction f(value: string): void {}".replaceAll("\n", ending),
+      errors: [{ messageId: "typedSection" as const }],
+    })),
     { name: "reports an exact primitive parameter type repetition", code: "/** @param {string} value */\nfunction f(value: string): void {}", output: "\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
     {
       name: "flags a description-free parameter tag",

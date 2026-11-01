@@ -521,6 +521,10 @@ type PresetRules<Preset extends "recommended" | "strict"> = {
     ? (typeof RULE_POLICY)[Name][1] extends "both" ? Name : never
     : Name]: RuleSetting<(typeof RULE_POLICY)[Name]>;
 };
+type FlatRuleSetting<Setting> = Setting extends readonly unknown[] ? [...Setting] : Setting;
+type FlatPresetRules<Preset extends "recommended" | "strict"> = {
+  readonly [Name in keyof PresetRules<Preset>]: FlatRuleSetting<PresetRules<Preset>[Name]>;
+};
 type AdvisoryRuleName = {
   [Name in PolicyName]: (typeof RULE_POLICY)[Name][0] extends "warn" ? Name : never;
 }[PolicyName];
@@ -529,8 +533,12 @@ type AdvisoryRuleName = {
 const ADVISORY_RULES: readonly AdvisoryRuleName[] = Object.keys(RULE_POLICY)
   .filter(isAdvisoryRuleName)
   .toSorted();
-const RECOMMENDED_RULES = presetRules("recommended");
-const STRICT_RULES = presetRules("strict");
+const FLAT_RECOMMENDED_RULES = presetRules("recommended");
+const FLAT_STRICT_RULES = presetRules("strict");
+// ESLint requires mutable option tuples. Public policy constants expose readonly
+// views of those same checked tables, preserving their values and object identity.
+const RECOMMENDED_RULES: PresetRules<"recommended"> = FLAT_RECOMMENDED_RULES;
+const STRICT_RULES: PresetRules<"strict"> = FLAT_STRICT_RULES;
 
 function isAdvisoryRuleName(name: string): name is AdvisoryRuleName {
   return isPolicyName(name) && RULE_POLICY[name][0] === "warn";
@@ -540,7 +548,7 @@ function isPolicyName(name: string): name is PolicyName {
   return Object.hasOwn(RULE_POLICY, name);
 }
 
-function presetRules<Preset extends "recommended" | "strict">(preset: Preset): PresetRules<Preset> {
+function presetRules<Preset extends "recommended" | "strict">(preset: Preset): FlatPresetRules<Preset> {
   const rows = Object.entries(RULE_POLICY)
     .filter(([, row]) => preset === "strict" || row[1] === "both");
   if (preset === "strict") rows.sort((left, right) => strictOrder(left[1]) - strictOrder(right[1]));
@@ -552,7 +560,7 @@ function presetRules<Preset extends "recommended" | "strict">(preset: Preset): P
   }
   // Object.fromEntries cannot retain dependent key/value mapped types. The source
   // table checks each rule's Options, and this closed producer verifies every key.
-  return result as PresetRules<Preset>;
+  return result as FlatPresetRules<Preset>;
 }
 
 function strictOrder(row: PolicyRow): number {
@@ -567,28 +575,36 @@ function policySetting(row: PolicyRow): RuleSetting<PolicyRow> {
 
 type FlatPreset<Settings> = {
   readonly name: string;
-  readonly plugins: Record<string, unknown>;
+  readonly plugins: { readonly "@sarj": PluginDefinition };
   readonly rules: Settings;
 };
 
-const PLUGIN = {
+interface PluginDefinition {
+  readonly meta: typeof meta;
+  readonly rules: typeof RULES;
+  readonly retiredRules: typeof RETIRED_RULES;
+  /** TSESLint.ESLint accepts these typed callbacks while running the native ESLint engine. */
+  readonly configs: {
+    readonly recommended: FlatPreset<typeof FLAT_RECOMMENDED_RULES>;
+    readonly strict: FlatPreset<typeof FLAT_STRICT_RULES>;
+  };
+}
+
+const PLUGIN: PluginDefinition = {
   meta,
   rules: RULES,
   retiredRules: RETIRED_RULES,
-  get configs(): {
-    readonly recommended: FlatPreset<typeof RECOMMENDED_RULES>;
-    readonly strict: FlatPreset<typeof STRICT_RULES>;
-  } {
+  get configs(): PluginDefinition["configs"] {
     return {
       recommended: {
         name: "@sarj/recommended",
         plugins: { "@sarj": PLUGIN },
-        rules: RECOMMENDED_RULES,
+        rules: FLAT_RECOMMENDED_RULES,
       },
       strict: {
         name: "@sarj/strict",
         plugins: { "@sarj": PLUGIN },
-        rules: STRICT_RULES,
+        rules: FLAT_STRICT_RULES,
       },
     };
   },

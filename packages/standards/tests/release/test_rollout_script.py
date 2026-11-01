@@ -1457,6 +1457,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 self.doctor_runs = 0
                 self.commands: list[tuple[str, ...]] = []
                 self.push_environments: list[Mapping[str, str] | None] = []
+                self.provisioned_path: str | None = None
 
             def run(
                 self,
@@ -1592,7 +1593,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _runner: rollout.CommandRunner,
             _environment: Mapping[str, str],
         ) -> rollout.ProvisionedTools:
-            return rollout.ProvisionedTools({"PATH": "/tools"}, ("mise", "exec", "--"))
+            runner.provisioned_path = _environment["PATH"]
+            return rollout.ProvisionedTools({"PATH": runner.provisioned_path}, ("mise", "exec", "--"))
 
         pull_request_calls = 0
 
@@ -1659,7 +1661,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
-        assert runner.push_environments == [{"PATH": "/tools", "GH_TOKEN": "push-secret"}]
+        assert runner.provisioned_path is not None
+        assert runner.push_environments == [{"PATH": runner.provisioned_path, "GH_TOKEN": "push-secret"}]
         assert not subprocess.run(
             ("git", "status", "--porcelain"), cwd=repo, check=True, capture_output=True, text=True
         ).stdout

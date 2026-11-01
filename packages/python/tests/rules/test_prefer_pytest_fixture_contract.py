@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_pytest_fixture_contract import PreferPytestFixtureContract
@@ -24,6 +25,25 @@ def rule() -> ProjectRule:
 
 def test_documented_examples() -> None:
     verify_native_rule(PreferPytestFixtureContract, analyze)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("def test_plain(): ...", id="no-parameters"),
+        pytest.param("def test_plain(value): ...", id="unannotated-positional"),
+        pytest.param("async def test_plain(value): ...", id="unannotated-async"),
+        pytest.param("def test_plain(*, value): ...", id="unannotated-keyword-only"),
+        pytest.param("def test_plain(value: object, /): ...", id="excluded-positional-only"),
+        pytest.param("def test_plain(*values: object, **extras: object): ...", id="excluded-variadic"),
+    ],
+)
+def test_irrelevant_files_do_not_require_project_contract_facts(rule: ProjectRule, source: str) -> None:
+    context = PythonFileContext(Path("tests/test_plain.py"), source)
+    assert context.tree is not None
+    context.session.project = ProjectIndexSet({}, sealed=True)
+    assert rule.check_context(context) == []
 
 
 @pytest.mark.parametrize(

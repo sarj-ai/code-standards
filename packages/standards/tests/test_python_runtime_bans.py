@@ -6,6 +6,7 @@ import sys
 
 from pydantic import BaseModel, RootModel
 import pytest
+from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
 
 
@@ -197,3 +198,65 @@ def test_mutable_defaults_have_exactly_one_owner(source: str, native_owner: bool
     custom = NoSharedMutableDefault().check(Path("service/batch.py"), source)
     assert len(native) == int(native_owner)
     assert len(custom) == int(not native_owner)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected", "native_owner", "exit_code"),
+    [
+        pytest.param("delattr(value, 'field')\n", "del value.field\n", True, 0, id="native-safe-fix"),
+        pytest.param(
+            "if active:\n    delattr(value, 'field')\n",
+            "if active:\n    del value.field\n",
+            True,
+            0,
+            id="native-safe-nested-statement",
+        ),
+        pytest.param(
+            "delattr(value, 'ſ')\n", "delattr(value, 'ſ')\n", True, 1, id="native-unsafe-normalization-refused"
+        ),
+        pytest.param(
+            "delattr(\n    value,  # retain context\n    'field',\n)\n",
+            "delattr(\n    value,  # retain context\n    'field',\n)\n",
+            True,
+            1,
+            id="native-unsafe-comment-loss-refused",
+        ),
+        pytest.param(
+            "def read(value):\n    return delattr(value, 'field')\n",
+            "def read(value):\n    return delattr(value, 'field')\n",
+            False,
+            0,
+            id="returned-value-retains-custom-owner",
+        ),
+    ],
+)
+def test_attribute_deletion_keeps_native_fix_safety_and_one_owner(
+    source: str, expected: str, native_owner: bool, exit_code: int
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--config",
+            str(_CONFIG),
+            "--select",
+            "B043",
+            "--fix",
+            "--stdin-filename",
+            "service/reader.py",
+            "-",
+        ],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode == exit_code
+    assert result.stdout == expected
+    findings = NoDynamicBuiltins().check(Path("service/reader.py"), source)
+    assert len(findings) == int(not native_owner)

@@ -72,5 +72,11 @@ export function privatePredicateBooleanFix(
   if (!annotation.typeAnnotation || !retainsNamedTypeUses(sourceCode, annotation.typeAnnotation) ||
     node.type !== AST_NODE_TYPES.FunctionDeclaration || node.id === null ||
     !isUnusedPrivateBinding(sourceCode, node, node.id, filename) || sourceCode.getCommentsInside(annotation).length > 0) return null;
-  return (fixer) => fixer.replaceText(annotation, `boolean${sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")}`);
+  const text = `boolean${sourceCode.getText(annotation).replace(/[^\r\n\u2028\u2029]/gu, "")}`;
+  const neighbor = Math.max(0, annotation.range[0] - 1);
+  const before = sourceCode.text.slice(neighbor, annotation.range[1] + 1).match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+  const after = (sourceCode.text.slice(neighbor, annotation.range[0]) + text + sourceCode.text.slice(annotation.range[1], annotation.range[1] + 1))
+    .match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+  if (before.length !== after.length || before.some((ending, index) => ending !== after[index])) return null;
+  return (fixer) => fixer.replaceText(annotation, text);
 }

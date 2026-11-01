@@ -16,13 +16,34 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
 from sarj_standards.libs.diagnostics import Completion, TrustMode
-from sarj_standards.libs.linting import external
+from sarj_standards.libs.linting import eslint_directives, external
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from tests.call_contracts import SubprocessOptions
+
+
+def _unexpected_directive_command(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+    pytest.fail(f"directive platform eligibility must be checked before native execution: {command.label}")
+
+
+def test_empty_directive_plan_needs_no_platform_or_repository_access(tmp_path: Path) -> None:
+    missing_repository = tmp_path / "not-created"
+
+    assert eslint_directives.plan(missing_repository, (), run=_unexpected_directive_command) == {}
+    assert not missing_repository.exists()
+
+
+def test_directive_planner_checks_the_actual_host_platform_before_repository_access(tmp_path: Path) -> None:
+    missing_repository = tmp_path / "not-created"
+
+    assert eslint_directives.SUPPORTS_DIRECTIVE_REWRITES is (os.name == "posix")
+    if os.name != "posix":
+        with pytest.raises(ValueError, match="require POSIX ownership and private-file permission checks"):
+            eslint_directives.plan(missing_repository, ("source.ts",), run=_unexpected_directive_command)
+        assert not missing_repository.exists()
 
 
 def _project(root: Path, name: str) -> Path:

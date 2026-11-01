@@ -899,3 +899,119 @@ def test_generated_checkout_parent_does_not_exclude_authored_source(workspace: _
 
     assert report.completion is Completion.FAILED
     assert "no analyzed projects" in report.issues[0].message
+
+
+@dataclass(frozen=True)
+class _ReactIndexFixture:
+    enclosing: Path
+    child: Path
+    pending: Path
+    runner: external.ProcessExecutor
+
+
+@dataclass(frozen=True)
+class _ReactScopeFileImage:
+    contents: bytes
+    mode: int
+    modified_ns: int
+    changed_ns: int
+
+
+def _react_scope_file_image(path: Path) -> _ReactScopeFileImage:
+    metadata = path.stat()
+    return _ReactScopeFileImage(
+        path.read_bytes(), metadata.st_mode & 0o7777, metadata.st_mtime_ns, metadata.st_ctime_ns
+    )
+
+
+def _opposing_react_indexes(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, *, pending_parent_changed: bool
+) -> _ReactIndexFixture:
+    root = workspace.root
+    enclosing = root / "packages/app"
+    child = enclosing / "packages/leaf"
+    child.mkdir(parents=True)
+    (child / "package.json").write_text('{"dependencies":{"react":"19.2.8"}}\n', encoding="utf-8")
+    (child / "view.tsx").write_text("export const View = () => <div />;\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Declare the nested React project")
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", _git(root, "rev-parse", "HEAD"))
+    (enclosing / "view.tsx").write_text("export const View = () => <section />;\n", encoding="utf-8")
+    (child / "view.tsx").write_text("export const View = () => <span />;\n", encoding="utf-8")
+    _git(root, "add", "--", (child / "view.tsx").relative_to(root).as_posix())
+    pending = root / ".git/pending-index"
+    shutil.copyfile(root / ".git/index", pending)
+    monkeypatch.setenv("GIT_INDEX_FILE", ".git/pending-index")
+    runner = external._staged_react_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the actual validated pending-index transport before the nested analyzer invocation.
+        root, runner=None
+    )
+    parent_path = (enclosing / "view.tsx").relative_to(root).as_posix()
+    if pending_parent_changed:
+        added = runner.run(external.process_request(("git", "add", "--", parent_path), cwd=root))
+        assert added.returncode == 0, added.stderr
+    else:
+        _git(root, "add", "--", parent_path)
+    return _ReactIndexFixture(enclosing, child, pending, runner)
+
+
+@pytest.mark.parametrize("pending_parent_changed", [False, True], ids=["pending-nested-only", "pending-parent-source"])
+def test_staged_empty_parent_uses_validated_pending_index(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, pending_parent_changed: bool
+) -> None:
+    root = workspace.root
+    fixture = _opposing_react_indexes(workspace, monkeypatch, pending_parent_changed=pending_parent_changed)
+    parent_path = (fixture.enclosing / "view.tsx").relative_to(root).as_posix()
+    child_path = (fixture.child / "view.tsx").relative_to(root).as_posix()
+    expected_pending, expected_default = {child_path}, {child_path, parent_path}
+    if pending_parent_changed:
+        expected_pending, expected_default = expected_default, expected_pending
+    assert set(_git(root, "diff", "--cached", "--name-only").splitlines()) == expected_default
+    pending = fixture.runner.run(external.process_request(("git", "diff", "--cached", "--name-only"), cwd=root))
+    assert pending.returncode == 0, pending.stderr
+    assert set(pending.stdout.splitlines()) == expected_pending
+    payload = _payload(fixture.enclosing, _git(root, "rev-parse", "HEAD"), ("leaf",), staged=True)
+    projects = payload["projects"]
+    assert isinstance(projects, list)
+    projects.insert(
+        0,
+        {
+            "directory": str(fixture.enclosing),
+            "complete": True,
+            "skippedChecks": [],
+            "analyzedFileCount": 0,
+            "scannedFileCount": 0,
+            "diagnostics": [],
+        },
+    )
+    index_before = {path: _react_scope_file_image(path) for path in (root / ".git/index", fixture.pending)}
+    source_before = {
+        name: _react_scope_file_image(root / name) for name in _git(root, "ls-files", "-z").split("\0") if name
+    }
+
+    def execute(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if argv[0] == "git":
+            assert cwd == root
+            return fixture.runner.run(external.process_request(argv, cwd=cwd))
+        assert cwd == fixture.enclosing
+        return ProcessOutput(1, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- keep the real scoped parser and Git proofs while supplying only the native analyzer payload.
+        fixture.enclosing,
+        projects=(fixture.enclosing, fixture.child),
+        root=root,
+        runner=FakeProcessExecutor(execute),
+        use_local_binary=False,
+        file_count=2 if pending_parent_changed else 1,
+        staged=True,
+    )
+
+    if pending_parent_changed:
+        assert report.completion is Completion.FAILED
+        assert report.issues
+    else:
+        assert report.completion is Completion.COMPLETE
+        assert report.issues == ()
+        assert tuple(item.location.path for item in report.diagnostics) == (child_path,)
+        assert tuple(item.code for item in report.diagnostics) == ("react-doctor/example",)
+    assert {path: _react_scope_file_image(path) for path in index_before} == index_before
+    assert {name: _react_scope_file_image(root / name) for name in source_before} == source_before

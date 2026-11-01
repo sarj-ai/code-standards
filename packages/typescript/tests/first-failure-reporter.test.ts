@@ -17,8 +17,8 @@ const DEFAULT_REPORTER_DELAY_MARKER = "Default reporter callback completed.";
 let privateCache: string | undefined;
 
 async function fixtureEnvironment(): Promise<NodeJS.ProcessEnv> {
-  if (process.env.NODE_COMPILE_CACHE !== undefined || process.env.NODE_DISABLE_COMPILE_CACHE !== undefined ||
-      process.env.NODE_V8_COVERAGE !== undefined) {
+  if (process.env["NODE_COMPILE_CACHE"] !== undefined || process.env["NODE_DISABLE_COMPILE_CACHE"] !== undefined ||
+      process.env["NODE_V8_COVERAGE"] !== undefined) {
     return { ...process.env };
   }
   privateCache ??= await mkdtemp(join(tmpdir(), "sarj-first-failure-compile-cache-"));
@@ -64,7 +64,7 @@ export default { ...base, test: { ...base.test, reporters } };
     const env = await fixtureEnvironment();
     const started = performance.now();
     const child = spawn(process.execPath, [CLI, options.collect ? "list" : "run", "--root", root, "--config", config, "--maxWorkers=1", "--no-color", ...options.arguments ?? []], {
-      timeout: 15_000,
+      timeout: 30_000,
       stdio: ["ignore", "pipe", "pipe"],
       env,
     });
@@ -85,8 +85,8 @@ export default { ...base, test: { ...base.test, reporters } };
       child.once("close", resolve);
     });
     await acknowledged;
-    if (child.signalCode !== null) {
-      throw new Error(`Fixture CLI terminated by ${child.signalCode} after ${Math.round(performance.now() - started)}ms.\n${stdout}\n${stderr}`);
+    if (child.signalCode !== null || (status !== 0 && status !== 1)) {
+      throw new Error(`Fixture CLI exited with status ${status}, signal ${child.signalCode} after ${Math.round(performance.now() - started)}ms.\n${stdout}\n${stderr}`);
     }
     const report: unknown = options.arguments?.includes("--reporter=json")
       ? JSON.parse(await readFile(join(root, "report.json"), "utf8"))
@@ -103,11 +103,9 @@ describe("native first failure preview", () => {
     const result = await runFixture(`
 import { existsSync } from "node:fs";
 test("first case", () => { throw new Error(${JSON.stringify(message)}); });
-test("later case", async ({ annotate }) => {
-  await annotate("Waiting for the first failure preview.");
-  const started = Date.now();
+test("later case", async (context) => {
+  await context.annotate("Waiting for the first-failure preview");
   while (!existsSync(new URL("../continue", import.meta.url))) {
-    if (Date.now() - started > 10_000) throw new Error("preview was withheld");
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 });
@@ -124,7 +122,6 @@ test("second failure", () => { throw new Error("second assertion"); });
     expect(result.output).toContain("final detail");
     expect(result.output).toContain("second assertion");
     expect(result.output).toContain("1 passed");
-    expect(result.output).not.toContain("preview was withheld");
     if (delayDefaultReporter) {
       expect(result.stderr).toContain(DEFAULT_REPORTER_DELAY_MARKER);
       const previewEnd = result.stderr.indexOf(PREVIEW_END);

@@ -10,6 +10,7 @@ import sys
 from typing import TYPE_CHECKING, final, override
 
 import pytest
+from sarj_rule_contracts import SourceCatalog
 
 from sarj_python_lint import __main__ as engine
 from sarj_python_lint.__main__ import analyze, main
@@ -20,8 +21,13 @@ from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from multiprocessing.context import BaseContext
+
     from sarj_python_lint._analysis_session import AnalysisSession
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint._prepared_sources import PreparedSourceSnapshot
+    from sarj_python_lint.rules._project_index import ProjectSourceSnapshot
 
 
 @final
@@ -302,3 +308,52 @@ def test_complete_project_snapshot_preserves_unselected_sources_and_module_ident
         Diagnostic(path, 1, 1, _SnapshotObserver.code, f"class Record:\n    field{index}: str\n")
         for index, path in enumerate(selected)
     ]
+
+
+@pytest.mark.parametrize("count", [512, 513])
+@pytest.mark.parametrize("captured", [False, True])
+def test_large_analysis_preserves_serial_quotas_source_order_and_late_errors_without_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, count: int, captured: bool
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the public registry lifecycle with native quota and failure rules.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts, _FileFailure.id: _FileFailure}
+    )
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="large-analysis"\nversion="0.1.0"\n')
+    provider = tmp_path / "provider.py"
+    provider.write_text("value = 1\n")
+    paths = [tmp_path / f"file_{index:04}.py" for index in reversed(range(count - 1))]
+    paths.append(tmp_path / "failure.py")
+    sources = SourceCatalog() if captured else None
+    for path in paths:
+        path.write_text("# resolutions\n# provider.py\n")
+        if sources is not None:
+            sources.capture(path)
+            path.write_text("if broken ==\n")
+    if sources is not None:
+        sources.capture(provider)
+
+    expected = analyze([_RequestFacts.id], paths, sources=sources)
+    assert len(expected) == 512
+    assert [diagnostic.path for diagnostic in expected] == paths[:512]
+
+    def unexpected_pool(
+        *,
+        max_workers: int,
+        mp_context: BaseContext,
+        initializer: Callable[[list[type[Rule]], ProjectSourceSnapshot | None, PreparedSourceSnapshot | None], None],
+        initargs: tuple[list[type[Rule]], ProjectSourceSnapshot | None, PreparedSourceSnapshot | None],
+    ) -> None:
+        pytest.fail(
+            f"large analysis attempted {max_workers} {mp_context.get_start_method()} workers "
+            f"with initializer {initializer!r} for {len(initargs[0])} rules before serial selection"
+        )
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe only the resource boundary; public analysis and real rules still execute unchanged.
+        parallel_engine, "ProcessPoolExecutor", unexpected_pool
+    )
+    before = {child.pid for child in multiprocessing.active_children()}
+    assert analyze([_RequestFacts.id], paths, jobs=2, sources=sources) == expected
+    for jobs in (1, 2):
+        with pytest.raises(RuntimeError, match="fixture file failed"):
+            analyze([_RequestFacts.id, _FileFailure.id], paths, jobs=jobs, sources=sources)
+    assert {child.pid for child in multiprocessing.active_children()} == before

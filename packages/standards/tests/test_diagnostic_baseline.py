@@ -41,7 +41,7 @@ from sarj_standards.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from pydantic import JsonValue
 
@@ -702,8 +702,18 @@ def test_scoped_changed_lines_preserve_distant_baselines_after_a_rename(
 
 
 def test_changed_line_timeout_keeps_findings_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def expire(arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool, timeout: float) -> None:
+    def expire(
+        arguments: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str],
+        check: bool,
+        capture_output: bool,
+        timeout: float,
+    ) -> None:
         assert cwd == tmp_path
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
+        assert {name for name in env if name.startswith("GIT_")} == {"GIT_OPTIONAL_LOCKS"}
         assert not check
         assert capture_output
         raise subprocess.TimeoutExpired(arguments, timeout)
@@ -718,6 +728,41 @@ def test_changed_line_timeout_keeps_findings_active(tmp_path: Path, monkeypatch:
     assert scope is not None
     assert scope.failed
     assert baseline.touches_changed_lines(finding, scope)
+
+
+def test_nonstaged_changed_scope_ignores_a_foreign_hook_repository(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = git_root / "app.py"
+    source.write_text("old\nkeep\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).removesuffix("\n")
+    source.write_text("old\nchanged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+    foreign = git_root.parent / f"{git_root.name}-foreign"
+    foreign.mkdir()
+    subprocess.run(("git", "init", "--template=", "-q"), cwd=foreign, check=True)
+    subprocess.run(("git", "config", "core.hooksPath", str(foreign / ".git/hooks")), cwd=foreign, check=True)
+    subprocess.run(("git", "config", "user.name", "Fixture"), cwd=foreign, check=True)
+    subprocess.run(("git", "config", "user.email", "fixture@example.invalid"), cwd=foreign, check=True)
+    (foreign / "foreign.py").write_text("unrelated\n", encoding="utf-8")
+    subprocess.run(("git", "add", "--all"), cwd=foreign, check=True)
+    subprocess.run(("git", "commit", "-qm", "foreign"), cwd=foreign, check=True)
+    before = (git_root / ".git/index").read_bytes(), (foreign / ".git/index").read_bytes()
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    monkeypatch.setenv("GIT_DIR", str(foreign / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(foreign))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(foreign / ".git/index"))
+
+    scope = baseline.changed_line_scope(git_root, staged=False, paths=(source.name,))
+
+    assert scope is not None
+    assert not scope.failed
+    assert scope.paths == frozenset({"app.py"})
+    assert scope.lines == {"app.py": frozenset({2})}
+    assert ((git_root / ".git/index").read_bytes(), (foreign / ".git/index").read_bytes()) == before
 
 
 @pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
@@ -764,9 +809,17 @@ def test_non_utf8_git_paths_preserve_byte_identity(monkeypatch: pytest.MonkeyPat
     filename = "raw-\udcff.py"
 
     def git_diff(
-        arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool, timeout: float
+        arguments: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str],
+        check: bool,
+        capture_output: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[bytes]:
         assert cwd == tmp_path
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
+        assert {name for name in env if name.startswith("GIT_")} == {"GIT_OPTIONAL_LOCKS"}
         assert not check
         assert capture_output
         assert timeout == 30

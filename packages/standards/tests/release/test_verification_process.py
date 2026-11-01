@@ -484,3 +484,56 @@ def test_capture_setup_failure_closes_partial_selector_and_reaps_owned_process(
         unrelated.terminate()
         unrelated.wait(timeout=5)
         close()
+
+
+def test_capture_read_failure_reaps_owned_process_before_its_finite_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid_file = tmp_path / "read-child.pid"
+    faulted = tmp_path / "read-fault"
+    naturally_completed = tmp_path / "natural-completion"
+    script = (
+        "import os,signal,time\nfrom pathlib import Path\n"
+        "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+        f"Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        "os.write(1,b'ready')\ndeadline=time.monotonic()+5\n"
+        f"while not Path({str(faulted)!r}).exists() and time.monotonic()<deadline:\n"
+        "    time.sleep(.01)\n"
+        f"time.sleep(3)\nPath({str(naturally_completed)!r}).touch()\n"
+    )
+    selector = DefaultSelector()
+    select = selector.select
+    read_error = OSError("capture read failed")
+
+    def select_then_fail(timeout: float | None = None) -> list[tuple[SelectorKey, int]]:
+        ready = select(timeout)
+        if ready:
+            faulted.touch()
+            raise read_error
+        return ready
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- injects one capture I/O failure after real pipe readiness; process lifetime and cleanup remain native.
+        selector, "select", select_then_fail
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- supplies the real selector with the controlled post-setup read failure.
+        verification_process, "DefaultSelector", lambda: selector
+    )
+    unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(15)"])
+    try:
+        with (
+            BaseWatch("a" * 40, lambda: None, 2) as runner,
+            pytest.raises(OSError, match="capture read failed") as caught,
+        ):
+            runner.run((sys.executable, "-c", script), env={})
+        assert caught.value is read_error
+        assert faulted.is_file()
+        # The finite fallback makes broken cleanup terminate without an orphan;
+        # waiting for that fallback still violates capture-failure ownership.
+        assert not naturally_completed.exists()
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pid_file.read_text()), 0)
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+        selector.close()

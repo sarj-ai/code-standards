@@ -63,8 +63,13 @@ export function trailingCommentRemovalRange(
 }
 
 /** Leave physical lines in place so next-line tooling keeps its original target. */
-export function commentLineEndings(text: string, removal: CommentRemoval): string {
-  return text.slice(...removal.range).replace(/[^\r\n]/gu, "");
+export function commentLineEndings(text: string, removal: CommentRemoval): string | null {
+  const replacement = text.slice(...removal.range).replace(/[^\r\n\u2028\u2029]/gu, "");
+  const neighbor = Math.max(0, removal.range[0] - 1);
+  const original = text.slice(neighbor, removal.range[1] + 1).match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+  const rendered = (text.slice(neighbor, removal.range[0]) + replacement + text.slice(removal.range[1], removal.range[1] + 1))
+    .match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
+  return original.length === rendered.length && original.every((ending, index) => ending === rendered[index]) ? replacement : null;
 }
 
 /** Only an exact multiword member name qualifies; behavioral descriptions remain. */

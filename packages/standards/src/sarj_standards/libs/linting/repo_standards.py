@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only Git query.
+from typing import TYPE_CHECKING
 
 from repo_standards.core.models import (
     Diagnostic as RepositoryDiagnostic,
@@ -37,6 +38,13 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
 )
 from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.staged_git import isolated_environment, staged_environment
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from repo_standards.repository import AnalysisReport as RepositoryAnalysisReport
 
 
 _MANIFEST = Path(".repo-standards/repository.toml")
@@ -48,13 +56,22 @@ _GIT_READ_OPTIONS = ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-l
 
 
 def analyze(root: Path, *, staged: bool) -> ToolReport | None:
-    if (staged and not _is_git_worktree(root)) or (not staged and not _has_committed_tree(root)):
+    try:
+        environment = staged_environment(root) if staged else isolated_environment()
+    except (OSError, ValueError) as exc:
+        issue = ExecutionIssue("repo-standards", "invalid-input", str(exc))
+        return ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
+    # A committed-tree check has no repository snapshot before the first commit.
+    # The staged pre-commit path still analyzes the exact index for an initial commit.
+    if (staged and not _is_git_worktree(root, environment=environment)) or (
+        not staged and not _has_committed_tree(root, environment=environment)
+    ):
         return None
-    selected_manifest = _selected_path_exists(root, _MANIFEST, staged=staged)
-    selected_adopted = _selected_path_exists(root, _ADOPTED, staged=staged)
+    selected_manifest = _selected_path_exists(root, _MANIFEST, staged=staged, environment=environment)
+    selected_adopted = _selected_path_exists(root, _ADOPTED, staged=staged, environment=environment)
     if not selected_manifest and not selected_adopted:
         return None
-    has_baseline = _selected_path_exists(root, _BASELINE, staged=staged)
+    has_baseline = _selected_path_exists(root, _BASELINE, staged=staged, environment=environment)
     include_warnings = _baseline_includes_warnings(root, staged=staged) if has_baseline else False
     report = analyze_repository(
         RepositoryAnalysisRequest(
@@ -67,6 +84,10 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
             as_of=datetime.now(UTC).date(),
         )
     )
+    return _tool_report(report)
+
+
+def _tool_report(report: RepositoryAnalysisReport) -> ToolReport:
     issues = tuple(
         ExecutionIssue(
             "repo-standards",
@@ -216,13 +237,14 @@ def _position(line: int | None, column: int | None) -> Position | None:
     return Position(line - 1, (column or 1) - 1, 0)
 
 
-def _is_git_worktree(root: Path) -> bool:
+def _is_git_worktree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
     git = shutil.which("git")
     if git is None:
         return False
     worktree = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "rev-parse", "--is-inside-work-tree"),
         cwd=root,
+        env=isolated_environment() if environment is None else environment,
         check=False,
         capture_output=True,
         text=True,
@@ -231,13 +253,14 @@ def _is_git_worktree(root: Path) -> bool:
     return worktree.returncode == 0 and worktree.stdout.strip() == "true"
 
 
-def _has_committed_tree(root: Path) -> bool:
+def _has_committed_tree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
     git = shutil.which("git")
-    if git is None or not _is_git_worktree(root):
+    if git is None or not _is_git_worktree(root, environment=environment):
         return False
     head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
         cwd=root,
+        env=isolated_environment() if environment is None else environment,
         check=False,
         capture_output=True,
         text=True,
@@ -248,6 +271,7 @@ def _has_committed_tree(root: Path) -> bool:
     symbolic_head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "symbolic-ref", "--quiet", "HEAD"),
         cwd=root,
+        env=isolated_environment() if environment is None else environment,
         check=False,
         capture_output=True,
         text=True,
@@ -258,6 +282,7 @@ def _has_committed_tree(root: Path) -> bool:
     referenced = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "show-ref", "--verify", "--quiet", symbolic_head.stdout.strip()),
         cwd=root,
+        env=isolated_environment() if environment is None else environment,
         check=False,
         capture_output=True,
         text=True,
@@ -317,7 +342,9 @@ def _validated_revision(value: str) -> str:
     return value
 
 
-def _selected_path_exists(root: Path, path: Path, *, staged: bool) -> bool:
+def _selected_path_exists(
+    root: Path, path: Path, *, staged: bool, environment: Mapping[str, str] | None = None
+) -> bool:
     git = shutil.which("git")
     if git is None:
         return False
@@ -329,6 +356,7 @@ def _selected_path_exists(root: Path, path: Path, *, staged: bool) -> bool:
     selected = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         command,
         cwd=root,
+        env=isolated_environment() if environment is None else environment,
         check=True,
         capture_output=True,
         text=True,

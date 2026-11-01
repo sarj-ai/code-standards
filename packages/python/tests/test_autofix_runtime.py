@@ -65,6 +65,11 @@ _REVIEW_RUNTIME_CASES = (
 
 _CASES = (
     _RuntimeCase(
+        "stepdown",
+        "from __future__ import annotations\nevents = []\nclass Meta(type):\n    def __getattribute__(cls, name):\n        if name in {'a', 'b'}:\n            events.append(name)\n        return super().__getattribute__(name)\nclass Namespace(metaclass=Meta):\n    a = str\n    b = str\ndef _helper(value: Namespace.a) -> Namespace.b:\n    return value\n\ndef caller(value: Namespace.b) -> Namespace.a:\n    return _helper(value)\n",
+        "assert caller('x') == 'x'\nassert _helper.__annotations__ == {'value': 'Namespace.a', 'return': 'Namespace.b'}\nassert caller.__annotations__ == {'value': 'Namespace.b', 'return': 'Namespace.a'}\nassert events == []\n",
+    ),
+    _RuntimeCase(
         "no-broad-keyword-capture",
         "def adapt(value):\n    def _adapt(value, *, strict=True, **kwargs: object):\n        return value, strict\n    return _adapt(value, strict=False)\n",
         "assert adapt(3) == (3, False)\n",

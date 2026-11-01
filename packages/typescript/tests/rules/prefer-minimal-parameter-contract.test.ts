@@ -8,7 +8,7 @@ for (const contract of ["{name: string; email: string}", "{readonly name: string
 }
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
   valid: [
-    ...[
+    ...([
       ["all required fields consumed", `function label(p: ${INLINE_CONTRACT}): string {return p.name + p.email;}`],
       ["unused destructured fields are still read", `function label({name, email}: ${INLINE_CONTRACT}): string {return name;}`],
       ["optional unused field does not restrict structural callers", "function label(p: {readonly name: string; readonly email?: string}): string {return p.name;}"],
@@ -23,10 +23,10 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
       ["object-valued property", "function label(p: {readonly name: string; readonly metadata: object}): string {return p.name;}"],
       ["implicit Object capability can observe unread data", "declare global {interface Object {readonly label: string}} function label(p: {readonly name: string; readonly email: string}): string {return p.name + p.label;}"],
       ["unused function has no evaluated consumer calls", `function label(p: ${INLINE_CONTRACT}): string {return p.name;}`],
-    ].map(([name, declaration]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}${name?.startsWith("unused function") ? "" : "label(account);"}`})),
+    ] as const).map(([name, declaration]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}${name.startsWith("unused function") ? "" : "label(account);"}`})),
   ],
   invalid: [
-    ...[
+    ...([
       ["unused required field", `function label(p: ${INLINE_CONTRACT}): string {return p.name;}`, "function label(p: {readonly name: string; }): string {return p.name;}"],
       ["plain field declarations retain read-only usage", "function label(p: {name: string; email: string}): string {return p.name;}", "function label(p: {name: string; }): string {return p.name;}"],
       ["retained readonly field is not rewritten", "function label(p: {readonly name: string; email: string}): string {return p.name;}", "function label(p: {readonly name: string; }): string {return p.name;}"],
@@ -38,7 +38,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
       ["same-named parameter is not the callable binding", `function label(label: ${INLINE_CONTRACT}): string {return label.name;}`, "function label(label: {readonly name: string; }): string {return label.name;}"],
       ["fixed string key", `function label(p: ${INLINE_CONTRACT}): string {return p['name'];}`, "function label(p: {readonly name: string; }): string {return p['name'];}"],
       ["optional field retained alongside used required field", "function label(p: {readonly name: string; readonly email: string; readonly suffix?: string}): string {return p.name + (p.suffix ?? '');}", "function label(p: {readonly name: string;  readonly suffix?: string}): string {return p.name + (p.suffix ?? '');}"],
-    ].map(([name, declaration, fixed, argument = "account"]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}label(${argument});`, output: `${PREFIX}${fixed}label(${argument});`, errors: [{messageId: "minimal" as const}]})),
+    ] as const).map(([name, declaration, fixed, argument = "account"]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}label(${argument});`, output: `${PREFIX}${fixed}label(${argument});`, errors: [{messageId: "minimal" as const}]})),
   ],
 });
 
@@ -78,7 +78,7 @@ for (const [primitive, value] of NULLISH_PRIMITIVES) {
 }
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fields", rule, {
   valid: [
-    ...[
+    ...([
       ["optional nullish member excludes the whole contract", "function label(p: {name: string; email?: string | null; spare: string}): string {return p.name;}"],
       ["optional-only retained reads remain excluded", "function label(p: {name?: string; email: string | null}): string {return p.name ?? '';}"],
       ["computed member declarations are unsupported", "function label(p: {name: string; ['email']: string | null}): string {return p.name;}"],
@@ -87,7 +87,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
       ["type assertions can carry a field dependency", "function label(p: {name: string; email: string | null}): string {return (p.name as typeof p.email)!;}"],
       ["explicit helper type arguments carry dependencies", "function helper<T>(value: T): string {return String(value);} function label(p: {name: string; email: string | null}): string {return helper<typeof p.email>(p.name);}"],
       ["imported reexported inherited field types remain named", "import type {ConsumerAccount} from './consumer-index'; function label(p: {name: string; email: ConsumerAccount['email'] | null}): string {return p.name;}"],
-    ].map(([name, declaration]) => ({name, filename: "probe.tsx", code: `${PREFIX}const input = {...account, spare: 'audit'};${declaration}label(input);`})),
+    ] as const).map(([name, declaration]) => ({name, filename: "probe.tsx", code: `${PREFIX}const input = {...account, spare: 'audit'};${declaration}label(input);`})),
     ...["Nullable", "'a' | null", "(string) | null", "string | (null)", "string | null | undefined", "null | undefined", "string | number", "any | null", "unknown | null", "never | null", "void | string", "object | null", "(string & {brand: true}) | null"].map((type) => ({
       name: "unsupported field domain " + type, filename: "probe.tsx", code: `${PREFIX}type Nullable = string | null; function label(p: {name: string; email: ${type}}): string {return p.name;} label(account);`,
     })),
@@ -99,27 +99,27 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
     ].map((observation) => ({name: "callable type observation " + observation, filename: "probe.tsx", code: `${PREFIX}${NULLISH_DECLARATION}label(account); ${observation}`})),
   ],
   invalid: [
-    ...[
+    ...([
       ["nullable coalescing is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.email ?? p.name;}"],
       ["runtime typeof is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.name + typeof p.email;}"],
       ["a conditional reads its nullable condition", "function label(p: {name: string; email: string | undefined; spare: string}): string {return p.email ? p.name : '';}"],
       ["escaped fixed reads keep the normalized nullable key", "function label(p: {name: string; email: string | null; spare: string}): string {return p['em\\u0061il'] ?? p.name;}"],
       ["destructuring reads even an unreturned nullable alias", "function label({name, email: unused}: {name: string; email: string | null; spare: string}): string {return name;}"],
       ["scalar helper retains its nullable input", "function helper(value: string | null): string {return value ?? '';} function label(p: {name: string; email: string | null; spare: string}): string {return p.name + helper(p.email);}"],
-    ].map(([name, declaration]) => {
+    ] as const).map(([name, declaration]) => {
       const code = `${PREFIX}const input = {...account, spare: 'audit'};${declaration}label(input);`;
       return {name, filename: "probe.tsx", code, output: code.replace("spare: string", ""), errors: [{messageId: "minimal" as const, data: {used: "email, name", unused: "spare"}}]};
     }),
-    ...[
+    ...([
       ["producer-only type query does not observe the callable", `export type Email = typeof account.email; ${NULLISH_DECLARATION}`],
       ["flat destructuring of only the required read remains supported", `function label({name: display}: ${NULLISH_CONTRACT}): string {return display;}`],
       ["optional broad fields remain retained", "function label(p: {name: string; email: string | null; suffix?: string}): string {return p.name + (p.suffix ?? '');}"],
       ["a local scalar helper receives only the retained field", `function format(name: string): string {return name.toUpperCase();} ${NULLISH_DECLARATION.replace("return p.name;", "return format(p.name);")}`],
       ["getter producer remains unchanged", `const input = {name: 'Ada', get email(): string | null {return null;}}; ${NULLISH_DECLARATION}`, "input"],
-    ].map(([name, declaration, argument = "account"]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}label(${argument});`, output: `${PREFIX}${declaration?.replace("email: string | null;", "").replace("email: string | null", "")}label(${argument});`, errors: [{messageId: "minimal" as const}]})),
+    ] as const).map(([name, declaration, argument = "account"]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}label(${argument});`, output: `${PREFIX}${declaration.replace("email: string | null;", "").replace("email: string | null", "")}label(${argument});`, errors: [{messageId: "minimal" as const}]})),
     {name: "multiple nullish requirements produce one sorted finding", filename: "probe.tsx", code: `${PREFIX}const input = {...account, count: undefined}; function label(p: {name: string; email: string | null; count: number | undefined}): string {return p.name;} label(input);`,
       output: `${PREFIX}const input = {...account, count: undefined}; function label(p: {name: string;  }): string {return p.name;} label(input);`, errors: [{messageId: "minimal", data: {used: "name", unused: "count, email"}}]},
-    ...[
+    ...([
       ["invalid original caller", "const input = {name: 'Ada', email: 1};"],
       ["missing original requirement", "const input = {name: 'Ada'};"],
       ["optional original requirement", "declare const input: {name: string; email?: string | null};"],
@@ -127,7 +127,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
       ["unknown relevant caller field", "declare const input: {name: string; email: unknown};"],
       ["unsafe original caller union", "declare const input: {name: string; email: string | null} | {name: string; email: any};"],
       ["incompatible original caller union", "declare const input: {name: string; email: string | null} | {name: string; email: number};"],
-    ].map(([name, producer]) => ({name, filename: "probe.tsx", code: `${PREFIX}${producer}${NULLISH_DECLARATION}label(account); label(input);`, output: null, errors: [{messageId: "minimal" as const}]})),
+    ] as const).map(([name, producer]) => ({name, filename: "probe.tsx", code: `${PREFIX}${producer}${NULLISH_DECLARATION}label(account); label(input);`, output: null, errors: [{messageId: "minimal" as const}]})),
     {name: "nullable annotation comments keep a manual finding", filename: "probe.tsx", code: `${PREFIX}${NULLISH_DECLARATION.replace("string | null", "string | /* rationale */ null")}label(account);`, output: null, errors: [{messageId: "minimal"}]},
     {name: "nullable suppression must not become unused", filename: "probe.tsx", code: `export {}; const input = {name: 'Ada'}; ${NULLISH_DECLARATION}\n// @ts-expect-error the original required nullable field is missing\nlabel(input);`, output: null, errors: [{messageId: "minimal"}]},
   ],
@@ -166,23 +166,23 @@ const SCALAR_HELPER = "function formatName(name: string): string {return name.to
 const HELPER_CONSUMER = "function label(p: {name: string; email: string}): string {return formatName(p.name);}";
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract scalar helpers", rule, {
   valid: [
-    ...[
+    ...([
       ["inferred helper returns remain unsupported", "function formatName(name: string) {return name;}", HELPER_CONSUMER],
       ["callee aliases remain unsupported", SCALAR_HELPER + "const alias = formatName;", HELPER_CONSUMER.replace("formatName(p.name)", "alias(p.name)")],
       ["helper arguments cannot mutate the parameter", SCALAR_HELPER, HELPER_CONSUMER.replace("p.name)", "p.name = 'updated')")],
       ["callbacks cannot capture the parameter", "function formatName(read: () => string): string {return read();}", HELPER_CONSUMER.replace("formatName(p.name)", "formatName(() => p.name)")],
       ["predicate helpers retain refinement semantics", "function accepts(value: unknown): value is string {return typeof value === 'string';}", "function label(p: {name: string; email: string}): boolean {return accepts(p.name);}"],
       ["a native-invalid original helper caller is unavailable", SCALAR_HELPER, HELPER_CONSUMER + "const broken = {name: 'Ada', email: 42}; label(broken);"],
-    ].map(([name, helper, consumer]) => ({name, filename: "probe.tsx", code: `${PREFIX}${helper}${consumer}label(account);`})),
+    ] as const).map(([name, helper, consumer]) => ({name, filename: "probe.tsx", code: `${PREFIX}${helper}${consumer}label(account);`})),
   ],
   invalid: [
-    ...[
+    ...([
       ["local implementation receives only a scalar", SCALAR_HELPER, HELPER_CONSUMER, "label(account);"],
       ["raw const arrow implementation", "const formatName = (name: string): string => name;", HELPER_CONSUMER, "label(account);"],
       ["all identifier callers and producer aliases remain unchanged", SCALAR_HELPER, HELPER_CONSUMER, "const alias = account; label(account); label(alias);"],
       ["two scalar arguments retain only their fixed field dependency", "function formatName(name: string, suffix: string): string {return name + suffix;}", HELPER_CONSUMER.replace("formatName(p.name)", "formatName(p.name, '!')"), "label(account);"],
-    ].map(([name, helper, consumer, calls]) => ({name, filename: "probe.tsx", code: `${PREFIX}${helper}${consumer}${calls}`,
-      output: `${PREFIX}${helper}${consumer?.replace("email: string", "")}${calls}`, errors: [{messageId: "minimal" as const}]})),
+    ] as const).map(([name, helper, consumer, calls]) => ({name, filename: "probe.tsx", code: `${PREFIX}${helper}${consumer}${calls}`,
+      output: `${PREFIX}${helper}${consumer.replace("email: string", "")}${calls}`, errors: [{messageId: "minimal" as const}]})),
     {name: "comments in a new helper contract preserve manual review", filename: "probe.tsx",
       code: `${PREFIX}${SCALAR_HELPER}${HELPER_CONSUMER.replace("email: string", "/* private dependency rationale */ email: string")}label(account);`, output: null, errors: [{messageId: "minimal"}]},
     {name: "an Any caller cannot certify an automatic contract edit", filename: "probe.tsx",
@@ -193,7 +193,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract scalar helpers", 
 const AUXILIARY_PREFIX = `${PREFIX}const text = 'x';`;
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary correspondence", rule, {
   valid: [
-    ...[
+    ...([
       ["optional auxiliary", `function label(p: ${INLINE_CONTRACT}, text?: string): string {return (text ?? '') + p.name;}`],
       ["default auxiliary", `function label(p: ${INLINE_CONTRACT}, text: string = 'x'): string {return text + p.name;}`],
       ["rest auxiliary", `function label(p: ${INLINE_CONTRACT}, ..._text: string[]): string {return p.name;}`],
@@ -205,12 +205,12 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary corresp
       ["scalar auxiliary cannot establish required object read", "const input = {...account, spare: 's'}; function label(p: {name?: string; email: string; spare: string}, email: string): string {return email + (p.name ?? '');}", "input"],
       ["all optional object remains excluded", "function label(p: {name?: string; email?: string}, text: string): string {return text + (p.name ?? '');}"],
       ["all object fields read", `function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name + p.email;}`],
-    ].map(([name, declaration, argument = "account"]) => ({name, filename: "probe.tsx", code: `${AUXILIARY_PREFIX}${declaration}label(${argument}, text);`})),
+    ] as const).map(([name, declaration, argument = "account"]) => ({name, filename: "probe.tsx", code: `${AUXILIARY_PREFIX}${declaration}label(${argument}, text);`})),
     {name: "destructured auxiliary", filename: "probe.tsx", code: `${AUXILIARY_PREFIX}const extra = {text}; function label(p: ${INLINE_CONTRACT}, {text}: {text: string}): string {return text + p.name;} label(account, extra);`},
     {name: "literal argument is outside identifier callers", filename: "probe.tsx", code: `${PREFIX}function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;} label(account, 'x');`},
   ],
   invalid: [
-    ...[
+    ...([
       ["selected object first", `function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;}`, "account, text"],
       ["selected object middle", `function label(left: string, p: ${INLINE_CONTRACT}, right: string): string {return left + p.name + right;}`, "text, account, text"],
       ["selected object last", `function label(text: string, p: ${INLINE_CONTRACT}): string {return text + p.name;}`, "text, account"],
@@ -218,7 +218,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary corresp
       ["destructured object aliases remain reads", `function label({name: displayName}: ${INLINE_CONTRACT}, text: string): string {return text + displayName;}`, "account, text"],
       ["const arrow auxiliary", `const label = (text: string, p: ${INLINE_CONTRACT}): string => text + p.name;`, "text, account"],
       ["local helper accepts certified leaves", `function join(left: string, right: string): string {return left + right;} function label(p: ${INLINE_CONTRACT}, text: string): string {return join(text, p.name);}`, "account, text"],
-    ].map(([name, declaration, args]) => {
+    ] as const).map(([name, declaration, args]) => {
       const code = `${AUXILIARY_PREFIX}${declaration}label(${args});`;
       return {name, filename: "probe.tsx", code, output: code.replace("readonly email: string", ""), errors: [{messageId: "minimal" as const, data: {used: "name", unused: "email"}}]};
     }),

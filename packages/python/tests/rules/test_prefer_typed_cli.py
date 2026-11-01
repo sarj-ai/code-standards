@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
@@ -147,6 +148,103 @@ CASES = (
     ),
 )
 
+_ISOLATED_TRANSPORT = """\
+from pathlib import Path
+import sys
+from typing import NoReturn
+
+def _fail(message: str) -> NoReturn:
+    raise ValueError(message)
+
+def _require(*, condition: bool, message: str) -> None:
+    if not condition:
+        _fail(message)
+
+def _text(value: object) -> str:
+    if not isinstance(value, str):
+        _fail("native bridge value must be text")
+    return value
+
+def _path(value: object, *, real: bool = True) -> Path:
+    rendered = _text(value)
+    _require(condition=bool(rendered) and "\\0" not in rendered, message="invalid native bridge path")
+    path = Path(rendered)
+    _require(
+        condition=path.is_absolute() and str(path) == rendered and ".." not in path.parts,
+        message="noncanonical native bridge path",
+    )
+    if real:
+        _require(condition=path.resolve() == path, message="native bridge path traverses a link")
+    return path
+
+def main(arguments: list[str] | None = None) -> int:
+    supplied = sys.argv[1:] if arguments is None else arguments
+    _require(
+        condition=sys.flags.isolated == 1 and len(supplied) == 1,
+        message="native byte bridge requires isolated fixed invocation",
+    )
+    if supplied[0] == "--node-path":
+        return 0
+    path = _path(supplied[0])
+    return inspect_payload(path)
+"""
+
+_TRANSPORT_NEAR_MISSES = (
+    ("missing-isolation", "sys.flags.isolated == 1 and len(supplied) == 1", "len(supplied) == 1"),
+    ("nonexact-arity", "len(supplied) == 1", "len(supplied) >= 1"),
+    ("different-arity", "len(supplied) == 1", "len(supplied) == 2"),
+    ("wrong-boolean", "sys.flags.isolated == 1 and", "sys.flags.isolated == 1 or"),
+    ("guard-does-not-raise", "raise ValueError(message)", "return None"),
+    ("generator-raise", "raise ValueError(message)", "raise (yield ValueError(message))"),
+    ("generator-yield-from", "raise ValueError(message)", "raise (yield from ())"),
+    ("generator-delegation", "        _fail(message)", "        _fail((yield message))"),
+    ("guard-wrong-polarity", "if not condition:", "if condition:"),
+    (
+        "guard-swallows-raise",
+        "    raise ValueError(message)",
+        "    try:\n        raise ValueError(message)\n    except ValueError:\n        return None",
+    ),
+    (
+        "pre-guard-read",
+        "    _require(\n        condition=sys.flags",
+        "    consume(supplied[0])\n    _require(\n        condition=sys.flags",
+    ),
+    ("raw-alias-escape", "    return inspect_payload(path)", "    alias = supplied\n    return consume(alias)"),
+    (
+        "raw-closure-escape",
+        "    return inspect_payload(path)",
+        "    def captured():\n        return supplied\n    return captured()",
+    ),
+    ("raw-starred-escape", "    return inspect_payload(path)", "    return consume(*supplied)"),
+    (
+        "raw-mutation",
+        "    return inspect_payload(path)",
+        "    supplied.append('extra')\n    return inspect_payload(path)",
+    ),
+    ("raw-rebinding", "    return inspect_payload(path)", "    supplied = other\n    return inspect_payload(path)"),
+    ("extra-index", "path = _path(supplied[0])", "path = _path(supplied[1])"),
+    ("dynamic-probe", 'if supplied[0] == "--node-path":', 'if supplied[0].startswith("--"):'),
+    ("unterminated-probe", "        return 0\n    path =", "        pass\n    path ="),
+    ("shadowed-len", "def main(", "len = other\n\ndef main("),
+    ("shadowed-string-check", "def _text(", "isinstance = other\n\ndef _text("),
+    ("unproven-Path", "from pathlib import Path", "from pathlib import Path\nPath = other"),
+    (
+        "annotation-only-text",
+        '    if not isinstance(value, str):\n        _fail("native bridge value must be text")\n',
+        "",
+    ),
+    ("annotation-only-path", "    return path\n", "    return value\n"),
+    ("unrelated-constructor-input", "path = Path(rendered)", "path = Path(other)"),
+    ("rebound-helper", "def main(", "_require = other\n\ndef main("),
+    ("checked-string-escape", "    path = Path(rendered)", "    consume(rendered)\n    path = Path(rendered)"),
+    (
+        "checked-string-rebinding",
+        "    path = Path(rendered)",
+        "    rendered = transform(rendered)\n    path = Path(rendered)",
+    ),
+    ("untyped-injected-arguments", "arguments: list[str] | None = None", "arguments=None"),
+)
+
 
 @pytest.mark.parametrize(("label", "source", "count"), CASES, ids=[case[0] for case in CASES])
 def test_cli_contracts(label: str, source: str, count: int) -> None:
@@ -176,3 +274,60 @@ def test_raw_argv_blocks_the_public_cli(tmp_path: Path) -> None:
     assert main(["check", "--rule", PreferTypedCli.id, str(path)]) == 1
     path.write_text("import typer\ndef main(service: str): pass\ntyper.run(main)\n")
     assert main(["check", "--rule", PreferTypedCli.id, str(path)]) == 0
+
+
+def test_isolated_path_transport_and_renamed_equivalent() -> None:
+    assert PreferTypedCli().check(Path("app/worker.py"), _ISOLATED_TRANSPORT) == []
+    renamed = (
+        _ISOLATED_TRANSPORT.replace("from pathlib import Path", "from pathlib import Path as Location")
+        .replace("Path(", "Location(")
+        .replace("-> Path:", "-> Location:")
+        .replace("import sys", "import sys as process_runtime")
+        .replace("sys.", "process_runtime.")
+        .replace('"--node-path"', '"inspect-runtime"')
+        .replace("_fail", "reject")
+        .replace("_require", "ensure")
+        .replace("_text", "checked_text")
+        .replace("_path", "checked_location")
+        .replace("message", "reason")
+        .replace("condition", "valid")
+        .replace("arguments", "tokens")
+        .replace("supplied", "packet")
+        .replace("rendered", "checked")
+        .replace("real", "resolve_links")
+        .replace("main", "transport_entry")
+    )
+    renamed = re.sub(r"\bpath\b", "location", renamed)
+    assert PreferTypedCli().check(Path("tools/ipc/transport.py"), renamed) == []
+
+
+def test_native_worker_uses_the_source_proven_transport() -> None:
+    root = Path(__file__).resolve().parents[4]
+    worker = root / "packages/standards/src/sarj_standards/libs/linting/native_byte_process.py"
+    assert PreferTypedCli().check(Path("arbitrary/isolated_worker.py"), worker.read_text()) == []
+
+
+@pytest.mark.parametrize(
+    ("label", "before", "after"), _TRANSPORT_NEAR_MISSES, ids=[case[0] for case in _TRANSPORT_NEAR_MISSES]
+)
+def test_transport_near_misses_remain_errors(label: str, before: str, after: str) -> None:
+    assert _ISOLATED_TRANSPORT.count(before) == 1, label
+    source = _ISOLATED_TRANSPORT.replace(before, after)
+    (finding,) = PreferTypedCli().check(Path("app/worker.py"), source)
+    assert finding.code == PreferTypedCli.code, label
+    assert finding.severity is Severity.ERROR, label
+    assert finding.fixes == (), label
+
+
+@pytest.mark.parametrize(
+    "additional",
+    [
+        "import argparse\nparser = argparse.ArgumentParser()\n",
+        "import typer\ndef untyped(value): pass\ntyper.run(untyped)\n",
+    ],
+    ids=("ordinary-parser", "untyped-registered-command"),
+)
+def test_transport_retention_preserves_other_cli_findings(additional: str) -> None:
+    (finding,) = PreferTypedCli().check(Path("app/worker.py"), _ISOLATED_TRANSPORT + additional)
+    assert finding.code == PreferTypedCli.code
+    assert finding.severity is Severity.ERROR

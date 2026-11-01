@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import SqlglotError
+from sqlglot.errors import SqlglotError, TokenError
 from sqlglot.tokenizer_core import TokenType
 
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from sqlglot.tokenizer_core import Token
 
 
+_COPY_WORD = re.compile(r"\bCOPY\b", re.IGNORECASE)
 _COPY_END = re.compile(r"(?m)^\\\.(?:\r?$)")
 _TEMP_TABLE = (TokenType.CREATE, TokenType.TEMPORARY, TokenType.TABLE)
 _ON_COMMIT_DROP = (TokenType.ON, TokenType.COMMIT, TokenType.DROP)
@@ -40,7 +41,7 @@ def normalize_postgres_ctas(source: str) -> str:
 
 
 def _mask_copy_input(source: str) -> str:
-    if "COPY" not in source.upper():
+    if not _may_have_copy_input(source):
         return source
     output = list(source)
     start = 0
@@ -63,6 +64,29 @@ def _mask_copy_input(source: str) -> str:
         else:
             start = separator.end()
     return "".join(output)
+
+
+def _may_have_copy_input(source: str) -> bool:
+    remaining = len(source) * 2
+    for candidate in _COPY_WORD.finditer(source):
+        if candidate.end() > remaining:
+            return True
+        remaining -= candidate.end()
+        try:
+            tokens = sqlglot.tokenize(source[: candidate.end()], read="postgres")
+        except TokenError:
+            continue
+        except SqlglotError, RecursionError, UnicodeError:
+            return True
+        if tokens:
+            last = tokens[-1]
+            if (
+                last.token_type is TokenType.COPY
+                and last.start == candidate.start()
+                and last.end + 1 == candidate.end()
+            ):
+                return True
+    return False
 
 
 def _normalize_header(output: list[str], tokens: Sequence[Token]) -> None:
