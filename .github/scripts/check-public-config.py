@@ -34,6 +34,9 @@ _WRANGLER_BINDINGS = re.compile(
     r"""["']?((?=[A-Z])[A-Z0-9_]*(?:SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY|CREDENTIAL|DATABASE_URL|REDIS_URL|CONNECTION_STRING)[A-Z0-9_]*)["']?\s*[:=]\s*["']([^"'\n]+)["']"""
 )
 _PLACEHOLDER = re.compile(r"^(?:your[-_]|example|placeholder|test[-_]|fake[-_]|changeme|TBD)", re.IGNORECASE)
+# PostHog documents phc_ project tokens as public ingestion identifiers; phx_,
+# phs_, pha_ and phr_ credentials retain private read/write or OAuth authority.
+_POSTHOG_PROJECT_TOKEN = re.compile(r"phc_[A-Za-z0-9_-]{32,128}")
 _NATIVE_BINDINGS = re.compile(r"VOICE_API_KEY|TOOL_AUTH_TOKEN|voiceApiKey|toolAuthToken")
 _EXCLUDED_SUFFIXES = frozenset({".md", ".mdx", ".lock", ".svg", ".map"})
 _EXCLUDED_NAMES = frozenset({"check-public-config.py", "test_public_config.py"})
@@ -85,6 +88,8 @@ def _wrangler_findings(path: Path, source: str) -> Iterator[str]:
     for match in _WRANGLER_BINDINGS.finditer(source):
         binding_name, value = match.groups()
         if binding_name in _BROWSER_KEYS or value.startswith(("${", "{{")) or _PLACEHOLDER.search(value):
+            continue
+        if binding_name == "POSTHOG_API_KEY" and _POSTHOG_PROJECT_TOKEN.fullmatch(value):
             continue
         yield f"{binding_name} in {path}: use an encrypted secret binding, not a literal configuration value"
 
