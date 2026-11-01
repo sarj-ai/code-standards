@@ -208,3 +208,53 @@ def test_consumer_timings_are_bounded_and_preserve_machine_stdout(capsys: pytest
     assert "secret" not in output.err
     assert "evil" not in output.err
     assert "\x1b" not in output.err
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        ("stdout diagnostic Ω", "stderr diagnostic 文"),
+        ("stdout diagnostic Ω", "stderr diagnostic 文\n" * 1000),
+        ("stdout diagnostic Ω\n" * 1000, "stderr diagnostic 文"),
+        ("stdout diagnostic Ω\n" * 1000, "stderr diagnostic 文\n" * 1000),
+    ],
+)
+def test_verification_detail_preserves_both_output_streams(stdout: str, stderr: str) -> None:
+    result = subprocess.CompletedProcess(("verify",), 1, stdout, stderr)
+    detail = rollout.verification_detail(result)
+    assert "stdout diagnostic Ω" in detail
+    assert "stderr diagnostic 文" in detail
+    assert len(detail) <= 4000
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_consumer_verification_retains_short_stdout_error_with_noisy_stderr(tmp_path: Path, jobs: int) -> None:
+    diagnostic = "app/example.ts:42:7: error TS9999: required value missing"
+
+    class Runner:
+        def run(
+            self,
+            command: Sequence[str],
+            *,
+            cwd: Path | None = None,
+            check: bool = True,
+            env: Mapping[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            assert cwd == tmp_path
+            assert not check
+            assert env == {}
+            if command == ("prepare",):
+                return subprocess.CompletedProcess(command, 0, "", "")
+            return subprocess.CompletedProcess(command, 1, diagnostic, "SQL parser warning\n" * 1000)
+
+    consumer = replace(
+        rollout.Consumer("Example", "example/consumer", "main", ("prepare",)),
+        verify_checks=(("lint",),),
+        verify_jobs=jobs,
+    )
+    result = rollout.run_consumer_verification(consumer, tmp_path, Runner(), (), environment={})
+    detail = rollout.verification_detail(result)
+    assert result.returncode == 1
+    assert diagnostic in detail
+    assert "SQL parser warning" in detail
+    assert len(detail) <= 4000
