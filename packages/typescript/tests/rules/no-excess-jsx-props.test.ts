@@ -35,6 +35,7 @@ const SAFE_REFLECTION = [
 
 TESTER.run("no-excess-jsx-props", rule, {
   valid: [
+    {name: "a later direct eval invalidates a queued private element", filename: "probe.tsx", code: `${SOURCE}const element = <Avatar {...{name: 'Ada', email: 'unused'}}/>; const summary = {name: (element as {props: {name: string}}).props.name}; export {summary}; eval("void 0");`},
     {name: "default-project unused-local errors make imported alias evidence unavailable", filename: "probe.tsx", code: IMPORTED_CONTRACT_CASE},
     ...[
       ["unresolved lexical value", "runtimeCapability;"],
