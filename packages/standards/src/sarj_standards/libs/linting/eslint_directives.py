@@ -308,10 +308,11 @@ def _result_postimage(
         msg = "ESLint returned a nontext source postimage"
         raise TypeError(msg)
     after = output.encode("utf-8")
-    _text(after)
     original = selected[relative]
     if after == original.contents:
         return None
+    _text(original.contents)
+    _text(after)
     return SourcePostimage(original.contents, after, original.mode)
 
 
@@ -415,9 +416,10 @@ def _collect_plan_inputs(repository: Path, paths: Sequence[str]) -> _PlanInputs:
             and policy.allows_path(relative)
             and runner.accepts_hook_path(path, root=repository)
         ):
-            _text(original.contents)
-            if b"eslint-disable" in original.contents or b"eslint-enable" in original.contents:
-                selected[relative] = original
+            if b"eslint-disable" not in original.contents and b"eslint-enable" not in original.contents:
+                continue
+            original.contents.decode("utf-8")
+            selected[relative] = original
     return _PlanInputs(index, tracked, originals, selected)
 
 
