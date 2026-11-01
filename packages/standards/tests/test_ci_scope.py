@@ -485,13 +485,14 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
 
 
-def test_skill_source_check_fetches_only_its_missing_comparison_commit(repository: Path) -> None:
+def test_skill_source_check_preserves_complete_rule_introduction_history(repository: Path) -> None:
+    git(repository, "commit", "--allow-empty", "-qm", "comparison base")
     base = git(repository, "rev-parse", "HEAD")
     git(repository, "commit", "--allow-empty", "-qm", "skill changed")
     candidate = repository / "candidate"
-    git(repository, "clone", "--no-local", "--depth=1", repository.as_uri(), str(candidate))
+    git(repository, "clone", "--no-local", repository.as_uri(), str(candidate))
     before = subprocess.run(("git", "cat-file", "-e", base), cwd=candidate, check=False, capture_output=True)
-    assert before.returncode != 0
+    assert before.returncode == 0
     [step] = [step for step in workflow("ci.yml").jobs["docs-build"].steps if step.name == "Check skill plugin source"]
     assert step.env["BASE_SHA"] == (
         "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
@@ -510,8 +511,8 @@ def test_skill_source_check_fetches_only_its_missing_comparison_commit(repositor
         timeout=30,
     )
     assert git(candidate, "rev-parse", f"{base}^{{commit}}") == base
-    assert git(candidate, "rev-list", "--all", "--count") == "1"
-    assert git(candidate, "rev-parse", "--is-shallow-repository") == "true"
+    assert git(candidate, "rev-list", "--all", "--count") == "3"
+    assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
     assert check.endswith("check plugins/sarj-skills")
 
 
