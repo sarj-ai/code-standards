@@ -13,6 +13,11 @@ export interface PrivateScalarConsumer {
   readonly reads: ReadonlySet<string>;
 }
 
+interface ConsumerOptions {
+  readonly scalarCalls?: boolean;
+  readonly auxiliaryScalars?: boolean;
+}
+
 /** Erased assertions preserve direct lexical eval and its access to private bindings. */
 export function directEval(node: TSESTree.CallExpression): boolean {
   let callee = unwrapExpression(node.callee);
@@ -33,8 +38,19 @@ export function nullishPrimitiveUnion(node: ts.TypeNode | undefined): boolean {
     node.types.some((part) => part.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(part) && part.literal.kind === ts.SyntaxKind.NullKeyword));
 }
 
-export function consumerAnnotation(node: ScalarConsumerNode): TSESTree.TypeNode | undefined {
-  if (node.params.length !== 1) return undefined;
+export function consumerAnnotation(node: ScalarConsumerNode, auxiliaryScalars = false): TSESTree.TypeNode | undefined {
+  if (node.params.length !== 1) {
+    if (!auxiliaryScalars) return undefined;
+    let annotation: TSESTree.TypeNode | undefined;
+    for (const parameter of node.params) {
+      if (parameter.type !== AST_NODE_TYPES.Identifier && parameter.type !== AST_NODE_TYPES.ObjectPattern) continue;
+      const current = parameter.typeAnnotation?.typeAnnotation;
+      if (current?.type !== AST_NODE_TYPES.TSTypeLiteral) continue;
+      if (annotation) return undefined;
+      annotation = current;
+    }
+    return annotation;
+  }
   const parameter = node.params[0];
   return parameter?.type === AST_NODE_TYPES.Identifier || parameter?.type === AST_NODE_TYPES.ObjectPattern
     ? parameter.typeAnnotation?.typeAnnotation : undefined;
@@ -47,32 +63,57 @@ export function exportedSymbols(source: ts.SourceFile, checker: ts.TypeChecker):
     (entry.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(entry) : entry) : []);
 }
 
-export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, exports: ReadonlySet<ts.Symbol>, scalarCalls = false): PrivateScalarConsumer | null {
+export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, exports: ReadonlySet<ts.Symbol>, options: ConsumerOptions = {}): PrivateScalarConsumer | null {
   const native = services.esTreeNodeToTSNodeMap.get(node);
-  if ((!ts.isFunctionDeclaration(native) && !ts.isArrowFunction(native)) || !native.body || !independentSignature(native)) return null;
+  if ((!ts.isFunctionDeclaration(native) && !ts.isArrowFunction(native)) || !native.body) return null;
+  let parameter = native.parameters[0];
+  if (native.parameters.length !== 1) {
+    const annotation = consumerAnnotation(node, options.auxiliaryScalars);
+    const selected = annotation && services.esTreeNodeToTSNodeMap.get(annotation);
+    parameter = native.parameters.find((entry) => entry.type === selected);
+  }
+  if (!parameter || !independentSignature(native, parameter, options.auxiliaryScalars === true)) return null;
   const checker = services.program.getTypeChecker();
   if (!ts.isExternalModule(native.getSourceFile()) || !services.program.getCompilerOptions().strict) return null;
-  const parameter = native.parameters[0];
-  if (!parameter) return null;
-  const binding = callableBinding(node, sourceCode);
-  if (!binding || binding.defs.length !== 1) return null;
-  const name = ts.isFunctionDeclaration(native) ? native.name : ts.isVariableDeclaration(native.parent) ? native.parent.name : undefined;
-  const symbol = name && checker.getSymbolAtLocation(name);
-  if (!symbol || symbol.declarations?.length !== 1 || exports.has(symbol) || !directCalls(binding)) return null;
+  if (!privateDirectCallable(node, native, sourceCode, checker, exports)) return null;
   const signature = checker.getSignatureFromDeclaration(native);
   if (!signature || signature.typeParameters?.length || checker.getTypePredicateOfSignature(signature)) return null;
   const expression = returnedExpression(native.body);
   if (!expression || !checker.isTypeAssignableTo(checker.getTypeAtLocation(expression), checker.getReturnTypeOfSignature(signature))) return null;
-  const reads = scalarParameterReads(parameter, native.body, checker, scalarCalls ? services.program : undefined);
+  const auxiliaries = native.parameters.length > 1 ? auxiliaryBindings(native, parameter, checker) : undefined;
+  if (auxiliaries === null) return null;
+  const reads = scalarParameterReads(parameter, native.body, checker, options.scalarCalls ? services.program : undefined, auxiliaries);
   return reads?.size ? { parameter, reads } : null;
 }
 
+/** Match the sole private native declaration to its lexical binding and direct callers. */
+function privateDirectCallable(node: ScalarConsumerNode, native: ts.FunctionDeclaration | ts.ArrowFunction,
+  sourceCode: TSESLint.SourceCode, checker: ts.TypeChecker, exports: ReadonlySet<ts.Symbol>): boolean {
+  const binding = callableBinding(node, sourceCode);
+  if (!binding || binding.defs.length !== 1) return false;
+  const name = ts.isFunctionDeclaration(native) ? native.name : ts.isVariableDeclaration(native.parent) ? native.parent.name : undefined;
+  const symbol = name && checker.getSymbolAtLocation(name);
+  return symbol !== undefined && symbol.declarations?.length === 1 && !exports.has(symbol) && directCalls(binding, native.parameters.length);
+}
+
 /** An annotation supplied by an overload, callback or predicate is a separate contract. */
-function independentSignature(native: ts.FunctionDeclaration | ts.ArrowFunction): boolean {
-  if (native.parameters.length !== 1 || native.typeParameters?.length || native.asteriskToken || native.modifiers?.length || !primitiveKeyword(native.type)) return false;
-  const parameter = native.parameters[0];
-  return parameter !== undefined && parameter.type !== undefined && !parameter.modifiers?.length && !parameter.questionToken && !parameter.initializer && !parameter.dotDotDotToken &&
-    (!ts.isIdentifier(parameter.name) || parameter.name.text !== "this");
+function independentSignature(native: ts.FunctionDeclaration | ts.ArrowFunction, selected: ts.ParameterDeclaration, auxiliaryScalars: boolean): boolean {
+  if ((!auxiliaryScalars && native.parameters.length !== 1) || native.typeParameters?.length || native.asteriskToken || native.modifiers?.length || !primitiveKeyword(native.type)) return false;
+  return native.parameters.every((parameter) => parameter.type !== undefined && !parameter.modifiers?.length && !parameter.questionToken && !parameter.initializer && !parameter.dotDotDotToken &&
+    (!ts.isIdentifier(parameter.name) || parameter.name.text !== "this") &&
+    (parameter === selected || (ts.isIdentifier(parameter.name) && primitiveKeyword(parameter.type))));
+}
+
+/** Auxiliary values have their own exact parameter bindings, never object read keys. */
+function auxiliaryBindings(native: ts.FunctionDeclaration | ts.ArrowFunction, selected: ts.ParameterDeclaration, checker: ts.TypeChecker): ReadonlySet<ts.Symbol> | null {
+  const bindings = new Set<ts.Symbol>();
+  for (const parameter of native.parameters) {
+    if (parameter === selected) continue;
+    const symbol = ts.isIdentifier(parameter.name) ? checker.getSymbolAtLocation(parameter.name) : undefined;
+    if (!symbol || symbol.declarations?.length !== 1 || symbol.declarations[0] !== parameter || bindings.has(symbol)) return null;
+    bindings.add(symbol);
+  }
+  return bindings;
 }
 
 function callableBinding(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode): TSESLint.Scope.Variable | undefined {
@@ -86,13 +127,13 @@ function callableBinding(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCo
   return sourceCode.getDeclaredVariables(declaration).find((variable) => variable.defs.some((definition) => definition.type === "Variable" && definition.node === declaration));
 }
 
-function directCalls(binding: TSESLint.Scope.Variable): boolean {
+function directCalls(binding: TSESLint.Scope.Variable, arity: number): boolean {
   let calls = 0;
   const stable = stableValueBinding(binding, (reference) => {
     const identifier = reference.identifier;
     const call = identifier.parent;
     if (reference.isTypeReference || !reference.isReadOnly() || call.type !== AST_NODE_TYPES.CallExpression || call.callee !== identifier || call.optional || call.typeArguments ||
-      call.arguments.length !== 1 || call.arguments[0]?.type !== AST_NODE_TYPES.Identifier) return false;
+      call.arguments.length !== arity || !call.arguments.every((argument) => argument.type === AST_NODE_TYPES.Identifier)) return false;
     calls += 1;
     return true;
   });
