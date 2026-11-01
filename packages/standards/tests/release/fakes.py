@@ -22,10 +22,12 @@ class FakeRolloutRunner:
         *,
         probe_consumer_release: bool = True,
         closed_pull_responses: list[tuple[int, str]] | None = None,
+        stderr: str = "",
     ) -> None:
         self.probe_consumer_release = probe_consumer_release
         self.responses: list[tuple[int, str]] = list(responses or [])
         self.closed_pull_responses: list[tuple[int, str]] = list(closed_pull_responses or [])
+        self.stderr = stderr
         self.commands: list[tuple[str, ...]] = []
         self.environments: list[Mapping[str, str] | None] = []
         self.working_directories: list[Path | None] = []
@@ -49,9 +51,9 @@ class FakeRolloutRunner:
             returncode, stdout = 0, f"code-standards {version}"
         else:
             returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
-        result = subprocess.CompletedProcess(rendered, returncode, stdout, "")
+        result = subprocess.CompletedProcess(rendered, returncode, stdout, self.stderr)
         if check and returncode:
-            raise subprocess.CalledProcessError(returncode, rendered, output=stdout)
+            raise subprocess.CalledProcessError(returncode, rendered, output=stdout, stderr=self.stderr or None)
         return result
 
 

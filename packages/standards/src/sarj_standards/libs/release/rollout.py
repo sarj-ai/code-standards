@@ -1635,9 +1635,19 @@ def remove_retired_eslint_suppressions(repo: Path, runner: CommandRunner) -> fro
     return frozenset(changed)
 
 
+def verification_output(result: subprocess.CompletedProcess[str]) -> str:
+    return "\n".join(value.strip() for value in (result.stdout, result.stderr) if value)
+
+
 def verification_detail(result: subprocess.CompletedProcess[str]) -> str:
-    rendered = "\n".join(value.strip() for value in (result.stdout, result.stderr) if value)
-    return rendered[-4000:] or f"verification command exited {result.returncode}"
+    limit = 4000
+    rendered = verification_output(result)
+    if len(rendered) > limit and result.stdout and result.stderr:
+        stdout, stderr = result.stdout.strip(), result.stderr.strip()
+        if stdout and stderr:
+            stdout_tail = stdout[-max(limit // 2, limit - len(stderr) - 1) :]
+            rendered = stdout_tail + "\n" + stderr[-(limit - len(stdout_tail) - 1) :]
+    return rendered[-limit:] or f"verification command exited {result.returncode}"
 
 
 def process_failure_detail(error: subprocess.CalledProcessError) -> str:
@@ -2008,7 +2018,8 @@ def update_consumer_bundle(
                 msg = f"consumer package probe did not report Code Standards {version}"
                 raise RolloutError(msg)
             break
-        detail = verification_detail(result)
+        # Keep retry classification independent of the human-readable excerpt's stream budgets.
+        detail = verification_output(result)[-4000:]
         missing_release = (
             "No solution found when resolving tool dependencies" in detail
             and re.search(rf"there is no version of code-standards=={re.escape(version)}(?:\s|$)", detail) is not None
