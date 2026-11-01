@@ -20,6 +20,7 @@ interface ParameterView {
   readonly root: ts.Symbol | undefined;
   readonly aliases: ReadonlyMap<ts.Symbol, string>;
   readonly reads: Set<string>;
+  readonly auxiliaries: ReadonlySet<ts.Symbol> | undefined;
 }
 
 /** Accept one pure returned view, retaining every bound or inspected root field. */
@@ -28,11 +29,11 @@ export function scalarParameterView(parameter: ts.ParameterDeclaration, body: ts
 }
 
 /** Scalar consumers do not inherit the JSX runtime proof used by component views. */
-export function scalarParameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker, callProgram?: ts.Program): ReadonlySet<string> | null {
-  return parameterReads(parameter, body, checker, false, callProgram);
+export function scalarParameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker, callProgram?: ts.Program, auxiliaries?: ReadonlySet<ts.Symbol>): ReadonlySet<string> | null {
+  return parameterReads(parameter, body, checker, false, callProgram, auxiliaries);
 }
 
-function parameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker, jsx: boolean, callProgram?: ts.Program): ReadonlySet<string> | null {
+function parameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker, jsx: boolean, callProgram?: ts.Program, auxiliaries?: ReadonlySet<ts.Symbol>): ReadonlySet<string> | null {
   if (parameter.dotDotDotToken || parameter.initializer || ts.isArrayBindingPattern(parameter.name)) return null;
   const root = ts.isIdentifier(parameter.name) ? checker.getSymbolAtLocation(parameter.name) : undefined;
   if (ts.isIdentifier(parameter.name) && !root) return null;
@@ -40,7 +41,7 @@ function parameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody
   const aliases = parameterAliases(parameter.name, checker, reads);
   if (!aliases) return null;
   const expression = returnedExpression(body);
-  const view = { checker, props: checker.getTypeAtLocation(parameter), root, aliases, reads, callProgram };
+  const view = { checker, props: checker.getTypeAtLocation(parameter), root, aliases, reads, callProgram, auxiliaries };
   return expression && scalarView(expression, view, jsx) ? reads : null;
 }
 
@@ -77,6 +78,7 @@ function scalarView(node: ts.Node, view: ParameterView, jsx = false): boolean {
   if (ts.isJsxExpression(node)) return !node.dotDotDotToken && (!node.expression || scalarView(node.expression, view, jsx));
   if (ts.isIdentifier(node)) {
     const binding = view.checker.getSymbolAtLocation(node);
+    if (binding && view.auxiliaries?.has(binding)) return scalarType(view.checker.getTypeAtLocation(node));
     const key = binding && view.aliases.get(binding);
     return key !== undefined && readField(node, key, view);
   }

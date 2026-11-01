@@ -189,3 +189,43 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract scalar helpers", 
       code: `${PREFIX}${SCALAR_HELPER}${HELPER_CONSUMER}declare const opaque: {name: string; email: any}; label(account); label(opaque);`, output: null, errors: [{messageId: "minimal"}]},
   ],
 });
+
+const AUXILIARY_PREFIX = `${PREFIX}const text = 'x';`;
+PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary correspondence", rule, {
+  valid: [
+    ...[
+      ["optional auxiliary", `function label(p: ${INLINE_CONTRACT}, text?: string): string {return (text ?? '') + p.name;}`],
+      ["default auxiliary", `function label(p: ${INLINE_CONTRACT}, text: string = 'x'): string {return text + p.name;}`],
+      ["rest auxiliary", `function label(p: ${INLINE_CONTRACT}, ..._text: string[]): string {return p.name;}`],
+      ["explicit this is not a runtime argument", `function label(this: void, p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;}`],
+      ["literal auxiliary domain", `function label(p: ${INLINE_CONTRACT}, text: 'x'): string {return text + p.name;}`],
+      ["generic auxiliary", `function label<T extends string>(p: ${INLINE_CONTRACT}, text: T): string {return text + p.name;}`],
+      ["auxiliary member access", `function label(p: ${INLINE_CONTRACT}, text: string): string {return text.length + p.name;}`],
+      ["free scalar is not an auxiliary parameter", `function label(p: ${INLINE_CONTRACT}, _other: string): string {return text + p.name;}`],
+      ["scalar auxiliary cannot establish required object read", "const input = {...account, spare: 's'}; function label(p: {name?: string; email: string; spare: string}, email: string): string {return email + (p.name ?? '');}", "input"],
+      ["all optional object remains excluded", "function label(p: {name?: string; email?: string}, text: string): string {return text + (p.name ?? '');}"],
+      ["all object fields read", `function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name + p.email;}`],
+    ].map(([name, declaration, argument = "account"]) => ({name, filename: "probe.tsx", code: `${AUXILIARY_PREFIX}${declaration}label(${argument}, text);`})),
+    {name: "destructured auxiliary", filename: "probe.tsx", code: `${AUXILIARY_PREFIX}const extra = {text}; function label(p: ${INLINE_CONTRACT}, {text}: {text: string}): string {return text + p.name;} label(account, extra);`},
+    {name: "literal argument is outside identifier callers", filename: "probe.tsx", code: `${PREFIX}function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;} label(account, 'x');`},
+  ],
+  invalid: [
+    ...[
+      ["selected object first", `function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;}`, "account, text"],
+      ["selected object middle", `function label(left: string, p: ${INLINE_CONTRACT}, right: string): string {return left + p.name + right;}`, "text, account, text"],
+      ["selected object last", `function label(text: string, p: ${INLINE_CONTRACT}): string {return text + p.name;}`, "text, account"],
+      ["matching auxiliary name is not an object read", `function label(p: ${INLINE_CONTRACT}, email: string): string {return p.name + email;}`, "account, text"],
+      ["destructured object aliases remain reads", `function label({name: displayName}: ${INLINE_CONTRACT}, text: string): string {return text + displayName;}`, "account, text"],
+      ["const arrow auxiliary", `const label = (text: string, p: ${INLINE_CONTRACT}): string => text + p.name;`, "text, account"],
+      ["local helper accepts certified leaves", `function join(left: string, right: string): string {return left + right;} function label(p: ${INLINE_CONTRACT}, text: string): string {return join(text, p.name);}`, "account, text"],
+    ].map(([name, declaration, args]) => {
+      const code = `${AUXILIARY_PREFIX}${declaration}label(${args});`;
+      return {name, filename: "probe.tsx", code, output: code.replace("readonly email: string", ""), errors: [{messageId: "minimal" as const, data: {used: "name", unused: "email"}}]};
+    }),
+    ...["any", "unknown", "number"].map((type) => ({name: "unsafe or invalid original auxiliary " + type, filename: "probe.tsx", code: `${PREFIX}declare const text: ${type}; function label(p: ${INLINE_CONTRACT}, text: string): string {return text + p.name;} label(account, text);`, output: null, errors: [{messageId: "minimal" as const}]})),
+    ...NULLISH_PRIMITIVES.map(([type, value]) => {
+      const code = `${PREFIX}const auxiliary = ${value}; function label(p: ${INLINE_CONTRACT}, auxiliary: ${type}): string {return \`\${p.name}\${auxiliary}\`;} label(account, auxiliary);`;
+      return {name: "broad primitive auxiliary " + type, filename: "probe.tsx", code, output: code.replace("readonly email: string", ""), errors: [{messageId: "minimal" as const}]};
+    }),
+  ],
+});
