@@ -66,6 +66,34 @@ def test_visible_release_installs_without_waiting() -> None:
     assert runner.environments == [{}, {"SARJ_STANDARDS_BOOTSTRAPPED": "1"}]
 
 
+@pytest.mark.parametrize(("padding", "retry"), [(2100, True), (4100, False)])
+def test_release_visibility_classification_preserves_its_complete_output_tail(padding: int, retry: bool) -> None:
+    stderr = (
+        "No solution found when resolving tool dependencies\n"
+        + "x" * padding
+        + f"\nthere is no version of code-standards=={VERSION}\n"
+    )
+    runner = FakeRolloutRunner(
+        [(1, "x" * 3000), (0, f"code-standards {VERSION}"), (0, "updated")],
+        probe_consumer_release=False,
+        stderr=stderr,
+    )
+    sleeps: list[float] = []
+
+    if retry:
+        rollout.update_consumer_bundle(Path("consumer"), VERSION, runner, (), TOOL, environment={}, sleep=sleeps.append)
+        assert len(runner.commands) == 3
+        assert runner.commands[0] == runner.commands[1]
+        assert runner.commands[-1][-3:] == ("update", "--to", VERSION)
+    else:
+        with pytest.raises(subprocess.CalledProcessError):
+            rollout.update_consumer_bundle(
+                Path("consumer"), VERSION, runner, (), TOOL, environment={}, sleep=sleeps.append
+            )
+        assert len(runner.commands) == 1
+    assert sleeps == ([rollout.RELEASE_VISIBILITY_DELAY.total_seconds()] if retry else [])
+
+
 def test_missing_consumer_release_stops_at_the_visibility_deadline() -> None:
     runner = FakeRolloutRunner([(1, NOT_VISIBLE)] * rollout.RELEASE_VISIBILITY_ATTEMPTS, probe_consumer_release=False)
     sleeps: list[float] = []
