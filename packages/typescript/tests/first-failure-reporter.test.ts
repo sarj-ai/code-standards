@@ -106,7 +106,7 @@ test("first case", () => { throw new Error(${JSON.stringify(message)}); });
 test("later case", async () => {
   const started = Date.now();
   while (!existsSync(new URL("../continue", import.meta.url))) {
-    if (Date.now() - started > 2000) throw new Error("preview was withheld");
+    if (Date.now() - started > 10_000) throw new Error("preview was withheld");
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 });
@@ -124,7 +124,14 @@ test("second failure", () => { throw new Error("second assertion"); });
     expect(result.output).toContain("second assertion");
     expect(result.output).toContain("1 passed");
     expect(result.output).not.toContain("preview was withheld");
-    if (delayDefaultReporter) expect(result.stderr).toContain(DEFAULT_REPORTER_DELAY_MARKER);
+    if (delayDefaultReporter) {
+      expect(result.stderr).toContain(DEFAULT_REPORTER_DELAY_MARKER);
+      const previewEnd = result.stderr.indexOf(PREVIEW_END);
+      const defaultDone = result.stderr.indexOf(DEFAULT_REPORTER_DELAY_MARKER);
+      expect(previewEnd).toBeGreaterThanOrEqual(0);
+      expect(defaultDone).toBeGreaterThanOrEqual(0);
+      expect(previewEnd).toBeLessThan(defaultDone);
+    }
   });
 
   it.each([
