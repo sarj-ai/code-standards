@@ -40,6 +40,7 @@ async function resolveRepositoryConfig(
   capacity: string | undefined,
   options: { maxWorkers?: number; fileParallelism?: boolean } = {},
   nativeBudget?: string,
+  workerBudget?: string,
 ): Promise<Record<string, unknown>> {
   const root = await mkdtemp(join(tmpdir(), "sarj-vitest-budget-"));
   try {
@@ -47,8 +48,10 @@ async function resolveRepositoryConfig(
     const environment: NodeJS.ProcessEnv = { ...process.env, XDG_DATA_HOME: join(root, "private-data") };
     delete environment["VITEST_MAX_WORKERS"];
     delete environment["SARJ_LOCAL_CHECK_JOBS"];
+    delete environment["SARJ_LOCAL_CHECK_WORKERS"];
     if (capacity !== undefined) environment["SARJ_LOCAL_CHECK_JOBS"] = capacity;
     if (nativeBudget !== undefined) environment["VITEST_MAX_WORKERS"] = nativeBudget;
+    if (workerBudget !== undefined) environment["SARJ_LOCAL_CHECK_WORKERS"] = workerBudget;
     const output = execFileSync(process.execPath, [
       "--input-type=module", "--eval", CONFIGURATION_PROBE, CONFIG_PATH, JSON.stringify(options),
     ], { cwd: root, env: environment, encoding: "utf8", timeout: 15_000 });
@@ -102,9 +105,24 @@ describe("native repository Vitest worker configuration", () => {
     expect(baseline).toMatchObject({ globals: false, testTimeout: 60_000, hookTimeout: 60_000 });
   });
 
+  it.each(["1", "2", String(AVAILABLE_CPUS + 1)])("uses worker budget %s independently of sixteen admission slots", async (budget) => {
+    expect(await resolveRepositoryConfig("16", {}, undefined, budget))
+      .toEqual(withBudget(baseline, Math.min(AVAILABLE_CPUS, Number(budget))));
+  });
+
+  it.each(["", "invalid", "0", "-1", "1.5", "0x3", "03", "9007199254740992"])(
+    "retains the legacy capacity budget for invalid worker budget %s", async (budget) => {
+      expect(await resolveRepositoryConfig("3", {}, undefined, budget))
+        .toEqual(withBudget(baseline, Math.max(1, Math.floor(AVAILABLE_CPUS / 3))));
+    },
+  );
+
   it("retains native explicit worker, environment and serial options", async () => {
     expect(await resolveRepositoryConfig("3", { maxWorkers: 4 })).toEqual(withBudget(baseline, 4));
     expect(await resolveRepositoryConfig("3", { maxWorkers: 4 }, "5")).toEqual(withBudget(baseline, 5));
     expect(await resolveRepositoryConfig("3", { fileParallelism: false })).toEqual(withBudget(baseline, 1));
+    expect(await resolveRepositoryConfig("16", { maxWorkers: 4 }, undefined, "2")).toEqual(withBudget(baseline, 4));
+    expect(await resolveRepositoryConfig("16", { maxWorkers: 4 }, "5", "2")).toEqual(withBudget(baseline, 5));
+    expect(await resolveRepositoryConfig("16", { fileParallelism: false }, undefined, "2")).toEqual(withBudget(baseline, 1));
   });
 });

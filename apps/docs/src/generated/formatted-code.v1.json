@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9093665af9951a71153f079f1b4483769f207c4ea654d00977b34b2b1ea23bb6",
+  "catalogSha256": "c544992db9e140bdbb9e9fa3b64278f206e3c0f5c1a42323234f0bcebe46e1c7",
   "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -15501,6 +15501,36 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/contracts.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass FilePort(ABC):\n    @abstractmethod\n    def move(self, file_id: str, folder_id: str) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/contracts.py",
+          "id": "owned-abstract-contract-id-roles",
+          "outcome": "reject",
+          "scenarioId": "owned-contract",
+          "title": "Abstract contracts declare their own nominal ID boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/contracts.py",
+              "source": "from abc import ABC, abstractmethod\nfrom typing import NewType\n\nFileId = NewType(\"FileId\", str)\nFolderId = NewType(\"FolderId\", str)\n\n\nclass FilePort(ABC):\n    @abstractmethod\n    def move(self, file_id: FileId, folder_id: FolderId) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/contracts.py",
+          "id": "owned-abstract-contract-nominal-ids",
+          "outcome": "accept",
+          "scenarioId": "owned-contract",
+          "title": "Abstract contracts use distinct domain identifiers"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/services/files.py",
               "source": "def move(file_id: str, parent_folder_id: str) -> None: ...\n"
             }
@@ -15909,30 +15939,30 @@
           "files": [
             {
               "path": "tests/conftest.py",
-              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> Store:\n    return SqlStore()\n"
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\nclass Router:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n\n\n@pytest.fixture\ndef router(store: Store) -> Router:\n    return Router(store=store)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/conftest.py",
-          "id": "abstract-store-fixture",
+          "id": "abstract-injected-collaborator",
           "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "The fixture constructs SQL storage and exposes its contract"
+          "scenarioId": "injected-collaborator",
+          "title": "The composition fixture accepts the existing collaborator contract"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "tests/conftest.py",
-              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n"
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\nclass Router:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n\n\n@pytest.fixture\ndef router(store: SqlStore) -> Router:\n    return Router(store=store)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/conftest.py",
-          "id": "concrete-store-fixture",
+          "id": "concrete-injected-collaborator",
           "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "The fixture exposes its storage implementation"
+          "scenarioId": "injected-collaborator",
+          "title": "A composition fixture exposes a concrete collaborator parameter"
         }
       ],
       "optionsSchemaSource": null

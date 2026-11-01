@@ -97,7 +97,7 @@ requires-dist = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.6.1"
+version = "0.6.2"
 source = { editable = "packages/contracts" }
 
 [package.metadata]

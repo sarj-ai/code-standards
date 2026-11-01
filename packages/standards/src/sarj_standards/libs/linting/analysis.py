@@ -32,6 +32,7 @@ from sarj_standards.libs.diagnostics import (
 from sarj_standards.libs.rules import RuleEngine, RuleSelection
 
 from . import textlint
+from .process import raise_if_cancelled
 from .runner import GroupedPaths, group_paths
 
 
@@ -270,6 +271,7 @@ def _native_report(
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
+    raise_if_cancelled(None)
     try:
         return _run_native(
             name, package, files, root, sources=sources, python_baseline=python_baseline, rule_ids=rule_ids
@@ -315,6 +317,7 @@ def _run_native(
         )
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
+    raise_if_cancelled(None)
     cache: dict[Path, SourceDocument | PythonSourceDocument | None] = {}
     resolved_paths: dict[Path, Path] = {}
     diagnostics = tuple(
@@ -552,6 +555,7 @@ def _text_report(
 ) -> ToolReport | None:
     if not grouped.text or rule_ids == frozenset():
         return None
+    raise_if_cancelled(None)
     try:
         return _run_text(grouped.text, root, sources=sources, rule_ids=rule_ids)
     except Exception as exc:  # ruff: ignore[blind-except] -- retain results from independent analyzers.
@@ -572,6 +576,7 @@ def _run_text(
         for finding in textlint.check_paths(files, root=root, rule_ids=rule_ids, sources=sources)
         if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
     )
+    raise_if_cancelled(None)
     by_code = {meta.code: (rule_id, meta.description, meta.blocking) for rule_id, meta in textlint.REGISTRY.items()}
     documents: dict[Path, SourceDocument] = {}
     diagnostics = tuple(_normalize_text(item, root, by_code, documents, sources=sources) for item in raw)
