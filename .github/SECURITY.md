@@ -5,3 +5,23 @@
 Report vulnerabilities privately through the [GitHub security advisory form](https://github.com/sarj-ai/code-standards/security/advisories/new). Do not open a public issue for an undisclosed vulnerability.
 
 The default branch and latest published version of each package receive security fixes. Maintainers will acknowledge a report within two business days and coordinate disclosure after a fix.
+
+## Application security policy
+
+Keep private endpoints behind verified application authentication or Cloudflare Access, including preview and direct platform hostnames. Use scoped server credentials; browser bundles and native configuration must not contain reusable service credentials. Scan the built browser artifact as well as source before deployment. The reusable Public credential policy accepts a `browser_artifact_name` input from a completed build job, verifies the downloaded artifact digest, and fails on Gitleaks findings without printing credential values. A source-only result does not qualify a browser artifact. Existing callers retain their permissions and source checks.
+
+## Deployed response policy
+
+Run `code-standards web-security web-policy.json` in a trusted deployment verification job. Exit 0 means the declared probes passed, 1 means policy violations, and 2 means invalid input or incomplete execution. Declare every retained production, preview, `pages.dev`, and `workers.dev` entrypoint that is reachable; successful probes do not prove coverage of undeclared routes.
+
+```json
+{"schema_version":1,"targets":[{"name":"home","url":"https://app.example.com/","kind":"html","permissions":{"camera":[],"geolocation":[],"microphone":["self"]}},{"name":"private-api","url":"https://app.example.com/api/private","kind":"private","login_hosts":["team.cloudflareaccess.com"]}]}
+```
+
+HTML probes require a nonce/hash script CSP, restricted framing, explicit browser feature permissions, nosniff, a privacy-preserving referrer policy, and at least one year of HSTS by default. An explicit `hsts_min_age: 300` override supports an initial HTTPS rollout. Use `csp_mode: report-only` during an explicit script-policy migration; framing remains enforced. Approve microphone origins for voice applications. Choose `frame_ancestors` for approved embedding origins. HSTS subdomain coverage and preload require separate HTTPS inventory review. The `api` profile is for sensitive API responses and requires no-store; edge cache bypass must also be configured. Cookie probes validate only declared `session_cookies`; set `require_session_cookie` on an endpoint expected to issue one.
+
+A `private` probe is anonymous and must return an authentication challenge, an explicitly declared application denial header, or an HTTPS redirect to an exact `login_hosts` entry. A generic 403 or Cloudflare challenge is insufficient. Add a separate authenticated HTML/API probe using `request_headers_env` to map credential header names to environment variable names. The operator must independently set `CODE_STANDARDS_WEB_CREDENTIAL_HOSTS` to the exact allowed hosts. Probes never follow redirects and credential values stay out of reports. Run credentialed probes only in trusted jobs with protected credentials, never against untrusted PR code. These checks inspect declared responses; they do not establish authorization correctness, nonce unpredictability, or edge cache behavior.
+
+## Source analysis
+
+The shared ESLint preset checks dynamic shell execution, bidirectional source controls, and unsafe HTML insertion. DOMPurify sanitization and literal HTML remain supported. Review hotspot warnings before promotion; do not add broad suppressions. Python retains Ruff's security rules. CodeQL, dependency review and source secret scanning remain independent controls. Cloudflare zone response-header rules can set a shared baseline; application responses and direct platform URLs require verification too.
