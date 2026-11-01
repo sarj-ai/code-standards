@@ -149,7 +149,6 @@ interface PrimitiveProof {
   readonly checker: ts.TypeChecker;
   readonly services: ParserServicesWithTypeInformation;
   readonly sourceCode: TSESLint.SourceCode;
-  readonly staticScope: boolean;
   readonly exports: ReadonlySet<ts.Symbol>;
   readonly values: WeakSet<ts.Node>;
   readonly objects: WeakMap<ts.Symbol, ReadonlyMap<string, TSESTree.Property> | null>;
@@ -202,7 +201,7 @@ function primitiveResult(value: ts.Node, proof: PrimitiveProof, active: Set<ts.N
 
 /** A const binding alone does not prevent its object's fields being mutated or exposed. */
 function primitiveMember(node: ts.PropertyAccessExpression | ts.ElementAccessExpression, proof: PrimitiveProof, active: Set<ts.Node>): boolean {
-  if (!proof.staticScope || !ts.isIdentifier(node.expression)) return false;
+  if (!ts.isIdentifier(node.expression)) return false;
   const key = ts.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression &&
     (ts.isStringLiteralLike(node.argumentExpression) || ts.isNumericLiteral(node.argumentExpression)) ? node.argumentExpression.text : undefined;
   const symbol = proof.checker.getSymbolAtLocation(node.expression);
@@ -262,7 +261,7 @@ function privateElementDeclaration(opening: TSESTree.JSXOpeningElement): TSESTre
 
 /** Only unused private const elements or fixed consumed scalar inspections are closed. */
 function closedElementValue(opening: TSESTree.JSXOpeningElement, declaration: TSESTree.VariableDeclarator, fields: ReadonlyMap<string, TSESTree.Property>, reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
-  if (!proof.staticScope || !closedInvocation(opening, proof) || !constInitializer(proof.services.esTreeNodeToTSNodeMap.get(declaration))) return false;
+  if (!closedInvocation(opening, proof) || !constInitializer(proof.services.esTreeNodeToTSNodeMap.get(declaration))) return false;
   const binding = proof.sourceCode.getDeclaredVariables(declaration).find((variable) => variable.defs.some((definition) => definition.type === "Variable" && definition.node === declaration));
   const symbol = proof.checker.getSymbolAtLocation(proof.services.esTreeNodeToTSNodeMap.get(declaration.id));
   if (!symbol || proof.exports.has(symbol)) return false;
@@ -352,7 +351,7 @@ export default createRule<[], "excess">({
       const signature = contract.signature;
       if (!receivers.has(signature)) receivers.set(signature, receiverReads(signature, checker));
       const reads = receivers.get(signature);
-      proof ??= { checker, services, sourceCode: context.sourceCode, staticScope: !dynamic,
+      proof ??= { checker, services, sourceCode: context.sourceCode,
         exports: exportedSymbols(services.esTreeNodeToTSNodeMap.get(context.sourceCode.ast), checker), values: new WeakSet(), objects: new WeakMap(), invocations: new WeakMap() };
       if (!reads || !ownScalarReads(fields, reads, proof) || !closedElementValue(opening, declaration, fields, reads, proof)) return;
       const implementation = signature.getDeclaration();
@@ -372,7 +371,7 @@ export default createRule<[], "excess">({
       },
       CallExpression(node): void { if (directEval(node)) dynamic = true; },
       "Program:exit"(): void {
-        if (!candidates.length) return;
+        if (!candidates.length || dynamic) return;
         services = ESLintUtils.getParserServices(context);
         if (!currentNativeSource(context.sourceCode, services)) return;
         for (const {node, declaration, fields} of candidates) evaluate(node, declaration, fields);
