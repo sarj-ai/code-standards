@@ -351,6 +351,7 @@
       "no-select-star",
       "no-sentinel-return-on-catch",
       "no-server-env-in-client-component",
+      "no-server-file-uploads",
       "no-silent-promise-catch",
       "no-sleep-in-test-body",
       "no-storage-in-stateless-modules",

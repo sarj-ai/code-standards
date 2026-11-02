@@ -93,6 +93,10 @@ def test_named_models_and_reasoned_exceptions_are_allowed(config: Path, source: 
 @pytest.mark.parametrize(
     ("api", "remediation"),
     [
+        ("fastapi.File", "Use a pre-signed URL"),
+        ("fastapi.param_functions.File", "Use a pre-signed URL"),
+        ("fastapi.params.File", "Use a pre-signed URL"),
+        ("fastapi.UploadFile", "Use a pre-signed URL"),
         ("yaml.unsafe_load", "Use safe_load/safe_load_all"),
         ("yaml.unsafe_load_all", "Use safe_load/safe_load_all"),
         ("asyncio.create_subprocess_shell", "Prefer create_subprocess_exec with separate arguments"),

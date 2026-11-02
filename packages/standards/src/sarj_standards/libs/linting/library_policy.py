@@ -369,6 +369,14 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "eslint",
         "TSLint is deprecated; use ESLint with typescript-eslint.",
     ),
+    _mapping(
+        "LIB120",
+        "typescript",
+        "preferred-stack",
+        "multer,formidable,busboy,@fastify/multipart,express-fileupload,multiparty",
+        "direct object-storage uploads with signed URLs",
+        "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    ),
 )
 
 

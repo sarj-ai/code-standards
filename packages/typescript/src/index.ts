@@ -84,6 +84,7 @@ import noRestatedComment from "./rules/no-restated-comment.js";
 import noRestatedJsdoc from "./rules/no-restated-jsdoc.js";
 import noSecretInLog from "./rules/no-secret-in-log.js";
 import noServerEnvInClientComponent from "./rules/no-server-env-in-client-component.js";
+import noServerFileUploads from "./rules/no-server-file-uploads.js";
 import noSelectStar from "./rules/no-select-star.js";
 import noSentinelReturnOnCatch from "./rules/no-sentinel-return-on-catch.js";
 import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
@@ -235,6 +236,7 @@ const RULES = {
   "no-restated-jsdoc": noRestatedJsdoc,
   "no-secret-in-log": noSecretInLog,
   "no-server-env-in-client-component": noServerEnvInClientComponent,
+  "no-server-file-uploads": noServerFileUploads,
   "no-select-star": noSelectStar,
   "no-sentinel-return-on-catch": noSentinelReturnOnCatch,
   "no-silent-promise-catch": noSilentPromiseCatch,
@@ -434,6 +436,7 @@ const RULE_POLICY = {
   "@sarj/no-restated-jsdoc": ["warn", "both"],
   "@sarj/no-secret-in-log": ["error", "both"],
   "@sarj/no-server-env-in-client-component": ["error", "both"],
+  "@sarj/no-server-file-uploads": ["warn", "both"],
   "@sarj/no-select-star": ["error", "both"],
   "@sarj/no-sentinel-return-on-catch": ["error", "both"],
   "@sarj/no-silent-promise-catch": ["error", "both"],

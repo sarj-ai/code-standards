@@ -4,7 +4,7 @@
 
 One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy.
 
-Every repository receives one complete policy, including all 42 library policies. There is no standard/application selection. Legacy profile fields and preset filenames remain read-compatible aliases; newly written manifests omit the profile field. Warning-stage rules retain their reviewed severity. Rules requiring repository-specific boundaries still require those explicit options.
+Every repository receives one complete policy, including all 43 library policies. There is no standard/application selection. Legacy profile fields and preset filenames remain read-compatible aliases; newly written manifests omit the profile field. Warning-stage rules retain their reviewed severity. Rules requiring repository-specific boundaries still require those explicit options.
 
 Adopt the complete policy, local hooks, and CI with one command:
 
