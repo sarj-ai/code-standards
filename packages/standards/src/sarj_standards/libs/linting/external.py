@@ -2446,8 +2446,9 @@ def ruff_project_groups(files: Sequence[str], root: Path) -> tuple[tuple[Path, P
     grouped: dict[tuple[Path, Path | None], list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        config = nearest(path.parent) or fallback
-        project = root if config is None or config == fallback else config.parent
+        nearest_config = nearest(path.parent)
+        config = nearest_config or fallback
+        project = root if nearest_config is None else nearest_config.parent
         grouped.setdefault((project, config), []).append(str(path))
     return tuple(
         (project, config, tuple(sorted(scoped_files)))

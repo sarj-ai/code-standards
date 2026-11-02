@@ -280,7 +280,7 @@ def test_selected_ruff_formatter_executes_with_fallback_line_length(tmp_path: Pa
     assert source.read_text(encoding="utf-8") == original
 
 
-def _root_scoped_ruff_sources(root: Path) -> tuple[Path, ...]:
+def _adopted_ruff_sources(root: Path) -> tuple[Path, ...]:
     project = root / "python"
     project.mkdir()
     (project / "pyproject.toml").write_text(
@@ -288,9 +288,9 @@ def _root_scoped_ruff_sources(root: Path) -> tuple[Path, ...]:
         '[tool.ruff.per-file-target-version]\n"tools/legacy/**" = "py311"\n'
         '[tool.ruff.lint]\npreview = true\nselect = ["UP035", "TC002", "S404", "S603", "TRY301"]\n'
         "[tool.ruff.lint.per-file-ignores]\n"
-        '"python/feature/**/tests/**" = ["TC002"]\n'
-        '"python/scripts/test_command.py" = ["S404", "S603"]\n'
-        '"python/worker/**/tests/**" = ["TRY301"]\n',
+        '"feature/**/tests/**" = ["TC002"]\n'
+        '"scripts/test_command.py" = ["S404", "S603"]\n'
+        '"worker/**/tests/**" = ["TRY301"]\n',
         encoding="utf-8",
     )
     (root / manifest.MANIFEST_NAME).write_text(
@@ -346,7 +346,7 @@ def _root_scoped_ruff_sources(root: Path) -> tuple[Path, ...]:
 
 
 def test_ruff_analysis_resolves_adopted_policy_from_repository_root(tmp_path: Path) -> None:
-    sources = _root_scoped_ruff_sources(tmp_path)
+    sources = _adopted_ruff_sources(tmp_path)
     controls = tmp_path / "controls"
     controls.mkdir()
     uncovered: list[Path] = []
@@ -372,7 +372,7 @@ def test_ruff_analysis_resolves_adopted_policy_from_repository_root(tmp_path: Pa
 
 
 def test_ruff_fix_and_format_preserve_adopted_compatibility_and_ignores(tmp_path: Path) -> None:
-    sources = _root_scoped_ruff_sources(tmp_path)
+    sources = _adopted_ruff_sources(tmp_path)
     originals = {source: source.read_bytes() for source in sources}
     commands = lifecycle.selected_format_commands(tmp_path, [str(source) for source in sources])
 
@@ -383,7 +383,7 @@ def test_ruff_fix_and_format_preserve_adopted_compatibility_and_ignores(tmp_path
 
 
 def test_ruff_preserves_distinct_package_config_context(tmp_path: Path) -> None:
-    legacy, _, command_source, _ = _root_scoped_ruff_sources(tmp_path)
+    legacy, _, command_source, _ = _adopted_ruff_sources(tmp_path)
     project = tmp_path / "plugins/native"
     project.mkdir(parents=True)
     (project / "ruff.toml").write_text(
