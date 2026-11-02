@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 _ROOT = Path(__file__).resolve().parents[3]
 _BEFORE = b"/* eslint-disable no-alert */\nexport const original = 1;\n"
 _AFTER = b"\nexport const original = 1;\n"
+_NUL_SOURCE = b"/* eslint-disable no-control-regex */\nexport const control = /\0/;\n"
 
 
 def _git(root: Path, *arguments: str) -> bytes:
@@ -395,6 +396,41 @@ def test_string_candidacy_does_not_invent_a_directive_rewrite(tmp_path: Path) ->
     assert (tmp_path / "source.js").read_bytes() == source
 
 
+@pytest.mark.parametrize("output", [None, _NUL_SOURCE.decode()], ids=["omitted-output", "identical-output"])
+@pytest.mark.parametrize("remaining_error", [False, True], ids=["clean-audit", "retained-finding"])
+def test_utf8_nul_source_is_audited_without_a_rewrite(
+    tmp_path: Path, output: str | None, remaining_error: bool
+) -> None:
+    _project(tmp_path, {"source.js": _NUL_SOURCE})
+    index = (tmp_path / ".git/index").read_bytes()
+    native = _native(
+        _result(tmp_path / "source.js", output, remaining_error=remaining_error), status=int(remaining_error)
+    )
+
+    assert not eslint_directives.plan(tmp_path, ["source.js"], run=native)
+    assert len(native.calls) == 1
+    assert (tmp_path / "source.js").read_bytes() == _NUL_SOURCE
+    assert (tmp_path / ".git/index").read_bytes() == index
+
+
+@pytest.mark.parametrize(
+    "output",
+    [_NUL_SOURCE.replace(b"/* eslint-disable no-control-regex */\n", b""), b"export const control = /\\0/;\n"],
+    ids=["retained-nul", "removed-nul"],
+)
+def test_nul_preimages_never_authorize_a_changed_postimage(tmp_path: Path, output: bytes) -> None:
+    _project(tmp_path, {"source.js": _NUL_SOURCE})
+    index = (tmp_path / ".git/index").read_bytes()
+    native = _native(_result(tmp_path / "source.js", output.decode()))
+
+    with pytest.raises(ValueError, match="binary content"):
+        eslint_directives.plan(tmp_path, ["source.js"], run=native)
+
+    assert len(native.calls) == 1
+    assert (tmp_path / "source.js").read_bytes() == _NUL_SOURCE
+    assert (tmp_path / ".git/index").read_bytes() == index
+
+
 @pytest.mark.parametrize("coverage", ["none", "partial"])
 def test_canonical_selection_must_cover_all_eligible_inputs_without_any_source_write(
     tmp_path: Path,
@@ -456,6 +492,9 @@ def test_native_global_config_exclusion_remains_outside_directive_cleanup(tmp_pa
     ("name", "content"),
     [
         ("plain.js", b"export const value = 1;\n"),
+        ("nul.js", b"export const value = /\0/;\n"),
+        ("binary.js", b"\0\xff"),
+        ("non-utf8.js", b"\xff"),
         ("build/generated.js", _BEFORE),
         ("source.generated.ts", _BEFORE),
         ("generated.js", b"// @generated -- DO NOT EDIT\n" + _BEFORE),
@@ -603,7 +642,7 @@ def test_invalid_inputs_fail_before_native_execution(tmp_path: Path, case: str) 
         case "duplicate":
             paths *= 2
         case "binary" | "non-utf8":
-            source.write_bytes(b"x\0y" if case == "binary" else b"\xff")
+            source.write_bytes(_BEFORE + (b"\0\xff" if case == "binary" else b"\xff"))
         case "link":
             source.unlink()
             source.symlink_to(tmp_path / "package.json")
@@ -622,9 +661,12 @@ def test_invalid_inputs_fail_before_native_execution(tmp_path: Path, case: str) 
     assert not native.calls
 
 
-@pytest.mark.parametrize("change", ["source", "same-bytes", "mode", "index", "non-directive-input"])
+@pytest.mark.parametrize(
+    "change", ["source", "same-bytes", "mode", "index", "non-directive-input", "non-directive-binary-input"]
+)
 def test_dry_run_source_index_or_mode_races_invalidate_the_whole_plan(tmp_path: Path, change: str) -> None:
-    _project(tmp_path, {"source.js": _BEFORE, "other.js": b"export const other = 1;\n"})
+    other = b"binary\0data" if change == "non-directive-binary-input" else b"export const other = 1;\n"
+    _project(tmp_path, {"source.js": _BEFORE, "other.js": other})
     source = tmp_path / "source.js"
 
     def mutate() -> None:
@@ -635,6 +677,8 @@ def test_dry_run_source_index_or_mode_races_invalidate_the_whole_plan(tmp_path: 
                 _git(tmp_path, "update-index", "--assume-unchanged", "--", "source.js")
             case "non-directive-input":
                 (tmp_path / "other.js").write_bytes(b"export const changed = 2;\n")
+            case "non-directive-binary-input":
+                (tmp_path / "other.js").write_bytes(b"changed\0data")
             case "same-bytes" | "source":
                 source.write_bytes(_BEFORE if change == "same-bytes" else b"export const changed = 2;\n")
             case _:
@@ -794,7 +838,7 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     installed_node = shutil.which("node")
     assert installed_node is not None
     node = materialize_node_runtime(tmp_path, Path(installed_node))
-    _project(tmp_path, {"source.js": source_bytes, "unselected.js": _BEFORE})
+    _project(tmp_path, {"source.js": source_bytes, "unselected.js": _BEFORE, "nul-source.js": _NUL_SOURCE})
     assert local.roots["eslint"].version == "10.13.0"
     assert local.roots["prettier"].version == "3.9.10"
     (tmp_path / "package.json").write_text(
@@ -809,7 +853,8 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
         "Identifier(node){if(node.name==='original'){context.report({node,message:'Retained fixable problem',"
         "fix(fixer){return fixer.replaceText(node,'changed');}});}}};}};\n"
         "export default [{linterOptions:{reportUnusedDisableDirectives:'error'},"
-        "plugins:{fixture:{rules:{problem}}},rules:{'no-alert':'error','no-console':'error','fixture/problem':'error'}}];\n",
+        "plugins:{fixture:{rules:{problem}}},rules:{'no-alert':'error','no-console':'error',"
+        "'no-control-regex':'error','fixture/problem':'error'}}];\n",
         encoding="utf-8",
     )
     _git(tmp_path, "add", "--all")
@@ -835,7 +880,7 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
 
     before_index = (tmp_path / ".git/index").read_bytes()
 
-    expected = eslint_directives.plan(tmp_path, ["source.js"], run=native)
+    expected = eslint_directives.plan(tmp_path, ["source.js", "nul-source.js"], run=native)
 
     assert tuple(expected) == ("source.js",)
     assert b"no-alert" not in expected["source.js"].after
@@ -855,4 +900,5 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     assert [code for label, code in statuses if label.startswith("ESLint (")] == [1, 1]
     assert all(code == 0 for label, code in statuses if not label.startswith("ESLint ("))
     assert (tmp_path / "unselected.js").read_bytes() == _BEFORE
+    assert (tmp_path / "nul-source.js").read_bytes() == _NUL_SOURCE
     assert (tmp_path / ".git/index").read_bytes() == before_index
