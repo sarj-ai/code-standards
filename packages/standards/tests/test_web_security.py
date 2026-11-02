@@ -103,6 +103,47 @@ def test_voice_policy_allows_explicit_same_origin_microphone() -> None:
     assert web.evaluate(target, response) == []
 
 
+@pytest.mark.parametrize(
+    "permissions",
+    [
+        'camera=(), geolocation=(), microphone=("https://voice.example.com)',
+        'camera=(), geolocation=(), microphone=(), speaker-selection=("',
+        'camera=(), geolocation=(), microphone=();report-to="',
+        "camera=(), geolocation=(), microphone=(1)",
+        "camera=(), geolocation=(),\u2003microphone=()",
+    ],
+    ids=[
+        "unclosed-approved-origin",
+        "unclosed-extra-member",
+        "unclosed-reporting-parameter",
+        "numeric-origin",
+        "non-ascii-whitespace",
+    ],
+)
+def test_malformed_permissions_cannot_prove_browser_restrictions(permissions: str) -> None:
+    target = _target().model_copy(
+        update={"permissions": {"camera": [], "geolocation": [], "microphone": ["self", "https://voice.example.com"]}}
+    )
+    response = _replace(_response(), "Permissions-Policy", permissions)
+    assert [finding.check for finding in web.evaluate(target, response)] == ["browser-permissions"]
+
+
+@pytest.mark.parametrize(
+    "permissions",
+    [
+        'camera=(), geolocation=(), microphone=(self "https://voice.example.com");report-to=default, fullscreen=*',
+        "camera=(), geolocation=(), microphone=self",
+        'camera=(), geolocation=(), microphone=(), future-feature=("comma,value")',
+    ],
+    ids=["approved-voice-origins-and-reporting", "standalone-self", "unrelated-structured-string"],
+)
+def test_valid_structured_permissions_preserve_declared_voice_access(permissions: str) -> None:
+    target = _target().model_copy(
+        update={"permissions": {"camera": [], "geolocation": [], "microphone": ["self", "https://voice.example.com"]}}
+    )
+    assert web.evaluate(target, _replace(_response(), "Permissions-Policy", permissions)) == []
+
+
 def test_report_only_script_policy_still_enforces_framing() -> None:
     target = _target().model_copy(update={"csp_mode": "report-only"})
     response = _replace(_response(), "Content-Security-Policy", "frame-ancestors 'none'")

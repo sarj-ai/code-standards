@@ -14,7 +14,19 @@ import sys
 from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from http_sfv.dictionary import Dictionary
+from http_sfv.item import InnerList, Item
+from http_sfv.types import Token
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    InstanceOf,
+    RootModel,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from sarj_standards.libs.json_boundary import parse_unique_json
 
@@ -143,6 +155,10 @@ class Report(_StrictModel):
 class _ProbeRequest(_StrictModel):
     url: str
     headers: dict[str, str]
+
+
+class _PermissionsDictionary(RootModel[dict[str, InstanceOf[Item] | InstanceOf[InnerList]]]):
+    pass
 
 
 def evaluate(target: Target, response: Response) -> list[Finding]:
@@ -304,18 +320,33 @@ def _approved_framing(target: Target, response: Response) -> bool:
 
 
 def _approved_permissions(target: Target, response: Response) -> bool:
-    permissions = ",".join(response.values("permissions-policy"))
+    permissions = Dictionary()
+    try:
+        permissions.parse(",".join(response.values("permissions-policy")).encode("ascii"))
+        members = _PermissionsDictionary.model_validate(permissions).root
+    except UnicodeEncodeError, ValueError:
+        return False
     for feature, allowed in target.permissions.items():
-        directives = [
-            match.group(1) for match in re.finditer(r"(?:^|,)\s*" + re.escape(feature) + r"\s*=\s*([^,]*)", permissions)
-        ]
-        directive = re.fullmatch(r"\(([^)]*)\)\s*", directives[0]) if len(directives) == 1 else None
-        if directive is None:
-            return False
-        origins = [origin.strip('"') for origin in directive.group(1).split()]
-        if not set(origins) <= set(allowed):
+        origins = _permission_origins(members.get(feature))
+        if origins is None or not origins <= set(allowed):
             return False
     return True
+
+
+def _permission_origins(member: object) -> set[str] | None:
+    if isinstance(member, Item):
+        return {"self"} if isinstance(member.value, Token) and member.value == "self" else None
+    if not isinstance(member, InnerList):
+        return None
+    origins: set[str] = set()
+    for item in list[object](member):
+        if not isinstance(item, Item):
+            return None
+        value = item.value
+        if not isinstance(value, str) or (isinstance(value, Token) and value != "self"):
+            return None
+        origins.add(value)
+    return origins
 
 
 def _strict_csp(value: str) -> bool:
