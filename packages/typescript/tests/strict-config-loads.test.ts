@@ -73,7 +73,7 @@ const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", createStrictConfig],
   ["application", createApplicationConfig],
 ];
-const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
+const STRICT_CONFIG_FACTORY: ConfigFactory = createStrictConfig;
 const UNICORN_CONCISION_ADVISORY_RULES = [
   "unicorn/iteration-fallback-style",
   "unicorn/logical-assignment-operators",
@@ -100,7 +100,7 @@ function parserOptionsOf(config: Linter.Config[]): Record<string, unknown> {
 async function configFor(filePath: string): Promise<Linter.Config> {
   const eslint = new ESLint({
     overrideConfigFile: true,
-    overrideConfig: strictConfig as Linter.Config[],
+    overrideConfig: strictConfig,
     cwd: process.cwd(),
   });
   return (await eslint.calculateConfigForFile(filePath)) as Linter.Config;
@@ -557,13 +557,13 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     });
 
     expect(parserOptionsOf(configured).projectService).toBe(projectService);
-    expect(parserOptionsOf(strictConfig as Linter.Config[]).projectService).not.toBe(projectService);
+    expect(parserOptionsOf(strictConfig).projectService).not.toBe(projectService);
   });
 
   it("globally ignores generated output", async () => {
     const eslint = new ESLint({
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
       cwd: process.cwd(),
     });
     expect(await eslint.calculateConfigForFile("dist/generated.js")).toBeUndefined();
@@ -799,7 +799,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
   });
 
   it("scopes shadcn primitive guidance outside design-system implementations", () => {
-    const entries = applicationConfig as Linter.Config[];
+    const entries = applicationConfig;
     const globalEntry = entries.find(
       (entry) =>
         entry.rules?.["@sarj/prefer-shadcn-primitives"] === "error",
@@ -824,7 +824,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
 
   it("keeps only calibrated advisory custom rules below error severity", () => {
     const nonErrors = new Set([strictConfig, applicationConfig]
-      .flatMap((config) => config as Linter.Config[])
+      .flat()
       .flatMap((entry) => Object.entries(entry.rules ?? {}))
       .filter(
         ([rule, setting]) =>

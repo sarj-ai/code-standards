@@ -39,11 +39,13 @@ def _repository(root: Path) -> _RepositoryFiles:
         encoding="utf-8",
     )
     strict.write_text(
+        'import type { Linter } from "eslint";\n'
+        "export interface ConfigOptions { readonly projectService?: boolean | object; }\n"
         'const rules = {\n  "@sarj/first-rule": ["error", { option: true }],\n'
         '  "@sarj/second-rule": "warn",\n};\n'
-        "function createConfig() {\n  return [{\n          paths: [\n          ],\n"
+        "export function createConfig(options: ConfigOptions = {}): Linter.Config[] {\n  return [{\n          paths: [\n          ],\n"
         '          patterns: ["*/index", "*/index.ts"],\n'
-        "  }] as unknown as Linter.Config[];\n}\n\nconst config = createConfig();\nexport default config;\n",
+        "  }] as unknown as Linter.Config[];\n}\n\nconst config: Linter.Config[] = createConfig();\nexport default config;\n",
         encoding="utf-8",
     )
     application.write_text("stale\n", encoding="utf-8")
@@ -69,6 +71,45 @@ def test_source_catalog_drives_plugin_presets_and_generated_configs(tmp_path: Pa
     assert '"@sarj/first-rule": ["warn", { option: true }]' in strict_text
     assert '"@sarj/second-rule": "error"' in strict_text
     assert 'export { createConfig, default } from "./eslint.strict.mjs";' in application_text
+    declaration = strict.with_suffix(".d.mts").read_text(encoding="utf-8")
+    assert declaration == config_generation.render_eslint_declaration(strict_text)
+    assert "export interface ConfigOptions" in declaration
+    assert "createConfig(options?: ConfigOptions): Linter.Config[];" in declaration
+    assert "declare const config: Linter.Config[];" in declaration
+    assert 'export type { ConfigOptions } from "./eslint.strict.mjs";' in (
+        application.with_suffix(".d.mts").read_text(encoding="utf-8")
+    )
+
+
+def test_generated_declaration_tracks_options_and_detects_drift(tmp_path: Path) -> None:
+    _catalog, _preset, strict, _application = _repository(tmp_path)
+    source = strict.read_text(encoding="utf-8").replace(
+        "readonly projectService?: boolean | object;",
+        "readonly projectService?: boolean | object; readonly future?: string;",
+    )
+    strict.write_text(source, encoding="utf-8")
+    assert config_generation.sync_warning_levels(tmp_path, check=False)
+    declaration = strict.with_suffix(".d.mts")
+    assert "readonly future?: string;" in declaration.read_text(encoding="utf-8")
+    declaration.write_text("stale declaration\n", encoding="utf-8")
+    assert not config_generation.sync_warning_levels(tmp_path, check=True)
+    assert config_generation.sync_warning_levels(tmp_path, check=False)
+    assert config_generation.sync_warning_levels(tmp_path, check=True)
+
+
+def test_installed_declaration_generation_finds_the_producer_from_its_package_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (CONFIGS_DIR / "eslint.strict.ts").read_text(encoding="utf-8")
+    expected = (CONFIGS_DIR / "eslint.strict.d.mts").read_text(encoding="utf-8")
+    installed_configs = tmp_path / "site-packages" / "sarj_standards" / "configs"
+    installed_configs.mkdir(parents=True)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- emulate installed-wheel resources while using the native wheel-test working directory.
+        config_generation, "CONFIGS_DIR", installed_configs
+    )
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+
+    assert config_generation.render_eslint_declaration(source) == expected
 
 
 def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) -> None:

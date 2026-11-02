@@ -31,6 +31,7 @@ _OWNED_NAMES: Final = frozenset(
         "eslint.config.mts",
         "eslint.config.cts",
         "eslint.strict.mjs",
+        "eslint.strict.d.mts",
         "eslint.strict.ts",
         "package.json",
         "package-lock.json",

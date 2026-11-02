@@ -107,6 +107,15 @@ TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProx
         "react-doctor": ("doctor.config.json", "doctor.config.json"),
     }
 )
+ESLINT_DECLARATION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+    {"eslint-declaration": ("eslint.strict.d.mts", "eslint.strict.d.mts")}
+)
+_LEGACY_TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+    {
+        **TYPESCRIPT_COMPANION_CONFIGS,
+        **ESLINT_DECLARATION_CONFIGS,
+    }
+)
 PYTHON_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         # BasedPyright's source and synchronized forms use the same relative
@@ -188,6 +197,12 @@ _LOCAL_MODULE = re.compile(
     r"(?m)^\s*(?:import\b[^;\n]*?\bfrom\s+|import\s*|export\b[^;\n]*?\bfrom\s+)"
     r"[\"'](?P<path>\.[^\"']+)[\"']"
 )
+
+
+def typescript_companion_configs(preset_name: str) -> Mapping[str, tuple[str, str]]:
+    if preset_name == "eslint.strict.mjs":
+        return _LEGACY_TYPESCRIPT_COMPANION_CONFIGS
+    return TYPESCRIPT_COMPANION_CONFIGS
 
 
 def eslint_preset_name(destination: Path) -> str:

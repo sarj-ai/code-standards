@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "07197ec1328262bbaffefaca08379b19aca9fb9ccbf138e6f31163572013efa0",
+  "catalogSha256": "11a8f8f9fe68bd6524f4e8c9c6405ff8585965b06849b56a278396d4d2d6d0ae",
   "cliSha256": "215191a4695249d347c46796a683ed42b3e50354447e5a20d4b95a7fb093da35",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -15377,6 +15377,36 @@
           "outcome": "reject",
           "scenarioId": "or-type-dispatch",
           "title": "Repeated boolean checks share one type subject"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/authorization.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Session(BaseModel):\n    allowed: bool\n\n\ndef authorize(subject):\n    match subject:\n        case Session():\n            if not subject.allowed:\n                raise PermissionError\n        case _:\n            return\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/authorization.py",
+          "id": "single-model-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "single-model-type-dispatch",
+          "title": "A class pattern keeps the nested permission check in its body"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/authorization.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Session(BaseModel):\n    allowed: bool\n\n\ndef authorize(subject):\n    if isinstance(subject, Session):\n        if not subject.allowed:\n            raise PermissionError\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/authorization.py",
+          "id": "single-model-type-branch",
+          "outcome": "reject",
+          "scenarioId": "single-model-type-dispatch",
+          "title": "One model-specific branch still dispatches on runtime type"
         },
         {
           "expectedCount": 1,

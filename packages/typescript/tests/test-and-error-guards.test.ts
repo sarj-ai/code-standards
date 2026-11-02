@@ -20,10 +20,10 @@ type ConfigOptions = {
   syntaxOnlyConfigFiles?: string[];
 };
 type ConfigFactory = (options: ConfigOptions) => Linter.Config[];
-const STRICT_CONFIG_FACTORY = createConfig as ConfigFactory;
+const STRICT_CONFIG_FACTORY: ConfigFactory = createConfig;
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", STRICT_CONFIG_FACTORY],
-  ["application", createApplicationConfig as ConfigFactory],
+  ["application", createApplicationConfig],
 ];
 type GuardCase = readonly [name: string, source: string, expected: readonly string[]];
 

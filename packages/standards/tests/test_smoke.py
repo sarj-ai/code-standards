@@ -45,6 +45,8 @@ _PUBLIC_CONFIGS = (
     BASEDPYRIGHT_STRICT,
     ESLINT_STRICT,
     ESLINT_APPLICATION,
+    CONFIGS_DIR / "eslint.strict.d.mts",
+    CONFIGS_DIR / "eslint.application.d.mts",
     CONFIGS_DIR / "rule-ledger.json",
 )
 _PRIVATE_TELEMETRY = {
@@ -102,6 +104,8 @@ def test_configs_dir_exists() -> None:
         PYRIGHT_STRICT,
         BASEDPYRIGHT_STRICT,
         ESLINT_STRICT,
+        CONFIGS_DIR / "eslint.strict.d.mts",
+        CONFIGS_DIR / "eslint.application.d.mts",
         MARKDOWNLINT_STRICT,
         TAPLO_STRICT,
         YAMLLINT_STRICT,

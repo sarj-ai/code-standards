@@ -18,8 +18,8 @@ from .configs import (
     PYTHON_COMPANION_CONFIGS,
     PYTHON_CONFIGS,
     SWIFT_CONFIGS,
-    TYPESCRIPT_COMPANION_CONFIGS,
     eslint_preset_name,
+    typescript_companion_configs,
 )
 
 
@@ -185,7 +185,7 @@ def plan_sync(
                     )
                 )
         if name == "eslint":
-            for companion, (companion_source, companion_target) in TYPESCRIPT_COMPANION_CONFIGS.items():
+            for companion, (companion_source, companion_target) in typescript_companion_configs(target_name).items():
                 targets.append(
                     SyncTarget(
                         companion,
