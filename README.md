@@ -14,6 +14,8 @@ uvx --no-config --isolated --python 3.15 --from code-standards code-standards se
 
 The canonical staged check includes semantic lint and repository policy; do not install a second Repo Standards hook.
 
+Verify deployed applications with `code-standards web-security web-policy.json`. The [application security policy](.github/SECURITY.md#application-security-policy) describes response headers, authentication probes, browser artifact scans, and credential boundaries.
+
 ## Contributing
 
 Install uv 0.13.5, Python 3.15, Node 24.22, and GNU Make. Then bootstrap a fresh checkout:

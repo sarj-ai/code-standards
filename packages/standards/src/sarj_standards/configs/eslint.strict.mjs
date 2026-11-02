@@ -9,6 +9,8 @@ import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import regexp from "eslint-plugin-regexp";
+import security from "eslint-plugin-security";
+import noUnsanitized from "eslint-plugin-no-unsanitized";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
@@ -693,6 +695,8 @@ export function createConfig(options = {}) {
                 "react-hooks": reactHooks,
                 unicorn,
                 regexp,
+                security,
+                "no-unsanitized": noUnsanitized,
                 "@eslint-community/eslint-comments": eslintComments,
                 n: node,
                 perfectionist,
@@ -724,6 +728,37 @@ export function createConfig(options = {}) {
                 }
             },
             rules: {
+                "security/detect-bidi-characters": "error",
+                "security/detect-child-process": "warn",
+                "no-unsanitized/method": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    },
+                    {
+                        import: {
+                            properties: []
+                        }
+                    }
+                ],
+                "no-unsanitized/property": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    }
+                ],
                 "@typescript-eslint/no-explicit-any": "error",
                 "@typescript-eslint/no-non-null-assertion": "error",
                 "@typescript-eslint/no-deprecated": "error",
