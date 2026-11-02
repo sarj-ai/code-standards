@@ -531,11 +531,11 @@
       "requestedFinalJavaScriptSeverity": "error",
       "firstReleaseCore": "8.179.0",
       "firstReleaseTypeScript": "16.40.0",
-      "nextStep": "Publish the separate blocking promotion as Core 8.179.3 and TypeScript 16.40.1 after the completed warning release.",
+      "nextStep": "Publish the separate blocking promotion as Core 8.181.1 and TypeScript 16.42.1 after the completed warning release.",
       "warningReleaseMerge": "dd91964738d16bbf8073d1e6921301aa45242f35",
       "warningReleasePublished": true,
-      "blockingCore": "8.179.3",
-      "blockingTypeScript": "16.40.1",
+      "blockingCore": "8.181.1",
+      "blockingTypeScript": "16.42.1",
       "blockingJavaScriptSeverity": "error"
     }
   }

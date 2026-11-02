@@ -204,6 +204,7 @@ class _Args:
     prepared_devops: list[Path] = field(default_factory=list)
     prepared_targets: list[str] = field(default_factory=list)
     prepared_only: bool = False
+    web_policy: Path | None = None
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -2988,8 +2989,25 @@ def _root_option_first(argv: list[str]) -> list[str]:
     return ["--root", argv[index + 1], *argv[:index], *argv[index + 2 :]]
 
 
+def cmd_web_security(args: _Args) -> int:
+    from sarj_standards.libs.security.web import check_policy  # ruff: ignore[import-outside-top-level] -- Keep network-policy dependencies off unrelated CLI startup paths.
+
+    if args.web_policy is None:
+        print('{"errors":["A web policy path is required."]}')
+        return 2
+    try:
+        report = check_policy(Path(args.dest) / args.web_policy)
+    except OSError, ValueError:
+        print('{"errors":["The web policy is unreadable or invalid; input values are withheld."]}')
+        return 2
+    print(report.model_dump_json())
+    return report.exit_code
+
+
 def _dispatch(args: _Args) -> int:
     match args.cmd:
+        case "web-security":
+            return cmd_web_security(args)
         case "doctor":
             return cmd_doctor(args)
         case "update":
@@ -3410,6 +3428,17 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 files=files if files is not None else [],
             )
         )
+
+    @app.command(
+        "web-security",
+        help="check declared HTTPS deployment policies; violations exit 1, invalid input or execution exits 2",
+    )
+    def command_web_security(
+        ctx: typer.Context,
+        *,
+        web_policy: Annotated[Path, typer.Argument(metavar="POLICY")],
+    ) -> int:
+        return handler(_Args(dest=_command_root(ctx), cmd="web-security", web_policy=web_policy))
 
     @app.command("validate-slack-automations", help="validate a versioned Slack automation catalog")
     def command_validate_slack_automations(
