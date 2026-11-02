@@ -203,5 +203,41 @@ export const LIBRARY_POLICY = [
     "module": "tslint",
     "note": "TSLint is deprecated; use ESLint with typescript-eslint.",
     "replacement": "eslint"
+  },
+  {
+    "id": "LIB120",
+    "module": "multer",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
+  },
+  {
+    "id": "LIB120",
+    "module": "formidable",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
+  },
+  {
+    "id": "LIB120",
+    "module": "busboy",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
+  },
+  {
+    "id": "LIB120",
+    "module": "@fastify/multipart",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
+  },
+  {
+    "id": "LIB120",
+    "module": "express-fileupload",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
+  },
+  {
+    "id": "LIB120",
+    "module": "multiparty",
+    "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+    "replacement": "direct object-storage uploads with signed URLs"
   }
 ] as const;
