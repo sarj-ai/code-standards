@@ -51,17 +51,16 @@ export interface ThirdPartyCatalog {
   rules: ThirdPartyRule[];
 }
 
-// eslint-disable-next-line @sarj/stepdown -- validators read in dependency order from primitive shape to catalog root.
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function requireRecord(
   value: unknown,
   context: string,
 ): Record<string, unknown> {
   if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireExactFields(

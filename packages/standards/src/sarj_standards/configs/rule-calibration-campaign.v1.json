@@ -3269,6 +3269,38 @@
       "state": "pending",
       "evidence": "Fifty labeled cases (25 matches and 25 near misses) and four executable examples passed. The complete TypeScript suite passed 13,747 tests; all 146 shipped TypeScript rules produced zero dogfood diagnostics. An initial immutable 214-file public implementation corpus produced zero matches. These fixture and implementation-source results do not establish broad consumer precision or recall; application field calibration remains pending.",
       "outcome": "Promote the published warning-stage rule to the explicitly requested blocking level. Recognize explicit server directives and supported runtime server imports; preserve browser File objects, local definitions, unrelated File imports, Blob and string-only forms. Dedicated multipart-upload dependencies remain owned by LIB120. URL signatures, object authorization, unmarked handlers, raw streams and opaque wrappers require separate application controls. No automatic rewrite is offered. Broader independent application calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/no-psycopg-execution-in-loop",
+      "family": "python",
+      "ruleId": "no-psycopg-execution-in-loop",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls cover import-proven connection/cursor execution, injected pools, local preparation, async loops, comprehensions, deferred functions, suppression and specific-rule precedence. Shared bundle calibration in packages/python/benchmarks/announcement-rule-gaps.json records 42 immutable isolated batches, review of every introduced location, duplicate checks, three alternating baseline/candidate rounds and first/warm timings with peak memory. These bounded source snapshots and shared measurements do not establish broad consumer precision, recall or transaction equivalence. Independent field calibration remains pending.",
+      "outcome": "Introduce SARJ560 at WARNING without autofix. Prefer bounded bulk queries for repeated Psycopg execute calls, preserving transaction, result, ordering and failure semantics. SARJ518 owns its narrower batchable-write cases. Preserve in-memory preparation, bounded executemany loops, known zero/single-item for-loop inputs and deferred functions; while/retry loops and interprocedural execution are not inferred."
+    },
+    {
+      "task": "rule-audit/python/prefer-single-psycopg-cursor",
+      "family": "python",
+      "ruleId": "prefer-single-psycopg-cursor",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls cover proven injected and typed cursor owners, lexical function boundaries, direct mutually exclusive branches, rebinding, exact suppression and malformed/generated sources. Shared redacted isolated-corpus and comparative performance evidence is recorded in packages/python/benchmarks/announcement-rule-gaps.json. Every introduced location in that bounded bundle was reviewed; the report discloses corpus selection, repeated measurements and workspace limitations. Broader independent application calibration remains pending.",
+      "outcome": "Introduce SARJ561 at WARNING without autofix. Review repeated cursor creation once per lexical function; consume results before considering reuse. Distinct row factories, connections and independent pipeline results can require multiple cursors. Preserve separate functions and directly mutually exclusive branches; broader path feasibility and helper-created cursors are not inferred."
+    },
+    {
+      "task": "rule-audit/python/prefer-validated-uuid-comparison",
+      "family": "python",
+      "ruleId": "prefer-validated-uuid-comparison",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls cover equality/inequality between proven uuid.UUID constructor calls, imported aliases and qualified modules, while preserving shadowed factories, typed comparisons and single boundary parsing. Shared bundle calibration and repeated first/warm/memory comparisons are recorded in packages/python/benchmarks/announcement-rule-gaps.json, including all inspected introduced locations and explicit inference limits. Bounded snapshots do not establish broad consumer recall or prove that every comparison occurs outside an ingestion boundary; independent field calibration remains pending.",
+      "outcome": "Introduce SARJ562 at WARNING without autofix. Normalize UUID-backed nominal identifiers at the router/schema or ingestion boundary and compare validated values directly. Preserve intentional boundary parsing and existing canonicalization contracts; never automatically remove validation or change string/UUID equality behavior."
+    },
+    {
+      "task": "rule-audit/typescript/no-frontend-comments",
+      "family": "typescript",
+      "ruleId": "no-frontend-comments",
+      "state": "pending",
+      "evidence": "Executable examples and focused comment controls cover JSX, framework imports/directives, nearest frontend package ownership, allFiles overrides, generated sources, comment-like strings and delegation to the existing test-comment owner. Shared isolated-corpus, duplicate-location and comparative performance evidence is recorded in packages/python/benchmarks/announcement-rule-gaps.json. Every introduced bundle location was inspected; source snapshots do not reconstruct a complete external consumer workspace or establish universal frontend ownership. Broader independent field calibration remains pending.",
+      "outcome": "Introduce the requested blanket frontend comment policy at WARNING without autofix. Report actual comment tokens, including behavioral directives and legal notices, in supported frontend source; migrate those contracts manually or use an explicit policy exception. The existing no-test-comments owner handles frontend tests without duplicate diagnostics. Preserve non-frontend directive/legal handling, strings and generated/vendor sources. Unsupported frontend roots can opt in with allFiles on both comment owners."
     }
   ]
 }

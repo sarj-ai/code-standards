@@ -65,7 +65,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.181.2"
+version = "8.182.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -681,7 +681,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.109.0"
+version = "1.110.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },

@@ -199,3 +199,30 @@ def test_scope_normalization_preserves_shared_cached_query() -> None:
     before = [item.statement.sql() for item in queries]
     assert PreferApplicationModelJoins().check_context(context) == []
     assert [item.statement.sql() for item in queries] == before
+
+
+def test_conditional_literal_lock_suffix_does_not_hide_cross_model_join() -> None:
+    source = (
+        "from psycopg import AsyncConnection\n"
+        "async def load(connection: AsyncConnection, lock: bool):\n"
+        "    query = 'SELECT a.id, b.name FROM item a JOIN owner b ON b.id = a.owner_id'\n"
+        "    if lock:\n        query += ' FOR UPDATE OF a'\n"
+        "    async with connection.cursor() as cursor:\n"
+        "        await cursor.execute(query)\n"
+    )
+    [finding] = PreferApplicationModelJoins().check(Path("app/store.py"), source)
+    assert finding.line == 3
+
+
+@pytest.mark.parametrize(
+    "replacement", ["query = replacement", "query += replacement", "query = rewrite(query)", "exec(replacement)"]
+)
+def test_dynamic_query_rewrites_do_not_borrow_literal_join_ownership(replacement: str) -> None:
+    source = (
+        "from psycopg import AsyncConnection\n"
+        "async def load(connection: AsyncConnection, replacement):\n"
+        "    query = 'SELECT a.id FROM item a JOIN owner b ON b.id = a.owner_id'\n"
+        "    REWRITE\n"
+        "    await connection.execute(query)\n"
+    ).replace("REWRITE", replacement)
+    assert PreferApplicationModelJoins().check(Path("app/store.py"), source) == []

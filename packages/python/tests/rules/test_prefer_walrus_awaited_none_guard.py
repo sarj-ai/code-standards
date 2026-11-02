@@ -3,6 +3,7 @@ import textwrap
 
 import pytest
 
+from sarj_python_lint._autofix import fix_source
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import PreferWalrusAwaitedNoneGuard
 
@@ -218,3 +219,20 @@ def test_honors_suppression_on_assignment() -> None:
         )
         == []
     )
+
+
+def test_walrus_review_keeps_the_lookup_inside_its_cursor_scope() -> None:
+    source = (
+        "async def load(connection):\n"
+        "    async with connection.cursor() as cursor:\n"
+        "        await cursor.execute('SELECT id FROM item')\n"
+        "        existing = await cursor.fetchone()\n"
+        "    if existing is not None:\n"
+        "        return existing.id\n"
+        "    return None\n"
+    )
+    [finding] = PreferWalrusAwaitedNoneGuard().check(Path("app/store.py"), source)
+    assert finding.code == "SARJ432"
+    assert finding.severity is Severity.WARNING
+    assert "context" in finding.message
+    assert fix_source(Path("app/store.py"), source, rule_ids=["prefer-walrus-awaited-none-guard"]) == source

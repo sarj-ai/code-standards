@@ -4,15 +4,15 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-test-comments.test.ts
  */
 
-import type { NativeRuleFix } from "./_eslint-rule.js";
-
-
-
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, ownLineCommentRemovalRange, trailingCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import type { NativeRuleContext, NativeRuleFix } from "./_eslint-rule.js";
+import { isFrontendSource } from "./_is-frontend-source.js";
 import { isGeneratedFile, isTestFile, scopedFilename } from "./_paths.js";
+
+type Options = readonly [{ readonly allFiles?: boolean }];
 
 export const NO_TEST_COMMENTS_DOCUMENTATION = {
   defaultLevel: "warning",
@@ -22,6 +22,7 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
   category: "testing",
   autofix: "safe",
   limitations: [
+    "In frontend modules and frontend packages, every comment token is reported without automatic deletion, including directives and legal notices. The no-frontend-comments rule delegates recognized tests here. Non-frontend tests retain the existing directive/legal exceptions and safe fixes.",
     "Checks actual line and block comment tokens in recognized maintained test files, including test fixtures; strings and template text remain unchanged. Generated/vendor files are excluded.",
     "Legal notices, shebangs, TypeScript triple-slash references, coverage/build annotations and explicit lint/type/test/formatter directives remain allowed. Executable detect-secrets 1.5.0 allowlist/whitelist pragmas retain its case-sensitive delimiter, spacing, physical-line and next-line grammar; arbitrary pragma prose remains ordinary commentary. Rationale on an executable directive remains the owning tool's responsibility.",
     "The automatic fix removes comments and adjacent padding while retaining every line ending and necessary token boundary; it does not rename tests or remove executable statements. Bare integration/e2e directories and ambiguous hyphen/underscore test basenames require another concrete test-path signal or a runtime testing-framework import; ordinary production integration modules and rule implementations ending in -test are preserved.",
@@ -30,7 +31,7 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
     { id: "narrated-assertion", title: "Put behavior in the test name", outcome: "match", files: [{ path: "src/request.test.ts", source: "expect(result.status).toBe(409); // Confirm the rejected request\n" }], fixedFiles: [{ path: "src/request.test.ts", source: "expect(result.status).toBe(409);\n" }], focusPath: "src/request.test.ts", expectedCount: 1, public: true },
     { id: "named-behavior", title: "The assertion expresses the behavior", outcome: "no-match", files: [{ path: "src/request.test.ts", source: "expect(result.status).toBe(409);" }], focusPath: "src/request.test.ts", expectedCount: 0, public: true },
   ],
-} as const satisfies RuleDocumentation;
+} as const satisfies RuleDocumentation<Options>;
 
 const DIRECTIVE = /^(?:eslint(?:-\S+)?\b|(?:biome|oxlint|jshint|jslint|c8|v8|istanbul|vitest|prettier|dprint)\b|@(?:ts-(?:check|nocheck|expect-error|ignore)|vitest-environment|jest-environment|jsx\w*|license|preserve)\b|[#!]\s*__(?:PURE|NO_SIDE_EFFECTS)__|\/\s*<(?:reference|amd-module|amd-dependency)\b)/u;
 const BEHAVIORAL_DIRECTIVE = /(?:[@#]__(?:PURE|NO_SIDE_EFFECTS)__|@vite-ignore\b|\bwebpack(?:ChunkName|Mode|Exports|FetchPriority|Include|Exclude|Prefetch|Preload|Ignore)\s*:)/u;
@@ -88,25 +89,31 @@ function stripPythonTrailingWhitespace(value: string): string {
   return value.slice(0, end);
 }
 
-export default createRule<[], "testComment">({
+export function ownsTestComments(context: Pick<NativeRuleContext<string, readonly unknown[]>, "filename" | "cwd" | "sourceCode">): boolean {
+    if (!isTestFile(context)) return false;
+    const filename = scopedFilename(context);
+    const unambiguous = /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|__mocks__)\//u.test(filename) || /\.(?:test|spec|e2e|integration)\.[cm]?[jt]sx?$/u.test(filename);
+    const framework = context.sourceCode.ast.body.some(statement => statement.type === AST_NODE_TYPES.ImportDeclaration && statement.importKind !== "type" &&
+      (statement.specifiers.length === 0 || statement.specifiers.some(specifier => specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind !== "type")) &&
+      ["vitest", "@jest/globals", "@playwright/test", "bun:test", "node:test"].includes(statement.source.value));
+    return unambiguous || framework;
+}
+
+export default createRule<Options, "testComment">({
   name: "no-test-comments",
   documentation: NO_TEST_COMMENTS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: { description: NO_TEST_COMMENTS_DOCUMENTATION.summary },
-    schema: [],
+    schema: [{ type: "object", properties: { allFiles: { type: "boolean" } }, additionalProperties: false }],
     messages: { testComment: "Express this explanation in the test name, fixture or assertion, then remove the comment." },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
     if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
-    const filename = scopedFilename(context);
-    const unambiguous = /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|__mocks__)\//u.test(filename) || /\.(?:test|spec|e2e|integration)\.[cm]?[jt]sx?$/u.test(filename);
-    const framework = context.sourceCode.ast.body.some(statement => statement.type === AST_NODE_TYPES.ImportDeclaration && statement.importKind !== "type" &&
-      (statement.specifiers.length === 0 || statement.specifiers.some(specifier => specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind !== "type")) &&
-      ["vitest", "@jest/globals", "@playwright/test", "bun:test", "node:test"].includes(statement.source.value));
-    if (!unambiguous && !framework) return {};
+    if (!ownsTestComments(context)) return {};
+    const frontend = options.allFiles === true || isFrontendSource(context);
     return {
       Program(): void {
         const comments = context.sourceCode.getAllComments();
@@ -126,11 +133,12 @@ export default createRule<[], "testComment">({
         }
         for (const [index, comment] of comments.entries()) {
           const body = comment.value.trim().replace(/^\*\s*/u, "");
-          if (DIRECTIVE.test(body) || BEHAVIORAL_DIRECTIVE.test(comment.value) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text)) continue;
+          if (!frontend && (DIRECTIVE.test(body) || BEHAVIORAL_DIRECTIVE.test(comment.value) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text))) continue;
           context.report({
             node: comment,
             messageId: "testComment",
             fix: fixer => {
+              if (frontend) return null;
               const text = context.sourceCode.text;
               const preserveLineTerminators = (edit: NativeRuleFix): NativeRuleFix | null => {
                 const neighbor = Math.max(0, edit.range[0] - 1);

@@ -4,8 +4,6 @@ interface Props {
 }
 
 const { providerId } = Astro.props;
-// Filled ecosystem marks use the current Simple Icons paths (CC0). Plugins without a
-// distinct verified mark use a compact monogram; Better Tailwind uses its own logo.
 ---
 
 <span class:list={['provider-icon', `provider-icon--${providerId}`]} aria-hidden="true">

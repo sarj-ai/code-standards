@@ -13,7 +13,7 @@ const allSarjRules = Object.fromEntries(
     .map((name) => {
       const id = `@sarj/${name}`;
       const configured = eslintRuleSetting(strictRuleSettings.get(id));
-      // Preserve policy options when escalating the shared preset for dogfooding.
+
       return [
         id,
         eslintRuleSetting(
@@ -63,12 +63,17 @@ export default Object.freeze<TSESLint.FlatConfig.ConfigArray>([
           ],
         },
       ],
-      // This React/shadcn policy is inapplicable to framework-native Astro markup.
+
       "@sarj/prefer-shadcn-primitives": "off",
     },
   },
   {
     files: ["src/components/CodeBlock.astro"],
     rules: { "no-restricted-imports": "off" },
+  },
+  {
+    name: "docs/host-build-provenance",
+    files: ["src/lib/source-revision.ts"],
+    rules: { "@sarj/no-raw-env": "off" },
   },
 ]);

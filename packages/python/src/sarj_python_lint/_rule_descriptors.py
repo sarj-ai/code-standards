@@ -9,6 +9,33 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-validated-uuid-comparison"),
+        module="sarj_python_lint.rules.prefer_validated_uuid_comparison",
+        class_name="PreferValidatedUuidComparison",
+        code="SARJ562",
+        description="Validate UUID identifiers at input boundaries before comparing them.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("prefer-single-psycopg-cursor"),
+        module="sarj_python_lint.rules.prefer_single_psycopg_cursor",
+        class_name="PreferSinglePsycopgCursor",
+        code="SARJ561",
+        description="Review repeated Psycopg cursor creation within one function.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("no-psycopg-execution-in-loop"),
+        module="sarj_python_lint.rules.no_psycopg_execution_in_loop",
+        class_name="NoPsycopgExecutionInLoop",
+        code="SARJ560",
+        description="Use bounded bulk queries instead of executing Psycopg operations inside item loops.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-shared-mutable-default"),
         module="sarj_python_lint.rules.no_shared_mutable_default",
         class_name="NoSharedMutableDefault",
@@ -112,7 +139,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_custom_control_flow_exception",
         class_name="NoCustomControlFlowException",
         code="SARJ542",
-        description="Return typed outcomes for expected domain failures instead of name-only exceptions.",
+        description="Return typed outcomes for expected domain failures instead of marker or fixed-message exceptions.",
         aliases=(),
         enabled_by_default=True,
     ),

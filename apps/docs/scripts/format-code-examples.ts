@@ -103,32 +103,6 @@ async function installedVersion(packageName: string) {
   return version;
 }
 
-// eslint-disable-next-line @sarj/stepdown -- adapter helpers precede the dispatcher they make readable.
-function runFormatter(
-  command: string,
-  args: string[],
-  source: string,
-  label: string,
-) {
-  try {
-    return execFileSync(command, args, {
-      cwd: repositoryRoot,
-      encoding: "utf8",
-      input: normalize(source),
-      maxBuffer: 1024 * 1024,
-      timeout: 30_000,
-    });
-  } catch (error) {
-    const stderr =
-      error && typeof error === "object" && "stderr" in error
-        ? String(error.stderr).trim()
-        : "";
-    throw new Error(`${label} formatter failed${stderr ? `: ${stderr}` : ""}`, {
-      cause: error,
-    });
-  }
-}
-
 function virtualPath(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".tftest.hcl")) return "example.tftest.hcl";
@@ -225,8 +199,6 @@ async function formatCode(
   const cached = cache.get(cacheKey);
   if (cached !== undefined) return cached;
 
-  // Make has no pinned formatter; recipe tabs and trailing variable spaces are semantic.
-  // Match the DevOps execution-block basenames without expanding unsupported extensions.
   if (["makefile", "gnumakefile"].includes(basename(lower))) {
     if (!source.endsWith("\n"))
       throw new Error(`${context}: Make source must end with a newline`);
@@ -266,6 +238,31 @@ async function formatCode(
   return normalized;
 }
 
+function runFormatter(
+  command: string,
+  args: string[],
+  source: string,
+  label: string,
+) {
+  try {
+    return execFileSync(command, args, {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      input: normalize(source),
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+    });
+  } catch (error) {
+    const stderr =
+      error && typeof error === "object" && "stderr" in error
+        ? String(error.stderr).trim()
+        : "";
+    throw new Error(`${label} formatter failed${stderr ? `: ${stderr}` : ""}`, {
+      cause: error,
+    });
+  }
+}
+
 async function formatFile(file: ExampleFile, context: string) {
   const source = await formatCode(
     file.source,
@@ -298,8 +295,7 @@ async function formatJson() {
       const path = text(file["path"], "format JSON path");
       const source = file["source"];
       assert(typeof source === "string", "format JSON source must be a string");
-      // Empty native output is represented only for this display comparison.
-      // The caller retains the original raw bytes for convergence and analysis.
+
       return formatFile({ path, source: source || "\n" }, "format JSON");
     }),
   );
@@ -382,7 +378,10 @@ else {
         (example) =>
           example.scenarioId === scenarioId && example.outcome === "accept",
       );
-      assert(before && after, `${rule.key}/${scenarioId}: incomplete comparison`);
+      assert(
+        before && after,
+        `${rule.key}/${scenarioId}: incomplete comparison`,
+      );
       assert.notDeepEqual(
         before.files.map(({ path, source }) => ({ path, source })),
         after.files.map(({ path, source }) => ({ path, source })),

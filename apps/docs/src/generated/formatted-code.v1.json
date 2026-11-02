@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5172aeb982da54bfc11137eb66578365fa05b7b4912557178d794e6c5629327a",
-  "cliSha256": "42e7529e824f3fe3e3efbbbfc4c28b5099e82de56c71cdeb5d4f83285c353c0f",
+  "catalogSha256": "bf93e6894ac6072274754abdf11a384dbde850dbb4d9ffe50afade5a5fd51337",
+  "cliSha256": "34b8e39ff3273ae836b63b71c416a959cb63a6d306a107211e02fff077d94cc7",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1714,6 +1714,79 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-frontend-comments": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "// Show current status\nexport const View = () => <p>Ready</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "frontend-prose",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Express view behavior in code"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "export const View = () => <p>Ready</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "named-view",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The view expresses its behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "package.json",
+              "source": "{ \"private\": true, \"dependencies\": { \"react\": \"19.2.0\" } }\n"
+            },
+            {
+              "path": "src/helper.ts",
+              "source": "// Frontend helper\nexport const ready = true;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.ts",
+          "id": "package-helper",
+          "outcome": "reject",
+          "scenarioId": "package",
+          "title": "A plain helper belongs to its frontend package"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "package.json",
+              "source": "{ \"private\": true, \"dependencies\": { \"react\": \"19.2.0\" } }\n"
+            },
+            {
+              "path": "src/helper.ts",
+              "source": "export const ready = true;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.ts",
+          "id": "package-helper-code",
+          "outcome": "accept",
+          "scenarioId": "package",
+          "title": "The helper expresses its behavior in code"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-generic-json-parser": {
       "examples": [
@@ -4259,7 +4332,7 @@
           "title": "Put behavior in the test name"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-trailing-value-narration": {
       "examples": [
@@ -12233,6 +12306,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-psycopg-execution-in-loop": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def remove(connection: AsyncConnection, rows):\n    for row in rows:\n        await connection.execute(\"DELETE FROM item WHERE id = %s\", (row.id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "per-item-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A connection executes once per item"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def remove(connection: AsyncConnection, rows):\n    identifiers = [row.id for row in rows]\n    await connection.execute(\"DELETE FROM item WHERE id = ANY(%s)\", (identifiers,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "set-based-write",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One query consumes the collected identifiers"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-psycopg-execution-outside-injected-owner": {
       "examples": [
         {
@@ -16473,6 +16581,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-single-psycopg-cursor": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def load(connection: AsyncConnection):\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM item\")\n        rows = await cursor.fetchall()\n        await cursor.execute(\"SELECT id FROM owner\")\n        return rows, await cursor.fetchall()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "consumed-results",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Reuse a cursor after consuming the result"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def load(connection: AsyncConnection):\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM item\")\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM owner\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "repeated-scopes",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review repeated cursor scopes"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-str-enum": {
       "examples": [
         {
@@ -16870,6 +17013,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The field retains its domain type"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-validated-uuid-comparison": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/router.py",
+              "source": "from uuid import UUID\n\n\ndef same_owner(item, request):\n    return UUID(item.owner_id) == UUID(request.owner_id)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "late-reparsing",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Both identifiers are reparsed at comparison time"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/router.py",
+              "source": "from uuid import UUID\nfrom typing import NewType\n\nOwnerId = NewType(\"OwnerId\", UUID)\n\n\ndef same_owner(current: OwnerId, requested: OwnerId) -> bool:\n    return current == requested\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "typed-comparison",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Compare the validated nominal identifiers"
         }
       ],
       "optionsSchemaSource": null
