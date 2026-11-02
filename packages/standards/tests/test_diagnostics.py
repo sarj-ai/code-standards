@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import ast
 import codecs
+from dataclasses import replace
 import json
+import os
+import sys
 import time
 import tokenize
 from typing import TYPE_CHECKING, Unpack
@@ -11,6 +14,7 @@ import pytest
 from sarj_iac_lint.rule_base import Diagnostic as IacDiagnostic
 from sarj_rule_contracts import SourceCatalog
 from sarj_sql_lint.rule_base import Diagnostic as SqlDiagnostic
+from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
 
 from sarj_standards import api
 from sarj_standards.cli.main import main
@@ -987,6 +991,118 @@ def test_sarif_omits_region_when_analyzer_only_knows_a_path(tmp_path: Path) -> N
     assert "region" not in physical
     assert run["columnKind"] == "utf16CodeUnits"
     assert str(tmp_path) not in to_sarif(report)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="This byte-filename producer regression is verified on Linux")
+@pytest.mark.parametrize("fingerprint", [None, "supplied-native-fingerprint"])
+def test_native_sql_reports_preserve_surrogateescaped_filenames(tmp_path: Path, fingerprint: str | None) -> None:
+    filename = os.fsdecode(b"probe-\xff.sql")
+    path = tmp_path / filename
+    source = "CREATE TABLE account (name VARCHAR(40));\n"
+    path.write_text(source, encoding="utf-8")
+    native = PreferTextOverVarchar().check(path, path.read_text(encoding="utf-8"))
+    assert len(native) == 1
+    assert native[0].code == "SARJ104"
+    diagnostic = normalize_native(native[0], source="sarj-sql-lint", root=tmp_path, metadata={}, documents={})
+    assert diagnostic.location.path == filename
+    if fingerprint is not None:
+        diagnostic = replace(diagnostic, fingerprint=fingerprint)
+    tools = (ToolReport("sarj-sql-lint", Completion.COMPLETE, diagnostics=(diagnostic,)),)
+
+    raw = AnalysisReport.from_tools(tmp_path, tools)
+    report = report_from_tools(tmp_path, tools)
+
+    assert raw.diagnostics[0].location.path == filename
+    normalized = report.diagnostics[0]
+    assert normalized.location.path == filename
+    assert normalized.fingerprint is not None
+    if fingerprint is None:
+        assert len(normalized.fingerprint) == 64
+    else:
+        assert normalized.fingerprint == fingerprint
+    _assert_canonical_schema(raw)
+    _assert_canonical_schema(report)
+    payload = as_table(parse_json(to_json(report)))
+    serialized = as_table(list_field(payload, "diagnostics")[0])
+    assert table_field(serialized, "location")["path"] == filename
+    sarif = as_table(parse_json(to_sarif(report)))
+    run = as_table(list_field(sarif, "runs")[0])
+    result = as_table(list_field(run, "results")[0])
+    location = as_table(list_field(result, "locations")[0])
+    assert table_field(table_field(location, "physicalLocation"), "artifactLocation")["uri"] == "probe-%FF.sql"
+
+
+@pytest.mark.parametrize("fingerprint", [None, "supplied-message-fingerprint"])
+def test_normalized_json_preserves_lone_surrogate_messages(tmp_path: Path, fingerprint: str | None) -> None:
+    message = "unexpected \ud800"
+    diagnostic = Diagnostic("E001", message, Severity.ERROR, "fixture", Location("example.py"), fingerprint=fingerprint)
+    tools = (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),)
+
+    report = report_from_tools(tmp_path, tools)
+
+    assert report.diagnostics[0].message == message
+    assert report.diagnostics[0].fingerprint is not None
+    if fingerprint is not None:
+        assert report.diagnostics[0].fingerprint == fingerprint
+    serialized = to_json(report)
+    assert serialized.isascii()
+    payload = as_table(parse_json(serialized))
+    assert as_table(list_field(payload, "diagnostics")[0])["message"] == message
+    _assert_canonical_schema(report)
+
+
+def test_unicode_diagnostic_hash_and_sarif_uri_keep_their_existing_identity(tmp_path: Path) -> None:
+    diagnostic = Diagnostic("E001", "message 😀", Severity.ERROR, "fixture", Location("dir/😀.py"))
+    report = report_from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),))
+
+    assert report.diagnostics[0].fingerprint == "f3fd4221c4a572162ac34b059fda77b66e7f68b7dce660b1a0b9c32e2268f109"
+    sarif = as_table(parse_json(to_sarif(report)))
+    run = as_table(list_field(sarif, "runs")[0])
+    result = as_table(list_field(run, "results")[0])
+    location = as_table(list_field(result, "locations")[0])
+    assert table_field(table_field(location, "physicalLocation"), "artifactLocation")["uri"] == "dir/%F0%9F%98%80.py"
+    _assert_canonical_schema(report)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX filenames can contain surrogateescaped bytes")
+def test_sarif_preserves_filesystem_bytes_in_related_locations_and_fixes(tmp_path: Path) -> None:
+    start, end = Position(0, 0, 0), Position(0, 1, 1)
+    edit = TextEdit(Location(os.fsdecode(b"edit-\xfd.sql"), region=Region(start, end)), "v")
+    diagnostic = Diagnostic(
+        "E001",
+        "found",
+        Severity.ERROR,
+        "fixture",
+        Location(os.fsdecode(b"probe-\xff.sql")),
+        related=(RelatedLocation("related", Location(os.fsdecode(b"related-\xfe.sql"))),),
+        fixes=(Fix("Use v", FixSafety.SAFE, (edit,)),),
+    )
+    report = AnalysisReport.from_tools(
+        tmp_path, (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),)
+    )
+
+    sarif = as_table(parse_json(to_sarif(report)))
+
+    run = as_table(list_field(sarif, "runs")[0])
+    result = as_table(list_field(run, "results")[0])
+    location = as_table(list_field(result, "locations")[0])
+    assert table_field(table_field(location, "physicalLocation"), "artifactLocation")["uri"] == "probe-%FF.sql"
+    related = as_table(list_field(result, "relatedLocations")[0])
+    assert table_field(table_field(related, "physicalLocation"), "artifactLocation")["uri"] == "related-%FE.sql"
+    fix = as_table(list_field(result, "fixes")[0])
+    change = as_table(list_field(fix, "artifactChanges")[0])
+    assert table_field(change, "artifactLocation")["uri"] == "edit-%FD.sql"
+    _assert_canonical_schema(report)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="A lone high surrogate is not a POSIX byte filename")
+def test_sarif_keeps_nonfilesystem_surrogate_paths_outside_its_uri_domain(tmp_path: Path) -> None:
+    diagnostic = Diagnostic("E001", "found", Severity.ERROR, "fixture", Location("probe-\ud800.py"))
+    report = report_from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),))
+    _assert_canonical_schema(report)
+
+    with pytest.raises(UnicodeEncodeError):
+        to_sarif(report)
 
 
 def test_sarif_qualifies_rule_identity_by_analyzer(tmp_path: Path) -> None:

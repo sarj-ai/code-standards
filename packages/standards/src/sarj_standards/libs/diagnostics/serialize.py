@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from heapq import nsmallest
 import json
+import os
 from typing import TYPE_CHECKING, NamedTuple
-from urllib.parse import quote
+from urllib.parse import quote, quote_from_bytes
 
 from .models import AnalysisReport, Diagnostic, Fix, FixSafety, Location, Severity, TextEdit
 
@@ -286,7 +287,7 @@ def _sarif_fix(fix: Fix) -> dict[str, JsonValue]:
         "description": {"text": fix.title},
         "artifactChanges": [
             {
-                "artifactLocation": {"uri": quote(path, safe="/")},
+                "artifactLocation": {"uri": _sarif_path_uri(path)},
                 "replacements": [
                     {
                         "deletedRegion": _sarif_region(edit.location),
@@ -301,11 +302,19 @@ def _sarif_fix(fix: Fix) -> dict[str, JsonValue]:
 
 
 def _sarif_physical(location: Location) -> dict[str, JsonValue]:
-    physical: dict[str, JsonValue] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
+    physical: dict[str, JsonValue] = {"artifactLocation": {"uri": _sarif_path_uri(location.path)}}
     region = _sarif_region(location)
     if region:
         physical["region"] = region
     return physical
+
+
+def _sarif_path_uri(path: str) -> str:
+    try:
+        return quote(path, safe="/")
+    except UnicodeEncodeError:
+        # POSIX surrogateescaped filenames retain the original filesystem bytes.
+        return quote_from_bytes(os.fsencode(path), safe="/")
 
 
 def _sarif_region(location: Location) -> dict[str, JsonValue]:
