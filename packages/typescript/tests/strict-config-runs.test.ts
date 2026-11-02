@@ -94,7 +94,7 @@ type ConfigFactory = (options?: {
   projectService?: boolean | object;
   syntaxOnlyConfigFiles?: string[];
 }) => Linter.Config[];
-const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
+const STRICT_CONFIG_FACTORY: ConfigFactory = createStrictConfig;
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", createStrictConfig],
   ["application", createApplicationConfig],
@@ -104,7 +104,7 @@ async function lint(file: string): Promise<Linter.LintMessage[]> {
   const eslint = new ESLint({
     cwd: FIXTURE_DIR,
     overrideConfigFile: true,
-    overrideConfig: strictConfig as Linter.Config[],
+    overrideConfig: strictConfig,
   });
   const results = await eslint.lintFiles([resolve(FIXTURE_DIR, file)]);
   return results.flatMap((result) => result.messages);
@@ -278,7 +278,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [result] = await eslint.lintText(
       "const record = { 'snake_case': 1, camelCase: 2 }; record['snake_case']; record['camelCase']; record.snake_case;",
@@ -628,7 +628,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const config: unknown = await eslint.calculateConfigForFile(
       resolve(FIXTURE_DIR, "widget.tsx"),
@@ -641,7 +641,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const config: unknown = await eslint.calculateConfigForFile(
       resolve(FIXTURE_DIR, "widget.tsx"),
@@ -675,7 +675,7 @@ export function createConfig(options) {
   });
 
   it("requires explicit button types inside design-system primitives", () => {
-    const primitiveConfig = (strictConfig as Linter.Config[]).find(
+    const primitiveConfig = strictConfig.find(
       (entry) =>
         entry.files?.includes("**/components/ui/**") &&
         entry.files.includes("**/components/design-system/**"),
@@ -1059,7 +1059,7 @@ export function createConfig(options) {
       cwd: FIXTURE_DIR,
       fix: true,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [fixed] = await fixing.lintFiles([filePath]);
     expect(fixed?.output).toContain("if ((items) != null)");
@@ -1067,7 +1067,7 @@ export function createConfig(options) {
     const checking = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [checked] = await checking.lintText(fixed?.output ?? "", { filePath });
     const ruleIds = checked?.messages.map((message) => message.ruleId) ?? [];
@@ -1080,7 +1080,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [rangeResult] = await eslint.lintText(
       "/* eslint-disable no-console -- generated compatibility region */\nconsole.log('hidden');\n/* eslint-enable no-console */\n",
@@ -1125,7 +1125,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [result] = await eslint.lintText(
       "import { readFile } from 'node:fs';\nreadFile('poem.txt', () => undefined);\n",
@@ -1148,7 +1148,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const [result] = await eslint.lintText(
       PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[0].files[0].source,
@@ -1269,7 +1269,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
       warnIgnored: false,
     });
 
@@ -1287,14 +1287,14 @@ export function createConfig(options) {
     const emitted = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: [...strictConfig as Linter.Config[], { ignores: ["lib/**"] }],
+      overrideConfig: [...strictConfig, { ignores: ["lib/**"] }],
       warnIgnored: false,
     });
     expect((await emitted.lintFiles([resolve(FIXTURE_DIR, "lib/compiled.ts")])).flatMap((result) => result.messages)).toEqual([]);
 
 
 
-    const globalIgnores = (strictConfig as Linter.Config[]).filter(
+    const globalIgnores = strictConfig.filter(
       (entry) => entry.ignores !== undefined && entry.files === undefined,
     );
     expect(globalIgnores.length).toBe(1);
@@ -1346,7 +1346,7 @@ export function createConfig(options) {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
+      overrideConfig: strictConfig,
     });
     const probes = await Promise.all(
       ["example.ts", "widget.tsx"].map(async (probe) => ({

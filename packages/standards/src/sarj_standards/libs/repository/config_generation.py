@@ -21,12 +21,11 @@ _RUFF_APPLICATION: Final = CONFIGS_DIR / "ruff.application.toml"
 _ESLINT_APPLICATION: Final = CONFIGS_DIR / "eslint.application.mjs"
 _RUFF_ALIAS: Final = '# Compatibility alias; all repositories use the same policy.\nextend = "ruff.strict.toml"\n'
 _ESLINT_ALIAS: Final = '// Compatibility alias; all repositories use the same policy.\nexport { createConfig, default } from "./eslint.strict.mjs";\n'
+_ESLINT_DECLARATION_ALIAS: Final = _ESLINT_ALIAS + 'export type { ConfigOptions } from "./eslint.strict.mjs";\n'
 _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
-_ESLINT_CONFIG_END: Final = (
-    "\n  ] as unknown as Linter.Config[];\n}\n\nconst config = createConfig();\nexport default config;\n"
-)
+_ESLINT_CONFIG_END: Final = "\n  ] as unknown as Linter.Config[];\n}\n\nconst config: Linter.Config[] = createConfig();\nexport default config;\n"
 _RULE_CATALOG: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts")
 _ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs")
@@ -170,8 +169,10 @@ def generated_configs() -> Mapping[Path, str]:
         CONFIGS_DIR / "ruff.strict.toml": ruff,
         CONFIGS_DIR / "eslint.strict.ts": (typed := render_eslint_strict()),
         CONFIGS_DIR / "eslint.strict.mjs": render_legacy_eslint(typed),
+        CONFIGS_DIR / "eslint.strict.d.mts": render_eslint_declaration(typed),
         _RUFF_APPLICATION: _RUFF_ALIAS,
         _ESLINT_APPLICATION: _ESLINT_ALIAS,
+        CONFIGS_DIR / "eslint.application.d.mts": _ESLINT_DECLARATION_ALIAS,
     }
     repository = CONFIGS_DIR.parents[4]
     if (repository / _TYPESCRIPT_PRESET).is_file():
@@ -200,7 +201,9 @@ def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
         preset_path: rendered_preset,
         strict_path: rendered_strict,
         strict_path.with_suffix(".mjs"): render_legacy_eslint(rendered_strict),
+        strict_path.with_suffix(".d.mts"): render_eslint_declaration(rendered_strict),
         repository / _ESLINT_APPLICATION_REPO: _ESLINT_ALIAS,
+        (repository / _ESLINT_APPLICATION_REPO).with_suffix(".d.mts"): _ESLINT_DECLARATION_ALIAS,
     }
 
 
@@ -272,12 +275,40 @@ def sync(*, check: bool) -> bool:
 
 
 def render_legacy_eslint(source: str) -> str:
+    return _compile_eslint(source, declaration=False)
+
+
+def render_eslint_declaration(source: str) -> str:
+    return _compile_eslint(source, declaration=True)
+
+
+def _compile_eslint(source: str, *, declaration: bool) -> str:
     node = shutil.which("node")
     if node is None:
         msg = "Node.js is required to compile the legacy ESLint preset"
         raise RuntimeError(msg)
+    command = (node, str(Path(__file__).parents[2] / "configs" / "compile-eslint.mts"))
+    if declaration:
+        repository = CONFIGS_DIR.parents[4]
+        if not (repository / _TYPESCRIPT_PRESET).is_file():
+            working_directory = Path.cwd()
+            repository = next(
+                (
+                    parent
+                    for parent in (working_directory, *working_directory.parents)
+                    if (parent / _TYPESCRIPT_PRESET).is_file()
+                ),
+                working_directory,
+            )
+        compiler = repository / "packages/typescript/node_modules/typescript/lib/typescript.js"
+        if not compiler.is_file():
+            msg = (
+                "ESLint declaration generation requires the producer's locked TypeScript compiler; run repository setup"
+            )
+            raise RuntimeError(msg)
+        command += ("--declaration", str(compiler.resolve()))
     result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed bundled compiler; input is parsed, never evaluated.
-        (node, str(Path(__file__).parents[2] / "configs" / "compile-eslint.mts")),
+        command,
         input=source,
         text=True,
         capture_output=True,

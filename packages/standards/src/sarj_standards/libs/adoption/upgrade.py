@@ -28,10 +28,11 @@ from . import (
 )
 from .configs import (
     CONFIG_SPECS,
+    ESLINT_DECLARATION_CONFIGS,
     MOBILE_COMPANION_CONFIGS,
     PYTHON_COMPANION_CONFIGS,
-    TYPESCRIPT_COMPANION_CONFIGS,
     eslint_preset_name,
+    typescript_companion_configs,
 )
 
 
@@ -303,16 +304,12 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
             raise ValueError(msg) from exc
         target = destination / (eslint_preset_name(destination) if name == "eslint" else spec.destination_name)
         source = CONFIGS_DIR / (target.name if name == "eslint" else spec.source_name)
-        if not target.is_file() or target.read_bytes() != source.read_bytes():
-            targets = (target, *_identical_config_mirrors(root, target))
-            for config_target in targets:
-                changes.append(Change(config_target, f"sync {name} config"))
-                config_writes.append((source, config_target))
+        _append_preset_writes(root, source, target, changes, config_writes, config_name=name)
         companions: Mapping[str, tuple[str, str]] = {}
         if name == "pyright":
             companions = PYTHON_COMPANION_CONFIGS
         elif name == "eslint":
-            companions = TYPESCRIPT_COMPANION_CONFIGS
+            companions = typescript_companion_configs(target.name)
         _append_companion_writes(destination, companions, changes, config_writes)
 
     if not set(adopted.configs).isdisjoint(
@@ -321,6 +318,29 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
         _append_companion_writes(root, MOBILE_COMPANION_CONFIGS, changes, config_writes)
 
     return config_writes
+
+
+def _append_preset_writes(
+    root: Path,
+    source: Path,
+    target: Path,
+    changes: list[Change],
+    config_writes: list[tuple[Path, Path]],
+    *,
+    config_name: str,
+) -> None:
+    changed = not target.is_file() or target.read_bytes() != source.read_bytes()
+    legacy_eslint = config_name == "eslint" and target.name == "eslint.strict.mjs"
+    if not changed and not legacy_eslint:
+        return
+    mirrors = _identical_config_mirrors(root, target)
+    if changed:
+        for config_target in (target, *mirrors):
+            changes.append(Change(config_target, f"sync {config_name} config"))
+            config_writes.append((source, config_target))
+    if legacy_eslint:
+        for mirror in mirrors:
+            _append_companion_writes(mirror.parent, ESLINT_DECLARATION_CONFIGS, changes, config_writes)
 
 
 def _append_companion_writes(

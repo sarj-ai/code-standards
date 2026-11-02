@@ -40,6 +40,7 @@ _ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
         "eslint.config.mts",
         "eslint.config.cts",
         "eslint.strict.mjs",
+        "eslint.strict.d.mts",
         "eslint.strict.ts",
     }
 )

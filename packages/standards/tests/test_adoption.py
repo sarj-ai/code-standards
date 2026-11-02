@@ -1561,12 +1561,15 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     assert not (tmp_path / "eslint.config.mjs").exists()
 
 
-def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> None:
+@pytest.mark.parametrize("preset", ["eslint.strict.ts", "eslint.strict.mjs"])
+def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path, preset: str) -> None:
     modules = REPO_ROOT / "packages/typescript/node_modules"
     compiler = modules / ".bin/tsc"
     if shutil.which("node") is None or not compiler.is_file():
         pytest.skip("requires the repository's locked TypeScript compiler")
     _typescript_repo(tmp_path)
+    if preset.endswith(".mjs"):
+        (tmp_path / preset).write_bytes((CONFIGS_DIR / preset).read_bytes())
     local_modules = tmp_path / "node_modules"
     local_modules.mkdir()
     for dependency in modules.iterdir():
@@ -1578,7 +1581,16 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
     (namespace / "eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     checkout_configs = REPO_ROOT / "packages/standards/src/sarj_standards/configs"
-    assert (tmp_path / "eslint.strict.ts").read_bytes() == (CONFIGS_DIR / "eslint.strict.ts").read_bytes()
+    assert (tmp_path / preset).read_bytes() == (CONFIGS_DIR / preset).read_bytes()
+    if preset.endswith(".mjs"):
+        assert not (tmp_path / "eslint.strict.ts").exists()
+        assert (tmp_path / "eslint.strict.d.mts").read_bytes() == (CONFIGS_DIR / "eslint.strict.d.mts").read_bytes()
+        (tmp_path / "eslint.strict.d.mts").write_text("stale declaration\n", encoding="utf-8")
+        assert service.apply_sync(service.plan_sync(tmp_path, configs=("eslint",)), check=True).status == 1
+        assert service.apply_sync(service.plan_sync(tmp_path, configs=("eslint",)), force=True).status == 0
+        assert (tmp_path / "eslint.strict.d.mts").read_bytes() == (CONFIGS_DIR / "eslint.strict.d.mts").read_bytes()
+    else:
+        assert not (tmp_path / "eslint.strict.d.mts").exists()
     assert (CONFIGS_DIR / "eslint.strict.ts").read_bytes() == (
         checkout_configs / "eslint.strict.ts"
     ).read_bytes()  # sarj-noqa: SARJ402 -- installed preset bytes must match the runtime-tested source
@@ -1586,7 +1598,12 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
         checkout_configs / "eslint.strict.mjs"
     ).read_bytes()  # sarj-noqa: SARJ402 -- installed legacy bytes must match the runtime-tested source
     entrypoint = tmp_path / "eslint.config.ts"
-    before = entrypoint.read_text(encoding="utf-8")
+    before = entrypoint.read_text(encoding="utf-8") + (
+        f'\nimport {{ createConfig, type ConfigOptions }} from "./{preset}";\n'
+        "const options: ConfigOptions = { projectService: false };\n"
+        'const configured: import("eslint").Linter.Config[] = createConfig(options);\n'
+    )
+    entrypoint.write_text(before, encoding="utf-8")
     # Both the generated preset and its authored override remain compiler checked.
     command = (
         str(compiler),
@@ -1614,6 +1631,13 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
     assert invalid.returncode != 0
     assert "number" in invalid.stdout
     assert "string" in invalid.stdout
+    for rejected in (
+        before.replace("projectService: false", "projectService: 17"),
+        before.replace('configured: import("eslint").Linter.Config[]', "configured: number"),
+    ):
+        entrypoint.write_text(rejected, encoding="utf-8")
+        invalid = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30)
+        assert invalid.returncode != 0, "preset factory options and results must retain their native types"
 
 
 @pytest.mark.parametrize(

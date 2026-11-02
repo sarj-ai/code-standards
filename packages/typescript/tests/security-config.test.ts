@@ -10,7 +10,7 @@ const SECURITY_RULES = new Set([
   "no-unsanitized/property",
 ]);
 type ConfigFactory = (options: { projectService: false }) => Linter.Config[];
-const CONFIG_FACTORY = createConfig as unknown as ConfigFactory;
+const CONFIG_FACTORY: ConfigFactory = createConfig;
 
 async function findings(source: string): Promise<string[]> {
   const eslint = new ESLint({

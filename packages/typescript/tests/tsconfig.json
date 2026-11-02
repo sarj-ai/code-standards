@@ -3,7 +3,10 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "..",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "eslint": ["../node_modules/eslint/lib/types/index.d.ts"]
+    }
   },
   "include": ["**/*.ts"]
 }

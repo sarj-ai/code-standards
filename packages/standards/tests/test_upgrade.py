@@ -286,17 +286,21 @@ def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) ->
 
     plan = upgrade.build_plan(tmp_path)
 
+    assert (CONFIGS_DIR / "eslint.strict.d.mts", tmp_path / "eslint.strict.d.mts") in plan.config_writes
     assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
     assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
 
 
-def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path) -> None:
+@pytest.mark.parametrize("current", [False, True])
+def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path, *, current: bool) -> None:
     primary = tmp_path / "apps" / "dashboard"
     mirror = tmp_path / "apps" / "banking"
     fixture = tmp_path / "tests" / "fixtures" / "legacy"
     for project in (primary, mirror, fixture):
         project.mkdir(parents=True)
-        (project / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+        (project / "eslint.strict.mjs").write_bytes(
+            (CONFIGS_DIR / "eslint.strict.mjs").read_bytes() if current else b"export default [];\n"
+        )
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
@@ -306,9 +310,13 @@ def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path)
     plan = upgrade.build_plan(tmp_path)
     targets = {target for _source, target in plan.config_writes}
 
-    assert primary / "eslint.strict.mjs" in targets
-    assert mirror / "eslint.strict.mjs" in targets
+    assert (primary / "eslint.strict.mjs" in targets) is not current
+    assert (mirror / "eslint.strict.mjs" in targets) is not current
     assert fixture / "eslint.strict.mjs" not in targets
+    assert primary / "eslint.strict.d.mts" in targets
+    assert mirror / "eslint.strict.d.mts" in targets
+    assert fixture / "eslint.strict.d.mts" not in targets
+    assert mirror / "doctor.config.json" not in targets
 
 
 def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: Path) -> None:
@@ -328,6 +336,7 @@ def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: 
     targets = {target for _source, target in upgrade.build_plan(tmp_path).config_writes}
 
     assert custom_config not in targets
+    assert custom / "eslint.strict.d.mts" not in targets
     assert custom_config.read_text(encoding="utf-8") == "export default [{ custom: true }];\n"
 
 

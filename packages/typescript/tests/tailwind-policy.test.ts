@@ -9,7 +9,7 @@ import strictConfig from "../../standards/src/sarj_standards/configs/eslint.stri
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const RULE = "better-tailwindcss/enforce-consistent-variable-syntax";
-const TAILWIND = (strictConfig as Linter.Config[]).find((entry) => entry.plugins?.["better-tailwindcss"]);
+const TAILWIND = strictConfig.find((entry) => entry.plugins?.["better-tailwindcss"]);
 
 function configuration(): Linter.Config[] {
   const plugin = TAILWIND?.plugins?.["better-tailwindcss"];

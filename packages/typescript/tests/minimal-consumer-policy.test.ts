@@ -27,8 +27,8 @@ const PRIVATE_CASES = [
 ] as const;
 type ConfigFactory = (options: {tsconfigRootDir: string; projectService?: boolean}) => Linter.Config[];
 const FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
-  ["strict", createConfig as ConfigFactory],
-  ["application", createApplicationConfig as ConfigFactory],
+  ["strict", createConfig],
+  ["application", createApplicationConfig],
 ];
 
 function selectedConfig(factory: ConfigFactory): Linter.Config[] {
