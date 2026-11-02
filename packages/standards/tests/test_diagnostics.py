@@ -48,6 +48,7 @@ from sarj_standards.libs.diagnostics import (
     TextEdit,
     ToolReport,
     TrustMode,
+    diagnostic_fingerprint,
     to_github,
     to_json,
     to_sarif,
@@ -586,6 +587,47 @@ def test_report_factory_preserves_order_while_linting_normalizes(tmp_path: Path)
     assert all(item.fingerprint is not None for item in normalized.diagnostics)
     assert normalized.coverage == coverage
     assert normalized.exit_code == 2
+
+
+@pytest.mark.parametrize("fingerprint", [None, "stable-fingerprint"])
+def test_report_normalization_preserves_empty_messages(tmp_path: Path, fingerprint: str | None) -> None:
+    diagnostic = Diagnostic("E001", "", Severity.ERROR, "fixture", Location("example.py"), fingerprint=fingerprint)
+    tools = (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),)
+
+    raw = AnalysisReport.from_tools(tmp_path, tools)
+    normalized = report_from_tools(tmp_path, tools)
+
+    assert raw.diagnostics == (diagnostic,)
+    assert raw.diagnostics[0].fingerprint == fingerprint
+    assert not normalized.diagnostics[0].message
+    expected = (
+        fingerprint if fingerprint is not None else "7838122f185dd96b10e0b2b075853cda523114e555541c2695e891c6b93483d0"
+    )
+    assert normalized.diagnostics[0].fingerprint == expected
+    assert (raw.completion, raw.conclusion, raw.exit_code) == (Completion.COMPLETE, Conclusion.FINDINGS, 1)
+    assert (normalized.completion, normalized.conclusion, normalized.exit_code) == (
+        raw.completion,
+        raw.conclusion,
+        raw.exit_code,
+    )
+    _assert_canonical_schema(raw)
+    _assert_canonical_schema(normalized)
+
+
+def test_nonempty_diagnostic_fingerprint_preserves_its_exact_v1_identity() -> None:
+    diagnostic = Diagnostic("E001", "message", Severity.ERROR, "fixture", Location("example.py"))
+
+    assert diagnostic_fingerprint(diagnostic, anchor=diagnostic.message) == (
+        "402d246a8650c0d124bf7750c518aab05feaff367048aac11c39be234d4e79f1"
+    )
+
+
+@pytest.mark.parametrize("anchor", [None, 17, b"anchor"])
+def test_diagnostic_fingerprint_rejects_nonstring_anchors(anchor: int | bytes | None) -> None:
+    diagnostic = Diagnostic("E001", "message", Severity.ERROR, "fixture", Location("example.py"))
+
+    with pytest.raises(ValueError, match="diagnostic fingerprint anchor"):
+        diagnostic_fingerprint(diagnostic, anchor=anchor)  # pyright: ignore[reportArgumentType] -- exercise the public function's existing runtime anchor validation.
 
 
 def test_report_factory_rejects_invalid_inputs_before_deriving_state(tmp_path: Path) -> None:
