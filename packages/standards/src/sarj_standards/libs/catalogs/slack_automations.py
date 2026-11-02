@@ -475,13 +475,18 @@ def _validate_capability_references(
             msg = f"{automation_id}/{capability.id} references unknown system {system_id}"
             raise ValueError(msg)
     for trigger in capability.triggers:
-        if isinstance(trigger, ExternalWebhookTrigger):
-            if trigger.source_system_id not in system_ids:
-                msg = f"{automation_id}/{capability.id} references unknown webhook system {trigger.source_system_id}"
-                raise ValueError(msg)
-            if trigger.source_system_id not in capability.connected_system_ids:
-                msg = f"{automation_id}/{capability.id} webhook source must be a connected system"
-                raise ValueError(msg)
+        match trigger:
+            case ExternalWebhookTrigger():
+                if trigger.source_system_id not in system_ids:
+                    msg = (
+                        f"{automation_id}/{capability.id} references unknown webhook system {trigger.source_system_id}"
+                    )
+                    raise ValueError(msg)
+                if trigger.source_system_id not in capability.connected_system_ids:
+                    msg = f"{automation_id}/{capability.id} webhook source must be a connected system"
+                    raise ValueError(msg)
+            case _:
+                pass
     return set(capability.connected_system_ids)
 
 

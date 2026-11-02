@@ -359,12 +359,16 @@ def parse_checkov(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
 
 def _checkov_reports(payload: str) -> tuple[_CheckovReport, ...]:
     parsed = _CheckovPayload.model_validate_json(payload).root
-    if isinstance(parsed, _CheckovEmptySummary):
-        if parsed.checkov_version != VERSIONS["checkov"]:
-            msg = "Checkov reported an unexpected version"
-            raise ValueError(msg)
-        return ()
-    reports = (parsed,) if isinstance(parsed, _CheckovReport) else parsed
+    match parsed:
+        case _CheckovEmptySummary():
+            if parsed.checkov_version != VERSIONS["checkov"]:
+                msg = "Checkov reported an unexpected version"
+                raise ValueError(msg)
+            return ()
+        case _CheckovReport():
+            reports = (parsed,)
+        case tuple():
+            reports = parsed
     if not reports:
         msg = "Checkov returned no framework reports"
         raise ValueError(msg)
