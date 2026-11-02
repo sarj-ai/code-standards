@@ -657,7 +657,7 @@ def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:
             anchor,
         )
     )
-    return sha256(identity.encode("utf-8")).hexdigest()
+    return sha256(identity.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _edit_key(edit: TextEdit) -> _EditKey:
