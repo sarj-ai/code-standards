@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bf93e6894ac6072274754abdf11a384dbde850dbb4d9ffe50afade5a5fd51337",
-  "cliSha256": "34b8e39ff3273ae836b63b71c416a959cb63a6d306a107211e02fff077d94cc7",
+  "catalogSha256": "7b15afcef0e75cfcc41a0c38b4388f350927151f139b72a27c676bda1077608b",
+  "cliSha256": "9cc0b084bb6c210b42b9ba251f9154ce9641705314cdcc57327ace76a417ba21",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -15342,6 +15342,36 @@
           "outcome": "reject",
           "scenarioId": "or-type-dispatch",
           "title": "Repeated boolean checks share one type subject"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/authorization.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Session(BaseModel):\n    allowed: bool\n\n\ndef authorize(subject):\n    match subject:\n        case Session():\n            if not subject.allowed:\n                raise PermissionError\n        case _:\n            return\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/authorization.py",
+          "id": "single-model-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "single-model-type-dispatch",
+          "title": "A class pattern keeps the nested permission check in its body"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/authorization.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Session(BaseModel):\n    allowed: bool\n\n\ndef authorize(subject):\n    if isinstance(subject, Session):\n        if not subject.allowed:\n            raise PermissionError\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/authorization.py",
+          "id": "single-model-type-branch",
+          "outcome": "reject",
+          "scenarioId": "single-model-type-dispatch",
+          "title": "One model-specific branch still dispatches on runtime type"
         },
         {
           "expectedCount": 1,

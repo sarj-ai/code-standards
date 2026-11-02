@@ -4,12 +4,14 @@ from typing import TYPE_CHECKING
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
-from sarj_python_lint.__main__ import check_source
+from sarj_python_lint.__main__ import check_source, main
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
 if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
+
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
@@ -1488,7 +1490,7 @@ def apply(value: Added | Removed | Changed):
 """
     findings = _review_check(source)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(
@@ -1508,7 +1510,7 @@ def normalize(value: object):
     return value
 """
     [finding] = _review_check(source)
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(
@@ -1535,7 +1537,7 @@ def test_established_three_arm_error_does_not_gain_duplicate_warning() -> None:
     assert findings[0].severity is Severity.ERROR
 
 
-def test_source_proven_model_dispatch_warning_has_no_automatic_fix() -> None:
+def test_source_proven_model_dispatch_error_has_no_automatic_fix() -> None:
     source = """from pydantic import BaseModel
 class Added(BaseModel):
     language: str
@@ -1550,7 +1552,7 @@ def apply(value: Added | Removed):
     return 'other'
 """
     [finding] = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert finding.fixes == ()
 
 
@@ -1753,7 +1755,7 @@ def normalize(value):
     return 'other'
 """
     [finding] = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert finding.fixes == ()
 
 
@@ -1785,5 +1787,124 @@ def test_native_owned_sequence_retains_one_error_before_independent_model_dispat
         + "    return 'other'\n"
     )
     findings = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
-    assert [finding.severity for finding in findings] == [Severity.ERROR, Severity.WARNING]
+    assert [finding.severity for finding in findings] == [Severity.ERROR, Severity.ERROR]
     assert all(finding.fixes == () for finding in findings)
+
+
+_SINGLE_MODEL_HEADER = "from pydantic import BaseModel\nclass Session(BaseModel):\n    allowed: bool\n"
+
+_SINGLE_MODEL_CASES = tuple(
+    EvaluationCase(
+        case_id,
+        Language.PYTHON,
+        ("# @generated\n" if case_id == "generated" else "") + _SINGLE_MODEL_HEADER + source,
+        expected,
+    )
+    for case_id, source, expected in (
+        (
+            "nested-authorization",
+            "def authorize(subject):\n    if isinstance(subject, Session):\n        if not subject.allowed:\n            raise PermissionError\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "fallback",
+            "def authorize(subject):\n    if isinstance(subject, Session):\n        return subject.allowed\n    else:\n        return False\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "nested-dependency",
+            "def require_scope():\n    def dependency(subject):\n        if isinstance(subject, Session):\n            check(subject.allowed)\n    return dependency\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "predicate",
+            "def is_session(subject):\n    return isinstance(subject, Session)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "assertion",
+            "def authorize(subject):\n    assert isinstance(subject, Session)\n    check(subject.allowed)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "negated-validation",
+            "def authorize(subject):\n    if not isinstance(subject, Session):\n        raise TypeError\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "compound-guard",
+            "def authorize(subject, enabled):\n    if isinstance(subject, Session) and enabled:\n        check(subject.allowed)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "attribute-subject",
+            "def authorize(request):\n    if isinstance(request.subject, Session):\n        check(request.subject.allowed)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "conditional-expression",
+            "def authorize(subject):\n    return subject.allowed if isinstance(subject, Session) else False\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "shadowed-isinstance",
+            "def authorize(subject, isinstance):\n    if isinstance(subject, Session):\n        check(subject.allowed)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "runtime-type-group",
+            "Session = (str, bytes)\ndef authorize(subject):\n    if isinstance(subject, Session):\n        check(subject)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "class-pattern",
+            "def authorize(subject):\n    match subject:\n        case Session():\n            if not subject.allowed:\n                raise PermissionError\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "generated",
+            "def authorize(subject):\n    if isinstance(subject, Session):\n        check(subject.allowed)\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        ("malformed", "def authorize(subject):\n    if\n", ExpectedOutcome.NO_MATCH),
+    )
+)
+
+
+@pytest.mark.parametrize("case", _SINGLE_MODEL_CASES, ids=tuple(case.case_id for case in _SINGLE_MODEL_CASES))
+def test_single_model_dispatch_cases(case: EvaluationCase) -> None:
+    findings = _review_check(case.source)
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(findings) <= 1
+    assert all(finding.severity is Severity.ERROR and finding.fixes == () for finding in findings)
+
+
+@pytest.mark.parametrize(
+    ("suppression", "minimum", "expected"),
+    [
+        ("", "3.14", 1),
+        ("  # sarj-noqa: SARJ080 -- preserve this adapter's instance check", "3.14", 0),
+        ("  # sarj-noqa: SARJ453 -- unrelated rule", "3.14", 1),
+        ("", "3.9", 0),
+    ],
+    ids=["blocking-imported-model", "exact-suppression", "unrelated-suppression", "pre-match-python"],
+)
+def test_imported_single_model_dispatch_cli(
+    tmp_path: Path, capsys: CaptureFixture[str], suppression: str, minimum: str, expected: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">={minimum}"\n'
+    )
+    (tmp_path / "models.py").write_text(_SINGLE_MODEL_HEADER)
+    path = tmp_path / "authorization.py"
+    path.write_text(
+        "from models import Session as AuthenticatedSession\n"
+        "def authorize(subject):\n"
+        f"    if isinstance(subject, AuthenticatedSession):{suppression}\n"
+        "        if not subject.allowed:\n            raise PermissionError\n"
+    )
+
+    assert main(["check", "--rule", "prefer-match-type-dispatch", str(path)]) == expected
+    output = capsys.readouterr()
+    assert not output.err
+    assert output.out.count("SARJ080") == expected

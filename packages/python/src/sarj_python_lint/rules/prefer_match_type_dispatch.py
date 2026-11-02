@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 _MIN_BRANCHES = 2
-_MIN_REVIEW_BRANCHES = 2
+_MIN_REVIEW_BRANCHES = 1
 _REVIEW_BASES = MODEL_BASES | {"enum.Enum", "enum.IntEnum", "enum.StrEnum"}
 _ISINSTANCE_ARGS = 2
 _BUILTIN_TYPES = frozenset(
@@ -110,7 +110,7 @@ class PreferMatchTypeDispatch(ProjectRule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
-            "Additional review warnings require at least one source-proven Pydantic/Enum branch. Native-only sequences retain the established proof and exclusions. Mixed model/builtin dispatch is supported; review warnings have no automatic fixes.",
+            "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "Local ancestry must resolve to stable undeclared-metaclass classes or proven builtin/stdlib ast bases. External bases, runtime base aliases, and parameterized base expressions remain excluded because their metaclass or __class_getitem__ effects are unproven.",
@@ -119,6 +119,46 @@ class PreferMatchTypeDispatch(ProjectRule):
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
+            RuleExample(
+                example_id="single-model-type-branch",
+                scenario="single-model-type-dispatch",
+                title="One model-specific branch still dispatches on runtime type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/authorization.py",
+                        "from pydantic import BaseModel\n"
+                        "class Session(BaseModel):\n    allowed: bool\n"
+                        "def authorize(subject):\n"
+                        "    if isinstance(subject, Session):\n"
+                        "        if not subject.allowed:\n            raise PermissionError\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/authorization.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="single-model-class-pattern",
+                scenario="single-model-type-dispatch",
+                title="A class pattern keeps the nested permission check in its body",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/authorization.py",
+                        "from pydantic import BaseModel\n"
+                        "class Session(BaseModel):\n    allowed: bool\n"
+                        "def authorize(subject):\n"
+                        "    match subject:\n"
+                        "        case Session():\n"
+                        "            if not subject.allowed:\n                raise PermissionError\n"
+                        "        case _:\n            return\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/authorization.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="three-branch-type-dispatch",
                 title="Repeated branches dispatch on runtime type",
@@ -455,9 +495,9 @@ def _review_dispatch_findings(
                 statement.lineno,
                 statement.col_offset + 1,
                 "SARJ080",
-                "Review this runtime type dispatch as match/case class patterns; preserve branch order, "
-                "fallbacks and nested guards. This broader recommendation has no automatic rewrite.",
-                severity=Severity.WARNING,
+                "Use match/case class patterns for this runtime type dispatch; preserve branch order, "
+                "fallbacks and nested guards. This recommendation has no automatic rewrite.",
+                severity=Severity.ERROR,
             )
         )
     return findings
