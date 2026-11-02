@@ -55,6 +55,7 @@ type MemoryScope = Literal["process-lifetime-self", "unsupported"]
 
 _WORKER = """
 import hashlib, json, sys, time
+from dataclasses import asdict
 from pathlib import Path
 import sarj_python_lint
 from sarj_python_lint.__main__ import analyze
@@ -64,8 +65,7 @@ paths = sorted(corpus.rglob('*.py'))
 start = time.perf_counter()
 findings = analyze(sorted(REGISTRY), paths)
 elapsed = time.perf_counter() - start
-rows = [[str(d.path.relative_to(corpus)), d.line, d.col, d.code, d.message, d.severity.value,
-         d.column_encoding.value] for d in findings]
+rows = [asdict(d) | {'path': str(d.path.relative_to(corpus))} for d in findings]
 peak = None
 if sys.platform in {'linux', 'darwin'}:
     try:
