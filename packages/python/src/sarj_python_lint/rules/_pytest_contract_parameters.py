@@ -259,14 +259,12 @@ class FixtureContractParameters:
             return None
         semantics = self._unit_semantics(unit)
         parsed = semantics.resolve_alias(annotation)
-        if not isinstance(parsed, ast.Name | ast.Attribute) or not self._stable_reference(parsed, unit):
+        if not isinstance(parsed, ast.Name | ast.Attribute):
             return None
         model = self.contracts.annotation(annotation, unit)
-        if (
-            model is None
-            or model.declaration.type_params
-            or any(isinstance(base, ast.Subscript) for base in model.declaration.bases)
-        ):
+        if model is None or not self._stable_reference(parsed, unit):
+            return None
+        if model.declaration.type_params or any(isinstance(base, ast.Subscript) for base in model.declaration.bases):
             return None
         return model
 
