@@ -1,8 +1,11 @@
 /** @fileoverview _type-binding — resolve type names without value-only shadowing. */
+
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 export function typeBinding(
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   identifier: TSESTree.Identifier,
 ): TSESLint.Scope.Variable | null {
   let scope: TSESLint.Scope.Scope | null = source.getScope(identifier);
@@ -30,17 +33,17 @@ interface PublicReadExtents {
 }
 
 interface ReferenceIndex {
-  readonly manager: NonNullable<TSESLint.SourceCode["scopeManager"]>;
+  readonly manager: NonNullable<TypeScriptSourceCode["scopeManager"]>;
   readonly references: readonly TSESLint.Scope.Reference[];
   readonly publicReads: Map<TSESLint.Scope.Variable, PublicReadExtents>;
 }
 
 // Reuse completed parser facts for the lifetime of this SourceCode and scope manager.
-const REFERENCE_INDEXES = new WeakMap<Readonly<TSESLint.SourceCode>, ReferenceIndex>();
+const REFERENCE_INDEXES = new WeakMap<Readonly<TypeScriptSourceCode>, ReferenceIndex>();
 
 /** Erased named reads need an independent public type use that no SAFE fixer removes. */
 export function retainsNamedTypeUses(
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   removed: TSESTree.Node,
 ): boolean {
   const manager = source.scopeManager;
@@ -58,7 +61,7 @@ export function retainsNamedTypeUses(
   return true;
 }
 
-function referenceIndex(source: Readonly<TSESLint.SourceCode>, manager: ReferenceIndex["manager"]): ReferenceIndex {
+function referenceIndex(source: Readonly<TypeScriptSourceCode>, manager: ReferenceIndex["manager"]): ReferenceIndex {
   const cached = REFERENCE_INDEXES.get(source);
   if (cached?.manager === manager) return cached;
   const references = manager.scopes.flatMap(scope => scope.references);

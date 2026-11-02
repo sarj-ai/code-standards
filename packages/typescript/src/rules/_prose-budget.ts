@@ -2,7 +2,11 @@
  * @fileoverview _prose-budget — shared extraction and sentence counting for comment-budget rules.
  */
 
-import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile, type FilePath } from "./_paths.js";
 
@@ -71,7 +75,7 @@ export function hasTechnicalAnchor(text: string): boolean {
 
 export function proseGroups(
   filename: FilePath,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   includeValueTags = false,
 ): ProseGroup[] {
   if (
@@ -117,7 +121,7 @@ function annotatedParameter(parameter: TSESTree.Parameter): boolean {
 }
 
 export function documentsTypedFunction(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   comment: TSESTree.Comment,
 ): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });

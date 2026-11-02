@@ -4,12 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-fetch-timeout.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { nativeFetchReference } from "./_native-fetch-reference.js";
@@ -101,7 +100,7 @@ function emptySignal(
 function initSignalState(
   init: TSESTree.CallExpressionArgument,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): SignalState {
   init = unwrapExpression(init);
   if (init.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";

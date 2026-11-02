@@ -3,12 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-reduce-accumulator-copy.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
@@ -113,7 +112,7 @@ export default createRule<[], "copy">({
       !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
     )
       return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const program = services.program;
     if (program === null) return {};
     const checker = program.getTypeChecker();

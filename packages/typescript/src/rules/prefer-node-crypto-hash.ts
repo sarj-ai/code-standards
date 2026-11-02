@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts
  */
 
+import type { NativeReportFix } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
@@ -228,7 +231,7 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    function existingHashFix(node: TSESTree.CallExpression, update: TSESTree.CallExpression, create: TSESTree.CallExpression): TSESLint.ReportFixFunction | null {
+    function existingHashFix(node: TSESTree.CallExpression, update: TSESTree.CallExpression, create: TSESTree.CallExpression): NativeReportFix | null {
       if (hashBindings.size === 0 || canonicalCreators.size === 0) return null;
       const algorithm = create.arguments[0];
       const data = update.arguments[0];

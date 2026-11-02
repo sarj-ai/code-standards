@@ -3,7 +3,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-typed-doc-sections.test.ts
  */
 
-import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import type { TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, ownLineCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -36,7 +40,7 @@ function parameterTarget(parameter: TSESTree.Parameter): TSESTree.Node {
   return parameter.type === "AssignmentPattern" ? parameter.left : parameter;
 }
 
-function documentedSignature(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): Signature | null {
+function documentedSignature(sourceCode: Readonly<TypeScriptSourceCode>, comment: TSESTree.Comment): Signature | null {
   const before = sourceCode.getTokenBefore(comment);
   if (before?.loc.end.line === comment.loc.start.line) return null;
   const token = sourceCode.getTokenAfter(comment);
@@ -103,7 +107,7 @@ function typedTags(text: string): TypedTag[] {
   });
 }
 
-function isVacuousTag(tag: TypedTag, signature: Signature, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isVacuousTag(tag: TypedTag, signature: Signature, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   let annotation = signature.returnType;
   if (PARAM_TAGS.has(tag.kind)) {
     const parameter = signature.params.map(parameterTarget).find((node) => node.type === "Identifier" && node.name === tag.name);
@@ -140,7 +144,7 @@ function canonicalWord(word: string): string {
 function typedTagEdit(
   comment: TSESTree.Comment,
   signature: Signature,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): { readonly range: readonly [number, number]; readonly text: string } | null {
   if (comment.type !== "Block" || !comment.value.startsWith("*")) return null;
   const removal = ownLineCommentRemovalRange(sourceCode.text, comment);
@@ -243,7 +247,7 @@ export default createRule<Options, MessageIds>({
             context.report({
               node: group.comment,
               messageId: "typedSection",
-              fix: edit === null ? null : (fixer) => fixer.replaceTextRange(edit.range, edit.text),
+              fix: edit === null ? null : (fixer) => fixer.replaceTextRange([...(edit.range)], edit.text),
             });
           }
         }

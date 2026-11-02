@@ -2,11 +2,11 @@
  * @fileoverview _localization — localization policies share opt-in and translation-boundary semantics.
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   attributeText,
@@ -51,7 +51,7 @@ export function needsTranslation(
 
 export function withinTranslation(
   node: TSESTree.Node,
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
   options: LocalizationOptions | undefined,
 ): boolean {
   const isText =

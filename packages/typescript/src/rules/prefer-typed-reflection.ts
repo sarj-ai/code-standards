@@ -3,12 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-typed-reflection.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -104,7 +103,7 @@ export default createRule<[], "avoid">({
       !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
     )
       return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     if (!services.program) return {};
     const checker = services.program.getTypeChecker();
     const isReflect = (node: TSESTree.Node): boolean =>

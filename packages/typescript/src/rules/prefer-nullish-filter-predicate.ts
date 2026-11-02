@@ -4,14 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nullish-filter-predicate.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESTree,
-  type TSESLint,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { NativeRuleContext, TypeServices, NativeReportFix, NativeSuggestions } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 import ts from "typescript";
@@ -109,7 +107,7 @@ export const PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION = {
 
 function isUnshadowedBoolean(
   node: TSESTree.Identifier,
-  context: TSESLint.RuleContext<MessageIds, Options>,
+  context: NativeRuleContext<MessageIds, Options>,
 ): boolean {
   const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
   return variable === null || variable.defs.length === 0;
@@ -117,7 +115,7 @@ function isUnshadowedBoolean(
 
 function isBuiltinArrayFilter(
   node: TSESTree.MemberExpression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   const checker = services.program.getTypeChecker();
   const property = services.esTreeNodeToTSNodeMap.get(node.property);
@@ -135,7 +133,7 @@ function isBuiltinArrayFilter(
 
 function arrayElementType(
   node: TSESTree.Expression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): ts.Type | null {
   const checker = services.program.getTypeChecker();
   const receiver = services.esTreeNodeToTSNodeMap.get(node);
@@ -194,7 +192,7 @@ function isProvablyTruthy(type: ts.Type, checker: ts.TypeChecker, falsyBrowserOb
 
 function availableParameterName(
   node: TSESTree.CallExpression,
-  context: TSESLint.RuleContext<MessageIds, Options>,
+  context: NativeRuleContext<MessageIds, Options>,
 ): string {
   for (const name of ["value", "item", "element", "candidate"] as const) {
     if (ASTUtils.findVariable(context.sourceCode.getScope(node), name) === null) return name;
@@ -207,7 +205,7 @@ function availableParameterName(
 function hasFreshArrayReceiver(
   node: TSESTree.CallExpression,
   receiver: TSESTree.Expression,
-  context: TSESLint.RuleContext<MessageIds, Options>,
+  context: NativeRuleContext<MessageIds, Options>,
 ): boolean {
   if (receiver.type !== AST_NODE_TYPES.ArrayExpression || !isLiteralValue(receiver)) return false;
   const statements = context.sourceCode.ast.body;
@@ -249,9 +247,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }
@@ -285,8 +283,8 @@ export default createRule<Options, MessageIds>({
         const report: {
           readonly node: TSESTree.Identifier;
           readonly messageId: MessageIds;
-          fix?: TSESLint.ReportFixFunction;
-          suggest?: TSESLint.ReportSuggestionArray<MessageIds>;
+          fix?: NativeReportFix;
+          suggest?: NativeSuggestions<MessageIds>;
         } = {
           node: callback,
           messageId: "preferNullishPredicate",

@@ -2,12 +2,11 @@
  * @fileoverview _class-private — conservative shared analysis for converting a class member to ECMAScript `#private`.
  */
 
-import {
-  AST_NODE_TYPES,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeServices, NativeRuleContext, NativeRuleFixer, NativeRuleFix, TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import type * as ts from "typescript";
 
 import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
@@ -20,7 +19,7 @@ export type PrivateConvertibleMember =
   | TSESTree.AccessorProperty;
 
 function symbolAt(
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
   checker: ts.TypeChecker,
   node: TSESTree.Node,
 ): ts.Symbol | undefined {
@@ -52,12 +51,12 @@ function memberName(member: PrivateConvertibleMember): string | null {
  * intentionally make the conversion report-only.
  */
 export function privateMemberFixes(
-  context: Readonly<TSESLint.RuleContext<string, readonly unknown[]>>,
-  services: ParserServicesWithTypeInformation,
+  context: Readonly<NativeRuleContext<string, readonly unknown[]>>,
+  services: TypeServices,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
   members: readonly PrivateConvertibleMember[],
   removePrivateKeyword: boolean,
-): ((fixer: TSESLint.RuleFixer) => readonly TSESLint.RuleFix[]) | undefined {
+): ((fixer: NativeRuleFixer) => readonly NativeRuleFix[]) | undefined {
   const first = members[0];
   const name = first === undefined ? null : memberName(first);
   if (first === undefined || name === null || members.some((member) => member.static || member.decorators.length > 0)) {
@@ -133,11 +132,11 @@ export function privateMemberFixes(
   }
 
   return (fixer) => {
-    const fixes: TSESLint.RuleFix[] = [];
+    const fixes: NativeRuleFix[] = [];
     for (const member of members) {
       fixes.push(fixer.replaceText(member.key, `#${name}`));
       const range = privateKeywordRanges.get(member);
-      if (range !== undefined) fixes.push(fixer.removeRange(range));
+      if (range !== undefined) fixes.push(fixer.removeRange([...(range)]));
     }
     for (const reference of references) fixes.push(fixer.replaceText(reference.property, `#${name}`));
     return fixes;
@@ -164,7 +163,7 @@ export function convertibleMemberName(member: TSESTree.ClassElement): string | n
 
 /** Class definition itself must have no eager hooks that can observe its members. */
 export function isUnobservedPrivateClass(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
   filename: string,
 ): owner is TSESTree.ClassDeclaration {

@@ -3,7 +3,11 @@
  *
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleListener } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
@@ -236,7 +240,7 @@ function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): vo
 export function createSqlListener(
   handler: (sql: string, node: TSESTree.Node, original: string) => void,
   options?: SqlNoiseOptions,
-): TSESLint.RuleListener {
+): NativeRuleListener {
   const consumed = new WeakSet<TSESTree.Node>();
 
   const visit = (node: TSESTree.Node): void => {

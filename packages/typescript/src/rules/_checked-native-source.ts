@@ -1,5 +1,8 @@
 /** @fileoverview _checked-native-source — require active native checking of a local implementation. */
-import type { ParserServicesWithTypeInformation, TSESLint } from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
 import ts from "typescript";
 
 const CHECKED = new WeakMap<ts.Program, WeakMap<ts.SourceFile, boolean>>();
@@ -8,7 +11,7 @@ const MULTI_LINE_DIRECTIVE = /^[/*]*\s*@(?:ts-expect-error|ts-ignore)/u;
 const SINGLE_LINE_PRAGMA = /^\/\/\/?\s*@([^\s:]+)(?:(?:[^\S\r\n]|:).*)?$/mu;
 
 /** Current text is context-specific, including when a supplied Program is reused after a fix. */
-export function currentNativeSource(sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): ts.SourceFile | null {
+export function currentNativeSource(sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices): ts.SourceFile | null {
   const source = services.esTreeNodeToTSNodeMap.get(sourceCode.ast);
   return ts.isSourceFile(source) && services.program.getSourceFile(source.fileName) === source && source.text === sourceCode.text ? source : null;
 }

@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-return-disposed-resource.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -36,7 +39,7 @@ function owningFunction(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
-function resourceOwner(source: Readonly<TSESLint.SourceCode>, value: TSESTree.Node, seen: ReadonlySet<TSESLint.Scope.Variable> = new Set()): TSESTree.VariableDeclarator | null {
+function resourceOwner(source: Readonly<TypeScriptSourceCode>, value: TSESTree.Node, seen: ReadonlySet<TSESLint.Scope.Variable> = new Set()): TSESTree.VariableDeclarator | null {
   const node = unwrapExpression(value);
   if (node.type !== AST_NODE_TYPES.Identifier) return null;
   const variable = ASTUtils.findVariable(source.getScope(node), node.name);

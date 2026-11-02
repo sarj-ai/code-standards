@@ -2,12 +2,11 @@
  * @fileoverview _existing-domain-comparison-fix — reuse a closed-domain comparator.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const UNSAFE_FIELDS: ReadonlySet<string> = new Set([
   "__proto__",
@@ -17,9 +16,9 @@ const UNSAFE_FIELDS: ReadonlySet<string> = new Set([
 
 /** Reuse an already exercised comparator for a closed string-literal record domain. */
 export function existingDomainComparisonFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   comparison: TSESTree.BinaryExpression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     comparison.operator !== "===" ||
     sourceCode.ast.body.length !== 2 ||
@@ -213,7 +212,7 @@ function callerElements(
 }
 
 function isComparatorCall(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   call: TSESTree.CallExpression,
   comparator: TSESTree.FunctionDeclaration,
   fields: readonly string[],
@@ -258,7 +257,7 @@ function literalRecord(
 }
 
 function serializedLiteral(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
   fields: readonly string[],
 ): TSESTree.ObjectExpression | null {

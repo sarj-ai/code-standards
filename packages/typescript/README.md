@@ -8,6 +8,8 @@ Custom ESLint rules for hypermodern TypeScript / React / Next.js projects
 npm install --save-dev @sarj/eslint-plugin
 ```
 
+Version 17 requires ESLint 10.13.0 or later. The plugin, rules and flat presets use ESLint's native TypeScript contracts and compose directly with `defineConfig` from `eslint/config`. Use `Linter.Config` and `ESLint.Options` from `eslint` for consumer annotations; legacy `TSESLint.Plugin` and `TSESLint.FlatConfig.Config` annotations are no longer supported. The exported rule names, preset severities and option settings are unchanged.
+
 Rules and configuration are documented in the generated rule directory.
 
 [Documentation](https://code-standards.sarj.ai/rules/eslint/) · [Source](https://github.com/sarj-ai/code-standards)

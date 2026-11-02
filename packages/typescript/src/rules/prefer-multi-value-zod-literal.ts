@@ -3,6 +3,9 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts
  */
+
+import type { NativeRuleContext, NativeRuleListener } from "./_eslint-rule.js";
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -83,7 +86,7 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
 
 function isStaticPrimitive(
   node: TSESTree.CallExpressionArgument,
-  context: TSESLint.RuleContext<MessageIds, Options>,
+  context: NativeRuleContext<MessageIds, Options>,
 ): boolean {
   node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Literal) {
@@ -268,6 +271,6 @@ export default createRule<Options, MessageIds>({
           data: { zod: namespace },
         });
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies NativeRuleListener;
   },
 });

@@ -2,18 +2,17 @@
  * @fileoverview _owned-fetch-fix — repair the receiver of one owned literal request.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** Repair a receiver only when the private stored callable is used by one literal request. */
 export function ownedFetchFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Expression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     node.type !== AST_NODE_TYPES.Identifier ||
     node.name !== "fetch" ||
@@ -83,7 +82,7 @@ export function ownedFetchFix(
 }
 
 function soleLiteralRequest(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Expression | null,
   declaration: TSESTree.VariableDeclaration,
   object: TSESTree.VariableDeclarator,

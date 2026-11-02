@@ -4,13 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/interface-contract-members-private.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { NativeRuleContext, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
 import { convertibleMemberName, isUnobservedPrivateClass, privateMemberFixes } from "./_class-private.js";
@@ -65,8 +64,8 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function reportClass(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  services: ParserServicesWithTypeInformation,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
+  services: TypeServices,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
 ): void {
   if (owner.abstract) return;
@@ -110,7 +109,7 @@ function candidate(member: TSESTree.ClassElement): member is TSESTree.MethodDefi
 }
 
 function interfaceNames(
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
 ): ReadonlySet<string> | null {
   const tsOwner = services.esTreeNodeToTSNodeMap.get(owner);
@@ -145,9 +144,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

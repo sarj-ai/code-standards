@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
  */
 
+import type { TypeScriptSourceCode, NativeRuleContext, NativeReportFix } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
 import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
@@ -116,7 +119,7 @@ function propertyName(node: TSESTree.TSPropertySignature): string | null {
   return null;
 }
 
-function isArrayType(node: TSESTree.TypeNode, source: Readonly<TSESLint.SourceCode>): boolean {
+function isArrayType(node: TSESTree.TypeNode, source: Readonly<TypeScriptSourceCode>): boolean {
   if (node.type === AST_NODE_TYPES.TSArrayType) return true;
   return (
     node.type === AST_NODE_TYPES.TSTypeReference &&
@@ -127,7 +130,7 @@ function isArrayType(node: TSESTree.TypeNode, source: Readonly<TSESLint.SourceCo
   );
 }
 
-function nullableProperty(node: TSESTree.TSPropertySignature, source: Readonly<TSESLint.SourceCode>): NullableProperty | null {
+function nullableProperty(node: TSESTree.TSPropertySignature, source: Readonly<TypeScriptSourceCode>): NullableProperty | null {
   if (node.optional) return null;
   const name = propertyName(node);
   const annotation = node.typeAnnotation?.typeAnnotation;
@@ -146,7 +149,7 @@ function nullableProperty(node: TSESTree.TSPropertySignature, source: Readonly<T
   return { name, node, acceptsNull, acceptsUndefined };
 }
 
-function shapeProperties(members: readonly TSESTree.TypeElement[], source: Readonly<TSESLint.SourceCode>): readonly NullableProperty[] {
+function shapeProperties(members: readonly TSESTree.TypeElement[], source: Readonly<TypeScriptSourceCode>): readonly NullableProperty[] {
   return members.flatMap((member) => {
     if (member.type !== AST_NODE_TYPES.TSPropertySignature) return [];
     const property = nullableProperty(member, source);
@@ -156,7 +159,7 @@ function shapeProperties(members: readonly TSESTree.TypeElement[], source: Reado
 
 function typeIndex(
   program: TSESTree.Program,
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   exportedDeclarations: ReadonlySet<TSESTree.Node>,
 ): ReadonlyMap<TSESTree.Node, TypeShape> {
   const index = new Map<TSESTree.Node, TypeShape>();
@@ -181,7 +184,7 @@ function typeIndex(
   return index;
 }
 
-function exportedOwnership(program: TSESTree.Program, source: Readonly<TSESLint.SourceCode>): ExportedOwnership {
+function exportedOwnership(program: TSESTree.Program, source: Readonly<TypeScriptSourceCode>): ExportedOwnership {
   const seeds: ExportSeeds = { identifiers: [], values: [], roots: [], callables: new Set(), signatures: new Set() };
   for (const statement of program.body) collectExportSeeds(statement, seeds);
   const graph: OwnershipGraph = {
@@ -199,13 +202,13 @@ function exportedOwnership(program: TSESTree.Program, source: Readonly<TSESLint.
   return { declarations: graph.declarations, callables: graph.callables };
 }
 
-function processOwnershipWork(work: OwnershipWork, source: Readonly<TSESLint.SourceCode>, graph: OwnershipGraph): void {
+function processOwnershipWork(work: OwnershipWork, source: Readonly<TypeScriptSourceCode>, graph: OwnershipGraph): void {
   if (work.kind === "syntax") processOwnershipSyntax(work.node, source, graph);
   else if (work.kind === "type") processOwnershipType(work.identifier, source, graph);
   else processOwnershipValue(work.identifier, source, graph);
 }
 
-function processOwnershipSyntax(node: TSESTree.Node, source: Readonly<TSESLint.SourceCode>, graph: OwnershipGraph): void {
+function processOwnershipSyntax(node: TSESTree.Node, source: Readonly<TypeScriptSourceCode>, graph: OwnershipGraph): void {
   if (graph.syntax.has(node)) return;
   graph.syntax.add(node);
   if (node.type === AST_NODE_TYPES.TSTypeReference && node.typeName.type === AST_NODE_TYPES.Identifier) {
@@ -218,7 +221,7 @@ function processOwnershipSyntax(node: TSESTree.Node, source: Readonly<TSESLint.S
   forEachAstChild(node, source.visitorKeys, child => { graph.pending.push({ kind: "syntax", node: child }); });
 }
 
-function processOwnershipType(identifier: TSESTree.Identifier, source: Readonly<TSESLint.SourceCode>, graph: OwnershipGraph): void {
+function processOwnershipType(identifier: TSESTree.Identifier, source: Readonly<TypeScriptSourceCode>, graph: OwnershipGraph): void {
   const binding = typeBinding(source, identifier);
   if (binding === null || graph.types.has(binding)) return;
   graph.types.add(binding);
@@ -229,7 +232,7 @@ function processOwnershipType(identifier: TSESTree.Identifier, source: Readonly<
   }
 }
 
-function processOwnershipValue(identifier: TSESTree.Identifier, source: Readonly<TSESLint.SourceCode>, graph: OwnershipGraph): void {
+function processOwnershipValue(identifier: TSESTree.Identifier, source: Readonly<TypeScriptSourceCode>, graph: OwnershipGraph): void {
   const binding = valueBinding(source, identifier);
   if (binding === null || graph.values.has(binding)) return;
   graph.values.add(binding);
@@ -294,7 +297,7 @@ function collectExportValue(node: TSESTree.Node, seeds: ExportSeeds): void {
   }
 }
 
-function exportedValueAnnotation(source: Readonly<TSESLint.SourceCode>, identifier: TSESTree.Identifier): TSESTree.TSTypeAnnotation | undefined {
+function exportedValueAnnotation(source: Readonly<TypeScriptSourceCode>, identifier: TSESTree.Identifier): TSESTree.TSTypeAnnotation | undefined {
   const definitions = valueBinding(source, identifier)?.defs.filter(definition => definition.isVariableDefinition) ?? [];
   if (definitions.length !== 1) return undefined;
   const declaration = definitions[0]?.node;
@@ -313,7 +316,7 @@ function isSignatureNode(node: TSESTree.Node | null | undefined): node is Signat
 }
 
 function exportedCallable(
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   identifier: TSESTree.Identifier,
   cache: Map<TSESLint.Scope.Variable, CallableTarget | null>,
 ): CallableResolution | null {
@@ -369,7 +372,7 @@ function constantCallableStep(binding: TSESLint.Scope.Variable): CallableStep | 
   };
 }
 
-function valueBinding(source: Readonly<TSESLint.SourceCode>, identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+function valueBinding(source: Readonly<TypeScriptSourceCode>, identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
   let scope: TSESLint.Scope.Scope | null = source.getScope(identifier);
   while (scope !== null) {
     const variable = scope.set.get(identifier.name);
@@ -530,7 +533,7 @@ function directlyCoalesced(node: TSESTree.Node): boolean {
 }
 
 function identifierIsOnlyCoalesced(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   binding: TSESTree.Identifier,
   fn: FunctionNode,
 ): boolean {
@@ -543,7 +546,7 @@ function identifierIsOnlyCoalesced(
 }
 
 function memberIsOnlyCoalesced(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   object: TSESTree.Identifier,
   property: string,
   fn: FunctionNode,
@@ -567,12 +570,12 @@ function memberIsOnlyCoalesced(
 
 
 function privateNormalizedCollectionFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   filename: string,
   owner: FunctionNode,
   parameter: TSESTree.ObjectPattern,
   property: TSESTree.TSPropertySignature,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const type = property.typeAnnotation?.typeAnnotation;
   if (owner.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null || owner.typeParameters !== undefined ||
     parameter.parent !== owner || parameter.typeAnnotation?.typeAnnotation.type !== AST_NODE_TYPES.TSTypeLiteral ||
@@ -609,7 +612,7 @@ export default createRule<Options, MessageIds>({
     let shapes: ReadonlyMap<TSESTree.Node, TypeShape> = new Map();
     let publicCallables: ReadonlySet<FunctionNode> = new Set();
     const evidence = new Map<TSESTree.TSPropertySignature, boolean[]>();
-    const fixes = new Map<TSESTree.TSPropertySignature, TSESLint.ReportFixFunction | null>();
+    const fixes = new Map<TSESTree.TSPropertySignature, NativeReportFix | null>();
 
     function propertiesFor(annotation: TSESTree.TypeNode | undefined): readonly NullableProperty[] {
       if (annotation?.type === AST_NODE_TYPES.TSTypeLiteral) return shapeProperties(annotation.members, context.sourceCode);

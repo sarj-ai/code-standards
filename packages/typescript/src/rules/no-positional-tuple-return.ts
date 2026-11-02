@@ -4,12 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -384,7 +383,7 @@ function exportedTypeNames(program: TSESTree.Program): ReadonlySet<string> {
   return names;
 }
 
-function typeAliases(sourceCode: TSESLint.SourceCode): TypeAliases {
+function typeAliases(sourceCode: TypeScriptSourceCode): TypeAliases {
   const aliases = new Map<string, TSESTree.TSTypeAliasDeclaration>();
   for (const statement of sourceCode.ast.body) {
     const declaration =

@@ -3,7 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-minimal-parameter-contract.test.ts
  */
-import { AST_NODE_TYPES, ESLintUtils } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { currentNativeSource } from "./_checked-native-source.js";
@@ -80,7 +84,7 @@ export default createRule<[], "minimal">({
       CallExpression(node): void { if (directEval(node)) dynamic = true; },
       "Program:exit"(): void {
         if (dynamic || !candidates.length) return;
-        const services = ESLintUtils.getParserServices(context);
+        const services = getTypeServices(context);
         const source = currentNativeSource(context.sourceCode, services);
         if (!source) return;
         const checker = services.program.getTypeChecker();

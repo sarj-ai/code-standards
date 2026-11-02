@@ -1,5 +1,9 @@
 /** @fileoverview _contradictory-array-predicate — native array membership does not validate a primitive element contract. */
-import { AST_NODE_TYPES, ASTUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 import { isTypeReference } from "ts-api-utils";
 
@@ -16,7 +20,7 @@ const PRIMITIVE_ELEMENTS = ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFl
 const OBJECT_REFLECTION: ReadonlySet<string> = new Set(["getPrototypeOf", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "prototype", "constructor", "__proto__"]);
 
 /** Cache only scope objects owned by this immutable parsed file. */
-export function contradictoryArrayPredicate(sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): ArrayPredicateProof {
+export function contradictoryArrayPredicate(sourceCode: TypeScriptSourceCode, services: TypeServices): ArrayPredicateProof {
   const checker = services.program.getTypeChecker();
   const stable = new WeakMap<TSESLint.Scope.Variable, boolean>();
   let constructorCapability = false;
@@ -56,12 +60,12 @@ function plainPrimitiveArray(target: ts.Type, checker: ts.TypeChecker): boolean 
     (element.flags & (ts.TypeFlags.Enum | ts.TypeFlags.EnumLiteral | ts.TypeFlags.Intersection)) === 0;
 }
 
-function nativeBinding(identifier: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): TSESLint.Scope.Variable | undefined {
+function nativeBinding(identifier: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): TSESLint.Scope.Variable | undefined {
   const binding = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
   return binding !== null && binding.defs.length === 0 ? binding : undefined;
 }
 
-function stableArray(binding: TSESLint.Scope.Variable, sourceCode: TSESLint.SourceCode, cache: WeakMap<TSESLint.Scope.Variable, boolean>): boolean {
+function stableArray(binding: TSESLint.Scope.Variable, sourceCode: TypeScriptSourceCode, cache: WeakMap<TSESLint.Scope.Variable, boolean>): boolean {
   const previous = cache.get(binding);
   if (previous !== undefined) return previous;
   const scope = sourceCode.scopeManager?.globalScope;
@@ -76,7 +80,7 @@ function stableArray(binding: TSESLint.Scope.Variable, sourceCode: TSESLint.Sour
 }
 
 /** Reflection or namespace aliases can reveal the same constructor without an Array read. */
-function namespaceReferences(name: string, sourceCode: TSESLint.SourceCode): readonly TSESLint.Scope.Reference[] {
+function namespaceReferences(name: string, sourceCode: TypeScriptSourceCode): readonly TSESLint.Scope.Reference[] {
   const scope = sourceCode.scopeManager?.globalScope;
   const binding = scope?.set.get(name);
   const known = binding?.defs.length === 0 ? binding.references : [];

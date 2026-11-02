@@ -2,6 +2,9 @@
  * @fileoverview _existing-string-constant-fix — reuse an authored primitive string constant.
  */
 
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -17,16 +20,16 @@ interface StringConstantPlan {
 }
 
 const PLANS = new WeakMap<
-  Readonly<TSESLint.SourceCode>,
+  Readonly<TypeScriptSourceCode>,
   StringConstantPlan | null
 >();
 
 /** Reuse an existing primitive constant in a complete declaration-only module. */
 export function existingStringConstantFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
   value: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (node.type !== AST_NODE_TYPES.Literal || node.value !== value) return null;
   const plan = stringConstantPlan(sourceCode);
   if (
@@ -41,7 +44,7 @@ export function existingStringConstantFix(
 }
 
 function stringConstantPlan(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): StringConstantPlan | null {
   const cached = PLANS.get(sourceCode);
   if (cached !== undefined) return cached;
@@ -51,7 +54,7 @@ function stringConstantPlan(
 }
 
 function ownedPrimitiveReturns(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): StringConstantPlan | null {
   if (sourceCode.getAllComments().length > 0) return null;
   const [statement, ...statements] = sourceCode.ast.body;
@@ -104,7 +107,7 @@ function ownedPrimitiveReturns(
 }
 
 function ownedStringReturn(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   entry: TSESTree.Node,
   binding: TSESLint.Scope.Variable,
   value: string,

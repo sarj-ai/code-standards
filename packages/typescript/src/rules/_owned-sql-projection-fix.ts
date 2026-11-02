@@ -2,12 +2,11 @@
  * @fileoverview _owned-sql-projection-fix — expand a closed owned literal SQL projection.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const IDENTIFIER = '"[A-Za-z_][A-Za-z0-9_]{0,62}"';
 const INTEGER = "[0-9]{1,9}";
@@ -40,10 +39,10 @@ interface Owner {
 
 /** Expand only a complete literal relation consumed by a fresh default pg Client. */
 export function ownedSqlProjectionFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
   original: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     node.type !== AST_NODE_TYPES.Literal ||
     typeof node.value !== "string" ||
@@ -96,7 +95,7 @@ function literalProjection(query: string): Projection | null {
   };
 }
 
-function ownedLiteral(sourceCode: Readonly<TSESLint.SourceCode>): Owner | null {
+function ownedLiteral(sourceCode: Readonly<TypeScriptSourceCode>): Owner | null {
   const [imported, exported] = sourceCode.ast.body;
   if (
     imported?.type !== AST_NODE_TYPES.ImportDeclaration ||
@@ -252,7 +251,7 @@ function returnedQuery(
 }
 
 function ownedBindings(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   owner: Owner,
 ): boolean {
   const imported = ASTUtils.findVariable(sourceCode.getScope(owner.constructor), "Client");

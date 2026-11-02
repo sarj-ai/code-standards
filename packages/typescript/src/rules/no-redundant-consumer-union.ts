@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-consumer-union.test.ts
  */
-import { AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { currentNativeSource } from "./_checked-native-source.js";
@@ -64,7 +69,7 @@ function scalarFields(type: ts.Type, checker: ts.TypeChecker): ReadonlyMap<strin
 type LocalContractNode = TSESTree.TypeNode | TSESTree.Identifier;
 
 /** Follow only the local declarations whose unambiguous type bindings are available. */
-function localContractBindings(roots: readonly TSESTree.TypeNode[], source: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): boolean {
+function localContractBindings(roots: readonly TSESTree.TypeNode[], source: Readonly<TypeScriptSourceCode>, services: TypeServices): boolean {
   const pending: LocalContractNode[] = [...roots];
   const visited = new Set<LocalContractNode>();
   for (let index = 0; index < pending.length; index++) {
@@ -78,7 +83,7 @@ function localContractBindings(roots: readonly TSESTree.TypeNode[], source: Read
   return true;
 }
 
-function localContractReferences(node: LocalContractNode, source: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): readonly LocalContractNode[] | null {
+function localContractReferences(node: LocalContractNode, source: Readonly<TypeScriptSourceCode>, services: TypeServices): readonly LocalContractNode[] | null {
   switch (node.type) {
     case AST_NODE_TYPES.TSTypeLiteral: return [];
     case AST_NODE_TYPES.TSIntersectionType: return node.types;
@@ -89,7 +94,7 @@ function localContractReferences(node: LocalContractNode, source: Readonly<TSESL
   }
 }
 
-function localBindingReferences(identifier: TSESTree.Identifier, source: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): readonly LocalContractNode[] | null {
+function localBindingReferences(identifier: TSESTree.Identifier, source: Readonly<TypeScriptSourceCode>, services: TypeServices): readonly LocalContractNode[] | null {
   const definitions = typeBinding(source, identifier)?.defs.filter((definition) => definition.isTypeDefinition).map((definition) => definition.node);
   if (!definitions?.length || !definitions.every(moduleTypeDeclaration)) return null;
   const first = definitions[0];
@@ -138,14 +143,14 @@ function coveringAlternative(leftNode: ts.TypeNode, rightNode: ts.TypeNode, chec
 }
 
 /** Build a union edit after checking callers and retained type references. */
-function privateUnionFix(sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation, proof: {
+function privateUnionFix(sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices, proof: {
   readonly candidate: ScalarConsumerNode;
   readonly parameter: ts.ParameterDeclaration;
   readonly annotation: TSESTree.Node;
   readonly covered: ts.TypeNode;
   readonly covering: ts.TypeNode;
   readonly candidateAnnotations: readonly TSESTree.Node[];
-}): TSESLint.ReportFixFunction | null {
+}): NativeReportFix | null {
   const covering = services.tsNodeToESTreeNodeMap.get(proof.covering);
   if (!validConsumerFixCalls(proof.candidate, proof.parameter, sourceCode, services)) return null;
   if (!retainedConsumerTypeUses(sourceCode, services.tsNodeToESTreeNodeMap.get(proof.covered), covering, proof.candidateAnnotations)) return null;
@@ -173,7 +178,7 @@ export default createRule<[], "redundant">({
       CallExpression(node): void { if (directEval(node)) dynamic = true; },
       "Program:exit"(): void {
         if (dynamic || !candidates.length) return;
-        const services = ESLintUtils.getParserServices(context);
+        const services = getTypeServices(context);
         const source = currentNativeSource(context.sourceCode, services);
         if (!source) return;
         const checker = services.program.getTypeChecker();

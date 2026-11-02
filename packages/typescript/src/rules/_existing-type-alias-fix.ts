@@ -2,6 +2,9 @@
  * @fileoverview _existing-type-alias-fix — reuse an existing context-free exported alias.
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -28,11 +31,11 @@ interface AliasCandidate {
   readonly binding: TSESLint.Scope.Variable;
 }
 type AliasIndex = ReadonlyMap<string, readonly AliasCandidate[]>;
-const ALIASES = new WeakMap<Readonly<TSESLint.SourceCode>, AliasIndex>();
+const ALIASES = new WeakMap<Readonly<TypeScriptSourceCode>, AliasIndex>();
 
 /** Reuse one existing exported, context-free alias without introducing a domain name or export. */
 export function existingTypeAliasFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   annotation: TSESTree.TypeNode,
 ): string | null {
   if (
@@ -56,7 +59,7 @@ export function existingTypeAliasFix(
   return matches[0] ?? null;
 }
 
-function aliasIndex(sourceCode: Readonly<TSESLint.SourceCode>): AliasIndex {
+function aliasIndex(sourceCode: Readonly<TypeScriptSourceCode>): AliasIndex {
   const cached = ALIASES.get(sourceCode);
   if (cached !== undefined) return cached;
   const index = new Map<string, AliasCandidate[]>();
@@ -92,7 +95,7 @@ function aliasIndex(sourceCode: Readonly<TSESLint.SourceCode>): AliasIndex {
 }
 
 function tokenSignature(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
 ): string {
   return JSON.stringify(

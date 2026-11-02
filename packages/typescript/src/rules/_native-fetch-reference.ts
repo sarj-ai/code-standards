@@ -1,6 +1,9 @@
 /**
  * @fileoverview _native-fetch-reference — prove bounded native fetch references without evaluating wrappers.
  */
+
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { nativeRuntimeUnchanged } from "./_native-runtime-unchanged.js";
 import { staticPropertyName } from "./_static-string.js";
@@ -11,14 +14,14 @@ const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "self", "wi
 /** Follow only unshadowed native references and stable const aliases without defaults. */
 export function nativeFetchReference(
   node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   return lexicalFetchReference(node, sourceCode) && nativeRuntimeUnchanged(sourceCode, "fetch");
 }
 
 function lexicalFetchReference(
   node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   seen = new Set<TSESLint.Scope.Variable>(),
 ): boolean {
   const expression = unwrapExpression(node);
@@ -42,7 +45,7 @@ function lexicalFetchReference(
       ASTUtils.findVariable(sourceCode.getScope(property.value), property.value.name) === binding);
 }
 
-function globalReceiver(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function globalReceiver(node: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const receiver = unwrapExpression(node);
   return receiver.type === AST_NODE_TYPES.Identifier && GLOBAL_RECEIVERS.has(receiver.name) &&
     !ASTUtils.findVariable(sourceCode.getScope(receiver), receiver.name)?.defs.length;

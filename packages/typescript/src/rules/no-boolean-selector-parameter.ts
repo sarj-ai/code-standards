@@ -3,7 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-boolean-selector-parameter.test.ts
  */
-import { AST_NODE_TYPES, ASTUtils, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices, hasSideEffect } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   isBooleanDataSelection,
@@ -112,7 +116,7 @@ export default createRule<Options, MessageIds>({
       !context.sourceCode.parserServices?.program
     )
       return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const reported = new Set<TSESTree.Identifier>();
     function report(identifier: TSESTree.Identifier): void {
       if (
@@ -149,16 +153,16 @@ export default createRule<Options, MessageIds>({
       if (owner.body?.type !== AST_NODE_TYPES.BlockStatement || owner.body.body.length !== 1 || preservesBlockObjectCallback(owner)) return;
       const statement = owner.body.body[0];
       if (statement?.type === AST_NODE_TYPES.IfStatement) {
-        if (statement.alternate === null || (!ASTUtils.hasSideEffect(statement.consequent, context.sourceCode) &&
-          !ASTUtils.hasSideEffect(statement.alternate, context.sourceCode))) return;
+        if (statement.alternate === null || (!hasSideEffect(statement.consequent, context.sourceCode) &&
+          !hasSideEffect(statement.alternate, context.sourceCode))) return;
         const identifier = testIdentifier(statement.test);
         if (identifier !== undefined) report(identifier);
         return;
       }
       const selected = statement?.type === AST_NODE_TYPES.ReturnStatement ? statement.argument :
         statement?.type === AST_NODE_TYPES.ExpressionStatement ? statement.expression : undefined;
-      if (selected?.type !== AST_NODE_TYPES.ConditionalExpression || (!ASTUtils.hasSideEffect(selected.consequent, context.sourceCode) &&
-        !ASTUtils.hasSideEffect(selected.alternate, context.sourceCode))) return;
+      if (selected?.type !== AST_NODE_TYPES.ConditionalExpression || (!hasSideEffect(selected.consequent, context.sourceCode) &&
+        !hasSideEffect(selected.alternate, context.sourceCode))) return;
       const identifier = testIdentifier(selected.test);
       if (identifier !== undefined) report(identifier);
     }
@@ -168,7 +172,7 @@ export default createRule<Options, MessageIds>({
       ArrowFunctionExpression: inspectSingleStatementBody,
       ConditionalExpression(node) {
         if (node.parent.type !== AST_NODE_TYPES.ArrowFunctionExpression || node.parent.body !== node ||
-          (!ASTUtils.hasSideEffect(node.consequent, context.sourceCode) && !ASTUtils.hasSideEffect(node.alternate, context.sourceCode))) return;
+          (!hasSideEffect(node.consequent, context.sourceCode) && !hasSideEffect(node.alternate, context.sourceCode))) return;
         const callable = node.parent;
         if (
           (callable.parent.type === AST_NODE_TYPES.CallExpression &&

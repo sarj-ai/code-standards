@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-mutating-input-with-result.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -39,7 +42,7 @@ function command(annotation: TSESTree.TypeNode): boolean {
   return false;
 }
 
-function fields(annotation: TSESTree.TypeNode, sourceCode: Readonly<TSESLint.SourceCode>): ReadonlySet<string> {
+function fields(annotation: TSESTree.TypeNode, sourceCode: Readonly<TypeScriptSourceCode>): ReadonlySet<string> {
   const names = new Set<string>();
   for (const member of membersOf(annotation, sourceCode)) {
     const name = mutableField(member);
@@ -48,7 +51,7 @@ function fields(annotation: TSESTree.TypeNode, sourceCode: Readonly<TSESLint.Sou
   return names;
 }
 
-function membersOf(annotation: TSESTree.TypeNode, sourceCode: Readonly<TSESLint.SourceCode>): readonly TSESTree.Node[] {
+function membersOf(annotation: TSESTree.TypeNode, sourceCode: Readonly<TypeScriptSourceCode>): readonly TSESTree.Node[] {
   if (annotation.type === AST_NODE_TYPES.TSTypeLiteral) return annotation.members;
   if (annotation.type !== AST_NODE_TYPES.TSTypeReference || annotation.typeName.type !== AST_NODE_TYPES.Identifier || annotation.typeArguments !== undefined) return [];
   const variable = ASTUtils.findVariable(sourceCode.getScope(annotation.typeName), annotation.typeName.name);

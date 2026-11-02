@@ -2,18 +2,17 @@
  * @fileoverview _literal-lookup-hoist-fix — hoist a private readonly literal lookup.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** A sole module entry reads its private readonly literal lookup only through native includes. */
 export function literalLookupHoistFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.VariableDeclarator,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 1 ||
     sourceCode.getAllComments().length > 0 ||

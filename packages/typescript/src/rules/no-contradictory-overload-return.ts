@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-contradictory-overload-return.test.ts
  */
-import { AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -65,7 +70,7 @@ export default createRule<Options, MessageIds>({
   }, defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     const options = services.program.getCompilerOptions();
     const strictNulls = options.strictNullChecks ?? options.strict ?? false;
@@ -93,13 +98,13 @@ export default createRule<Options, MessageIds>({
 
 
 function privateOverloadFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   filename: string,
   node: TSESTree.FunctionDeclaration,
   implementation: ts.FunctionDeclaration,
   proof: NonNullable<ReturnType<typeof implementationProof>>,
-  services: ParserServicesWithTypeInformation,
-): TSESLint.ReportFixFunction | null {
+  services: TypeServices,
+): NativeReportFix | null {
   const declarations = [implementation, ...proof.cases.map((entry) => entry.declaration)];
   const owners = declarations.map((declaration) => services.tsNodeToESTreeNodeMap.get(declaration));
   if (node.id === null || !isUnusedPrivateBinding(sourceCode, node, node.id, filename, owners) ||
@@ -138,7 +143,7 @@ function primitiveResultSyntax(node: ts.TypeNode): boolean {
     node.kind === ts.SyntaxKind.BooleanKeyword || node.kind === ts.SyntaxKind.UndefinedKeyword || node.kind === ts.SyntaxKind.NeverKeyword;
 }
 
-function branchResultType(branch: Branch, sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): string {
+function branchResultType(branch: Branch, sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices): string {
   const valueType = (literal: LiteralValue): string => typeof literal.value === "string"
     ? sourceCode.getText(services.tsNodeToESTreeNodeMap.get(literal.node)) : String(literal.value);
   if (branch.kind === "literal") return valueType(branch.value);

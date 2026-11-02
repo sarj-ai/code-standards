@@ -2,9 +2,14 @@
  * @fileoverview _jsdoc-decoration-fix — remove interior JSDoc decoration without changing prose.
  */
 
+import type { TypeScriptSourceCode, NativeRuleFixer, NativeRuleFix } from "./_eslint-rule.js";
+
+
 /** Exact interior JSDoc decoration edits; preserve every prose byte and line. */
 
-import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+/** Exact interior JSDoc decoration edits; preserve every prose byte and line. */
+import { type TSESTree } from "@typescript-eslint/utils";
 
 import { ownLineCommentRemovalRange } from "./_comment-edits.js";
 
@@ -18,10 +23,10 @@ interface DecorationEdit {
 
 /** Offer only actual native progress after removing plus-only decoration. */
 export function jsdocDecorationFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   comment: TSESTree.Comment,
   accepts: (text: string) => boolean,
-): ((fixer: TSESLint.RuleFixer) => TSESLint.RuleFix[]) | null {
+): ((fixer: NativeRuleFixer) => NativeRuleFix[]) | null {
   if (comment.type !== "Block" || !comment.value.startsWith("*") ||
     ownLineCommentRemovalRange(sourceCode.text, comment) === null) return null;
   const raw = sourceCode.getText(comment);
@@ -45,7 +50,7 @@ export function jsdocDecorationFix(
     fixed = fixed.slice(0, edit.range[0] - comment.range[0]) + fixed.slice(edit.range[1] - comment.range[0]);
   }
   if (!accepts(body(fixed))) return null;
-  return (fixer) => edits.map((edit) => fixer.replaceTextRange(edit.range, ""));
+  return (fixer) => edits.map((edit) => fixer.replaceTextRange([...(edit.range)], ""));
 }
 
 function body(raw: string): string {

@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-test-fixture-reuse.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -38,13 +41,13 @@ export const PREFER_TEST_FIXTURE_REUSE_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function stableBinding(source: Readonly<TSESLint.SourceCode>, identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+function stableBinding(source: Readonly<TypeScriptSourceCode>, identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
   const variable = ASTUtils.findVariable(source.getScope(identifier), identifier.name);
   if (variable?.defs.length !== 1 || variable.references.some(reference => reference.isWrite() && !reference.init)) return null;
   return variable;
 }
 
-function constructorBinding(source: Readonly<TSESLint.SourceCode>, node: TSESTree.Node, depth = 0): TSESLint.Scope.Variable | null {
+function constructorBinding(source: Readonly<TypeScriptSourceCode>, node: TSESTree.Node, depth = 0): TSESLint.Scope.Variable | null {
   node = unwrapExpression(node);
   if (node.type !== AST_NODE_TYPES.Identifier || depth >= MAX_DEPTH) return null;
   const variable = stableBinding(source, node);
@@ -58,7 +61,7 @@ function constructorBinding(source: Readonly<TSESLint.SourceCode>, node: TSESTre
   return null;
 }
 
-function fixtureApi(source: Readonly<TSESLint.SourceCode>, expression: TSESTree.Node, depth = 0): FixtureConstructors | null {
+function fixtureApi(source: Readonly<TypeScriptSourceCode>, expression: TSESTree.Node, depth = 0): FixtureConstructors | null {
   const node = unwrapExpression(expression);
   if (node.type !== AST_NODE_TYPES.Identifier || depth >= MAX_DEPTH) return null;
   const variable = stableBinding(source, node);
@@ -104,7 +107,7 @@ function fixtureApiStable(variable: TSESLint.Scope.Variable): boolean {
   });
 }
 
-function fixtureConstructors(source: Readonly<TSESLint.SourceCode>, declarations: TSESTree.ObjectExpression, inherited: FixtureConstructors): FixtureConstructors {
+function fixtureConstructors(source: Readonly<TypeScriptSourceCode>, declarations: TSESTree.ObjectExpression, inherited: FixtureConstructors): FixtureConstructors {
   const result = new Map(inherited);
   for (const property of declarations.properties) {
     if (property.type !== AST_NODE_TYPES.Property || property.computed || property.value.type === AST_NODE_TYPES.AssignmentPattern) continue;
@@ -117,7 +120,7 @@ function fixtureConstructors(source: Readonly<TSESLint.SourceCode>, declarations
   return result;
 }
 
-function fixtureConstructor(source: Readonly<TSESLint.SourceCode>, value: TSESTree.Expression): TSESLint.Scope.Variable | null {
+function fixtureConstructor(source: Readonly<TypeScriptSourceCode>, value: TSESTree.Expression): TSESLint.Scope.Variable | null {
   value = unwrapExpression(value);
   if (value.type !== AST_NODE_TYPES.ArrowFunctionExpression && value.type !== AST_NODE_TYPES.FunctionExpression) return newConstructor(source, value);
   const use = value.params[1];
@@ -131,7 +134,7 @@ function fixtureConstructor(source: Readonly<TSESLint.SourceCode>, value: TSESTr
   return argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement ? null : newConstructor(source, argument);
 }
 
-function newConstructor(source: Readonly<TSESLint.SourceCode>, expression: TSESTree.Node): TSESLint.Scope.Variable | null {
+function newConstructor(source: Readonly<TypeScriptSourceCode>, expression: TSESTree.Node): TSESLint.Scope.Variable | null {
   const value = unwrapExpression(expression);
   if (value.type === AST_NODE_TYPES.NewExpression) return constructorBinding(source, value.callee);
   if (value.type !== AST_NODE_TYPES.Identifier) return null;
@@ -143,7 +146,7 @@ function newConstructor(source: Readonly<TSESLint.SourceCode>, expression: TSEST
   return initial.type === AST_NODE_TYPES.NewExpression ? constructorBinding(source, initial.callee) : null;
 }
 
-function scopeNodes(root: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): TSESTree.Node[] {
+function scopeNodes(root: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): TSESTree.Node[] {
   const result: TSESTree.Node[] = [];
   const pending = [root];
   while (pending.length > 0) {

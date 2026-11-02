@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-tautological-expect.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
@@ -145,7 +149,7 @@ const THROW_MATCHERS: ReadonlySet<string> = new Set(["toThrow", "toThrowError", 
 
 function resolveLiteral(
   node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   seen: Set<TSESTree.Node> = new Set(),
 ): TSESTree.Node | null {
   node = unwrapExpression(node);
@@ -217,7 +221,7 @@ function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolea
 /** Resolve one optional negation; async modifiers do not prove a literal outcome. */
 function expectOperand(
   callee: TSESTree.MemberExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): { readonly operand: TSESTree.Node; readonly negated: boolean } | null {
   let receiver = unwrapExpression(callee.object);
   const negated = receiver.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(receiver) === "not";
@@ -235,7 +239,7 @@ function expectOperand(
   return operand === undefined ? null : { operand, negated };
 }
 
-function hasStaticMessage(call: TSESTree.CallExpression, callee: TSESTree.Identifier, source: Readonly<TSESLint.SourceCode>): boolean {
+function hasStaticMessage(call: TSESTree.CallExpression, callee: TSESTree.Identifier, source: Readonly<TypeScriptSourceCode>): boolean {
   if (call.arguments.length !== 2) return false;
   const definition = ASTUtils.findVariable(source.getScope(callee), callee.name)?.defs[0];
   if (definition?.type !== "ImportBinding" || definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
@@ -245,7 +249,7 @@ function hasStaticMessage(call: TSESTree.CallExpression, callee: TSESTree.Identi
   return literal?.type === AST_NODE_TYPES.Literal && typeof literal.value === "string" || literal?.type === AST_NODE_TYPES.TemplateLiteral;
 }
 
-function isExceptionContract(node: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+function isExceptionContract(node: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): boolean {
   let callback = node.parent;
   while (callback !== undefined && callback.type !== AST_NODE_TYPES.Program && callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
       callback.type !== AST_NODE_TYPES.FunctionExpression && callback.type !== AST_NODE_TYPES.FunctionDeclaration) callback = callback.parent;
@@ -260,7 +264,7 @@ function isExceptionContract(node: TSESTree.Node, source: Readonly<TSESLint.Sour
     unwrapExpression(expectOperand(member, source)?.operand ?? member) === callback;
 }
 
-function customizedMatchers(source: Readonly<TSESLint.SourceCode>): ReadonlySet<string> {
+function customizedMatchers(source: Readonly<TypeScriptSourceCode>): ReadonlySet<string> {
   const customized = new Set<string>();
   const visit = (node: TSESTree.Node): void => {
     if (node.type === AST_NODE_TYPES.CallExpression) collectCustomization(node, source, customized);
@@ -275,7 +279,7 @@ function customizedMatchers(source: Readonly<TSESLint.SourceCode>): ReadonlySet<
   return customized;
 }
 
-function collectCustomization(node: TSESTree.CallExpression, source: Readonly<TSESLint.SourceCode>, customized: Set<string>): void {
+function collectCustomization(node: TSESTree.CallExpression, source: Readonly<TypeScriptSourceCode>, customized: Set<string>): void {
   const member = unwrapExpression(node.callee);
   if (member.type !== AST_NODE_TYPES.MemberExpression) return;
   const receiver = unwrapExpression(member.object);
@@ -297,7 +301,7 @@ function collectCustomization(node: TSESTree.CallExpression, source: Readonly<TS
   }
 }
 
-function hasConstSelfIdentity(actual: TSESTree.Node, expected: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+function hasConstSelfIdentity(actual: TSESTree.Node, expected: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): boolean {
   actual = unwrapExpression(actual);
   expected = unwrapExpression(expected);
   if (actual.type !== AST_NODE_TYPES.Identifier || expected.type !== AST_NODE_TYPES.Identifier) return false;

@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
@@ -35,7 +39,7 @@ const ENV_BOUNDARY_FILE_RE =
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
 function isProcessEnv(
   node: TSESTree.MemberExpression,
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
 ): boolean {
   const receiver = unwrapExpression(node.object);
   if (receiver.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
