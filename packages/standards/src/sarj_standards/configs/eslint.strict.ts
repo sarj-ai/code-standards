@@ -2156,5 +2156,5 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
   ] as unknown as Linter.Config[];
 }
 
-const config = createConfig();
+const config: Linter.Config[] = createConfig();
 export default config;

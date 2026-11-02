@@ -12,8 +12,8 @@ type ConfigFactory = (options: {
   projectService?: boolean;
 }) => Linter.Config[];
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
-  ["strict", createConfig as ConfigFactory],
-  ["application", createApplicationConfig as ConfigFactory],
+  ["strict", createConfig],
+  ["application", createApplicationConfig],
 ];
 const NESTED_IF = "unicorn/no-lonely-if";
 const SCOPING_IIFE = "unicorn/prefer-block-statement-over-iife";
@@ -165,7 +165,7 @@ function linter(factory: ConfigFactory, typed: boolean, fix = false): ESLint {
 }
 
 describe("upstream Unicorn redundancy warnings", () => {
-  const factory = createConfig as ConfigFactory;
+  const factory: ConfigFactory = createConfig;
   const eslint = linter(factory, true);
   const fixer = linter(factory, true, true);
 

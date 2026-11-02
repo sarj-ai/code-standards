@@ -8,10 +8,10 @@ import { createConfig } from "../../standards/src/sarj_standards/configs/eslint.
 
 const FIXTURE_ROOT = fileURLToPath(new URL("./fixtures/runs/", import.meta.url));
 type ConfigFactory = (options: { tsconfigRootDir: string; projectService?: boolean }) => Linter.Config[];
-const STRICT_CONFIG_FACTORY = createConfig as ConfigFactory;
+const STRICT_CONFIG_FACTORY: ConfigFactory = createConfig;
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", STRICT_CONFIG_FACTORY],
-  ["application", createApplicationConfig as ConfigFactory],
+  ["application", createApplicationConfig],
 ];
 const ASSERTION = "@typescript-eslint/no-unnecessary-type-assertion";
 const NESTED_CONST = "no-restricted-syntax";
