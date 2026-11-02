@@ -647,7 +647,7 @@ def _analysis_state(tools: tuple[ToolReport, ...], coverage: tuple[CoverageNotic
 
 
 def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:
-    _require_text(anchor, "diagnostic fingerprint anchor")
+    _require_text(anchor, "diagnostic fingerprint anchor", allow_empty=True)
     identity = "\0".join(
         (
             str(FINGERPRINT_VERSION),
