@@ -1,3 +1,4 @@
+import noFrontendComments from "./rules/no-frontend-comments.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import noMutatingInputWithResult from "./rules/no-mutating-input-with-result.js";
 import noNegativeOnlyHttpStatusAssertion from "./rules/no-negative-only-http-status-assertion.js";
@@ -154,6 +155,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-frontend-comments": noFrontendComments,
   "no-mutating-input-with-result": noMutatingInputWithResult,
   "no-negative-only-http-status-assertion": noNegativeOnlyHttpStatusAssertion,
   "production-derived-test-cases": productionDerivedTestCases,
@@ -329,6 +331,7 @@ type PresetPolicy = {
 };
 
 const RULE_POLICY = {
+  "@sarj/no-frontend-comments": ["warn", "both"],
   "@sarj/no-excess-jsx-props": ["warn", "both"],
   "@sarj/no-redundant-consumer-union": ["warn", "both"],
   "@sarj/prefer-minimal-parameter-contract": ["warn", "both"],

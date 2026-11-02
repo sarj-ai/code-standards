@@ -1860,6 +1860,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-redundant-local-alias": "warn",
                 "@sarj/no-return-disposed-resource": "warn",
                 "@sarj/no-test-comments": "warn",
+                "@sarj/no-frontend-comments": "warn",
                 "@sarj/prefer-dependency-interface": "warn",
                 "@sarj/prefer-test-fixture-reuse": "warn",
                 "@sarj/production-derived-test-cases": "warn",

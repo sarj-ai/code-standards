@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlglot import exp
 
 from sarj_python_lint.rules._sql import sql_string_value
-from sarj_python_lint.rules._store_writes import Function, methods
+from sarj_python_lint.rules._store_writes import Function, methods, own_nodes
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import psycopg_execution_calls
 
 
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 _HOLE = "__sarj_store_sql_hole__"
 _FORMAT_HOLE = re.compile(r"(?<!\{)\{(?:[A-Za-z_]\w*|\d*)\}(?!\})")
 _MAX_RECOVERY_DEPTH = 8
+_MAX_APPEND_VARIANTS = 16
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,25 @@ class QueryOwner:
 class _MethodWrites:
     qualified: frozenset[tuple[str, str]]
     instances: frozenset[tuple[ast.ClassDef, str]]
+
+
+@dataclass(frozen=True)
+class _QueryVariants:
+    origin: ast.expr
+    texts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _AppendDefinition:
+    assignment: ast.Assign
+    writes: list[ast.AST | None]
+    function: Function
+
+
+@dataclass(frozen=True)
+class _LiteralAppend:
+    text: str
+    conditional: bool
 
 
 def store_queries(context: PythonFileContext) -> Iterator[StoreQuery]:
@@ -151,8 +171,17 @@ def query_owner(node: ast.AST, context: PythonFileContext) -> QueryOwner:
 
 def _parsed_query(expression: ast.expr, call: ast.Call, context: PythonFileContext) -> Iterator[StoreQuery]:
     text = _query_text(expression, context, seen=frozenset())
-    if text is None:
-        return
+    origin = _query_origin(expression, context)
+    texts = (text,) if text is not None else ()
+    if not texts and isinstance(expression, ast.Name):
+        appended = _literal_append_variants(expression, context)
+        if appended is not None:
+            origin, texts = appended.origin, appended.texts
+    for query_text in texts:
+        yield from _parse_query_text(query_text, origin, call, context)
+
+
+def _parse_query_text(text: str, origin: ast.expr, call: ast.Call, context: PythonFileContext) -> Iterator[StoreQuery]:
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- malformed input abstains.
 
     from sarj_python_lint.rules._postgres import parse_postgres  # ruff: ignore[import-outside-top-level] -- avoid private-source unsupported SQL logs.
@@ -164,7 +193,81 @@ def _parsed_query(expression: ast.expr, call: ast.Call, context: PythonFileConte
     scope = query_owner(call, context)
     for statement in statements:
         if statement is not None:
-            yield StoreQuery(_query_origin(expression, context), scope.owner, scope.method, text, statement)
+            yield StoreQuery(origin, scope.owner, scope.method, text, statement)
+
+
+def _literal_append_variants(expression: ast.Name, context: PythonFileContext) -> _QueryVariants | None:
+    definition = _append_definition(expression, context)
+    if definition is None:
+        return None
+    value = definition.assignment.value
+    if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+        return None
+    variants = (value.value,)
+    for write in sorted(definition.writes, key=lambda node: node.lineno if isinstance(node, ast.stmt) else 0):
+        if write is definition.assignment:
+            continue
+        append = _literal_append(write, definition, expression, context)
+        if append is None:
+            return None
+        appended = tuple(text + append.text for text in variants)
+        variants = (*variants, *appended) if append.conditional else appended
+        if len(variants) > _MAX_APPEND_VARIANTS:
+            return None
+    return _QueryVariants(value, tuple(dict.fromkeys(variants)))
+
+
+def _append_definition(expression: ast.Name, context: PythonFileContext) -> _AppendDefinition | None:
+    if context.static_resource_provenance.dynamic_namespace or context.static_resource_provenance.wildcard:
+        return None
+    function = query_owner(expression, context).method
+    if function is None:
+        return None
+    writes = [
+        node
+        for node in own_nodes(function)
+        if isinstance(node, ast.Name) and node.id == expression.id and isinstance(node.ctx, ast.Store | ast.Del)
+    ]
+    assignments = [context.parents.get(node) for node in writes]
+    initial = [
+        node
+        for node in assignments
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and node in function.body
+        and node.lineno < expression.lineno
+    ]
+    if len(initial) != 1:
+        return None
+    if any(expression.id in node.names for node in context.nodes(ast.Global, ast.Nonlocal)):
+        return None
+    return _AppendDefinition(initial[0], assignments, function)
+
+
+def _literal_append(
+    write: ast.AST | None,
+    definition: _AppendDefinition,
+    expression: ast.Name,
+    context: PythonFileContext,
+) -> _LiteralAppend | None:
+    if not (
+        isinstance(write, ast.AugAssign)
+        and isinstance(write.op, ast.Add)
+        and isinstance(write.value, ast.Constant)
+        and isinstance(write.value.value, str)
+        and definition.assignment.lineno < write.lineno < expression.lineno
+    ):
+        return None
+    parent = context.parents.get(write)
+    conditional = (
+        isinstance(parent, ast.If)
+        and parent.body == [write]
+        and not parent.orelse
+        and parent in definition.function.body
+    )
+    if parent is not definition.function and not conditional:
+        return None
+    return _LiteralAppend(write.value.value, conditional)
 
 
 def _query_origin(expression: ast.expr, context: PythonFileContext) -> ast.expr:
@@ -226,6 +329,8 @@ def _query_text(expression: ast.expr, context: PythonFileContext, *, seen: froze
         return literal
     match expression:
         case ast.Name():
+            if context.static_resource_provenance.dynamic_namespace:
+                return None
             value = _bound_value(expression, context)
             return _query_text(value, context, seen=seen) if value is not None else None
         case ast.Call(func=ast.Attribute(attr="format", value=value)):

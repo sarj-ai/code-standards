@@ -157,11 +157,25 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
 def psycopg_execution_calls(
     context: PythonFileContext, *, include_injected: bool, include_probes: bool
 ) -> list[ast.Call]:
+    return _psycopg_operation_calls(
+        context, include_injected=include_injected, include_probes=include_probes, operations=_EXECUTE_METHODS
+    )
+
+
+def psycopg_cursor_calls(context: PythonFileContext) -> list[ast.Call]:
+    return _psycopg_operation_calls(
+        context, include_injected=True, include_probes=True, operations=frozenset({"cursor"})
+    )
+
+
+def _psycopg_operation_calls(
+    context: PythonFileContext, *, include_injected: bool, include_probes: bool, operations: frozenset[str]
+) -> list[ast.Call]:
     tree = context.tree
     if tree is None:
         return []
     if not any(
-        isinstance(call.func, ast.Attribute) and call.func.attr in _EXECUTE_METHODS for call in context.nodes(ast.Call)
+        isinstance(call.func, ast.Attribute) and call.func.attr in operations for call in context.nodes(ast.Call)
     ):
         return []
     mutated_modules: frozenset[str] | None = frozenset()
@@ -184,6 +198,7 @@ def psycopg_execution_calls(
                 include_probes=include_probes,
                 track_cursor_parameters=include_injected or scope.owner is None,
                 constructor=scope.owner is not None and scope.function.name == "__init__",
+                operations=operations,
             ).analyze(scope.function)
         )
     return calls
@@ -495,6 +510,7 @@ class _FunctionAnalyzer:
         include_probes: bool,
         track_cursor_parameters: bool,
         constructor: bool,
+        operations: frozenset[str],
     ) -> None:
         self._types = types
         self._annotation_types = annotation_types
@@ -503,6 +519,7 @@ class _FunctionAnalyzer:
         self._include_probes = include_probes
         self._track_cursor_parameters = track_cursor_parameters
         self._constructor = constructor
+        self._operations = operations
         self._findings: list[ast.Call] = []
         self._shadowed: set[str] = set()
 
@@ -673,7 +690,7 @@ class _FunctionAnalyzer:
             def visit_Call(self, node: ast.Call) -> None:
                 if (
                     isinstance(node.func, ast.Attribute)
-                    and node.func.attr in _EXECUTE_METHODS
+                    and node.func.attr in analyzer._operations
                     and analyzer._expression_origin(node.func.value, state) in analyzer._allowed_origins
                     and (analyzer._include_probes or not _is_connection_probe(node))
                 ):

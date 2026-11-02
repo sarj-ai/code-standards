@@ -36,11 +36,6 @@ const cliPath = resolve(
   "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
 );
 
-// eslint-disable-next-line @sarj/stepdown -- hashing is a local implementation detail of projection loading.
-function sha256(source: string): string {
-  return hash("sha256", source, "hex");
-}
-
 async function readProjection(): Promise<DisplayProjection> {
   const projection = JSON.parse(
     await readFile(projectionPath, "utf8"),
@@ -56,6 +51,10 @@ async function readProjection(): Promise<DisplayProjection> {
     );
   }
   return projection;
+}
+
+function sha256(source: string): string {
+  return hash("sha256", source, "hex");
 }
 
 const projection = await readProjection();

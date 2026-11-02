@@ -248,6 +248,7 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
+from sarj_python_lint.rules.no_psycopg_execution_in_loop import NoPsycopgExecutionInLoop
 from sarj_python_lint.rules.no_recording_store import NoRecordingStore
 from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
 from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
@@ -268,9 +269,11 @@ from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecu
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
 from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
+from sarj_python_lint.rules.prefer_single_psycopg_cursor import PreferSinglePsycopgCursor
 from sarj_python_lint.rules.prefer_typed_cli import PreferTypedCli
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
+from sarj_python_lint.rules.prefer_validated_uuid_comparison import PreferValidatedUuidComparison
 from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
@@ -286,6 +289,9 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferValidatedUuidComparison.id: PreferValidatedUuidComparison,
+        PreferSinglePsycopgCursor.id: PreferSinglePsycopgCursor,
+        NoPsycopgExecutionInLoop.id: NoPsycopgExecutionInLoop,
         NoSharedMutableDefault.id: NoSharedMutableDefault,
         NoSysPathMutation.id: NoSysPathMutation,
         NoDynamicBuiltins.id: NoDynamicBuiltins,

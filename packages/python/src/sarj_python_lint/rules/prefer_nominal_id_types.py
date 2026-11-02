@@ -157,6 +157,8 @@ class PreferNominalIdTypes(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
+            "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs, external/inherited contracts and raw-schema exclusions still apply.",
+            "Direct implementations of stable same-file abstract contracts also receive the raw-ID advisory, including overrides. Imported, ambiguous, decorated, mutated and multiple-inheritance bases remain excluded. A contract with an existing swappable-ID error owns that diagnostic instead of repeating its implementation as warnings.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
@@ -360,6 +362,7 @@ class PreferNominalIdTypes(Rule):
             for node in boundaries:
                 roles = _qualifying_roles(_boundary_roles(node, imports, facts), established=facts.value_roles)
                 if not roles:
+                    diagnostics.extend(self._raw_contract_diagnostics(node, context, facts))
                     continue
                 old_roles = _qualifying_roles(_boundary_roles(node, imports, original_facts))
                 diagnostic_roles = old_roles or roles
@@ -380,7 +383,37 @@ class PreferNominalIdTypes(Rule):
                 )
 
         collect_boundary_diagnostics()
+        for method in _local_contract_implementations(context, original_facts):
+            diagnostics.extend(self._raw_contract_diagnostics(method, context, facts, owned_contract=True))
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+    def _raw_contract_diagnostics(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+        context: PythonFileContext,
+        facts: _TypeFacts,
+        *,
+        owned_contract: bool = False,
+    ) -> list[Diagnostic]:
+        if not owned_contract and not _explicit_contract(node, context):
+            return []
+        raw_roles = [
+            role
+            for role in _boundary_roles(node, context.imports, facts)
+            if role.carrier.raw and role.name.endswith(("_id", "_ids"))
+        ]
+        return [
+            Diagnostic(
+                context.path,
+                role.annotation.lineno,
+                role.annotation.col_offset + 1,
+                self.code,
+                f"`{role.name}` crosses this owned boundary as a raw identifier; declare or reuse a nominal ID type and validate it at the input boundary.",
+                severity=Severity.WARNING,
+            )
+            for role in raw_roles
+            if not is_suppressed(context.source_lines, role.annotation.lineno, self.code)
+        ]
 
     def _expanded_facts(self, context: PythonFileContext, tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
         sources = (
@@ -413,6 +446,68 @@ class PreferNominalIdTypes(Rule):
         )
         facts = _type_facts(tree, imports, seed, node_index=context.node_index)
         return _TypeFacts(facts.raw_aliases, facts.nominal_aliases, cached.roles, facts.shadowed_names)
+
+
+def _explicit_contract(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, context: PythonFileContext) -> bool:
+    owner = node if isinstance(node, ast.ClassDef) else context.parents.get(node)
+    if not isinstance(owner, ast.ClassDef):
+        return False
+    if any(context.imports.resolved_symbol(base, sources=_TYPING_SOURCES) == "Protocol" for base in owner.bases):
+        return True
+    return isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
+        context.imports.resolves(decorator, sources=ABC_SOURCES, symbol="abstractmethod")
+        for decorator in node.decorator_list
+    )
+
+
+def _local_contract_implementations(
+    context: PythonFileContext, facts: _TypeFacts
+) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    if context.tree is None:
+        return []
+    contracts = _local_abstract_methods(context, facts)
+    if not contracts:
+        return []
+    methods: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for owner in context.tree.body:
+        if (
+            not isinstance(owner, ast.ClassDef)
+            or owner.decorator_list
+            or owner.keywords
+            or owner.type_params
+            or len(owner.bases) != 1
+        ):
+            continue
+        base = owner.bases[0]
+        if not isinstance(base, ast.Name):
+            continue
+        provenance = context.static_resource_provenance
+        binding = provenance.binding(base.id, base)
+        if not isinstance(binding, ast.ClassDef) or base.id in provenance.mutated | provenance.external_bindings:
+            continue
+        declared = contracts.get(binding, set())
+        methods.extend(method for method in _boundary_methods(owner) if method.name in declared)
+    return methods
+
+
+def _local_abstract_methods(context: PythonFileContext, facts: _TypeFacts) -> dict[ast.ClassDef, set[str]]:
+    if context.tree is None:
+        return {}
+    contracts: dict[ast.ClassDef, set[str]] = {}
+    for owner in context.tree.body:
+        if not isinstance(owner, ast.ClassDef) or not _has_only_marker_bases(
+            owner, context.imports, facts.shadowed_names
+        ):
+            continue
+        declared = {
+            method.name
+            for method in _boundary_methods(owner)
+            if _explicit_contract(method, context)
+            and not _qualifying_roles(_boundary_roles(method, context.imports, facts))
+        }
+        if declared:
+            contracts[owner] = declared
+    return contracts
 
 
 def _is_excluded_path(path: Path) -> bool:
