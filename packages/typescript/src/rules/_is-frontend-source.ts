@@ -51,4 +51,3 @@ function frontendModule(program: TSESTree.Program): boolean {
     (statement.type === AST_NODE_TYPES.ImportDeclaration && FRONTEND_IMPORT.test(statement.source.value)),
   );
 }
-

@@ -154,13 +154,12 @@ export function createRule<
   MessageIds extends string,
 >(config: SourceRuleConfiguration<Options, MessageIds>): DocumentedRule<Options, MessageIds> {
   const { documentation } = config;
-  const eslintConfig = config;
-  const rule = createNativeRule<Options, MessageIds>(eslintConfig, examplesUrl);
+  const rule = createNativeRule<Options, MessageIds>(config, examplesUrl);
   if (documentation !== undefined) {
     Object.defineProperty(rule, "documentation", {
       configurable: false,
       enumerable: false,
-      value: nativeSpec(eslintConfig, documentation),
+      value: nativeSpec<Options, MessageIds>(rule, documentation),
       writable: false,
     });
   }
@@ -237,7 +236,7 @@ function publicFile(file: ExampleFile): ExampleFile {
 }
 
 function nativeSpec<Options extends readonly unknown[], MessageIds extends string>(
-  config: RuleConfiguration<Options, MessageIds>,
+  config: Pick<DocumentedRule<Options, MessageIds>, "name" | "meta">,
   documentation: RuleDocumentation<Options>,
 ): NativeRuleSpec {
   const { name, meta } = config;

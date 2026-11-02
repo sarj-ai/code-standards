@@ -328,11 +328,27 @@ def test_combined_stream_overflow_is_a_checked_failure(check: bool) -> None:
     assert result.stderr == "b" * 48 + f"\n{sys.executable} exceeded the 64-byte combined output limit"
 
 
-def test_overflow_drains_term_output_and_owned_child_but_preserves_unrelated_process(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ignore_term", [False, True], ids=["default-term", "ignored-term"])
+def test_overflow_drains_term_output_and_owned_child_but_preserves_unrelated_process(
+    tmp_path: Path, ignore_term: bool
+) -> None:
     pid_file = tmp_path / "overflow-child.pid"
+    child_script = (
+        "import os,signal,sys,time\n"
+        "signal.signal(signal.SIGTERM,signal.SIG_DFL)\n"
+        "with os.fdopen(int(sys.argv[1]),'wb') as ready:\n"
+        "    ready.write(b'1')\n"
+        "time.sleep(30)\n"
+    )
     script = (
         "import os,signal,subprocess,sys,time\nfrom pathlib import Path\n"
-        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])\n"
+        f"signal.signal(signal.SIGTERM,signal.SIG_IGN if {ignore_term!r} else signal.SIG_DFL)\n"
+        "ready_read,ready_write=os.pipe()\n"
+        "child=subprocess.Popen([sys.executable,'-c',"
+        f"{child_script!r},str(ready_write)],pass_fds=(ready_write,))\n"
+        "os.close(ready_write)\n"
+        "with os.fdopen(ready_read,'rb') as ready:\n"
+        "    assert ready.read(1)==b'1'\n"
         "def stop(*_):\n"
         "    child.wait()\n"
         "    os.write(1,b'z'*10000+b'term tail')\n"

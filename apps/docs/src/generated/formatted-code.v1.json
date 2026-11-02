@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7b15afcef0e75cfcc41a0c38b4388f350927151f139b72a27c676bda1077608b",
-  "cliSha256": "824e3d45f9e3e6313a4a02340a1f42b2a1ce0f9363b0fd844e864f15b4167c71",
+  "catalogSha256": "11a8f8f9fe68bd6524f4e8c9c6405ff8585965b06849b56a278396d4d2d6d0ae",
+  "cliSha256": "ae0e92dac86b618b8360dbb5a7566ce6f62a0d0a823b9fbd9bd7d4312e584e02",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1717,6 +1717,41 @@
     },
     "eslint:no-frontend-comments": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return value;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.tsx",
+          "id": "empty-comment-removed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment",
+          "title": "Preserve the return expression without a comment"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return /**/ value;\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return value;\n}\n"
+            }
+          ],
+          "focusPath": "src/helper.tsx",
+          "id": "empty-comment-separator",
+          "outcome": "reject",
+          "scenarioId": "empty-comment",
+          "title": "Keep a separating space when removing an empty comment"
+        },
         {
           "expectedCount": 1,
           "files": [

@@ -88,28 +88,20 @@ export interface NativeRule<Options extends readonly unknown[], MessageIds exten
 export function createNativeRule<Options extends readonly unknown[], MessageIds extends string>(
   config: NativeRuleConfiguration<Options, MessageIds>, url: (name: string) => string,
 ): NativeRule<Options, MessageIds> {
-  const input = { ...config };
-  const originalMeta = Object.hasOwn(input, "meta") ? input.meta : config.meta;
+  const name = config.name;
+  const originalMeta = config.meta;
   const metadataSnapshot = { ...originalMeta };
   const declaredMetaDefaults = Object.hasOwn(metadataSnapshot, "defaultOptions")
     ? metadataSnapshot.defaultOptions : originalMeta.defaultOptions;
-  const declaredLegacyDefaults = Object.hasOwn(input, "defaultOptions")
-    ? input.defaultOptions : config.defaultOptions;
-  const descriptor = {
-    ...input,
-    name: Object.hasOwn(input, "name") ? input.name : config.name,
-    create: Object.hasOwn(input, "create") ? input.create : config.create,
-    meta: metadataSnapshot,
-  };
-  if (declaredLegacyDefaults !== undefined) descriptor.defaultOptions = declaredLegacyDefaults;
-  if (declaredMetaDefaults !== undefined) descriptor.meta.defaultOptions = declaredMetaDefaults;
-  const { defaultOptions: metaDefaults, schema, ...metadata } = descriptor.meta;
+  const declaredLegacyDefaults = config.defaultOptions;
+  if (declaredMetaDefaults !== undefined) metadataSnapshot.defaultOptions = declaredMetaDefaults;
+  const { defaultOptions: metaDefaults, schema, ...metadata } = metadataSnapshot;
   const metadataDefaults = metaDefaults === undefined ? undefined : ownTuple(metaDefaults);
-  const legacyDefaults = metadataDefaults === undefined && descriptor.defaultOptions !== undefined
-    ? ownTuple(descriptor.defaultOptions) : undefined;
-  const ownedMetadata = { ...metadata, docs: { ...metadata.docs, url: url(descriptor.name) },
+  const legacyDefaults = metadataDefaults === undefined && declaredLegacyDefaults !== undefined
+    ? ownTuple(declaredLegacyDefaults) : undefined;
+  const ownedMetadata = { ...metadata, docs: { ...metadata.docs, url: url(name) },
     schema: schemaList(schema) ? [...schema] : schema };
-  if (metadataDefaults === undefined && Object.hasOwn(descriptor.meta, "defaultOptions")) {
+  if (metadataDefaults === undefined && Object.hasOwn(metadataSnapshot, "defaultOptions")) {
     // Typed descriptors reject explicit undefined under exact optional checking.
     // Preserve existing JavaScript callers' property presence at runtime.
     Object.defineProperty(ownedMetadata, "defaultOptions", {
@@ -118,19 +110,19 @@ export function createNativeRule<Options extends readonly unknown[], MessageIds 
   }
   const meta = metadataDefaults === undefined ? ownedMetadata : { ...ownedMetadata, defaultOptions: metadataDefaults };
   const base = {
-    name: descriptor.name,
-    defaultOptions: descriptor.defaultOptions,
+    name,
+    defaultOptions: declaredLegacyDefaults,
     meta,
   };
-  if (hasNoDefaultOptions(descriptor)) {
-    const create = descriptor.create;
+  if (hasNoDefaultOptions(config, declaredMetaDefaults, declaredLegacyDefaults)) {
+    const create = config.create;
     return { ...base, create(context: EngineRuleContext<MessageIds, Options>) {
       return create(context, []);
     } };
   }
   const defaults = metadataDefaults ?? legacyDefaults;
   if (defaults === undefined) throw new TypeError("Declared defaults disappeared while creating the rule.");
-  const create = descriptor.create;
+  const create = config.create;
   return { ...base, create(context: EngineRuleContext<MessageIds, Options>) {
     return create(context, ESLintUtils.applyDefault(defaults, context.options));
   } };
@@ -139,11 +131,13 @@ export function createNativeRule<Options extends readonly unknown[], MessageIds 
 // Required tuple slots require declared defaults above. Their absence therefore
 // proves that the author's Options admits the same empty fallback as RuleCreator.
 function hasNoDefaultOptions<Options extends readonly unknown[], MessageIds extends string>(
-  config: NativeRuleConfiguration<Options, MessageIds>,
-): config is NativeRuleConfiguration<Options, MessageIds> & {
+  _config: NativeRuleConfiguration<Options, MessageIds>,
+  metaDefaults: Readonly<Options> | undefined,
+  legacyDefaults: Readonly<Options> | undefined,
+): _config is NativeRuleConfiguration<Options, MessageIds> & {
   create(this: void, context: NativeRuleContext<MessageIds, Options>, options: readonly []): NativeRuleListener;
 } {
-  return config.meta.defaultOptions === undefined && config.defaultOptions === undefined;
+  return metaDefaults === undefined && legacyDefaults === undefined;
 }
 
 function schemaList(schema: JSONSchema.JSONSchema4 | readonly JSONSchema.JSONSchema4[]): schema is readonly JSONSchema.JSONSchema4[] {
