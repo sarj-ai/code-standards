@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-duplicate-test-case.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -39,7 +43,7 @@ export const NO_DUPLICATE_TEST_CASE_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function frameworkTable(node: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function frameworkTable(node: TSESTree.CallExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   let callee: TSESTree.Node = unwrapExpression(node.callee);
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
   const method = ASTUtils.getPropertyName(callee);
@@ -64,7 +68,7 @@ function frameworkTable(node: TSESTree.CallExpression, sourceCode: Readonly<TSES
   });
 }
 
-function table(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.ArrayExpression | null {
+function table(node: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): TSESTree.ArrayExpression | null {
   node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.ArrayExpression) return node;
   if (node.type !== AST_NODE_TYPES.Identifier) return null;

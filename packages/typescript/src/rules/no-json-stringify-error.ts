@@ -4,13 +4,16 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-error.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { forEachAstChild } from "./_for-each-ast-child.js";
 import { scopedStaticString, staticPropertyName } from "./_static-string.js";
-import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "noJsonStringifyError";
 type Options = readonly [];
@@ -55,7 +58,7 @@ const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
 
 const TRACKED_BUILTINS: ReadonlySet<string> = new Set([...BUILTIN_ERROR_CONSTRUCTORS, "JSON", "JSON.stringify"]);
 
-function nativeObjectName(expression: TSESTree.Expression, sourceCode: Readonly<SourceCode>): "globalThis" | "JSON" | null {
+function nativeObjectName(expression: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): "globalThis" | "JSON" | null {
   const value = unwrapExpression(expression);
   const scope = sourceCode.getScope(value);
   if (value.type === "Identifier" && (value.name === "globalThis" || value.name === "JSON") && isGlobalIdentifier(value.name, scope)) return value.name;
@@ -63,7 +66,7 @@ function nativeObjectName(expression: TSESTree.Expression, sourceCode: Readonly<
   return null;
 }
 
-function globalBuiltinName(expression: TSESTree.Expression, sourceCode: Readonly<SourceCode>): string | null {
+function globalBuiltinName(expression: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): string | null {
   const value = unwrapExpression(expression);
   const scope = sourceCode.getScope(value);
   if (value.type === "Identifier") return TRACKED_BUILTINS.has(value.name) && isGlobalIdentifier(value.name, scope) ? value.name : null;
@@ -75,7 +78,7 @@ function globalBuiltinName(expression: TSESTree.Expression, sourceCode: Readonly
 }
 
 /** Self-assignment and native truthy/non-null defaults do not replace the tracked built-in. */
-function writePreservesBuiltin(target: TSESTree.Identifier | TSESTree.MemberExpression, sourceCode: Readonly<SourceCode>): boolean {
+function writePreservesBuiltin(target: TSESTree.Identifier | TSESTree.MemberExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const assignment = target.parent;
   if (assignment?.type !== "AssignmentExpression" || assignment.left !== target) return false;
   const name = globalBuiltinName(target, sourceCode);
@@ -90,7 +93,7 @@ function mayBeCallable(value: TSESTree.Node): boolean {
 
 interface WriteSummary { earliestStatementStart: number; unknownOrder: boolean }
 // Cache this immutable source object's explicit writes, with constant-cost queries per read.
-const BUILTIN_WRITES = new WeakMap<Readonly<SourceCode>, ReadonlyMap<string | Scope.Variable, WriteSummary>>();
+const BUILTIN_WRITES = new WeakMap<Readonly<TypeScriptSourceCode>, ReadonlyMap<string | Scope.Variable, WriteSummary>>();
 
 /** A top-level statement executes once; deferred functions and repeated loops do not prove ordering. */
 function directProgramStatement(node: TSESTree.Node): TSESTree.Node | null {
@@ -103,14 +106,14 @@ function directProgramStatement(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
-function hasUnchangedBuiltin(name: string | Scope.Variable, read: TSESTree.Node, sourceCode: Readonly<SourceCode>): boolean {
+function hasUnchangedBuiltin(name: string | Scope.Variable, read: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const summary = builtinWrites(sourceCode).get(name);
   if (summary === undefined) return true;
   const statement = directProgramStatement(read);
   return !summary.unknownOrder && statement !== null && statement.range[1] <= summary.earliestStatementStart;
 }
 
-function builtinWrites(sourceCode: Readonly<SourceCode>): ReadonlyMap<string | Scope.Variable, WriteSummary> {
+function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<string | Scope.Variable, WriteSummary> {
   const cached = BUILTIN_WRITES.get(sourceCode);
   if (cached !== undefined) return cached;
   const writes = new Map<string | Scope.Variable, WriteSummary>();
@@ -244,7 +247,7 @@ function builtinWrites(sourceCode: Readonly<SourceCode>): ReadonlyMap<string | S
 }
 
 /** Explicit own/prototype hooks defer to their serializer contract, without evaluating hook bodies. */
-function hasDefaultErrorSerialization(expression: TSESTree.Expression, call: TSESTree.Node, sourceCode: Readonly<SourceCode>): boolean {
+function hasDefaultErrorSerialization(expression: TSESTree.Expression, call: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   let constructor: string | null = null;
   if (expression.type === "Identifier") {
     const variable = ASTUtils.findVariable(sourceCode.getScope(expression), expression.name);
@@ -257,7 +260,7 @@ function hasDefaultErrorSerialization(expression: TSESTree.Expression, call: TSE
   return [...families].every(name => hasUnchangedBuiltin(name + ".prototype", call, sourceCode));
 }
 
-function isBuiltinErrorConstructor(identifier: TSESTree.Identifier, sourceCode: Readonly<SourceCode>): boolean {
+function isBuiltinErrorConstructor(identifier: TSESTree.Identifier, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   return sourceCode.scopeManager !== null && BUILTIN_ERROR_CONSTRUCTORS.has(identifier.name) && isGlobalIdentifier(identifier.name, sourceCode.getScope(identifier)) && hasUnchangedBuiltin(identifier.name, identifier, sourceCode);
 }
 
@@ -268,7 +271,7 @@ function isGlobalIdentifier(name: string, scope: Scope.Scope): boolean {
 
 function positiveErrorSubject(
   test: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): TSESTree.Expression | null {
   return instanceofErrorSubject(test, sourceCode) ?? typeGuardSubject(test);
 }
@@ -278,7 +281,7 @@ const TYPE_GUARD_PATTERN = /^(is|has)[A-Z]/;
 
 function instanceofErrorSubject(
   test: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): TSESTree.Expression | null {
   if (
     test.type === "BinaryExpression" &&
@@ -319,7 +322,7 @@ function typeGuardSubject(
 function isNarrowedByEarlyReturn(
   node: TSESTree.Node,
   argExpr: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   let current: TSESTree.Node | undefined = node.parent;
   while (current) {
@@ -334,7 +337,7 @@ function isNarrowedByEarlyReturn(
 function isGuardedByInstanceofError(
   node: TSESTree.Node,
   argExpr: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const sameSubject = (subject: TSESTree.Expression): boolean =>
     sameSubjectBinding(subject, argExpr, sourceCode);
@@ -368,7 +371,7 @@ function isGuardedByInstanceofError(
 /** The subject `x` of a negated error-narrowing test — `!(x instanceof Error)` / `!isErrorLike(x)`. */
 function negatedInstanceofErrorSubject(
   test: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): TSESTree.Expression | null {
   if (test.type === "UnaryExpression" && test.operator === "!") {
     return positiveErrorSubject(test.argument, sourceCode);
@@ -379,7 +382,7 @@ function negatedInstanceofErrorSubject(
 function sameSubjectBinding(
   subject: TSESTree.Expression,
   value: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const left = unwrapExpression(subject);
   const right = unwrapExpression(value);
@@ -398,7 +401,7 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
   );
 }
 
-function isJsonStringify(callee: TSESTree.Expression, sourceCode: Readonly<SourceCode>): boolean {
+function isJsonStringify(callee: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   if (callee.type !== "MemberExpression") return false;
   const receiver = unwrapExpression(callee.object);
   return (
@@ -412,7 +415,7 @@ function isJsonStringify(callee: TSESTree.Expression, sourceCode: Readonly<Sourc
 /** Direct values serialized by a one-level object or array literal. */
 function directLiteralValues(
   argument: TSESTree.CallExpressionArgument,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): readonly TSESTree.Expression[] {
   argument = unwrapExpression(argument);
   if (argument.type === "ObjectExpression") {
@@ -439,7 +442,7 @@ function directLiteralValues(
   return argument.type === "SpreadElement" ? [] : [argument];
 }
 
-function literalHasSerializer(argument: TSESTree.ObjectExpression, sourceCode: Readonly<SourceCode>): boolean {
+function literalHasSerializer(argument: TSESTree.ObjectExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   for (const property of argument.properties.toReversed()) {
     if (property.type !== "Property") return true;
     const key = staticPropertyName(property, sourceCode);
@@ -456,7 +459,7 @@ function literalHasSerializer(argument: TSESTree.ObjectExpression, sourceCode: R
 
 function expressionSuggestsError(
   expression: TSESTree.Expression,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   expression = unwrapExpression(expression);
   const unwrappedExpressionCallee = expression.type === "CallExpression" || expression.type === "NewExpression" ? unwrapExpression(expression.callee) : null;
@@ -475,7 +478,7 @@ function expressionSuggestsError(
 /** Whether a stable local binding is constructively proven to hold an Error. */
 function identifierIsProvenError(
   identifier: TSESTree.Identifier,
-  sourceCode: Readonly<SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length !== 1 || variable.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
@@ -543,7 +546,7 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: TSESTree.Node, argExpr: TSESTree.Expression, sourceCode: Readonly<SourceCode>): boolean {
+function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: TSESTree.Node, argExpr: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   for (const stmt of statements) {
     if (stmt.range[0] >= node.range[0]) {
       break;

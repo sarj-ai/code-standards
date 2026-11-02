@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-negative-only-http-status-assertion.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -43,7 +46,7 @@ interface StatusAssertion {
   readonly negative: boolean;
 }
 
-function statusAssertion(source: Readonly<TSESLint.SourceCode>, call: TSESTree.CallExpression): StatusAssertion | null {
+function statusAssertion(source: Readonly<TypeScriptSourceCode>, call: TSESTree.CallExpression): StatusAssertion | null {
   if (call.arguments.length !== 1 || call.arguments[0]?.type !== AST_NODE_TYPES.Literal || typeof call.arguments[0].value !== "number" ||
       call.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
   const matcher = ASTUtils.getPropertyName(call.callee);
@@ -57,12 +60,12 @@ function statusAssertion(source: Readonly<TSESLint.SourceCode>, call: TSESTree.C
   const response = argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement ? null : fetchResponse(source, argument);
   return response === null ? null : { response, expected: call.arguments[0].value, matcher, negative };
 }
-function fetchResponse(source: Readonly<TSESLint.SourceCode>, value: TSESTree.Node): TSESLint.Scope.Variable | null {
+function fetchResponse(source: Readonly<TypeScriptSourceCode>, value: TSESTree.Node): TSESLint.Scope.Variable | null {
   const node = unwrapExpression(value);
   if (node.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(node) !== "status" || node.object.type !== AST_NODE_TYPES.Identifier) return null;
   return responseBinding(source, node.object);
 }
-function responseBinding(source: Readonly<TSESLint.SourceCode>, node: TSESTree.Identifier, seen = new Set<TSESLint.Scope.Variable>()): TSESLint.Scope.Variable | null {
+function responseBinding(source: Readonly<TypeScriptSourceCode>, node: TSESTree.Identifier, seen = new Set<TSESLint.Scope.Variable>()): TSESLint.Scope.Variable | null {
   const variable = ASTUtils.findVariable(source.getScope(node), node.name);
   const definition = variable?.defs[0]?.node;
   if (variable?.defs.length !== 1 || seen.has(variable) || variable.references.some(reference => reference.isWrite() && !reference.init)) return null;
@@ -79,7 +82,7 @@ function responseBinding(source: Readonly<TSESLint.SourceCode>, node: TSESTree.I
   if (initial.type === AST_NODE_TYPES.Identifier) return responseBinding(source, initial, seen);
   return nativeResponse(initial, source) ? variable : null;
 }
-function nativeResponse(initial: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+function nativeResponse(initial: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): boolean {
   if (initial.type === AST_NODE_TYPES.NewExpression && initial.callee.type === AST_NODE_TYPES.Identifier && initial.callee.name === "Response" &&
     (ASTUtils.findVariable(source.getScope(initial.callee), "Response")?.defs.length ?? 0) === 0) return true;
   if (initial.type === AST_NODE_TYPES.CallExpression && nativeFetchReference(initial.callee, source)) return true;
@@ -97,7 +100,7 @@ function nativeResponse(initial: TSESTree.Node, source: Readonly<TSESLint.Source
   return importedName === "fetch";
 }
 
-function enclosingTest(source: Readonly<TSESLint.SourceCode>, node: TSESTree.Node): TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
+function enclosingTest(source: Readonly<TypeScriptSourceCode>, node: TSESTree.Node): TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (current.type === AST_NODE_TYPES.FunctionDeclaration) return null;
     if (current.type !== AST_NODE_TYPES.ArrowFunctionExpression && current.type !== AST_NODE_TYPES.FunctionExpression) continue;
@@ -110,7 +113,7 @@ function enclosingTest(source: Readonly<TSESLint.SourceCode>, node: TSESTree.Nod
   return null;
 }
 
-function hasExactStatus(source: Readonly<TSESLint.SourceCode>, test: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, response: TSESLint.Scope.Variable): boolean {
+function hasExactStatus(source: Readonly<TypeScriptSourceCode>, test: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, response: TSESLint.Scope.Variable): boolean {
   if (test.body.type !== AST_NODE_TYPES.BlockStatement) return false;
   return test.body.body.some(statement => {
     if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;

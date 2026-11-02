@@ -4,14 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-zod-parse-output-type.test.ts
  */
 
-import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, NativeRuleContext, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
@@ -215,7 +213,7 @@ function directParseReturnCandidate(
 
 function localParseReturnCandidates(
   node: TSESTree.VariableDeclarator,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): readonly ParsedReturnCandidate[] {
   if (
     node.id.type !== AST_NODE_TYPES.Identifier ||
@@ -380,8 +378,8 @@ function collectConstrainedNames(node: TSESTree.TypeNode, names: Set<string>): v
 }
 
 function reportCandidates(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  services: ParserServicesWithTypeInformation,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
+  services: TypeServices,
   schemas: readonly LocalSchema[],
   candidates: readonly ParsedReturnCandidate[],
   zodNamespaces: ReadonlySet<string>,
@@ -482,12 +480,12 @@ function reportCandidates(
 
 
 function privateParsedOutputFix(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   candidate: ParsedReturnCandidate,
   schema: LocalSchema,
   namespaces: ReadonlySet<string>,
   candidateCount: number | undefined,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const owner = directReturnOwner(candidate.output);
   if (candidateCount !== 1 || candidate.method !== "parse" || candidate.output !== candidate.call ||
     owner?.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null || owner.async || owner.generator || owner.typeParameters !== undefined ||
@@ -565,9 +563,9 @@ export default createRule<Options, MessageIds>({
     ) {
       return {};
     }
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

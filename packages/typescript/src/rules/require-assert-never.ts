@@ -4,13 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
  */
 
-import {
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-  AST_NODE_TYPES,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -121,7 +120,7 @@ const isFallthroughDefault = (
 /** Honor a comment that makes an empty default an intentional no-op. */
 const isCommentOnlyNoopDefault = (
   defaultCase: TSESTree.SwitchCase,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean => {
   if (defaultCase.consequent.length === 0) {
     const defaultToken = sourceCode.getFirstToken(defaultCase);
@@ -147,7 +146,7 @@ const isCommentOnlyNoopDefault = (
 /** Prove that explicit cases cover every finite constituent of the discriminant. */
 function isExhaustiveFiniteSwitch(
   node: TSESTree.SwitchStatement,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   const checker = services.program.getTypeChecker();
   const discriminant = services.esTreeNodeToTSNodeMap.get(node.discriminant);
@@ -218,9 +217,9 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       // Exhaustiveness cannot be proven from syntax alone. The typed strict
       // preset supplies services; standalone syntax-only use stays silent.

@@ -2,18 +2,17 @@
  * @fileoverview _existing-factory-contract-fix — reuse an authored factory contract.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** A direct typed factory already chooses the closed contract this implementation satisfies. */
 export function existingFactoryContractFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   candidate: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 4 ||
     sourceCode.getAllComments().length !== 0
@@ -128,7 +127,7 @@ function singletonOperation(members: readonly TSESTree.Node[]): string | null {
 }
 
 function uniqueDeclarations(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   declarations: readonly (
     | TSESTree.TSInterfaceDeclaration
     | TSESTree.TSTypeAliasDeclaration
@@ -151,7 +150,7 @@ function uniqueDeclarations(
 }
 
 function sameBinding(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   reference: TSESTree.Identifier,
   declaration: TSESTree.Node,
 ): boolean {
@@ -163,7 +162,7 @@ function sameBinding(
 }
 
 function retainedWorker(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   implementation: TSESTree.ClassDeclaration,
   worker: TSESTree.TSInterfaceDeclaration,
 ): string | null {
@@ -202,7 +201,7 @@ function retainedWorker(
 }
 
 function typeReference(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   annotation: TSESTree.TSTypeAnnotation | undefined,
   declaration:
     TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration,
@@ -282,7 +281,7 @@ function forwardedMember(
 }
 
 function factoryAuthority(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   factory: TSESTree.FunctionDeclaration,
   contract: TSESTree.TSTypeAliasDeclaration,
   worker: TSESTree.TSInterfaceDeclaration,

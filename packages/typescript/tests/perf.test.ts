@@ -108,7 +108,7 @@ function configFor(rules: Linter.RulesRecord): Linter.Config[] {
         parser: tsParser,
         parserOptions: { ecmaFeatures: { jsx: true }, sourceType: "module" },
       },
-      plugins: { "@sarj": plugin as unknown as Record<string, unknown> },
+      plugins: { "@sarj": plugin },
       rules,
     },
   ];

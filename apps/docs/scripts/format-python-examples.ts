@@ -42,7 +42,6 @@ export async function prefetchPythonExamples(
       pending.set(key, formatted);
     }
   } catch {
-    // A cache miss retains the original per-file formatter and its diagnostics.
     return;
   } finally {
     if (directory !== undefined)

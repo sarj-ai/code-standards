@@ -3,7 +3,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/excessive-commentary.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { jsdocDecorationFix } from "./_jsdoc-decoration-fix.js";
@@ -116,7 +120,7 @@ function isJSDoc(comment: TSESTree.Comment): boolean {
   return comment.type === "Block" && comment.value.startsWith("*");
 }
 
-function isFileHeader(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): boolean {
+function isFileHeader(sourceCode: Readonly<TypeScriptSourceCode>, comment: TSESTree.Comment): boolean {
   return sourceCode.getTokenBefore(comment, { includeComments: false }) === null;
 }
 
@@ -128,7 +132,7 @@ function narratesFileImplementation(text: string): boolean {
 }
 
 function documentsTypeOrMember(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   comment: TSESTree.Comment,
 ): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });

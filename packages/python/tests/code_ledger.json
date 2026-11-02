@@ -347,5 +347,8 @@
   "SARJ556": "service-singleton-delegates-to-bulk",
   "SARJ557": "no-dynamic-builtins",
   "SARJ558": "no-sys-path-mutation",
-  "SARJ559": "no-shared-mutable-default"
+  "SARJ559": "no-shared-mutable-default",
+  "SARJ560": "no-psycopg-execution-in-loop",
+  "SARJ561": "prefer-single-psycopg-cursor",
+  "SARJ562": "prefer-validated-uuid-comparison"
 }

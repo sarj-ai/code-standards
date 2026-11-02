@@ -9,6 +9,8 @@ import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import regexp from "eslint-plugin-regexp";
+import security from "eslint-plugin-security";
+import noUnsanitized from "eslint-plugin-no-unsanitized";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
@@ -693,6 +695,8 @@ export function createConfig(options = {}) {
                 "react-hooks": reactHooks,
                 unicorn,
                 regexp,
+                security,
+                "no-unsanitized": noUnsanitized,
                 "@eslint-community/eslint-comments": eslintComments,
                 n: node,
                 perfectionist,
@@ -724,6 +728,37 @@ export function createConfig(options = {}) {
                 }
             },
             rules: {
+                "security/detect-bidi-characters": "error",
+                "security/detect-child-process": "warn",
+                "no-unsanitized/method": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    },
+                    {
+                        import: {
+                            properties: []
+                        }
+                    }
+                ],
+                "no-unsanitized/property": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    }
+                ],
                 "@typescript-eslint/no-explicit-any": "error",
                 "@typescript-eslint/no-non-null-assertion": "error",
                 "@typescript-eslint/no-deprecated": "error",
@@ -1825,6 +1860,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-redundant-local-alias": "warn",
                 "@sarj/no-return-disposed-resource": "warn",
                 "@sarj/no-test-comments": "warn",
+                "@sarj/no-frontend-comments": "warn",
                 "@sarj/prefer-dependency-interface": "warn",
                 "@sarj/prefer-test-fixture-reuse": "warn",
                 "@sarj/production-derived-test-cases": "warn",
@@ -1885,7 +1921,7 @@ export function createConfig(options = {}) {
                 "@sarj/prefer-immutable-module-constant": "error",
                 "@sarj/require-fetch-timeout": "error",
                 "@sarj/no-silent-promise-catch": "error",
-                "@sarj/no-server-file-uploads": "warn",
+                "@sarj/no-server-file-uploads": "error",
                 "@sarj/enforce-file-structure": "error",
                 "@sarj/prefer-semantic-colors": [
                     "error",

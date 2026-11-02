@@ -3,7 +3,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-bare-return-from-test-catch.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
@@ -15,7 +19,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "bareReturnFromTestCatch";
 type Options = readonly [];
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
-type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
+type Context = Readonly<NativeRuleContext<MessageIds, Options>>;
 
 export const NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION = {
   summary: "Disallow a bare return from a test catch block when it skips a later assertion.",

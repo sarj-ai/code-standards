@@ -3,21 +3,23 @@
  */
 
 /** @fileoverview Prove an unobserved legacy array wrapper in a closed module. */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 
 /** Zod 3 has no supported constructor hook; keep its otherwise observable schemas private. */
 export function privateLegacyArrayDefaultFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.CallExpression,
   filename: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const [imported, statement] = sourceCode.ast.body;
   if (
     sourceCode.ast.body.length !== 2 ||

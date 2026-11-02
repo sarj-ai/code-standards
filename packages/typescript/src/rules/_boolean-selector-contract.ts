@@ -1,5 +1,10 @@
 /** @fileoverview _boolean-selector-contract — distinguish owned operation flags from boolean input contracts. */
-import { AST_NODE_TYPES, ASTUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { hasSideEffect } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
@@ -12,10 +17,10 @@ interface Authority {
   readonly implementation: ts.Node;
 }
 
-const MEMBER_REFERENCES = new WeakMap<TSESLint.SourceCode, ReadonlyMap<ts.Declaration, readonly ts.PropertyAccessExpression[]>>();
+const MEMBER_REFERENCES = new WeakMap<TypeScriptSourceCode, ReadonlyMap<ts.Declaration, readonly ts.PropertyAccessExpression[]>>();
 
 /** Only an unchanged, broad boolean owned by this implementation can select its operations. */
-export function isEligibleBooleanSelector(identifier: TSESTree.Identifier, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+export function isEligibleBooleanSelector(identifier: TSESTree.Identifier, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   const owner = enclosingFunction(identifier);
   if (owner === undefined) return false;
   const expression = outerExpression(owner);
@@ -136,14 +141,14 @@ function memberContract(authority: Authority, member: ts.MethodDeclaration | ts.
     matches(checker.getTypeAtLocation((modifiers & ts.ModifierFlags.Static) !== 0 ? heritage.expression : heritage), true))) === true;
 }
 
-function callableBinding(owner: FunctionNode, sourceCode: TSESLint.SourceCode): TSESLint.Scope.Variable | null {
+function callableBinding(owner: FunctionNode, sourceCode: TypeScriptSourceCode): TSESLint.Scope.Variable | null {
   if (owner.type === AST_NODE_TYPES.FunctionDeclaration && owner.id !== null) return ASTUtils.findVariable(sourceCode.getScope(owner), owner.id.name);
   const binding = outerExpression(owner).parent;
   return binding?.type === AST_NODE_TYPES.VariableDeclarator && binding.id.type === AST_NODE_TYPES.Identifier
     ? ASTUtils.findVariable(sourceCode.getScope(binding.id), binding.id.name) : null;
 }
 
-function hasCallbackReference(binding: TSESLint.Scope.Variable, authority: Authority, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, seen: Set<TSESLint.Scope.Variable>): boolean {
+function hasCallbackReference(binding: TSESLint.Scope.Variable, authority: Authority, sourceCode: TypeScriptSourceCode, services: TypeServices, seen: Set<TSESLint.Scope.Variable>): boolean {
   if (seen.has(binding)) return false;
   // Very large alias graphs abstain rather than infer ownership beyond the bounded analysis.
   if (seen.size >= 32) return true;
@@ -176,7 +181,7 @@ function hasCallbackReference(binding: TSESLint.Scope.Variable, authority: Autho
   });
 }
 
-function forwardedCallbackParameter(call: TSESTree.CallExpression, authority: Authority, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+function forwardedCallbackParameter(call: TSESTree.CallExpression, authority: Authority, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   if (call.optional || call.arguments.some(argument => argument.type === AST_NODE_TYPES.SpreadElement)) return false;
   const argument = call.arguments[authority.index];
   if (argument?.type !== AST_NODE_TYPES.Identifier) return false;
@@ -194,7 +199,7 @@ function forwardedCallbackParameter(call: TSESTree.CallExpression, authority: Au
     callbackContract({ checker: authority.checker, index, implementation }, implementation);
 }
 
-function hasMemberCallbackReference(authority: Authority, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+function hasMemberCallbackReference(authority: Authority, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   const node = authority.implementation;
   const member = ts.isMethodDeclaration(node) ? node : ts.isArrowFunction(node) || ts.isFunctionExpression(node) ? outerTypedExpression(node).parent : undefined;
   if (member === undefined || (!ts.isMethodDeclaration(member) && !ts.isPropertyDeclaration(member) && !ts.isPropertyAssignment(member))) return false;
@@ -232,7 +237,7 @@ function hasMemberCallbackReference(authority: Authority, sourceCode: TSESLint.S
   }) === true;
 }
 
-function isPureMapping(owner: FunctionNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+function isPureMapping(owner: FunctionNode, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   if (owner.body?.type !== AST_NODE_TYPES.BlockStatement || owner.body.body.length !== 1) return false;
   const statement = owner.body.body[0];
   if (statement?.type !== AST_NODE_TYPES.IfStatement || statement.alternate === null) return false;
@@ -252,7 +257,7 @@ function returnedExpression(statement: TSESTree.Statement): { readonly value: TS
 }
 
 /** Selecting syntactic argument/value data for one stable operation does not prove different operations. */
-export function isBooleanDataSelection(consequent: TSESTree.Expression, alternate: TSESTree.Expression, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+export function isBooleanDataSelection(consequent: TSESTree.Expression, alternate: TSESTree.Expression, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   const left = unwrapExpression(consequent);
   const right = unwrapExpression(alternate);
   if (pureValue(left, sourceCode, services) && pureValue(right, sourceCode, services)) return true;
@@ -265,7 +270,7 @@ export function isBooleanDataSelection(consequent: TSESTree.Expression, alternat
     pureValue(left.right, sourceCode, services) && pureValue(right.right, sourceCode, services);
 }
 
-function sameTarget(left: TSESTree.Node, right: TSESTree.Node, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, operation: boolean): boolean {
+function sameTarget(left: TSESTree.Node, right: TSESTree.Node, sourceCode: TypeScriptSourceCode, services: TypeServices, operation: boolean): boolean {
   const stable = (identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null => {
     const binding = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
     return binding !== null && (!operation || !binding.references.some(reference => reference.isWrite() && reference.init !== true)) ? binding : null;
@@ -288,19 +293,19 @@ function sameTarget(left: TSESTree.Node, right: TSESTree.Node, sourceCode: TSESL
     property.declarations?.every(declaration => ts.isMethodDeclaration(declaration)) === true;
 }
 
-function pureValue(node: TSESTree.Expression, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): boolean {
+function pureValue(node: TSESTree.Expression, sourceCode: TypeScriptSourceCode, services: TypeServices): boolean {
   const value = unwrapExpression(node);
   // A property read is data syntax; whether a getter performs work is deliberately not inferred.
   if (value.type === AST_NODE_TYPES.MemberExpression && !value.computed) return value.object.type === AST_NODE_TYPES.Super || pureValue(value.object, sourceCode, services);
   if (value.type === AST_NODE_TYPES.ChainExpression) return pureValue(value.expression, sourceCode, services);
   if (value.type === AST_NODE_TYPES.UnaryExpression && (value.operator === "!" || value.operator === "typeof" || value.operator === "void")) return pureValue(value.argument, sourceCode, services);
   if (value.type === AST_NODE_TYPES.UnaryExpression && (value.operator === "+" || value.operator === "-" || value.operator === "~")) return primitiveValue(value.argument, services) && pureValue(value.argument, sourceCode, services);
-  if (!ASTUtils.hasSideEffect(value, sourceCode, { considerGetters: true, considerImplicitTypeConversion: true })) return true;
+  if (!hasSideEffect(value, sourceCode, { considerGetters: true, considerImplicitTypeConversion: true })) return true;
   if (value.type !== AST_NODE_TYPES.BinaryExpression || value.left.type === AST_NODE_TYPES.PrivateIdentifier) return false;
   return primitiveValue(value.left, services) && primitiveValue(value.right, services) && pureValue(value.left, sourceCode, services) && pureValue(value.right, sourceCode, services);
 }
 
-function primitiveValue(operand: TSESTree.Expression, services: ParserServicesWithTypeInformation): boolean {
+function primitiveValue(operand: TSESTree.Expression, services: TypeServices): boolean {
   const type = services.program.getTypeChecker().getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(operand));
   return (type.isUnion() ? type.types : [type]).every(member => (member.flags &
     (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0);

@@ -1,5 +1,8 @@
 /** @fileoverview _native-runtime-unchanged — invalidate local native semantics after visible mutation capabilities. */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
@@ -16,11 +19,11 @@ interface RuntimeIndex {
   readonly fetchAliases: Map<TSESLint.Scope.Variable, "visiting" | "safe" | "unsafe">;
 }
 
-const INDEXES = new WeakMap<TSESLint.SourceCode, RuntimeIndex>();
+const INDEXES = new WeakMap<TypeScriptSourceCode, RuntimeIndex>();
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set(["globalThis", "global", "window", "self"]);
 
 /** Whole-file visible uncertainty vetoes even earlier captures; external monkeypatches are not inferred. */
-export function nativeRuntimeUnchanged(sourceCode: Readonly<TSESLint.SourceCode>, name: "Error" | "RegExp" | "fetch"): boolean {
+export function nativeRuntimeUnchanged(sourceCode: Readonly<TypeScriptSourceCode>, name: "Error" | "RegExp" | "fetch"): boolean {
   const index = runtimeIndex(sourceCode);
   const cached = index.results.get(name);
   if (cached !== undefined) return cached;
@@ -35,7 +38,7 @@ export function nativeRuntimeUnchanged(sourceCode: Readonly<TSESLint.SourceCode>
   return !changed;
 }
 
-function runtimeIndex(sourceCode: Readonly<TSESLint.SourceCode>): RuntimeIndex {
+function runtimeIndex(sourceCode: Readonly<TypeScriptSourceCode>): RuntimeIndex {
   const cached = INDEXES.get(sourceCode);
   if (cached !== undefined) return cached;
   const references = sourceCode.scopeManager?.scopes.flatMap((scope) => scope.references
@@ -53,7 +56,7 @@ function runtimeIndex(sourceCode: Readonly<TSESLint.SourceCode>): RuntimeIndex {
   return index;
 }
 
-function unsafeReference(node: RuntimeIdentifier, sourceCode: Readonly<TSESLint.SourceCode>, name: string, index: RuntimeIndex): boolean {
+function unsafeReference(node: RuntimeIdentifier, sourceCode: Readonly<TypeScriptSourceCode>, name: string, index: RuntimeIndex): boolean {
   if (!ambient(node, sourceCode)) return false;
   if (node.name === "eval" || node.name === "Function") return true;
   if (node.name === name) return name === "fetch" ? !fetchRead(node, sourceCode, index) : !nativeRead(node, name);
@@ -70,13 +73,13 @@ function unsafeReference(node: RuntimeIdentifier, sourceCode: Readonly<TSESLint.
   return key === name && !(name === "fetch" ? fetchRead(property, sourceCode, index) : nativeRead(property, name));
 }
 
-function ambient(node: RuntimeIdentifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function ambient(node: RuntimeIdentifier, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
   return variable === null || variable.defs.length === 0;
 }
 
 /** A callable can only be called, inspected with typeof, or captured in another stable const. */
-function fetchUse(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): true | TSESLint.Scope.Variable | false {
+function fetchUse(node: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): true | TSESLint.Scope.Variable | false {
   const value = outerExpression(node);
   const parent = value.parent;
   if ((parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === value) ||
@@ -86,7 +89,7 @@ function fetchUse(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>
   return stableConstBinding(parent.id, sourceCode) ?? false;
 }
 
-function stableConstBinding(node: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): TSESLint.Scope.Variable | null {
+function stableConstBinding(node: TSESTree.Identifier, sourceCode: Readonly<TypeScriptSourceCode>): TSESLint.Scope.Variable | null {
   const binding = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
   if (binding === null || binding.defs.length !== 1) return null;
   const [definition] = binding.defs;
@@ -96,13 +99,13 @@ function stableConstBinding(node: TSESTree.Identifier, sourceCode: Readonly<TSES
     ? binding : null;
 }
 
-function fetchRead(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>, index: RuntimeIndex): boolean {
+function fetchRead(node: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>, index: RuntimeIndex): boolean {
   const use = fetchUse(node, sourceCode);
   return use === true || (use !== false && fetchAliasRead(use, sourceCode, index));
 }
 
 /** Walk only captured bindings' value references, once per binding in this SourceCode's fetch proof. */
-function fetchAliasRead(binding: TSESLint.Scope.Variable, sourceCode: Readonly<TSESLint.SourceCode>, index: RuntimeIndex): boolean {
+function fetchAliasRead(binding: TSESLint.Scope.Variable, sourceCode: Readonly<TypeScriptSourceCode>, index: RuntimeIndex): boolean {
   const pending = [binding];
   const visited: TSESLint.Scope.Variable[] = [];
   let safe = true;
@@ -123,7 +126,7 @@ function fetchAliasRead(binding: TSESLint.Scope.Variable, sourceCode: Readonly<T
 }
 
 /** Classify one captured binding without traversing or caching its captured aliases. */
-function fetchAliasCaptures(binding: TSESLint.Scope.Variable, sourceCode: Readonly<TSESLint.SourceCode>): readonly TSESLint.Scope.Variable[] | false {
+function fetchAliasCaptures(binding: TSESLint.Scope.Variable, sourceCode: Readonly<TypeScriptSourceCode>): readonly TSESLint.Scope.Variable[] | false {
   const captures: TSESLint.Scope.Variable[] = [];
   for (const reference of binding.references) {
     if (reference.isValueReference === false || reference.init === true || typeOnlyReference(reference)) continue;
@@ -135,7 +138,7 @@ function fetchAliasCaptures(binding: TSESLint.Scope.Variable, sourceCode: Readon
 }
 
 /** Admit only a single simple fetch projection, never a whole-global alias or rest capture. */
-function fetchProjection(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>, index: RuntimeIndex): boolean {
+function fetchProjection(node: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>, index: RuntimeIndex): boolean {
   const declaration = node.parent;
   if (declaration?.type !== AST_NODE_TYPES.VariableDeclarator || declaration.init !== node ||
     declaration.id.type !== AST_NODE_TYPES.ObjectPattern || declaration.id.properties.length !== 1) return false;

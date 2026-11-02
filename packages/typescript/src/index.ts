@@ -1,3 +1,4 @@
+import noFrontendComments from "./rules/no-frontend-comments.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import noMutatingInputWithResult from "./rules/no-mutating-input-with-result.js";
 import noNegativeOnlyHttpStatusAssertion from "./rules/no-negative-only-http-status-assertion.js";
@@ -154,6 +155,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-frontend-comments": noFrontendComments,
   "no-mutating-input-with-result": noMutatingInputWithResult,
   "no-negative-only-http-status-assertion": noNegativeOnlyHttpStatusAssertion,
   "production-derived-test-cases": productionDerivedTestCases,
@@ -329,6 +331,7 @@ type PresetPolicy = {
 };
 
 const RULE_POLICY = {
+  "@sarj/no-frontend-comments": ["warn", "both"],
   "@sarj/no-excess-jsx-props": ["warn", "both"],
   "@sarj/no-redundant-consumer-union": ["warn", "both"],
   "@sarj/prefer-minimal-parameter-contract": ["warn", "both"],
@@ -436,7 +439,7 @@ const RULE_POLICY = {
   "@sarj/no-restated-jsdoc": ["warn", "both"],
   "@sarj/no-secret-in-log": ["error", "both"],
   "@sarj/no-server-env-in-client-component": ["error", "both"],
-  "@sarj/no-server-file-uploads": ["warn", "both"],
+  "@sarj/no-server-file-uploads": ["error", "both"],
   "@sarj/no-select-star": ["error", "both"],
   "@sarj/no-sentinel-return-on-catch": ["error", "both"],
   "@sarj/no-silent-promise-catch": ["error", "both"],

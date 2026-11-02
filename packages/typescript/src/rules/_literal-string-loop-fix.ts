@@ -2,17 +2,17 @@
  * @fileoverview _literal-string-loop-fix — join closed literal-only string loops.
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 /** A complete literal-only loop has no intermediate observer or coercion to preserve. */
 export function literalStringLoopFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   assignment: TSESTree.AssignmentExpression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 1 ||
     sourceCode.getAllComments().length > 0
@@ -70,7 +70,7 @@ export function literalStringLoopFix(
   );
   return (fixer) => [
     fixer.replaceText(initializer, `[${fragments.join(", ")}].join("")`),
-    fixer.replaceTextRange(keyword.range, "const"),
+    fixer.replaceTextRange([...(keyword.range)], "const"),
     fixer.removeRange([loop.range[0], returned.range[0]]),
   ];
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3e25a29a028091a5d92e8ac233d77058572c3fd7ffeca2f8d108482862ccb811",
-  "cliSha256": "45618d066548992ce3345bb371cdf82afb20599f9e5a7dbc89ba5739cbe36077",
+  "catalogSha256": "07197ec1328262bbaffefaca08379b19aca9fb9ccbf138e6f31163572013efa0",
+  "cliSha256": "215191a4695249d347c46796a683ed42b3e50354447e5a20d4b95a7fb093da35",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1714,6 +1714,114 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-frontend-comments": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return value;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.tsx",
+          "id": "empty-comment-removed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment",
+          "title": "Preserve the return expression without a comment"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return /**/ value;\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/helper.tsx",
+              "source": "export function identity(value: number) {\n  return value;\n}\n"
+            }
+          ],
+          "focusPath": "src/helper.tsx",
+          "id": "empty-comment-separator",
+          "outcome": "reject",
+          "scenarioId": "empty-comment",
+          "title": "Keep a separating space when removing an empty comment"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "// Show current status\nexport const View = () => <p>Ready</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "frontend-prose",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Express view behavior in code"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "export const View = () => <p>Ready</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "named-view",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The view expresses its behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "package.json",
+              "source": "{ \"private\": true, \"dependencies\": { \"react\": \"19.2.0\" } }\n"
+            },
+            {
+              "path": "src/helper.ts",
+              "source": "// Frontend helper\nexport const ready = true;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.ts",
+          "id": "package-helper",
+          "outcome": "reject",
+          "scenarioId": "package",
+          "title": "A plain helper belongs to its frontend package"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "package.json",
+              "source": "{ \"private\": true, \"dependencies\": { \"react\": \"19.2.0\" } }\n"
+            },
+            {
+              "path": "src/helper.ts",
+              "source": "export const ready = true;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/helper.ts",
+          "id": "package-helper-code",
+          "outcome": "accept",
+          "scenarioId": "package",
+          "title": "The helper expresses its behavior in code"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-generic-json-parser": {
       "examples": [
@@ -4259,7 +4367,7 @@
           "title": "Put behavior in the test name"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-trailing-value-narration": {
       "examples": [
@@ -12233,6 +12341,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-psycopg-execution-in-loop": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def remove(connection: AsyncConnection, rows):\n    for row in rows:\n        await connection.execute(\"DELETE FROM item WHERE id = %s\", (row.id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "per-item-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A connection executes once per item"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def remove(connection: AsyncConnection, rows):\n    identifiers = [row.id for row in rows]\n    await connection.execute(\"DELETE FROM item WHERE id = ANY(%s)\", (identifiers,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "set-based-write",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One query consumes the collected identifiers"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-psycopg-execution-outside-injected-owner": {
       "examples": [
         {
@@ -16473,6 +16616,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-single-psycopg-cursor": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def load(connection: AsyncConnection):\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM item\")\n        rows = await cursor.fetchall()\n        await cursor.execute(\"SELECT id FROM owner\")\n        return rows, await cursor.fetchall()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "consumed-results",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Reuse a cursor after consuming the result"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg import AsyncConnection\n\n\nasync def load(connection: AsyncConnection):\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM item\")\n    async with connection.cursor() as cursor:\n        await cursor.execute(\"SELECT id FROM owner\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "repeated-scopes",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review repeated cursor scopes"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-str-enum": {
       "examples": [
         {
@@ -16870,6 +17048,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The field retains its domain type"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-validated-uuid-comparison": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/router.py",
+              "source": "from uuid import UUID\n\n\ndef same_owner(item, request):\n    return UUID(item.owner_id) == UUID(request.owner_id)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "late-reparsing",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Both identifiers are reparsed at comparison time"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/router.py",
+              "source": "from uuid import UUID\nfrom typing import NewType\n\nOwnerId = NewType(\"OwnerId\", UUID)\n\n\ndef same_owner(current: OwnerId, requested: OwnerId) -> bool:\n    return current == requested\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "typed-comparison",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Compare the validated nominal identifiers"
         }
       ],
       "optionsSchemaSource": null
@@ -21318,6 +21531,7 @@
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...] [--enable-repository-rule ENABLE_REPOSITORY_RULE ...]\n",
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
       "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--fix] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "web-security": "code-standards web-security [-h] POLICY\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",

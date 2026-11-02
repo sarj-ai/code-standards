@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "decision": "ship-warning",
+  "recorded_at": "2026-11-01T19:44:29.555750+00:00",
+  "versions": {
+    "standards": "8.182.0",
+    "python": "1.110.0",
+    "typescript": "17.1.0"
+  },
+  "implementation_sha256": "d1423671c85b1eb5bd9ae022dc765ec4810198ba596c28bfc2c355938b256760",
+  "rules": [
+    "python:no-custom-control-flow-exception",
+    "python:prefer-application-model-joins",
+    "python:prefer-nominal-id-types",
+    "python:prefer-walrus-awaited-none-guard",
+    "python:no-psycopg-execution-in-loop",
+    "python:prefer-single-psycopg-cursor",
+    "python:prefer-validated-uuid-comparison",
+    "eslint:no-frontend-comments",
+    "eslint:no-test-comments"
+  ],
+  "admission": {
+    "defects": [
+      "A literal-only exception initializer escaped the existing marker-exception review.",
+      "A conditional literal SQL append prevented recovery of an authored cross-model join.",
+      "A single raw ID and its stable same-file abstract implementation escaped nominal-ID review.",
+      "A final awaited lookup inside a resource context was split from its outer None guard.",
+      "Connection execution and prepared loop bodies escaped the narrow cursor executemany advisory.",
+      "Repeated cursor creation and comparison-time UUID reparsing had no owning review rule.",
+      "Existing frontend comment hygiene permitted prose and executable directives despite the requested blanket policy."
+    ],
+    "upstream": [
+      "https://docs.astral.sh/ruff/rules/",
+      "https://eslint.org/docs/latest/rules/no-warning-comments",
+      "https://www.psycopg.org/psycopg3/docs/advanced/pipeline.html"
+    ],
+    "safety": "Semantic changes to result contracts, queries, normalization and resource scopes remain manual. No new automatic fix removes validation, changes transactions, or deletes behavioral/legal comments."
+  },
+  "validation": {
+    "focused_python_before_final_sql_guard": 715,
+    "final_sql_recovery_tests": 54,
+    "frontend_and_existing_comment_tests": 141,
+    "new_rule_documented_examples": {
+      "unit": "cases",
+      "TP": 5,
+      "TN": 5,
+      "FP": 0,
+      "FN": 0
+    },
+    "builtin_source_preflight": "No blocking diagnostics; inherited warning findings were retained separately.",
+    "native_lint_and_typing": "Passed before documentation comment migration; canonical verification covers final source.",
+    "duplicates": 0,
+    "corpus_parse_or_execution_errors": 0,
+    "introduced_match_inspection": "Every introduced match was reviewed. Existing Python marker warnings retained their locations and received updated guidance.",
+    "same_input_repeatability": "Every batch compared all four repeated diagnostic sets for equality.",
+    "precedence": "SARJ518 owns the overlapping batchable-write diagnostic when selected; SARJ560 remains effective when selected alone. Recognized frontend tests are owned by no-test-comments.",
+    "resource_guard_autofix": "A cross-context walrus candidate is warning-only and fix_source preserves the original bytes.",
+    "self_adoption": "Sixteen maintained docs-app comments were removed; private helpers were reordered and an existing build-provenance environment exception was moved into configuration."
+  },
+  "corpora": [
+    {
+      "corpus": "standards-combined",
+      "files": 30,
+      "bytes": 346901,
+      "revision": "ad8f2144cce4fe9f3aa2fdb1465eabc8819851d3",
+      "digest": "sha256:2eca3cf5b6ac8606472d282aacdad37cd45f9fde060427b77b42d13d2af8722a",
+      "include": [
+        "packages/iac/src/sarj_iac_lint/__init__.py",
+        "packages/python/src/sarj_python_lint/_autofix_tests.py",
+        "packages/python/src/sarj_python_lint/benchmark.py",
+        "packages/python/src/sarj_python_lint/ratchet.py",
+        "packages/python/src/sarj_python_lint/rules/_dict_key_views.py",
+        "packages/python/src/sarj_python_lint/rules/_fastapi.py",
+        "packages/python/src/sarj_python_lint/rules/_imports.py",
+        "packages/python/src/sarj_python_lint/rules/_suppression_comments.py",
+        "packages/python/src/sarj_python_lint/rules/async_mock_call_without_await_assertion.py",
+        "packages/python/src/sarj_python_lint/rules/no_conflicting_pydantic_alias_validation.py",
+        "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py",
+        "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+        "packages/python/src/sarj_python_lint/rules/no_vague_suppression_description.py",
+        "packages/python/src/sarj_python_lint/rules/prefer_native_string_check.py",
+        "packages/python/src/sarj_python_lint/rules/uncontrolled_randomness_in_test.py",
+        "packages/python/src/sarj_python_lint/rules/unused_test_factory_option.py",
+        "packages/sql/src/sarj_sql_lint/rules/_copy_input.py",
+        "packages/sql/src/sarj_sql_lint/rules/index_concurrently.py",
+        "packages/standards/src/sarj_standards/libs/diagnostics/initial_import.py",
+        "packages/standards/src/sarj_standards/libs/linting/_cloudbuild_autofix.py",
+        "packages/standards/src/sarj_standards/libs/linting/directive_formatter.py",
+        "packages/standards/src/sarj_standards/libs/linting/duplicate_code.py",
+        "packages/standards/src/sarj_standards/libs/linting/prepared_native.py",
+        "packages/standards/src/sarj_standards/libs/linting/test_value.py",
+        "packages/standards/src/sarj_standards/libs/linting/text_rules/slack_event_text_in_mrkdwn.py",
+        "packages/standards/src/sarj_standards/libs/linting/toml_literals.py",
+        "packages/standards/src/sarj_standards/libs/release/__init__.py",
+        "packages/standards/src/sarj_standards/libs/repository/rule_dependencies.py",
+        "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py",
+        "packages/standards/src/sarj_standards/libs/setup/__init__.py"
+      ]
+    },
+    {
+      "corpus": "standards-python",
+      "files": 316,
+      "bytes": 4877452,
+      "revision": "ad8f2144cce4fe9f3aa2fdb1465eabc8819851d3",
+      "digest": "sha256:7930c45eff419e0dadbd45aa216d0487725cfce568568a2acde2e3a4bac7a1cf",
+      "include": [
+        "packages/python/src/**/*.py"
+      ]
+    },
+    {
+      "corpus": "pydantic",
+      "files": 105,
+      "bytes": 1820880,
+      "revision": null,
+      "digest": "sha256:b6e2237c8394b70c0585536d05e8c35f9468969a977bacc456bedb1e31252ac6",
+      "include": [
+        "**/*.py"
+      ]
+    },
+    {
+      "corpus": "<private-corpus>",
+      "files": 3,
+      "bytes": 52066
+    },
+    {
+      "corpus": "standards-typescript",
+      "files": 230,
+      "bytes": 2291645,
+      "revision": "ad8f2144cce4fe9f3aa2fdb1465eabc8819851d3",
+      "digest": "sha256:c96808aabd23049f9782381157aa5462b89e6167a97aecb24722eb443695f4d9",
+      "include": [
+        "packages/typescript/src/**/*.ts",
+        "apps/docs/src/**/*.ts"
+      ]
+    },
+    {
+      "corpus": "<private-corpus>",
+      "files": 3,
+      "bytes": 13473
+    }
+  ],
+  "introduced_findings": {
+    "python": {
+      "introduced_locations": 14,
+      "public": 0,
+      "private": 14,
+      "inspected": 14,
+      "FP": 0,
+      "uninspected": 0
+    },
+    "python-combined": {
+      "introduced_locations": 0,
+      "public": 0,
+      "private": 0,
+      "inspected": 0,
+      "FP": 0,
+      "uninspected": 0
+    },
+    "typescript": {
+      "introduced_locations": 6,
+      "public": 5,
+      "private": 1,
+      "inspected": 6,
+      "FP": 0,
+      "uninspected": 0
+    }
+  },
+  "isolation": {
+    "batches": 42,
+    "maximum_batch_files": 250,
+    "cold_rounds": 3,
+    "warm_analyses_per_batch": 3,
+    "ordering": "Alternating baseline/candidate order; fresh process for every corpus and batch.",
+    "combined_sample": "Thirty tracked public source files selected by ascending SHA-256 of relative path. This panel overlaps the main corpora and is reported separately, not as independent coverage.",
+    "pins": "Verified before and after each isolated panel without repinning. Private identities, paths and digests are omitted."
+  },
+  "performance": {
+    "python": {
+      "baseline": {
+        "first_analysis_median_seconds": 11.168645422672853,
+        "warm_median_seconds": 9.846991944126785,
+        "peak_rss_kib": 117424
+      },
+      "candidate": {
+        "first_analysis_median_seconds": 10.854696007911116,
+        "warm_median_seconds": 10.725503048859537,
+        "peak_rss_kib": 116628
+      },
+      "warm_ratio": 1.0892161900525101,
+      "within_default_1_25_slowdown_budget": true
+    },
+    "python-combined": {
+      "baseline": {
+        "first_analysis_median_seconds": 20.96319396304898,
+        "warm_median_seconds": 21.903088497929275,
+        "peak_rss_kib": 871228
+      },
+      "candidate": {
+        "first_analysis_median_seconds": 21.814891149988398,
+        "warm_median_seconds": 21.120841567171738,
+        "peak_rss_kib": 871236
+      },
+      "warm_ratio": 0.964285998715136,
+      "within_default_1_25_slowdown_budget": true
+    },
+    "typescript": {
+      "baseline": {
+        "first_analysis_median_seconds": 3.91783076,
+        "warm_median_seconds": 2.56757861,
+        "peak_rss_kib": 700864
+      },
+      "candidate": {
+        "first_analysis_median_seconds": 3.99921665,
+        "warm_median_seconds": 3.142566118,
+        "peak_rss_kib": 690692
+      },
+      "warm_ratio": 1.2239415400021578,
+      "within_default_1_25_slowdown_budget": true
+    }
+  },
+  "performance_method": "Cold is the first analysis in a fresh batch process after imports; warm is the median of the next three analyses. Each panel sums its batch times per round, then takes the median of three rounds. No OS/shared caches were cleared. Shared-VM timings varied; this is a compatibility measurement, not an optimization claim.",
+  "limitations": [
+    "Exception expectedness and imported framework contracts still need review.",
+    "Dynamic SQL rewrites, wildcard/dynamic namespaces and unsupported relation ownership abstain.",
+    "Unknown, imported, decorated, mutated and multiple-inheritance ID contracts remain conservative.",
+    "While retry/stream loops, interprocedural SQL execution and intentionally chunked executemany loops remain outside the new loop warning.",
+    "Multiple cursors and cross-context optional guards can be intentional; no automatic rewrite changes their contracts.",
+    "Frontend ownership uses syntax and nearest package metadata; unsupported frameworks can opt in with allFiles on both comment rules.",
+    "The requested examples are pinned source snapshots; a full external consumer workspace/type graph was not reconstructed."
+  ],
+  "reproduce": [
+    "Run the focused native tests for every changed rule and its neighboring owner.",
+    "Use run_isolated_corpora with immutable CorpusSource pins and native rule selections; retain the default 250-file batch limit.",
+    "Compare the five existing Python owners against the same panel plus SARJ560-562, and compare DEFAULT_REGISTRY on the disclosed 30-file panel.",
+    "Compare no-test-comments with no-test-comments plus no-frontend-comments using native ESLint with inline configuration disabled.",
+    "Run make verify with the pinned tools and a private non-Git temporary root."
+  ],
+  "measured_implementation_sha256": "30e8ec2481a7ae6cc9225fad15b346bbfe6a39bdd03d25c4c9545f1967046a31",
+  "post_measurement_changes": "Frontend scope helper renamed to match its sole export, its sole-caller helper reordered, and the two imports updated for repository dogfood. Matching logic and corpus measurements are unchanged. The final source is covered by the 141 comment regressions and canonical native checks. Required capped module documentation and the derived examples link were restored in the two new TypeScript files; complete preset-order expectations explicitly include the new rule. Matching logic, prior preset ordering and corpus measurements are unchanged. Unpublished Core and TypeScript release metadata advanced to 8.182.0 and 16.43.0 after integrating qualified shared security changes; Python remains 1.110.0. The original measurement versions are retained separately. Permanent Python code-ledger entries now reserve SARJ560\u2013562. Integrated the qualified native ESLint migration from main and changed frontend helper annotations to its native rule context. The existing no-test-comments fixer uses the upstream native edit contract and copied range tuples. Matching and frontend ownership logic are unchanged; TypeScript release metadata is now 17.1.0. Original timing measurements remain tied to their measured versions and implementation; native integration is checked separately.",
+  "measured_versions": {
+    "standards": "8.180.0",
+    "python": "1.110.0",
+    "typescript": "16.41.0"
+  }
+}

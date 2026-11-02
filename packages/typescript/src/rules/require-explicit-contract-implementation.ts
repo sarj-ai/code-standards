@@ -4,11 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -622,7 +622,7 @@ export default createRule<Options, MessageIds>({
       !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
     )
       return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     function inspect(node: TSESTree.NewExpression): void {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);

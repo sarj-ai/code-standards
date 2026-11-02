@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/duplicate-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
@@ -81,7 +85,7 @@ function staticMemberName(member: TSESTree.MemberExpression): string | null {
   return null;
 }
 
-function normalizedAst(value: unknown, sourceCode: Readonly<TSESLint.SourceCode>, preserveLiteral = false): unknown {
+function normalizedAst(value: unknown, sourceCode: Readonly<TypeScriptSourceCode>, preserveLiteral = false): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => normalizedAst(item, sourceCode, preserveLiteral));
   }
@@ -107,7 +111,7 @@ function normalizedAst(value: unknown, sourceCode: Readonly<TSESLint.SourceCode>
   return normalizedRecord(value, sourceCode, preserveLiteral);
 }
 
-function normalizedRecord(value: object, sourceCode: Readonly<TSESLint.SourceCode>, preserveLiteral: boolean): Readonly<Record<string, unknown>> {
+function normalizedRecord(value: object, sourceCode: Readonly<TypeScriptSourceCode>, preserveLiteral: boolean): Readonly<Record<string, unknown>> {
   const record = value as Record<string, unknown>;
   const normalized: Record<string, unknown> = {};
   const preservesAssertionContract =
@@ -142,7 +146,7 @@ function constAssertionLiteral(node: TSESTree.TSAsExpression): TSESTree.Literal 
   return expression.type === AST_NODE_TYPES.TemplateLiteral && expression.expressions.length === 0 ? expression : null;
 }
 
-function isAssertionCall(node: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isAssertionCall(node: TSESTree.CallExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
   const root = rootIdentifier(unwrappedNodeCallee);
   return root !== null && ["assert", "expect"].includes(runtimeTestFrameworkName(sourceCode, root, "assertion") ?? "");
@@ -158,7 +162,7 @@ function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
 }
 
 
-function isAssertionStatement(statement: TSESTree.Statement, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isAssertionStatement(statement: TSESTree.Statement, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
   const expression = statement.expression;
   return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression, sourceCode);
@@ -197,7 +201,7 @@ export interface DuplicateTestBodyCandidate {
 
 export function duplicateTestBodyCandidate(
   call: TSESTree.CallExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): DuplicateTestBodyCandidate | null {
   if (call.parent?.type !== AST_NODE_TYPES.ExpressionStatement) return null;
   const container = call.parent.parent;
@@ -225,7 +229,7 @@ export function duplicateTestBodyCandidate(
   return { body, container, fingerprint };
 }
 
-function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): {
+function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TypeScriptSourceCode>): {
   readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
   readonly signature: string;
 } | null {
@@ -251,7 +255,7 @@ function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.S
   return { body: callback, signature };
 }
 
-function testCallerSignature(callee: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): string | null {
+function testCallerSignature(callee: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     const name = runtimeTestFrameworkName(sourceCode, callee, "test");

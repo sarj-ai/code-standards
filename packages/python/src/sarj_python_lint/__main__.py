@@ -289,6 +289,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ457": frozenset({"SARJ045", "SARJ526"}),
         "SARJ465": frozenset({"SARJ071"}),
         "SARJ491": frozenset({"SARJ400"}),
+        "SARJ518": frozenset({"SARJ560"}),
     }
 )
 

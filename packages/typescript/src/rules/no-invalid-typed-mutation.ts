@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-invalid-typed-mutation.test.ts
  */
-import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { isObjectType, isTypeReference } from "ts-api-utils";
 import ts from "typescript";
 
@@ -64,7 +69,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     const candidates: Mutation[] = [];
     const replaced = new Set<NativeNamespace>();
@@ -148,7 +153,7 @@ export default createRule<Options, MessageIds>({
 });
 
 /** A structural annotation alone cannot distinguish storage from a coercing setter or proxy. */
-function localDataTarget(target: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): ReadonlySet<string> | undefined {
+function localDataTarget(target: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): ReadonlySet<string> | undefined {
   const binding = ASTUtils.findVariable(sourceCode.getScope(target), target.name);
   const definition = binding?.defs.length === 1 ? binding.defs[0] : undefined;
   if (definition?.type !== "Variable" || definition.parent.kind !== "const" ||
@@ -167,7 +172,7 @@ function localDataTarget(target: TSESTree.Identifier, sourceCode: TSESLint.Sourc
 }
 
 /** Only typed property operations and unused, inspectable native mutations retain local ownership. */
-function safeTargetUse(identifier: TSESTree.Identifier | TSESTree.JSXIdentifier, sourceCode: TSESLint.SourceCode): boolean {
+function safeTargetUse(identifier: TSESTree.Identifier | TSESTree.JSXIdentifier, sourceCode: TypeScriptSourceCode): boolean {
   if (identifier.type !== AST_NODE_TYPES.Identifier) return false;
   const parent = identifier.parent;
   if (parent.type === AST_NODE_TYPES.MemberExpression && parent.object === identifier) {
@@ -258,7 +263,7 @@ function definiteSignatures(type: ts.Type, checker: ts.TypeChecker, seen: Set<ts
     }));
 }
 
-function nativeMember(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): { readonly namespace: NativeNamespace; readonly method: string } | undefined {
+function nativeMember(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): { readonly namespace: NativeNamespace; readonly method: string } | undefined {
   const member = unwrapExpression(node);
   if (member.type !== AST_NODE_TYPES.MemberExpression || member.optional) return undefined;
   const namespace = nativeNamespace(member.object, sourceCode);
@@ -278,20 +283,20 @@ function ordinaryNamespaceUse(node: TSESTree.Node): boolean {
     parent.type === AST_NODE_TYPES.TSTypeQuery || parent.type === AST_NODE_TYPES.TSQualifiedName;
 }
 
-function replacementNamespace(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): NativeNamespace | "ObjectPrototype" | undefined {
+function replacementNamespace(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): NativeNamespace | "ObjectPrototype" | undefined {
   const value = unwrapExpression(node);
   if (nativeObjectPrototype(value, sourceCode)) return "ObjectPrototype";
   return nativeNamespace(value, sourceCode) ??
     (value.type === AST_NODE_TYPES.MemberExpression ? replacementNamespace(value.object, sourceCode) : undefined);
 }
 
-function nativeObjectPrototype(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function nativeObjectPrototype(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   const value = unwrapExpression(node);
   return value.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(value) === "prototype" &&
     nativeNamespace(value.object, sourceCode) === "Object";
 }
 
-function nativeNamespace(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): NativeNamespace | undefined {
+function nativeNamespace(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): NativeNamespace | undefined {
   const value = unwrapExpression(node);
   if (value.type === AST_NODE_TYPES.MemberExpression && !value.optional &&
     nativeGlobalReceiver(value.object, sourceCode)) {
@@ -303,7 +308,7 @@ function nativeNamespace(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): 
   return binding === null || binding.defs.length === 0 ? value.name : undefined;
 }
 
-function nativeGlobalReceiver(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function nativeGlobalReceiver(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   if (node.type !== AST_NODE_TYPES.Identifier || !["globalThis", "window", "self"].includes(node.name)) return false;
   const binding = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
   return binding === null || binding.defs.length === 0;

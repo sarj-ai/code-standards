@@ -58,9 +58,9 @@ class NoCustomControlFlowException(Rule):
     code = "SARJ542"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Return typed outcomes for expected domain failures instead of name-only exceptions.",
+        summary="Return typed outcomes for expected domain failures instead of marker or fixed-message exceptions.",
         rationale=(
-            "An empty custom exception creates another control-flow type without declaring failure data in "
+            "A marker or fixed-message custom exception creates another control-flow type without declaring failure data in "
             "the function's return contract. Expected domain outcomes can often use tagged result variants "
             "that callers handle explicitly, while exceptional failures and framework rejection still need exceptions."
         ),
@@ -73,7 +73,7 @@ class NoCustomControlFlowException(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This review warning checks stable module-level local Exception/ValueError subclasses whose bodies contain only pass, ellipsis or docstring expressions, including direct from-builtins exception imports and empty local subclasses of those markers. A source-visible direct raise of the class or its constructor is required; imported errors, payload-bearing classes, methods, decorators, generic/ambiguous bases and unused definitions abstain.",
+            "This review warning checks stable module-level Exception/ValueError markers and fixed-message subclasses whose only behavior is a zero-argument initializer calling super().__init__ with one literal string. A source-visible direct raise is required. Fixed-message subclasses of a directly imported base also qualify for review; imported base semantics remain a manual contract check. Payload fields, dynamic messages, extra behavior, decorators, generic/ambiguous bases and unused definitions abstain.",
             "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Direct synchronous module callbacks used only as Annotated validator metadata on plain direct BaseModel fields, and stable nonescaping direct nested helpers, also preserve rejection; lexical helper ownership is bounded to 32 levels. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred. Only simple stable module assignment aliases and nongeneric annotation aliases consumed directly by model fields are followed. Explicit string annotations, custom model hooks, async/generator callbacks, escaped helpers and broader call graphs are not followed. Generic lexical resolution can miss a module marker shadowed only in a method's class namespace.",
             "Tests, generated and vendor code are excluded. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
@@ -144,7 +144,7 @@ class NoCustomControlFlowException(Rule):
                     marker.lineno,
                     marker.col_offset + 1,
                     self.code,
-                    f"Review `{marker.name}`: it adds only an exception identity and is directly raised. "
+                    f"Review `{marker.name}`: it adds only an exception identity or fixed message and is directly raised. "
                     "If this is an expected domain outcome, return a typed tagged result; preserve genuine "
                     "exceptional failures, validation and framework contracts.",
                     severity=Severity.WARNING,
@@ -158,17 +158,15 @@ def _markers(context: PythonFileContext, provenance: ResourceProvenance) -> dict
         return {}
     markers: dict[str, ast.ClassDef] = {}
     for node in context.tree.body:
-        if not isinstance(node, ast.ClassDef) or not _name_only(node):
+        if not isinstance(node, ast.ClassDef) or not _marker_body(node):
             continue
         if provenance.binding(node.name, node) is not node:
             continue
         base = node.bases[0]
-        local = (
-            isinstance(base, ast.Name)
-            and provenance.binding(base.id, base) is markers.get(base.id)
-            and base.id in markers
-        )
-        if not (local or _builtin_base(base, context, provenance)):
+        fixed_message = any(isinstance(member, ast.FunctionDef) for member in node.body)
+        if not _marker_base(base, markers, context, fixed_message=fixed_message):
+            continue
+        if fixed_message and not context.imports.builtin_is_unshadowed("super"):
             continue
         if node.name in provenance.mutated or node.name in provenance.external_bindings:
             continue
@@ -178,7 +176,22 @@ def _markers(context: PythonFileContext, provenance: ResourceProvenance) -> dict
     return markers
 
 
-def _name_only(node: ast.ClassDef) -> bool:
+def _marker_base(
+    base: ast.expr, markers: dict[str, ast.ClassDef], context: PythonFileContext, *, fixed_message: bool
+) -> bool:
+    provenance = context.static_resource_provenance
+    local = isinstance(base, ast.Name) and base.id in markers and provenance.binding(base.id, base) is markers[base.id]
+    if local or _builtin_base(base, context, provenance):
+        return True
+    imported = provenance.runtime_import_name(base)
+    return (
+        fixed_message
+        and imported is not None
+        and not imported.startswith(("builtins.", "asyncio.", "fastapi.", "starlette.", "concurrent.futures."))
+    )
+
+
+def _marker_body(node: ast.ClassDef) -> bool:
     return (
         len(node.bases) == 1
         and not node.decorator_list
@@ -186,6 +199,7 @@ def _name_only(node: ast.ClassDef) -> bool:
         and not node.type_params
         and all(
             isinstance(member, ast.Pass)
+            or (isinstance(member, ast.FunctionDef) and _fixed_message_initializer(member))
             or (
                 isinstance(member, ast.Expr)
                 and isinstance(member.value, ast.Constant)
@@ -194,6 +208,29 @@ def _name_only(node: ast.ClassDef) -> bool:
             for member in node.body
         )
     )
+
+
+def _fixed_message_initializer(node: ast.FunctionDef) -> bool:
+    arguments = [*node.args.posonlyargs, *node.args.args]
+    if node.name != "__init__" or node.decorator_list or node.type_params or len(arguments) != 1:
+        return False
+    if node.args.vararg or node.args.kwarg or node.args.kwonlyargs or node.args.defaults:
+        return False
+    match node.body:
+        case [
+            ast.Expr(
+                value=ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Call(func=ast.Name(id="super"), args=[], keywords=[]), attr="__init__"
+                    ),
+                    args=[ast.Constant(value=str())],
+                    keywords=[],
+                )
+            )
+        ]:
+            return True
+        case _:
+            return False
 
 
 def _builtin_namespace_safe(context: PythonFileContext) -> bool:
@@ -250,7 +287,7 @@ def _value_error_marker(marker: ast.ClassDef, context: PythonFileContext, proven
         ) or provenance.imported(base, "builtins.ValueError"):
             return True
         bound = provenance.binding(base.id, base) if isinstance(base, ast.Name) else None
-        if not isinstance(bound, ast.ClassDef) or not _name_only(bound):
+        if not isinstance(bound, ast.ClassDef) or not _marker_body(bound):
             return False
         current = bound
     return False

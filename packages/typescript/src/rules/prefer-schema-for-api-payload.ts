@@ -4,8 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts
  */
 
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { nativeFetchReference } from "./_native-fetch-reference.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
@@ -32,7 +35,7 @@ export const PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 type Options = readonly [];
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<NativeRuleContext<MessageIds, Options>>;
 
 /** Peel TypeScript wrappers that do not affect the underlying value. */
 const unwrap = (

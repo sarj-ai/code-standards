@@ -2,18 +2,17 @@
  * @fileoverview _literal-identity-reduce-fix — remove unobservable identity-reducer copies.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** Returning a fresh primitive array needs none of an unobservable identity reducer's copies. */
 export function literalIdentityReduceFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.CallExpression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 1 ||
     sourceCode.getAllComments().length > 0 ||
@@ -85,7 +84,7 @@ function stringArray(node: TSESTree.TypeNode | undefined): boolean {
 }
 
 function identitySpread(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   callback: TSESTree.ArrowFunctionExpression,
 ): boolean {
   const [accumulator, item] = callback.params;

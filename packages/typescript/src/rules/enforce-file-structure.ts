@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
  */
 
-import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import type { NativeRuleFixer, NativeRuleFix } from "./_eslint-rule.js";
+
+
+
+import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -132,7 +136,7 @@ export default createRule<Options, MessageIds>({
         );
         const fixTypeImports = firstBody === undefined || context.sourceCode.getAllComments().length > 0 || misplacedTypeImports.length === 0
           ? null
-          : (fixer: TSESLint.RuleFixer): TSESLint.RuleFix[] => [
+          : (fixer: NativeRuleFixer): NativeRuleFix[] => [
               fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => context.sourceCode.getText(statement)).join("\n") + "\n"),
               ...misplacedTypeImports.map((statement) => fixer.remove(statement)),
             ];

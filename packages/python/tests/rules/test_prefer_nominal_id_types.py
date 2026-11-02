@@ -1133,3 +1133,22 @@ def test_replacing_string_provider_does_not_hide_an_unchanged_bare_integer() -> 
     [finding] = _check(source)
     assert finding.code == "SARJ093"
     assert finding.severity is Severity.ERROR
+
+
+def test_one_raw_domain_id_in_an_owned_contract_warns() -> None:
+    source = (
+        "from abc import ABC, abstractmethod\n"
+        "class Store(ABC):\n"
+        "    @abstractmethod\n"
+        "    async def stop(self, notice_id: str) -> None: ...\n"
+    )
+    [finding] = PreferNominalIdTypes().check(Path("app/store.py"), source)
+    assert finding.code == "SARJ093"
+    assert finding.severity is Severity.WARNING
+    assert finding.line == 4
+
+
+def test_local_abstract_contract_and_implementation_keep_the_nominal_boundary() -> None:
+    source = "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def stop(self, notice_id: str): ...\nclass DatabaseStore(Store):\n    def stop(self, notice_id: str): return None\n"
+    findings = _check(source)
+    assert [(finding.line, finding.severity) for finding in findings] == [(4, Severity.WARNING), (6, Severity.WARNING)]

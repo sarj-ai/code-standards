@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-partial-type-predicate.test.ts
  */
-import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices, TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { isNumberLiteralType } from "ts-api-utils";
 import ts from "typescript";
 
@@ -77,7 +82,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     function inspect(node: FunctionNode): void {
       const predicate = primitivePredicate(node, services);
       if (predicate === undefined) return;
@@ -99,7 +104,7 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function primitivePredicate(node: FunctionNode, services: ParserServicesWithTypeInformation): Predicate | undefined {
+function primitivePredicate(node: FunctionNode, services: TypeServices): Predicate | undefined {
   const annotation = node.returnType?.typeAnnotation;
   const parameter = node.params[0];
   if (node.async || node.generator || node.typeParameters !== undefined || node.params.length !== 1 ||
@@ -141,7 +146,7 @@ function returnedExpression(node: FunctionNode): TSESTree.Expression | undefined
   return node.body.body.length === 1 && statement?.type === AST_NODE_TYPES.ReturnStatement && statement.argument !== null ? unwrapExpression(statement.argument) : undefined;
 }
 
-function refinementExpression(predicate: Predicate, sourceCode: TSESLint.SourceCode): TSESTree.Expression | undefined {
+function refinementExpression(predicate: Predicate, sourceCode: TypeScriptSourceCode): TSESTree.Expression | undefined {
   const expression = predicate.expression;
   if (expression.type !== AST_NODE_TYPES.LogicalExpression || expression.operator !== "&&") {
     return predicate.inputIsTarget || doubleNegation(expression, predicate.parameter, sourceCode) ? expression : undefined;
@@ -156,21 +161,21 @@ function refinementExpression(predicate: Predicate, sourceCode: TSESLint.SourceC
   return undefined;
 }
 
-function doubleNegation(expression: TSESTree.Expression, parameter: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): boolean {
+function doubleNegation(expression: TSESTree.Expression, parameter: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {
   const outer = unwrapExpression(expression);
   if (outer.type !== AST_NODE_TYPES.UnaryExpression || outer.operator !== "!") return false;
   const inner = unwrapExpression(outer.argument);
   return inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === "!" && sameParameter(inner.argument, parameter, sourceCode);
 }
 
-function sameParameter(node: TSESTree.Node, parameter: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): boolean {
+function sameParameter(node: TSESTree.Node, parameter: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {
   const value = unwrapExpression(node);
   if (value.type !== AST_NODE_TYPES.Identifier) return false;
   const binding = ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name);
   return binding !== null && binding === ASTUtils.findVariable(sourceCode.getScope(value), value.name);
 }
 
-function rejectedWitness(expression: TSESTree.Expression, predicate: Predicate, sourceCode: TSESLint.SourceCode): Primitive | undefined {
+function rejectedWitness(expression: TSESTree.Expression, predicate: Predicate, sourceCode: TypeScriptSourceCode): Primitive | undefined {
   if (doubleNegation(expression, predicate.parameter, sourceCode)) return falsyWitness(predicate.kind);
   if (predicate.kind === "boolean" && sameParameter(expression, predicate.parameter, sourceCode)) return false;
   if (expression.type !== AST_NODE_TYPES.BinaryExpression) return undefined;

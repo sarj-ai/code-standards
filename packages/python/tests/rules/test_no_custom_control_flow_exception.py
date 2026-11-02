@@ -412,3 +412,32 @@ def test_nested_helper_proof_budget(depth: int, expected: int) -> None:
     lines.append(" " * (8 + depth * 4) + "raise DomainError")
     lines.extend(" " * (8 + level * 4) + f"return helper{level}()" for level in reversed(range(depth)))
     assert len(_check("\n".join(lines) + "\n")) == expected
+
+
+@pytest.mark.parametrize("base", ["Exception", "ValueError", "MissingError"])
+def test_literal_message_exception_is_a_result_review_candidate(base: str) -> None:
+    source = (
+        "from external import MissingError\n"
+        f"class Unavailable({base}):\n"
+        "    def __init__(self) -> None:\n"
+        "        super().__init__('unavailable')\n"
+        "def load():\n    raise Unavailable\n"
+    )
+    [finding] = NoCustomControlFlowException().check(Path("app/store.py"), source)
+    assert finding.code == "SARJ542"
+    assert finding.severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "initializer",
+    [
+        "def __init__(self, detail): super().__init__(detail)",
+        "def __init__(self): self.detail = 'unavailable'; super().__init__('unavailable')",
+        "def __init__(self): super().__init__(make_message())",
+        "def __init__(self): notify(); super().__init__('unavailable')",
+        "@decorate\n    def __init__(self): super().__init__('unavailable')",
+    ],
+)
+def test_exception_payloads_and_behavior_remain_valid(initializer: str) -> None:
+    source = f"class Unavailable(Exception):\n    {initializer}\ndef load():\n    raise Unavailable\n"
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []

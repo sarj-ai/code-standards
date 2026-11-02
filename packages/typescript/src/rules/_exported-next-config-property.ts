@@ -2,14 +2,18 @@
  * @fileoverview _exported-next-config-property — resolve a known property of the effective exported Next configuration.
  */
 
-import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 
 export function exportedNextConfigProperty(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   path: readonly string[],
 ): TSESTree.Property | null {
   const resolve = (input: TSESTree.Node, seen = new Set<TSESTree.Node>()): TSESTree.Node | null => {
@@ -36,7 +40,7 @@ export function exportedNextConfigProperty(
   return selected;
 }
 
-function exportedConfig(sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node | null {
+function exportedConfig(sourceCode: Readonly<TypeScriptSourceCode>): TSESTree.Node | null {
   let exported: TSESTree.Node | null = null;
   for (const statement of sourceCode.ast.body) {
     if (statement.type === "ExportDefaultDeclaration") exported = statement.declaration;
@@ -61,7 +65,7 @@ function objectProperty(node: TSESTree.ObjectExpression, name: string): TSESTree
 }
 
 /** Explicit module contracts may require literal true even after an alias is resolved. */
-export function canAutofixNextConfigLiteral(sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+export function canAutofixNextConfigLiteral(sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const constrained = (node: TSESTree.Node): boolean => {
     if (node.type === "TSAsExpression") {
       if (!(node.typeAnnotation.type === "TSTypeReference" && node.typeAnnotation.typeName.type === "Identifier" && node.typeAnnotation.typeName.name === "const")) return true;

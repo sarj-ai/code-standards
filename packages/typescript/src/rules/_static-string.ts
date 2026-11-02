@@ -1,4 +1,7 @@
 /** @fileoverview _static-string — static values exclude interpolation and opaque expressions. */
+
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
@@ -10,12 +13,12 @@ export function staticString(node: TSESTree.Node | undefined): string | null {
     ? value.quasis[0]?.value.cooked ?? null : null;
 }
 
-const SCOPED_STRING_VALUES = new WeakMap<Readonly<TSESLint.SourceCode>, WeakMap<TSESLint.Scope.Variable, string | null>>();
+const SCOPED_STRING_VALUES = new WeakMap<Readonly<TypeScriptSourceCode>, WeakMap<TSESLint.Scope.Variable, string | null>>();
 
 /** Follow stable local aliases without evaluating function or object-derived values. */
 export function scopedStaticString(
   node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): string | null {
   let value = unwrapExpression(node);
   if (value.type !== AST_NODE_TYPES.Identifier) return staticString(value);
@@ -49,7 +52,7 @@ export function scopedStaticString(
 /** Preserve literal property decoding and additionally resolve stable local string keys. */
 export function staticPropertyName(
   node: TSESTree.MemberExpression | TSESTree.Property,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): string | null {
   const direct = ASTUtils.getPropertyName(node);
   if (direct !== null || !node.computed) return direct;

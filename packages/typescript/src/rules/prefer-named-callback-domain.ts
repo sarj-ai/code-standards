@@ -3,11 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-callback-domain.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import type { NativeRuleListener } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -158,6 +158,6 @@ export default createRule<Options, MessageIds>({
           }
         }
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies NativeRuleListener;
   },
 });

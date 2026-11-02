@@ -211,13 +211,13 @@ export default createRule<Options, MessageIds>({
             context.report({
               node: comment,
               messageId: canDelete ? "deleteNarration" : "narratesValue",
-              fix: removal === null ? null : (fixer) => fixer.removeRange(removal.range),
+              fix: removal === null ? null : (fixer) => fixer.removeRange([...(removal.range)]),
               suggest: removal === null
                 ? null
                 : [
                   {
                     messageId: "removeNarration",
-                    fix: (fixer) => fixer.removeRange(removal.range),
+                    fix: (fixer) => fixer.removeRange([...(removal.range)]),
                   },
                 ],
             });

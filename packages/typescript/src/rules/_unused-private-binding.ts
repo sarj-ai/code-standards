@@ -2,6 +2,9 @@
  * @fileoverview _unused-private-binding — prove a private declaration has no observable source references.
  */
 
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { retainsNamedTypeUses } from "./_type-binding.js";
@@ -9,7 +12,7 @@ import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 
 /** Dynamic eval and script globals prevent a file-local non-observation proof. */
 export function isUnusedPrivateBinding(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   declaration: TSESTree.VariableDeclarator | TSESTree.ClassDeclaration | TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration | TSESTree.TSEnumDeclaration | TSESTree.FunctionDeclaration,
   identifier: TSESTree.Identifier,
   filename: string,
@@ -64,11 +67,11 @@ export function hasIdentifierNamed(node: TSESTree.Node, name: string): boolean {
 
 /** Remove an unobserved private function's unsound narrowing contract, retaining its runtime check. */
 export function privatePredicateBooleanFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression,
   annotation: TSESTree.TSTypePredicate,
   filename: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (!annotation.typeAnnotation || !retainsNamedTypeUses(sourceCode, annotation.typeAnnotation) ||
     node.type !== AST_NODE_TYPES.FunctionDeclaration || node.id === null ||
     !isUnusedPrivateBinding(sourceCode, node, node.id, filename) || sourceCode.getCommentsInside(annotation).length > 0) return null;

@@ -2,21 +2,21 @@
  * @fileoverview _closed-nominal-inheritance-fix — repair closed local nominal constructions.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 /** Repair one closed local construction against its already authored nominal runtime authority. */
 export function closedNominalInheritanceFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   call: ts.NewExpression,
   consumer: ts.ClassDeclaration,
   implementation: ts.ClassDeclaration,
   contract: ts.ClassDeclaration,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const source = call.getSourceFile();
   if (
     source.text !== sourceCode.text ||
@@ -141,7 +141,7 @@ function emptyImplementation(node: ts.ClassDeclaration, key: string): boolean {
 }
 
 function exactConsumer(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   consumer: ts.ClassDeclaration,
   base: string,
 ): boolean {
@@ -205,7 +205,7 @@ function unparenthesized(node: ts.Expression): ts.Expression {
 }
 
 function exactRejection(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   statement: ts.Statement,
 ): boolean {
   const rejected =

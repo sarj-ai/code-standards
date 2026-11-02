@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, final, override
@@ -36,6 +37,13 @@ class _WalrusCandidate(NamedTuple):
     is_not_none: bool
 
 
+@dataclass(frozen=True)
+class _ContextGuard:
+    lookup: ast.Assign
+    name: str
+    is_not_none: bool
+
+
 @final
 class PreferWalrusAwaitedNoneGuard(Rule):
     id = "prefer-walrus-awaited-none-guard"
@@ -62,6 +70,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             "Statements before the terminal operation must be simple assignments; expressions and compound control flow are excluded.",
             "An `is None` guard requires a later use on the surviving path and must not use or rebind the name inside the guard; an `is not None` guard must consume the binding inside the terminal branch and leave no later use before rebinding.",
             "The combined condition must fit 120 columns; comments, else branches, ambiguous name flow, generated files, and broader assignment-expression preferences are excluded.",
+            "A final awaited assignment in a with/async-with block followed by an outer terminal None guard receives a manual-review warning. Keep the await inside its resource context; folding the guard inward must preserve context-manager exit, exception suppression and return semantics. This cross-context form is never automatically fixed.",
         ),
         examples=(
             RuleExample(
@@ -150,6 +159,8 @@ class PreferWalrusAwaitedNoneGuard(Rule):
 
         def collect_body_candidates(body: list[ast.stmt]) -> None:
             for index, (assignment, guard) in enumerate(pairwise(body)):
+                if (scoped := self._context_diagnostic(body, index, context, comment_lines)) is not None:
+                    diagnostics.append(scoped)
                 candidate = _candidate(assignment, guard, source, source_lines, comment_lines)
                 if candidate is None:
                     continue
@@ -186,6 +197,81 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         if diagnostics and context.session.python_target.has_declared_support_before(path, (3, 8)):
             return []
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
+
+    def _context_diagnostic(
+        self, body: list[ast.stmt], index: int, context: PythonFileContext, comment_lines: frozenset[int]
+    ) -> Diagnostic | None:
+        statement, guard = body[index : index + 2]
+        candidate = _context_guard(statement, guard, context.source, context.source_lines, comment_lines)
+        if candidate is None:
+            return None
+        flow = _name_flow(body[index + 2 :], candidate.name)
+        if (candidate.is_not_none and flow in {"ambiguous", "loaded"}) or (
+            not candidate.is_not_none and flow != "loaded"
+        ):
+            return None
+        if any(is_suppressed(context.source_lines, node.lineno, self.code) for node in (candidate.lookup, guard)):
+            return None
+        return Diagnostic(
+            context.path,
+            candidate.lookup.lineno,
+            candidate.lookup.col_offset + 1,
+            self.code,
+            f"Review binding `{candidate.name}` in its None guard inside the resource context. Keep the await inside that context and preserve context-manager exit and exception/return behavior; this form has no automatic fix.",
+            severity=Severity.WARNING,
+        )
+
+
+def _context_guard(
+    statement: ast.stmt,
+    guard: ast.stmt,
+    source: str,
+    source_lines: list[str],
+    comment_lines: frozenset[int],
+) -> _ContextGuard | None:
+    if not isinstance(statement, ast.With | ast.AsyncWith) or not statement.body or not isinstance(guard, ast.If):
+        return None
+    lookup = statement.body[-1]
+    if (
+        not isinstance(lookup, ast.Assign)
+        or len(lookup.targets) != 1
+        or not isinstance(lookup.targets[0], ast.Name)
+        or not isinstance(lookup.value, ast.Await)
+        or not isinstance(lookup.value.value, ast.Call)
+    ):
+        return None
+    if (
+        lookup.lineno != lookup.end_lineno
+        or guard.lineno != (lookup.end_lineno or 0) + 1
+        or guard.orelse
+        or not guard.body
+    ):
+        return None
+    if not isinstance(guard.body[-1], ast.Return | ast.Raise) or not all(
+        isinstance(node, ast.Assign | ast.AnnAssign) for node in guard.body[:-1]
+    ):
+        return None
+    name = lookup.targets[0].id
+    kind = _none_guard_kind(guard.test, name)
+    if kind is None or _loads_name(lookup.value, name):
+        return None
+    usage = _NameUsage(name)
+    for node in guard.body:
+        usage.visit(node)
+    if (
+        usage.rebound
+        or kind != usage.loaded
+        or comment_lines.intersection(range(lookup.lineno, (guard.end_lineno or guard.lineno) + 1))
+    ):
+        return None
+    expression = ast.get_source_segment(source, lookup.value)
+    indentation = source_lines[lookup.lineno - 1][: lookup.col_offset].expandtabs(8)
+    if (
+        expression is None
+        or len(f"{indentation}if ({name} := {expression}) is {'not ' if kind else ''}None:") > _MAX_COMBINED_LINE_LENGTH
+    ):
+        return None
+    return _ContextGuard(lookup, name, kind)
 
 
 def _candidate(

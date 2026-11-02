@@ -4,6 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-generic-single-export-module.test.ts
  */
 
+import type { TSESTree } from "@typescript-eslint/utils";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "./_runtime-exports.js";
@@ -63,7 +65,7 @@ export default createRule<Options, MessageIds>({
     ) return {};
     let hasCommonJsExport = false;
     return {
-      "CallExpression, MemberExpression"(node): void {
+      "CallExpression, MemberExpression"(node: TSESTree.CallExpression | TSESTree.MemberExpression): void {
         if (isCommonJsExportReference(node, context.sourceCode)) hasCommonJsExport = true;
       },
       "Program:exit"(program): void {

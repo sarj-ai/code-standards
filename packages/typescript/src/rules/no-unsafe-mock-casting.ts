@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
  */
 
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
 import {
   type TSESLint,
   type TSESTree,
@@ -162,10 +165,10 @@ export default createRule<[], MessageIds>({
 });
 
 function privateIdentifierAssertionFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
   filename: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const declaration = node.parent;
   if (declaration.type !== AST_NODE_TYPES.VariableDeclarator || declaration.init !== node ||
     declaration.id.type !== AST_NODE_TYPES.Identifier || declaration.id.typeAnnotation !== undefined ||

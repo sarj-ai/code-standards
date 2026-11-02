@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 
-/** Check untrusted JSON before a tool reads object fields. */
 export function record(value: unknown, label: string): Record<string, unknown> {
   assert.ok(isRecord(value), `${label} must be an object`);
   return value;

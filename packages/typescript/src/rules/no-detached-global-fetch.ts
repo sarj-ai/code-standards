@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-detached-global-fetch.test.ts
  */
 
+import type { NativeRuleListener } from "./_eslint-rule.js";
+
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -326,6 +329,6 @@ export default createRule<Options, MessageIds>({
           if (value.type === AST_NODE_TYPES.Identifier) recordAlias(value);
         }
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies NativeRuleListener;
   },
 });

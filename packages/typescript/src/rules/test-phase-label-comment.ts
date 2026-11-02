@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-phase-label-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, wholeLineRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -52,7 +56,7 @@ export const TEST_PHASE_LABEL_COMMENT_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function insideExpression(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): boolean {
+function insideExpression(sourceCode: Readonly<TypeScriptSourceCode>, comment: TSESTree.Comment): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null) return false;
   let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
@@ -107,7 +111,7 @@ export default createRule<Options, MessageIds>({
             messageId: "removeLabel",
             fix: (fixer) => {
               const endings = commentLineEndings(context.sourceCode.text, removal);
-              return endings === null ? null : fixer.replaceTextRange(removal.range, endings);
+              return endings === null ? null : fixer.replaceTextRange([...(removal.range)], endings);
             },
           });
         }

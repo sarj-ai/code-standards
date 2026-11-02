@@ -4,11 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
@@ -101,7 +101,7 @@ function unwrap(node: TSESTree.TypeNode): TSESTree.TypeNode {
 }
 
 function report(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   node: TSESTree.Node & {
     readonly returnType: TSESTree.TSTypeAnnotation | undefined;
   },

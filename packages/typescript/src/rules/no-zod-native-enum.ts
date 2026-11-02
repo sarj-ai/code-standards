@@ -4,14 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-zod-native-enum.test.ts
  */
 
-import {
-  ESLintUtils,
-  type TSESLint,
-  type TSESTree,
-  type ParserServicesWithTypeInformation,
-  AST_NODE_TYPES,
-  ASTUtils,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices } from "./_eslint-rule.js";
+
+
+
+import { type TSESLint, type TSESTree, AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -155,7 +153,7 @@ const ENUM_SYMBOL_FLAGS =
 
 function resolvesToImportedEnum(
   node: TSESTree.Identifier,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   const checker = services.program.getTypeChecker();
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -197,9 +195,9 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

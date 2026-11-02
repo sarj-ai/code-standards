@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-pascal-case-zod-schema-name.test.ts
  */
 
+import type { NativeRuleFixer, NativeRuleFix } from "./_eslint-rule.js";
+
+
 import {
   type TSESLint,
   type TSESTree,
@@ -219,7 +222,7 @@ export default createRule<Options, MessageIds>({
       return binding !== null && zodBindings.has(binding);
     }
 
-    function renameFix(node: TSESTree.VariableDeclarator): ((fixer: TSESLint.RuleFixer) => readonly TSESLint.RuleFix[]) | null {
+    function renameFix(node: TSESTree.VariableDeclarator): ((fixer: NativeRuleFixer) => readonly NativeRuleFix[]) | null {
       if (node.id.type !== AST_NODE_TYPES.Identifier || node.parent.kind !== "const" ||
         node.parent.parent.type !== AST_NODE_TYPES.Program) return null;
       const binding = resolvedBinding(node.id);

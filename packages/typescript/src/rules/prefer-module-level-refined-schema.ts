@@ -3,6 +3,9 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-refined-schema.test.ts
  */
+
+import type { NativeRuleListener } from "./_eslint-rule.js";
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -453,6 +456,6 @@ export default createRule<Options, MessageIds>({
           return;
         context.report({ node, messageId: "hoistRefinedSchema" });
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies NativeRuleListener;
   },
 });

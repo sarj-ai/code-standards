@@ -4,14 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { existingDomainComparisonFix } from "./_existing-domain-comparison-fix.js";
@@ -122,7 +120,7 @@ function unwrapComparisonExpression(
 
 function jsonStringifyArgument(
   node: TSESTree.Expression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): TSESTree.Expression | null {
   const expression = unwrapComparisonExpression(node);
   if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
@@ -140,7 +138,7 @@ function jsonStringifyArgument(
 
 function isJsonStringify(
   node: TSESTree.Expression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const expression = unwrapComparisonExpression(node);
   if (expression.type === AST_NODE_TYPES.MemberExpression) {
@@ -186,7 +184,7 @@ function isJsonStringify(
 
 function isGlobalJson(
   node: TSESTree.Expression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const expression = unwrapComparisonExpression(node);
   if (
@@ -289,9 +287,9 @@ export default createRule<Options, MessageIds>({
     if (isTestFile(context) || isGeneratedFile(context, sourceCode.text)) {
       return {};
     }
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

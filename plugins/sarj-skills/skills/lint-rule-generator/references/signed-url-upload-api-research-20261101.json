@@ -519,19 +519,24 @@
       "packageTestsPassed": 58047,
       "history": "Original failed logs, focused recoveries and earlier timing/corpus artifacts are retained separately; the integrated full make verify run passed without recovery."
     },
-    "severityLifecycleNote": "The recorded full native and timing evidence qualifies the unchanged matcher with its original error metadata. CI requires warning-level introduction; effective warning severity is checked separately before initial publication, followed by a separate error promotion."
+    "severityLifecycleNote": "The original blocking matcher and preset severity are restored after the published warning introduction. The matcher implementation remains unchanged; focused promotion checks and exact-head CI qualify the version/severity metadata changes."
   },
   "release": {
     "proposedCore": "8.179.0",
     "proposedTypeScript": "16.40.0",
-    "status": "Warning-first introduction required by the release-ready gate; blocking JS promotion follows after publication. FastAPI and LIB120 remain blocking.",
+    "status": "Blocking promotion after published warning introduction; matcher behavior unchanged.",
     "recommendation": "Blocking upload policy as explicitly requested; do not promote broader research candidates without reproduced defects and calibration.",
     "lifecycle": {
       "introducedJavaScriptSeverity": "warning",
       "requestedFinalJavaScriptSeverity": "error",
       "firstReleaseCore": "8.179.0",
       "firstReleaseTypeScript": "16.40.0",
-      "nextStep": "Publish the warning introduction, then promote the existing rule to error in a separate release."
+      "nextStep": "Publish the separate blocking promotion as Core 8.181.1 and TypeScript 16.42.1 after the completed warning release.",
+      "warningReleaseMerge": "dd91964738d16bbf8073d1e6921301aa45242f35",
+      "warningReleasePublished": true,
+      "blockingCore": "8.181.1",
+      "blockingTypeScript": "16.42.1",
+      "blockingJavaScriptSeverity": "error"
     }
   }
 }
