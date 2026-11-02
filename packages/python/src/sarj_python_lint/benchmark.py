@@ -96,15 +96,7 @@ def measure(
         for diagnostic in diagnostics:
             digest.update(
                 json.dumps(
-                    [
-                        str(diagnostic.path.absolute().relative_to(corpus_root)),
-                        diagnostic.line,
-                        diagnostic.col,
-                        diagnostic.code,
-                        diagnostic.message,
-                        diagnostic.severity.value,
-                        diagnostic.column_encoding.value,
-                    ],
+                    asdict(diagnostic) | {"path": str(diagnostic.path.absolute().relative_to(corpus_root))},
                     ensure_ascii=False,
                 ).encode()
             )

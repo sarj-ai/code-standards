@@ -19,6 +19,8 @@ class _Baseline(Protocol):
 
 
 class _Sample(Protocol):
+    diagnostics: int
+    diagnostic_digest: str
     peak_memory_bytes: int | None
     memory_scope: str
 
@@ -52,6 +54,79 @@ def _write(checkout: Path, relative: str, content: bytes = b"original\n") -> Pat
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
+
+
+@pytest.fixture
+def diagnostic_worker_checkout(tmp_path: Path) -> Path:
+    checkout = tmp_path / "checkout"
+    python_source = Path(__file__).parents[1] / "src/sarj_python_lint"
+    contracts_source = Path(__file__).parents[2] / "contracts/src"
+    _write(
+        checkout,
+        "packages/python/src/sarj_python_lint/__init__.py",
+        (
+            f"import sys\n__path__.append({str(python_source)!r})\nsys.path.insert(0, {str(contracts_source)!r})\n"
+        ).encode(),
+    )
+    _write(checkout, "packages/python/src/sarj_python_lint/rules.py", b"REGISTRY = {'noop': object()}\n")
+    _write(
+        checkout,
+        "packages/python/src/sarj_python_lint/__main__.py",
+        b"""from dataclasses import replace
+from sarj_python_lint.rule_base import AutofixPolicy, Diagnostic, DiagnosticSubject, Fix, TextEdit
+
+def analyze(rules, paths):
+    path = paths[0]
+    marker = path.with_suffix('.variant')
+    variant = marker.read_text(encoding='utf-8') if marker.exists() else 'original'
+    edits = (TextEdit(1, 1, 1, 6, 'first'), TextEdit(2, 1, 2, 6, 'second'))
+    primary = Fix('Replace names', AutofixPolicy.SAFE, 'a' * 64, edits)
+    secondary = Fix('Suggest names', AutofixPolicy.SUGGESTION, 'b' * 64, edits[:1])
+    if variant == 'fix-title':
+        primary = replace(primary, title='Replace different names')
+    if variant == 'edit-order':
+        primary = replace(primary, edits=tuple(reversed(primary.edits)))
+    fixes = (primary, secondary)
+    if variant == 'fix-order':
+        fixes = tuple(reversed(fixes))
+    first = Diagnostic(path, 1, 1, 'SARJ001', 'First finding', fixes=fixes,
+                       subject=None if variant == 'subject' else DiagnosticSubject.RETURN)
+    second = Diagnostic(path, 2, 3, 'SARJ002', 'Second finding')
+    findings = [first, second]
+    return list(reversed(findings)) if variant == 'diagnostic-order' else findings
+""",
+    )
+    return checkout
+
+
+@pytest.mark.parametrize(
+    "variant",
+    ["subject", "fix-title", "fix-order", "edit-order", "diagnostic-order"],
+    ids=("diagnostic-subject", "fix-title", "fix-order", "edit-order", "diagnostic-order"),
+)
+def test_worker_digest_detects_full_diagnostic_changes(
+    harness: _Harness, diagnostic_worker_checkout: Path, tmp_path: Path, variant: str
+) -> None:
+    corpus = tmp_path / "corpus"
+    source = _write(corpus, "app.py", b"value = 1\nother = 2\n")
+    before = harness.sample(diagnostic_worker_checkout, Path(sys.executable), corpus, 0)
+    source.with_suffix(".variant").write_text(variant, encoding="utf-8")
+    after = harness.sample(diagnostic_worker_checkout, Path(sys.executable), corpus, 1)
+    assert before.diagnostics == after.diagnostics == 2
+    assert before.diagnostic_digest != after.diagnostic_digest
+
+
+def test_worker_full_payload_digest_is_independent_of_corpus_root(
+    harness: _Harness, diagnostic_worker_checkout: Path, tmp_path: Path
+) -> None:
+    samples: list[_Sample] = []
+    for name in ("first", "second"):
+        corpus = tmp_path / name
+        _write(corpus, "app.py", b"value = 1\nother = 2\n")
+        samples.append(harness.sample(diagnostic_worker_checkout, Path(sys.executable), corpus, len(samples)))
+    first, second = samples
+    assert first.diagnostics == second.diagnostics == 2
+    assert first.diagnostic_digest == second.diagnostic_digest
 
 
 @pytest.mark.parametrize(
