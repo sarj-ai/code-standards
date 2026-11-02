@@ -84,6 +84,7 @@ class _Native:
     stdout: str
     status: int = 0
     mutate: Callable[[], None] | None = None
+    stderr: str = ""
     calls: list[lifecycle.Command] = field(default_factory=list)
 
     def __call__(self, command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
@@ -92,7 +93,7 @@ class _Native:
         assert "--rule" not in command.argv
         if self.mutate is not None:
             self.mutate()
-        return subprocess.CompletedProcess(command.argv, self.status, self.stdout, "")
+        return subprocess.CompletedProcess(command.argv, self.status, self.stdout, self.stderr)
 
 
 def _native(*results: dict[str, JsonValue], status: int = 0, mutate: Callable[[], None] | None = None) -> _Native:
@@ -578,11 +579,71 @@ def test_malformed_or_unowned_native_output_fails_without_source_or_index_writes
 @pytest.mark.parametrize("status", [2, 127, -9])
 def test_infrastructure_or_native_fatal_exit_never_yields_a_plan(tmp_path: Path, status: int) -> None:
     _project(tmp_path)
-    with pytest.raises(ValueError, match="native ESLint failed"):
+    with pytest.raises(ValueError, match=f"native ESLint failed.*exit {status}"):
         eslint_directives.plan(
             tmp_path, ["source.js"], run=_native(_result(tmp_path / "source.js", _AFTER.decode()), status=status)
         )
     assert (tmp_path / "source.js").read_bytes() == _BEFORE
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "detail"),
+    [
+        pytest.param(
+            "not JSON", "Cannot find plugin fixture/missing", "Cannot find plugin fixture/missing", id="stderr"
+        ),
+        pytest.param(
+            "Cannot load ESLint configuration", " \n", "Cannot load ESLint configuration", id="stdout-fallback"
+        ),
+        pytest.param("", "", "", id="empty-output"),
+        pytest.param("", "failure: " + "x" * 5000 + "omitted", "failure: " + "x" * 3991, id="bounded-stderr"),
+    ],
+)
+def test_native_fatal_diagnostic_retains_bounded_detail_without_source_or_index_writes(
+    tmp_path: Path, stdout: str, stderr: str, detail: str
+) -> None:
+    _project(tmp_path)
+    index = (tmp_path / ".git/index").read_bytes()
+
+    with pytest.raises(ValueError, match=r"native ESLint failed.*exit 2") as failure:
+        eslint_directives.plan(tmp_path, ["source.js"], run=_Native(stdout, 2, stderr=stderr))
+
+    message = str(failure.value)
+    assert message.endswith(detail)
+    assert "not JSON" not in message
+    assert "omitted" not in message
+    assert len(message) <= 4100
+    assert (tmp_path / "source.js").read_bytes() == _BEFORE
+    assert (tmp_path / ".git/index").read_bytes() == index
+
+
+def test_native_projection_fatal_diagnostic_preserves_stderr_with_invalid_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(tmp_path)
+    _unit_projection_owners(monkeypatch, tmp_path)
+    index = (tmp_path / ".git/index").read_bytes()
+
+    def project(
+        invocation: native_byte_bridge.NativeInvocation,
+        source: bytes,
+        *,
+        run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
+    ) -> native_byte_bridge.NativeBytes:
+        assert isinstance(run, _Native)
+        if invocation.tool == "prettier":
+            return native_byte_bridge.NativeBytes(0, source, b"")
+        return native_byte_bridge.NativeBytes(2, b"\xff", b"Cannot load plugin: \xff")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the public planner's native ESLint projection failure, retaining the byte bridge's actual stderr contract.
+        native_byte_bridge, "run_bytes", project
+    )
+    with pytest.raises(ValueError, match=r"native ESLint failed.*exit 2") as failure:
+        eslint_directives.plan(tmp_path, ["source.js"], run=_native(_result(tmp_path / "source.js", _AFTER.decode())))
+
+    assert str(failure.value).endswith("Cannot load plugin: \ufffd")
+    assert (tmp_path / "source.js").read_bytes() == _BEFORE
+    assert (tmp_path / ".git/index").read_bytes() == index
 
 
 @pytest.mark.parametrize(
