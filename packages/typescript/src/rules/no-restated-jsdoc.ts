@@ -167,12 +167,12 @@ export default createRule<Options, MessageIds>({
             messageId: "restatesSignature",
             fix: removal === null ? null : (fixer) => {
               const endings = commentLineEndings(sourceCode.text, removal);
-              return endings === null ? null : fixer.replaceTextRange(removal.range, endings);
+              return endings === null ? null : fixer.replaceTextRange([...(removal.range)], endings);
             },
             suggest: removal === null ? [] : [
               {
                 messageId: "deleteBlock",
-                fix: (fixer) => fixer.removeRange(removal.range),
+                fix: (fixer) => fixer.removeRange([...(removal.range)]),
               },
             ],
           });

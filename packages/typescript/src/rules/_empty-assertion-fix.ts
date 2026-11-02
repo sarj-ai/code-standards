@@ -2,21 +2,20 @@
  * @fileoverview _empty-assertion-fix — reuse an authored no-op never guard.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 type OrdinaryFunction = TSESTree.FunctionDeclaration;
 
 /** Reuse an authored no-op never guard without changing unexpected-value behavior. */
 export function emptyAssertionFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.SwitchStatement,
   defaultCase: TSESTree.SwitchCase,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 2 ||
     sourceCode.getAllComments().length > 0

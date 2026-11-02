@@ -2,12 +2,15 @@
  * @fileoverview _test-mock-provenance — resolve runtime test-framework bindings without trusting local names.
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 export function importedTestMockNamespace(
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
   identifier: TSESTree.Identifier,
 ): "vitest" | "jest" | null {
   const binding = ASTUtils.findVariable(source.getScope(identifier), identifier.name);
@@ -21,7 +24,7 @@ export function importedTestMockNamespace(
   return null;
 }
 
-export function isUnshadowedTestMockGlobal(source: TSESLint.SourceCode, identifier: TSESTree.Identifier): boolean {
+export function isUnshadowedTestMockGlobal(source: TypeScriptSourceCode, identifier: TSESTree.Identifier): boolean {
   if (identifier.name !== "vi" && identifier.name !== "jest") return false;
   const binding = ASTUtils.findVariable(source.getScope(identifier), identifier.name);
   return binding === null || (binding.defs.length === 0 && !binding.references.some((reference) => reference.isWrite()));
@@ -32,7 +35,7 @@ const TEST_FRAMEWORK_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@
 
 /** Runtime binding provenance; caller-specific APIs and modifiers remain with their rule. */
 export function runtimeTestFrameworkName(
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   identifier: TSESTree.Identifier,
   kind: "test" | "assertion",
 ): string | null {
@@ -69,7 +72,7 @@ function runtimeImportBinding(
 
 /** Follow only an unchanged local fixture API back to the canonical Vitest import. */
 export function vitestFixtureTestName(
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   identifier: TSESTree.Identifier,
 ): "it" | "test" | null {
   return fixtureTestName(identifier, source, new Set());
@@ -77,7 +80,7 @@ export function vitestFixtureTestName(
 
 function fixtureTestName(
   node: TSESTree.Node,
-  source: Readonly<TSESLint.SourceCode>,
+  source: Readonly<TypeScriptSourceCode>,
   seen: Set<TSESLint.Scope.Variable>,
 ): "it" | "test" | null {
   node = unwrapExpression(node);

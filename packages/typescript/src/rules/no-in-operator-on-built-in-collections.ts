@@ -4,11 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-in-operator-on-built-in-collections.test.ts
  */
 
-import {
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices } from "./_eslint-rule.js";
+
+
+
+import { type TSESTree } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -99,7 +100,7 @@ export const NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION = {
 
 function isDefaultLibraryCollection(
   node: TSESTree.Expression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   const checker = services.program.getTypeChecker();
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -121,7 +122,7 @@ function isDefaultLibraryCollection(
 
 function isDefaultLibraryCollectionSymbol(
   symbol: ts.Symbol | undefined,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   if (symbol === undefined || !COLLECTION_NAMES.has(symbol.name)) return false;
   const declarations = symbol.declarations ?? [];
@@ -156,9 +157,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

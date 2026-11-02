@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-invalid-zod-custom-parse.test.ts
  */
-import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { isBigIntLiteralType, isBooleanLiteralType, isNumberLiteralType, isStringLiteralType } from "ts-api-utils";
 import ts from "typescript";
 
@@ -46,7 +51,7 @@ export default createRule<[], "incompatibleCustomParse">({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     const options = services.program.getCompilerOptions();
     return {
@@ -73,7 +78,7 @@ function inlineCustom(node: TSESTree.CallExpression): TSESTree.CallExpression | 
   return custom.type === AST_NODE_TYPES.CallExpression && !custom.optional && custom.arguments.length === 0 && custom.typeArguments?.params.length === 1 ? custom : undefined;
 }
 
-function ownedCustom(node: TSESTree.CallExpression, sourceCode: TSESLint.SourceCode): boolean {
+function ownedCustom(node: TSESTree.CallExpression, sourceCode: TypeScriptSourceCode): boolean {
   const callee = unwrapExpression(node.callee);
   const identifier = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (identifier.type !== AST_NODE_TYPES.Identifier) return false;

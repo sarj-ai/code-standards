@@ -2,13 +2,11 @@
  * @fileoverview _jsx-accessibility — scope-aware JSX names and accessible content are shared across rules.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type JSONSchema,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type JSONSchema, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 
@@ -32,7 +30,7 @@ export const COMPONENT_IMPORT_SCHEMA: Readonly<JSONSchema.JSONSchema4> = {
 
 export function importedComponent(
   name: TSESTree.JSXTagNameExpression | TSESTree.Identifier,
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
 ): ComponentImport | null {
   const local =
     name.type === AST_NODE_TYPES.JSXIdentifier ||
@@ -125,7 +123,7 @@ export function attributeText(
   return attribute.value === null ? "" : staticText(attribute.value);
 }
 
-export function isHidden(node: TSESTree.JSXOpeningElement, source: TSESLint.SourceCode): boolean {
+export function isHidden(node: TSESTree.JSXOpeningElement, source: TypeScriptSourceCode): boolean {
   if (attributeText(node, "aria-hidden") === "true") return true;
   const hidden = node.attributes.findLast(
     (attribute) =>
@@ -177,7 +175,7 @@ export function attributeNameStatus(
 
 export function childrenNameStatus(
   children: readonly TSESTree.JSXChild[],
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
   iconModules: readonly string[],
 ): NameStatus {
   const states = children.map((child): NameStatus => {
@@ -218,7 +216,7 @@ export function childrenNameStatus(
 
 export function isPassedAsProp(
   node: TSESTree.JSXElement,
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
 ): boolean {
   for (const ancestor of source.getAncestors(node).toReversed()) {
     if (ancestor.type === AST_NODE_TYPES.JSXAttribute) return true;
@@ -233,7 +231,7 @@ export function isPassedAsProp(
 
 export function hasHiddenAncestor(
   node: TSESTree.JSXElement,
-  source: TSESLint.SourceCode,
+  source: TypeScriptSourceCode,
 ): boolean {
   return source
     .getAncestors(node)

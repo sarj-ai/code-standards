@@ -1,10 +1,14 @@
 /** @fileoverview _escaping-action-return — exclude visibly dead or finalizer-overridden action results. */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
 
-export function escapingActionReturn(node: TSESTree.ReturnStatement, owner: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+export function escapingActionReturn(node: TSESTree.ReturnStatement, owner: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   let child: TSESTree.Node = node;
   while (child.parent !== undefined && child.parent !== owner) {
     const parent: TSESTree.Node = child.parent;
@@ -14,7 +18,7 @@ export function escapingActionReturn(node: TSESTree.ReturnStatement, owner: TSES
   return true;
 }
 
-function reachableAncestor(child: TSESTree.Node, parent: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function reachableAncestor(child: TSESTree.Node, parent: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   switch (parent.type) {
     case AST_NODE_TYPES.IfStatement: {
       const truth = condition(parent.test, sourceCode);
@@ -37,12 +41,12 @@ function reachableAncestor(child: TSESTree.Node, parent: TSESTree.Node, sourceCo
   }
 }
 
-function condition(node: TSESTree.Expression, sourceCode: TSESLint.SourceCode): boolean | null {
+function condition(node: TSESTree.Expression, sourceCode: TypeScriptSourceCode): boolean | null {
   const value = ASTUtils.getStaticValue(node, sourceCode.getScope(node));
   return value === null ? null : Boolean(value.value);
 }
 
-function reachableBlockChild(statements: readonly TSESTree.Statement[], child: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function reachableBlockChild(statements: readonly TSESTree.Statement[], child: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   for (const statement of statements) {
     if (statement === child) return true;
     if (opaquePrefix(statement) || exits(statement, sourceCode)) return false;
@@ -50,7 +54,7 @@ function reachableBlockChild(statements: readonly TSESTree.Statement[], child: T
   return true;
 }
 
-function exits(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function exits(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   if (node.type === AST_NODE_TYPES.ReturnStatement || node.type === AST_NODE_TYPES.ThrowStatement ||
     node.type === AST_NODE_TYPES.BreakStatement || node.type === AST_NODE_TYPES.ContinueStatement) return true;
   if (node.type === AST_NODE_TYPES.BlockStatement) return node.body.some((statement) => exits(statement, sourceCode));
@@ -70,7 +74,7 @@ function opaquePrefix(node: TSESTree.Node): boolean {
     node.type === AST_NODE_TYPES.ForOfStatement || node.type === AST_NODE_TYPES.WhileStatement || node.type === AST_NODE_TYPES.DoWhileStatement;
 }
 
-function transfers(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function transfers(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   if (node.type === AST_NODE_TYPES.FunctionDeclaration || node.type === AST_NODE_TYPES.FunctionExpression || node.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
   if (node.type === AST_NODE_TYPES.ReturnStatement || node.type === AST_NODE_TYPES.ThrowStatement ||
     node.type === AST_NODE_TYPES.BreakStatement || node.type === AST_NODE_TYPES.ContinueStatement) return true;

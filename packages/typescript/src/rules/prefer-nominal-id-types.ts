@@ -3,6 +3,9 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nominal-id-types.test.ts
  */
+
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
 import {
   AST_NODE_TYPES,
   type TSESLint,
@@ -15,7 +18,7 @@ import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "preferNominalIds";
 type Options = [];
-type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
+type Context = Readonly<NativeRuleContext<MessageIds, Options>>;
 type Carrier = "string" | "number" | "string[]" | "number[]";
 type Boundary = TSESTree.Node & {
   readonly params: readonly TSESTree.Parameter[];

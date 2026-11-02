@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-union-in-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
@@ -204,11 +208,11 @@ export default createRule<Options, MessageIds>({
 });
 
 function existingLiteralUnionFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   target: Target,
   literals: readonly string[],
   filename: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (target.node.type !== AST_NODE_TYPES.TSPropertySignature || target.node.computed) return null;
   const container = target.node.parent;
   const owner = container.parent;
@@ -229,7 +233,7 @@ function existingLiteralUnionFix(
 }
 
 function authoredLiteralMembers(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   annotation: TSESTree.TSUnionType,
 ): { readonly authored: ReadonlySet<string>; readonly retained: readonly TSESTree.TypeNode[] } | null {
   const authored = new Set<string>();

@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { staticPropertyName } from "./_static-string.js";
@@ -50,7 +54,7 @@ const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 /** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
-function isBodyParseCall(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isBodyParseCall(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 0 ||
     unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
@@ -76,7 +80,7 @@ const isExplanatory = (comment: { value: string }): boolean =>
   !DIRECTIVE_COMMENT_RE.test(comment.value);
 
 /** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
-function isTeardownCall(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isTeardownCall(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
   const method = staticPropertyName(unwrappedNodeCallee, sourceCode);
@@ -84,7 +88,7 @@ function isTeardownCall(node: TSESTree.Expression, sourceCode: Readonly<TSESLint
 }
 
 /** Web Share rejects on ordinary user cancellation, which callers may ignore. */
-function isCancelledWebShare(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isCancelledWebShare(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
@@ -153,7 +157,7 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
 
 function hasRecoveryContinuation(
   call: TSESTree.CallExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   let current = call;
   while (current.parent.type === AST_NODE_TYPES.MemberExpression &&
@@ -169,7 +173,7 @@ function hasRecoveryContinuation(
 
 function isIdentityContinuation(
   call: TSESTree.CallExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   if (call.optional || call.arguments.length !== 1) return false;
   const argument = call.arguments[0];

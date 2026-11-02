@@ -4,13 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-ecmascript-private-members.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { NativeRuleContext, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   convertibleMemberName,
@@ -67,9 +66,9 @@ export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function reportClass(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): void {
   const groups = new Map<string, PrivateConvertibleMember[]>();
   for (const member of owner.body.body) {
@@ -126,9 +125,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

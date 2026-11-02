@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
  */
 
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   BARE_LABEL_RE,
@@ -200,11 +204,11 @@ export default createRule<Options, MessageIds>({
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
         fix: removals.length === 0 ? null : (fixer) => {
-          const fixes: TSESLint.RuleFix[] = [];
+          const fixes: NativeRuleFix[] = [];
           for (const removal of removals) {
             const endings = commentLineEndings(sourceCode.text, removal);
             if (endings === null) return null;
-            fixes.push(fixer.replaceTextRange(removal.range, endings));
+            fixes.push(fixer.replaceTextRange([...(removal.range)], endings));
           }
           return fixes;
         },

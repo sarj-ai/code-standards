@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-local-alias.test.ts
  */
 
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -45,12 +48,12 @@ const PRIMITIVE_PARAMETERS: ReadonlySet<TSESTree.Node["type"]> = new Set([
 ]);
 
 function closedPrimitiveReturnFix(
-  sourceCode: TSESLint.SourceCode,
+  sourceCode: TypeScriptSourceCode,
   node: TSESTree.VariableDeclarator,
   property: TSESTree.Property,
   source: TSESLint.Scope.Variable,
   target: TSESLint.Scope.Variable,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const statement = node.parent;
   const body = statement.parent;
   if (body.type !== AST_NODE_TYPES.BlockStatement) return null;
@@ -82,7 +85,7 @@ function closedPrimitiveReturnFix(
   if (before.length !== after.length || before.some((ending, index) => ending !== after[index])) return null;
   const key = sourceCode.getText(property.key);
   const value = sourceCode.getText(node.init);
-  return fixer => [fixer.replaceTextRange(span, boundaries), fixer.replaceText(property, `${key}: ${value}`)];
+  return fixer => [fixer.replaceTextRange([...(span)], boundaries), fixer.replaceText(property, `${key}: ${value}`)];
 }
 
 export default createRule<[], "redundantAlias">({

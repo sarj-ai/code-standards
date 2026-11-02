@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-contradictory-type-predicate.test.ts
  */
-import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { privatePredicateBooleanFix } from "./_unused-private-binding.js";
@@ -91,7 +96,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     const uncheckedArray = contradictoryArrayPredicate(context.sourceCode, services);
     const pendingArrays: { readonly node: FunctionNode; readonly annotation: TSESTree.TSTypePredicate; readonly promised: string }[] = [];
@@ -139,7 +144,7 @@ export default createRule<Options, MessageIds>({
 });
 
 function shallowRecordCheck(expression: TSESTree.Expression, parameter: TSESTree.Identifier, input: ts.Type, target: ts.Type,
-  sourceCode: TSESLint.SourceCode, checker: ts.TypeChecker, source: ts.SourceFile): boolean {
+  sourceCode: TypeScriptSourceCode, checker: ts.TypeChecker, source: ts.SourceFile): boolean {
   if ((input.flags & (ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive)) === 0 || (target.flags & ts.TypeFlags.Object) === 0 ||
     target.isUnionOrIntersection() || checker.isArrayType(target) || checker.isTupleType(target) || checker.getIndexInfosOfType(target).length !== 0) return false;
   const declarations = (target.aliasSymbol ?? target.getSymbol())?.getDeclarations();
@@ -218,7 +223,7 @@ function isRuntimeKind(value: string): value is RuntimeKind {
   return RUNTIME_KINDS.has(value);
 }
 
-function sameParameter(declared: TSESTree.Identifier, tested: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): boolean {
+function sameParameter(declared: TSESTree.Identifier, tested: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {
   const parameter = ASTUtils.findVariable(sourceCode.getScope(declared), declared.name);
   return parameter !== null && parameter === ASTUtils.findVariable(sourceCode.getScope(tested), tested.name);
 }

@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-test-double-cast.test.ts
  */
 
-import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
@@ -34,7 +38,7 @@ function isUnknown(node: TSESTree.TypeNode): boolean {
   return node.type === AST_NODE_TYPES.TSUnknownKeyword;
 }
 
-function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+function containsMockFactory(node: TSESTree.Node, source: TypeScriptSourceCode): boolean {
   node = unwrapExpression(node);
   if (isMockFactory(node, source)) return true;
   if (node.type === AST_NODE_TYPES.ObjectExpression) {
@@ -49,7 +53,7 @@ function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): 
   return false;
 }
 
-function isMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+function isMockFactory(node: TSESTree.Node, source: TypeScriptSourceCode): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
   const receiver = unwrapExpression(unwrappedNodeCallee.object);
@@ -86,10 +90,10 @@ export default createRule<[], MessageIds>({
 });
 
 function privateMockObjectFix(
-  sourceCode: TSESLint.SourceCode,
+  sourceCode: TypeScriptSourceCode,
   node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
   filename: string,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const declaration = node.parent;
   const inner = node.expression;
   if ((inner.type !== AST_NODE_TYPES.TSAsExpression && inner.type !== AST_NODE_TYPES.TSTypeAssertion) ||
@@ -105,7 +109,7 @@ function privateMockObjectFix(
   return (fixer) => fixer.replaceText(node, replacement);
 }
 
-function simpleMockObject(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): boolean {
+function simpleMockObject(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
   if (node.type !== AST_NODE_TYPES.ObjectExpression) return false;
   return node.properties.every((property) => {
     if (property.type !== AST_NODE_TYPES.Property || property.computed || property.method || property.kind !== "init") return false;

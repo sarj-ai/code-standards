@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-use-form-default-values.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleListener } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { stableValueBinding, typeOnlyReference } from "./_stable-value-binding.js";
@@ -226,6 +230,6 @@ export default createRule<Options, MessageIds>({
           (defaultValue.value.expression.type !== AST_NODE_TYPES.JSXEmptyExpression && !isDefinitelyUndefined(defaultValue.value.expression)))) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies NativeRuleListener;
   },
 });

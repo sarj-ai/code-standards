@@ -4,12 +4,15 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-zod-form-validation.test.ts
  */
 
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
 import {
   type TSESTree,
   AST_NODE_TYPES,
   ASTUtils,
 } from "@typescript-eslint/utils";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
@@ -35,7 +38,7 @@ export const REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<NativeRuleContext<MessageIds, Options>>;
 const ZOD_PARSE_METHODS: ReadonlySet<string> = new Set([
   "parse",
   "safeParse",

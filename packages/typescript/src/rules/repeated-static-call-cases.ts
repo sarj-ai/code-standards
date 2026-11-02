@@ -3,7 +3,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/repeated-static-call-cases.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
@@ -13,7 +17,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "repeatedStaticCallCases";
 type Options = readonly [];
-type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
+type Context = Readonly<NativeRuleContext<MessageIds, Options>>;
 
 export const REPEATED_STATIC_CALL_CASES_DOCUMENTATION = {
   summary: "Review three or more consecutive static-input call assertions as potential named cases.",

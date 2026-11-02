@@ -1,6 +1,9 @@
 /**
  * @fileoverview _discriminated-union-returns — find finite, tag-specific producer shapes hidden by flat return contracts.
  */
+
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 type Producer = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
@@ -19,9 +22,9 @@ class PathBudget {
   #visits = 0;
   #objects = 0;
 
-  readonly sourceCode: TSESLint.SourceCode;
+  readonly sourceCode: TypeScriptSourceCode;
 
-  constructor(sourceCode: TSESLint.SourceCode) {
+  constructor(sourceCode: TypeScriptSourceCode) {
     this.sourceCode = sourceCode;
   }
 
@@ -54,7 +57,7 @@ export interface DiscriminatedReturn {
 }
 
 /** The evidence concerns this producer's returned variants, not every use of a shared type. */
-export function discriminatedUnionReturns(node: Producer, sourceCode: TSESLint.SourceCode): DiscriminatedReturn | undefined {
+export function discriminatedUnionReturns(node: Producer, sourceCode: TypeScriptSourceCode): DiscriminatedReturn | undefined {
   if (node.generator || node.body === undefined) return undefined;
   const contract = returnContract(node, sourceCode);
   if (contract === undefined) return undefined;
@@ -77,7 +80,7 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: TSESLint.S
   return undefined;
 }
 
-function returnContract(node: Producer, sourceCode: TSESLint.SourceCode): Contract | undefined {
+function returnContract(node: Producer, sourceCode: TypeScriptSourceCode): Contract | undefined {
   const annotation = node.returnType;
   if (annotation === undefined) return undefined;
   let type = annotation.typeAnnotation;
@@ -104,7 +107,7 @@ function returnContract(node: Producer, sourceCode: TSESLint.SourceCode): Contra
 }
 
 /** Resolve type-space bindings without confusing a value-space shadow with a type. */
-function definitions(reference: TSESTree.TSTypeReference, sourceCode: TSESLint.SourceCode): readonly TSESLint.Scope.Definition[] {
+function definitions(reference: TSESTree.TSTypeReference, sourceCode: TypeScriptSourceCode): readonly TSESLint.Scope.Definition[] {
   if (reference.typeName.type !== AST_NODE_TYPES.Identifier) return [];
   let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(reference);
   while (scope !== null) {
@@ -252,14 +255,14 @@ function switchPaths(statement: TSESTree.SwitchStatement, budget: PathBudget, de
 }
 
 /** Broad immutable parameters prove literal cases and an unlisted default input. */
-function reachableSwitch(statement: TSESTree.SwitchStatement, sourceCode: TSESLint.SourceCode): boolean {
+function reachableSwitch(statement: TSESTree.SwitchStatement, sourceCode: TypeScriptSourceCode): boolean {
   if (statement.cases.length > MAX_PATH_VISITS) return false;
   const kind = broadSwitchInput(statement, sourceCode);
   return kind !== undefined && reachableSwitchLabels(statement, kind);
 }
 
 /** Restrict witnesses to the producer's unchanged broad input, before any narrowing. */
-function broadSwitchInput(statement: TSESTree.SwitchStatement, sourceCode: TSESLint.SourceCode): "string" | "number" | undefined {
+function broadSwitchInput(statement: TSESTree.SwitchStatement, sourceCode: TypeScriptSourceCode): "string" | "number" | undefined {
   const body = statement.parent;
   if (body.type !== AST_NODE_TYPES.BlockStatement || body.body.length !== 1) return undefined;
   const owner = body.parent;
