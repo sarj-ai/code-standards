@@ -534,6 +534,40 @@
     },
     {
       "commands": [],
+      "name": "web-security",
+      "options": [
+        {
+          "choices": [],
+          "kind": "option",
+          "metavar": null,
+          "names": [
+            "-h",
+            "--help"
+          ],
+          "repeatable": false,
+          "required": false,
+          "summary": "Show this message and exit."
+        },
+        {
+          "choices": [],
+          "kind": "positional",
+          "metavar": "POLICY",
+          "names": [
+            "web_policy"
+          ],
+          "repeatable": false,
+          "required": true,
+          "summary": ""
+        }
+      ],
+      "path": [
+        "web-security"
+      ],
+      "summary": "check declared HTTPS deployment policies; violations exit 1, invalid input or execution exits 2",
+      "usage": "code-standards web-security [-h] POLICY"
+    },
+    {
+      "commands": [],
       "name": "validate-slack-automations",
       "options": [
         {
@@ -3316,6 +3350,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v8.179.0).",
-  "version": "8.179.0"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v8.181.0).",
+  "version": "8.181.0"
 }

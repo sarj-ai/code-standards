@@ -90,6 +90,16 @@ const PROVIDERS: Record<string, readonly [string, string, string]> = {
     "eslint-plugin-regexp",
     "https://ota-meshi.github.io/eslint-plugin-regexp/",
   ],
+  security: [
+    "Security",
+    "eslint-plugin-security",
+    "https://github.com/eslint-community/eslint-plugin-security",
+  ],
+  "no-unsanitized": [
+    "No Unsanitized",
+    "eslint-plugin-no-unsanitized",
+    "https://github.com/mozilla/eslint-plugin-no-unsanitized",
+  ],
   "eslint-comments": [
     "ESLint Comments",
     "@eslint-community/eslint-plugin-eslint-comments",
