@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "16.43.0",
+  "version": "17.1.0",
   "packageManager": "npm@12.2.1",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -54,6 +54,7 @@
   "author": "sarj-ai",
   "license": "MIT",
   "dependencies": {
+    "@eslint/core": "1.2.1",
     "@typescript-eslint/typescript-estree": "^8.72.0",
     "@typescript-eslint/utils": "^8.72.0",
     "jsonc-parser": "^3.3.1",
@@ -100,7 +101,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "eslint": ">=9.39.4",
+    "eslint": ">=10.13.0",
     "typescript": ">=5.0.0"
   },
   "engines": {

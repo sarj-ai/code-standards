@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-discriminated-union.test.ts
  */
 
-import { type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import type { NativeReportFix, TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { type TSESTree } from "@typescript-eslint/utils";
 
 import { retainsNamedTypeUses } from "./_type-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -244,7 +248,7 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    function inlineProducerFix(reportNode: TSESTree.Node): TSESLint.ReportFixFunction | null {
+    function inlineProducerFix(reportNode: TSESTree.Node): NativeReportFix | null {
       if (reportNode.type !== AST_NODE_TYPES.TSTypeAnnotation || reportNode.parent.type !== AST_NODE_TYPES.FunctionDeclaration) return null;
       const owner = reportNode.parent;
       const result = discriminatedUnionReturns(owner, context.sourceCode);
@@ -288,7 +292,7 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function privateVariantReturn(sourceCode: Readonly<TSESLint.SourceCode>, filename: string, owner: Producer, result: DiscriminatedReturn): TSESLint.ReportFixFunction | null {
+function privateVariantReturn(sourceCode: Readonly<TypeScriptSourceCode>, filename: string, owner: Producer, result: DiscriminatedReturn): NativeReportFix | null {
   const annotation = owner.returnType?.typeAnnotation;
   const returned = owner.body?.type === AST_NODE_TYPES.BlockStatement ? owner.body.body[0] : undefined;
   if (owner.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null || owner.async || owner.generator || owner.typeParameters !== undefined ||
@@ -303,7 +307,7 @@ function privateVariantReturn(sourceCode: Readonly<TSESLint.SourceCode>, filenam
   return (fixer) => fixer.replaceText(annotation, text);
 }
 
-function privateVariantType(properties: ReadonlyMap<string, TSESTree.Node>, result: DiscriminatedReturn, sourceCode: Readonly<TSESLint.SourceCode>): string | null {
+function privateVariantType(properties: ReadonlyMap<string, TSESTree.Node>, result: DiscriminatedReturn, sourceCode: Readonly<TypeScriptSourceCode>): string | null {
   if ([...properties.values()].some((value) => value.type !== AST_NODE_TYPES.Literal ||
     (typeof value.value === "object" && value.value !== null) || (typeof value.value === "number" && !Number.isFinite(value.value)))) return null;
   const fields: string[] = [];

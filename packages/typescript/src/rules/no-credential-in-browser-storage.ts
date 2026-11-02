@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-credential-in-browser-storage.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -113,13 +117,13 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function isStorage(sourceCode: Readonly<TSESLint.SourceCode>, node: TSESTree.Expression): boolean {
+function isStorage(sourceCode: Readonly<TypeScriptSourceCode>, node: TSESTree.Expression): boolean {
   const name = globalMemberName(sourceCode, node);
   return name !== null && STORAGE_NAMES.has(name);
 }
 
 function globalMemberName(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Expression,
 ): string | null {
   const value = unwrapExpression(node);
@@ -137,13 +141,13 @@ function globalMemberName(
   return null;
 }
 
-function isUnshadowed(sourceCode: Readonly<TSESLint.SourceCode>, node: TSESTree.Identifier): boolean {
+function isUnshadowed(sourceCode: Readonly<TypeScriptSourceCode>, node: TSESTree.Identifier): boolean {
   const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
   return variable === null || variable.defs.length === 0;
 }
 
 function storedPropertyKey(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   target: TSESTree.MemberExpression,
 ): string | null {
   if (!target.computed) return target.property.type === AST_NODE_TYPES.Identifier ? target.property.name : null;

@@ -3,7 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-known-value-widening.test.ts
  */
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { retainsNamedTypeUses } from "./_type-binding.js";
@@ -63,7 +67,7 @@ export default createRule<[], "widening">({
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
     if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     if (services.program === null) return {};
     const checker = services.program.getTypeChecker();
     return {

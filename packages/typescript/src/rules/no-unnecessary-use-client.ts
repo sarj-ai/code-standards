@@ -4,11 +4,14 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unnecessary-use-client.test.ts
  */
 
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "unnecessaryUseClient";
 type Options = readonly [];
@@ -81,7 +84,7 @@ const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set([
 const CLIENT_ONLY_PACKAGES_REGEX =
   /^(?:@radix-ui\/|framer-motion|react-dom|react-day-picker|@floating-ui\/|react-select|react-toastify|react-hook-form|recharts|react-dropzone|react-slick|react-swipeable|react-resizable|react-draggable|react-beautiful-dnd|@hello-pangea\/dnd|react-virtualized|react-window|@tanstack\/react-table|@tanstack\/react-query|react-redux|recoil|jotai|zustand|@tippyjs\/react|react-color|react-datepicker|next-themes|react-helmet|react-helmet-async|styled-components|@emotion\/)/;
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<NativeRuleContext<MessageIds, Options>>;
 
 /** True for package specifiers whose implementation this rule cannot inspect. */
 const isBareSpecifier = (source: string): boolean =>

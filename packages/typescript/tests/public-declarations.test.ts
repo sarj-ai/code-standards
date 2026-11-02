@@ -79,6 +79,7 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     });
     for (const dependency of [
       "@typescript-eslint",
+      "@eslint",
       "eslint",
       "typescript",
       "ts-api-utils",
@@ -97,8 +98,8 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     );
     const source = [
       'import plugin, { ADVISORY_RULES, STRICT_RULES } from "@sarj/eslint-plugin";',
-      'import { TSESLint } from "@typescript-eslint/utils";',
       'import type { ESLint, Linter } from "eslint";',
+      'import { ESLint as NativeESLint } from "eslint";',
       'import { defineConfig } from "eslint/config";',
       'import { verifyRuleExamples, type ExampleFile, type RuleExample, type FixedSourceFormatter } from "./node_modules/@sarj/eslint-plugin/dist/rule-examples.js";',
       'export const selectedRule = plugin.rules["no-comment-cruft"];',
@@ -107,12 +108,14 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
       'export const fromConfig: typeof configured = plugin.configs.recommended.rules["@sarj/prefer-logical-tailwind-utilities"];',
       'export const advisory: readonly string[] = ADVISORY_RULES;',
       'export const warning: "warn" = STRICT_RULES["@sarj/excessive-commentary"];',
-      'export const typedPlugin: TSESLint.FlatConfig.Plugin = plugin;',
-      'export const directConfig: TSESLint.FlatConfig.Config = { plugins: { "@sarj": plugin } };',
-      'export const recommendedConfig: TSESLint.FlatConfig.Config = plugin.configs.recommended;',
-      'export const strictConfig: TSESLint.FlatConfig.Config = plugin.configs.strict;',
-      'export const eslintOptions: TSESLint.ESLint.ESLintOptions = { overrideConfigFile: true, overrideConfig: [directConfig, recommendedConfig, strictConfig] };',
-      'export const createLinter = () => new TSESLint.ESLint(eslintOptions);',
+      'type NativePlugin = NonNullable<Linter.Config["plugins"]>[string];',
+      'export const typedPlugin: NativePlugin = plugin;',
+      'export const typedRules: NonNullable<NativePlugin["rules"]> = plugin.rules;',
+      'export const directConfig: Linter.Config = { plugins: { "@sarj": plugin } };',
+      'export const recommendedConfig: Linter.Config = plugin.configs.recommended;',
+      'export const strictConfig: Linter.Config = plugin.configs.strict;',
+      'export const eslintOptions: ESLint.Options = { overrideConfigFile: true, overrideConfig: defineConfig(directConfig, recommendedConfig, strictConfig) };',
+      'export const createLinter = () => new NativeESLint(eslintOptions);',
       'export const nativeRuleSettings: Linter.Config = { rules: plugin.configs.strict.rules };',
       'export const composedRuleSettings: Linter.Config[] = defineConfig(nativeRuleSettings);',
       'export const nativeOptions: ESLint.Options = { overrideConfigFile: true, overrideConfig: composedRuleSettings };',
@@ -134,6 +137,8 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     );
     const options: ts.CompilerOptions = {
       strict: true,
+      exactOptionalPropertyTypes: true,
+      noUncheckedIndexedAccess: true,
       declaration: true,
       emitDeclarationOnly: true,
       noEmitOnError: true,

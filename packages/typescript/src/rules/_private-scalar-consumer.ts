@@ -1,5 +1,9 @@
 /** @fileoverview _private-scalar-consumer — prove private scalar consumers and their direct callers. */
-import { AST_NODE_TYPES, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { returnedExpression, scalarParameterReads } from "./_scalar-parameter-view.js";
@@ -63,7 +67,7 @@ export function exportedSymbols(source: ts.SourceFile, checker: ts.TypeChecker):
     (entry.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(entry) : entry) : []);
 }
 
-export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, exports: ReadonlySet<ts.Symbol>, options: ConsumerOptions = {}): PrivateScalarConsumer | null {
+export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TypeScriptSourceCode, services: TypeServices, exports: ReadonlySet<ts.Symbol>, options: ConsumerOptions = {}): PrivateScalarConsumer | null {
   const native = services.esTreeNodeToTSNodeMap.get(node);
   if ((!ts.isFunctionDeclaration(native) && !ts.isArrowFunction(native)) || !native.body) return null;
   let parameter = native.parameters[0];
@@ -88,7 +92,7 @@ export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSES
 
 /** Match the sole private native declaration to its lexical binding and direct callers. */
 function privateDirectCallable(node: ScalarConsumerNode, native: ts.FunctionDeclaration | ts.ArrowFunction,
-  sourceCode: TSESLint.SourceCode, checker: ts.TypeChecker, exports: ReadonlySet<ts.Symbol>): boolean {
+  sourceCode: TypeScriptSourceCode, checker: ts.TypeChecker, exports: ReadonlySet<ts.Symbol>): boolean {
   const binding = callableBinding(node, sourceCode);
   if (!binding || binding.defs.length !== 1) return false;
   const name = ts.isFunctionDeclaration(native) ? native.name : ts.isVariableDeclaration(native.parent) ? native.parent.name : undefined;
@@ -116,7 +120,7 @@ function auxiliaryBindings(native: ts.FunctionDeclaration | ts.ArrowFunction, se
   return bindings;
 }
 
-function callableBinding(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode): TSESLint.Scope.Variable | undefined {
+function callableBinding(node: ScalarConsumerNode, sourceCode: TypeScriptSourceCode): TSESLint.Scope.Variable | undefined {
   if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
     if (node.parent.type !== AST_NODE_TYPES.Program) return undefined;
     return sourceCode.getDeclaredVariables(node).find((variable) => variable.defs.some((definition) => definition.type === "FunctionName" && definition.node === node));

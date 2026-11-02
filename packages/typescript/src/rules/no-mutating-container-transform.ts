@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-mutating-container-transform.test.ts
  */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -36,7 +39,7 @@ export const NO_MUTATING_CONTAINER_TRANSFORM_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function arrayElement(node: TSESTree.TypeNode, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.TypeNode | null {
+function arrayElement(node: TSESTree.TypeNode, sourceCode: Readonly<TypeScriptSourceCode>): TSESTree.TypeNode | null {
   if (node.type === AST_NODE_TYPES.TSArrayType) return node.elementType;
   if (node.type === AST_NODE_TYPES.TSTypeReference && node.typeName.type === AST_NODE_TYPES.Identifier &&
     (node.typeName.name === "Array" || node.typeName.name === "ReadonlyArray") &&
@@ -45,7 +48,7 @@ function arrayElement(node: TSESTree.TypeNode, sourceCode: Readonly<TSESLint.Sou
   return null;
 }
 
-function returnsArray(node: FunctionNode, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function returnsArray(node: FunctionNode, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   let annotation = node.returnType?.typeAnnotation;
   if (annotation?.type === AST_NODE_TYPES.TSTypeReference && annotation.typeName.type === AST_NODE_TYPES.Identifier &&
     annotation.typeName.name === "Promise" && (ASTUtils.findVariable(sourceCode.getScope(annotation.typeName), "Promise")?.defs.length ?? 0) === 0 &&

@@ -5,9 +5,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-type FrontendContext = Pick<Readonly<TSESLint.RuleContext<string, readonly unknown[]>>, "filename" | "sourceCode">;
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+type FrontendContext = Pick<NativeRuleContext<string, readonly unknown[]>, "filename" | "sourceCode">;
 
 const FRONTEND_PACKAGES: ReadonlySet<string> = new Set(["react", "react-dom", "next", "preact", "vue", "svelte", "@angular/core", "solid-js", "@sveltejs/kit", "astro"]);
 const FRONTEND_IMPORT = /^(?:react(?:-dom)?|next|preact|vue|svelte|@angular\/core|solid-js|@sveltejs\/kit)(?:\/|$)/u;

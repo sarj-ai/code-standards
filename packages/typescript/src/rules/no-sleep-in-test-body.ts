@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sleep-in-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
@@ -128,7 +132,7 @@ function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
 }
 
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
-function isTestBody(fn: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+function isTestBody(fn: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): boolean {
   const call = directArgumentCall(fn);
   if (call === null) return false;
   const name = testCallerName(call.callee, source);
@@ -138,7 +142,7 @@ function isTestBody(fn: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): b
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["only", "skip", "each", "for", "concurrent", "sequential", "fails", "skipIf", "runIf"]);
 
-function testCallerName(callee: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): string | null {
+function testCallerName(callee: TSESTree.Node, source: Readonly<TypeScriptSourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     const name = runtimeTestFrameworkName(source, callee, "test") ?? vitestFixtureTestName(source, callee);

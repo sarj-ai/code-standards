@@ -4,10 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-test-comments.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, ownLineCommentRemovalRange, trailingCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import type { NativeRuleContext, NativeRuleFix } from "./_eslint-rule.js";
 import { isFrontendSource } from "./_is-frontend-source.js";
 import { isGeneratedFile, isTestFile, scopedFilename } from "./_paths.js";
 
@@ -88,7 +89,7 @@ function stripPythonTrailingWhitespace(value: string): string {
   return value.slice(0, end);
 }
 
-export function ownsTestComments(context: Pick<Readonly<TSESLint.RuleContext<string, readonly unknown[]>>, "filename" | "cwd" | "sourceCode">): boolean {
+export function ownsTestComments(context: Pick<NativeRuleContext<string, readonly unknown[]>, "filename" | "cwd" | "sourceCode">): boolean {
     if (!isTestFile(context)) return false;
     const filename = scopedFilename(context);
     const unambiguous = /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|__mocks__)\//u.test(filename) || /\.(?:test|spec|e2e|integration)\.[cm]?[jt]sx?$/u.test(filename);
@@ -139,7 +140,7 @@ export default createRule<Options, "testComment">({
             fix: fixer => {
               if (frontend) return null;
               const text = context.sourceCode.text;
-              const preserveLineTerminators = (edit: TSESLint.RuleFix): TSESLint.RuleFix | null => {
+              const preserveLineTerminators = (edit: NativeRuleFix): NativeRuleFix | null => {
                 const neighbor = Math.max(0, edit.range[0] - 1);
                 const original = text.slice(neighbor, edit.range[1] + 1).match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
                 const rendered = (text.slice(neighbor, edit.range[0]) + edit.text + text.slice(edit.range[1], edit.range[1] + 1))
@@ -149,10 +150,10 @@ export default createRule<Options, "testComment">({
               const own = ownLineCommentRemovalRange(text, comment);
               if (own !== null) {
                 const ownEndings = commentLineEndings(text, own);
-                return ownEndings === null ? null : preserveLineTerminators(fixer.replaceTextRange(own.range, ownEndings));
+                return ownEndings === null ? null : preserveLineTerminators(fixer.replaceTextRange([...(own.range)], ownEndings));
               }
               const trailing = trailingCommentRemovalRange(text, comment);
-              if (trailing !== null) return preserveLineTerminators(fixer.replaceTextRange(trailing.range, ""));
+              if (trailing !== null) return preserveLineTerminators(fixer.replaceTextRange([...(trailing.range)], ""));
               const endings = context.sourceCode.getText(comment).replace(/[^\r\n\u2028\u2029]/gu, "");
               if (endings.length > 0) {
                 let start = comment.range[0];

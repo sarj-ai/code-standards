@@ -169,7 +169,7 @@ describe("the behavior lives in executable tests", () => {
 
   it.each(MODULE_NAMES)("%s carries no measurement in a code comment", (name) => {
     const offenders = commentLines(moduleSource(name))
-      .filter(({ text }) => EVIDENCE_IN_COMMENT.test(text))
+      .filter(({ text }) => hasMeasurementClaim(text))
       .map(({ line, text }) => `${name}.ts:${line}: ${text}`);
     expect(
       offenders,
@@ -181,7 +181,27 @@ describe("the behavior lives in executable tests", () => {
     const strays = readdirSync(HERE).filter((file) => /budget|exempt|allowlist/iu.test(file));
     expect(strays).toEqual([]);
   });
+
+  it.each([
+    { label: "MIT copyright year", text: "* Copyright (c) 2018 Toru Nagashima", measurement: false },
+    { label: "copyright year range", text: "// Copyright (c) 2018-2026 Maintainers", measurement: false },
+    { label: "claim on a copyright line", text: "* Copyright (c) 2018 Maintainers; 450 findings", measurement: true },
+    { label: "claim inside a license block", text: "* Measured 450 cases", measurement: true },
+    { label: "plain numeric claim", text: "// 250 cases", measurement: true },
+    { label: "percentage claim", text: "// 12.5% success", measurement: true },
+    { label: "ordinary source comment", text: "// Preserve the parser's node identity.", measurement: false },
+  ])("distinguishes $label from measurement evidence", ({ text, measurement }) => {
+    expect(hasMeasurementClaim(text)).toBe(measurement);
+  });
 });
+
+function hasMeasurementClaim(text: string): boolean {
+  const withoutCopyrightYear = text.replace(
+    /^((?:\/\*+|\/\/|\*)?\s*Copyright(?:\s+\(c\))?\s+)\d{4}(?:-\d{4})?(?=\s)/u,
+    "$1",
+  );
+  return EVIDENCE_IN_COMMENT.test(withoutCopyrightYear);
+}
 
 describe("a rename ships a map, not a hole", () => {
 

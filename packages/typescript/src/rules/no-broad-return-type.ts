@@ -3,11 +3,11 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-broad-return-type.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 import { retainsNamedTypeUses } from "./_type-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -147,7 +147,7 @@ export default createRule<[], "avoid">({
       !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
     )
       return {};
-    const services = ESLintUtils.getParserServices(context);
+    const services = getTypeServices(context);
     if (!services.program) return {};
     const checker = services.program.getTypeChecker();
     const frames: ReturnFrame[] = [];

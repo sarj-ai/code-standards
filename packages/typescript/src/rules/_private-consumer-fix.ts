@@ -1,5 +1,9 @@
 /** @fileoverview _private-consumer-fix — preserve caller validity while editing erased contracts only. */
-import { AST_NODE_TYPES, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import type { ScalarConsumerNode } from "./_private-scalar-consumer.js";
@@ -10,7 +14,7 @@ const UNSAFE = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts
 
 /** Check each identifier caller against the original parameter contract. */
 export function validConsumerFixCalls(node: ScalarConsumerNode, parameter: ts.ParameterDeclaration,
-  sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): boolean {
+  sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices): boolean {
   // A newly valid call can make a previously required @ts-expect-error an error itself.
   if (sourceCode.getAllComments().some((comment) => /@ts-(?:expect-error|ignore|nocheck)\b/u.test(comment.value))) return false;
   const owner = node.type === AST_NODE_TYPES.FunctionDeclaration ? node : node.parent;
@@ -75,7 +79,7 @@ function knownArgument(type: ts.Type, argument: ts.Node, fields: ReadonlySet<str
 }
 
 /** Removing a covered type must not make its local/import binding unused, even with simultaneous fixes. */
-export function retainedConsumerTypeUses(sourceCode: Readonly<TSESLint.SourceCode>, removed: TSESTree.Node,
+export function retainedConsumerTypeUses(sourceCode: Readonly<TypeScriptSourceCode>, removed: TSESTree.Node,
   covering: TSESTree.Node, candidateAnnotations: readonly TSESTree.Node[]): boolean {
   const enclosed = candidateAnnotations.some((annotation) =>
     annotation.range[0] <= Math.min(removed.range[0], covering.range[0]) &&
@@ -89,7 +93,7 @@ function lineBreaks(text: string): string {
 }
 
 /** A deletion must not join two original terminators into a newly formed CRLF token. */
-function sameLineTerminators(sourceCode: Readonly<TSESLint.SourceCode>, annotation: TSESTree.Node, text: string): boolean {
+function sameLineTerminators(sourceCode: Readonly<TypeScriptSourceCode>, annotation: TSESTree.Node, text: string): boolean {
   // Include neighboring source characters so joins across either edit boundary are checked too.
   const start = Math.max(0, annotation.range[0] - 1);
   const before = sourceCode.text.slice(start, annotation.range[1] + 1);
@@ -99,16 +103,16 @@ function sameLineTerminators(sourceCode: Readonly<TSESLint.SourceCode>, annotati
   return original.length === rendered.length && original.every((ending, index) => ending === rendered[index]);
 }
 
-export function coveringConsumerFix(sourceCode: Readonly<TSESLint.SourceCode>, annotation: TSESTree.Node,
-  covering: TSESTree.Node): TSESLint.ReportFixFunction | null {
+export function coveringConsumerFix(sourceCode: Readonly<TypeScriptSourceCode>, annotation: TSESTree.Node,
+  covering: TSESTree.Node): NativeReportFix | null {
   if (sourceCode.getCommentsInside(annotation).length || covering.range[0] < annotation.range[0] || covering.range[1] > annotation.range[1]) return null;
   const text = lineBreaks(sourceCode.text.slice(annotation.range[0], covering.range[0])) + sourceCode.getText(covering) +
     lineBreaks(sourceCode.text.slice(covering.range[1], annotation.range[1]));
   return sameLineTerminators(sourceCode, annotation, text) ? (fixer) => fixer.replaceText(annotation, text) : null;
 }
 
-export function minimalConsumerFix(sourceCode: Readonly<TSESLint.SourceCode>, annotation: TSESTree.Node,
-  removed: readonly { readonly start: number; readonly end: number }[]): TSESLint.ReportFixFunction | null {
+export function minimalConsumerFix(sourceCode: Readonly<TypeScriptSourceCode>, annotation: TSESTree.Node,
+  removed: readonly { readonly start: number; readonly end: number }[]): NativeReportFix | null {
   if (sourceCode.getCommentsInside(annotation).length || !removed.length) return null;
   let text = sourceCode.getText(annotation);
   let last = annotation.range[1];

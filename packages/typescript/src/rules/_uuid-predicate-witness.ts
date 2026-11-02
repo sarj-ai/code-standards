@@ -1,6 +1,10 @@
 /** @fileoverview _uuid-predicate-witness — a closed official UUID schema rejects members of broad string. */
 
-import { AST_NODE_TYPES, ASTUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { nativeRuntimeUnchanged } from "./_native-runtime-unchanged.js";
@@ -12,8 +16,8 @@ type Variable = TSESLint.Scope.Variable;
 export function uuidPredicateWitness(
   expression: TSESTree.Expression,
   parameter: TSESTree.Identifier,
-  sourceCode: TSESLint.SourceCode,
-  services: ParserServicesWithTypeInformation,
+  sourceCode: TypeScriptSourceCode,
+  services: TypeServices,
 ): string | undefined {
   const success = unwrapExpression(expression);
   if (!member(success, "success")) return undefined;
@@ -35,7 +39,7 @@ export function uuidPredicateWitness(
   return "not-a-uuid";
 }
 
-function binding(node: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): Variable | null {
+function binding(node: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): Variable | null {
   return ASTUtils.findVariable(sourceCode.getScope(node), node.name);
 }
 
@@ -44,7 +48,7 @@ function member(node: TSESTree.Node | undefined, name: string): node is TSESTree
     node.property.type === AST_NODE_TYPES.Identifier && node.property.name === name;
 }
 
-function uuidNamespace(initializer: TSESTree.Node, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation): Variable | null {
+function uuidNamespace(initializer: TSESTree.Node, sourceCode: TypeScriptSourceCode, services: TypeServices): Variable | null {
   if (!noArguments(initializer) || !member(initializer.callee, "uuid")) return null;
   let receiver = unwrapExpression(initializer.callee.object);
   let legacy = false;
@@ -71,7 +75,7 @@ function noArguments(node: TSESTree.Node): node is TSESTree.CallExpression {
   return node.type === AST_NODE_TYPES.CallExpression && !node.optional && node.arguments.length === 0;
 }
 
-function installedZod(node: TSESTree.Identifier, services: ParserServicesWithTypeInformation): boolean {
+function installedZod(node: TSESTree.Identifier, services: TypeServices): boolean {
   const checker = services.program.getTypeChecker();
   const symbol = checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(node));
   if (symbol === undefined || (symbol.flags & ts.SymbolFlags.Alias) === 0) return false;

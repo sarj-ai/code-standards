@@ -4,14 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-numeric-search-param-coercion.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices, TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -81,9 +79,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || isTestFile(context)) return {};
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }
@@ -106,7 +104,7 @@ export default createRule<Options, MessageIds>({
 });
 
 function isNumericParser(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   callee: TSESTree.Expression,
 ): boolean {
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -124,7 +122,7 @@ function isNumericParser(
 }
 
 function isUnshadowedGlobal(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Identifier,
 ): boolean {
   const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
@@ -150,7 +148,7 @@ function searchParamGetCall(argument: TSESTree.CallExpressionArgument): TSESTree
 
 function isSearchParamReceiver(
   call: TSESTree.CallExpression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   if (call.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
   const checker = services.program.getTypeChecker();

@@ -3,7 +3,12 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-excess-jsx-props.test.ts
  */
-import { AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices, TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { currentNativeSource } from "./_checked-native-source.js";
@@ -132,7 +137,7 @@ function supportedJSX(options: ts.CompilerOptions, comments: readonly TSESTree.C
     !comments.some((comment) => JSX_DIRECTIVE.test(comment.value));
 }
 
-function receivingContract(opening: TSESTree.JSXOpeningElement, services: ParserServicesWithTypeInformation, checker: ts.TypeChecker, contracts: WeakMap<ts.Type, boolean>): { tag: ts.JsxTagNameExpression; signature: ts.Signature; props: ts.Type } | null {
+function receivingContract(opening: TSESTree.JSXOpeningElement, services: TypeServices, checker: ts.TypeChecker, contracts: WeakMap<ts.Type, boolean>): { tag: ts.JsxTagNameExpression; signature: ts.Signature; props: ts.Type } | null {
   const native = services.esTreeNodeToTSNodeMap.get(opening);
   if (!ts.isJsxOpeningElement(native) && !ts.isJsxSelfClosingElement(native)) return null;
   const receiver = checker.getTypeAtLocation(native.tagName);
@@ -147,8 +152,8 @@ function receivingContract(opening: TSESTree.JSXOpeningElement, services: Parser
 
 interface PrimitiveProof {
   readonly checker: ts.TypeChecker;
-  readonly services: ParserServicesWithTypeInformation;
-  readonly sourceCode: TSESLint.SourceCode;
+  readonly services: TypeServices;
+  readonly sourceCode: TypeScriptSourceCode;
   readonly exports: ReadonlySet<ts.Symbol>;
   readonly values: WeakSet<ts.Node>;
   readonly objects: WeakMap<ts.Symbol, ReadonlyMap<string, TSESTree.Property> | null>;
@@ -323,7 +328,7 @@ export default createRule<[], "excess">({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    let services: ParserServicesWithTypeInformation | undefined;
+    let services: TypeServices | undefined;
     let objectContract: boolean | undefined;
     const contracts = new WeakMap<ts.Type, boolean>();
     const receivers = new WeakMap<ts.Signature, ReadonlySet<string> | null>();
@@ -335,7 +340,7 @@ export default createRule<[], "excess">({
     const evaluate = (node: TSESTree.JSXSpreadAttribute, declaration: TSESTree.VariableDeclarator, fields: ReadonlyMap<string, TSESTree.Property>): void => {
       const keys = [...fields.keys()];
       const opening = node.parent;
-      services ??= ESLintUtils.getParserServices(context);
+      services ??= getTypeServices(context);
       standardJSX ??= supportedJSX(services.program.getCompilerOptions(), context.sourceCode.getAllComments());
       if (!standardJSX) return;
       const checker = services.program.getTypeChecker();
@@ -372,7 +377,7 @@ export default createRule<[], "excess">({
       CallExpression(node): void { if (directEval(node)) dynamic = true; },
       "Program:exit"(): void {
         if (!candidates.length || dynamic) return;
-        services = ESLintUtils.getParserServices(context);
+        services = getTypeServices(context);
         if (!currentNativeSource(context.sourceCode, services)) return;
         for (const {node, declaration, fields} of candidates) evaluate(node, declaration, fields);
       },

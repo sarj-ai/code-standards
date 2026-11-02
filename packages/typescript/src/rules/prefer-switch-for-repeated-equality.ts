@@ -4,7 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-switch-for-repeated-equality.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import ts from "typescript";
 
@@ -60,7 +65,7 @@ function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): bo
   return node.type === AST_NODE_TYPES.Literal && !("regex" in node);
 }
 
-function switchText(node: TSESTree.IfStatement, sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation | null): string | null {
+function switchText(node: TSESTree.IfStatement, sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices | null): string | null {
   if (sourceCode.getCommentsInside(node).length > 0 || hasUnsafeSwitchControl(node)) return null;
   const chain = switchCases(node);
   if (chain === null || (chain.fallback === null && !hasOpenDiscriminant(chain.discriminant, services))) return null;
@@ -100,7 +105,7 @@ function hasUnsafeSwitchControl(node: TSESTree.Node): boolean {
     forEachOwnAstChild(node, hasUnsafeSwitchControl);
 }
 
-function hasOpenDiscriminant(node: TSESTree.Expression, services: ParserServicesWithTypeInformation | null): boolean {
+function hasOpenDiscriminant(node: TSESTree.Expression, services: TypeServices | null): boolean {
   if (services === null) return false;
   const type = services.program.getTypeChecker().getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node));
   const openFlags = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.BigInt | ts.TypeFlags.ESSymbol;
@@ -122,8 +127,8 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
-    try { services = ESLintUtils.getParserServices(context); } catch { services = null; }
+    let services: TypeServices | null;
+    try { services = getTypeServices(context); } catch { services = null; }
     return {
       IfStatement(node): void {
         if (node.parent.type === AST_NODE_TYPES.IfStatement && node.parent.alternate === node) return;

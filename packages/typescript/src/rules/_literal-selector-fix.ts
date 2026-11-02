@@ -2,18 +2,17 @@
  * @fileoverview _literal-selector-fix — reuse authored operations for literal calls.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** Reuse already authored operations instead of an exclusively literal-called adapter. */
 export function literalSelectorFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   parameter: TSESTree.Identifier,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 4 ||
     sourceCode.getAllComments().length > 0
@@ -105,7 +104,7 @@ function isSelector(
 }
 
 function operation(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Expression,
   first: TSESTree.FunctionDeclaration,
   second: TSESTree.FunctionDeclaration,
@@ -129,7 +128,7 @@ function operation(
 }
 
 function literalCallers(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   owner: TSESTree.FunctionDeclaration,
   binding: TSESTree.VariableDeclarator,
 ): TSESTree.CallExpression[] | null {

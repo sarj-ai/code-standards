@@ -4,12 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-constant.test.ts
  */
 
-import {
-  ASTUtils,
-  type TSESTree,
-  type TSESLint,
-  AST_NODE_TYPES,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
@@ -231,7 +230,7 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
 function classify(
   init: TSESTree.Node,
   checkRegex: boolean,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): Candidate | null {
   const node = unwrapObjectFreeze(init, sourceCode);
 
@@ -276,7 +275,7 @@ type Candidate =
 /** `Object.freeze(x)` → `x`; anything else is returned untouched. */
 function unwrapObjectFreeze(
   node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): TSESTree.Node {
   const inner = unwrap(node);
   const callee =
@@ -331,7 +330,7 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<
 
 function isSafeRead(
   identifier: TSESTree.Identifier,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   let typeOwner: TSESTree.Node = identifier.parent;
   while (typeOwner.type === AST_NODE_TYPES.TSQualifiedName)
@@ -389,7 +388,7 @@ function isSafeRead(
 function isNonRetainingBuiltinCall(
   node: TSESTree.CallExpression,
   argument: TSESTree.Expression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   const callee = unwrapExpression(node.callee);
 
@@ -426,7 +425,7 @@ function isNonRetainingBuiltinCall(
 
 function isUnshadowedBuiltin(
   identifier: TSESTree.Identifier,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   return (
     (ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name)

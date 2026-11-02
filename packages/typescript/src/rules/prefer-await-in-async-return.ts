@@ -4,13 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-await-in-async-return.test.ts
  */
 
-import {
-  ASTUtils,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESTree,
-  AST_NODE_TYPES,
-} from "@typescript-eslint/utils";
+import { getTypeServices } from "./_eslint-rule.js";
+import type { TypeServices } from "./_eslint-rule.js";
+
+
+
+import { ASTUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
@@ -142,7 +141,7 @@ function directThenReceiver(node: TSESTree.CallExpression): TSESTree.Expression 
 
 function isProvenPromiseLike(
   node: TSESTree.Expression,
-  services: ParserServicesWithTypeInformation,
+  services: TypeServices,
 ): boolean {
   const checker = services.program.getTypeChecker();
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -151,7 +150,7 @@ function isProvenPromiseLike(
   return members.every((member) => isBuiltInPromiseType(member, services));
 }
 
-function isBuiltInPromiseType(type: ts.Type, services: ParserServicesWithTypeInformation): boolean {
+function isBuiltInPromiseType(type: ts.Type, services: TypeServices): boolean {
   if (
     (type.flags &
       (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !==
@@ -200,9 +199,9 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{ scope: "async-return" }],
   create(context, [options]) {
-    let services: ParserServicesWithTypeInformation | null;
+    let services: TypeServices | null;
     try {
-      services = ESLintUtils.getParserServices(context);
+      services = getTypeServices(context);
     } catch {
       services = null;
     }

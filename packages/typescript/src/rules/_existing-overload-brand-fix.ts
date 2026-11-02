@@ -2,21 +2,20 @@
  * @fileoverview _existing-overload-brand-fix — reuse existing nominal overload types.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const DECLARATION_COUNT = 4;
 const PARAMETER_COUNT = 2;
 
 /** Reuse an existing public overload's two nominal types without changing its API. */
 export function existingOverloadBrandFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== DECLARATION_COUNT ||
     sourceCode.getAllComments().length > 0
@@ -143,7 +142,7 @@ function isStringBrand(node: TSESTree.TSTypeAliasDeclaration): boolean {
 }
 
 function sameTypeBinding(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   alias: TSESTree.TSTypeAliasDeclaration,
   annotation: TSESTree.TSTypeReference,
   parameter: TSESTree.Identifier,

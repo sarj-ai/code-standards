@@ -1,5 +1,9 @@
 /** @fileoverview _runtime-exports — classify runtime exports conservatively for module naming rules. */
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 export const GENERIC_MODULE_STEMS: ReadonlySet<string> = new Set([
   "common", "helper", "helpers", "misc", "shared", "stuff", "util", "utils",
@@ -137,7 +141,7 @@ function namespaceEmission(declaration: TSESTree.TSModuleDeclaration): Emission 
 /** Scope-aware CommonJS detection shared by both rules; mixed surfaces remain unknown. */
 export function isCommonJsExportReference(
   node: TSESTree.CallExpression | TSESTree.MemberExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   function isGlobal(node: TSESTree.Identifier): boolean {
     const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);

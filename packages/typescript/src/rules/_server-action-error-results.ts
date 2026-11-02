@@ -1,5 +1,8 @@
 /** @fileoverview _server-action-error-results — follow closed caught details into exported Server Action results. */
 
+import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
@@ -12,7 +15,7 @@ type Variable = TSESLint.Scope.Variable;
 type FunctionNode = TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
 const MAX_ALIAS_HOPS = 8;
 
-export function serverActionErrorResults(sourceCode: TSESLint.SourceCode): readonly TSESTree.ReturnStatement[] {
+export function serverActionErrorResults(sourceCode: TypeScriptSourceCode): readonly TSESTree.ReturnStatement[] {
   const program = sourceCode.ast;
   if (directive(program.body, "use client")) return [];
   const moduleAction = directive(program.body, "use server");
@@ -53,7 +56,7 @@ function functionOwner(node: TSESTree.Node): FunctionNode | null {
   return null;
 }
 
-function binding(node: TSESTree.Identifier, sourceCode: TSESLint.SourceCode): Variable | null {
+function binding(node: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): Variable | null {
   return ASTUtils.findVariable(sourceCode.getScope(node), node.name);
 }
 
@@ -68,7 +71,7 @@ function constInitializer(variable: Variable): TSESTree.Expression | null {
     ? definition.node.init : null;
 }
 
-function declaredFunction(node: TSESTree.Node, sourceCode: TSESLint.SourceCode): FunctionNode | null {
+function declaredFunction(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): FunctionNode | null {
   const value = unwrapExpression(node);
   if (isFunction(value)) {
     const variable = value.type === AST_NODE_TYPES.FunctionDeclaration && value.id !== null ? binding(value.id, sourceCode) : null;
@@ -84,7 +87,7 @@ function declaredFunction(node: TSESTree.Node, sourceCode: TSESLint.SourceCode):
   return expression !== null && isFunction(expression) ? expression : null;
 }
 
-function exportedFunctions(program: TSESTree.Program, sourceCode: TSESLint.SourceCode): FunctionNode[] {
+function exportedFunctions(program: TSESTree.Program, sourceCode: TypeScriptSourceCode): FunctionNode[] {
   const functions = new Set<FunctionNode>();
   for (const statement of program.body) {
     for (const value of exportedValues(statement)) {
@@ -111,17 +114,17 @@ function exportedValues(statement: TSESTree.Statement): readonly TSESTree.Node[]
   return values;
 }
 
-function walk(node: TSESTree.Node, sourceCode: TSESLint.SourceCode, visit: (node: TSESTree.Node) => void): void {
+function walk(node: TSESTree.Node, sourceCode: TypeScriptSourceCode, visit: (node: TSESTree.Node) => void): void {
   visit(node);
   forEachAstChild(node, sourceCode.visitorKeys, (child) => { walk(child, sourceCode, visit); });
 }
 
 class ActionResults {
-  readonly #sourceCode: TSESLint.SourceCode;
+  readonly #sourceCode: TypeScriptSourceCode;
   readonly #closedErrors = new Map<Variable, boolean>();
   readonly #helpers = new Map<Variable, { parameter: TSESTree.Identifier; expression: TSESTree.Expression } | null>();
 
-  constructor(sourceCode: TSESLint.SourceCode) { this.#sourceCode = sourceCode; }
+  constructor(sourceCode: TypeScriptSourceCode) { this.#sourceCode = sourceCode; }
 
   payload(node: TSESTree.Node, owner: FunctionNode, seen: ReadonlySet<Variable> = new Set()): boolean {
     const value = unwrapExpression(node);

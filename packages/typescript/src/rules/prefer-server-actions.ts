@@ -4,10 +4,13 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
  */
 
+import type { NativeRuleContext } from "./_eslint-rule.js";
+
+
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -40,7 +43,7 @@ const NON_REACT_FRAMEWORK_RE =
 
 const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<NativeRuleContext<MessageIds, Options>>;
 
 function getScope(
   context: Ctx,

@@ -227,14 +227,14 @@ export default createRule<Options, MessageIds>({
               messageId: "restatesLineBelow",
               fix: removal === null ? null : (fixer) => {
                 const endings = commentLineEndings(sourceCode.text, removal);
-                return endings === null ? null : fixer.replaceTextRange(removal.range, endings);
+                return endings === null ? null : fixer.replaceTextRange([...(removal.range)], endings);
               },
               suggest: removal === null
                 ? null
                 : [
                   {
                     messageId: "deleteComment",
-                    fix: (fixer) => fixer.removeRange(removal.range),
+                    fix: (fixer) => fixer.removeRange([...(removal.range)]),
                   },
                 ],
             });

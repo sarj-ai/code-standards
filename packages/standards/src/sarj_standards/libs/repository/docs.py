@@ -615,6 +615,15 @@ def _package_usage(name: str, engine: str | None) -> str:
             "policy. `--no-config --isolated` prevents consumer project configuration and installed tools from "
             "changing the selected bootstrap or Standards bundle."
         )
+    if name == "@sarj/eslint-plugin":
+        return (
+            "Version 17 requires ESLint 10.13.0 or later. The plugin, rules and flat presets use ESLint's "
+            "native TypeScript contracts and compose directly with `defineConfig` from `eslint/config`. "
+            "Use `Linter.Config` and `ESLint.Options` from `eslint` for consumer annotations; legacy "
+            "`TSESLint.Plugin` and `TSESLint.FlatConfig.Config` annotations are no longer supported. "
+            "The exported rule names, preset severities and option settings are unchanged.\n\n"
+            "Rules and configuration are documented in the generated rule directory."
+        )
     executable = (
         None
         if engine is None

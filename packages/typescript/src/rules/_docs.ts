@@ -3,7 +3,8 @@
  *
  */
 
-import { ESLintUtils } from "@typescript-eslint/utils";
+import { createNativeRule } from "./_eslint-rule.js";
+import type { NativeRuleConfiguration } from "./_eslint-rule.js";
 
 export const REPO_BLOB = "https://github.com/sarj-ai/code-standards/blob/main";
 export const TESTS_DIR = "packages/typescript/tests/rules";
@@ -125,17 +126,17 @@ export interface PublicRuleSpec {
 
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MAX_SUMMARY_LENGTH = 160;
-const eslintCreateRule = ESLintUtils.RuleCreator(examplesUrl);
+
 
 type RuleConfiguration<
   Options extends readonly unknown[],
   MessageIds extends string,
-> = Parameters<typeof eslintCreateRule<Options, MessageIds>>[0];
+> = NativeRuleConfiguration<Options, MessageIds>;
 
 export type DocumentedRule<
   Options extends readonly unknown[],
   MessageIds extends string,
-> = ReturnType<typeof eslintCreateRule<Options, MessageIds>> & {
+> = ReturnType<typeof createNativeRule<Options, MessageIds>> & {
   /** Non-enumerable so the public ESLint rule shape remains unchanged. */
   readonly documentation?: NativeRuleSpec;
 };
@@ -152,8 +153,9 @@ export function createRule<
   Options extends readonly unknown[],
   MessageIds extends string,
 >(config: SourceRuleConfiguration<Options, MessageIds>): DocumentedRule<Options, MessageIds> {
-  const { documentation, ...eslintConfig } = config;
-  const rule = eslintCreateRule<Options, MessageIds>(eslintConfig);
+  const { documentation } = config;
+  const eslintConfig = config;
+  const rule = createNativeRule<Options, MessageIds>(eslintConfig, examplesUrl);
   if (documentation !== undefined) {
     Object.defineProperty(rule, "documentation", {
       configurable: false,

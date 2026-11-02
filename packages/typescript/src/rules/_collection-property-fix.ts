@@ -2,18 +2,17 @@
  * @fileoverview _collection-property-fix — preserve authored property-check behavior.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 /** Make an existing property check explicit without changing its Proxy has-trap or type narrowing. */
 export function collectionPropertyFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.BinaryExpression,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     node.left.type !== AST_NODE_TYPES.Literal ||
     typeof node.left.value !== "string" ||

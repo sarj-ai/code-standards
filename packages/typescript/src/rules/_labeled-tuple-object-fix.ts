@@ -2,12 +2,11 @@
  * @fileoverview _labeled-tuple-object-fix — reuse an authored object contract for a tuple.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const UNSAFE_NAMES: ReadonlySet<string> = new Set([
   "__proto__",
@@ -25,9 +24,9 @@ interface TupleFields {
 
 /** Migrate a closed tuple consumer using its already authored public object contract. */
 export function labeledTupleObjectFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   annotation: TSESTree.TypeNode,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     sourceCode.ast.body.length !== 2 ||
     sourceCode.getAllComments().length > 0
@@ -151,7 +150,7 @@ function matchingObjectType(
 }
 
 function callerPattern(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   caller: TSESTree.FunctionDeclaration,
   helper: TSESTree.FunctionDeclaration,
   fields: TupleFields,

@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/stepdown.test.ts
  */
 
+import type { NativeRuleContext, TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
@@ -111,7 +114,7 @@ function isFunction(node: TSESTree.Node): node is FunctionNode {
 }
 
 function reportMisordered(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   candidates: readonly Definition[],
   scopeDefinitions: readonly Definition[],
   calls: ReadonlyMap<string, ReadonlySet<string>>,
@@ -171,11 +174,11 @@ interface FunctionStatement {
 }
 
 function declarationOrderFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   definitions: readonly Definition[],
   calls: ReadonlyMap<string, ReadonlySet<string>>,
   pinned: ReadonlySet<string>,
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   if (
     pinned.size > 0 ||
     sourceCode.getAllComments().length > 0 ||
@@ -365,7 +368,7 @@ function wrappedExpression(node: TSESTree.Node): TSESTree.Node {
 }
 
 function enclosingFunction(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   node: TSESTree.Node,
 ): FunctionNode | undefined {
   return [...context.sourceCode.getAncestors(node)].reverse().find(isFunction);
@@ -373,7 +376,7 @@ function enclosingFunction(
 
 /** A value is callable here only when every alias use remains a direct local call. */
 function localCallCount(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   node: TSESTree.Node,
   owner: FunctionNode,
 ): number | null {
@@ -421,7 +424,7 @@ function localCallCount(
 type DeclarationScope = TSESTree.Program | TSESTree.BlockStatement;
 
 function declarationScope(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   program: DeclarationScope,
 ): void {
   const declarations = moduleDefinitions(program);
@@ -490,7 +493,7 @@ function declarationScope(
 }
 
 function moduleCallGraph(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   scopeDefinitions: readonly Definition[],
 ): { calls: Map<string, Set<string>>; pinned: Set<string> } {
   const byFunction = new Map(
@@ -678,7 +681,7 @@ function methodKey(name: string, isStatic: boolean): string {
 }
 
 function receiverDomain(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   object: TSESTree.Node,
   receivers: ReadonlyMap<Variable, boolean>,
   thisIsStatic: boolean,
@@ -690,7 +693,7 @@ function receiverDomain(
 
 /** Resolve receiver identity through immutable bindings without guessing from property names. */
 function externalReceiverDomain(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   object: TSESTree.Node,
   receivers: ReadonlyMap<Variable, boolean>,
 ): boolean | "unrelated" | null {
@@ -714,7 +717,7 @@ function externalReceiverDomain(
 
 /** Follow immutable alias chains to a known class receiver or a concrete initializer. */
 function receiverOrigin(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   object: TSESTree.Node,
   receivers: ReadonlyMap<Variable, boolean>,
 ): TSESTree.Node | boolean | null {
@@ -795,7 +798,7 @@ function walk(
 }
 
 function classScope(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
   computedReferences: readonly TSESTree.MemberExpression[],
   privateBandOnly: boolean,
@@ -1056,7 +1059,7 @@ function isPrivateMethod(node: TSESTree.Node): boolean {
 }
 
 function classReceiverBindings(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  context: Readonly<NativeRuleContext<MessageIds, Options>>,
   node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
 ): Map<Variable, boolean> {
   const classReceivers = new Map<Variable, boolean>();

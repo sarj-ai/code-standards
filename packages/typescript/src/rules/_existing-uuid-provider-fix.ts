@@ -2,12 +2,11 @@
  * @fileoverview _existing-uuid-provider-fix — reuse an already-used UUID provider.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+
+
+
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const PACKAGE_STATEMENT_COUNT = 5;
 const RECIPE_STATEMENT_COUNT = 4;
@@ -23,10 +22,10 @@ interface UuidModule {
 
 /** Reuse an authored, already-used UUID provider in a closed UUID-only module. */
 export function existingUuidProviderFix(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   reported: TSESTree.CallExpression,
   kind: "package" | "recipe",
-): TSESLint.ReportFixFunction | null {
+): NativeReportFix | null {
   const module = uuidModule(sourceCode, kind);
   if (module === null || module.provider.id.type !== AST_NODE_TYPES.Identifier)
     return null;
@@ -74,12 +73,12 @@ export function existingUuidProviderFix(
   if (removal === null) return null;
   return (fixer) => [
     fixer.replaceText(legacy, `${providerName}()`),
-    fixer.removeRange(removal),
+    fixer.removeRange([...(removal)]),
   ];
 }
 
 function uuidModule(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   kind: "package" | "recipe",
 ): UuidModule | null {
   const statements = sourceCode.ast.body;
@@ -175,7 +174,7 @@ function returned(node: TSESTree.FunctionDeclaration): TSESTree.Expression {
 }
 
 function nativeProvider(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.VariableDeclarator,
 ): boolean {
   if (
@@ -221,7 +220,7 @@ function member(
 }
 
 function providerRead(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
   declaration: TSESTree.Node,
 ): boolean {
@@ -236,7 +235,7 @@ function providerRead(
 }
 
 function sameBinding(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   read: TSESTree.Identifier,
   declaration: TSESTree.Node,
 ): boolean {
@@ -250,7 +249,7 @@ function sameBinding(
 }
 
 function exportedReads(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
   native: TSESTree.FunctionDeclaration,
   legacy: TSESTree.FunctionDeclaration,
@@ -302,7 +301,7 @@ function exportedReads(
 }
 
 function isUuidRecipe(
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Expression,
   reported: TSESTree.CallExpression,
 ): boolean {

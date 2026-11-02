@@ -5,9 +5,9 @@
   "versions": {
     "standards": "8.182.0",
     "python": "1.110.0",
-    "typescript": "16.43.0"
+    "typescript": "17.1.0"
   },
-  "implementation_sha256": "5f30770babe46c4a103d4e9c471e95d19b32a9b1bbc9fb7c57a67df7f0cad7fe",
+  "implementation_sha256": "d1423671c85b1eb5bd9ae022dc765ec4810198ba596c28bfc2c355938b256760",
   "rules": [
     "python:no-custom-control-flow-exception",
     "python:prefer-application-model-joins",
@@ -236,7 +236,7 @@
     "Run make verify with the pinned tools and a private non-Git temporary root."
   ],
   "measured_implementation_sha256": "30e8ec2481a7ae6cc9225fad15b346bbfe6a39bdd03d25c4c9545f1967046a31",
-  "post_measurement_changes": "Frontend scope helper renamed to match its sole export, its sole-caller helper reordered, and the two imports updated for repository dogfood. Matching logic and corpus measurements are unchanged. The final source is covered by the 141 comment regressions and canonical native checks. Required capped module documentation and the derived examples link were restored in the two new TypeScript files; complete preset-order expectations explicitly include the new rule. Matching logic, prior preset ordering and corpus measurements are unchanged. Unpublished Core and TypeScript release metadata advanced to 8.182.0 and 16.43.0 after integrating qualified shared security changes; Python remains 1.110.0. The original measurement versions are retained separately. Permanent Python code-ledger entries now reserve SARJ560\u2013562.",
+  "post_measurement_changes": "Frontend scope helper renamed to match its sole export, its sole-caller helper reordered, and the two imports updated for repository dogfood. Matching logic and corpus measurements are unchanged. The final source is covered by the 141 comment regressions and canonical native checks. Required capped module documentation and the derived examples link were restored in the two new TypeScript files; complete preset-order expectations explicitly include the new rule. Matching logic, prior preset ordering and corpus measurements are unchanged. Unpublished Core and TypeScript release metadata advanced to 8.182.0 and 16.43.0 after integrating qualified shared security changes; Python remains 1.110.0. The original measurement versions are retained separately. Permanent Python code-ledger entries now reserve SARJ560\u2013562. Integrated the qualified native ESLint migration from main and changed frontend helper annotations to its native rule context. The existing no-test-comments fixer uses the upstream native edit contract and copied range tuples. Matching and frontend ownership logic are unchanged; TypeScript release metadata is now 17.1.0. Original timing measurements remain tied to their measured versions and implementation; native integration is checked separately.",
   "measured_versions": {
     "standards": "8.180.0",
     "python": "1.110.0",
