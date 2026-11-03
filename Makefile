@@ -150,7 +150,7 @@ lint:
 	# `ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
-	uv run --project packages/standards --frozen code-standards --root . check \
+	uv run --project packages/standards --frozen code-standards --root . check --trust-repository-code \
 	  packages/standards/src packages/standards/tests
 
 # Run every shipped custom rule over maintained implementation and test source.

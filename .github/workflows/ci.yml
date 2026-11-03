@@ -628,7 +628,7 @@ jobs:
       # manifest and its explicitly opted-in native warning ratchet.
       - name: Check repository standards
         if: needs.changes.outputs.reviewed-static != 'true'
-        run: uv run code-standards --root ../.. check --jobs 2 .
+        run: uv run code-standards --root ../.. check --trust-repository-code --jobs 2 .
       - name: Record the successfully checked PR tree
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: bash ../../.github/scripts/ci-record-analysis.sh static "$RUNNER_TEMP/reviewed-static"
