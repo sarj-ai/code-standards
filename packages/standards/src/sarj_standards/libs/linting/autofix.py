@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import import_module
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sarj_rule_contracts import AutofixPolicy, RuleDocumentation
 
@@ -13,6 +13,10 @@ from sarj_standards.libs.diagnostics import Diagnostic, Location, Severity
 
 from . import runner, textlint
 from .policy import Policy
+
+
+if TYPE_CHECKING:
+    from sarj_standards.libs.adoption.lifecycle import Command
 
 
 class _Rule(Protocol):
@@ -76,7 +80,10 @@ def run(
     transaction.validate_targets(root, targets)
     originals = {path: path.read_bytes() for path in targets}
     fix_paths(root, selection.native, policy=policy)
-    commands = lifecycle.selected_format_commands(root, selected, trusted=trusted, eslint=eslint)
+    commands = [
+        _with_local_eslint(command, root)
+        for command in lifecycle.selected_format_commands(root, selected, trusted=trusted, eslint=eslint)
+    ]
     status = 0
     for command in commands:
         result = (
@@ -87,6 +94,15 @@ def run(
         if result > 1:
             break
     return FixResult(status, tuple(path for path, original in originals.items() if path.read_bytes() != original))
+
+
+def _with_local_eslint(command: Command, root: Path) -> Command:
+    from .external import local_node_binary_argv  # ruff: ignore[import-outside-top-level] -- the checking adapter imports lifecycle at module load; resolve its local binary only for ESLint fix commands.
+
+    if "eslint" not in command.argv:
+        return command
+    argv = local_node_binary_argv("eslint", command.argv, command.cwd, root)
+    return command if argv is None else replace(command, argv=argv)
 
 
 def _selection(root: Path, paths: Sequence[str], *, policy: Policy, default_scope: bool) -> _Selection:
