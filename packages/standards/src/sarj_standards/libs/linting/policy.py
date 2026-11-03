@@ -83,6 +83,13 @@ class Policy:
             return True
         return not self.excluded_paths.match_file(relative)
 
+    def excludes_tree(self, path: str | Path) -> bool:
+        matched = self.excluded_paths.check_file(self.relative(path) + "/")
+        if matched.include is not True or matched.index is None:
+            return False
+        # A later negation may reinclude an unreadable descendant.
+        return not any(pattern.include is False for pattern in self.excluded_paths.patterns[matched.index + 1 :])
+
     def allows_rule(self, diagnostic: Diagnostic) -> bool:
         if not {"required-cast-policy", "required-source-policy"}.isdisjoint(diagnostic.tags):
             return True

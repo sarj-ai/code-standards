@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 import errno
+import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from pathspec import PathSpec
 import pytest
 
 from sarj_standards import api
@@ -21,10 +24,131 @@ from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
 _ENGINES = (
     ("document.sql", "sql:prefer-jsonb", "sarj-sql-lint"),
     ("main.tf", "iac:no-environment-conditional", "sarj-iac-lint"),
 )
+
+
+def _deny_directory(monkeypatch: pytest.MonkeyPatch, directory: Path) -> list[Path]:
+    real_scandir = os.scandir
+    failures: list[Path] = []
+
+    def inaccessible(path: str | Path) -> Iterator[os.DirEntry[str]]:
+        if Path(path) == directory:
+            failures.append(directory)
+            raise PermissionError(errno.EACCES, "Permission denied", str(directory))
+        return real_scandir(path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Inject a real traversal boundary failure while retaining selection and routing.
+        os, "scandir", inaccessible
+    )
+    return failures
+
+
+@pytest.mark.parametrize("directory", ["nested", "node_modules"])
+def test_directory_discovery_failure_is_blocking_unless_tree_is_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    nested = tmp_path / directory
+    nested.mkdir()
+    (tmp_path / "clean.py").write_text("value = 1\n", encoding="utf-8")
+    (nested / "hidden.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    standards = api.Standards(tmp_path)
+    control = standards.analyze(["."], mode=api.AnalysisMode.RAW, rules=["python:no-secret-in-log"])
+    assert bool(control.diagnostics) is (directory == "nested")
+    failures = _deny_directory(monkeypatch, nested)
+    report = standards.analyze(["."], mode=api.AnalysisMode.RAW, rules=["python:no-secret-in-log"])
+
+    if directory == "node_modules":
+        assert not failures
+        assert report.completion is Completion.COMPLETE
+        assert report.exit_code == 0
+    else:
+        assert failures == [nested]
+        assert report.completion is Completion.FAILED
+        assert report.conclusion is Conclusion.INCONCLUSIVE
+        assert report.exit_code == 2
+        assert report.issues[0].kind == "invalid-input"
+        assert str(nested) in report.issues[0].message
+
+
+def test_unreadable_policy_excluded_tree_stays_nonblocking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    excluded_tree = tmp_path / "excluded"
+    excluded_tree.mkdir()
+    (excluded_tree / "hidden.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    adopted = Manifest(
+        version="1.2.3", configs=(), python_dest=".", typescript_dest=".", excluded_paths=("excluded/**",)
+    )
+    (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
+    failures = _deny_directory(monkeypatch, excluded_tree)
+
+    report = api.Standards(tmp_path).analyze(["."], rules=["python:no-secret-in-log"])
+
+    assert failures == [excluded_tree]
+    assert report.completion is Completion.COMPLETE
+    assert report.exit_code == 0
+    assert not report.issues
+    assert not report.diagnostics
+
+
+@pytest.mark.parametrize("exclusion", ["excluded/**", "excluded/*.py"])
+def test_unreadable_tree_with_possible_included_descendants_stays_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exclusion: str
+) -> None:
+    excluded_tree = tmp_path / "excluded"
+    excluded_tree.mkdir()
+    included = excluded_tree / "keep.py"
+    included.write_text("value = 1\n", encoding="utf-8")
+    policy = Policy(tmp_path, PathSpec.from_lines("gitignore", (exclusion, "!excluded/keep.py")), frozenset(), ())
+    assert runner.group_paths([str(tmp_path)], policy=policy).python == [str(included)]
+    failures = _deny_directory(monkeypatch, excluded_tree)
+
+    with pytest.raises(ValueError, match="cannot discover source input"):
+        runner.group_paths([str(tmp_path)], policy=policy)
+
+    assert failures == [excluded_tree]
+
+
+@pytest.mark.parametrize("excluded", [False, True])
+def test_discovered_source_stat_failure_cannot_erase_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, excluded: bool
+) -> None:
+    source = tmp_path / "hidden.py"
+    source.write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    if excluded:
+        adopted = Manifest(
+            version="1.2.3", configs=(), python_dest=".", typescript_dest=".", excluded_paths=("hidden.py",)
+        )
+        (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
+    real_stat = Path.stat
+    failures: list[Path] = []
+
+    def unavailable(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        if path == source and not follow_symlinks:
+            failures.append(source)
+            raise FileNotFoundError(errno.ENOENT, "Disappeared after enumeration", str(source))
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Fail discovered-file metadata after directory enumeration while preserving explicit policy exclusions.
+        Path, "stat", unavailable
+    )
+    report = api.Standards(tmp_path).analyze(["."], rules=["python:no-secret-in-log"])
+
+    if excluded:
+        assert not failures
+        assert report.completion is Completion.COMPLETE
+        assert report.exit_code == 0
+    else:
+        assert failures == [source]
+        assert report.completion is Completion.FAILED
+        assert report.exit_code == 2
+        assert report.issues[0].kind == "invalid-input"
+        assert str(source) in report.issues[0].message
 
 
 def test_covered_report_stays_incomplete_through_tool_and_severity_transforms(

@@ -51,6 +51,7 @@ _MANIFEST = Path(".repo-standards/repository.toml")
 _ADOPTED = Path(".sarj-standards.toml")
 _BASELINE = Path(".repo-standards/baseline.json")
 _MAKEFILE_GROWTH_RULE = "repository/artifacts/makefile-growth"
+_COMPARISON_RULES = frozenset({_MAKEFILE_GROWTH_RULE, "repository/artifacts/migration-consolidation"})
 _MAX_EVENT_BYTES = 1024 * 1024
 _GIT_READ_OPTIONS = ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks")
 
@@ -102,7 +103,7 @@ def _tool_report(report: RepositoryAnalysisReport) -> ToolReport:
         if report.ratchet is not None
         else frozenset[str]()
     )
-    known -= frozenset(item.fingerprint for item in report.diagnostics if str(item.rule_id) == _MAKEFILE_GROWTH_RULE)
+    known -= frozenset(item.fingerprint for item in report.diagnostics if not _is_baselineable(item))
     new_warnings = _rejected_warning_fingerprints(report.ratchet)
     diagnostics = tuple(
         _diagnostic(
@@ -110,7 +111,7 @@ def _tool_report(report: RepositoryAnalysisReport) -> ToolReport:
             baselined=item.fingerprint in known,
             ratchet_warning=item.fingerprint in new_warnings,
             comparison_notes=_comparison_notes(report.input_provenance)
-            if str(item.rule_id) == _MAKEFILE_GROWTH_RULE
+            if str(item.rule_id) in _COMPARISON_RULES
             else (),
         )
         for item in report.diagnostics
@@ -124,6 +125,10 @@ def _tool_report(report: RepositoryAnalysisReport) -> ToolReport:
         baselined_count=len(known),
         policy_failed=bool(new_warnings),
     )
+
+
+def _is_baselineable(item: RepositoryDiagnostic) -> bool:
+    return item.baselineable and str(item.rule_id) != _MAKEFILE_GROWTH_RULE
 
 
 def _rejected_warning_fingerprints(ratchet: RatchetComparison | None) -> frozenset[str]:
@@ -174,7 +179,8 @@ def _diagnostic(
     if not isinstance(item, RepositoryDiagnostic):
         msg = "Repo Standards returned an invalid diagnostic type"
         raise TypeError(msg)
-    baselined = baselined and str(item.rule_id) != _MAKEFILE_GROWTH_RULE
+    baselineable = _is_baselineable(item)
+    baselined = baselined and baselineable
     severity = (
         Severity.INFO
         if baselined or item.disposition == "excepted"
@@ -210,6 +216,7 @@ def _diagnostic(
         rule_id=str(item.rule_id),
         help=help_text,
         notes=notes,
+        tags=() if baselineable else ("non-baselineable",),
         related=tuple(
             RelatedLocation(
                 f"{related.relationship}: {related.message}",
@@ -300,7 +307,7 @@ def _comparison_base(root: Path) -> str | None:
     except OSError, TypeError, ValueError:
         # The engine reports missing or invalid selected manifests itself.
         return None
-    if _MAKEFILE_GROWTH_RULE not in configured.enabled_rules:
+    if _COMPARISON_RULES.isdisjoint(configured.enabled_rules):
         return None
     explicit = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api] -- explicit CI boundary.
     if explicit:

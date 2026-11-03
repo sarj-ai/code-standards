@@ -174,11 +174,13 @@ def test_directory_walk_prunes_ignored_directories(
         *,
         topdown: bool,
         followlinks: bool,
+        onerror: Callable[[OSError], None] | None,
     ) -> Iterator[tuple[str, list[str], list[str]]]:
         for root, dir_names, file_names in real_walk(
             top,
             topdown=topdown,
             followlinks=followlinks,
+            onerror=onerror,
         ):
             visited.append(str(root))
             yield root, dir_names, file_names
