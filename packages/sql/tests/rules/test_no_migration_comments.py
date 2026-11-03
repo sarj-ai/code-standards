@@ -29,6 +29,11 @@ MIGRATION = Path("migrations/001.sql")
         "-- migrate:up this is a prose suffix\nSELECT 1;",
         "SELECT 1; -- migrate:up",
         "/* migrate:up */ SELECT 1;",
+        "-- squawk-ignore require-timeout-settings because concurrent\nSELECT 1;",
+        "-- squawk-ignore\nSELECT 1;",
+        "SELECT 1; -- squawk-ignore require-timeout-settings",
+        "-- squawk-ignore require-timeout-settings -- sarj-noqa: SARJ128\nSELECT 1;",
+        "-- sarj-noqa: SARJ128\nSELECT 1;",
     ],
 )
 def test_reports_all_non_executable_comments(source: str) -> None:
@@ -437,3 +442,19 @@ def test_partial_banner_removal_cannot_disconnect_context_from_payload(
     assert fixed == source
     assert second == fixed
     assert third == second
+
+
+def test_squawk_ignore_directive_keeps_concurrent_index_migration_valid() -> None:
+    source = (
+        "-- migrate:up transaction:false\n"
+        "-- squawk-ignore require-timeout-settings, prefer-robust-stmts\n"
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a_b ON a (b);\n"
+    )
+    assert NoMigrationComments().check(MIGRATION, source) == []
+
+
+@pytest.mark.parametrize(
+    "directive", ["squawk-ignore-file require-lock-timeout", "squawk-ignore ban-drop-column,renaming-column"]
+)
+def test_preserves_whole_line_squawk_directives(directive: str) -> None:
+    assert NoMigrationComments().check(MIGRATION, f"-- {directive}\nSELECT 1;") == []

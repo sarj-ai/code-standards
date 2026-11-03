@@ -43,6 +43,10 @@ _RUNNER_DIRECTIVE = re.compile(
     r"atlas:txmode[ \t]+(?:file|none)|> statement-breakpoint)",
     re.IGNORECASE,
 )
+_SQUAWK_DIRECTIVE = re.compile(
+    r"squawk-ignore(?:-file)?[ \t]+[a-z][a-z0-9-]*(?:[ \t]*,[ \t]*[a-z][a-z0-9-]*)*[ \t]*",
+    re.IGNORECASE,
+)
 _COMMENT_ON = re.compile(
     rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?ai:COMMENT)[ \t\r\n\f\v]+(?ai:ON)(?!{POSTGRES_IDENTIFIER_CONTINUATION})"
 )
@@ -67,13 +71,14 @@ class NoMigrationComments(Rule):
             "Express data invariants with SQL constraints and delete explanatory line/block comments and COMMENT ON "
             "statements that store prose. COMMENT ON with NULL or an empty string may remove existing comments. "
             "Put deployment context in the change description. Retain only executable runner, dialect, "
-            "and statement-boundary directives. Migration sarj-noqa comments are also reported."
+            "statement-boundary and squawk-ignore directives. Migration sarj-noqa comments are also reported."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Checks authored and generated migrations; schema dumps and non-migration SQL are excluded.",
             "Exact standalone dbmate, Goose, sql-migrate, Liquibase, Atlas, dialect and Drizzle breakpoint directives are preserved.",
+            "Whole-line squawk-ignore and squawk-ignore-file comments that list only squawk rule names are preserved because squawk executes them; trailing prose or sarj-noqa comments are still reported.",
             "PostgreSQL line and nested block comments are recognized; MySQL # comments are outside the shared scanner.",
             "Strings and quoted identifiers are not comments, including scalar dollar-quoted data. Comments in executable bodies are checked.",
             "COMMENT ON cleanup using unquoted NULL or an empty plain, escape, or dollar-quoted string is allowed; quoted NULL and nonempty strings still store comments.",
@@ -178,7 +183,10 @@ def _is_tool_directive(comment: SourceComment, lines: list[str]) -> bool:
     return (
         not comment.block
         and not lines[comment.line - 1][: comment.column - 1].strip()
-        and _RUNNER_DIRECTIVE.fullmatch(comment.body) is not None
+        and (
+            _RUNNER_DIRECTIVE.fullmatch(comment.body) is not None
+            or _SQUAWK_DIRECTIVE.fullmatch(comment.body) is not None
+        )
     )
 
 
