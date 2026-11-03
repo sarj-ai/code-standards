@@ -353,6 +353,7 @@
       "no-restricted-library-load",
       "no-return-disposed-resource",
       "no-router-refresh-polling",
+      "no-runtime-typeof",
       "no-secret-in-log",
       "no-select-star",
       "no-sentinel-return-on-catch",

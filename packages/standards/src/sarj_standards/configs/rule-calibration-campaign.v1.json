@@ -3303,6 +3303,14 @@
       "outcome": "Introduce the requested blanket frontend comment policy at WARNING without autofix. Report actual comment tokens, including behavioral directives and legal notices, in supported frontend source; migrate those contracts manually or use an explicit policy exception. The existing no-test-comments owner handles frontend tests without duplicate diagnostics. Preserve non-frontend directive/legal handling, strings and generated/vendor sources. Unsupported frontend roots can opt in with allFiles on both comment owners."
     },
     {
+      "task": "rule-audit/typescript/no-runtime-typeof",
+      "family": "typescript",
+      "ruleId": "no-runtime-typeof",
+      "state": "pending",
+      "evidence": "Policy controls cover 22 reporting and 12 non-reporting cases, four public before/after pairs, preset severity, exact local exceptions and parser diagnostics. The isolated scan covers 271 immutable public files with 232 raw policy matches and no parser gaps or duplicate locations; eight deterministic sampled findings are discussed. Five alternating fresh-process and warm-pass comparisons, exact revisions and limitations are recorded in packages/standards/benchmarks/no-runtime-typeof-20261103.json. The compiler/linter-heavy raw findings are unlabeled, and the eight inspected locations do not complete the campaign precision gate. Broader field calibration remains pending.",
+      "outcome": "Introduce the explicit runtime typeof design policy at ERROR without autofix. Prefer specific Zod schemas at structured boundaries and discriminated unions for owned variants. Preserve type-only queries, safe absent-global probes and shared generated/vendor exclusions; required native primitive contracts need explained local exceptions. Matches are policy violations, not intrinsic JavaScript correctness defects."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-comments",
       "family": "iac",
       "ruleId": "no-terraform-comments",

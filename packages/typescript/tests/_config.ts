@@ -1,4 +1,5 @@
 import { rules } from "../src/index.js";
+import { z } from "zod";
 
 export function warningStageEslintRules(): string[] {
   return Object.entries(rules)
@@ -8,7 +9,6 @@ export function warningStageEslintRules(): string[] {
 }
 
 export function rulesOf(config: unknown): Record<string, unknown> {
-  if (typeof config !== "object" || config === null || !("rules" in config)) return {};
-  const { rules } = config;
-  return typeof rules === "object" && rules !== null ? rules : {};
+  const result = z.object({ rules: z.record(z.string(), z.unknown()) }).safeParse(config);
+  return result.success ? result.data.rules : {};
 }

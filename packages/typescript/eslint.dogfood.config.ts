@@ -70,4 +70,11 @@ export default Object.freeze<TSESLint.FlatConfig.ConfigArray>([
     files: [file],
     rules: { [rule]: "off" as const },
   })),
+  {
+    name: "sarj/native-estree-primitive-contracts",
+    files: ["src/rules/**/*.{ts,tsx,mts,cts}"],
+    // Compiler literals and raw rule options are the parser contracts being
+    // inspected; application payloads and owned domain variants use the ban.
+    rules: { "@sarj/no-runtime-typeof": "off" },
+  },
 ]);

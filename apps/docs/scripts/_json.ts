@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { z } from "zod";
+
+const RecordSchema = z.record(z.string(), z.unknown());
+const TextSchema = z.string();
 
 export function record(value: unknown, label: string): Record<string, unknown> {
-  assert.ok(isRecord(value), `${label} must be an object`);
-  return value;
+  const result = RecordSchema.safeParse(value);
+  assert.ok(result.success, `${label} must be an object`);
+  return result.data;
 }
 
 export function array(value: unknown, label: string): unknown[] {
@@ -11,10 +16,7 @@ export function array(value: unknown, label: string): unknown[] {
 }
 
 export function text(value: unknown, label: string): string {
-  assert.ok(typeof value === "string", `${label} must be a string`);
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  const result = TextSchema.safeParse(value);
+  assert.ok(result.success, `${label} must be a string`);
+  return result.data;
 }

@@ -30,6 +30,7 @@ it("bounds shared-ancestor validation by the native heritage graph", () => {
         return target.getIndexInfosOfType(type);
       };
       const member: unknown = Reflect.get(target, property);
+      // eslint-disable-next-line @sarj/no-runtime-typeof -- A native TypeChecker Proxy must bind methods to their receiver while forwarding non-callable compiler properties.
       return typeof member === "function" ? member.bind(target) : member;
     },
   });

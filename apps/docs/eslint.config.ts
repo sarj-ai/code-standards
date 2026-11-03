@@ -17,9 +17,9 @@ const allSarjRules = Object.fromEntries(
       return [
         id,
         eslintRuleSetting(
-          typeof configured === "string" || typeof configured === "number"
-            ? "error"
-            : ["error", ...configured.slice(1)],
+          Array.isArray(configured)
+            ? ["error", ...configured.slice(1)]
+            : "error",
         ),
       ];
     }),

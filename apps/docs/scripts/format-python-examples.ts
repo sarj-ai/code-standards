@@ -56,8 +56,6 @@ function collectPythonInputs(
 ) {
   const inputs = new Map<string, ExampleFile>();
   for (const file of files) {
-    if (typeof file.path !== "string" || typeof file.source !== "string")
-      continue;
     const lower = file.path.toLowerCase();
     if (
       !/\.pyi?$/u.test(lower) ||

@@ -1,0 +1,610 @@
+{
+  "schema": 1,
+  "rule": "eslint:no-runtime-typeof",
+  "decision": "error-design-policy",
+  "admission": {
+    "warningStageOverride": "Direct error-level admission is intentional for this explicit source-design policy.",
+    "meaning": "Matches establish policy violations, not intrinsic JavaScript correctness defects. Native primitive contracts require explained exceptions.",
+    "noAutofix": "Changing boundary validation, owned union representation or transformation order can change accepted input and public behavior.",
+    "policy": "Runtime typeof is an error in authored source; prefer specific Zod boundary schemas and discriminated unions for owned variants."
+  },
+  "coverage": {
+    "ruleTesterCases": {
+      "truePositivePolicyCases": 22,
+      "trueNegativePolicyCases": 12,
+      "falsePositivePolicyCases": 0,
+      "falseNegativePolicyCases": 0
+    },
+    "authoredPublicExamplePairs": 4,
+    "authoredPublicExamples": 8,
+    "integrationControls": [
+      "error severity in both public presets",
+      "exact-code local exception",
+      "exception line scope",
+      "malformed input stays a parser diagnostic"
+    ],
+    "boundaries": [
+      "specific Zod object schemas",
+      "owned discriminator unions",
+      "TypeScript type-only queries",
+      "literal undefined checks on identifiers with no local declaration",
+      "shadowed globals, parameters, imports and temporal-dead-zone declarations",
+      "authored JS, TS, JSX and tests",
+      "generated/vendor shared exclusions",
+      "no predicate, parser-name or schema-callback exemption"
+    ]
+  },
+  "corpus": {
+    "method": "Isolated native Linter workers use the candidate plugin and installed TypeScript parser. Repository configs and inline directives are excluded from this raw syntax pass; separate regression tests cover suppression behavior. Source revisions and digests are verified before and after each corpus.",
+    "corpora": [
+      {
+        "name": "anti-slop",
+        "revision": "13909c9e07590f5a85d93c62712259fe14a883f7",
+        "digest": "sha256:b5f02e0c049667b3ee881f5e8df3e6ff9b35ec750af50cc7feef3e2015720e90",
+        "files": 56
+      },
+      {
+        "name": "code-standards",
+        "revision": "f97c624ce953804183f80cc1b9f4b746ade0a951",
+        "digest": "sha256:ee625e97b64996ffba568a996336509c37590649d97df48efa09cc312fb950d3",
+        "files": 215
+      }
+    ],
+    "files": 271,
+    "batches": [
+      {
+        "corpus": "anti-slop",
+        "ordinal": 1,
+        "files": 56,
+        "findings": 10,
+        "configurationNotices": 0,
+        "elapsedSeconds": 1.347281
+      },
+      {
+        "corpus": "code-standards",
+        "ordinal": 1,
+        "files": 215,
+        "findings": 222,
+        "configurationNotices": 0,
+        "elapsedSeconds": 6.417954
+      }
+    ],
+    "parseGaps": 0,
+    "duplicateLocations": 0
+  },
+  "corpusInterpretation": "All 232 observations are unlabeled policy matches in compiler/linter-heavy public corpora. They are not a correctness TP estimate or an application-wide precision claim. Shared generated/vendor exclusions remain active.",
+  "inspectedSample": {
+    "method": "Four lowest SHA-256(path:line:column) findings per corpus, independently of source text.",
+    "findings": [
+      {
+        "path": "anti-slop/src/shared/lexical-type-parameters.ts",
+        "line": 7,
+        "column": 3,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "anti-slop/src/effect/shared/tagged-values.ts",
+        "line": 9,
+        "column": 30,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "anti-slop/src/shared/type-alias-resolution.ts",
+        "line": 36,
+        "column": 3,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "anti-slop/src/shared/array-method.ts",
+        "line": 41,
+        "column": 55,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "code-standards/packages/typescript/src/rules/prefer-server-actions.ts",
+        "line": 133,
+        "column": 12,
+        "assessment": "Already-typed optional template text: direct null/undefined checks can replace the primitive probe."
+      },
+      {
+        "path": "code-standards/packages/typescript/src/rules/_owned-sql-projection-fix.ts",
+        "line": 48,
+        "column": 5,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "code-standards/packages/typescript/src/rules/require-constrained-schema-integer.ts",
+        "line": 20,
+        "column": 47,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      },
+      {
+        "path": "code-standards/packages/typescript/src/rules/no-invalid-zod-custom-parse.ts",
+        "line": 144,
+        "column": 7,
+        "assessment": "Native AST/metadata primitive contract: explicit exception candidate; not a correctness defect."
+      }
+    ]
+  },
+  "performance": {
+    "schemaVersion": 1,
+    "measurement": "Same plugin, TypeScript parser, sample and no-debugger traversal; candidate adds only no-runtime-typeof. Cold is first lint pass in a fresh Node process after imports; each process then runs five warm passes. Five fresh processes per mode, alternated.",
+    "sample": {
+      "sampling": "12 lowest SHA-256(corpus-name/relative-path) files per verified public corpus",
+      "corpora": [
+        {
+          "name": "anti-slop",
+          "revision": "13909c9e07590f5a85d93c62712259fe14a883f7",
+          "digest": "sha256:b5f02e0c049667b3ee881f5e8df3e6ff9b35ec750af50cc7feef3e2015720e90",
+          "files": 56,
+          "sampleFiles": 12
+        },
+        {
+          "name": "code-standards",
+          "revision": "f97c624ce953804183f80cc1b9f4b746ade0a951",
+          "digest": "sha256:ee625e97b64996ffba568a996336509c37590649d97df48efa09cc312fb950d3",
+          "files": 215,
+          "sampleFiles": 12
+        }
+      ],
+      "files": [
+        {
+          "path": "anti-slop/src/rules/require-safety-comment-for-type-assertion.ts",
+          "bytes": 4022
+        },
+        {
+          "path": "anti-slop/src/rules/no-unknown-parameters.ts",
+          "bytes": 2530
+        },
+        {
+          "path": "anti-slop/src/rules/no-widen-then-assert.test.ts",
+          "bytes": 670
+        },
+        {
+          "path": "anti-slop/src/rules/no-unknown-type-aliases.ts",
+          "bytes": 1579
+        },
+        {
+          "path": "anti-slop/src/effect/rules/no-service-constructor-imports.ts",
+          "bytes": 1657
+        },
+        {
+          "path": "anti-slop/src/rules/no-shape-in-symbol-names.ts",
+          "bytes": 1596
+        },
+        {
+          "path": "anti-slop/src/rules/no-chained-type-assertions.ts",
+          "bytes": 2538
+        },
+        {
+          "path": "anti-slop/src/rules/no-module-mocking.ts",
+          "bytes": 2807
+        },
+        {
+          "path": "anti-slop/src/rules/no-conditional-empty-object-spread.ts",
+          "bytes": 1552
+        },
+        {
+          "path": "anti-slop/src/rules/no-unknown-type-aliases.test.ts",
+          "bytes": 1264
+        },
+        {
+          "path": "anti-slop/src/rules/no-array-filter-map.test.ts",
+          "bytes": 2847
+        },
+        {
+          "path": "anti-slop/src/rules/no-unknown-returns.ts",
+          "bytes": 2817
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/_existing-type-alias-fix.ts",
+          "bytes": 4153
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/require-interface-for-exported-class.ts",
+          "bytes": 10925
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/prefer-native-random-uuid.ts",
+          "bytes": 10081
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/_checked-native-source.ts",
+          "bytes": 4236
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/no-type-member-comment-wall.ts",
+          "bytes": 9808
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/no-excessive-cognitive-complexity.ts",
+          "bytes": 11378
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/no-declaration-comment-wall.ts",
+          "bytes": 9635
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/_localization.ts",
+          "bytes": 2760
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/_static-matcher-fix.ts",
+          "bytes": 2837
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/prefer-switch-for-repeated-equality.ts",
+          "bytes": 9901
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/duplicate-test-body.ts",
+          "bytes": 14337
+        },
+        {
+          "path": "code-standards/packages/typescript/src/rules/require-constrained-schema-integer.ts",
+          "bytes": 8674
+        }
+      ]
+    },
+    "summary": {
+      "baseline": {
+        "coldMedianMilliseconds": 693.460453,
+        "warmMedianMilliseconds": 270.9479799999999,
+        "wallMedianMilliseconds": 3026.3324009720236,
+        "peakRssMedianKiB": 445204,
+        "peakRssMaximumKiB": 464344
+      },
+      "rule": {
+        "coldMedianMilliseconds": 674.579102,
+        "warmMedianMilliseconds": 239.4175069999999,
+        "wallMedianMilliseconds": 2998.8817151170224,
+        "peakRssMedianKiB": 446440,
+        "peakRssMaximumKiB": 456588
+      },
+      "coldRatio": 0.9727722742972338,
+      "warmRatio": 0.8836290530750588
+    },
+    "runs": [
+      {
+        "mode": "baseline",
+        "files": 24,
+        "cold": {
+          "milliseconds": 712.121123,
+          "findings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 318.1025460000001,
+            "findings": 0
+          },
+          {
+            "milliseconds": 224.3022850000002,
+            "findings": 0
+          },
+          {
+            "milliseconds": 208.50781299999971,
+            "findings": 0
+          },
+          {
+            "milliseconds": 221.22209599999996,
+            "findings": 0
+          },
+          {
+            "milliseconds": 237.19828800000005,
+            "findings": 0
+          }
+        ],
+        "peakRssKiB": 464344,
+        "wallMilliseconds": 2905.702333897352
+      },
+      {
+        "mode": "rule",
+        "files": 24,
+        "cold": {
+          "milliseconds": 682.8174489999999,
+          "findings": 11
+        },
+        "warm": [
+          {
+            "milliseconds": 341.8690939999999,
+            "findings": 11
+          },
+          {
+            "milliseconds": 348.03418099999976,
+            "findings": 11
+          },
+          {
+            "milliseconds": 196.1113989999999,
+            "findings": 11
+          },
+          {
+            "milliseconds": 172.9103409999998,
+            "findings": 11
+          },
+          {
+            "milliseconds": 220.13321700000006,
+            "findings": 11
+          }
+        ],
+        "peakRssKiB": 455504,
+        "wallMilliseconds": 2998.8817151170224
+      },
+      {
+        "mode": "rule",
+        "files": 24,
+        "cold": {
+          "milliseconds": 674.579102,
+          "findings": 11
+        },
+        "warm": [
+          {
+            "milliseconds": 360.633965,
+            "findings": 11
+          },
+          {
+            "milliseconds": 231.6165800000001,
+            "findings": 11
+          },
+          {
+            "milliseconds": 239.4175069999999,
+            "findings": 11
+          },
+          {
+            "milliseconds": 203.12100499999997,
+            "findings": 11
+          },
+          {
+            "milliseconds": 283.70540299999993,
+            "findings": 11
+          }
+        ],
+        "peakRssKiB": 437272,
+        "wallMilliseconds": 2830.6176620535553
+      },
+      {
+        "mode": "baseline",
+        "files": 24,
+        "cold": {
+          "milliseconds": 693.460453,
+          "findings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 324.5672830000001,
+            "findings": 0
+          },
+          {
+            "milliseconds": 285.64658299999996,
+            "findings": 0
+          },
+          {
+            "milliseconds": 260.99865499999987,
+            "findings": 0
+          },
+          {
+            "milliseconds": 204.8870350000002,
+            "findings": 0
+          },
+          {
+            "milliseconds": 252.20306000000028,
+            "findings": 0
+          }
+        ],
+        "peakRssKiB": 457152,
+        "wallMilliseconds": 3009.691500104964
+      },
+      {
+        "mode": "baseline",
+        "files": 24,
+        "cold": {
+          "milliseconds": 714.956331,
+          "findings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 384.306372,
+            "findings": 0
+          },
+          {
+            "milliseconds": 309.8304109999999,
+            "findings": 0
+          },
+          {
+            "milliseconds": 249.03350200000023,
+            "findings": 0
+          },
+          {
+            "milliseconds": 305.07987300000013,
+            "findings": 0
+          },
+          {
+            "milliseconds": 282.30099500000006,
+            "findings": 0
+          }
+        ],
+        "peakRssKiB": 445204,
+        "wallMilliseconds": 3326.9544360227883
+      },
+      {
+        "mode": "rule",
+        "files": 24,
+        "cold": {
+          "milliseconds": 693.565903,
+          "findings": 11
+        },
+        "warm": [
+          {
+            "milliseconds": 380.12829399999987,
+            "findings": 11
+          },
+          {
+            "milliseconds": 333.7397179999998,
+            "findings": 11
+          },
+          {
+            "milliseconds": 295.7668370000001,
+            "findings": 11
+          },
+          {
+            "milliseconds": 235.35608899999988,
+            "findings": 11
+          },
+          {
+            "milliseconds": 262.1102149999997,
+            "findings": 11
+          }
+        ],
+        "peakRssKiB": 456588,
+        "wallMilliseconds": 3336.930891033262
+      },
+      {
+        "mode": "rule",
+        "files": 24,
+        "cold": {
+          "milliseconds": 623.6640189999999,
+          "findings": 11
+        },
+        "warm": [
+          {
+            "milliseconds": 584.2631689999998,
+            "findings": 11
+          },
+          {
+            "milliseconds": 519.4193030000001,
+            "findings": 11
+          },
+          {
+            "milliseconds": 354.2933469999998,
+            "findings": 11
+          },
+          {
+            "milliseconds": 335.8671770000001,
+            "findings": 11
+          },
+          {
+            "milliseconds": 355.4439870000001,
+            "findings": 11
+          }
+        ],
+        "peakRssKiB": 446440,
+        "wallMilliseconds": 3813.9862848911434
+      },
+      {
+        "mode": "baseline",
+        "files": 24,
+        "cold": {
+          "milliseconds": 641.2581,
+          "findings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 590.6953559999997,
+            "findings": 0
+          },
+          {
+            "milliseconds": 296.431247,
+            "findings": 0
+          },
+          {
+            "milliseconds": 395.09182699999974,
+            "findings": 0
+          },
+          {
+            "milliseconds": 322.29645400000027,
+            "findings": 0
+          },
+          {
+            "milliseconds": 266.122343,
+            "findings": 0
+          }
+        ],
+        "peakRssKiB": 438728,
+        "wallMilliseconds": 3687.4888909514993
+      },
+      {
+        "mode": "baseline",
+        "files": 24,
+        "cold": {
+          "milliseconds": 629.372205,
+          "findings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 318.6743859999999,
+            "findings": 0
+          },
+          {
+            "milliseconds": 399.258194,
+            "findings": 0
+          },
+          {
+            "milliseconds": 270.9479799999999,
+            "findings": 0
+          },
+          {
+            "milliseconds": 228.80365200000006,
+            "findings": 0
+          },
+          {
+            "milliseconds": 173.02850099999978,
+            "findings": 0
+          }
+        ],
+        "peakRssKiB": 436084,
+        "wallMilliseconds": 3026.3324009720236
+      },
+      {
+        "mode": "rule",
+        "files": 24,
+        "cold": {
+          "milliseconds": 637.7108910000001,
+          "findings": 11
+        },
+        "warm": [
+          {
+            "milliseconds": 326.8059210000001,
+            "findings": 11
+          },
+          {
+            "milliseconds": 333.83216800000014,
+            "findings": 11
+          },
+          {
+            "milliseconds": 214.49351000000024,
+            "findings": 11
+          },
+          {
+            "milliseconds": 202.86411499999986,
+            "findings": 11
+          },
+          {
+            "milliseconds": 170.35277300000007,
+            "findings": 11
+          }
+        ],
+        "peakRssKiB": 445904,
+        "wallMilliseconds": 2877.3179391864687
+      }
+    ]
+  },
+  "verificationCommands": [
+    "npm --prefix packages/typescript test -- tests/rules/no-runtime-typeof.test.ts tests/erased-expression-coverage.test.ts tests/typed-tooling.test.ts",
+    "npm --prefix packages/typescript run typecheck",
+    "npm --prefix apps/docs --ignore-scripts run check",
+    "node --test scripts/json-boundaries.test.ts (from apps/docs)",
+    "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_rule_lifecycle.py",
+    "code-standards --root . maintain rules prepare eslint:no-runtime-typeof",
+    "code-standards --root . maintain rules promote-error eslint:no-runtime-typeof",
+    "make --no-print-directory --assume-old=typescript-build verify-test-typescript",
+    "npm --prefix packages/typescript test -- tests/rules/no-runtime-typeof.test.ts tests/flat-presets.test.ts",
+    "make --no-print-directory --assume-old=typescript-build docs-check",
+    "make --no-print-directory --assume-old=typescript-build verify-test-standards PYTEST_ARGS='--test-path tests/test_rule_calibration_campaign.py --test-path tests/test_staged_eslint_hook.py'"
+  ],
+  "limitations": [
+    "The new rule is syntax-only and does not infer application intent.",
+    "The repository-local ESTree compiler component has an explicit config exception; the published rule has no compiler path exemption.",
+    "The corpus pass uses run_isolated_corpora and the installed candidate Linter/parser, with repository configs and inline directives excluded. Suppression behavior has separate regression coverage.",
+    "Cold measurements start after module imports in fresh Node processes; no OS page-cache eviction is claimed. The disabled-rule control uses the same plugin and parser with no-debugger traversal enabled.",
+    "Five alternating fresh processes per mode and five warm passes per process describe this shared VM sample, not a general speedup or worst-case overhead bound."
+  ]
+}

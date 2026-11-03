@@ -3,6 +3,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.ts";
+import noRuntimeTypeof from "./src/rules/no-runtime-typeof.ts";
 
 export default defineConfig(
   { ignores: ["dist/**", "eslint.dogfood.config.ts", "tests/fixtures/**"] },
@@ -10,6 +11,7 @@ export default defineConfig(
     name: "sarj/typescript",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
+    plugins: { "@sarj": { rules: { "no-runtime-typeof": noRuntimeTypeof } } },
     languageOptions: {
       parserOptions: {
         projectService: {
@@ -19,6 +21,7 @@ export default defineConfig(
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
+    rules: { "@sarj/no-runtime-typeof": "error" },
   },
   {
     name: "sarj/javascript",
@@ -29,7 +32,12 @@ export default defineConfig(
   {
     name: "sarj/estree-discriminants",
     files: ["src/rules/**/*.{ts,tsx,mts,cts}"],
-    rules: { "@typescript-eslint/no-unsafe-enum-comparison": "off" },
+    // ESTree literal values have native primitive unions; rule implementations
+    // also establish raw parser-option contracts without adding a schema dependency.
+    rules: {
+      "@typescript-eslint/no-unsafe-enum-comparison": "off",
+      "@sarj/no-runtime-typeof": "off",
+    },
   },
   {
     name: "sarj/module-constant-naming",

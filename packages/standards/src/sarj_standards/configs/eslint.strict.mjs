@@ -1869,6 +1869,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-hand-rolled-sleep": "error",
                 "@sarj/no-hand-rolled-spinner": "error",
                 "@sarj/no-known-value-widening": "error",
+                "@sarj/no-runtime-typeof": "error",
                 "@sarj/no-excess-jsx-props": "warn",
                 "@sarj/no-redundant-consumer-union": "warn",
                 "@sarj/prefer-minimal-parameter-contract": "warn",

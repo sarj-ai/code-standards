@@ -253,7 +253,7 @@ it.each(SCENARIOS)(
     const outputs = declarations(files);
     const beforeDeclaration = outputs.get(before.replace(/\.ts$/u, ".d.ts"));
     const afterDeclaration = outputs.get(after.replace(/\.ts$/u, ".d.ts"));
-    expect(typeof beforeDeclaration).toBe("string");
+    expect(beforeDeclaration).toBeTypeOf("string");
     expect(afterDeclaration?.replace(" implements Port", "")).toBe(
       beforeDeclaration,
     );
