@@ -693,12 +693,15 @@ def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
     assert "CallExpression[callee.property.name='forEach']" in text
 
 
-def test_prefer_nullish_coalescing_ignores_primitives() -> None:
+def test_prefer_nullish_coalescing_covers_primitive_defaults() -> None:
     text = ESLINT_STRICT.read_text()
-    assert re.search(
-        r'"@typescript-eslint/prefer-nullish-coalescing"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*ignorePrimitives\s*:\s*\{',
+    configured = re.search(
+        r'"@typescript-eslint/prefer-nullish-coalescing"\s*:\s*\[\s*"error"\s*,\s*\{([^}]*)\}',
         text,
     )
+    assert configured is not None
+    assert "ignorePrimitives" not in configured[1]
+    assert re.search(r"ignoreBooleanCoercion\s*:\s*true", configured[1])
 
 
 def test_naming_convention_allows_framework_names() -> None:

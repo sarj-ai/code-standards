@@ -107,7 +107,7 @@ function virtualPath(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".tftest.hcl")) return "example.tftest.hcl";
   const extension = extname(lower);
-  return `example${extension || ".txt"}`;
+  return `example${extension === "" ? ".txt" : extension}`;
 }
 
 async function formatMarkdownFences(
@@ -295,7 +295,7 @@ async function formatJson() {
       const path = text(file["path"], "format JSON path");
       const source = text(file["source"], "format JSON source");
 
-      return formatFile({ path, source: source || "\n" }, "format JSON");
+      return formatFile({ path, source: source === "" ? "\n" : source }, "format JSON");
     }),
   );
   process.stdout.write(render(files));

@@ -1,3 +1,5 @@
+import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
+import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
 import noRuntimeTypeof from "./rules/no-runtime-typeof.js";
 import noFrontendComments from "./rules/no-frontend-comments.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
@@ -156,6 +158,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-logical-or-fallback": noLogicalOrFallback,
+  "no-zod-parse-typed-object": noZodParseTypedObject,
   "no-runtime-typeof": noRuntimeTypeof,
   "no-frontend-comments": noFrontendComments,
   "no-mutating-input-with-result": noMutatingInputWithResult,
@@ -333,6 +337,8 @@ type PresetPolicy = {
 };
 
 const RULE_POLICY = {
+  "@sarj/no-logical-or-fallback": ["warn", "both"],
+  "@sarj/no-zod-parse-typed-object": ["warn", "both"],
   "@sarj/no-frontend-comments": ["warn", "both"],
   "@sarj/no-excess-jsx-props": ["warn", "both"],
   "@sarj/no-redundant-consumer-union": ["warn", "both"],

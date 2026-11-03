@@ -215,6 +215,44 @@ def test_stage_warning_rolls_back_every_artifact_on_failure(
     assert tuple(path.read_bytes() for path in paths) == before
 
 
+@pytest.mark.parametrize("fail_after_writes", [False, True])
+def test_lifecycle_tracks_created_declarations_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_after_writes: bool
+) -> None:
+    paths = _files(tmp_path)
+    declarations = tuple(
+        tmp_path / "packages/standards/src/sarj_standards/configs" / name
+        for name in ("eslint.strict.d.mts", "eslint.application.d.mts")
+    )
+    for path in declarations:
+        path.unlink(missing_ok=True)
+    before = {path: path.read_bytes() if path.exists() else None for path in (*paths, *declarations)}
+    _mock_builders(monkeypatch)
+
+    def synchronize(_root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
+        assert not check
+        assert writer is not None
+        for path in declarations:
+            writer(path, "generated declaration\n")
+        if fail_after_writes:
+            msg = "declaration generation failed"
+            raise RuntimeError(msg)
+        return True
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Exercise the lifecycle transaction's real declaration writes and rollback.
+        config_generation, "sync_warning_levels", synchronize
+    )
+    if fail_after_writes:
+        with pytest.raises(RuntimeError, match="declaration generation failed"):
+            rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        assert {path: path.read_bytes() if path.exists() else None for path in before} == before
+    else:
+        result = rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        assert result.status == 0
+        assert result.changed
+        assert all(path.read_text(encoding="utf-8") == "generated declaration\n" for path in declarations)
+
+
 @pytest.mark.parametrize("failure", ["catalog", "concurrent-descriptor"])
 def test_stage_warning_restores_descriptor_or_preserves_its_concurrent_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
