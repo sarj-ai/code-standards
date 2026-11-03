@@ -26,7 +26,7 @@ class NoTerraformComments(Rule):
     id = "no-terraform-comments"
     code = "SARJ216"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep Terraform source free of comments; express intent through names and descriptions.",
         rationale="An explicit no-comment policy keeps infrastructure intent in executable names, descriptions and the change review.",
         remediation="Remove the comment. Preserve necessary context in a descriptive name, description attribute or PR explanation; move tool policy into its supported configuration.",
@@ -80,7 +80,7 @@ class NoTerraformComments(Rule):
                 self.code,
                 "Terraform comments are prohibited; use clear names, descriptions or the PR.",
                 suppressible=False,
-                severity=DefaultLevel.WARNING,
+                severity=DefaultLevel.ERROR,
             )
             for line, col in comment_locations(source)
         ]
