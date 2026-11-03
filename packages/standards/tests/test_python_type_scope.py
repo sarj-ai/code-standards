@@ -190,7 +190,9 @@ def test_unsupported_project_analyzer_fails_without_touching_baseline(tmp_path: 
     analyzer.write_text("#!/bin/sh\nprintf '%s\\n' 'unsupported option --baselinemode' >&2\nexit 4\n", encoding="utf-8")
     analyzer.chmod(0o755)
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"pyright"}))
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"pyright"})
+    )
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
