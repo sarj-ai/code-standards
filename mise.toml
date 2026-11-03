@@ -7,3 +7,6 @@ uv = "0.13.5"
 "aqua:mvdan/sh" = "3.14.1"
 "aqua:rhysd/actionlint" = "1.7.12"
 "github:docker/compose" = "5.6.1"
+
+[settings]
+idiomatic_version_file_enable_tools = ["node"]

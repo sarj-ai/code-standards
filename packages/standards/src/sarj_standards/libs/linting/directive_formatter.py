@@ -97,17 +97,24 @@ class FormatterOwner:
     missing: tuple[Path, ...] = ()
 
 
+class OwnershipChangedError(ValueError):
+    pass
+
+
 def _read(path: Path) -> InputProof:
     before = path.lstat()
     if path.is_symlink() or path.is_junction() or not stat.S_ISREG(before.st_mode):
         msg = "formatter ownership requires regular, nonlinked input files"
         raise ValueError(msg)
     contents = path.read_bytes()
-    after = path.lstat()
+    msg = "formatter ownership input changed while reading"
+    try:
+        after = path.lstat()
+    except OSError as exc:
+        raise OwnershipChangedError(msg) from exc
     identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
     if identity != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
-        msg = "formatter ownership input changed while reading"
-        raise ValueError(msg)
+        raise OwnershipChangedError(msg)
     return InputProof(path, contents, stat.S_IMODE(before.st_mode), identity)
 
 
@@ -181,9 +188,14 @@ def _local_tool(
     if runtime is None:
         runtime = _runtime(node)
         runtimes[node] = runtime
-    elif not _runtime_unchanged(runtime):
+    else:
         msg = "native Node runtime changed during directive planning"
-        raise ValueError(msg)
+        try:
+            unchanged = _runtime_unchanged(runtime)
+        except OSError as exc:
+            raise OwnershipChangedError(msg) from exc
+        if not unchanged:
+            raise OwnershipChangedError(msg)
     return _LocalTool(node, installed.entrypoint, installed.version, runtime)
 
 
@@ -200,9 +212,13 @@ def _runtime(path: Path) -> RuntimeProof:
         stat.S_IMODE(before.st_mode),
         (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns),
     )
-    if not _runtime_unchanged(result):
-        msg = "native runtime changed while establishing its immutable identity"
-        raise ValueError(msg)
+    msg = "native runtime changed while establishing its immutable identity"
+    try:
+        unchanged = _runtime_unchanged(result)
+    except OSError as exc:
+        raise OwnershipChangedError(msg) from exc
+    if not unchanged:
+        raise OwnershipChangedError(msg)
     return result
 
 

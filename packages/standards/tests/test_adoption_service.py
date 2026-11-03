@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING, overload, override
 
 import pytest
 
-from sarj_standards.libs.adoption import launcher, lifecycle, manifest, transaction
+from sarj_standards.libs.adoption import launcher, lifecycle, manifest, scaffold, service, transaction
 from sarj_standards.libs.adoption.service import (
     InitFailure,
     SyncOutcome,
@@ -18,7 +19,13 @@ from sarj_standards.libs.adoption.service import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable, Mapping
+    from types import FrameType
+
+
+type _TraceCallback = Callable[  # sarj-noqa: SARJ528 -- CPython trace events have opaque payloads.
+    [FrameType, str, object], _TraceCallback | None
+]
 
 
 def _python_project(root: Path) -> None:
@@ -476,6 +483,67 @@ def test_init_service_preserves_untouched_target_after_partial_sync_failure(
     assert not first.exists()
     assert second.read_bytes() == independent_bytes
     assert (tmp_path / "pyproject.toml").read_bytes() == original_project
+
+
+def test_init_service_preserves_concurrent_edit_when_interrupted_after_direct_writes(tmp_path: Path) -> None:
+    root = tmp_path / "consumer"
+    root.mkdir()
+    source = tmp_path / "template.toml"
+    target = root / ".ruff-strict.toml"
+    original = b"original\n"
+    intended = b"standards intended\n"
+    independent = b"independent edit\n"
+    source.write_bytes(intended)
+    target.write_bytes(original)
+    plan = service.InitPlan(
+        scaffold.Plan(scaffold.Ecosystems(python=False, typescript=False), root=root, hook_manager="none"),
+        service.SyncPlan(root, "standard", (service.SyncTarget("ruff", source, target),)),
+        (),
+        {target: original},
+    )
+    write_code = transaction.FileTransaction.write_bytes.__code__
+    apply_code = service._apply_init_transaction.__code__  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access] -- Controlled real-workflow fault injection.
+    observed: list[str] = []
+
+    def trace(
+        frame: FrameType,
+        event: str,
+        argument: object,  # sarj-noqa: SARJ528 -- CPython trace event payloads are narrowed below.
+    ) -> _TraceCallback:  # sarj-noqa: SARJ528 -- CPython callback types contain opaque event payloads.
+        if event == "return":
+            locals_view: Mapping[str, object] = frame.f_locals
+            if frame.f_code is write_code and locals_view.get("path") == target:
+                captured = locals_view.get("self")
+                assert isinstance(captured, transaction.FileTransaction)
+                assert captured.written[target] == intended
+                assert target.read_bytes() == intended
+                observed.append("receipt")
+                target.write_bytes(independent)
+            elif frame.f_code is apply_code:
+                assert isinstance(argument, service.InitResult)
+                assert argument.status == 0
+                captured = locals_view.get("file_transaction")
+                assert isinstance(captured, transaction.FileTransaction)
+                assert captured.explicit_only
+                assert target.read_bytes() == independent
+                observed.append("interrupt")
+                raise KeyboardInterrupt
+        return trace
+
+    previous = sys.gettrace()
+    try:
+        sys.settrace(trace)
+        result = apply_init(plan, install=False)
+    finally:
+        sys.settrace(previous)
+
+    assert observed == ["receipt", "interrupt"]
+    assert result.status == 130
+    assert result.failure is InitFailure.INTERRUPTED
+    assert result.error is not None
+    assert "changed concurrently" in result.error
+    assert str(target) in result.error
+    assert target.read_bytes() == independent
 
 
 def test_init_service_restores_direct_files_when_interrupted_after_dropping_installer_receipt(
