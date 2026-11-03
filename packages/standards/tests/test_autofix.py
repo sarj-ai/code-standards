@@ -224,6 +224,43 @@ def test_fix_tool_output_preserves_machine_stdout(
     assert output.err == ("fixture tool output\n" if machine_output else "")
 
 
+@pytest.mark.parametrize("installed", [True, False])
+def test_eslint_fixes_prefer_the_installed_binary_over_the_package_manager_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed: bool
+) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps({"packageManager": "yarn@4.18.1", "workspaces": ["apps/*"]}), encoding="utf-8"
+    )
+    (tmp_path / "yarn.lock").write_text("", encoding="utf-8")
+    web = tmp_path / "apps" / "web"
+    (web / "src").mkdir(parents=True)
+    (web / "package.json").write_text(json.dumps({"name": "web"}), encoding="utf-8")
+    (web / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    source = web / "src" / "component.tsx"
+    source.write_text("export const Component = () => null;\n", encoding="utf-8")
+    binary = tmp_path / "node_modules" / ".bin" / "eslint"
+    if installed:
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    executed: list[lifecycle.Command] = []
+
+    def execute(commands: Iterable[lifecycle.Command]) -> int:
+        executed.extend(commands)
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- capture the planned ESLint fixer instead of running a package manager.
+        lifecycle, "execute", execute
+    )
+    result = autofix.run(tmp_path, [str(source)], trusted=True)
+
+    assert result.status == 0
+    eslint = [command for command in executed if command.label.startswith("ESLint")]
+    assert [command.cwd for command in eslint] == [web]
+    tail = ("--config", "eslint.config.mjs", "--fix", "--", "src/component.tsx")
+    assert eslint[0].argv == ((str(binary), *tail) if installed else ("yarn", "exec", "eslint", *tail))
+
+
 @pytest.mark.parametrize("failed_status", [-9, -11, 2])
 def test_failed_fix_tool_stops_remaining_commands_and_reports_infrastructure_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_status: int
