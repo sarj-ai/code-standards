@@ -69,6 +69,7 @@ function nativeCompiler(filename: string): NativeDiagnosticContext {
       host.getCurrentDirectory = () => dirname(dirname(filename));
       const original = host.getSourceFile.bind(host);
       host.getSourceFile = (path, languageVersion, onError, fresh) => {
+        // eslint-disable-next-line @sarj/no-runtime-typeof -- Preserve the native ScriptTarget/CreateSourceFileOptions overload in this compiler-host test double.
         const mode = typeof languageVersion === "number" ? undefined : languageVersion.impliedNodeFormat;
         const key = `${path}\0${mode ?? ""}`;
         if (fresh || !/\.(?:cts|mts|ts)$/iu.test(path)) {

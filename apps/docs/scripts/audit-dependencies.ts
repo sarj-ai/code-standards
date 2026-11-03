@@ -17,10 +17,7 @@ assert.ok(
 process.stdout.write(result.stdout);
 const report = record(JSON.parse(result.stdout) as unknown, "npm audit report");
 assert.ok(
-  !report["error"] &&
-    report["vulnerabilities"] &&
-    typeof report["vulnerabilities"] === "object" &&
-    !Array.isArray(report["vulnerabilities"]),
+  !report["error"],
   "Invalid npm audit report",
 );
 for (const [name, value] of Object.entries(

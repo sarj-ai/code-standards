@@ -54,6 +54,7 @@ export function createExampleParser(): ExampleParser {
         return parser.parseForESLint(code, options);
       };
       if (!Object.hasOwn(ts, "JSDocParsingMode")) return fallback();
+      // eslint-disable-next-line @sarj/no-runtime-typeof -- Native ParserOptions.project accepts boolean, string or string[]; this cache supports only its single-project overload.
       if (typeof options?.project !== "string" || typeof options.filePath !== "string" ||
           options.programs != null || options.projectService || options.extraFileExtensions?.length || options.debugLevel) {
         return fallback();
@@ -98,7 +99,9 @@ export function createExampleParser(): ExampleParser {
         }
         const text = read(path);
         if (text === undefined) return original(path, language, onError, fresh);
+        // eslint-disable-next-line @sarj/no-runtime-typeof -- TypeScript's compiler host receives ScriptTarget or CreateSourceFileOptions without a domain tag.
         const version = typeof language === "number" ? language : language.languageVersion;
+        // eslint-disable-next-line @sarj/no-runtime-typeof -- The native compiler overload provides impliedNodeFormat only in its options-object variant.
         const format = typeof language === "number" ? undefined : language.impliedNodeFormat;
         const key = JSON.stringify([path, settingsKey, version, format, mode]);
         const previous = cache.get(key);

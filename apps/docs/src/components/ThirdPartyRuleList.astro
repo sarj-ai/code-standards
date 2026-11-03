@@ -150,16 +150,9 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
 </section>
 
 <script>
-  interface SearchEntry {
-    anchor: string;
-    displayId: string;
-    family: string | null;
-    href: string;
-    searchText: string;
-    summary: string;
-  }
+  import { parseSearchIndex } from '../lib/parse-search-index';
 
-  type SearchPayloadEntry = Omit<SearchEntry, 'searchText'>;
+  type SearchEntry = ReturnType<typeof parseSearchIndex>[number];
 
   for (const directory of document.querySelectorAll('[data-third-party-directory]')) {
     if (!(directory instanceof HTMLElement) || directory.dataset.ready === 'true') continue;
@@ -187,19 +180,7 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
       indexPromise ??= fetch(indexHref).then(async (response) => {
         if (!response.ok) throw new Error(`Search index returned ${String(response.status)}.`);
         const payload: unknown = await response.json();
-        if (
-          typeof payload !== 'object'
-          || payload === null
-          || !('entries' in payload)
-          || !Array.isArray(payload.entries)
-        ) throw new TypeError('Search index has an invalid shape.');
-        return (payload.entries as SearchPayloadEntry[]).map((entry) => ({
-          ...entry,
-          searchText: [entry.displayId, entry.summary, entry.family]
-            .filter((value): value is string => value !== null)
-            .join(' ')
-            .toLocaleLowerCase('en-US'),
-        }));
+        return parseSearchIndex(payload);
       }).catch((error: unknown) => {
         indexPromise = undefined;
         throw error;

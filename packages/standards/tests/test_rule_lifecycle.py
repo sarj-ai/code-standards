@@ -346,6 +346,43 @@ def test_lifecycle_rolls_back_partial_config_generation(tmp_path: Path, monkeypa
     assert tuple(path.read_bytes() for path in paths) == before
 
 
+@pytest.mark.parametrize("phase", ["success", "after-declarations"])
+def test_lifecycle_tracks_generated_declarations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str) -> None:
+    paths = _files(tmp_path)
+    before = tuple(path.read_bytes() for path in paths)
+    native_sync = config_generation.sync_warning_levels
+    _mock_builders(monkeypatch)
+    declarations = {
+        tmp_path / "packages/standards/src/sarj_standards/configs/eslint.strict.d.mts": "declare const strict: [];\n",
+        tmp_path
+        / "packages/standards/src/sarj_standards/configs/eslint.application.d.mts": "export { default } from './eslint.strict.mjs';\n",
+    }
+
+    def artifacts(_root: Path) -> Mapping[Path, str]:
+        return declarations
+
+    def sync_declarations(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
+        result = native_sync(root, check=check, writer=writer)
+        if phase == "after-declarations":
+            msg = "injected declaration failure"
+            raise RuntimeError(msg)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- declaration output is controlled while the native writer and lifecycle transaction remain real.
+        config_generation, "warning_level_artifacts", artifacts
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail after native declaration writes to exercise rollback of every emitted declaration.
+        config_generation, "sync_warning_levels", sync_declarations
+    )
+    if phase == "after-declarations":
+        with pytest.raises(RuntimeError, match="injected declaration failure"):
+            rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        assert tuple(path.read_bytes() for path in paths) == before
+    else:
+        assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR).status == 0
+        assert all(path.read_text(encoding="utf-8") == source for path, source in declarations.items())
+
+
 def test_stage_warning_suggests_the_closest_live_selector(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

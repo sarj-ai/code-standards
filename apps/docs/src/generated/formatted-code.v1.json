@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "57432350beda7d1ab9f90b470711d460a88e2ac665408380bd13ec8ba21b5e7a",
-  "cliSha256": "3ae4d098e1b82b08b23417241df081f9da749d8590be50aac2546d0bfe8f395d",
+  "catalogSha256": "c2f2eae1ccdcddcfe506ea93c48c575e5d952e39b5defc843cabf6823edb7927",
+  "cliSha256": "c3814180a8c614ce5cbc470363cb68bae16c3931f6174d89fc32c09fb247cb5a",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -3596,6 +3596,137 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not poll the whole route"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-runtime-typeof": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/environment.ts",
+              "source": "function missing(value: unknown) {\n  return typeof value === \"undefined\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/environment.ts",
+          "id": "bound-undefined-check",
+          "outcome": "reject",
+          "scenarioId": "global-existence",
+          "title": "Read a declared value directly when checking undefined"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "type Value = { kind: \"text\"; value: string } | { kind: \"count\"; value: number };\nfunction render(value: Value) {\n  return value.kind === \"text\" ? value.value : value.value.toString();\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "discriminated-domain-union",
+          "outcome": "accept",
+          "scenarioId": "domain-variants",
+          "title": "Branch on an owned domain discriminator"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/environment.ts",
+              "source": "const isServer = typeof document === \"undefined\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/environment.ts",
+          "id": "global-existence-probe",
+          "outcome": "accept",
+          "scenarioId": "global-existence",
+          "title": "Probe a potentially absent global without reading it"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "declare const value: { id: string };\nconst kind = typeof value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "runtime-query",
+          "outcome": "reject",
+          "scenarioId": "type-query",
+          "title": "Keep a type query out of executable code"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "src/input.ts",
+              "source": "function parse(value: unknown) {\n  if (\n    typeof value === \"object\" &&\n    value !== null &&\n    !Array.isArray(value) &&\n    \"id\" in value &&\n    typeof value.id === \"string\"\n  )\n    return { id: value.id };\n  throw new Error(\"Expected a record with a text id\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/input.ts",
+          "id": "runtime-representation-check",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Replace a representation check with an explicit contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/input.ts",
+              "source": "import { z } from \"zod\";\nconst UserSchema = z.object({ id: z.string() });\nfunction parse(value: unknown) {\n  return UserSchema.parse(value);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/input.ts",
+          "id": "specific-boundary-schema",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate consumed fields at their boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "declare const value: { id: string };\ntype Value = typeof value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "type-only-query",
+          "outcome": "accept",
+          "scenarioId": "type-query",
+          "title": "Preserve the erased TypeScript type query"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "function render(value: string | number) {\n  return typeof value === \"string\" ? value : value.toString();\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "untagged-domain-union",
+          "outcome": "reject",
+          "scenarioId": "domain-variants",
+          "title": "Give owned variants a domain discriminator"
         }
       ],
       "optionsSchemaSource": null

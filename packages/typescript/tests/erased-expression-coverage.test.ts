@@ -71,7 +71,7 @@ describe("erased receivers, static template keys and discarded SQL", () => {
       expect(messages.filter(message => message.fatal || message.ruleId !== ruleId)).toEqual([]);
       expect(messages).toHaveLength(example.expected);
       expect(new Set(messages.map(message => `${message.line}:${message.column}`)).size).toBe(messages.length);
-      if ("fixedSource" in example && typeof example.fixedSource === "string") {
+      if ("fixedSource" in example && example.fixedSource !== undefined) {
         const fixed = linter.verifyAndFix(focus?.source ?? "", config, { filename });
         const remaining = assertExpectedFix(fixed, {
           source: example.fixedSource,

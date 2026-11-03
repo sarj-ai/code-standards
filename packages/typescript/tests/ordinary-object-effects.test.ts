@@ -302,6 +302,7 @@ function observeRuntimeQueries(program: ts.Program, binding: RuntimeBindings): R
         return node === unavailable ? undefined : target.getSymbolAtLocation(node);
       };
       const member: unknown = Reflect.get(target, property);
+      // eslint-disable-next-line @sarj/no-runtime-typeof -- A native TypeChecker Proxy binds callable members to preserve the compiler receiver.
       return typeof member === "function" ? member.bind(target) : member;
     },
   });
@@ -309,6 +310,7 @@ function observeRuntimeQueries(program: ts.Program, binding: RuntimeBindings): R
     get(target, property): unknown {
       if (property === "getTypeChecker") return () => observedChecker;
       const member: unknown = Reflect.get(target, property);
+      // eslint-disable-next-line @sarj/no-runtime-typeof -- A native Program Proxy binds callable members while forwarding ordinary compiler properties.
       return typeof member === "function" ? member.bind(target) : member;
     },
   });

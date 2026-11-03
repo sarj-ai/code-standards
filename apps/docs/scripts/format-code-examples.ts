@@ -188,7 +188,7 @@ async function formatCode(
   path: string,
   context: string,
 ): Promise<string> {
-  if (typeof source !== "string" || source.length === 0)
+  if (source.length === 0)
     throw new TypeError(`${context}: source must be nonempty`);
   if (source.length > 64 * 1024)
     throw new Error(`${context}: source exceeds the 64 KiB display limit`);
@@ -254,7 +254,7 @@ function runFormatter(
     });
   } catch (error) {
     const stderr =
-      error && typeof error === "object" && "stderr" in error
+      error instanceof Error && "stderr" in error
         ? String(error.stderr).trim()
         : "";
     throw new Error(`${label} formatter failed${stderr ? `: ${stderr}` : ""}`, {
@@ -293,8 +293,7 @@ async function formatJson() {
       const file = record(value, `format JSON file ${String(index)}`);
       assert.deepEqual(Object.keys(file).sort(), ["path", "source"]);
       const path = text(file["path"], "format JSON path");
-      const source = file["source"];
-      assert(typeof source === "string", "format JSON source must be a string");
+      const source = text(file["source"], "format JSON source");
 
       return formatFile({ path, source: source || "\n" }, "format JSON");
     }),
@@ -481,8 +480,7 @@ async function sync(path: string, expected: string) {
     current = await readFile(path, "utf8");
   } catch (error) {
     if (!(
-      error &&
-      typeof error === "object" &&
+      error instanceof Error &&
       "code" in error &&
       error.code === "ENOENT"
     ))

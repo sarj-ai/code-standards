@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 import { ESLint } from "eslint";
 import ts from "typescript";
-import { record } from "../../standards/src/sarj_standards/configs/tool-json.mts";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { eslintRuleSetting } from "../eslint-rule-setting.ts";
 
@@ -102,18 +102,15 @@ describe("native runtime support for migrated tooling", () => {
     const compiler = fileURLToPath(
       new URL("../node_modules/typescript/lib/typescript.js", import.meta.url),
     );
-    const metadata = record(
+    const metadata = z.object({ version: z.string() }).parse(
       JSON.parse(
         await readFile(
           new URL("../node_modules/typescript/package.json", import.meta.url),
           "utf8",
         ),
       ) as unknown,
-      "compiler metadata",
     );
-    const packageVersion = metadata["version"];
-    if (typeof packageVersion !== "string")
-      throw new TypeError("Compiler package version must be a string");
+    const packageVersion = metadata.version;
     const input = JSON.stringify({
       "entry.ts": "export { value } from './helper.js';",
       "helper.ts": "export const value = 1;",

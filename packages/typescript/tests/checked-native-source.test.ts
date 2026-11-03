@@ -95,6 +95,7 @@ it("does not mistake local JSX contracts for an available automatic runtime modu
 function suppliedConsumerConfiguration(program: ts.Program): Linter.Config {
   const identity: Rule.RuleModule = {create(context) {
     const services: unknown = context.sourceCode.parserServices;
+    // eslint-disable-next-line @sarj/no-runtime-typeof -- ESLint exposes opaque parser services; this integration assertion verifies that the supplied native Program survives.
     if (typeof services !== "object" || services === null || !("program" in services)) throw new Error("Supplied native Program is unavailable");
     expect(services.program).toBe(program);
     return {};

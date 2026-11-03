@@ -141,13 +141,7 @@ function verifySource() {
     ruleAnchors.add(anchor);
     httpsUrl(rule.docsUrl, `${label}.docsUrl`);
     assert.ok(
-      rule.family === null ||
-        (typeof rule.family === "string" && rule.family.length > 0),
-    );
-    assert.equal(
-      typeof rule.hasSuggestions,
-      "boolean",
-      `${label}.hasSuggestions must be boolean`,
+      rule.family === null || rule.family.length > 0,
     );
     assert.ok(autofixValues.has(rule.autofix), `${label}.autofix is invalid`);
     assert.deepEqual(
@@ -208,7 +202,6 @@ function httpsUrl(value: string, label: string) {
 }
 
 function nonemptyString(value: string, label: string) {
-  assert.equal(typeof value, "string", `${label} must be a string`);
   assert.ok(value.length > 0, `${label} must not be empty`);
 }
 

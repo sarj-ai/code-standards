@@ -37,6 +37,7 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
           if (setup.installedDependencyRoot === undefined) throw new Error(`${example.id}: explicit installed dependency root is required`);
           const packageFile = fixturePath(resolve(setup.installedDependencyRoot), `node_modules/${dependency.module}/package.json`);
           const metadata: unknown = JSON.parse(await readFile(packageFile, "utf8"));
+          // eslint-disable-next-line @sarj/no-runtime-typeof -- This dependency-free package bootstrap verifies raw package identity before linking a fixture dependency.
           if (typeof metadata !== "object" || metadata === null || !("name" in metadata) || !("version" in metadata) || metadata.name !== dependency.module || metadata.version !== dependency.version) throw new Error(`${example.id}: installed dependency identity/version mismatch for ${dependency.module}`);
           const destination = fixturePath(root, `node_modules/${dependency.module}`);
           await mkdir(dirname(destination), { recursive: true });

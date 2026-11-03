@@ -111,8 +111,8 @@ async function verify() {
   assert.ok(ruffEntries.length > 800);
   assert.ok(
     ruffEntries.every((value) => {
-      const href = record(value, "Ruff entry")["href"];
-      return typeof href === "string" && href.includes("#rule-");
+      const href = text(record(value, "Ruff entry")["href"], "Ruff entry href");
+      return href.includes("#rule-");
     }),
   );
   assert.match(

@@ -4,6 +4,7 @@ import { record } from "../../standards/src/sarj_standards/configs/tool-json.mts
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { z } from "zod";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, "../..");
@@ -15,6 +16,11 @@ const CACHE_PREFIX = join(
   PACKAGE_ROOT,
   "node_modules/.cache/sarj-third-party-catalog-",
 );
+const PeerVersionsSchema = z.record(z.string(), z.string());
+const OfficialDocsSchema = z.object({
+  description: z.string().min(1),
+  url: z.string().startsWith("https://"),
+});
 
 const CONTEXTS = [
   ["source-ts", "TypeScript source", "src/example.ts"],
@@ -184,7 +190,7 @@ async function project() {
     ) as unknown,
     "ESLint peers",
   );
-  const peers = record(peerManifest["peers"], "ESLint peer versions");
+  const peers = PeerVersionsSchema.parse(peerManifest["peers"]);
   const registries = installedRegistries(profiles);
   const records = new Map<string, ProjectedRule>();
   for (const [profile, configs] of Object.entries(profiles)) {
@@ -222,7 +228,7 @@ async function project() {
   const providers = Object.entries(PROVIDERS).map(
     ([id, [label, packageName, homepage]]) => {
       const version = peers[packageName];
-      if (typeof version !== "string")
+      if (version === undefined)
         throw new Error(`missing installed peer version for ${packageName}`);
       return {
         id,
@@ -318,6 +324,7 @@ function installedPluginRules(
 ): Record<string, RuleMetadata> {
   return Object.fromEntries(
     Object.entries(plugin.rules ?? {}).flatMap(([id, definition]) =>
+      // eslint-disable-next-line @sarj/no-runtime-typeof -- ESLint's upstream registry permits legacy function rules and object rules; only objects expose metadata.
       typeof definition === "object" && definition !== null
         ? [[id, { meta: definition.meta }]]
         : [],
@@ -336,19 +343,16 @@ function projectedRule(
   const rule = registries[provider]?.[id];
   if (rule === undefined)
     throw new Error(`missing installed metadata for ${displayId}`);
-  const rawSummary = rule.meta?.docs?.description;
-  const docsUrl = rule.meta?.docs?.url;
-  if (typeof rawSummary !== "string" || rawSummary.length === 0)
-    throw new Error(`missing summary for ${displayId}`);
-  if (typeof docsUrl !== "string" || !docsUrl.startsWith("https://"))
-    throw new Error(`missing HTTPS docs URL for ${displayId}`);
+  const docs = OfficialDocsSchema.safeParse(rule.meta?.docs);
+  if (!docs.success)
+    throw new Error(`invalid official docs metadata for ${displayId}`, { cause: docs.error });
   return {
     key: `${provider}:${id}`,
     provider,
     id,
     displayId,
-    summary: plainTextSummary(rawSummary),
-    docsUrl,
+    summary: plainTextSummary(docs.data.description),
+    docsUrl: docs.data.url,
     family: null,
     autofix: rule.meta?.fixable === undefined ? "none" : "available",
     hasSuggestions: rule.meta?.hasSuggestions === true,

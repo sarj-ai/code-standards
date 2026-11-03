@@ -1,3 +1,4 @@
+import noRuntimeTypeof from "./rules/no-runtime-typeof.js";
 import noFrontendComments from "./rules/no-frontend-comments.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import noMutatingInputWithResult from "./rules/no-mutating-input-with-result.js";
@@ -155,6 +156,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-runtime-typeof": noRuntimeTypeof,
   "no-frontend-comments": noFrontendComments,
   "no-mutating-input-with-result": noMutatingInputWithResult,
   "no-negative-only-http-status-assertion": noNegativeOnlyHttpStatusAssertion,
@@ -341,6 +343,7 @@ const RULE_POLICY = {
   "@sarj/no-broad-return-type": ["error", "both"],
   "@sarj/no-reduce-accumulator-copy": ["error", "both"],
   "@sarj/no-known-value-widening": ["error", "both"],
+  "@sarj/no-runtime-typeof": ["error", "both"],
   "@sarj/no-invalid-typed-mutation": ["error", "both"],
   "@sarj/no-contradictory-type-predicate": ["error", "both"],
   "@sarj/no-partial-type-predicate": ["error", "both"],
