@@ -1949,6 +1949,13 @@ def _missing_local_binary_issue(name: str, project: Path, root: Path) -> Executi
     return ExecutionIssue(name, "missing-dependency", message)
 
 
+def local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...] | None:
+    try:
+        return _local_node_binary_argv(name, argv, project, root)
+    except OSError:
+        return None
+
+
 def _local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
     current = project.resolve()
     repository = root.resolve()
