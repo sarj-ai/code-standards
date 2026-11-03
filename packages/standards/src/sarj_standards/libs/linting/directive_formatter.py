@@ -539,6 +539,32 @@ def _contains_key(value: JsonValue, key: str, depth: int = 0) -> bool:
             return False
 
 
+def eslint_engine(
+    root: Path,
+    project: Path,
+    tracked: Collection[str],
+    *,
+    runtimes: dict[Path, RuntimeProof] | None = None,
+    _node: Callable[[Path], Path] | None = None,
+) -> FormatterOwner:
+    inputs: dict[Path, InputProof] = {}
+    local = _local_tool(
+        root,
+        project,
+        "eslint",
+        tracked=tracked,
+        inputs=inputs,
+        runtimes={} if runtimes is None else runtimes,
+        resolve_node=_node,
+    )
+    return FormatterOwner(
+        NativeInvocation("eslint", local.node, local.entrypoint, project, ()),
+        local.version,
+        tuple(inputs.values()),
+        (local.runtime,),
+    )
+
+
 def eslint(
     root: Path,
     project: Path,

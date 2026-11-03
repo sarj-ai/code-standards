@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Literal
@@ -49,6 +51,33 @@ def _project(root: Path, tool: Literal["biome", "prettier"], *, catalog: bool = 
     (directory / "bin/entry.js").write_text("// selection fixture only; never executed\n", encoding="utf-8")
     _git(root, "add", "--all")
     return {name for name in _git(root, "ls-files", "-z").decode().split("\0") if name}
+
+
+@dataclass(frozen=True, slots=True)
+class _ESLintProject:
+    tracked: frozenset[str]
+    node: Path
+    entrypoint: Path
+
+
+def _eslint_project(root: Path) -> _ESLintProject:
+    _project(root, "prettier")
+    (root / "package.json").write_text('{"private":true,"devDependencies":{"eslint":"10.13.0"}}\n', encoding="utf-8")
+    (root / ".prettierrc.json").unlink()
+    shutil.rmtree(root / "node_modules/prettier")
+    package = root / "node_modules/eslint"
+    (package / "bin").mkdir(parents=True)
+    (package / "package.json").write_text(
+        '{"name":"eslint","version":"10.13.0","bin":{"eslint":"bin/eslint.js"}}\n', encoding="utf-8"
+    )
+    entrypoint = package / "bin/eslint.js"
+    entrypoint.write_text("// Ownership fixture only; never executed.\n", encoding="utf-8")
+    node = root / "node_modules/node"
+    node.write_bytes(b"Node ownership fixture; never executed\n")
+    node.chmod(0o700)
+    _git(root, "add", "--all")
+    tracked = {name for name in _git(root, "ls-files", "-z").decode().split("\0") if name}
+    return _ESLintProject(frozenset(tracked), node, entrypoint)
 
 
 @pytest.mark.parametrize(("tool", "catalog"), [("biome", True), ("biome", False), ("prettier", False)])
@@ -187,3 +216,60 @@ def test_new_configuration_or_ignore_input_invalidates_frozen_absence_proof(
     added.write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="changed"):
         directive_formatter.validate(owner)
+
+
+def test_eslint_engine_binds_its_exact_local_pin_without_requiring_a_formatter(tmp_path: Path) -> None:
+    project = _eslint_project(tmp_path)
+    with pytest.raises(ValueError, match="explicit project-owned native formatter"):
+        directive_formatter.select(tmp_path, "source.js", project.tracked, _node=lambda _cwd: project.node)
+
+    owner = directive_formatter.eslint_engine(tmp_path, tmp_path, project.tracked, _node=lambda _cwd: project.node)
+
+    assert owner.version == "10.13.0"
+    assert owner.invocation.tool == "eslint"
+    assert owner.invocation.node == project.node
+    assert owner.invocation.entrypoint == project.entrypoint
+    assert owner.invocation.cwd == tmp_path
+    assert not owner.invocation.args
+    assert {proof.path for proof in owner.inputs} == {
+        tmp_path / "package.json",
+        tmp_path / "package-lock.json",
+        tmp_path / "node_modules/eslint/package.json",
+        project.entrypoint,
+    }
+    assert [proof.path for proof in owner.runtimes] == [project.node]
+    directive_formatter.validate(owner)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["package.json", "package-lock.json", "node_modules/eslint/package.json", "node_modules/eslint/bin/eslint.js"],
+)
+def test_eslint_engine_rejects_changed_ownership_even_without_a_formatter(tmp_path: Path, name: str) -> None:
+    project = _eslint_project(tmp_path)
+    owner = directive_formatter.eslint_engine(tmp_path, tmp_path, project.tracked, _node=lambda _cwd: project.node)
+    path = tmp_path / name
+    path.write_bytes(path.read_bytes() + b" ")
+
+    with pytest.raises(ValueError, match="changed"):
+        directive_formatter.validate(owner)
+
+
+@pytest.mark.parametrize("change", ["bytes", "removed"])
+def test_eslint_engine_never_rebinds_a_previously_established_runtime(tmp_path: Path, change: str) -> None:
+    project = _eslint_project(tmp_path)
+    runtimes: dict[Path, directive_formatter.RuntimeProof] = {}
+    owner = directive_formatter.eslint_engine(
+        tmp_path, tmp_path, project.tracked, runtimes=runtimes, _node=lambda _cwd: project.node
+    )
+    if change == "removed":
+        project.node.unlink()
+    else:
+        project.node.write_bytes(project.node.read_bytes() + b" changed")
+
+    with pytest.raises((OSError, ValueError)):
+        directive_formatter.validate(owner)
+    with pytest.raises((OSError, ValueError)):
+        directive_formatter.eslint_engine(
+            tmp_path, tmp_path, project.tracked, runtimes=runtimes, _node=lambda _cwd: project.node
+        )
