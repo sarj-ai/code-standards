@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "11a8f8f9fe68bd6524f4e8c9c6405ff8585965b06849b56a278396d4d2d6d0ae",
-  "cliSha256": "db625d93db976837633b117d60e600ca9313e6db2a2689a154deb7a14b8d66b6",
+  "catalogSha256": "b994fbb4c42e89997cb3bff2b1b24777690efd49221e1c71e39665989647b75c",
+  "cliSha256": "471c677cfbf20e3f5bc1cd0724ffce817de2bc6578d636bb5be162d88862f6b1",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7352,6 +7352,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:expression-complexity": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  ready = var.a > 0 && var.b > 0 && var.c > 0 && var.d > 0 && var.e > 0 && var.f > 0 && var.g > 0\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "large-predicate",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A statement combines too many independent checks"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"port\" {\n  type = number\n  validation {\n    condition     = var.port > 0 && var.port < 65536\n    error_message = \"Supply a valid port.\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "small-domain-check",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A small range validation remains readable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:no-comment-cruft": {
       "examples": [
         {
@@ -8267,6 +8302,41 @@
           "outcome": "reject",
           "scenarioId": "sibling-group",
           "title": "Comment repeats one declaration label"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-terraform-comments": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "# Keep this bucket private.\nresource \"example_bucket\" \"private\" {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "commented-intent",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A Terraform comment duplicates executable intent"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_bucket\" \"private\" {\n  description = \"Private application storage\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "named-intent",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A resource name and description express intent"
         }
       ],
       "optionsSchemaSource": null

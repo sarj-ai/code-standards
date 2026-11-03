@@ -48,6 +48,8 @@ class _LexicalDocument:
     newlines: tuple[int, ...]
     complete: bool
     physical_newlines: tuple[int, ...]
+    template_comments: tuple[_Span, ...]
+    expressions: tuple[_Span, ...]
 
 
 @dataclass(slots=True)
@@ -71,6 +73,8 @@ class _HCLScanner:
     comments: list[_Span] = field(default_factory=list)
     newlines: list[int] = field(default_factory=list)
     stack: list[_TemplateFrame] = field(default_factory=list)
+    template_comments: list[_Span] = field(default_factory=list)
+    expressions: list[_Span] = field(default_factory=list)
 
     def scan(self) -> _LexicalDocument:
         while self.index < len(self.source):
@@ -87,7 +91,15 @@ class _HCLScanner:
             frame = self.stack[0]
             self.values.append(_Span(frame.kind, frame.start, len(self.source), frame.body_start, len(self.source)))
         physical = tuple(match.start() for match in re.finditer(r"\n", self.source))
-        return _LexicalDocument(tuple(self.values), tuple(self.comments), tuple(self.newlines), self.complete, physical)
+        return _LexicalDocument(
+            tuple(self.values),
+            tuple(self.comments),
+            tuple(self.newlines),
+            self.complete,
+            physical,
+            tuple(self.template_comments),
+            tuple(self.expressions),
+        )
 
     def _template(self, frame: _TemplateFrame) -> None:
         if frame.kind == "heredoc" and self._finish_heredoc(frame):
@@ -126,7 +138,9 @@ class _HCLScanner:
         if self.index != 0 and self.source[self.index - 1] != "\n":
             return False
         end = self.source.find("\n", self.index)
-        if end == -1 or self.source[self.index : end].strip() != frame.marker:
+        if end == -1:
+            end = len(self.source)
+        if self.source[self.index : end].strip() != frame.marker:
             return False
         self.stack.pop()
         if not self.stack:
@@ -167,6 +181,7 @@ class _HCLScanner:
             frame.braces -= 1
             if frame.braces == 0:
                 self.stack.pop()
+                self.expressions.append(_Span("expression", frame.start + 2, self.index))
 
     def _comment(self) -> bool:
         if self.source.startswith(("#", "//"), self.index):
@@ -185,14 +200,30 @@ class _HCLScanner:
         return True
 
     def _finish_comment(self, kind: str, end: int) -> None:
-        if not self.stack:
-            self.comments.append(_Span(kind, self.index, end))
+        comments = self.template_comments if self.stack else self.comments
+        comments.append(_Span(kind, self.index, end))
         self.index = end
 
 
 @lru_cache(maxsize=32)
 def _lexical_document(source: str) -> _LexicalDocument:
     return _HCLScanner(source).scan()
+
+
+def comment_locations(source: str) -> tuple[tuple[int, int], ...]:
+    lexical = _lexical_document(source)
+    if not lexical.complete:
+        return ()
+    locations: list[tuple[int, int]] = []
+    for span in sorted((*lexical.comments, *lexical.template_comments), key=lambda item: item.start):
+        line = bisect_left(lexical.physical_newlines, span.start)
+        start = lexical.physical_newlines[line - 1] + 1 if line else 0
+        locations.append((line + 1, span.start - start + 1))
+    return tuple(locations)
+
+
+def template_expressions(source: str) -> tuple[str, ...]:
+    return tuple(source[span.start : span.end] for span in _lexical_document(source).expressions)
 
 
 def strip_inline_comment(line: str) -> str:
@@ -311,16 +342,8 @@ def _token_spans(text: str) -> tuple[_Span, ...]:
         result.extend(
             _Span("token", match.start(), match.end()) for match in _TOKEN_RE.finditer(text, start, span.start)
         )
-        if span.kind == "string":
+        if span.kind in {"string", "heredoc"}:
             result.append(span)
-        elif span.kind == "heredoc":
-            result.append(
-                _Span(
-                    "token",
-                    span.start,
-                    span.body_start - 1 - int(text[span.body_start - 2 : span.body_start] == "\r\n"),
-                )
-            )
         start = span.end
     result.extend(_Span("token", match.start(), match.end()) for match in _TOKEN_RE.finditer(text, start))
     return tuple(result)
@@ -598,6 +621,8 @@ def _read_value(toks: list[_Tok], i: int, source: str, newlines: tuple[int, ...]
 
 
 def _rejoin(toks: list[_Tok], start: int, end: int, source: str) -> str:
+    if any(token.text.startswith("<<") for token in toks[start:end]):
+        return source[toks[start].start : toks[end - 1].end].strip()
     parts: list[str] = []
     index = start
     while index < end:

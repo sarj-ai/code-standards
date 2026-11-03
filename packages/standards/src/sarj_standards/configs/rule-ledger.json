@@ -270,6 +270,7 @@
       "require-fk-index"
     ],
     "iac": [
+      "expression-complexity",
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
@@ -281,6 +282,7 @@
       "no-project-secret-access-for-service-account",
       "no-redundant-variable-validation",
       "no-restated-comment",
+      "no-terraform-comments",
       "no-terraform-data-condition",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
@@ -711,7 +713,9 @@
       "SARJ212",
       "SARJ213",
       "SARJ214",
-      "SARJ215"
+      "SARJ215",
+      "SARJ216",
+      "SARJ217"
     ],
     "text": [
       "SARJ300",

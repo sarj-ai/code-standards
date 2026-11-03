@@ -3301,6 +3301,22 @@
       "state": "pending",
       "evidence": "Executable examples and focused comment controls cover JSX, framework imports/directives, nearest frontend package ownership, allFiles overrides, generated sources, comment-like strings and delegation to the existing test-comment owner. Shared isolated-corpus, duplicate-location and comparative performance evidence is recorded in packages/python/benchmarks/announcement-rule-gaps.json. Every introduced bundle location was inspected; source snapshots do not reconstruct a complete external consumer workspace or establish universal frontend ownership. Broader independent field calibration remains pending.",
       "outcome": "Introduce the requested blanket frontend comment policy at WARNING without autofix. Report actual comment tokens, including behavioral directives and legal notices, in supported frontend source; migrate those contracts manually or use an explicit policy exception. The existing no-test-comments owner handles frontend tests without duplicate diagnostics. Preserve non-frontend directive/legal handling, strings and generated/vendor sources. Unsupported frontend roots can opt in with allFiles on both comment owners."
+    },
+    {
+      "task": "rule-audit/iac/no-terraform-comments",
+      "family": "iac",
+      "ruleId": "no-terraform-comments",
+      "state": "pending",
+      "evidence": "Native regressions distinguish real HCL comments from strings, URLs, heredoc script text and template-expression comments. Two immutable private snapshots contain 481 files (2.67 MB) and 3,045 comment-policy hits. An unbiased deterministic sample of 64 covers both observed comment syntaxes, with no known parser false positives. Block/template comments have labeled native controls. Five alternating comparisons with both warning rules measured cold/warm medians of 0.523/0.524 versus 0.684/0.691 seconds and 59.4 MB process peak RSS. Private source, paths and identifying hashes remain local.",
+      "outcome": "SARJ216 ships at WARNING first. The explicitly requested team comment ban will be promoted separately; warning-stage precedence preserves the existing blocking controls. This is a style policy without autofix, not a correctness claim. Broader field recall and complete campaign coverage are not claimed."
+    },
+    {
+      "task": "rule-audit/iac/expression-complexity",
+      "family": "iac",
+      "ruleId": "expression-complexity",
+      "state": "pending",
+      "evidence": "Native examples and boundary tests cover the 12-point statement and 6-point variable-validation budgets, templates, nested heredocs, literal data and type constraints. All 114 initial occurrences (57 distinct expression bodies) were reviewed. Treating a map arrow as a comparison caused four incorrect budget violations; the corrected scorer retains 110 reviewed occurrences (55 distinct bodies), with no known retained parser or scoring false positives. The same immutable 481-file private corpus and shared repeated performance comparison are used. Private source, paths and identifying hashes remain local.",
+      "outcome": "SARJ217 ships at WARNING first, with a separate requested blocking promotion. The user explicitly chose validation complexity rather than a variable-count cap. Manual remediation must preserve validation, lazy evaluation and dependencies. Embedded-language complexity and broad field recall are outside the measured claim; no autofix or complete campaign coverage is claimed."
     }
   ]
 }

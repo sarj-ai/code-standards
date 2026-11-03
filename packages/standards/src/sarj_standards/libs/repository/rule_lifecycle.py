@@ -26,7 +26,9 @@ _ESLINT_MANAGED_PATHS: Final = (
     Path("packages/typescript/src/index.ts"),
     Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts"),
     Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
+    Path("packages/standards/src/sarj_standards/configs/eslint.strict.d.mts"),
     Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs"),
+    Path("packages/standards/src/sarj_standards/configs/eslint.application.d.mts"),
 )
 _ENGINE_BY_FAMILY: Final = MappingProxyType(
     {

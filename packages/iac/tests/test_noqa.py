@@ -8,6 +8,7 @@ from sarj_iac_lint.__main__ import analyze, main
 from sarj_iac_lint._hcl import suppression_comment_lines
 from sarj_iac_lint.rule_base import ExampleOutcome, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
+from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 
 
 if TYPE_CHECKING:
@@ -430,10 +431,10 @@ def test_noqa_requires_complete_directive_codes(
     assert findings == analyze(["no-managed-service-account-key"], [path])
 
 
-@pytest.mark.parametrize("rule_id", tuple(REGISTRY))
+@pytest.mark.parametrize("rule_id", tuple(rule_id for rule_id in REGISTRY if rule_id != NoTerraformComments.id))
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("crlf", [False, True])
-def test_reasoned_noqa_preserves_registered_rule_selection(
+def test_reasoned_noqa_preserves_suppressible_rule_selection(
     rule_id: RuleId, tmp_path: Path, *, selected: bool, crlf: bool
 ) -> None:
     rule = REGISTRY[rule_id]
@@ -508,8 +509,9 @@ def test_noqa_selects_codes_with_all_registered_rules(
     path = tmp_path / "main.tf"
     path.write_bytes(revised.encode())
     findings = analyze(list(REGISTRY), [path])
-    assert {item.code for item in findings} == expected_codes
-    assert len(findings) == len(expected_codes)
+    assert {item.code for item in findings} == expected_codes | {NoTerraformComments.code}
+    assert sum(item.code == NoTerraformComments.code for item in findings) == len(source.splitlines())
+    assert len(findings) == len(expected_codes) + len(source.splitlines())
     assert findings == analyze(list(REGISTRY), [path])
 
 
