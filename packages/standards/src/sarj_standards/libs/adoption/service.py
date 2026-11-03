@@ -477,7 +477,6 @@ def _apply_init_transaction(
         *(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)),
         *plan.scaffold.deletes,
     )
-    file_transaction.mark_written(*(path for path in direct_targets if path.name not in _INSTALL_MUTATED_NAMES))
     if install:
         file_transaction.explicit_only = False
         for path in direct_targets:
