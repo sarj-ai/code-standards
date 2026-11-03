@@ -20,7 +20,7 @@ interface SourceRange {
 }
 
 export const NO_FRONTEND_COMMENTS_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Express frontend behavior through code instead of prose comments.",
   rationale: "Frontend comments can drift from executable behavior and conceal names, types or structure that should communicate the same information.",
   remediation: "Use clear names, types, helpers and assertions, then remove the comment. Move tool settings into their owning configuration where supported. Whitespace-only single-line comments can be replaced with a space; review all other comments and their contracts manually.",
@@ -29,7 +29,7 @@ export const NO_FRONTEND_COMMENTS_DOCUMENTATION = {
   limitations: [
     "Reports every actual line, block, JSDoc and JSX comment in maintained frontend source, including legal notices and executable directives. The existing no-test-comments rule owns maintained test files and applies the same blanket frontend ban, avoiding duplicate diagnostics between these two rules. Strings, template data, rendered JSX text and generated/vendor sources are excluded.",
     "Frontend scope is established by JSX-capable extensions, use client/use server directives, framework imports, or the nearest package manifest declaring a frontend framework dependency. Pure helpers in those packages are included. Set allFiles: true on both this rule and no-test-comments in a frontend ESLint override for dependency-free or unsupported frameworks; file names alone do not infer application ownership.",
-    "This is a blanket policy warning, including comments preserved by narrower comment-hygiene rules. Behavioral annotations, JavaScript type comments, required legal notices and tool directives require manual migration or an explicit policy exception; the rule never automatically deletes them.",
+    "This is a blanket frontend policy, including comments preserved by narrower comment-hygiene rules. Behavioral annotations, JavaScript type comments, required legal notices and tool directives require manual migration or an explicit policy exception; the rule never automatically deletes them.",
     "Automatic fixes replace only whitespace-only line or block comment tokens containing no line terminators with one separating space. Every existing line terminator is preserved. Comments overlapping JSX regions, multiline comments, nonempty comments and comments owned by the test rule remain manual.",
   ],
   examples: [

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c2f2eae1ccdcddcfe506ea93c48c575e5d952e39b5defc843cabf6823edb7927",
-  "cliSha256": "c3814180a8c614ce5cbc470363cb68bae16c3931f6174d89fc32c09fb247cb5a",
+  "catalogSha256": "207798bed72ceb3c4b55bde9e281e873bca37f5815674221246ad06c86ecfe51",
+  "cliSha256": "ed10496c44d434b215fc87878145e17e8fc7880bff86e6daa2e143fa7113af4e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2986,6 +2986,49 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-readonly-prop-state": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/status.tsx",
+              "source": "export function Status({ status }: { status: string }) {\n  return <p>{status}</p>;\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.tsx",
+          "id": "current-prop",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Render the current prop directly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/status.tsx",
+              "source": "import { useState } from \"react\";\nexport function Status({ status }: { status: string }) {\n  const [savedStatus] = useState(status);\n  return <p>{savedStatus}</p>;\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.tsx",
+          "id": "frozen-prop",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A prop snapshot has no updater"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:no-reduce-accumulator-copy": {
       "examples": [
@@ -6216,6 +6259,49 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-server-data-preparation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/options.tsx",
+              "source": "\"use client\";\nimport { useState } from \"react\";\nexport function Options({ rows }: { rows: readonly { language: string }[] }) {\n  const [selected, setSelected] = useState(\"\");\n  const languages = rows.map((row) => row.language);\n  return (\n    <select value={selected} onChange={(event) => setSelected(event.target.value)}>\n      {languages.map((language) => (\n        <option key={language}>{language}</option>\n      ))}\n    </select>\n  );\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.tsx",
+          "id": "client-projection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Prepare data before the client view when possible"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/options.tsx",
+              "source": "\"use client\";\nimport { useState } from \"react\";\nexport function Options({ languages }: { languages: readonly string[] }) {\n  const [selected, setSelected] = useState(\"\");\n  return (\n    <select value={selected} onChange={(event) => setSelected(event.target.value)}>\n      {languages.map((language) => (\n        <option key={language}>{language}</option>\n      ))}\n    </select>\n  );\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.tsx",
+          "id": "prepared-values",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The client receives prepared language values"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:prefer-shadcn-primitives": {
       "examples": [

@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-03",
+  "scope": "React state, server data preparation and frontend comment policies",
+  "repository": "sarj-ai/code-standards",
+  "baselineRevision": "f97c624ce953804183f80cc1b9f4b746ade0a951",
+  "reviewPasses": [
+    {
+      "pass": 1,
+      "focus": "Routing",
+      "decision": "Source semantics and preset integration belong in code-standards."
+    },
+    {
+      "pass": 2,
+      "focus": "Trigger data flow",
+      "decision": "Separate saved language preparation from the reactive union with pending edits."
+    },
+    {
+      "pass": 3,
+      "focus": "Mutation state",
+      "decision": "Retain saved revisions, pending operations and conflicts when their setters are observed."
+    },
+    {
+      "pass": 4,
+      "focus": "Effect-derived state owner",
+      "decision": "Reuse react-hooks/set-state-in-effect rather than add an overlapping detector."
+    },
+    {
+      "pass": 5,
+      "focus": "Fetch owner",
+      "decision": "Reuse no-client-side-data-fetching and prefer-server-actions for existing request boundaries."
+    },
+    {
+      "pass": 6,
+      "focus": "Client-boundary owner",
+      "decision": "Reuse no-unnecessary-use-client for components without client behavior."
+    },
+    {
+      "pass": 7,
+      "focus": "Unused state owner",
+      "decision": "Leave unread values to unused-variable checks; inspect values actually consumed by a view."
+    },
+    {
+      "pass": 8,
+      "focus": "Upstream overlap",
+      "decision": "The upstream unused-state rule targets unread state, rather than read-only mirrored props."
+    },
+    {
+      "pass": 9,
+      "focus": "Snapshot failure",
+      "decision": "A prop copied into state can retain its first render value when props change."
+    },
+    {
+      "pass": 10,
+      "focus": "Intentional snapshots",
+      "decision": "Keep the new check advisory and preserve mount-time snapshots through manual review."
+    },
+    {
+      "pass": 11,
+      "focus": "Function initializers",
+      "decision": "Distinguish an executed function argument from an explicit lazy callback returning a prop as data."
+    },
+    {
+      "pass": 12,
+      "focus": "Opaque eager types",
+      "decision": "Require native non-callable type information for eager initializers; exclude callable unions, legacy function-like types and unknown types."
+    },
+    {
+      "pass": 13,
+      "focus": "Hook identity",
+      "decision": "Resolve React imports through lexical bindings, including aliases and namespaces."
+    },
+    {
+      "pass": 14,
+      "focus": "Shadowed APIs",
+      "decision": "Exclude foreign, type-only, shadowed and import-equals bindings."
+    },
+    {
+      "pass": 15,
+      "focus": "Tuple shape",
+      "decision": "Support direct value/updater tuples and omitted or hole updaters; preserve escaping tuples."
+    },
+    {
+      "pass": 16,
+      "focus": "Updater use",
+      "decision": "An updater read or escape preserves independently editable state."
+    },
+    {
+      "pass": 17,
+      "focus": "Type-only references",
+      "decision": "A type query does not constitute a runtime state update."
+    },
+    {
+      "pass": 18,
+      "focus": "Parameter provenance",
+      "decision": "Resolve direct first-parameter paths without guessing from variable names."
+    },
+    {
+      "pass": 19,
+      "focus": "Binding mutations",
+      "decision": "Abstain when parameters, state bindings or updater bindings are reassigned."
+    },
+    {
+      "pass": 20,
+      "focus": "Lazy copy boundary",
+      "decision": "Recognize synchronous zero-argument callbacks returning a direct prop path."
+    },
+    {
+      "pass": 21,
+      "focus": "Opaque lifecycle work",
+      "decision": "Preserve calls, browser snapshots, async initialization and additional statements."
+    },
+    {
+      "pass": 22,
+      "focus": "Erased wrappers",
+      "decision": "Unwrap TypeScript expression wrappers without treating an assertion as runtime proof."
+    },
+    {
+      "pass": 23,
+      "focus": "Dynamic access",
+      "decision": "Exclude optional and computed dynamic paths and unproved aliases."
+    },
+    {
+      "pass": 24,
+      "focus": "Scope boundary",
+      "decision": "Require the containing function to contain its own JSX; exclude nested handlers and effects."
+    },
+    {
+      "pass": 25,
+      "focus": "Maintained source",
+      "decision": "Exclude generated sources and tests from the state and preparation advisories."
+    },
+    {
+      "pass": 26,
+      "focus": "Server opportunity",
+      "decision": "Restrict preparation advisories to data-only inputs in independently interactive views; preserve inputs needed for editing and other domain work."
+    },
+    {
+      "pass": 27,
+      "focus": "Client directive",
+      "decision": "Require a genuine directive prologue, not a later string expression."
+    },
+    {
+      "pass": 28,
+      "focus": "Collection identity",
+      "decision": "Require native Array or ReadonlyArray method declarations; exclude custom collections and missing type services."
+    },
+    {
+      "pass": 29,
+      "focus": "Data projection",
+      "decision": "Support fixed field and data-object projections with callbacks reading their own parameter."
+    },
+    {
+      "pass": 30,
+      "focus": "Static predicates",
+      "decision": "Support simple fixed predicates, conditionals and operators without captured values."
+    },
+    {
+      "pass": 31,
+      "focus": "Reactive captures",
+      "decision": "Preserve filtering that captures search, selection, form state or another prop."
+    },
+    {
+      "pass": 32,
+      "focus": "Browser requirements",
+      "decision": "Exclude browser calls and opaque formatter/helper calls."
+    },
+    {
+      "pass": 33,
+      "focus": "JSX rendering",
+      "decision": "Keep element construction and presentation mapping in the view."
+    },
+    {
+      "pass": 34,
+      "focus": "Interaction timing",
+      "decision": "Exclude handlers, effects, memo callbacks and async or multi-statement projections."
+    },
+    {
+      "pass": 35,
+      "focus": "Unsupported receivers",
+      "decision": "Preserve aliased, dynamic, optional and mutating collection operations."
+    },
+    {
+      "pass": 36,
+      "focus": "Callback shape",
+      "decision": "Bound supported parameter shapes and reject this-arguments, index parameters and opaque callbacks."
+    },
+    {
+      "pass": 37,
+      "focus": "Partial preparation",
+      "decision": "Allow review of a saved subprojection while pending edits remain reactive."
+    },
+    {
+      "pass": 38,
+      "focus": "Diagnostic duplication",
+      "decision": "Report the direct source projection once instead of every call in a chain."
+    },
+    {
+      "pass": 39,
+      "focus": "Lifecycle fixes",
+      "decision": "Provide no automatic state or server-boundary rewrite; verify convergence and explicit suppressions."
+    },
+    {
+      "pass": 40,
+      "focus": "Resource bounds",
+      "decision": "Bound path/type inspection and cache JSX ownership for immutable AST nodes."
+    },
+    {
+      "pass": 41,
+      "focus": "Comment tokens",
+      "decision": "Retain coverage of line, block, JSDoc and JSX comments; preserve strings and rendered text."
+    },
+    {
+      "pass": 42,
+      "focus": "Frontend scope",
+      "decision": "Cover JSX sources, framework imports/directives and frontend package helpers."
+    },
+    {
+      "pass": 43,
+      "focus": "Test ownership",
+      "decision": "Keep frontend-test comment ownership in no-test-comments without duplicate findings."
+    },
+    {
+      "pass": 44,
+      "focus": "Comment contracts",
+      "decision": "Report frontend directives and legal notices while keeping substantive removal manual."
+    },
+    {
+      "pass": 45,
+      "focus": "Blocking policy",
+      "decision": "Promote the previously published frontend and test comment policies to error; exercise both presets."
+    },
+    {
+      "pass": 46,
+      "focus": "Rule authoring",
+      "decision": "Create and prepare both new rules through the native lifecycle CLI and synchronize metadata."
+    },
+    {
+      "pass": 47,
+      "focus": "Lifecycle recovery",
+      "decision": "Reuse the upstream transactional capture fix and extend native generated-declaration write and rollback coverage."
+    },
+    {
+      "pass": 48,
+      "focus": "Version reservation",
+      "decision": "Avoid an existing local candidate version and preserve immutable published versions."
+    },
+    {
+      "pass": 49,
+      "focus": "Corpus calibration",
+      "decision": "Use immutable private corpora and repeated cold/warm workers; reject parser failures instead of counting them as clean results."
+    },
+    {
+      "pass": 50,
+      "focus": "Canonical qualification",
+      "decision": "Run the complete native make verify gate with pinned tools and isolated temporary fixtures."
+    }
+  ],
+  "newWarningRules": [
+    "eslint:no-readonly-prop-state",
+    "eslint:prefer-server-data-preparation"
+  ],
+  "promotedErrorRules": [
+    "eslint:no-frontend-comments",
+    "eslint:no-test-comments"
+  ],
+  "releaseCandidates": {
+    "typescript": "18.0.0",
+    "standards": "8.184.0",
+    "status": "unpublished-at-review"
+  },
+  "verification": {
+    "status": "local-targeted-checks-complete",
+    "passed": [
+      "Full native selected-file ESLint and TypeScript typecheck for the new rules and fixtures.",
+      "All 338 focused rule, documentation, convergence and preset severity tests, including 100 labeled boundary cases.",
+      "Six immutable corpus workers completed and preserved compiler inputs.",
+      "Integrated Python Ruff, formatting and builtin source checks: zero diagnostics.",
+      "All 20 native lifecycle tests, including real generated writes and rollback.",
+      "Native rule catalog, policy artifact and documentation example synchronization.",
+      "CLI-reference-dependent formatted documentation examples regenerated and checked successfully with pinned native formatters.",
+      "After the cohesive helper refactor, all changed files passed authored and shipped rule checks, typechecking and 338 focused tests; six fresh corpus workers completed.",
+      "Current-main integration: authored/shipped rules on every changed TypeScript file, full TypeScript typecheck, 338 focused tests, 22 lifecycle tests and fresh corpus workers passed. CLI/reference/examples artifacts are synchronized and checked."
+    ],
+    "supersededAttempts": [
+      {
+        "command": "make verify",
+        "status": "cancelled-while-queued",
+        "reason": "Exclude legacy Function-like initializer types before canonical qualification. The owned supervisor and children were verified exited; no phase was treated as passed."
+      },
+      {
+        "command": "make verify",
+        "status": "failed-first-phase",
+        "reason": "The generated CLI summary/version still referenced the prior bundle. Doctor, the TypeScript build, parser checks and the rule catalogs passed.",
+        "correction": "code-standards maintain cli-reference sync updated the generated version to 8.184.0."
+      },
+      {
+        "command": "make verify",
+        "status": "failed-first-phase",
+        "reason": "Formatted documentation examples also depend on the CLI reference, so synchronizing its bundle version invalidated the examples artifact. Doctor and all source/CLI catalogs passed.",
+        "correction": "Refresh and check the formatted examples after synchronizing the CLI reference, before restarting canonical verification."
+      },
+      {
+        "command": "make verify",
+        "status": "failed-shipped-rule-phase",
+        "reason": "The two new rule functions exceeded the shipped cognitive-complexity limit. Doctor, documentation, formatting, full authored lint and Python shipped-rule checks passed.",
+        "correction": "Extract cohesive state-binding inspection and JSX display validation helpers; recheck behavior and complexity with the complete applicable rule sets."
+      }
+    ],
+    "qualificationPolicy": "Local make verify failures remain recorded. Repaired checks passed complete changed-file preflight; final repository qualification uses normal native Git hooks and canonical CI. No failed command is relabeled as passed.",
+    "postCommitQualification": "Normal native commit/push hooks and the canonical exact-head CI aggregate/artifact proof are tracked on the pull request, without rewriting this audit receipt after commit."
+  },
+  "calibration": {
+    "status": "completed",
+    "labeledFixtures": {
+      "no-readonly-prop-state": {
+        "truePositive": 14,
+        "trueNegative": 33,
+        "falsePositive": 0,
+        "falseNegative": 0
+      },
+      "prefer-server-data-preparation": {
+        "truePositive": 18,
+        "trueNegative": 35,
+        "falsePositive": 0,
+        "falseNegative": 0
+      },
+      "interpretation": "Hand-labeled unit fixtures establish supported boundaries; these counts do not estimate fleet accuracy."
+    },
+    "privateCorpus": {
+      "files": 103,
+      "rounds": 3,
+      "freshWorkers": 6,
+      "lintLoopsPerWorker": 3,
+      "typescriptRuntime": "6.0.3",
+      "compilerInputs": 4923,
+      "nativeTypeOrProfileGapFiles": 39,
+      "parseOrConfigurationFailures": 0,
+      "immutableSourceAndCompilerInputs": true,
+      "inspectedUniqueNewFindings": {
+        "no-readonly-prop-state": 0,
+        "prefer-server-data-preparation": 1,
+        "truePositive": 1,
+        "falsePositive": 0
+      },
+      "unchangedExistingOwnerFindings": 2,
+      "unlabeledZeroesAreTrueNegatives": false,
+      "automaticFixes": 0,
+      "method": "Native run_isolated_corpora API, frozen private source, alternating baseline/candidate order. Baseline enables the existing client-fetch and unnecessary-client-boundary owners; candidate additionally enables both new rules. Every new finding was inspected with its producer.",
+      "performance": {
+        "baseline": {
+          "coldMs": [
+            4137.477,
+            4733.834,
+            11459.604
+          ],
+          "warmMs": [
+            1167.179,
+            996.602,
+            1052.874,
+            1123.209,
+            2826.897,
+            2506.061
+          ],
+          "peakRssKiB": [
+            1647588,
+            1619504,
+            1544168
+          ],
+          "medianColdMs": 4733.834,
+          "medianWarmMs": 1145.194,
+          "medianPeakRssKiB": 1619504
+        },
+        "candidate": {
+          "coldMs": [
+            5358.041,
+            8322.63,
+            5427.509
+          ],
+          "warmMs": [
+            1280.735,
+            1135.197,
+            1834.401,
+            1696.545,
+            1442.943,
+            1196.42
+          ],
+          "peakRssKiB": [
+            1650952,
+            1662576,
+            1572764
+          ],
+          "medianColdMs": 5427.509,
+          "medianWarmMs": 1361.839,
+          "medianPeakRssKiB": 1650952
+        },
+        "observedDeltaPercent": {
+          "medianColdMs": 14.65,
+          "medianWarmMs": 18.92,
+          "medianPeakRssKiB": 1.94
+        }
+      },
+      "performanceLimits": "Measurements include one cold and two warm lint loops per fresh worker on a shared host, with the same compiled plugin loaded in both modes. Compiler program construction precedes lint timing; peak RSS includes it. These observations are neither a startup comparison nor a fleet cost bound, and noisy timing differences do not establish a speedup."
+    },
+    "rejectedAttempts": [
+      {
+        "reason": "Relative paths were resolved against the nested TypeScript configuration directory. Every sample failed parser binding. These workers provide no detector or performance qualification.",
+        "workers": 6
+      },
+      {
+        "reason": "A broad detector produced four false positives in an editing workflow among five inspected warnings. Narrowed eligibility to data-only inputs and independent client behavior.",
+        "files": 103,
+        "truePositives": 1,
+        "falsePositives": 4
+      }
+    ]
+  },
+  "limitations": [
+    "The state check remains advisory because initial snapshots may be intentional. Eager copies need usable native type information.",
+    "The preparation check cannot prove that a producer is a Server Component or that moving data improves end-to-end cost. Reactive inputs must remain reactive.",
+    "Corpus zeroes are unlabeled and are not counted as true negatives. Native type/profile gaps must be disclosed.",
+    "Public results contain aggregate evidence only; private source, paths and identifying hashes remain in owner-readable receipts.",
+    "Publication and consumer adoption remain separate from implementation and local qualification."
+  ],
+  "integrationBaseRevision": "0a0564fc6f3e0e4a729ff38d2565346706569682",
+  "method": "50 distinct source, ownership and semantic-boundary review passes. These are not 50 new rules or 50 identical executions. Canonical regression qualification is recorded separately."
+}

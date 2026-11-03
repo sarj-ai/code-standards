@@ -1,3 +1,5 @@
+import preferServerDataPreparation from "./rules/prefer-server-data-preparation.js";
+import noReadonlyPropState from "./rules/no-readonly-prop-state.js";
 import noRuntimeTypeof from "./rules/no-runtime-typeof.js";
 import noFrontendComments from "./rules/no-frontend-comments.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
@@ -156,6 +158,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "prefer-server-data-preparation": preferServerDataPreparation,
+  "no-readonly-prop-state": noReadonlyPropState,
   "no-runtime-typeof": noRuntimeTypeof,
   "no-frontend-comments": noFrontendComments,
   "no-mutating-input-with-result": noMutatingInputWithResult,
@@ -333,7 +337,7 @@ type PresetPolicy = {
 };
 
 const RULE_POLICY = {
-  "@sarj/no-frontend-comments": ["warn", "both"],
+  "@sarj/no-frontend-comments": ["error", "both"],
   "@sarj/no-excess-jsx-props": ["warn", "both"],
   "@sarj/no-redundant-consumer-union": ["warn", "both"],
   "@sarj/prefer-minimal-parameter-contract": ["warn", "both"],
@@ -390,7 +394,7 @@ const RULE_POLICY = {
   "@sarj/no-generic-json-parser": ["warn", "both", "strict-order", 1],
   "@sarj/require-constrained-schema-integer": ["warn", "both", "strict-order", 11],
   "@sarj/production-derived-test-cases": ["warn", "both", "strict-order", 10],
-  "@sarj/no-test-comments": ["warn", "both", "strict-order", 7],
+  "@sarj/no-test-comments": ["error", "both", "strict-order", 7],
   "@sarj/no-mutating-container-transform": ["warn", "both", "strict-order", 2],
   "@sarj/prefer-native-random-uuid": ["error", "both"],
   "@sarj/prefer-shadcn-primitives": ["error", "both"],
@@ -512,6 +516,8 @@ const RULE_POLICY = {
   "@sarj/stepdown": ["error", "both"],
   "@sarj/source-coupled-test": ["error", "both"],
   "@sarj/sole-export-matches-filename": ["error", "both"],
+  "@sarj/no-readonly-prop-state": ["warn", "both"],
+  "@sarj/prefer-server-data-preparation": ["warn", "both"],
   "@sarj/test-phase-label-comment": ["error", "both"],
   "@sarj/require-pascal-case-zod-schema-name": ["error", "both"],
 } as const satisfies PresetPolicy;

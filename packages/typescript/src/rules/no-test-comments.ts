@@ -15,10 +15,10 @@ import { isGeneratedFile, isTestFile, scopedFilename } from "./_paths.js";
 type Options = readonly [{ readonly allFiles?: boolean }];
 
 export const NO_TEST_COMMENTS_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Express test behavior through names, fixtures and assertions instead of prose comments.",
   rationale: "Test comments duplicate or obscure behavior that executable setup and assertions should communicate.",
-  remediation: "Move the explanation into a descriptive test or helper name, then remove the comment. Preserve required legal notices and executable tool directives.",
+  remediation: "Move the explanation into a descriptive test or helper name, then remove the comment. Review and migrate legal notices and tool directives before removing frontend comments; preserve those contracts in non-frontend tests.",
   category: "testing",
   autofix: "safe",
   limitations: [
