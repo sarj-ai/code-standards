@@ -468,6 +468,14 @@ def _plan_command(
         resolve_node=project_node,
         run=run,
     )
+    audit = _bun_audit_command(
+        repository,
+        audit,
+        tracked=inputs.tracked,
+        runtimes=runtimes,
+        engines=engines,
+        resolve_node=project_node,
+    )
     owners = _owners(
         repository, command, operands, tracked=inputs.tracked, runtimes=runtimes, resolve_node=project_node
     )
@@ -488,6 +496,28 @@ def _plan_command(
         diagnostics=diagnostics,
         rewrites=rewrites,
         run=run,
+    )
+
+
+def _bun_audit_command(
+    root: Path,
+    command: lifecycle.Command,
+    *,
+    tracked: Mapping[str, str],
+    runtimes: dict[Path, directive_formatter.RuntimeProof],
+    engines: list[directive_formatter.FormatterOwner],
+    resolve_node: Callable[[Path], Path],
+) -> lifecycle.Command:
+    prefix = tuple(packagemanager.exec_argv(packagemanager.PackageManager.BUN, "eslint"))
+    if tuple(command.argv[: len(prefix)]) != prefix:
+        return command
+    engine = directive_formatter.eslint_engine(root, command.cwd, tracked, runtimes=runtimes, _node=resolve_node)
+    engines.append(engine)
+    invocation = engine.invocation
+    return lifecycle.Command(
+        command.label,
+        (str(invocation.node), str(invocation.entrypoint), *command.argv[len(prefix) :]),
+        command.cwd,
     )
 
 

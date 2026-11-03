@@ -11,12 +11,12 @@ import stat
 import subprocess
 import sys
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
 from sarj_standards.libs.adoption import lifecycle, transaction
-from sarj_standards.libs.linting import directive_formatter, eslint_directives, native_byte_bridge
+from sarj_standards.libs.linting import directive_formatter, eslint_directives, native_byte_bridge, native_byte_process
 from sarj_standards.libs.staged_git import isolated_environment
 
 from .native_package_fixture import materialize_installed_packages, materialize_node_runtime
@@ -55,6 +55,36 @@ def _project(root: Path, sources: Mapping[str, bytes] | None = None) -> None:
         path.write_bytes(content)
         path.chmod(0o640)
     _git(root, "add", "--all")
+
+
+@dataclass(frozen=True, slots=True)
+class _BunProject:
+    node: Path
+    entrypoint: Path
+
+
+def _bun_project(root: Path) -> _BunProject:
+    _project(root, {"source.js": _NUL_SOURCE})
+    (root / "package.json").write_text(
+        '{"private":true,"type":"module","devDependencies":{"eslint":"10.13.0"}}\n', encoding="utf-8"
+    )
+    (root / "bun.lock").write_text('{"lockfileVersion":1}\n', encoding="utf-8")
+    package = root / "node_modules/eslint"
+    (package / "bin").mkdir(parents=True)
+    (package / "package.json").write_text(
+        '{"name":"eslint","version":"10.13.0","bin":{"eslint":"bin/eslint.js"}}\n', encoding="utf-8"
+    )
+    entrypoint = package / "bin/eslint.js"
+    entrypoint.write_text("// Ownership fixture only; never executed.\n", encoding="utf-8")
+    node = root / "node_modules/node"
+    node.write_bytes(b"Node ownership fixture; never executed\n")
+    node.chmod(0o700)
+    _git(root, "add", "--all")
+    return _BunProject(node, entrypoint)
+
+
+def _node_response(node: Path) -> str:
+    return json.dumps({"schema": 1, "path": str(node), "stat": native_byte_process.runtime_record(node)})
 
 
 def _result(path: Path, output: str | None = None, *, remaining_error: bool = False) -> dict[str, JsonValue]:
@@ -884,8 +914,12 @@ def test_private_node_fixture_refuses_an_external_modules_link(tmp_path: Path) -
     assert not tuple(external.iterdir())
 
 
-def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_path: Path) -> None:
+@pytest.mark.parametrize("manager", ["npm", "bun"])
+def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
+    tmp_path: Path, manager: Literal["npm", "bun"]
+) -> None:
     source_bytes = (
+        b"/* " + b"x" * (70 * 1024) + b" */\n"
         b"export function original() {\n  /* eslint-disable no-alert */\n  /* eslint-disable no-console */\n"
         b"  console.log('kept');\n}\n"
     )
@@ -908,7 +942,8 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
         '"devDependencies":{"eslint":"10.13.0","prettier":"3.9.10"}}\n',
         encoding="utf-8",
     )
-    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    lockfile = "bun.lock" if manager == "bun" else "package-lock.json"
+    (tmp_path / lockfile).write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / ".prettierrc.json").write_text('{"singleQuote":true}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text(
         "const problem = {meta:{type:'problem',fixable:'code',schema:[]},create(context){return {"
@@ -921,8 +956,37 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     )
     _git(tmp_path, "add", "--all")
     statuses: list[tuple[str, int]] = []
+    audits: list[subprocess.CompletedProcess[str]] = []
+    selected = lifecycle.select_eslint_commands(
+        tmp_path, ["source.js", "nul-source.js"], label="directive-only", _directive_dry_run=True
+    )
+    assert len(selected.commands) == 1
+    assert tuple(selected.commands[0].argv[:4]) == (
+        ("bunx", "--bun", "--no-install", "eslint") if manager == "bun" else ("npm", "exec", "--offline", "--")
+    )
 
     def native(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        if command.label.startswith("ESLint ("):
+            assert command.cwd == tmp_path
+            suffix = (
+                "--config",
+                "eslint.config.mjs",
+                "--fix-dry-run",
+                "--fix-type",
+                "directive",
+                "--format",
+                "json",
+                "--no-cache",
+                "--",
+            )
+            operands = tuple(command.argv[command.argv.index("--", command.argv.index("--no-cache")) + 1 :])
+            assert operands in {("nul-source.js", "source.js"), ("source.js",)}
+            prefix = (
+                (str(node), str(local.roots["eslint"].bins["eslint"]))
+                if manager == "bun"
+                else ("npm", "exec", "--offline", "--", "eslint")
+            )
+            assert tuple(command.argv) == (*prefix, *suffix, *operands)
         environment = native_byte_bridge.child_environment()
         environment["PATH"] = os.pathsep.join((str(node.parent), environment.get("PATH", os.defpath)))
         result = subprocess.run(
@@ -935,6 +999,8 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
             timeout=60,
         )
         statuses.append((command.label, result.returncode))
+        if command.label.startswith("ESLint ("):
+            audits.append(result)
         if command.label == "native Node runtime path":
             assert result.returncode == 0, result
             assert not result.stderr, result
@@ -945,6 +1011,8 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     expected = eslint_directives.plan(tmp_path, ["source.js", "nul-source.js"], run=native)
 
     assert tuple(expected) == ("source.js",)
+    assert len(audits) == 1
+    assert len(audits[0].stdout.encode("utf-8")) > 64 * 1024
     assert b"no-alert" not in expected["source.js"].after
     assert b"eslint-disable no-console" in expected["source.js"].after
     assert b"export function original() {" in expected["source.js"].after
@@ -963,6 +1031,99 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     assert all(code == 0 for label, code in statuses if not label.startswith("ESLint ("))
     assert (tmp_path / "unselected.js").read_bytes() == _BEFORE
     assert (tmp_path / "nul-source.js").read_bytes() == _NUL_SOURCE
+    assert (tmp_path / ".git/index").read_bytes() == before_index
+
+
+def test_bun_audit_without_a_formatter_uses_only_its_owned_local_engine(tmp_path: Path) -> None:
+    project = _bun_project(tmp_path)
+    before_index = (tmp_path / ".git/index").read_bytes()
+    calls: list[lifecycle.Command] = []
+
+    def audit(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command.label == "native Node runtime path":
+            return subprocess.CompletedProcess(command.argv, 0, _node_response(project.node), "")
+        assert command.cwd == tmp_path
+        assert tuple(command.argv) == (
+            str(project.node),
+            str(project.entrypoint),
+            "--config",
+            "eslint.config.mjs",
+            "--fix-dry-run",
+            "--fix-type",
+            "directive",
+            "--format",
+            "json",
+            "--no-cache",
+            "--",
+            "source.js",
+        )
+        return subprocess.CompletedProcess(command.argv, 0, json.dumps([_result(tmp_path / "source.js")]), "")
+
+    assert not eslint_directives.plan(tmp_path, ["source.js"], run=audit)
+    assert [command.label for command in calls] == ["native Node runtime path", "ESLint (directive-only: .)"]
+    assert (tmp_path / "source.js").read_bytes() == _NUL_SOURCE
+    assert (tmp_path / ".git/index").read_bytes() == before_index
+
+
+@pytest.mark.parametrize(
+    ("change", "error", "message"),
+    [
+        ("manifest", ValueError, "formatter owner, configuration or installed pin changed during native planning"),
+        ("installed-pin", ValueError, "formatter owner, configuration or installed pin changed during native planning"),
+        ("entrypoint-removed", FileNotFoundError, r"eslint[/\\]bin[/\\]eslint\.js"),
+        ("runtime", ValueError, "formatter owner, configuration or installed pin changed during native planning"),
+        ("runtime-removed", FileNotFoundError, r"node_modules[/\\]node"),
+    ],
+)
+def test_bun_no_edit_audit_rejects_established_engine_or_runtime_drift(
+    tmp_path: Path,
+    change: str,
+    error: type[ValueError | FileNotFoundError],
+    message: str,
+) -> None:
+    project = _bun_project(tmp_path)
+    before_index = (tmp_path / ".git/index").read_bytes()
+    calls: list[lifecycle.Command] = []
+
+    def audit(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command.label == "native Node runtime path":
+            return subprocess.CompletedProcess(command.argv, 0, _node_response(project.node), "")
+        assert tuple(command.argv[:2]) == (str(project.node), str(project.entrypoint))
+        match change:
+            case "entrypoint-removed":
+                project.entrypoint.unlink()
+            case "runtime-removed":
+                project.node.unlink()
+            case _:
+                target = {
+                    "manifest": tmp_path / "package.json",
+                    "installed-pin": tmp_path / "node_modules/eslint/package.json",
+                    "runtime": project.node,
+                }[change]
+                target.write_bytes(target.read_bytes() + b" ")
+        return subprocess.CompletedProcess(command.argv, 0, json.dumps([_result(tmp_path / "source.js")]), "")
+
+    with pytest.raises(error, match=message):
+        eslint_directives.plan(tmp_path, ["source.js"], run=audit)
+
+    assert len(calls) == 2
+    assert (tmp_path / "source.js").read_bytes() == _NUL_SOURCE
+    assert (tmp_path / ".git/index").read_bytes() == before_index
+
+
+def test_bun_audit_with_missing_local_eslint_never_attempts_a_fallback(tmp_path: Path) -> None:
+    _bun_project(tmp_path)
+    shutil.rmtree(tmp_path / "node_modules/eslint")
+    before_index = (tmp_path / ".git/index").read_bytes()
+    native = _Native("no global or package-manager fallback is authorized")
+
+    with pytest.raises(ValueError, match="native formatter must already be installed locally"):
+        eslint_directives.plan(tmp_path, ["source.js"], run=native)
+
+    assert not native.calls
+    assert (tmp_path / "source.js").read_bytes() == _NUL_SOURCE
     assert (tmp_path / ".git/index").read_bytes() == before_index
 
 
@@ -1052,7 +1213,7 @@ def test_pinned_eslint_at_workspace_root_audits_nested_yarn_project(tmp_path: Pa
     assert (root / ".git/index").read_bytes() == before_index
 
 
-@pytest.mark.parametrize("manager", ["npm@12.2.1", "pnpm@11.9.0", "yarn@1.22.22", "bun@1.3.2"])
+@pytest.mark.parametrize("manager", ["npm@12.2.1", "pnpm@11.9.0", "yarn@1.22.22"])
 def test_other_manager_audits_keep_their_original_runtime_route(tmp_path: Path, manager: str) -> None:
     _project(tmp_path)
     (tmp_path / "package.json").write_text(json.dumps({"private": True, "packageManager": manager}), encoding="utf-8")
