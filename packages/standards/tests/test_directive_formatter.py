@@ -76,6 +76,55 @@ def test_formatter_requires_explicit_script_config_and_matching_installed_exact_
     directive_formatter.validate(owner)
 
 
+@pytest.mark.parametrize("mutation", ["replace", "remove"])
+def test_engine_without_formatter_rejects_changed_cached_runtime(tmp_path: Path, mutation: str) -> None:
+    tracked = _project(tmp_path, "prettier")
+    (tmp_path / "package.json").write_text('{"devDependencies":{"eslint":"10.13.0"}}\n', encoding="utf-8")
+    installed = tmp_path / "node_modules/eslint"
+    (installed / "bin").mkdir(parents=True)
+    (installed / "package.json").write_text(
+        '{"name":"eslint","version":"10.13.0","bin":{"eslint":"bin/eslint.js"}}\n', encoding="utf-8"
+    )
+    (installed / "bin/eslint.js").write_text("// selection fixture; never executed\n", encoding="utf-8")
+    runtime = tmp_path / "private-node"
+    runtime.write_bytes(b"private runtime identity fixture\n")
+    runtime.chmod(0o700)
+    runtimes: dict[Path, directive_formatter.RuntimeProof] = {}
+
+    owner = directive_formatter.eslint_engine(
+        tmp_path, tmp_path, tracked, runtimes=runtimes, _node=lambda _cwd: runtime
+    )
+
+    assert owner.invocation.tool == "eslint"
+    assert owner.invocation.entrypoint == installed / "bin/eslint.js"
+    assert not owner.invocation.args
+    directive_formatter.validate(owner)
+    if mutation == "remove":
+        runtime.unlink()
+    else:
+        runtime.write_bytes(b"replaced runtime identity fixture\n")
+    with pytest.raises(directive_formatter.OwnershipChangedError, match="Node runtime changed"):
+        directive_formatter.eslint_engine(tmp_path, tmp_path, tracked, runtimes=runtimes, _node=lambda _cwd: runtime)
+
+
+def test_ownership_input_removed_after_capture_is_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tracked = _project(tmp_path, "prettier")
+    package = tmp_path / "package.json"
+    read_bytes = Path.read_bytes
+
+    def read_then_remove(path: Path) -> bytes:
+        captured = read_bytes(path)
+        if path == package:
+            path.unlink()
+        return captured
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- remove the private manifest after its real read to exercise public owner validation.
+        Path, "read_bytes", read_then_remove
+    )
+    with pytest.raises(directive_formatter.OwnershipChangedError, match="ownership input changed while reading"):
+        directive_formatter.select(tmp_path, "source.js", tracked, _node=lambda _cwd: Path(sys.executable))
+
+
 @pytest.mark.parametrize(
     "case",
     [
