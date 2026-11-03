@@ -13,8 +13,10 @@ from deptry.cli import cli as deptry_cli
 from pydantic import ValidationError
 import pytest
 
+from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption import manifest
-from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
+from sarj_standards.libs.diagnostics import Completion, Conclusion, Severity, TrustMode
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.external import (
@@ -32,7 +34,7 @@ from sarj_standards.libs.linting.external import (
     parse_swiftformat,
     parse_swiftlint,
 )
-from sarj_standards.libs.linting.process import ProcessRequest, RequestExecutor
+from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessRequest, RequestExecutor, ToolResolution
 from sarj_standards.libs.linting.runner import GroupedPaths
 from tests.process_fakes import FakeProcessExecutor
 
@@ -58,6 +60,26 @@ def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -
     assert path.parent.is_dir()
     path.write_text(payload, encoding="utf-8")
     return path
+
+
+def _write_controlled_project_analyzer(project: Path, tool: str) -> Path:
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n", encoding="utf-8")
+    (project / "app.py").write_text("value = 1\n", encoding="utf-8")
+    executable = project / ".venv" / "bin" / tool
+    executable.parent.mkdir(parents=True)
+    marker = project / "analyzer-executed.json"
+    payload = '{"generalDiagnostics":[]}' if tool == "basedpyright" else ""
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json\nfrom pathlib import Path\nimport sys\n"
+        f"Path({str(marker)!r}).write_text("
+        "json.dumps({'argv': sys.argv, 'cwd': str(Path.cwd())}), encoding='utf-8')\n"
+        f"sys.stdout.write({payload!r})\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    return marker
 
 
 def _eslint_files(argv: Sequence[str]) -> Sequence[str]:
@@ -3980,6 +4002,161 @@ def test_python_external_tools_run_once_per_nearest_project(tmp_path: Path) -> N
         "basedpyright:services/first",
         "basedpyright:services/second",
     ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="controlled fixture uses a POSIX executable entry point")
+@pytest.mark.parametrize("tool", ["basedpyright", "deptry"])
+@pytest.mark.parametrize(
+    "trust",
+    [
+        pytest.param(TrustMode.SAFE, id="safe-enum"),
+        pytest.param("safe", id="safe-string"),
+        pytest.param(TrustMode.TRUSTED, id="trusted"),
+    ],
+)
+def test_local_project_analyzer_requires_explicit_trust(tmp_path: Path, tool: str, trust: TrustMode | str) -> None:
+    project = tmp_path / "python"
+    marker = _write_controlled_project_analyzer(project, tool)
+    assert not marker.exists()
+
+    reports = analyze_external(
+        (str(project / "app.py"),),
+        root=project,
+        trust=trust,
+        runner=None,
+        capabilities=frozenset({"pyright" if tool == "basedpyright" else "deptry"}),
+        include_react_doctor=False,
+        eslint=False,
+    )
+
+    assert len(reports) == 1
+    report = reports[0]
+    assert report.name == report.analyzer_id == tool
+    assert report.invocation_id == f"{tool}:."
+    assert report.file_count == 1
+    if TrustMode(trust) is TrustMode.SAFE:
+        assert not marker.exists(), "SAFE executed the project-local analyzer"
+        assert report.completion is Completion.FAILED
+        assert not report.diagnostics
+        assert [issue.kind for issue in report.issues] == ["trust-required"]
+        assert "--trust-repository-code" in report.issues[0].message
+        aggregate = report_from_tools(project, reports)
+        assert aggregate.exit_code == 2
+        assert aggregate.conclusion is Conclusion.INCONCLUSIVE
+    else:
+        assert marker.exists()
+        observed = parse_unique_json(marker.read_text(encoding="utf-8"))
+        assert isinstance(observed, dict)
+        arguments = observed["argv"]
+        assert isinstance(arguments, list)
+        assert arguments
+        assert isinstance(arguments[0], str)
+        assert arguments[0] == str(project / ".venv" / "bin" / tool)
+        assert isinstance(observed["cwd"], str)
+        assert observed["cwd"] == str(project)
+        assert report.completion is Completion.COMPLETE
+        assert not report.diagnostics
+        assert not report.issues
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        pytest.param(("bin", "basedpyright"), id="posix-entry-point"),
+        pytest.param(("Scripts", "basedpyright.exe"), id="windows-entry-point"),
+    ],
+)
+@pytest.mark.parametrize("resolution", [ToolResolution.LOCAL, ToolResolution.PROVIDED])
+def test_parent_analyzer_preserves_resolution_and_other_tool_findings(
+    tmp_path: Path, layout: tuple[str, str], resolution: ToolResolution
+) -> None:
+    project = tmp_path / "python"
+    analyzer = project / ".venv" / layout[0] / layout[1]
+    analyzer.parent.mkdir(parents=True)
+    analyzer.write_text("controlled candidate\n", encoding="utf-8")
+    package = project / "service"
+    package.mkdir()
+    (package / "pyproject.toml").write_text("[project]\nname='service'\nversion='0'\n[tool.ruff]\n", encoding="utf-8")
+    source = package / "app.py"
+    source.write_text("import os\n", encoding="utf-8")
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if argv[0] == "ruff":
+            assert cwd == package
+            payload = [
+                {
+                    "code": "F401",
+                    "message": "unused import",
+                    "filename": str(source),
+                    "location": {"row": 1, "column": 8},
+                    "end_location": {"row": 1, "column": 10},
+                }
+            ]
+            return ProcessOutput(1, json.dumps(payload), "")
+        assert resolution is ToolResolution.PROVIDED, "blocked project analyzer was dispatched"
+        assert argv[0] == str(analyzer)
+        assert cwd == project
+        return ProcessOutput(0, '{"generalDiagnostics":[]}', "")
+
+    reports = analyze_external(
+        (str(source),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(runner, capabilities=ProcessCapabilities(resolution)),
+        capabilities=frozenset({"ruff", "pyright"}),
+        eslint=False,
+    )
+
+    assert [report.name for report in reports] == ["ruff", "basedpyright"]
+    assert [item.code for item in reports[0].diagnostics] == ["F401"]
+    assert reports[1].invocation_id == "basedpyright:python"
+    assert reports[1].file_count == 1
+    aggregate = report_from_tools(tmp_path, reports)
+    assert aggregate.conclusion is Conclusion.FINDINGS
+    if resolution is ToolResolution.LOCAL:
+        assert [issue.kind for issue in reports[1].issues] == ["trust-required"]
+        assert aggregate.completion is Completion.PARTIAL
+        assert aggregate.exit_code == 2
+    else:
+        assert reports[1].completion is Completion.COMPLETE
+        assert not reports[1].issues
+        assert aggregate.completion is Completion.COMPLETE
+        assert aggregate.exit_code == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="controlled fixture uses a POSIX executable entry point")
+@pytest.mark.parametrize("command", ["init", "update"])
+def test_baseline_refuses_untrusted_project_analyzer_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    marker = _write_controlled_project_analyzer(tmp_path, "basedpyright")
+    output = tmp_path / "diagnostic-baseline.json"
+    original = b"existing baseline must remain unchanged\n"
+    if command == "update":
+        output.write_bytes(original)
+
+    status = cli_main(["--root", str(tmp_path), "baseline", command, str(tmp_path / "app.py")])
+
+    assert status == 2
+    assert "trust-required" in capsys.readouterr().err
+    assert not marker.exists()
+    if command == "update":
+        assert output.read_bytes() == original
+    else:
+        assert not output.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="controlled fixture uses a POSIX executable entry point")
+def test_baseline_explicit_trust_runs_project_analyzer(tmp_path: Path) -> None:
+    marker = _write_controlled_project_analyzer(tmp_path, "basedpyright")
+
+    status = cli_main(
+        ["--root", str(tmp_path), "baseline", "init", "--trust-repository-code", str(tmp_path / "app.py")]
+    )
+
+    assert status == 0
+    assert marker.exists()
+    assert (tmp_path / "diagnostic-baseline.json").is_file()
 
 
 def test_basedpyright_uses_the_project_environment_for_import_resolution(tmp_path: Path) -> None:

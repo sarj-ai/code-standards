@@ -437,6 +437,7 @@ def analyze_external(
                         routed.python,
                         root=root,
                         runner=execute,
+                        trust=normalized_trust,
                     )
                 )
             if python_type_check and (capabilities is None or "pyright" in capabilities):
@@ -448,6 +449,7 @@ def analyze_external(
                         runner=execute,
                         parser=parse_basedpyright,
                         project_mode=any(Path(path).is_dir() for path in contained),
+                        trust=normalized_trust,
                     )
                 )
 
@@ -1978,6 +1980,7 @@ def _invoke_python_projects(
     runner: ProcessExecutor,
     parser: ProtocolParser,
     project_mode: bool,
+    trust: TrustMode,
 ) -> tuple[ToolReport, ...]:
     projects = _group_python_projects(files, root)
     if len(projects) > _MAX_PYTHON_PROJECTS:
@@ -1991,6 +1994,18 @@ def _invoke_python_projects(
     for project, scoped_files in projects:
         argv = _basedpyright_argv(project, scoped_files, project_mode=project_mode)
         project_id = InvocationId(project.relative_to(root).as_posix()) or None
+        if (issue := _project_executable_trust_issue(name, argv, trust=trust, runner=runner)) is not None:
+            reports.append(
+                ToolReport(
+                    name,
+                    Completion.FAILED,
+                    issues=(issue,),
+                    analyzer_id=AnalyzerId(name),
+                    invocation_id=InvocationId(name if project_id is None else f"{name}:{project_id}"),
+                    file_count=len(scoped_files),
+                )
+            )
+            continue
         report = _invoke(
             name,
             argv,
@@ -2001,32 +2016,36 @@ def _invoke_python_projects(
             invocation_id=project_id,
             file_count=len(scoped_files),
         )
-        selected = frozenset(_relative(Path(path), root) for path in scoped_files)
-        unused_helpers: dict[Path, frozenset[int] | None] = {}
-        diagnostics = tuple(
-            bounded
-            for diagnostic in report.diagnostics
-            if diagnostic.location.path in selected
-            and (bounded := _bounded_python_diagnostic(diagnostic, root=root, helpers=unused_helpers)) is not None
-        )
-        helper_issues = tuple(
-            ExecutionIssue(
-                name, "helper-source-inconclusive", f"Cannot bound unused helper evidence for {_relative(path, root)}"
-            )
-            for path, lines in unused_helpers.items()
-            if lines is None
-        )
-        reports.append(
-            replace(
-                report,
-                completion=Completion.PARTIAL
-                if helper_issues and report.completion is Completion.COMPLETE
-                else report.completion,
-                diagnostics=diagnostics,
-                issues=(*report.issues, *helper_issues),
-            )
-        )
+        reports.append(_bound_python_project_report(report, scoped_files, root=root))
     return tuple(reports)
+
+
+def _bound_python_project_report(report: ToolReport, files: Sequence[str], *, root: Path) -> ToolReport:
+    selected = frozenset(_relative(Path(path), root) for path in files)
+    unused_helpers: dict[Path, frozenset[int] | None] = {}
+    diagnostics = tuple(
+        bounded
+        for diagnostic in report.diagnostics
+        if diagnostic.location.path in selected
+        and (bounded := _bounded_python_diagnostic(diagnostic, root=root, helpers=unused_helpers)) is not None
+    )
+    helper_issues = tuple(
+        ExecutionIssue(
+            report.name,
+            "helper-source-inconclusive",
+            f"Cannot bound unused helper evidence for {_relative(path, root)}",
+        )
+        for path, lines in unused_helpers.items()
+        if lines is None
+    )
+    return replace(
+        report,
+        completion=Completion.PARTIAL
+        if helper_issues and report.completion is Completion.COMPLETE
+        else report.completion,
+        diagnostics=diagnostics,
+        issues=(*report.issues, *helper_issues),
+    )
 
 
 def _basedpyright_argv(project: Path, files: Sequence[str], *, project_mode: bool) -> tuple[str, ...]:
@@ -2197,6 +2216,7 @@ def _invoke_deptry_projects(
     *,
     root: Path,
     runner: ProcessExecutor,
+    trust: TrustMode,
 ) -> tuple[ToolReport, ...]:
     projects = _group_deptry_projects(files, root)
     if len(projects) > _MAX_PYTHON_PROJECTS:
@@ -2212,7 +2232,21 @@ def _invoke_deptry_projects(
         project_id = project.relative_to(root).as_posix() or None
         invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
         try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary preserves complete per-project telemetry.
-            output = runner.run(process_request(_deptry_argv(project, scoped_files), cwd=project))
+            argv = _deptry_argv(project, scoped_files)
+            if (issue := _project_executable_trust_issue("deptry", argv, trust=trust, runner=runner)) is not None:
+                reports.append(
+                    ToolReport(
+                        "deptry",
+                        Completion.FAILED,
+                        issues=(issue,),
+                        analyzer_id=AnalyzerId("deptry"),
+                        invocation_id=invocation_id,
+                        duration_ms=round((time.monotonic() - started) * 1_000),
+                        file_count=len(scoped_files),
+                    )
+                )
+                continue
+            output = runner.run(process_request(argv, cwd=project))
             payload = "\n".join(value for value in (output.stdout, output.stderr) if value)
             diagnostics = parse_deptry(payload, root=root, project=project)
             if output.returncode not in {0, 1} or (output.returncode == 1 and not diagnostics):
@@ -2396,6 +2430,22 @@ def _project_analyzer(project: Path, name: str) -> str:
         project / ".venv" / "Scripts" / f"{name}.exe",
     )
     return str(next((candidate for candidate in candidates if candidate.is_file()), name))
+
+
+def _project_executable_trust_issue(
+    name: str, argv: Sequence[str], *, trust: TrustMode, runner: ProcessExecutor
+) -> ExecutionIssue | None:
+    if (
+        trust is TrustMode.SAFE
+        and executor_capabilities(runner).tool_resolution is ToolResolution.LOCAL
+        and argv[0] != name
+    ):
+        return ExecutionIssue(
+            name,
+            "trust-required",
+            f"{name} project executable runs repository code; retry with --trust-repository-code",
+        )
+    return None
 
 
 def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:

@@ -689,7 +689,7 @@ def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path
         '  "run basedpyright src/ tests/ "*) label=types ;;\n'
         '  "run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shellcheck") label=shellcheck ;;\n'
         '  "run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shfmt") label=shfmt ;;\n'
-        '  "run code-standards --root ../.. check --jobs 2 .") label=dogfood ;;\n'
+        '  "run code-standards --root ../.. check --trust-repository-code --jobs 2 .") label=dogfood ;;\n'
         "  *) exit 99 ;;\n"
         "esac\n"
         'printf "%s\\n" "$label" >> "$CHECK_LOG"\n'
