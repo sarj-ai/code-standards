@@ -48,6 +48,8 @@ def _files(root: Path) -> tuple[Path, ...]:
         "packages/standards/src/sarj_standards/configs/eslint.strict.ts",
         "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
         "packages/standards/src/sarj_standards/configs/eslint.application.mjs",
+        "packages/standards/src/sarj_standards/configs/eslint.strict.d.mts",
+        "packages/standards/src/sarj_standards/configs/eslint.application.d.mts",
     )
     paths = tuple(root / item for item in relative)
     for path in paths:
@@ -93,8 +95,11 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         _root: Path,
         *,
         check: bool,  # ruff: ignore[unused-function-argument] -- Warning synchronization fixes this keyword.
-        writer: Callable[[Path, str], None] | None = None,  # ruff: ignore[unused-function-argument] -- Warning synchronization fixes this keyword.
+        writer: Callable[[Path, str], None] | None = None,
     ) -> bool:
+        if writer is not None:
+            for name in ("eslint.strict.d.mts", "eslint.application.d.mts"):
+                writer(_root / "packages/standards/src/sarj_standards/configs" / name, "export {};\n")
         return True
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.

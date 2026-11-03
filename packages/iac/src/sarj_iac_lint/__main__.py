@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
     from sarj_rule_contracts import SourceCatalog
 
+    from sarj_iac_lint.rule_base import Rule
+
 
 SKIP_DIR_NAMES = frozenset(
     {
@@ -92,14 +94,23 @@ def _check(rule_names: Sequence[str], paths: list[Path], *, sources: SourceCatal
             if sources is None
             else sources.capture(p).decode("utf-8", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
         )
-        source_lines = source.splitlines()
-        comments = _suppression_comments(p, source, source_lines)
-        for rule in rules:
-            for d in rule.check(p, source):
-                if d.suppressible and is_suppressed(source_lines, d.line, d.code, comments=comments):
-                    continue
-                diags.append(d)
+        diags.extend(_source_diagnostics(rules, p, source))
     return diags
+
+
+def _source_diagnostics(rules: Sequence[Rule], path: Path, source: str) -> list[Diagnostic]:
+    lines = source.splitlines()
+    comments = _suppression_comments(path, source, lines)
+    ban_comments = path.suffix.lower() == ".tf" and any(rule.id == "no-terraform-comments" for rule in rules)
+    diagnostics: list[Diagnostic] = []
+    for rule in rules:
+        if ban_comments and rule.id in {"no-comment-cruft", "no-restated-comment"}:
+            continue
+        for diagnostic in rule.check(path, source):
+            if diagnostic.suppressible and is_suppressed(lines, diagnostic.line, diagnostic.code, comments=comments):
+                continue
+            diagnostics.append(diagnostic)
+    return diagnostics
 
 
 def analyze(
