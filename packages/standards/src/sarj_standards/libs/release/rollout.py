@@ -38,6 +38,7 @@ from sarj_standards.libs.adoption import (
     packagemanager as adoption_packagemanager,
     repository_baseline,
     scaffold as adoption_scaffold,
+    upgrade as adoption_upgrade,
     uvtool as adoption_uvtool,
 )
 from sarj_standards.libs.json_boundary import parse_json, parse_json_documents
@@ -1399,6 +1400,10 @@ def managed_rollout_paths(repo: Path, workflow_paths: frozenset[str]) -> frozens
     roots = {repo}
     if adopted is not None:
         roots.update({repo / adopted.python_dest, repo / adopted.typescript_dest})
+        allowed.update(
+            path.relative_to(repo.resolve()).as_posix()
+            for path in adoption_upgrade.planned_eslint_declaration_paths(repo, adopted)
+        )
         if adopted.hook_manager == "lefthook" and (lefthook := adoption_hooks.lefthook_config(repo)) is not None:
             allowed.add(lefthook.relative_to(repo).as_posix())
     for root in roots:

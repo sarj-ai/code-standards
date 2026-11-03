@@ -282,6 +282,14 @@ def _javascript_install_roots(
     )
 
 
+def planned_eslint_declaration_paths(root: Path, adopted: manifest.Manifest) -> tuple[Path, ...]:
+    if "eslint" not in adopted.configs:
+        return ()
+    writes = _upgrade_config_writes(root.resolve(), replace(adopted, configs=("eslint",)), [])
+    declarations = {CONFIGS_DIR / source for source, _target in ESLINT_DECLARATION_CONFIGS.values()}
+    return tuple(target for source, target in writes if source in declarations)
+
+
 def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list[Change]) -> list[tuple[Path, Path]]:
     destinations: dict[ConfigDestination, Path] = {
         "root": root,
