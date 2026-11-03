@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError, dataclass, field
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import stat
 import subprocess
@@ -963,3 +964,144 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     assert (tmp_path / "unselected.js").read_bytes() == _BEFORE
     assert (tmp_path / "nul-source.js").read_bytes() == _NUL_SOURCE
     assert (tmp_path / ".git/index").read_bytes() == before_index
+
+
+@pytest.mark.parametrize("rewrite", [False, True])
+def test_pinned_eslint_at_workspace_root_audits_nested_yarn_project(tmp_path: Path, rewrite: bool) -> None:
+    root = tmp_path / "consumer 'with spaces"
+    root.mkdir(mode=0o700)
+    packages = {"eslint": _ROOT / "packages/typescript/node_modules/eslint"}
+    versions = {"eslint": "10.13.0"}
+    if rewrite:
+        packages["prettier"] = _ROOT / "apps/docs/node_modules/prettier"
+        versions["prettier"] = "3.9.10"
+    local = materialize_installed_packages(root, packages, expected_versions=versions)
+    installed_node = shutil.which("node")
+    assert installed_node is not None
+    node = materialize_node_runtime(root, Path(installed_node))
+    relative = "packages/client/source.js"
+    source = _BEFORE if rewrite else b"export const note = 'eslint-disable no-alert';\n"
+    _project(root, {relative: source, "unselected.js": _BEFORE})
+    (root / "package.json").write_text(
+        json.dumps(
+            {
+                "private": True,
+                "type": "module",
+                "packageManager": "yarn@4.18.1",
+                "workspaces": ["packages/*"],
+                "scripts": {"format": "prettier --write ."} if rewrite else {},
+                "devDependencies": versions,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "yarn.lock").write_text("__metadata:\n  version: 8\n", encoding="utf-8")
+    (root / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
+    if rewrite:
+        (root / ".prettierrc.json").write_text('{"singleQuote":true}\n', encoding="utf-8")
+    project = root / "packages/client"
+    (project / "package.json").write_text('{"name":"fixture-client","private":true}\n', encoding="utf-8")
+    (project / "eslint.config.mjs").write_text(
+        "export default [{linterOptions:{reportUnusedDisableDirectives:'error'},rules:{'no-alert':'error'}}];\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", "--all")
+    audits: list[lifecycle.Command] = []
+
+    def native(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        environment = native_byte_bridge.child_environment()
+        environment["PATH"] = os.pathsep.join((str(node.parent), environment.get("PATH", os.defpath)))
+        arguments = command.argv
+        if tuple(arguments[:2]) == ("yarn", "exec"):
+            executable = shlex.split(arguments[2])
+            assert len(executable) == 1
+            if executable == ["eslint"]:
+                return subprocess.CompletedProcess(arguments, 127, "", "command not found: eslint")
+            if executable == ["node"]:
+                executable = [str(node)]
+            arguments = (*executable, *arguments[3:])
+        if command.label.startswith("ESLint ("):
+            audits.append(command)
+        return subprocess.run(
+            arguments,
+            cwd=command.cwd,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    before_index = (root / ".git/index").read_bytes()
+    expected = eslint_directives.plan(root, [relative], run=native)
+
+    if rewrite:
+        assert tuple(expected) == (relative,)
+        assert b"no-alert" not in expected[relative].after
+        assert b"export const original = 1;" in expected[relative].after
+    else:
+        assert not expected
+    assert len(audits) == 1
+    assert tuple(audits[0].argv[:2]) == ("yarn", "exec")
+    assert shlex.split(audits[0].argv[2]) == [str(node)]
+    assert audits[0].argv[3] == str(local.roots["eslint"].bins["eslint"])
+    assert audits[0].cwd == project
+    assert tuple(audits[0].argv[-2:]) == ("--", "source.js")
+    assert (root / relative).read_bytes() == source
+    assert (root / "unselected.js").read_bytes() == _BEFORE
+    assert (root / ".git/index").read_bytes() == before_index
+
+
+@pytest.mark.parametrize("manager", ["npm@12.2.1", "pnpm@11.9.0", "yarn@1.22.22", "bun@1.3.2"])
+def test_other_manager_audits_keep_their_original_runtime_route(tmp_path: Path, manager: str) -> None:
+    _project(tmp_path)
+    (tmp_path / "package.json").write_text(json.dumps({"private": True, "packageManager": manager}), encoding="utf-8")
+    _git(tmp_path, "add", "--all")
+    selected = lifecycle.select_eslint_commands(
+        tmp_path, ["source.js"], label="directive-only", _directive_dry_run=True
+    )
+    native = _native(_result(tmp_path / "source.js"))
+
+    assert not eslint_directives.plan(tmp_path, ["source.js"], run=native)
+
+    assert len(native.calls) == 1
+    assert native.calls[0].argv == selected.commands[0].argv
+    assert native.calls[0].cwd == selected.commands[0].cwd
+
+
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize(("owner", "manager"), [("eslint_engine", "yarn@4.18.1"), ("select", "npm@12.2.1")])
+def test_missing_owner_can_audit_but_established_drift_cannot_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: bool, owner: str, manager: str
+) -> None:
+    _project(tmp_path)
+    (tmp_path / "package.json").write_text(json.dumps({"private": True, "packageManager": manager}), encoding="utf-8")
+    _git(tmp_path, "add", "--all")
+
+    def unavailable(
+        _root: Path,
+        _project: Path | str,
+        _tracked: Collection[str],
+        *,
+        runtimes: dict[Path, directive_formatter.RuntimeProof] | None = None,
+        _node: Callable[[Path], Path] | None = None,
+    ) -> directive_formatter.FormatterOwner:
+        assert runtimes is not None
+        assert _node is not None
+        if changed:
+            msg = "established engine changed"
+            raise directive_formatter.OwnershipChangedError(msg)
+        msg = "local engine is not installed"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- distinguish initial unsupported binding from drift through the public planner.
+        directive_formatter, owner, unavailable
+    )
+    native = _native(_result(tmp_path / "source.js"))
+    if changed:
+        with pytest.raises(directive_formatter.OwnershipChangedError, match="established engine changed"):
+            eslint_directives.plan(tmp_path, ["source.js"], run=native)
+        assert not native.calls
+    else:
+        assert not eslint_directives.plan(tmp_path, ["source.js"], run=native)
+        assert len(native.calls) == 1

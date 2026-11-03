@@ -5,13 +5,14 @@ from dataclasses import dataclass
 from datetime import timedelta
 import os
 from pathlib import Path, PurePosixPath
+import shlex
 import shutil
 import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only Git metadata queries.
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from sarj_standards.libs.adoption import lifecycle, manifest, transaction
+from sarj_standards.libs.adoption import lifecycle, manifest, packagemanager, transaction
 from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.staged_git import isolated_environment
 
@@ -379,6 +380,7 @@ def plan(
     covered: set[str] = set()
     runtimes: dict[Path, directive_formatter.RuntimeProof] = {}
     nodes: dict[Path, Path] = {}
+    engines: list[directive_formatter.FormatterOwner] = []
     try:
         for command in selection.commands:
             _plan_command(
@@ -387,6 +389,7 @@ def plan(
                 inputs,
                 runtimes=runtimes,
                 nodes=nodes,
+                engines=engines,
                 covered=covered,
                 rewrites=rewrites,
                 run=run,
@@ -394,6 +397,8 @@ def plan(
         if covered != set(inputs.selected):
             msg = "canonical ESLint selection did not cover every eligible directive input"
             raise ValueError(msg)
+        for engine in engines:
+            directive_formatter.validate(engine)
     finally:
         _unchanged(repository, inputs.index, inputs.originals)
     return MappingProxyType(rewrites)
@@ -434,6 +439,7 @@ def _plan_command(
     *,
     runtimes: dict[Path, directive_formatter.RuntimeProof],
     nodes: dict[Path, Path],
+    engines: list[directive_formatter.FormatterOwner],
     covered: set[str],
     rewrites: dict[str, SourcePostimage],
     run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
@@ -443,8 +449,33 @@ def _plan_command(
         msg = "canonical ESLint selection contains duplicate source operands"
         raise ValueError(msg)
     covered.update(operands)
-    owners = _owners(repository, command, operands, tracked=inputs.tracked, runtimes=runtimes, nodes=nodes, run=run)
-    completed = run(command)
+
+    def project_node(cwd: Path) -> Path:
+        selected = nodes.get(cwd)
+        if selected is None:
+            selected = native_byte_bridge.resolve_node(cwd, run=run)
+            nodes[cwd] = selected
+        return selected
+
+    for bound in engines:
+        directive_formatter.validate(bound)
+    audit = _local_audit_command(
+        repository,
+        command,
+        tracked=inputs.tracked,
+        runtimes=runtimes,
+        engines=engines,
+        resolve_node=project_node,
+        run=run,
+    )
+    owners = _owners(
+        repository, command, operands, tracked=inputs.tracked, runtimes=runtimes, resolve_node=project_node
+    )
+    for bound in engines:
+        directive_formatter.validate(bound)
+    completed = run(audit)
+    for bound in engines:
+        directive_formatter.validate(bound)
     _unchanged(repository, inputs.index, inputs.originals)
     diagnostics: dict[str, tuple[Diagnostic, ...]] = {}
     proposed = _postimages(repository, completed, operands, inputs.selected, diagnostics)
@@ -457,6 +488,54 @@ def _plan_command(
         diagnostics=diagnostics,
         rewrites=rewrites,
         run=run,
+    )
+
+
+def _local_audit_command(
+    root: Path,
+    command: lifecycle.Command,
+    *,
+    tracked: Mapping[str, str],
+    runtimes: dict[Path, directive_formatter.RuntimeProof],
+    engines: list[directive_formatter.FormatterOwner],
+    resolve_node: Callable[[Path], Path],
+    run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
+) -> lifecycle.Command:
+    prefix = tuple(packagemanager.exec_argv(packagemanager.PackageManager.YARN, "eslint"))
+    if tuple(command.argv[: len(prefix)]) != prefix:
+        return command
+
+    def project_node(cwd: Path) -> Path:
+        node = resolve_node(cwd)
+        probe = run(
+            lifecycle.Command(
+                "Yarn Node runtime compatibility",
+                packagemanager.exec_argv(packagemanager.PackageManager.YARN, "node", "-p", "process.execPath"),
+                cwd,
+            )
+        )
+        if probe.returncode != 0 or probe.stderr or probe.stdout != f"{node}\n":
+            msg = "Yarn selects a different or unavailable Node runtime"
+            raise ValueError(msg)
+        return node
+
+    try:
+        workspace = packagemanager.workspace_root(command.cwd, root)
+        if packagemanager.yarn_variant(workspace) is not packagemanager.YarnVariant.BERRY:
+            return command
+        engine = directive_formatter.eslint_engine(root, command.cwd, tracked, runtimes=runtimes, _node=project_node)
+    except directive_formatter.OwnershipChangedError:
+        raise
+    except OSError, TypeError, ValueError:
+        # Missing local ownership must not turn a no-edit native audit into a
+        # formatter requirement. Actual rewrites retain the full owner checks.
+        return command
+    invocation = engine.invocation
+    engines.append(engine)
+    return lifecycle.Command(
+        command.label,
+        (*prefix[:-1], shlex.quote(str(invocation.node)), str(invocation.entrypoint), *command.argv[len(prefix) :]),
+        command.cwd,
     )
 
 
@@ -488,24 +567,18 @@ def _owners(
     *,
     tracked: Mapping[str, str],
     runtimes: dict[Path, directive_formatter.RuntimeProof],
-    nodes: dict[Path, Path],
-    run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
+    resolve_node: Callable[[Path], Path],
 ) -> dict[str, tuple[directive_formatter.FormatterOwner, directive_formatter.FormatterOwner] | ValueError]:
     prepared: dict[str, tuple[directive_formatter.FormatterOwner, directive_formatter.FormatterOwner] | ValueError] = {}
-
-    def project_node(cwd: Path) -> Path:
-        selected = nodes.get(cwd)
-        if selected is None:
-            selected = native_byte_bridge.resolve_node(cwd, run=run)
-            nodes[cwd] = selected
-        return selected
 
     for relative in operands:
         try:
             prepared[relative] = (
-                directive_formatter.select(root, relative, tracked, runtimes=runtimes, _node=project_node),
-                directive_formatter.eslint(root, command.cwd, relative, tracked, runtimes=runtimes, _node=project_node),
+                directive_formatter.select(root, relative, tracked, runtimes=runtimes, _node=resolve_node),
+                directive_formatter.eslint(root, command.cwd, relative, tracked, runtimes=runtimes, _node=resolve_node),
             )
+        except directive_formatter.OwnershipChangedError:
+            raise
         except (OSError, TypeError, ValueError) as exc:
             # A matching string can be ordinary source text. Ownership is required only if native ESLint proposes an edit.
             prepared[relative] = ValueError(str(exc))
