@@ -34,7 +34,7 @@ class ExpressionComplexity(Rule):
     id = "expression-complexity"
     code = "SARJ217"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Limit Terraform statement and variable-validation expression complexity.",
         rationale="Large predicates hide independent deployment requirements and make an infrastructure change difficult to review.",
         remediation="Delete redundant checks or name independently meaningful expressions. Preserve lazy evaluation, null guards and dependencies; keep genuine domain validation.",
@@ -95,7 +95,7 @@ class ExpressionComplexity(Rule):
                         attribute.col,
                         self.code,
                         f"{context} complexity {score} exceeds {budget}; delete redundant checks or name independent expressions.",
-                        severity=DefaultLevel.WARNING,
+                        severity=DefaultLevel.ERROR,
                     )
                 )
         return findings
