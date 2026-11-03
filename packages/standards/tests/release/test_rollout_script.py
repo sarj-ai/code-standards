@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Unpack, final
 
 import pytest
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption import (
     doctor as adoption_doctor,
     launcher,
@@ -63,6 +64,78 @@ def test_unavailable_process_groups_retain_original_runner(
     )
     with rollout.consumer_verification_runner(consumer(), runner, "a" * 40) as selected:
         assert selected is runner
+
+
+def _legacy_eslint_consumer(root: Path, destination: str) -> Path:
+    primary = root / destination
+    primary.mkdir(parents=True, exist_ok=True)
+    (root / "package.json").write_text('{"name":"consumer","private":true}\n', encoding="utf-8")
+    (primary / "eslint.strict.mjs").write_bytes((CONFIGS_DIR / "eslint.strict.mjs").read_bytes())
+    (root / MANIFEST).write_text(
+        adoption_manifest.Manifest("7.1.0", ("eslint",), ".", destination, hook_manager="none").render(),
+        encoding="utf-8",
+    )
+    return primary
+
+
+@pytest.mark.parametrize("destination", [".", "typescript"])
+def test_managed_eslint_declaration_can_be_created_without_allowing_other_source(
+    tmp_path: Path, destination: str
+) -> None:
+    _legacy_eslint_consumer(tmp_path, destination)
+    for relative in ("application.d.mts", "src/eslint.strict.d.mts"):
+        authored = tmp_path / relative
+        authored.parent.mkdir(parents=True, exist_ok=True)
+        authored.write_text("export declare const authored: unique symbol;\n", encoding="utf-8")
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+    declaration = (Path(destination) / "eslint.strict.d.mts").as_posix()
+
+    rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
+
+    for protected in ("application.d.mts", "src/eslint.strict.d.mts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_only_producer_owned_legacy_mirrors_can_receive_declarations(tmp_path: Path, *, existing: bool) -> None:
+    primary = _legacy_eslint_consumer(tmp_path, "typescript")
+    for relative in ("apps/mirror", "apps/custom", "tests/fixtures/mirror"):
+        directory = tmp_path / relative
+        directory.mkdir(parents=True)
+        contents = (
+            (primary / "eslint.strict.mjs").read_bytes() if relative != "apps/custom" else b"export default [];\n"
+        )
+        (directory / "eslint.strict.mjs").write_bytes(contents)
+    (tmp_path / "apps/custom/eslint.strict.d.mts").write_text("authored declaration\n", encoding="utf-8")
+    declaration = "apps/mirror/eslint.strict.d.mts"
+    if existing:
+        (tmp_path / declaration).write_text("stale declaration\n", encoding="utf-8")
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
+
+    for protected in ("apps/custom/eslint.strict.d.mts", "tests/fixtures/mirror/eslint.strict.d.mts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("mode", ["typed", "unselected"])
+def test_declarations_are_protected_without_a_legacy_eslint_producer(tmp_path: Path, mode: str) -> None:
+    primary = _legacy_eslint_consumer(tmp_path, ".")
+    if mode == "typed":
+        (primary / "eslint.strict.mjs").unlink()
+        (primary / "eslint.strict.ts").write_bytes((CONFIGS_DIR / "eslint.strict.ts").read_bytes())
+    else:
+        (tmp_path / MANIFEST).write_text(
+            adoption_manifest.Manifest("7.1.0", ("ruff",), ".", ".", hook_manager="none").render(),
+            encoding="utf-8",
+        )
+    (primary / "eslint.strict.d.mts").write_text("authored declaration\n", encoding="utf-8")
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    with pytest.raises(rollout.RolloutError, match="protected paths"):
+        rollout.reject_unsafe_diff((MANIFEST, "eslint.strict.d.mts"), allowed_paths=allowed)
 
 
 def registry_entry(index: int) -> str:
