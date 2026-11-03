@@ -1066,13 +1066,17 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: .github/deploy/package-lock.json
+          cache-dependency-path: |
+            .github/deploy/package-lock.json
+            apps/docs/package-lock.json
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: code-standards-site
           path: apps/docs/dist
       - name: Install locked deployment toolchain
         run: npm --prefix ../../.github/deploy ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked documentation verification dependencies
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
       - name: Configure Cloudflare routes before publishing assets
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
