@@ -113,5 +113,11 @@ def test_does_not_cap_the_number_of_variables() -> None:
     assert ExpressionComplexity().check(Path("variables.tf"), source) == []
 
 
+def test_map_arrow_is_not_a_comparison_operator() -> None:
+    expression = "{for key, value in var.values : key => !(" + _conjunction(5) + ")}"
+
+    assert ExpressionComplexity().check(Path("main.tf"), f"locals {{\n  mapped = {expression}\n}}\n") == []
+
+
 def test_malformed_input_is_left_to_the_native_parser() -> None:
     assert ExpressionComplexity().check(Path("main.tf"), "locals { ready = (") == []

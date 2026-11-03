@@ -20,6 +20,7 @@ from sarj_iac_lint._hcl import (
     suppression_comment_lines,
     tokens,
 )
+from sarj_iac_lint.hcl import CommandLiteral, local_exec_commands
 from sarj_iac_lint.rules import REGISTRY
 
 
@@ -670,3 +671,19 @@ def test_comment_projection_tracks_source_changes_and_bounds_its_cache() -> None
     info = suppression_comment_lines.cache_info()
     assert info.maxsize is not None
     assert info.currsize <= info.maxsize
+
+
+def test_local_exec_heredoc_preserves_executable_text_and_physical_lines() -> None:
+    source = """resource "null_resource" "setup" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo ready
+      gcloud services enable example.googleapis.com
+    EOT
+  }
+}
+"""
+
+    assert local_exec_commands(source) == (
+        CommandLiteral("echo ready\ngcloud services enable example.googleapis.com", 4, True),
+    )

@@ -1,9 +1,11 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_iac_lint.__main__ import analyze
+from sarj_iac_lint.rule_base import DefaultLevel
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 
 
@@ -49,10 +51,21 @@ def test_comment_ban_cannot_suppress_itself(tmp_path: Path) -> None:
     assert len(analyze([NoTerraformComments.id], [path])) == 1
 
 
-def test_ban_takes_precedence_over_narrower_comment_rules(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("level", "codes"),
+    [(DefaultLevel.WARNING, ["SARJ202", "SARJ216"]), (DefaultLevel.ERROR, ["SARJ216"])],
+)
+def test_warning_preserves_existing_errors_until_ban_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, level: DefaultLevel, codes: list[str]
+) -> None:
     path = tmp_path / "main.tf"
     path.write_text("# ==== Resources ====\nlocals { value = 1 }\n")
+    authored = NoTerraformComments.documentation
+    assert authored is not None
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Authored class-level severity lookup is the precedence behavior under test.
+        NoTerraformComments, "documentation", replace(authored, default_level=level)
+    )
 
     findings = analyze(["no-comment-cruft", "no-restated-comment", NoTerraformComments.id], [path])
 
-    assert [finding.code for finding in findings] == [NoTerraformComments.code]
+    assert [finding.code for finding in findings] == codes

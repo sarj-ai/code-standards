@@ -33,7 +33,7 @@ class NoTerraformComments(Rule):
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Takes precedence over the narrower comment-cruft and restated-comment rules when selected together for .tf source.",
+            "At error level, takes precedence over the narrower comment-cruft and restated-comment rules when selected together for .tf source. Warning-stage adoption preserves existing errors.",
             "Applies to .tf source, including real comments in template interpolations; literal strings, heredoc script text and non-.tf inputs are not comments.",
             "One finding is emitted per comment token, including block comments and tool directives. This rule cannot suppress itself with another comment.",
             "This is an explicit team style policy, not a claim that explanatory comments are a correctness defect. Removal is manual because external tools may interpret directives.",

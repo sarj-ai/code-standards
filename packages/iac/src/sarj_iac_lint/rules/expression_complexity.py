@@ -116,7 +116,7 @@ def _score(expression: str) -> int:
 def _token_score(parts: tuple[str, ...]) -> int:
     score = 0
     for index, part in enumerate(parts):
-        if part in _OPERATORS:
+        if part in _OPERATORS and not (part == ">" and parts[index - 1 : index] == ("=",)):
             score += 1
         elif part == "?":
             score += 2

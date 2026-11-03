@@ -101,7 +101,7 @@ def _check(rule_names: Sequence[str], paths: list[Path], *, sources: SourceCatal
 def _source_diagnostics(rules: Sequence[Rule], path: Path, source: str) -> list[Diagnostic]:
     lines = source.splitlines()
     comments = _suppression_comments(path, source, lines)
-    ban_comments = path.suffix.lower() == ".tf" and any(rule.id == "no-terraform-comments" for rule in rules)
+    ban_comments = path.suffix.lower() == ".tf" and _blocking_comment_ban(rules)
     diagnostics: list[Diagnostic] = []
     for rule in rules:
         if ban_comments and rule.id in {"no-comment-cruft", "no-restated-comment"}:
@@ -111,6 +111,14 @@ def _source_diagnostics(rules: Sequence[Rule], path: Path, source: str) -> list[
                 continue
             diagnostics.append(diagnostic)
     return diagnostics
+
+
+def _blocking_comment_ban(rules: Sequence[Rule]) -> bool:
+    for rule in rules:
+        if rule.id == "no-terraform-comments":
+            documentation = rule.documentation
+            return documentation is not None and documentation.default_level is DefaultLevel.ERROR
+    return False
 
 
 def analyze(

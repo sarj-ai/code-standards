@@ -85,7 +85,7 @@ def _literal_arguments(value: str) -> tuple[str, ...]:
 
 def _command_literal(attribute: _hcl.Attribute, lines: list[str]) -> CommandLiteral | None:
     value_line = attribute.value_line or attribute.line
-    if marker := re.fullmatch(r"<<-?\s*([A-Za-z_]\w*)", attribute.value):
+    if marker := re.fullmatch(r"<<-?\s*([A-Za-z_]\w*)", attribute.value.split("\n", 1)[0]):
         end = next(
             (index for index in range(value_line, len(lines)) if lines[index].strip() == marker[1]),
             None,
