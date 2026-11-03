@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import codecs
 from dataclasses import replace
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -97,6 +98,67 @@ def test_source_document_cache_equality_preserves_mutable_value_api(tmp_path: Pa
     assert document.path == relocated
     assert document == SourceDocument(relocated, "A😀B\r\n")
     assert document.utf16_point(line=0, character=3) == Position(0, 3, 5)
+
+
+def test_text_reassignment_refreshes_exact_offsets_and_mutable_value_contract(tmp_path: Path) -> None:
+    path = tmp_path / "unicode.py"
+    document = SourceDocument(path, "ab\n")
+    assert document.point(line=1, column=2) == Position(0, 1, 1)
+
+    document.text = "😀b\n"
+    fresh = SourceDocument(path, "😀b\n")
+    assert document == fresh
+    assert repr(document) == repr(fresh)
+    assert document.point(line=1, column=2) == Position(0, 2, 4)
+    assert document.utf16_point(line=0, character=2) == Position(0, 2, 4)
+    assert document.byte_point(line=1, column=5) == Position(0, 2, 4)
+    region = document.region(start_byte=4, end_byte=5)
+    assert region.start == Position(0, 2, 4)
+    assert region.end == Position(0, 3, 5)
+    assert document.utf16_point(line=0, character=1) is None
+
+    copied = replace(document, path=tmp_path / "relocated.py")
+    document.path = copied.path
+    assert document == copied
+    assert copied.point(line=1, column=2) == Position(0, 2, 4)
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(document)
+
+
+@pytest.mark.parametrize(
+    ("original", "replacement"),
+    [
+        ("A😀B\r\nsecond\r\n", "é\n"),
+        ("A😀B\r\n", "AéB\nnext\rfinal\r\n"),
+        ("plain\n", "A\udcff😀B\r\n"),
+        ("A😀B\r\n", ""),
+        ("", "😀\r\nnew\rrow\n"),
+    ],
+    ids=("shrink", "newlines", "surrogateescape", "empty", "grow"),
+)
+def test_reassigned_text_matches_fresh_coordinate_views(tmp_path: Path, original: str, replacement: str) -> None:
+    path = tmp_path / "source.txt"
+    document = SourceDocument(path, original)
+    for character in range(6):
+        document.utf16_point(line=0, character=character)
+
+    document.text = replacement
+    fresh = SourceDocument(path, replacement)
+    assert document == fresh
+    for line in range(6):
+        for column in range(12):
+            assert document.point(line=line, column=column) == fresh.point(line=line, column=column)
+            assert document.byte_point(line=line, column=column) == fresh.byte_point(line=line, column=column)
+            assert document.utf16_point(line=line, character=column) == fresh.utf16_point(line=line, character=column)
+    for offset in range(-1, len(replacement.encode("utf-8", errors="surrogateescape")) + 2):
+        try:
+            expected = fresh.region(start_byte=offset, end_byte=offset)
+        except ValueError as error:
+            with pytest.raises(ValueError, match=re.escape(str(error))):
+                document.region(start_byte=offset, end_byte=offset)
+        else:
+            assert document.region(start_byte=offset, end_byte=offset) == expected
+    assert document == fresh == replace(document)
 
 
 @pytest.mark.parametrize(

@@ -65,7 +65,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.183.1"
+version = "8.183.3"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -108,7 +108,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==6.15.1" },
+    { name = "repo-standards", specifier = "==6.15.2" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -528,7 +528,7 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "6.15.1"
+version = "6.15.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
@@ -536,9 +536,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/97/8f66943e47473b94bf3b7a04d3f1b7ae1e88d9cdec5d5ceba1fd2e195ddc/repo_standards-6.15.1.tar.gz", hash = "sha256:e0892d705acea79d29bbbe95d0f0cb1fbef267744fc882a4c08cf0faf3a3e24f", size = 136745, upload-time = "2026-10-31T13:36:13.775Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/d5/760e596161bfb40c38d3ad4501434eb5339f2fea79bddc0ce4d6e19ed8e5/repo_standards-6.15.2.tar.gz", hash = "sha256:b7d5333f9cab1b138d7bd0a522513bf63c95f00f475ffd5f1ed0738b91461223", size = 136930, upload-time = "2026-11-03T15:28:34.5Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/ef/6a3ffe1c803b24173b19c2626e3d0ab46a25a945b0dac179db70568a6c0f/repo_standards-6.15.1-py3-none-any.whl", hash = "sha256:6b3c2cb4775fe4e6e8df9592ff617acdf8d9bdc9ca9168d0bd60fdcb76d653a1", size = 158765, upload-time = "2026-10-31T13:36:12.047Z" },
+    { url = "https://files.pythonhosted.org/packages/18/c8/7db9e107a2929b538d11462b3144526872a686d5da93cdd5502a738e320f/repo_standards-6.15.2-py3-none-any.whl", hash = "sha256:3424585ed3fb95015d86524bae9f705f61826d8b70c715b26431dac5885390ac", size = 158962, upload-time = "2026-11-03T15:28:32.955Z" },
 ]
 
 [[package]]

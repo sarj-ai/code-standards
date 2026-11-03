@@ -30,12 +30,18 @@ from repo_standards.repository import RepositoryAnalysisRequest, analyze_reposit
 from sarj_standards import api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import doctor, manifest as adoption_manifest, scaffold, service, upgrade
+from sarj_standards.libs.diagnostics import baseline as diagnostic_baseline
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import repo_standards
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+_MAKEFILE_GROWTH_RULE = "repository/artifacts/makefile-growth"
+_MIGRATION_CONSOLIDATION_RULE = "repository/artifacts/migration-consolidation"
+_COMPARISON_RULES = (_MAKEFILE_GROWTH_RULE, _MIGRATION_CONSOLIDATION_RULE)
 
 
 def _makefile_severity() -> str:
@@ -229,13 +235,19 @@ def test_repository_adapter_failures_become_execution_issues(
 
 
 @pytest.mark.parametrize(
-    ("rule_id", "expected_severity", "baselined_count"),
-    [("repository.test", "info", 1), ("repository/artifacts/makefile-growth", "error", 0)],
+    ("rule_id", "baselineable", "expected_severity", "baselined_count"),
+    [
+        ("repository.test", True, "info", 1),
+        (_MAKEFILE_GROWTH_RULE, True, "error", 0),
+        ("repository.test-uncappable", False, "error", 0),
+    ],
 )
 def test_repository_diagnostic_preserves_ranges_and_related_locations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     rule_id: str,
+    *,
+    baselineable: bool,
     expected_severity: str,
     baselined_count: int,
 ) -> None:
@@ -255,6 +267,7 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
         location=SourceLocation("config.toml", 2, 3, 2, 8, "/value"),
         related_locations=(RepositoryRelatedLocation(SourceLocation("other.toml", 4, 2), "declared here"),),
         fingerprint="a" * 64,
+        baselineable=baselineable,
     )
     report = FindingsReport(
         mode=Mode.RATCHET,
@@ -294,6 +307,10 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
     assert converted_report.baselined_count == baselined_count
     assert ("ratchet: known" in converted.notes) == bool(baselined_count)
     assert "manifest pointer: /value" in converted.notes
+    assert diagnostic_baseline.is_baselineable(converted) == bool(baselined_count)
+    captured = parse_json(diagnostic_baseline.render((converted,)))
+    assert isinstance(captured, dict)
+    assert bool(captured["diagnostics"]) == bool(baselined_count)
 
 
 def test_ratchet_baseline_is_selected_from_the_exact_git_tree(
@@ -359,10 +376,10 @@ def repository_requests(monkeypatch: pytest.MonkeyPatch) -> list[RepositoryAnaly
     return requests
 
 
-def _enable_makefile_policy(repository: Path) -> None:
+def _enable_comparison_policy(repository: Path, *, rule_id: str = _MAKEFILE_GROWTH_RULE) -> None:
     manifest = _adopt(repository)
     manifest.write_text(
-        'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["repository/artifacts/makefile-growth"]\n',
+        f'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["{rule_id}"]\n',
         encoding="utf-8",
     )
     subprocess.run(("git", "init", "--quiet"), cwd=repository, check=True)
@@ -370,13 +387,15 @@ def _enable_makefile_policy(repository: Path) -> None:
 
 
 @pytest.mark.parametrize("event", ["pull_request", "merge_group", "push", "new-branch-push"])
+@pytest.mark.parametrize("rule_id", _COMPARISON_RULES)
 def test_committed_repository_comparison_forwards_exact_event_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     repository_requests: list[RepositoryAnalysisRequest],
     event: str,
+    rule_id: str,
 ) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path, rule_id=rule_id)
     base = "0" * 40 if event == "new-branch-push" else "a" * 40
     payloads = {
         "pull_request": {"pull_request": {"base": {"sha": base}}},
@@ -393,6 +412,56 @@ def test_committed_repository_comparison_forwards_exact_event_base(
 
     assert repository_requests[0].base_revision == base
     assert repository_requests[0].as_of == datetime.now(UTC).date()
+
+
+@pytest.mark.parametrize("base_source", ["explicit", "event", "initial-push", "local"])
+def test_migration_only_analysis_matches_native_comparison_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, base_source: str
+) -> None:
+    _enable_comparison_policy(tmp_path, rule_id=_MIGRATION_CONSOLIDATION_RULE)
+    base = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=tmp_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    for revision in (1, 2):
+        (migrations / f"{revision:03}.sql").write_text(f"SELECT {revision};\n", encoding="utf-8")
+        _commit(tmp_path)
+    for name in ("SARJ_STANDARDS_BASE", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    comparison_base = "0" * 40 if base_source == "initial-push" else base
+    events = {
+        "event": ("pull_request", {"pull_request": {"base": {"sha": comparison_base}}}),
+        "initial-push": ("push", {"before": comparison_base}),
+    }
+    if base_source == "explicit":
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", comparison_base)
+    elif base_source in events:
+        event_path = tmp_path / "github-event.json"
+        event_name, payload = events[base_source]
+        event_path.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setenv("GITHUB_EVENT_NAME", event_name)
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    native = analyze_repository(
+        RepositoryAnalysisRequest(root=tmp_path, base_revision=None if base_source == "local" else comparison_base)
+    )
+
+    report = api.Standards(tmp_path).analyze(())
+
+    assert native.completion == "complete"
+    assert len(native.diagnostics) == int(base_source != "local")
+    assert report.completion.value == "complete"
+    assert not report.issues
+    converted = next(tool for tool in report.tools if tool.name == "repo-standards")
+    assert [item.rule_id for item in converted.diagnostics] == [str(item.rule_id) for item in native.diagnostics]
+    assert [item.fingerprint for item in converted.diagnostics] == [item.fingerprint for item in native.diagnostics]
+    if native.diagnostics:
+        assert native.diagnostics[0].observed_value == 2
+        basis = "empty" if base_source == "initial-push" else "explicit"
+        assert any(
+            note.startswith(f"Git comparison: {basis}; base {comparison_base}/")
+            for note in converted.diagnostics[0].notes
+        )
 
 
 @pytest.mark.parametrize("has_makefile", [False, True])
@@ -427,12 +496,14 @@ def test_initial_push_uses_native_empty_comparison_without_waiving_makefile_poli
         assert any(note.startswith("Git comparison: empty; base ") for note in report.diagnostics[0].notes)
 
 
+@pytest.mark.parametrize("rule_id", _COMPARISON_RULES)
 def test_committed_repository_comparison_prefers_explicit_base_and_ignores_worktree_activation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     repository_requests: list[RepositoryAnalysisRequest],
+    rule_id: str,
 ) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path, rule_id=rule_id)
     monkeypatch.setenv("SARJ_STANDARDS_BASE", "b" * 64)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))
@@ -443,12 +514,14 @@ def test_committed_repository_comparison_prefers_explicit_base_and_ignores_workt
     assert repository_requests[0].base_revision == "b" * 64
 
 
+@pytest.mark.parametrize("rule_id", _COMPARISON_RULES)
 def test_staged_repository_comparison_ignores_ci_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     repository_requests: list[RepositoryAnalysisRequest],
+    rule_id: str,
 ) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path, rule_id=rule_id)
     monkeypatch.setenv("SARJ_STANDARDS_BASE", "main")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
 
@@ -475,12 +548,14 @@ def test_disabled_repository_comparison_does_not_parse_ci_base(
 
 
 @pytest.mark.parametrize("input_kind", ["short-ref", "missing-event", "missing-base", "duplicate-key", "large-event"])
+@pytest.mark.parametrize("rule_id", _COMPARISON_RULES)
 def test_invalid_active_repository_comparison_is_an_execution_issue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     input_kind: str,
+    rule_id: str,
 ) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path, rule_id=rule_id)
     monkeypatch.delenv("SARJ_STANDARDS_BASE", raising=False)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     event_path = tmp_path / "event.json"
@@ -521,7 +596,7 @@ def test_corrupt_symbolic_head_cannot_skip_committed_repository_analysis(tmp_pat
 
 
 def test_ci_base_detects_growth_from_an_earlier_pr_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path)
     makefile = tmp_path / "Makefile"
     makefile.write_text("check:\n\tuv run pytest\n", encoding="utf-8")
     _commit(tmp_path)
@@ -556,7 +631,7 @@ def test_selected_adoption_cannot_be_hidden_by_unstaged_marker_deletions(
     monkeypatch.delenv("SARJ_STANDARDS_BASE", raising=False)
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path)
     (tmp_path / "Makefile").write_text("check:\n\tuv run pytest\n", encoding="utf-8")
     if staged:
         subprocess.run(("git", "add", "Makefile"), cwd=tmp_path, check=True)
@@ -586,7 +661,7 @@ def test_untracked_adoption_markers_do_not_enable_selected_repository_policy(tmp
 def test_selected_adoption_reports_missing_manifest_when_worktree_marker_is_deleted(
     tmp_path: Path, staged: bool
 ) -> None:
-    _enable_makefile_policy(tmp_path)
+    _enable_comparison_policy(tmp_path)
     subprocess.run(("git", "rm", ".repo-standards/repository.toml"), cwd=tmp_path, check=True, capture_output=True)
     if not staged:
         _commit(tmp_path)

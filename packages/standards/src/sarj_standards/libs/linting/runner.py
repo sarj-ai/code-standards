@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
 from importlib import import_module
 from itertools import pairwise
 import os
@@ -377,7 +378,9 @@ def _route_directory(
     validate_sources: bool = True,
     python_roots: tuple[Path, ...] | None = None,
 ) -> None:
-    for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
+    for root, dir_names, file_names in os.walk(
+        path, topdown=True, followlinks=False, onerror=partial(_discovery_error, policy=policy)
+    ):
         base = Path(root)
         dir_names[:] = sorted(
             name
@@ -397,6 +400,15 @@ def _route_directory(
             ):
                 continue
             _route_unique_path(grouped, child, str(child), seen)
+
+
+def _discovery_error(error: OSError, *, policy: Policy | None) -> None:
+    match error:
+        case OSError(filename=str(filename)) if policy is not None and policy.excludes_tree(filename):
+            return
+        case _:
+            msg = f"cannot discover source input: {error}"
+            raise ValueError(msg) from error
 
 
 def _routable_child(
@@ -431,8 +443,9 @@ def _is_routable_discovered_file(path: Path, *, validate_sources: bool = True) -
         if _has_generated_header(path):
             return False
         raise
-    except OSError:
-        return False
+    except OSError as exc:
+        msg = f"cannot inspect source input: {path}"
+        raise ValueError(msg) from exc
     return not _has_generated_header(path)
 
 

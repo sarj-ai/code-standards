@@ -293,12 +293,14 @@ def _run_native(
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
-    metadata = native_metadata(registry)
     selected_rules = sorted(registry) if rule_ids is None else sorted(rule_ids)
     unknown = sorted(set(selected_rules) - set(registry))
     if unknown:
         msg = f"unknown {package} rule(s): {', '.join(unknown)}"
         raise ValueError(msg)
+    metadata = native_metadata(
+        registry if rule_ids is None else {rule_id: registry[rule_id] for rule_id in selected_rules}
+    )
     paths = [Path(item) for item in files]
     native_result: Sequence[_NativeDiagnostic]
     if package == "sarj_python_lint":
