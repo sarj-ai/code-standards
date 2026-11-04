@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/fastapi-route-declares-security",
+      "family": "python",
+      "ruleId": "fastapi-route-declares-security",
+      "state": "pending",
+      "evidence": "All 74 focused fixtures and 374 existing FastAPI regressions pass. A labeled subset contains 16 positive and 22 negative cases with no synthetic false positives or false negatives. Three paired isolated full-project runs scan 2,439 immutable Python files. Both versions include two existing FastAPI checks; the candidate adds SARJ563 and preserves all 78 baseline findings. All 18 additional warnings were inspected: 17 concern runtime route declarations and one is an OpenAPI-only webhook example requiring a consumer exclusion. Median warm time is 34.57 versus 44.87 seconds; median peak RSS is 896,048 versus 1,116,804 KiB. Cold measurements vary with shared-VM load. Private source, paths and identifying hashes remain local.",
+      "outcome": "Introduce SARJ563 at WARNING without autofix or Platform adoption. Require visible native Security declarations directly or through proven router mounts; retain explicit public markers. Factory/schema-only provenance, middleware/IAM, dynamic mounts and arbitrary runtime mutation remain limits. Exclude the known schema-only case before consumer rollout and retain the warning level while broader field calibration and performance work remain pending."
+    },
+    {
       "task": "rule-audit/python/no-dynamic-builtins",
       "family": "python",
       "ruleId": "no-dynamic-builtins",
