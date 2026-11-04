@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from sarj_rule_contracts import RuleId, TextEdit, apply_edits
 
 from sarj_iac_lint._hcl import (
+    comment_locations,
     document,
     heredoc_body_mask,
     literal_string,
@@ -35,10 +36,12 @@ _ASSERTION_ATTRIBUTES = frozenset({"condition", "error_message"})
 _FIXABLE = frozenset(
     {
         "no-comment-cruft",
+        "no-terraform-comments",
         "no-restated-comment",
         "no-redundant-variable-validation",
         "no-terraform-data-condition",
         "no-nested-conditional",
+        "expression-complexity",
     }
 )
 _PRESERVED_COMMENT = re.compile(
@@ -66,9 +69,11 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     for rule_id in selected:
         if rule_id not in _FIXABLE:
             continue
-        diagnostics = _rule_diagnostics(path, source, comments, rule_id=RuleId(rule_id))
+        diagnostics = _rule_diagnostics(path, source, lines, comments, rule_id=RuleId(rule_id))
         match rule_id:
-            case "no-nested-conditional":
+            case "no-terraform-comments":
+                comment_edits.extend(_empty_comment_edits(source, lines, diagnostics))
+            case "no-nested-conditional" | "expression-complexity":
                 edits.extend(literal_conditional_edits(source, diagnostics))
             case "no-redundant-variable-validation":
                 edits.extend(_validation_edits(source, lines, diagnostics))
@@ -88,11 +93,47 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     return fixed if _balanced(fixed) else source
 
 
-def _rule_diagnostics(path: Path, source: str, comments: Mapping[int, str], *, rule_id: RuleId) -> list[Diagnostic]:
+def _empty_comment_edits(source: str, lines: list[str], diagnostics: Sequence[Diagnostic]) -> list[TextEdit]:
+    if not diagnostics:
+        return []
+    locations = set(comment_locations(source, include_templates=False))
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    edits: list[TextEdit] = []
+    for diagnostic in diagnostics:
+        if (diagnostic.line, diagnostic.col) not in locations:
+            continue
+        raw = lines[diagnostic.line - 1]
+        content = raw[:-2] if raw.endswith("\r\n") else raw.removesuffix("\n")
+        comment = content[diagnostic.col - 1 :]
+        start = offsets[diagnostic.line - 1] + diagnostic.col - 1
+        edit = _empty_comment_edit(comment, start)
+        if edit is not None:
+            edits.append(edit)
+    return edits
+
+
+def _empty_comment_edit(comment: str, start: int) -> TextEdit | None:
+    if comment.startswith("/*"):
+        end = comment.find("*/", 2)
+        if end < 0 or comment[2:end].strip():
+            return None
+        length = end + 2
+        return TextEdit(start, start + length, " " * length)
+    match = _COMMENT.fullmatch(comment)
+    if match is None or match.group(1).strip():
+        return None
+    return TextEdit(start, start + len(comment), " " * len(comment))
+
+
+def _rule_diagnostics(
+    path: Path, source: str, lines: Sequence[str], comments: Mapping[int, str], *, rule_id: RuleId
+) -> list[Diagnostic]:
     return [
         diagnostic
         for diagnostic in REGISTRY[rule_id]().check(path, source)
-        if not is_suppressed(physical_lines(source), diagnostic.line, diagnostic.code, comments=comments)
+        if not diagnostic.suppressible or not is_suppressed(lines, diagnostic.line, diagnostic.code, comments=comments)
     ]
 
 
