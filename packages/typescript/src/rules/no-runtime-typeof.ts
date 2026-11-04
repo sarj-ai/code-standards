@@ -4,10 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-runtime-typeof.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { hasLocalValueBinding } from "./_has-local-value-binding.js";
 
 export const NO_RUNTIME_TYPEOF_DOCUMENTATION = {
   defaultLevel: "error",
@@ -18,7 +20,7 @@ export const NO_RUNTIME_TYPEOF_DOCUMENTATION = {
   autofix: "none",
   limitations: [
     "This is an explicit design policy, not a claim that runtime typeof is invalid JavaScript. It checks runtime UnaryExpression nodes in authored JavaScript and TypeScript, including type predicates and test implementations; TypeScript type queries, strings and comments remain valid.",
-    "Equality or inequality against the literal string undefined is allowed only for an identifier without a local declaration, preserving safe probes for absent global bindings. Bound parameters, imports, local bindings, member expressions and dynamic comparisons remain checked.",
+    "Equality or inequality against the literal string undefined is allowed only for an identifier without a local value binding, preserving safe probes for absent globals. Erased aliases, interfaces, type-only namespaces, type parameters and expression wrappers do not create runtime bindings. Bound parameters, imports, local values, member expressions and dynamic comparisons remain checked.",
     "Generated and vendored sources follow shared exclusions. There is no name-based parser exemption or automatic rewrite: inserting a schema, changing a union or moving a transformation can change accepted input, errors and public contracts.",
   ],
   references: [
@@ -126,13 +128,15 @@ export default createRule<[], "runtimeTypeof">({
     return {
       UnaryExpression(node: TSESTree.UnaryExpression): void {
         if (node.operator !== "typeof") return;
-        const parent = node.parent;
-        if (node.argument.type === AST_NODE_TYPES.Identifier &&
+        const probe = outerExpression(node);
+        const parent = probe.parent;
+        const argument = unwrapExpression(node.argument);
+        if (argument.type === AST_NODE_TYPES.Identifier &&
           parent.type === AST_NODE_TYPES.BinaryExpression &&
           ["===", "!==", "==", "!="].includes(parent.operator)) {
-          const other = parent.left === node ? parent.right : parent.left;
+          const other = unwrapExpression(parent.left === probe ? parent.right : parent.left);
           if (other.type === AST_NODE_TYPES.Literal && other.value === "undefined" &&
-            !ASTUtils.findVariable(context.sourceCode.getScope(node.argument), node.argument.name)?.defs.length) return;
+            !hasLocalValueBinding(context.sourceCode, argument)) return;
         }
         context.report({ node, messageId: "runtimeTypeof" });
       },

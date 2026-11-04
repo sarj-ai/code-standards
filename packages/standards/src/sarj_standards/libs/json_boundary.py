@@ -1,6 +1,10 @@
 import json
+import re
 
 from pydantic import JsonValue, RootModel
+
+
+_JSON_WHITESPACE = re.compile(r"[ \t\r\n]+")
 
 
 class _JsonInstance(RootModel[JsonValue]):
@@ -22,7 +26,13 @@ def parse_json_documents(text: str) -> list[JsonValue]:
     while offset < len(text):
         if text[offset] in " \t\r\n":
             offset += 1
-            continue
+            if offset == len(text):
+                break
+            if text[offset] in " \t\r\n":
+                if (whitespace := _JSON_WHITESPACE.match(text, offset)) is not None:
+                    offset = whitespace.end()
+                if offset == len(text):
+                    break
         decoded: tuple[JsonValue, int] = decoder.raw_decode(text, offset)
         document, offset = decoded
         documents.append(document)
