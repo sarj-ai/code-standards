@@ -577,12 +577,12 @@ class AnalysisReport:
 
     @property
     def exit_code(self) -> int:
-        if self.issues or any(item.blocking for item in self.coverage):
+        if any(tool.issues for tool in self.tools) or any(item.blocking for item in self.coverage):
             return 2
         return (
             1
             if any(tool.policy_failed for tool in self.tools)
-            or any(item.severity is Severity.ERROR for item in self.diagnostics)
+            or any(item.severity is Severity.ERROR for tool in self.tools for item in tool.diagnostics)
             else 0
         )
 
