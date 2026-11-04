@@ -1387,6 +1387,32 @@ export function createConfig(options) {
 });
 
 
+describe("nullish fallback ownership", () => {
+  const related = new Set(["@sarj/no-logical-or-fallback", "@typescript-eslint/prefer-nullish-coalescing"]);
+  const cases = [
+    { name: "nullable string", code: 'function title(value: string | undefined) { return value || "default"; }', expected: ["@typescript-eslint/prefer-nullish-coalescing"] },
+    { name: "nullable number", code: 'function count(value: number | null) { return value || 10; }', expected: ["@typescript-eslint/prefer-nullish-coalescing"] },
+    { name: "nullable boolean", code: 'function enabled(value: boolean | undefined) { return value || true; }', expected: ["@typescript-eslint/prefer-nullish-coalescing"] },
+    { name: "nonnull string", code: 'function title(value: string) { return value.trim() || "default"; }', expected: ["@sarj/no-logical-or-fallback"] },
+    { name: "boolean OR", code: 'function allowed(admin: boolean, owner: boolean) { return admin || owner; }', expected: [] },
+    { name: "condition", code: 'function check(a: string, b: string) { if (a || b) work(); }', expected: [] },
+    { name: "Boolean coercion", code: 'function check(a: string | undefined, b: string) { return Boolean(a || b); }', expected: [] },
+    { name: "nullish default", code: 'function title(value: string | undefined) { return value ?? "default"; }', expected: [] },
+    { name: "local suppression", code: 'function title(value: string) {\n// eslint-disable-next-line @sarj/no-logical-or-fallback -- Product explicitly uses a falsy default here.\nreturn value || "default"; }', expected: [] },
+  ];
+  it.each(CONFIG_FACTORIES)("%s assigns each fallback to one diagnostic owner", async (_name, createConfig) => {
+    const config = createConfig({ tsconfigRootDir: FIXTURE_DIR, projectService: true }).map(entry => ({ ...entry, rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([id]) => related.has(id))) }));
+    const eslint = new ESLint({ cwd: FIXTURE_DIR, overrideConfigFile: true, overrideConfig: config });
+    for (const sample of cases) {
+      const results = await eslint.lintText(sample.code, { filePath: resolve(FIXTURE_DIR, "example.ts") });
+      const messages = results.flatMap(result => result.messages);
+      expect(messages.some(message => message.fatal), sample.name).toBe(false);
+      expect(messages.map(message => message.ruleId), sample.name).toEqual(sample.expected);
+      expect(results.some(result => result.output !== undefined), sample.name).toBe(false);
+    }
+  });
+});
+
 describe("await-return ownership", () => {
   it.each(CONFIG_FACTORIES)("%s preserves safe await and the typed error-handling owner", async (_name, createConfig) => {
     const related = new Set(["no-return-await", "@typescript-eslint/return-await", "@sarj/prefer-await-in-async-return"]);

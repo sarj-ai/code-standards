@@ -151,22 +151,21 @@ export function thirdPartyRulesForProvider(
 ): ThirdPartyRule[] {
   return thirdPartyCatalog.rules
     .filter((rule) => rule.provider === providerId)
-    .sort(
-      (left, right) =>
-        left.displayId.localeCompare(right.displayId, "en", {
-          sensitivity: "base",
-        }) || left.key.localeCompare(right.key, "en"),
-    );
+    .sort((left, right) => {
+      const displayIds = left.displayId.localeCompare(right.displayId, "en", {
+        sensitivity: "base",
+      });
+      return displayIds === 0 ? left.key.localeCompare(right.key, "en") : displayIds;
+    });
 }
 
 export function thirdPartyProvidersForNavigation(
   providers: readonly ThirdPartyProvider[] = thirdPartyCatalog.providers,
 ): ThirdPartyProvider[] {
-  return [...providers].sort(
-    (left, right) =>
-      left.label.localeCompare(right.label, "en", { sensitivity: "base" }) ||
-      left.id.localeCompare(right.id, "en"),
-  );
+  return [...providers].sort((left, right) => {
+    const labels = left.label.localeCompare(right.label, "en", { sensitivity: "base" });
+    return labels === 0 ? left.id.localeCompare(right.id, "en") : labels;
+  });
 }
 
 export function thirdPartyProviderNavigationLabel(

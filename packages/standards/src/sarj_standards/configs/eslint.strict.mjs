@@ -1041,11 +1041,7 @@ export function createConfig(options = {}) {
                 "@typescript-eslint/prefer-nullish-coalescing": [
                     "error",
                     {
-                        ignorePrimitives: {
-                            number: true,
-                            string: true,
-                            boolean: true
-                        }
+                        ignoreBooleanCoercion: true
                     }
                 ],
                 "@typescript-eslint/prefer-optional-chain": "error",
@@ -1861,6 +1857,8 @@ export function createConfig(options = {}) {
                 "@sarj/no-redundant-local-alias": "warn",
                 "@sarj/no-return-disposed-resource": "warn",
                 "@sarj/no-test-comments": "warn",
+                "@sarj/no-logical-or-fallback": "warn",
+                "@sarj/no-zod-parse-typed-object": "warn",
                 "@sarj/no-frontend-comments": "warn",
                 "@sarj/prefer-dependency-interface": "warn",
                 "@sarj/prefer-test-fixture-reuse": "warn",

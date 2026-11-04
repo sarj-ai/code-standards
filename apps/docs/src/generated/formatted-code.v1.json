@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fbc02eb8f909049e8f2469fa02e61ed7a1469daaac6f029791f6c3ae0087ee84",
-  "cliSha256": "f9809d293ee1e80a796c6542f93ea826f428d9589bcd839d7a63152b68502bb3",
+  "catalogSha256": "bb30d08a4401890f095aa41a09b2f47622a5952db8d89c43af57921fd652427a",
+  "cliSha256": "2f98aa2465c88e9a4533a6a75f7447a373dc35dd64be401ba91d3fd2f0129118",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2500,6 +2500,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"logFunctions\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"loggerNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:no-logical-or-fallback": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/title.ts",
+              "source": "export function title(value: string) {\n  const trimmed = value.trim();\n  return trimmed === \"\" ? \"Untitled\" : trimmed;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/title.ts",
+          "id": "explicit-empty-title",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve an intentional empty-string default"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/title.ts",
+              "source": "export function title(value: string) {\n  return value.trim() || \"Untitled\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/title.ts",
+          "id": "logical-or-title",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hide empty-string fallback behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-long-comment": {
       "examples": [
         {
@@ -4962,6 +4997,53 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Declare literal values instead of an enum-like object"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-zod-parse-typed-object": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "import { z } from \"zod\";\nconst RowSchema = z.object({ id: z.string() });\ndeclare function load(): Promise<{ id: string }>;\nexport async function read() {\n  return RowSchema.parse(await load());\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "typed-service-result",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Reuse the typed service response"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "import { z } from \"zod\";\nconst RowSchema = z.object({ id: z.string() });\nexport function read(raw: unknown) {\n  return RowSchema.parse(raw);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "unknown-boundary",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate unknown data once"
         }
       ],
       "optionsSchemaSource": null
