@@ -24,7 +24,7 @@ const VIEWS = new WeakMap<RenderFunction, boolean>();
 
 export function renderFunction(node: TSESTree.Node): RenderFunction | null {
   let parent = node.parent;
-  while (parent !== undefined) {
+  while (parent !== undefined && parent !== null) {
     if (isFunction(parent)) {
       let view = VIEWS.get(parent);
       if (view === undefined) {

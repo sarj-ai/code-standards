@@ -18,9 +18,17 @@ const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: PARSER
 const CLIENT = "'use client'; ";
 const VIEW = "export function View({ rows }: { rows: readonly { language: string; enabled: boolean }[] }) { const languages = rows.map(row => row.language); return <select onChange={event => console.log(event.currentTarget.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }";
 const CASE = CLIENT + VIEW;
+const MODULE_OPTIONS = `
+const TIME_RANGES = { all: { label: "All" }, day: { label: "Day" } } as const;
+type TimeRange = keyof typeof TIME_RANGES;
+const RANGE_OPTIONS = Object.entries(TIME_RANGES)
+  .filter((entry): entry is [Exclude<TimeRange, "all">, (typeof entry)[1]] => entry[0] !== "all")
+  .map(([value, { label }]) => ({ label, value }));
+`;
 
 TESTER.run("prefer-server-data-preparation", rule, {
   valid: [
+    { name: "module-level filter and map have no containing render function", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS },
     { name: "raw records are needed by editing logic", filename: "probe.tsx", code: CASE.replace("return <select", "const edit = () => updateRows(rows); return <select") },
     { name: "a lookup still needs the raw records", filename: "probe.tsx", code: CASE.replace("return <select", "const active = rows.find(row => row.enabled); return <select") },
     { name: "raw collection forwarding", filename: "probe.tsx", code: CASE.replace("return <select", "sendRows(rows); return <select") },
@@ -58,6 +66,7 @@ TESTER.run("prefer-server-data-preparation", rule, {
     { name: "callback this argument", filename: "probe.tsx", code: CASE.replace("row => row.language)", "row => row.language, context)") },
   ],
   invalid: [
+    { name: "module-level options do not hide a component projection", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS + VIEW, errors: [{ messageId: "prepareData" }] },
     { name: "a second field-only display loop preserves preparation", filename: "probe.tsx", code: CASE.replace("return <select", "const views = rows.map(row => <option key={row.language}>{row.language}</option>); return <select"), errors: [{ messageId: "prepareData" }] },
     { name: "state makes an otherwise custom view interactive", filename: "probe.tsx", code: CASE.replace(CLIENT, CLIENT + "import { useState } from 'react'; ").replace("const languages", "const [open, setOpen] = useState(false); const languages").replace("<select onChange={event => console.log(event.currentTarget.value)}>", "<CustomSelect open={open} onOpenChange={setOpen}>").replace("</select>", "</CustomSelect>"), errors: [{ messageId: "prepareData" }] },
     { name: "saved language projection", filename: "probe.tsx", code: CASE, errors: [{ messageId: "prepareData" }] },
