@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("fastapi-route-declares-security"),
+        module="sarj_python_lint.rules.fastapi_route_declares_security",
+        class_name="FastapiRouteDeclaresSecurity",
+        code="SARJ563",
+        description="Declare each FastAPI route access decision, including inherited router dependencies.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-validated-uuid-comparison"),
         module="sarj_python_lint.rules.prefer_validated_uuid_comparison",
         class_name="PreferValidatedUuidComparison",

@@ -231,6 +231,7 @@ from sarj_python_lint.rules.duplicate_adjacent_exception_handler import Duplicat
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
 from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
 from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
+from sarj_python_lint.rules.fastapi_route_declares_security import FastapiRouteDeclaresSecurity
 from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
 from sarj_python_lint.rules.no_async_client_in_constructor import NoAsyncClientInConstructor
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
@@ -289,6 +290,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        FastapiRouteDeclaresSecurity.id: FastapiRouteDeclaresSecurity,
         PreferValidatedUuidComparison.id: PreferValidatedUuidComparison,
         PreferSinglePsycopgCursor.id: PreferSinglePsycopgCursor,
         NoPsycopgExecutionInLoop.id: NoPsycopgExecutionInLoop,
