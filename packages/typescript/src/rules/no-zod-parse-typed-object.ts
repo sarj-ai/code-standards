@@ -5,6 +5,7 @@
  */
 
 import { ASTUtils, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { isTupleTypeReference } from "ts-api-utils";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -13,7 +14,6 @@ import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 const PARSE_METHODS: ReadonlySet<string> = new Set(["parse", "parseAsync", "safeParse", "safeParseAsync"]);
-const TUPLE_INDEX_RE = /^(?:0|[1-9]\d*)$/u;
 const OPAQUE_FLAGS = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never |
   ts.TypeFlags.TypeParameter | ts.TypeFlags.Conditional | ts.TypeFlags.IndexedAccess |
   ts.TypeFlags.Intersection | ts.TypeFlags.NonPrimitive;
@@ -29,7 +29,7 @@ export const NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION = {
     "Requires type information, strict null checks, and a native installed Zod parse, parseAsync, safeParse or safeParseAsync signature. Recognizes imported schemas, aliases, member access and awaited service results without guessing from names.",
     "Reports fully known object or array inputs assignable to the schema input, when schema input and output have the same value shape. Optional-to-required defaults are included; type-changing transforms, coercions, brands, incompatible contracts, primitive roots and nested any/unknown/generic contracts are excluded.",
     "Static types do not establish runtime trust or prove refinements and normalization redundant. This is an architectural warning with no automatic removal. Keep intentional validation at an unknown-data boundary or document an exact local suppression. Tests, stories and generated code are excluded.",
-    "Shape comparison ignores undefined introduced by optional properties and is bounded to 128 object pairs or visited input objects. Opaque or larger graphs are conservatively excluded.",
+    "Shape comparison ignores undefined introduced by optional properties and checks tuple element types and rest positions. It is bounded to 128 object pairs, visited input objects, properties, tuple elements or primitive union alternatives; object unions have at most 16 alternatives. Opaque or larger graphs are conservatively excluded.",
   ],
   references: ["https://zod.dev/basics"],
   examples: [
@@ -92,7 +92,11 @@ function knownValue(checker: ts.TypeChecker, type: ts.Type, location: ts.Node, s
   if (seen.has(type)) return true;
   if (seen.size >= 128 || type.getCallSignatures().length > 0 || type.getConstructSignatures().length > 0) return false;
   seen.add(type);
-  if (checker.isArrayType(type) || checker.isTupleType(type)) {
+  if (isTupleTypeReference(type)) {
+    const elements = checker.getTypeArguments(type);
+    return elements.length <= 128 && elements.every(element => knownValue(checker, element, location, seen));
+  }
+  if (checker.isArrayType(type)) {
     const element = type.getNumberIndexType();
     return element !== undefined && knownValue(checker, element, location, seen);
   }
@@ -111,7 +115,8 @@ function sameShape(checker: ts.TypeChecker, input: ts.Type, output: ts.Type, loc
     if (left.isUnion() || right.isUnion()) {
       const a = (left.isUnion() ? left.types : [left]).filter(member => (member.flags & ts.TypeFlags.Undefined) === 0);
       const b = (right.isUnion() ? right.types : [right]).filter(member => (member.flags & ts.TypeFlags.Undefined) === 0);
-      return a.length > 0 && a.length === b.length && a.length <= 16 &&
+      const limit = [...a, ...b].every(member => (member.flags & (ts.TypeFlags.Object | OPAQUE_FLAGS)) === 0) ? 128 : 16;
+      return a.length > 0 && a.length === b.length && a.length <= limit &&
         a.every(member => b.some(other => compare(member, other))) &&
         b.every(member => a.some(other => compare(other, member)));
     }
@@ -132,9 +137,9 @@ function sameShape(checker: ts.TypeChecker, input: ts.Type, output: ts.Type, loc
   function sameObjectShape(left: ts.Type, right: ts.Type): boolean {
     const leftTuple = checker.isTupleType(left);
     const rightTuple = checker.isTupleType(right);
-    if (leftTuple !== rightTuple || (leftTuple && !sameTuplePositions(left, right))) return false;
-    if (checker.isArrayType(left) || leftTuple) {
-      if (!checker.isArrayType(right) && !rightTuple) return false;
+    if (leftTuple || rightTuple) return leftTuple && rightTuple && sameTuplePositions(left, right);
+    if (checker.isArrayType(left)) {
+      if (!checker.isArrayType(right)) return false;
       const a = left.getNumberIndexType();
       const b = right.getNumberIndexType();
       return a !== undefined && b !== undefined && compare(a, b);
@@ -153,17 +158,13 @@ function sameShape(checker: ts.TypeChecker, input: ts.Type, output: ts.Type, loc
   }
 
   function sameTuplePositions(left: ts.Type, right: ts.Type): boolean {
-    const leftLength = left.getProperty("length");
-    const rightLength = right.getProperty("length");
-    if (leftLength === undefined || rightLength === undefined) return false;
-    const a = checker.getTypeOfSymbolAtLocation(leftLength, location);
-    const b = checker.getTypeOfSymbolAtLocation(rightLength, location);
-    if (!checker.isTypeAssignableTo(a, b) || !checker.isTypeAssignableTo(b, a)) return false;
-    const properties = left.getProperties().filter(property => TUPLE_INDEX_RE.test(property.name));
-    const otherProperties = right.getProperties().filter(property => TUPLE_INDEX_RE.test(property.name));
-    return properties.length <= 128 && properties.length === otherProperties.length && properties.every(property => {
-      const other = right.getProperty(property.name);
-      return other !== undefined && compare(checker.getTypeOfSymbolAtLocation(property, location), checker.getTypeOfSymbolAtLocation(other, location));
+    if (!isTupleTypeReference(left) || !isTupleTypeReference(right)) return false;
+    const a = checker.getTypeArguments(left);
+    const b = checker.getTypeArguments(right);
+    const flags = right.target.elementFlags;
+    return a.length <= 128 && a.length === b.length && left.target.elementFlags.every((flag, index) => flag === flags[index]) && a.every((element, index) => {
+      const other = b[index];
+      return other !== undefined && compare(element, other);
     });
   }
 
