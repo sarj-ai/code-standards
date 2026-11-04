@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 _MAX_CONFIGURATION_DEPTH: Final = 64
 _EXACT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?")
 _FORMAT_SCRIPTS: Final[dict[str, Literal["biome", "prettier"]]] = {
+    "biome check --write .": "biome",
     "biome format --write .": "biome",
     "prettier --write .": "prettier",
 }

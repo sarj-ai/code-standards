@@ -606,6 +606,38 @@ class TestNativePinPermissions:
             )
 
 
+@pytest.mark.parametrize(
+    "original",
+    [
+        pytest.param(None, id="new-root-attributes"),
+        pytest.param(b"* text=auto\nspecial.test.ts -linguist-generated\n", id="authored-overrides"),
+        pytest.param(b"\xef\xbb\xbf* text=auto\r\nspecial.test.ts -linguist-generated\r\n", id="bom-crlf-overrides"),
+    ],
+)
+def test_canonical_review_defaults_can_roll_out_without_allowing_nested_attributes(
+    tmp_path: Path, original: bytes | None
+) -> None:
+    path = tmp_path / ".gitattributes"
+    if original is not None:
+        path.write_bytes(original)
+
+    plan = adoption_scaffold.build_plan(tmp_path, force=False)
+    updated = next(contents for target, contents in plan.writes if target == path)
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff((MANIFEST, ".gitattributes"), allowed_paths=allowed)
+    suffix = (original or b"").removeprefix(b"\xef\xbb\xbf")
+    assert updated.encode().endswith(suffix)
+    assert updated.startswith("\ufeff") == bool(original and original.startswith(b"\xef\xbb\xbf"))
+    if original is None:
+        assert not path.exists()
+    else:
+        assert path.read_bytes() == original
+    for protected in ("nested/.gitattributes", "apps/web/.gitattributes", "apps/web/src/index.ts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
 class TestSafety:
     def test_version_rejects_shell_metacharacters(self) -> None:
         with pytest.raises(rollout.RolloutError):
@@ -627,6 +659,7 @@ class TestSafety:
         rollout.reject_unsafe_diff(
             (
                 MANIFEST,
+                ".gitattributes",
                 ".repo-standards/repository.toml",
                 ".shellcheckrc",
                 "uv.lock",
