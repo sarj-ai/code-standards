@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 import errno
 import os
@@ -25,7 +26,7 @@ from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
 
 
 _ENGINES = (
@@ -48,6 +49,89 @@ def _deny_directory(monkeypatch: pytest.MonkeyPatch, directory: Path) -> list[Pa
         os, "scandir", inaccessible
     )
     return failures
+
+
+class _UnclassifiableEntry:
+    def __init__(self, path: Path, failures: list[Path]) -> None:
+        self.path = str(path)
+        self.name = path.name
+        self.failures = failures
+
+    @staticmethod
+    def is_symlink() -> bool:
+        return False
+
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        self.failures.append(Path(self.path))
+        message = f"Cannot classify directory entry (follow_symlinks={follow_symlinks})"
+        raise PermissionError(errno.EACCES, message)
+
+
+def _deny_classification(monkeypatch: pytest.MonkeyPatch, target: Path) -> list[Path]:
+    real_scandir = os.scandir
+    failures: list[Path] = []
+
+    @contextmanager
+    def inaccessible(path: str | Path) -> Generator[Iterator[os.DirEntry[str] | _UnclassifiableEntry]]:
+        with real_scandir(path) as entries:
+            yield iter(
+                _UnclassifiableEntry(target, failures) if Path(entry.path) == target else entry for entry in entries
+            )
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail directory-entry classification while preserving real enumeration and all other entries.
+        os, "scandir", inaccessible
+    )
+    return failures
+
+
+@pytest.mark.parametrize("directory", ["unknown", "ordinary.py", "node_modules"])
+def test_entry_classification_failure_cannot_hide_a_source_subtree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    nested = tmp_path / directory
+    nested.mkdir()
+    (nested / "hidden.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    standards = api.Standards(tmp_path)
+    control = standards.analyze(["."], mode=api.AnalysisMode.RAW, rules=["python:no-secret-in-log"])
+    assert bool(control.diagnostics) is (directory != "node_modules")
+    failures = _deny_classification(monkeypatch, nested)
+
+    report = standards.analyze(["."], mode=api.AnalysisMode.RAW, rules=["python:no-secret-in-log"])
+
+    if directory == "node_modules":
+        assert not failures
+        assert report.completion is Completion.COMPLETE
+        assert report.exit_code == 0
+    else:
+        assert failures == [nested]
+        assert report.completion is Completion.FAILED
+        assert report.conclusion is Conclusion.INCONCLUSIVE
+        assert report.exit_code == 2
+        assert report.issues[0].kind == "invalid-input"
+        assert str(nested) in report.issues[0].message
+
+
+@pytest.mark.parametrize("reincluded", [False, True])
+def test_classification_fault_respects_only_proven_whole_tree_exclusions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, reincluded: bool
+) -> None:
+    nested = tmp_path / "excluded"
+    nested.mkdir()
+    included = nested / "keep.py"
+    included.write_text("value = 1\n", encoding="utf-8")
+    exclusions = ("excluded/**", "!excluded/keep.py") if reincluded else ("excluded/**",)
+    policy = Policy(tmp_path, PathSpec.from_lines("gitignore", exclusions), frozenset(), ())
+    expected = [str(included)] if reincluded else []
+    assert runner.group_paths([str(tmp_path)], policy=policy).python == expected
+    failures = _deny_classification(monkeypatch, nested)
+
+    if reincluded:
+        with pytest.raises(ValueError, match="cannot discover source input"):
+            runner.group_paths([str(tmp_path)], policy=policy)
+    else:
+        assert not runner.group_paths([str(tmp_path)], policy=policy).python
+
+    assert failures == [nested]
 
 
 @pytest.mark.parametrize("directory", ["nested", "node_modules"])
