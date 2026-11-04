@@ -251,7 +251,8 @@ def select_eslint_commands(
         install_root = packagemanager.workspace_root(project, repository)
         client = packagemanager.detect(install_root)
         config = _eslint_config(project)
-        config_args = () if config is None else ("--config", config.name)
+        context = _eslint_suppression_context(project, repository)
+        config_args = () if config is None else ("--config", os.path.relpath(config, context.cwd))
         commands.append(
             Command(
                 f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
@@ -259,6 +260,7 @@ def select_eslint_commands(
                     client,
                     "eslint",
                     *config_args,
+                    *context.args,
                     *(("--fix",) if fix else ()),
                     *(
                         ("--fix-dry-run", "--fix-type", "directive", "--format", "json", "--no-cache")
@@ -267,12 +269,61 @@ def select_eslint_commands(
                     ),
                     *(argument for rule in disabled_rules for argument in ("--rule", f"{rule}:off")),
                     "--",
-                    *sorted(scoped),
+                    *context.files(project, scoped),
                 ),
-                project,
+                context.cwd,
             )
         )
     return EslintSelection(tuple(commands), len(unowned))
+
+
+@dataclass(frozen=True, slots=True)
+class _EslintSuppressionContext:
+    cwd: Path
+    args: tuple[str, ...] = ()
+
+    def files(self, project: Path, paths: Iterable[str]) -> list[str]:
+        return sorted(os.path.relpath(project / path, self.cwd) for path in paths)
+
+
+def _eslint_suppression_context(project: Path, repository: Path) -> _EslintSuppressionContext:
+    tokens = _eslint_lint_tokens(project)
+    cwd = project
+    if tokens[:1] == ["cd"] and tokens[2:3] == ["&&"]:
+        cwd = (project / tokens[1]).resolve()
+        tokens = tokens[3:]
+    # Read a literal ESLint invocation, never evaluate shell commands or expansion.
+    executables = {"eslint", "node_modules/.bin/eslint", "./node_modules/.bin/eslint"}
+    if not tokens or tokens[0] not in executables:
+        return _EslintSuppressionContext(project)
+    if any(token in {"&&", "||", ";", "|"} or any(char in token for char in "$`\n") for token in tokens):
+        return _EslintSuppressionContext(project)
+    location = next((token.partition("=")[2] for token in tokens if token.startswith("--suppressions-location=")), None)
+    if "--suppressions-location" in tokens:
+        index = tokens.index("--suppressions-location") + 1
+        location = tokens[index] if index < len(tokens) else None
+    if not location:
+        return _EslintSuppressionContext(project)
+    ledger = (cwd / location).resolve()
+    if not cwd.is_relative_to(repository) or not ledger.is_relative_to(repository):
+        msg = "ESLint suppression context must remain inside the repository"
+        raise ValueError(msg)
+    return _EslintSuppressionContext(cwd, ("--suppressions-location", str(ledger)))
+
+
+def _eslint_lint_tokens(project: Path) -> list[str]:
+    package = project / "package.json"
+    if not package.is_file():
+        return []
+    document = parse_json(package.read_text(encoding="utf-8"))
+    scripts = document.get("scripts") if isinstance(document, dict) else None
+    script = scripts.get("lint") if isinstance(scripts, dict) else None
+    if not isinstance(script, str):
+        return []
+    try:
+        return shlex.split(script)
+    except ValueError:
+        return []
 
 
 def _owning_typescript_project(

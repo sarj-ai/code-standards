@@ -20,12 +20,18 @@ const rawRequest = record(
 const configPath = rawRequest["config"];
 if (configPath !== null && typeof configPath !== "string")
   throw new Error("Selected ESLint config must be a path or null");
+const suppressionsLocation = rawRequest["suppressionsLocation"] ?? null;
+if (suppressionsLocation !== null && typeof suppressionsLocation !== "string")
+  throw new Error(
+    "Selected ESLint suppressions location must be a path or null",
+  );
 const request = {
   full: rawRequest["full"] === true,
   consoleOutput: rawRequest["consoleOutput"] === true,
   failOnWarnings: rawRequest["failOnWarnings"] === true,
   rules: strings(rawRequest["rules"], "Selected ESLint rules"),
   config: configPath,
+  suppressionsLocation,
   upstreamRules: strings(
     rawRequest["upstreamRules"] ?? [],
     "Selected upstream rules",
@@ -58,6 +64,9 @@ const options: NativeESLint.Options = {
   cache: false,
   warnIgnored: false,
   applySuppressions: true,
+  ...(request.suppressionsLocation === null
+    ? {}
+    : { suppressionsLocation: request.suppressionsLocation }),
   // Preserve repository parsers, plugins, options, and suppressions;
   // the predicate prevents unrelated rule visitors from running.
   ...(request.full
@@ -129,7 +138,12 @@ if (!request.passOnUnpruned) {
   const suppressions = new Map<string, Map<string, { count: number }>>();
   try {
     const document = record(
-      JSON.parse(await readFile("eslint-suppressions.json", "utf8")) as unknown,
+      JSON.parse(
+        await readFile(
+          request.suppressionsLocation ?? "eslint-suppressions.json",
+          "utf8",
+        ),
+      ) as unknown,
       "ESLint suppressions",
     );
     for (const [path, value] of Object.entries(document)) {
