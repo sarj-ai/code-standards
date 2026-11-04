@@ -258,7 +258,7 @@ def test_extended_attributes_on_source_or_temporary_refuse_changes(
         return [attribute]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- models native file metadata without changing real security attributes.
-        "sarj_rule_contracts.files.os.listxattr", access_attributes
+        "sarj_rule_contracts.files.os.listxattr", access_attributes, raising=False
     )
     with pytest.raises(ValueError, match="extended attribute"):
         fix_file(path, str.upper)
@@ -281,7 +281,7 @@ def test_attribute_inspection_failure_keeps_source_and_cleans_temporary(
         raise OSError(message)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- verifies fail-closed handling of a native metadata inspection error.
-        "sarj_rule_contracts.files.os.listxattr", inaccessible_attributes
+        "sarj_rule_contracts.files.os.listxattr", inaccessible_attributes, raising=False
     )
     with pytest.raises(ValueError, match=r"inspect.*metadata"):
         fix_file(path, str.upper)
@@ -403,7 +403,7 @@ def test_temporary_attribute_detected_after_fsync_keeps_source_and_cleans_tempor
         "sarj_rule_contracts.files.os.fsync", prepare_metadata
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- models post-preparation native metadata without mutating real file security attributes.
-        "sarj_rule_contracts.files.os.listxattr", prepared_attributes
+        "sarj_rule_contracts.files.os.listxattr", prepared_attributes, raising=False
     )
     with pytest.raises(ValueError, match="extended attribute"):
         fix_file(path, str.upper)
