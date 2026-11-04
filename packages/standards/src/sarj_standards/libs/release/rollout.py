@@ -30,7 +30,6 @@ import yaml
 
 from sarj_standards import __version__ as _controller_version
 from sarj_standards.libs.adoption import (
-    configs as adoption_configs,
     doctor as adoption_doctor,
     hooks as adoption_hooks,
     launcher,
@@ -126,7 +125,6 @@ COMMIT_POLICY_WORKFLOW_PATH = ".github/workflows/commit-policy.yml"
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
         *adoption_packagemanager.AGE_GATE_POLICY_NAMES,
-        *(destination for _, destination in adoption_configs.TYPESCRIPT_COMPANION_CONFIGS.values()),
         ".basedpyright-strict.json",
         ".lefthook.yml",
         ".lefthook.yaml",
@@ -139,6 +137,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         ".tool-versions",
         ".yamllint.yaml",
         "bun.lock",
+        "doctor.config.json",
         "eslint.config.js",
         "eslint.config.mjs",
         "eslint.config.cjs",
@@ -153,6 +152,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "pyproject.toml",
         "pyright.strict.json",
         "pyrightconfig.json",
+        "syncpack.strict.mts",
         "uv.lock",
         "yarn.lock",
     }

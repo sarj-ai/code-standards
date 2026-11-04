@@ -121,6 +121,25 @@ def test_only_producer_owned_legacy_mirrors_can_receive_declarations(tmp_path: P
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
 
 
+@pytest.mark.parametrize("destination", [".", "typescript"])
+def test_managed_syncpack_companion_is_allowed_without_allowing_local_source(tmp_path: Path, destination: str) -> None:
+    _legacy_eslint_consumer(tmp_path, destination)
+    plan = adoption_service.plan_sync(tmp_path, configs=("eslint",), typescript_dest=destination)
+    companions = tuple(
+        target.destination.relative_to(tmp_path).as_posix()
+        for target in plan.targets
+        if target.destination.name == "syncpack.strict.mts"
+    )
+    assert companions == ((Path(destination) / "syncpack.strict.mts").as_posix(),)
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff(companions, allowed_paths=allowed)
+
+    for protected in (".syncpackrc.ts", "src/syncpack.strict.mts", "src/application.ts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
 @pytest.mark.parametrize("mode", ["typed", "unselected"])
 def test_declarations_are_protected_without_a_legacy_eslint_producer(tmp_path: Path, mode: str) -> None:
     primary = _legacy_eslint_consumer(tmp_path, ".")
