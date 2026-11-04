@@ -41,6 +41,9 @@ PATH = ".repo-standards/baseline.json"
 # predates it; all existing rule identities and empty-image scopes stay stable.
 # Policy 31 warning debt may include image-v1 findings: preserve rejection
 # unless it is empty or explicitly error-only, rather than dropping that debt.
+# Policy 33 excludes nonconsolidatable migrations from counts; the rule already
+# exists in 6.16.3, so counts change without changing identities or scope. Reach
+# it only by composing the existing policy 32 migration with the reviewed 32 -> 33 step.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -53,10 +56,13 @@ _COMPATIBLE_TRANSITIONS = frozenset(
         (28, 30),
         (30, 31),
         (30, 32),
+        (32, 33),
     }
 )
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 _IMAGE_POLICY_BASE = 30
+_IMAGE_ERROR_POLICY = 32
+_MIGRATION_COUNTS_POLICY = 33
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -85,6 +91,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
+    if target_policy_version == _MIGRATION_COUNTS_POLICY and baseline.policy_version != _IMAGE_ERROR_POLICY:
+        intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_ERROR_POLICY)
+        return migrate(intermediate, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
     if baseline.policy_version < _IMAGE_POLICY_BASE and target_policy_version in {31, 32}:
         intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_POLICY_BASE)
         return migrate(intermediate, manifest, target_policy_version=target_policy_version)
