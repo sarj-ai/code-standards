@@ -114,6 +114,7 @@ export default createRule<Options, MessageIds>({
   name: "no-storage-in-stateless-modules",
   documentation: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -143,7 +144,6 @@ export default createRule<Options, MessageIds>({
         "`{{method}}()` reaches for private storage inside a module declared stateless. Derive the state from a read against the system of record, or from a marker in the artefact this feature already produces.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (isTestFile(context)) {
       return {};

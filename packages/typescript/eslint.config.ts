@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
+import eslintPlugin from "eslint-plugin-eslint-plugin";
 import tseslint from "typescript-eslint";
 
 import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.ts";
@@ -22,6 +23,17 @@ export default defineConfig(
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
     rules: { "@sarj/no-runtime-typeof": "error" },
+  },
+  {
+    name: "sarj/rule-authoring",
+    files: ["src/rules/**/*.ts", "tests/rules/**/*.test.ts"],
+    extends: [eslintPlugin.configs.recommended],
+  },
+  {
+    name: "sarj/typed-suggestion-report",
+    files: ["src/rules/prefer-nullish-filter-predicate.ts"],
+    // This rule assigns report.suggest before passing the typed object to context.report.
+    rules: { "eslint-plugin/require-meta-has-suggestions": "off" },
   },
   {
     name: "sarj/javascript",

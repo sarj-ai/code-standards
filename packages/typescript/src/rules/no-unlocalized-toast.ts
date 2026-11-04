@@ -76,6 +76,7 @@ export default createRule<Options, "unlocalized">({
   name: "no-unlocalized-toast",
   documentation: NO_UNLOCALIZED_TOAST_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ enabled: true }],
     type: "suggestion",
     docs: { description: NO_UNLOCALIZED_TOAST_DOCUMENTATION.summary },
     schema: [
@@ -84,7 +85,7 @@ export default createRule<Options, "unlocalized">({
         properties: {
           ...LOCALIZATION_PROPERTIES,
           functions: COMPONENT_IMPORT_SCHEMA,
-          methods: {
+          methods: { description: "Toast method names whose user-visible messages require localization.",
             type: "array",
             items: { type: "string", minLength: 1 },
             uniqueItems: true,
@@ -98,7 +99,6 @@ export default createRule<Options, "unlocalized">({
         "Translate this user-facing literal or add an explicit localization exception.",
     },
   },
-  defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
       localizationExcluded(context, context.sourceCode.text, options)

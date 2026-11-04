@@ -16,6 +16,7 @@ import typer
 
 from sarj_standards.libs.linting import duplicate_code, security_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
+from sarj_standards.libs.linting.sqlfluff_protocol import SQLFLUFF_VERSION
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
@@ -66,6 +67,7 @@ type ProviderEngine = Literal[
     "mobsfscan",
     "react-doctor",
     "ruff",
+    "sqlfluff",
     "swiftformat",
     "swiftlint",
     "zizmor",
@@ -233,6 +235,7 @@ def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _Cat
         _security_projections(),
         _duplicate_code_projection(),
         _application_modules_projection(),
+        _embedded_sql_projection(),
     )
     rules = (
         *eslint.rules,
@@ -596,6 +599,38 @@ def _application_modules_projection() -> _ToolProjection:
         profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
     )
     return _ToolProjection((provider,), (rule,))
+
+
+def _embedded_sql_projection() -> _ToolProjection:
+    provider = _Provider(
+        id="sqlfluff",
+        label="SQLFluff",
+        engine="sqlfluff",
+        package="sqlfluff",
+        version=SQLFLUFF_VERSION,
+        homepage="https://www.sqlfluff.com/",
+        projection_scope="config-explicit",
+    )
+    context = _Context(id=ContextId("embedded-python-sql"), label="Proven static psycopg SQL", level="error")
+    rules = tuple(
+        _Rule(
+            key=f"sqlfluff:{rule}",
+            provider="sqlfluff",
+            id=RuleId(rule),
+            display_id=DisplayRuleId(rule),
+            summary=summary,
+            docs_url=f"https://docs.sqlfluff.com/en/4.2.2/reference/rules/ambiguous#{rule.lower()}",
+            family="correctness",
+            autofix="none",
+            has_suggestions=False,
+            profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+        )
+        for rule, summary in (
+            ("AM07", "Set expressions have matching known column counts."),
+            ("AM08", "Joins declare their condition or use an explicit CROSS JOIN."),
+        )
+    )
+    return _ToolProjection((provider,), rules)
 
 
 def _mobile_rule(*, provider: str, rule_id: RuleId, context_label: str, context_id: ContextId) -> _Rule:

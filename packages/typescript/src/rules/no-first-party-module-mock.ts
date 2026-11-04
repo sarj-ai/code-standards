@@ -35,12 +35,12 @@ export default createRule<Options, MessageIds>({
   name: "no-first-party-module-mock",
   documentation: NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ additionalModulePrefixes: [] }],
     type: "problem",
     docs: { description: NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION.summary },
-    schema: [{ type: "object", additionalProperties: false, properties: { additionalModulePrefixes: { type: "array", items: { type: "string", minLength: 1 }, uniqueItems: true } } }],
+    schema: [{ type: "object", additionalProperties: false, properties: { additionalModulePrefixes: { description: "Additional maintained module prefixes that tests must not mock.", type: "array", items: { type: "string", minLength: 1 }, uniqueItems: true } } }],
     messages: { noFirstPartyModuleMock: "This test replaces the maintained module `{{module}}`. Inject a narrow collaborator or test the real module; suppress locally only when module lookup or bootstrap behavior is the contract." },
   },
-  defaultOptions: [{ additionalModulePrefixes: [] }],
   create(context, [options]) {
     if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     return {

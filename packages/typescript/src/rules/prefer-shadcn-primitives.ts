@@ -430,6 +430,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-shadcn-primitives",
   documentation: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description:
@@ -439,8 +440,8 @@ export default createRule<Options, MessageIds>({
       {
         type: "object",
         properties: {
-          assumeAvailable: { type: "boolean" },
-          detectProjectPrimitives: { type: "boolean" },
+          assumeAvailable: { description: "Assume supported shared UI primitives are available in this project.", type: "boolean" },
+          detectProjectPrimitives: { description: "Resolve project-owned UI primitives before recommending replacements.", type: "boolean" },
         },
         additionalProperties: false,
       },
@@ -450,7 +451,6 @@ export default createRule<Options, MessageIds>({
         "Use the shared {{ replacement }} shadcn primitive instead of raw <{{ element }}> markup.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const filename = context.filename.replaceAll("\\", "/");
     if (

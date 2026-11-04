@@ -183,6 +183,7 @@ export default createRule<Options, MessageIds>({
   name: "no-hand-rolled-sleep",
   documentation: NO_HAND_ROLLED_SLEEP_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description: "Disallow uncancellable promisified timers and timeout arms.",
@@ -213,7 +214,6 @@ export default createRule<Options, MessageIds>({
         "Hand-rolled timeout arm: when the other promise wins, this timer is never cleared and keeps the event loop alive until it fires. Use `AbortSignal.timeout(ms)` and pass the signal to the operation.",
     },
   },
-  defaultOptions: [{}],
   create(context, [optionsArg]) {
     const { filename, sourceCode } = context;
     if (

@@ -449,6 +449,12 @@ class Standards:
         combined = report_from_tools(
             self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
         )
+        if rule_selection is None and not upstream_rules.ids:
+            from .libs.linting.embedded_sql import with_embedded_sql  # ruff: ignore[import-outside-top-level] -- selected native SQL analysis is an opt-in Python capability.
+
+            combined = with_embedded_sql(
+                combined, files=selected_groups.python, adopted=adopted, policy=selection_policy
+            )
         changed_scope = _analysis_changed_scope(
             self.root, combined, baseline_budget, staged=staged, shell_format=paths is None and not staged
         )
