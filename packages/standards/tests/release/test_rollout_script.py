@@ -17,6 +17,7 @@ from sarj_standards.libs.adoption import (
     launcher,
     manifest as adoption_manifest,
     scaffold as adoption_scaffold,
+    service as adoption_service,
 )
 from sarj_standards.libs.release import retirement, rollout
 
@@ -116,6 +117,25 @@ def test_only_producer_owned_legacy_mirrors_can_receive_declarations(tmp_path: P
     rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
 
     for protected in ("apps/custom/eslint.strict.d.mts", "tests/fixtures/mirror/eslint.strict.d.mts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("destination", [".", "typescript"])
+def test_managed_syncpack_companion_is_allowed_without_allowing_local_source(tmp_path: Path, destination: str) -> None:
+    _legacy_eslint_consumer(tmp_path, destination)
+    plan = adoption_service.plan_sync(tmp_path, configs=("eslint",), typescript_dest=destination)
+    companions = tuple(
+        target.destination.relative_to(tmp_path).as_posix()
+        for target in plan.targets
+        if target.destination.name == "syncpack.strict.mts"
+    )
+    assert companions == ((Path(destination) / "syncpack.strict.mts").as_posix(),)
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff(companions, allowed_paths=allowed)
+
+    for protected in (".syncpackrc.ts", "src/syncpack.strict.mts", "src/application.ts"):
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
 

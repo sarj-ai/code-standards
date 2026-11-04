@@ -152,6 +152,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "pyproject.toml",
         "pyright.strict.json",
         "pyrightconfig.json",
+        "syncpack.strict.mts",
         "uv.lock",
         "yarn.lock",
     }
