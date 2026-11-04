@@ -51,7 +51,15 @@ def test_git_collapses_test_paths_and_preserves_production_and_overrides(tmp_pat
         "src/client.test.mts",
         "src/client.spec.cjs",
     )
-    visible = ("src/reader.py", "src/test_adapter.ts", "src/contest.ts", "db/migrations/001.sql", "special.test.ts")
+    visible = (
+        "src/reader.py",
+        "src/test_adapter.ts",
+        "src/contest.ts",
+        "db/migrations/001.sql",
+        "environments/test/main.tf",
+        "deployments/test/config.yml",
+        "special.test.ts",
+    )
     completed = subprocess.run(
         [git, "-C", str(tmp_path), "check-attr", "-z", "linguist-generated", "--", *collapsed, *visible],
         check=True,
