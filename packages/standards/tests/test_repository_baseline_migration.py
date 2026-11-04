@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -37,7 +38,10 @@ def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
     )
 
 
-@pytest.mark.parametrize(("before", "after"), [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29)])
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (32, 33)],
+)
 @pytest.mark.parametrize(
     "fingerprints",
     [pytest.param((), id="empty-baseline"), pytest.param(("f" * 64, "a" * 64), id="retained-fingerprints")],
@@ -70,6 +74,16 @@ def test_policy26_preserves_warning_ratchets_without_recapturing_findings(
     migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=26)
 
     assert migrated == original.replace(b'"policy_version": 25', b'"policy_version": 26')
+
+
+def test_policy33_preserves_nonempty_warning_debt_and_metadata() -> None:
+    original = _baseline(32, fingerprints=("f" * 64, "a" * 64)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+
+    assert migrated == original.replace(b'"policy_version": 32', b'"policy_version": 33')
 
 
 @pytest.mark.parametrize("before", [25, 26])
@@ -127,11 +141,9 @@ def test_policy28_migrates_empty_baselines_without_changing_the_warning_ratchet(
         (26, 28),
         (28, 27),
         (29, 28),
-        (28, 33),
-        (27, 33),
-        (29, 33),
+        (18, 33),
+        (32, 34),
         (30, 29),
-        (30, 33),
         (25, 29),
         (26, 29),
         (25, 30),
@@ -289,7 +301,9 @@ def test_image_policy_rejects_obsolete_nonempty_warning_debt(before: int, after:
 
 
 @pytest.mark.parametrize(
-    "before", [27, 28, 29, 30, 31], ids=["policy27", "policy28", "policy29", "policy30", "policy31"]
+    "before",
+    [27, 28, 29, 30, 31, 32],
+    ids=["policy27", "policy28", "policy29", "policy30", "policy31", "policy32"],
 )
 @pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy-errors", "errors", "warnings"])
 def test_image_error_policy_composes_reviewed_empty_migrations(before: int, include_warnings: bool | None) -> None:
@@ -308,8 +322,65 @@ def test_image_error_policy_composes_reviewed_empty_migrations(before: int, incl
     assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 32')
 
 
+@pytest.mark.parametrize("before", [27, 28, 29, 30, 31, 32])
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy", "errors", "warnings"])
+def test_policy33_composes_existing_policy32_migration(before: int, include_warnings: bool | None) -> None:
+    original = _baseline(before)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    through_32 = repository_baseline.migrate(original, _MANIFEST, target_policy_version=32)
+    composed = repository_baseline.migrate(through_32, _MANIFEST, target_policy_version=33)
+    direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+
+    assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 33')
+
+
+@pytest.mark.parametrize("before", [27, 28, 29, 30, 31])
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy", "errors", "warnings"])
+def test_policy33_retains_policy32_debt_guards(before: int, include_warnings: bool | None) -> None:
+    original = _baseline(before, fingerprints=("b" * 64,))
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    try:
+        expected = repository_baseline.migrate(original, _MANIFEST, target_policy_version=32)
+    except ValueError as intermediate_error:
+        expected_error = str(intermediate_error)
+    else:
+        direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+        assert direct == expected.replace(b'"policy_version": 32', b'"policy_version": 33')
+        return
+    with pytest.raises(ValueError, match=re.escape(expected_error)) as raised:
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+    assert str(raised.value) == expected_error
+
+
 @pytest.mark.parametrize(
-    "before", [27, 28, 29, 30, 31], ids=["policy27", "policy28", "policy29", "policy30", "policy31"]
+    ("before", "include_warnings"),
+    [(28, True), (29, False), (30, True), (31, False), (32, True)],
+)
+def test_policy33_composes_compatible_nonempty_debt(before: int, include_warnings: bool) -> None:
+    original = _baseline(before, fingerprints=("a" * 64, "f" * 64)).replace(
+        b'"schema_version": 2',
+        b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+    )
+
+    through_32 = repository_baseline.migrate(original, _MANIFEST, target_policy_version=32)
+    composed = repository_baseline.migrate(through_32, _MANIFEST, target_policy_version=33)
+    direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+
+    assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 33')
+
+
+@pytest.mark.parametrize(
+    "before", [27, 28, 29, 30, 31, 32], ids=["policy27", "policy28", "policy29", "policy30", "policy31", "policy32"]
 )
 def test_setup_plans_and_applies_the_current_compatible_baseline_migration(tmp_path: Path, before: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
