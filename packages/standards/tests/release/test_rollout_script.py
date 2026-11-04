@@ -2276,9 +2276,12 @@ jobs:
         assert failure.returncode == 9
         assert runner.commands == [("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "first")]
 
-    def test_installs_secondary_javascript_lock_roots_before_verification(self, tmp_path: Path) -> None:
-        primary = tmp_path / "typescript" / "dashboard"
-        primary.mkdir(parents=True)
+    @pytest.mark.parametrize("primary_at_root", [False, True], ids=["nested-primary", "root-primary"])
+    def test_installs_secondary_javascript_lock_roots_before_verification(
+        self, tmp_path: Path, *, primary_at_root: bool
+    ) -> None:
+        primary = tmp_path if primary_at_root else tmp_path / "typescript" / "dashboard"
+        primary.mkdir(parents=True, exist_ok=True)
         (primary / "package.json").write_text('{"packageManager":"pnpm@11.20.0"}\n', encoding="utf-8")
         (primary / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
         secondary = tmp_path / "secondary-app" / "web"
@@ -2288,7 +2291,8 @@ jobs:
         fixture.mkdir(parents=True)
         (fixture / "package-lock.json").write_text("{}\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript/dashboard"\n',
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\n'
+            f'typescript = "{primary.relative_to(tmp_path).as_posix()}"\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "installed")])
@@ -2309,6 +2313,31 @@ jobs:
             )
         ]
         assert runner.working_directories == [secondary]
+
+    @pytest.mark.parametrize("workspace_metadata", ["npm", "pnpm", "malformed"])
+    def test_primary_workspace_members_keep_their_existing_dependency_owner(
+        self, tmp_path: Path, workspace_metadata: str
+    ) -> None:
+        package = tmp_path / "package.json"
+        package.write_text('{"packageManager":"npm@12.2.1","workspaces":["app"]}\n', encoding="utf-8")
+        (tmp_path / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        if workspace_metadata == "pnpm":
+            package.write_text('{"packageManager":"pnpm@12.10.1"}\n', encoding="utf-8")
+            (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - app\n", encoding="utf-8")
+        elif workspace_metadata == "malformed":
+            package.write_text("{", encoding="utf-8")
+        member = tmp_path / "app"
+        member.mkdir()
+        (member / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "."\n', encoding="utf-8"
+        )
+        runner = FakeRunner([])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is None
+        assert runner.commands == []
 
     def test_stops_when_a_secondary_javascript_install_fails(self, tmp_path: Path) -> None:
         primary = tmp_path / "typescript"
