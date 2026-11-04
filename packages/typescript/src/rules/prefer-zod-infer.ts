@@ -656,6 +656,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-zod-infer",
   documentation: PREFER_ZOD_INFER_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     fixable: "code",
     docs: {
@@ -667,11 +668,11 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          ignoreTypeNames: {
+          ignoreTypeNames: { description: "Regular expression patterns for type names to leave unchanged.",
             type: "array",
             items: { type: "string" },
           },
-          requireIdenticalShape: { type: "boolean" },
+          requireIdenticalShape: { description: "Require the schema output and declared type to have identical property shapes.", type: "boolean" },
         },
       },
     ],
@@ -682,7 +683,6 @@ export default createRule<Options, MessageIds>({
         "`{{propertyName}}` repeats the literal domain already named by `{{typeName}}` and `{{schemaName}}` in multiple object types. Reuse `{{typeName}}` so the accepted values have one source of truth.",
     },
   },
-  defaultOptions: [{}],
   create(context, [optionsArg]) {
     const ignorePatterns = (optionsArg?.ignoreTypeNames ?? []).map(
       (source) => new RegExp(source, "u"),

@@ -108,6 +108,7 @@ export default createRule<Options, "physicalUtility">({
   name: "prefer-logical-tailwind-utilities",
   documentation: PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ enabled: true, checkInsets: false, allowUtilities: [] }],
     type: "suggestion",
     docs: {
       description: PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION.summary,
@@ -116,9 +117,9 @@ export default createRule<Options, "physicalUtility">({
       {
         type: "object",
         properties: {
-          enabled: { type: "boolean" },
-          checkInsets: { type: "boolean" },
-          allowUtilities: {
+          enabled: { description: "Enable replacement of physical direction utilities with logical equivalents.", type: "boolean" },
+          checkInsets: { description: "Include physical inset utilities in direction checks.", type: "boolean" },
+          allowUtilities: { description: "Physical utility names allowed without a logical replacement.",
             type: "array",
             items: { type: "string" },
             uniqueItems: true,
@@ -132,7 +133,6 @@ export default createRule<Options, "physicalUtility">({
         "Use '{{replacement}}' instead of '{{utility}}' in this bidirectional UI, or explicitly allow intentional physical placement.",
     },
   },
-  defaultOptions: [{ enabled: true, checkInsets: false, allowUtilities: [] }],
   create(context, [options]) {
     if (
       options?.enabled === false ||

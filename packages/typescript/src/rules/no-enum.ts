@@ -65,6 +65,7 @@ export default createRule<Options, MessageIds>({
   name: "no-enum",
   documentation: NO_ENUM_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     fixable: "code",
     docs: {
@@ -90,7 +91,6 @@ export default createRule<Options, MessageIds>({
         'Enums are discouraged. Use a string-literal union (e.g. `type Status = "active" | "inactive"`) or an `as const` object instead.',
     },
   },
-  defaultOptions: [{}],
   create(context, [optionsArg]) {
     const options = optionsArg ?? {};
     const ignoreFiles = options.ignoreFiles ?? [];

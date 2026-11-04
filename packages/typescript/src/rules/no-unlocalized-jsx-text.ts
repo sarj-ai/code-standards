@@ -55,6 +55,7 @@ export default createRule<Options, "unlocalized">({
   name: "no-unlocalized-jsx-text",
   documentation: NO_UNLOCALIZED_JSX_TEXT_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ enabled: true }],
     type: "suggestion",
     docs: { description: NO_UNLOCALIZED_JSX_TEXT_DOCUMENTATION.summary },
     schema: [
@@ -69,7 +70,6 @@ export default createRule<Options, "unlocalized">({
         "Translate this user-facing literal or add an explicit localization exception.",
     },
   },
-  defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
       localizationExcluded(context, context.sourceCode.text, options)

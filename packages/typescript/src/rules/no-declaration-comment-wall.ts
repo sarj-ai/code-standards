@@ -96,6 +96,7 @@ export default createRule<Options, MessageIds>({
   name: "no-declaration-comment-wall",
   documentation: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   meta: {
+    defaultOptions: [WALL_DEFAULTS],
     type: "suggestion",
     fixable: "code",
     docs: {
@@ -108,7 +109,6 @@ export default createRule<Options, MessageIds>({
         "{{restated}} of this declaration's {{commented}} member comments only re-spell member names — delete them; if a row still needs narration, give the member a clearer name. Keep constraints, lifecycle, and rationale.",
     },
   },
-  defaultOptions: [WALL_DEFAULTS],
   create(context, [provided]) {
     const options: WallOptions = { ...WALL_DEFAULTS, ...provided };
     const sourceCode = context.sourceCode;

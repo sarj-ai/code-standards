@@ -475,6 +475,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
   documentation: PREFER_SEMANTIC_COLORS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description:
@@ -485,8 +486,8 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          requireSemanticTokens: { type: "boolean" },
-          opaqueForegroundPairs: { type: "boolean" },
+          requireSemanticTokens: { description: "Restrict checks to projects with an existing semantic token system.", type: "boolean" },
+          opaqueForegroundPairs: { description: "Use the project semantic foreground roles to check opaque foreground and background pairs.", type: "boolean" },
         },
       },
     ],
@@ -501,7 +502,6 @@ export default createRule<Options, MessageIds>({
         "'{{class}}' bypasses the declared '{{replacement}}' token paired with '{{background}}'.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
     if (staticallyImportsExternalRenderer(context.sourceCode.ast)) return {};

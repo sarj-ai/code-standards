@@ -104,6 +104,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "mobsfscan",
         "react-doctor",
         "ruff",
+        "sqlfluff",
         "swiftformat",
         "swiftlint",
         "zizmor",
@@ -117,6 +118,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "react-doctor",
         "regexp",
         "ruff",
+        "sqlfluff",
         "swiftformat",
         "swiftlint",
         "typescript-eslint",
@@ -152,6 +154,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert scopes["mobsfscan"] == "provider-only"
     assert scopes["checkov"] == "config-explicit"
     assert scopes["knip"] == "config-explicit"
+    assert scopes["sqlfluff"] == "config-explicit"
     assert scopes["zizmor"] == "provider-only"
     assert not any(value["provider"] in {"swiftformat", "mobsfscan"} for value in rules)
 

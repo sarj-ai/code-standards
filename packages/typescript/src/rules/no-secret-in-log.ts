@@ -213,6 +213,7 @@ export default createRule<Options, MessageIds>({
   name: "no-secret-in-log",
   documentation: NO_SECRET_IN_LOG_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -232,7 +233,6 @@ export default createRule<Options, MessageIds>({
         "Raw `{{name}}` passed to a logging call. Request/response bodies can contain personal data or credentials. Log allowlisted non-sensitive context or use an approved redactor.",
     },
   },
-  defaultOptions: [{}],
   create(context, [loggingOptions]) {
     const matcher = createLogMatcher(loggingOptions);
     // Bodies in a test file are fixtures the author wrote, not production PII.

@@ -76,6 +76,7 @@ export default createRule<Options, "missingName">({
   name: "require-button-accessible-name",
   documentation: REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: { description: REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION.summary },
     schema: [
@@ -83,7 +84,7 @@ export default createRule<Options, "missingName">({
         type: "object",
         properties: {
           components: COMPONENT_IMPORT_SCHEMA,
-          iconModules: {
+          iconModules: { description: "Module names whose imported components count as icons.",
             type: "array",
             items: { type: "string", minLength: 1 },
             uniqueItems: true,
@@ -97,7 +98,6 @@ export default createRule<Options, "missingName">({
         "This button has no statically identifiable accessible name. Add action text, aria-label, or aria-labelledby.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (
       isGeneratedFile(context, context.sourceCode.text) ||

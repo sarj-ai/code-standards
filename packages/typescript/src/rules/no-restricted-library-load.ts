@@ -82,6 +82,7 @@ export default createRule<Options, MessageIds>({
   name: "no-restricted-library-load",
   documentation: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ libraries: [] }],
     type: "problem",
     docs: {
       description: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.summary,
@@ -92,7 +93,7 @@ export default createRule<Options, MessageIds>({
         additionalProperties: false,
         required: ["libraries"],
         properties: {
-          libraries: {
+          libraries: { description: "Library import and module-load restrictions.",
             type: "array",
             items: {
               type: "object",
@@ -114,7 +115,6 @@ export default createRule<Options, MessageIds>({
         "{{id}}: Replace this runtime dependency reference to {{module}} with {{replacement}}.{{note}}",
     },
   },
-  defaultOptions: [{ libraries: [] }],
   create(context, [options]) {
     const restrictions = options.libraries;
 

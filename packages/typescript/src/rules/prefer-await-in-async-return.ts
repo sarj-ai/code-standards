@@ -180,6 +180,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-await-in-async-return",
   documentation: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ scope: "async-return" }],
     type: "suggestion",
     docs: {
       description:
@@ -187,7 +188,7 @@ export default createRule<Options, MessageIds>({
     },
     schema: [{
       type: "object",
-      properties: { scope: { type: "string", enum: ["async-return", "all-promise-calls"] } },
+      properties: { scope: { description: "Check async return statements or every promise-valued call.", type: "string", enum: ["async-return", "all-promise-calls"] } },
       additionalProperties: false,
     }],
     messages: {
@@ -197,7 +198,6 @@ export default createRule<Options, MessageIds>({
         "This call uses built-in Promise.then(). Use async/await, preserving rejection handling and observable scheduling when rewriting.",
     },
   },
-  defaultOptions: [{ scope: "async-return" }],
   create(context, [options]) {
     let services: TypeServices | null;
     try {

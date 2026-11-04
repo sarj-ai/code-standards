@@ -437,6 +437,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-module-level-constant",
   documentation: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     fixable: "code",
     docs: {
@@ -448,9 +449,9 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          minElements: { type: "number", minimum: 1 },
-          checkRegex: { type: "boolean" },
-          ignoreTestFiles: { type: "boolean" },
+          minElements: { description: "Minimum collection size before recommending a module-level constant.", type: "number", minimum: 1 },
+          checkRegex: { description: "Include reusable regular expression literals in hoisting checks.", type: "boolean" },
+          ignoreTestFiles: { description: "Skip test files when recommending module-level constants.", type: "boolean" },
         },
       },
     ],
@@ -461,7 +462,6 @@ export default createRule<Options, MessageIds>({
         "`{{name}}` is a constant regex recompiled on every call. Hoist it to module scope.",
     },
   },
-  defaultOptions: [{}],
   create(context, [optionsArg]) {
     const options = optionsArg ?? {};
     const minElements = options.minElements ?? DEFAULT_MIN_ELEMENTS;

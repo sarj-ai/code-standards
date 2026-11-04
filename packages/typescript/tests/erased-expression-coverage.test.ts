@@ -61,7 +61,7 @@ describe("erased receivers, static template keys and discarded SQL", () => {
         languageOptions: { parser: EXAMPLE_PARSER, parserOptions: { project: tsconfig, tsconfigRootDir: root, disallowAutomaticSingleRunInference: true } },
         plugins: { "@sarj": { rules: { [example.rule]: rule as unknown as Rule.RuleModule } } },
         rules: { [ruleId]: ["error", ...(example.rule === "no-restricted-library-load" ? [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] : example.rule === "no-storage-in-stateless-modules"
-          ? [{ modules: ["engineer-digest"] }] : rule.defaultOptions ?? [])] },
+          ? [{ modules: ["engineer-digest"] }] : rule.meta.defaultOptions ?? rule.defaultOptions ?? [])] },
       };
       const focus = example.files.find(file => file.path === example.focusPath);
       expect(focus).toBeDefined();

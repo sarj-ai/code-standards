@@ -1131,6 +1131,7 @@ export default createRule<Options, MessageIds>({
   name: "stepdown",
   documentation: STEPDOWN_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     fixable: "code",
     docs: {
@@ -1155,7 +1156,6 @@ export default createRule<Options, MessageIds>({
         "Private helper `{{helper}}` is defined above its only caller `{{caller}}`; move it below the caller.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (
       isTestFile(context) ||

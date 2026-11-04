@@ -33,6 +33,7 @@ from .configs import (
     PYTHON_COMPANION_CONFIGS,
     eslint_preset_name,
     eslint_wiring_reaches_strict as _eslint_wiring_reaches_strict,
+    typescript_companion_configs,
 )
 
 
@@ -1665,11 +1666,15 @@ def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path
     else:
         yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
     if name == "pyright":
-        yield from _check_python_companions(root, destination)
+        yield from _check_companion_configs(root, destination, PYTHON_COMPANION_CONFIGS)
+    if name == "eslint":
+        yield from _check_companion_configs(root, destination, typescript_companion_configs(target.name))
 
 
-def _check_python_companions(root: Path, destination: Path) -> Iterator[Finding]:
-    for companion_name, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
+def _check_companion_configs(
+    root: Path, destination: Path, configs: Mapping[str, tuple[str, str]]
+) -> Iterator[Finding]:
+    for companion_name, (companion_source, companion_target) in configs.items():
         companion = destination / companion_target
         companion_expected = CONFIGS_DIR / companion_source
         if not companion.is_file():
