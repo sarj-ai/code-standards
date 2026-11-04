@@ -1,0 +1,965 @@
+{
+  "schemaVersion": 1,
+  "campaign": "known-zod-nullish-100-passes-20261104",
+  "decision": "retain-warning-without-autofix",
+  "baseline": {
+    "pullRequest": "https://github.com/sarj-ai/code-standards/pull/2027",
+    "typescriptVersion": "17.2.0",
+    "coreVersion": "8.193.0",
+    "mergeFirst": true
+  },
+  "candidate": {
+    "typescriptVersion": "18.0.2",
+    "coreVersion": "8.194.2"
+  },
+  "method": "100 distinct numbered source-review questions, each run in a fresh isolated native TypeScript/ESLint/Zod process with matched controls. All 100 were replayed after repairs using identical source/configuration pins. Each valid case must compile, invoke the parser, keep stable repeated findings and remain unchanged by custom autofix.",
+  "coverage": {
+    "passes": 100,
+    "caseInstances": 308,
+    "distinctSourceTexts": 103,
+    "repeatedSourceInstances": 205,
+    "controlInstances": 200,
+    "probeInstances": 108,
+    "malformedInstances": 1,
+    "labelScope": "Authored policy probes with repeated matched controls, not independent field samples.",
+    "validCaseInstances": 307,
+    "expectedParserRejections": 1,
+    "initialRawMismatchCases": 16,
+    "confirmedRuleMismatchCases": 15,
+    "initialRuleFalsePositiveCases": 10,
+    "initialRuleFalseNegativeCases": 5,
+    "finalRawMismatchCases": 1,
+    "explicitLabelCorrections": 1,
+    "finalAdjudicatedMismatchCases": 0,
+    "unexpectedCompilerDiagnostics": 0,
+    "customAutomaticEdits": 0
+  },
+  "repairs": [
+    {
+      "issue": "Tuple suffix types and positions after a leading rest were lost by numeric-property comparison.",
+      "passes": [
+        34,
+        35
+      ],
+      "change": "Compare native tuple type arguments and element flags in order, including rest and optional positions."
+    },
+    {
+      "issue": "A fixed empty tuple was treated as an opaque never element.",
+      "passes": [
+        48
+      ],
+      "change": "Use the closed tuple element list for knownness and shape comparison."
+    },
+    {
+      "issue": "Closed primitive unions above 16 alternatives were skipped.",
+      "passes": [
+        47
+      ],
+      "change": "Compare up to 128 primitive alternatives while retaining the 16 alternative object-union and 128 object graph bounds."
+    },
+    {
+      "issue": "Erased assertions and native global Boolean access produced value-default warnings in boolean contexts.",
+      "passes": [
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78
+      ],
+      "change": "Reuse erased-expression traversal and require native library Boolean declarations with lexical shadow checks."
+    },
+    {
+      "issue": "Branded string, number and bigint intersections escaped default detection.",
+      "passes": [
+        87,
+        88,
+        89
+      ],
+      "change": "Inspect primitive intersection constituents, preserve literal-condition ownership and exclude unresolved generic intersections."
+    }
+  ],
+  "labelCorrection": {
+    "pass": 84,
+    "original": "No diagnostic on nullable boolean OR another boolean.",
+    "adjudicated": "One prefer-nullish-coalescing warning, zero companion warnings.",
+    "reason": "The original label contradicted the existing managed-config integration contract for nullable booleans. Existing upstream behavior and ownership were preserved; original pins and raw mismatches remain recorded."
+  },
+  "finalLabeledMetrics": {
+    "zod": {
+      "TP": 84,
+      "FP": 0,
+      "FN": 0,
+      "TN": 84
+    },
+    "fallback": {
+      "TP": 66,
+      "FP": 0,
+      "FN": 0,
+      "TN": 82
+    },
+    "prefer": {
+      "TP": 3,
+      "FP": 0,
+      "FN": 0,
+      "TN": 6
+    },
+    "condition": {
+      "TP": 5,
+      "FP": 0,
+      "FN": 0,
+      "TN": 10
+    }
+  },
+  "metricsScope": "Per-owner binary outcomes within the matching review focus plus relevant dual-owner integration probes; native upstream metrics use only passes enabling that owner. One malformed case is separate. Repeated controls are disclosed; these seeded policy cases do not estimate field precision or recall.",
+  "corpus": {
+    "files": 215,
+    "source": "Existing immutable maintained TypeScript rule/helper corpus; original pin verified before and after every run.",
+    "baselineFindings": 0,
+    "candidateFindings": 0,
+    "parseGaps": 0,
+    "duplicateLocations": 0,
+    "interpretation": "A source-semantic and performance control. It contains no observed typed SDK reparse/default warnings and is not a recall sample."
+  },
+  "performance": {
+    "method": "Three alternating paired fresh-process runs under equivalent inputs/environment; first lint is cold, next lint is warm. Both bundles are loaded in each worker and only the selected rules execute. Filesystem caches are not cleared; shared VM timing is observational.",
+    "medians": {
+      "baseline": {
+        "cold_ms": 10677.167755,
+        "warm_ms": 4065.547544000001,
+        "wall_seconds": 16.36441,
+        "peak_rss_kib": 1147296
+      },
+      "candidate": {
+        "cold_ms": 11569.857522,
+        "warm_ms": 3950.6769129999993,
+        "wall_seconds": 16.92419,
+        "peak_rss_kib": 1222300
+      }
+    },
+    "coldDeltaMs": 892.6897669999998,
+    "warmDeltaMs": -114.8706310000016
+  },
+  "limitations": [
+    "Static types do not prove runtime trust or refinement redundancy; intentional validation needs an unknown boundary or an exact documented suppression.",
+    "Type-changing transforms, brands, unknown/any/generic graphs, primitive Zod roots, large graphs and missing strict type information remain conservative exclusions.",
+    "Nullable defaults remain owned by prefer-nullish-coalescing, including nullable booleans. Constant truthiness remains with no-unnecessary-condition.",
+    "Boolean alias chains, indirect call/apply forms and non-nullable OR assignment are outside this companion audit.",
+    "No automatic replacement or severity promotion. The 100 passes are distinct scoped reviews with repeated controls, not 100 independent field samples or a proof of universal correctness."
+  ],
+  "passes": [
+    {
+      "id": 1,
+      "scope": "Native parse on a typed object",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 2,
+      "scope": "Native safeParse on a typed object",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 3,
+      "scope": "Native parseAsync on a typed object",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 4,
+      "scope": "Native safeParseAsync on a typed object",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 5,
+      "scope": "Awaited typed service response",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 6,
+      "scope": "Schema value alias",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 7,
+      "scope": "Imported schema alias",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 8,
+      "scope": "Schema held in an object member",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 9,
+      "scope": "Static quoted parse property",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 10,
+      "scope": "Legacy native Zod v3 signature",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 11,
+      "scope": "Legacy Zod brand is a changed contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 12,
+      "scope": "Native Zod Mini signature",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 13,
+      "scope": "Unrelated API named parse",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 14,
+      "scope": "Syntax-only mode cannot fabricate type proof",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 15,
+      "scope": "Loose null checking excludes architectural proof",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 16,
+      "scope": "Unknown nested property remains a boundary",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 17,
+      "scope": "Any nested property remains opaque",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 18,
+      "scope": "Unresolved generic root remains opaque",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 19,
+      "scope": "Unresolved generic leaf remains opaque",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 20,
+      "scope": "Empty object annotation does not prove fields",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 21,
+      "scope": "Optional SDK field with a schema default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 22,
+      "scope": "Nested typed defaults are explicit mapping",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 23,
+      "scope": "Refinements preserve the warning policy",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 24,
+      "scope": "Same-type string normalization is explicit",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 25,
+      "scope": "Same-shape catch default is explicit mapping",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 26,
+      "scope": "Readonly actual object still has known fields",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 27,
+      "scope": "Known object array",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 28,
+      "scope": "Known fixed tuple",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 29,
+      "scope": "Unchanged optional tuple positions",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 30,
+      "scope": "Unchanged trailing-rest tuple",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 31,
+      "scope": "Tuple transformation changes length",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 32,
+      "scope": "Tuple transformation swaps fixed positions",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 33,
+      "scope": "Trailing-rest transformation changes cardinality",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 34,
+      "scope": "Leading-rest suffix type transformation",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 35,
+      "scope": "Multiple trailing fixed tuple positions transform",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 36,
+      "scope": "Array element output type changes",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 37,
+      "scope": "Nested property output type changes",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 38,
+      "scope": "Transform adds a property",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 39,
+      "scope": "Transform removes a property",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 40,
+      "scope": "Union transformation adds an alternative shape",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 41,
+      "scope": "Root brand changes the contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 42,
+      "scope": "Nested brand changes the contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 43,
+      "scope": "Primitive UUID validation remains allowed",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 44,
+      "scope": "Coercion retains its unknown input boundary",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 45,
+      "scope": "Known bigint data field",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 46,
+      "scope": "Closed discriminated union",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 47,
+      "scope": "Large closed literal-enum contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 48,
+      "scope": "Statically empty tuple contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 49,
+      "scope": "Exact flat-property budget boundary",
+      "caseInstances": 4,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 50,
+      "scope": "Known recursive data contract",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 51,
+      "scope": "Trimmed string default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 52,
+      "scope": "Numeric zero default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 53,
+      "scope": "Bigint zero default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 54,
+      "scope": "Mixed string-number primitive default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 55,
+      "scope": "Mixed boolean-string primitive default",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 56,
+      "scope": "Mixed empty and nonempty string literals",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 57,
+      "scope": "Pure boolean aggregation",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 58,
+      "scope": "Direct if boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 59,
+      "scope": "Direct while boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 60,
+      "scope": "Direct do-while boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 61,
+      "scope": "For-loop test boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 62,
+      "scope": "Ternary test boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 63,
+      "scope": "Logical negation boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 64,
+      "scope": "Double-negation boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 65,
+      "scope": "Left operand of an AND guard",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 66,
+      "scope": "Right operand of an AND produces a value",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 67,
+      "scope": "Nested logical expressions inside an if",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 68,
+      "scope": "Nested value default inside a call",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 69,
+      "scope": "Native unshadowed Boolean constructor",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 70,
+      "scope": "Shadowed Boolean can consume a string",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 71,
+      "scope": "Native Boolean callee through an as expression",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 72,
+      "scope": "Native Boolean callee through satisfies",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 73,
+      "scope": "Native Boolean callee through non-null assertion",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 74,
+      "scope": "Native globalThis.Boolean constructor",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 75,
+      "scope": "Native window.Boolean constructor",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 76,
+      "scope": "Native self.Boolean constructor",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 77,
+      "scope": "Native statically quoted global Boolean",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 78,
+      "scope": "Angle-bracket assertion in a boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 79,
+      "scope": "As assertion in a boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 80,
+      "scope": "Satisfies expression in a boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 81,
+      "scope": "Non-null assertion in a boolean context",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 82,
+      "scope": "Nullable string belongs to native nullish owner",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 83,
+      "scope": "Nullable number belongs to native nullish owner",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 84,
+      "scope": "Nullable boolean aggregation stays boolean logic",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "label corrected; existing upstream nullable-boolean warning retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 85,
+      "scope": "Always-truthy literal belongs to native condition owner",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 86,
+      "scope": "Always-falsy literal belongs to native condition owner",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 87,
+      "scope": "Branded nonnullable string default",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 88,
+      "scope": "Branded nonnullable number default",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 89,
+      "scope": "Branded nonnullable bigint default",
+      "caseInstances": 3,
+      "initialMismatchCases": 1,
+      "resolution": "rule repaired and regression retained",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 90,
+      "scope": "Branded boolean aggregation",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 91,
+      "scope": "Branded truthy literal keeps native condition ownership",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 92,
+      "scope": "Opaque constrained generic remains excluded",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 93,
+      "scope": "Any and unknown scalar data remain excluded",
+      "caseInstances": 4,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 94,
+      "scope": "Object-only fallback keeps native condition ownership",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 95,
+      "scope": "Numeric enum with a zero member",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 96,
+      "scope": "Mixed always-falsy literals keep native ownership",
+      "caseInstances": 3,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 97,
+      "scope": "Exact reasoned suppression for both owners",
+      "caseInstances": 4,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 98,
+      "scope": "Generated, test and story scope boundaries",
+      "caseInstances": 5,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 99,
+      "scope": "No automatic behavior change and malformed-input rejection",
+      "caseInstances": 4,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    },
+    {
+      "id": 100,
+      "scope": "Native module and TSX file kinds",
+      "caseInstances": 5,
+      "initialMismatchCases": 0,
+      "resolution": "preserved",
+      "finalAdjudicatedMismatchCases": 0
+    }
+  ],
+  "integration": {
+    "incoming": "Published TypeScript 18 / Core 8.194 frontend policy and two warning rules retained.",
+    "scope": "Owned rule implementations/tests and their shared expression/type helpers are unchanged. Target rule options are unchanged. Current TypeScript, artifact, immutable replay and performance qualification is refreshed; unchanged Python-engine evidence is retained. Final exact-head CI qualifies the combined tree.",
+    "previousQualifiedCalibration": {
+      "typescriptVersion": "17.2.1",
+      "coreVersion": "8.193.2",
+      "fullNativePackageTestsPassed": 59038,
+      "adjudicatedMismatchCases": 0
+    },
+    "subsequentPolicyUpdate": "Repo-standards 6.17.1 and baseline policy 33 retained. Recorded TypeScript, rule-option, helper and dependency inputs remain unchanged from the refreshed 18.0.2 calibration. Policy/migration and artifact checks precede normal hooks."
+  }
+}
