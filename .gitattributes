@@ -1,3 +1,32 @@
+# BEGIN code-standards review defaults
+# Collapse tests in GitHub diffs; reviewers can expand them.
+# GitHub also excludes these paths from language statistics.
+# Keep repository overrides after this block, or in a nested .gitattributes.
+test_*.py linguist-generated=true
+*_test.py linguist-generated=true
+conftest.py linguist-generated=true
+**/tests/** linguist-generated=true
+**/test/** linguist-generated=true
+**/__tests__/** linguist-generated=true
+**/__snapshots__/** linguist-generated=true
+*.test.js linguist-generated=true
+*.test.jsx linguist-generated=true
+*.test.ts linguist-generated=true
+*.test.tsx linguist-generated=true
+*.test.mjs linguist-generated=true
+*.test.cjs linguist-generated=true
+*.test.mts linguist-generated=true
+*.test.cts linguist-generated=true
+*.spec.js linguist-generated=true
+*.spec.jsx linguist-generated=true
+*.spec.ts linguist-generated=true
+*.spec.tsx linguist-generated=true
+*.spec.mjs linguist-generated=true
+*.spec.cjs linguist-generated=true
+*.spec.mts linguist-generated=true
+*.spec.cts linguist-generated=true
+# END code-standards review defaults
+
 # Review-size policy is read from the trusted pull-request base revision.
 **/yarn.lock pr-size-excluded
 **/uv.lock pr-size-excluded
