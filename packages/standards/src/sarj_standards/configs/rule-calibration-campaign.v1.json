@@ -3319,6 +3319,22 @@
       "outcome": "Introduce the rule at WARNING without autofix. Review native array field/data projections from direct props in independently interactive client views, requiring data-only input usage. Preserve reactive captures, JSX rendering and inputs needed for editing or domain operations. Preparing an upstream producer on the server requires architectural review; local syntax does not prove server availability or end-to-end cost."
     },
     {
+      "task": "rule-audit/typescript/no-logical-or-fallback",
+      "family": "typescript",
+      "ruleId": "no-logical-or-fallback",
+      "state": "pending",
+      "evidence": "Twenty-nine focused tests cover non-nullable primitive defaults, boolean contexts, shadowed Boolean, literal conditions, exclusions and executable examples. Shared controls for this rule and no-zod-parse-typed-object contain 22 labeled positive and 46 negative cases with no inspected false positives or false negatives. Three isolated baseline/candidate pairs scan 215 immutable maintained TypeScript rule-source files with zero findings. Shared first/repeated lint medians change from 12.09/4.60 to 14.06/5.17 seconds; peak RSS medians are 1,263,712/1,250,316 KiB. Seven inspected in-repository fallback findings are migrated with explicit checks that preserve empty-string and comparator-zero behavior. This source-only snapshot does not establish production prevalence or recall; broader independent field calibration remains pending.",
+      "outcome": "Introduce @sarj/no-logical-or-fallback at WARNING without autofix. The upstream nullish-coalescing owner handles nullable primitive defaults; this companion handles known non-nullable string, number and bigint defaults. Preserve boolean logic and direct conditions. Use ?? for missing values or an explicit check when empty strings and zero intentionally select the fallback. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-zod-parse-typed-object",
+      "family": "typescript",
+      "ruleId": "no-zod-parse-typed-object",
+      "state": "pending",
+      "evidence": "Forty-three focused tests cover native Zod parse/safeParse and async variants, awaited typed service responses, defaults/refinements, schema aliases and members, brands, tuple transformations, unknown boundaries and primitive validation. Shared controls for this rule and no-logical-or-fallback contain 22 labeled positive and 46 negative cases with no inspected false positives or false negatives. Three isolated baseline/candidate pairs scan 215 immutable maintained TypeScript rule-source files with zero findings. Shared first/repeated lint medians change from 12.09/4.60 to 14.06/5.17 seconds; peak RSS medians are 1,263,712/1,250,316 KiB. The corpus supplies no independent positive observations and does not establish production prevalence or recall; broader independent field calibration remains pending.",
+      "outcome": "Introduce @sarj/no-zod-parse-typed-object at WARNING without autofix. Report parsing of fully known compatible objects and arrays, including typed SDK responses, when schema input and output retain the same value shape. Preserve unknown data boundaries, primitive checks, incompatible contracts, brands and type-changing transformations. Static compatibility does not prove runtime trust; replace required defaults or mappings explicitly, or retain an intentional validation with a reasoned local suppression. Full campaign completion is not claimed."
+    },
+    {
       "task": "rule-audit/typescript/no-runtime-typeof",
       "family": "typescript",
       "ruleId": "no-runtime-typeof",

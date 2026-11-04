@@ -73,8 +73,13 @@ class SourceDocument:
         index = self._coordinate_index()
         if line < 1 or column < 1 or line > len(index.lines):
             return None
-        content = index.lines[line - 1].rstrip("\r\n")
+        source_line = index.lines[line - 1]
         codepoint_index = column - 1
+        if source_line.isascii():
+            if codepoint_index > _content_length(source_line):
+                return None
+            return Position(line - 1, codepoint_index, index.line_byte_offsets[line - 1] + codepoint_index)
+        content = source_line.rstrip("\r\n")
         if codepoint_index > len(content):
             return None
         prefix = content[:codepoint_index]
@@ -88,17 +93,18 @@ class SourceDocument:
         document = self._coordinate_index()
         if line < 0 or character < 0 or line >= len(document.lines):
             return None
-        content = document.lines[line].rstrip("\r\n")
+        source_line = document.lines[line]
         if character == 0:
             return Position(line=line, character=0, byte_offset=document.line_byte_offsets[line])
-        if content.isascii():
-            if character > len(content):
+        if source_line.isascii():
+            if character > _content_length(source_line):
                 return None
             return Position(
                 line=line,
                 character=character,
                 byte_offset=document.line_byte_offsets[line] + character,
             )
+        content = source_line.rstrip("\r\n")
         index = document.utf16_indexes.get(line)
         if index is None:
             index = self._build_utf16_index(content)
@@ -143,8 +149,13 @@ class SourceDocument:
         index = self._coordinate_index()
         if line < 1 or column < 1 or line > len(index.lines):
             return None
-        content = index.lines[line - 1].rstrip("\r\n")
+        source_line = index.lines[line - 1]
         byte_column = column - 1
+        if source_line.isascii():
+            if byte_column > _content_length(source_line):
+                return None
+            return Position(line - 1, byte_column, index.line_byte_offsets[line - 1] + byte_column)
+        content = source_line.rstrip("\r\n")
         encoded = content.encode("utf-8", errors="surrogateescape")
         if byte_column > len(encoded):
             return None
@@ -176,6 +187,11 @@ class SourceDocument:
         line_start = index.line_byte_offsets[line]
         relative = offset - line_start
         source_line = index.lines[line]
+        if source_line.isascii():
+            if 0 < relative < len(source_line) and source_line[relative - 1] == "\r" and source_line[relative] == "\n":
+                msg = "source byte offset splits a CRLF line terminator"
+                raise ValueError(msg)
+            return Position(line, relative, offset)
         encoded_line = source_line.encode("utf-8", errors="surrogateescape")
         if relative > 0 and relative < len(encoded_line) and encoded_line[relative - 1 : relative + 1] == b"\r\n":
             msg = "source byte offset splits a CRLF line terminator"
@@ -196,3 +212,10 @@ class SourceDocument:
             character=len(current.encode("utf-16-le", errors="surrogatepass")) // 2,
             byte_offset=offset,
         )
+
+
+def _content_length(line: str) -> int:
+    # Indexed lines have at most one protocol terminator; avoid copying long lines.
+    if line.endswith("\r\n"):
+        return len(line) - 2
+    return len(line) - int(line.endswith(("\r", "\n")))

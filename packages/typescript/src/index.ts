@@ -1,3 +1,5 @@
+import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
+import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
 import preferServerDataPreparation from "./rules/prefer-server-data-preparation.js";
 import noReadonlyPropState from "./rules/no-readonly-prop-state.js";
 import noRuntimeTypeof from "./rules/no-runtime-typeof.js";
@@ -158,6 +160,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-logical-or-fallback": noLogicalOrFallback,
+  "no-zod-parse-typed-object": noZodParseTypedObject,
   "prefer-server-data-preparation": preferServerDataPreparation,
   "no-readonly-prop-state": noReadonlyPropState,
   "no-runtime-typeof": noRuntimeTypeof,
@@ -337,6 +341,8 @@ type PresetPolicy = {
 };
 
 const RULE_POLICY = {
+  "@sarj/no-logical-or-fallback": ["warn", "both"],
+  "@sarj/no-zod-parse-typed-object": ["warn", "both"],
   "@sarj/no-frontend-comments": ["error", "both"],
   "@sarj/no-excess-jsx-props": ["warn", "both"],
   "@sarj/no-redundant-consumer-union": ["warn", "both"],

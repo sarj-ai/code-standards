@@ -61,8 +61,9 @@ async function formatDisplayedFixedSource(file: ExampleFile, example: RuleExampl
   else if (/\.(?:js|cjs|mjs)$/u.test(lower) || lower.endsWith(".jsx")) parser = "babel";
   else throw new Error(`${example.id}: no displayed source formatter for ${file.path}`);
   const normalize = (source: string): string => `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
+  const extension = extname(lower);
   return normalize(await prettierFormat(normalize(file.source), {
-    filepath: `example${extname(lower) || ".txt"}`,
+    filepath: `example${extension === "" ? ".txt" : extension}`,
     parser,
     plugins: [],
     printWidth: 88,

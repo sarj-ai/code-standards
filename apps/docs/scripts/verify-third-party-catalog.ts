@@ -567,7 +567,8 @@ function rulesForProvider(providerId: string) {
 }
 
 function compareVisible(left: string, right: string, tieBreaker: number) {
-  return left.localeCompare(right, "en", { sensitivity: "base" }) || tieBreaker;
+  const visible = left.localeCompare(right, "en", { sensitivity: "base" });
+  return visible === 0 ? tieBreaker : visible;
 }
 
 function summaryParts(value: string) {

@@ -47,6 +47,8 @@ const PREVIOUS_STRICT_RULE_ORDER = [
   "@sarj/production-derived-test-cases",
   "@sarj/require-constrained-schema-integer",
   "@sarj/require-jwt-lifetime",
+  "@sarj/no-logical-or-fallback",
+  "@sarj/no-zod-parse-typed-object",
   "@sarj/no-frontend-comments",
   "@sarj/no-excess-jsx-props",
   "@sarj/no-redundant-consumer-union",
@@ -187,6 +189,8 @@ const PREVIOUS_STRICT_RULE_ORDER = [
   "@sarj/require-pascal-case-zod-schema-name",
 ] as const;
 const PREVIOUS_RECOMMENDED_RULE_ORDER = [
+  "@sarj/no-logical-or-fallback",
+  "@sarj/no-zod-parse-typed-object",
   "@sarj/no-frontend-comments",
   "@sarj/no-excess-jsx-props",
   "@sarj/no-redundant-consumer-union",

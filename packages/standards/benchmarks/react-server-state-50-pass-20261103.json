@@ -266,7 +266,7 @@
   ],
   "releaseCandidates": {
     "typescript": "18.0.0",
-    "standards": "8.192.0",
+    "standards": "8.194.0",
     "status": "unpublished-at-review"
   },
   "verification": {
@@ -429,5 +429,18 @@
     "previousStandardsCandidate": "8.184.0",
     "standardsCandidate": "8.192.0",
     "reason": "Preserve subsequent main analyzer, adoption and formatter fixes before the authorized admin merge. Existing bounded detector measurements are retained as historical evidence; integration is qualified separately."
-  }
+  },
+  "subsequentIntegrations": [
+    {
+      "base": "10e285a6a1138a0b0245428942730fa95a709699",
+      "previousStandardsCandidate": "8.192.0",
+      "standardsCandidate": "8.194.0",
+      "reason": "Retain the newly merged Zod/default-value rules and current documentation behavior before admin merge."
+    },
+    {
+      "base": "52bc29fd024231fb0b0248a88345d9a30ef514a2",
+      "standardsCandidate": "8.194.0",
+      "reason": "Retain the current diagnostics optimization and its regression tests. TypeScript sources, dependencies and generated artifacts match the preceding passing 1966-test candidate."
+    }
+  ]
 }
