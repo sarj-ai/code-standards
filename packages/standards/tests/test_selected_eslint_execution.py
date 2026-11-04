@@ -8,7 +8,54 @@ import pytest
 
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Severity, TrustMode
-from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external
+from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external, run_process
+
+
+def test_managed_syncpack_preset_does_not_break_native_typed_lint_or_selected_coverage(tmp_path: Path) -> None:
+    typescript = Path(__file__).resolve().parents[2] / "typescript"
+    modules = typescript / "node_modules"
+    compiled = typescript / "dist/index.js"
+    if shutil.which("node") is None or not (modules / "eslint/package.json").is_file() or not compiled.is_file():
+        pytest.skip("requires the repository's built TypeScript package and locked dependencies")
+    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / "tsconfig.json").write_text('{"include":["src"]}', encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    source = tmp_path / "src/source.ts"
+    original = b"debugger;\nexport const value = 1;\n"
+    source.write_bytes(original)
+    preset = tmp_path / "syncpack.strict.mts"
+    preset.write_bytes(manifest.PEERS_JSON.with_name(preset.name).read_bytes())
+    shared = manifest.PEERS_JSON.with_name("eslint.strict.mjs").read_text(encoding="utf-8")
+    (tmp_path / "eslint.strict.mjs").write_text(
+        shared.replace('from "@sarj/eslint-plugin"', f'from "{compiled.as_uri()}"'), encoding="utf-8"
+    )
+    (tmp_path / "eslint.config.mjs").write_text(
+        'import {createConfig} from "./eslint.strict.mjs";\n'
+        "export default [...createConfig({projectService:true,tsconfigRootDir:import.meta.dirname}),"
+        '{rules:{"no-debugger":"error"}}];\n',
+        encoding="utf-8",
+    )
+
+    native = run_process(
+        ("node", str(modules / "eslint/bin/eslint.js"), "--no-warn-ignored", str(source), str(preset)), cwd=tmp_path
+    )
+    assert native.returncode == 1
+    assert "no-debugger" in native.stdout
+    assert "Parsing error" not in native.stdout
+    assert preset.name not in native.stdout
+    reports = analyze_external(
+        [str(source), str(preset)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"eslint"}),
+        rule_ids=frozenset(),
+        upstream_rules=UpstreamESLintRules(frozenset({"no-debugger"})),
+    )
+    assert len(reports) == 1
+    assert reports[0].issues == ()
+    assert {diagnostic.code for diagnostic in reports[0].diagnostics} == {"no-debugger"}
+    assert source.read_bytes() == original
 
 
 @pytest.mark.parametrize("upstream", [False, True])

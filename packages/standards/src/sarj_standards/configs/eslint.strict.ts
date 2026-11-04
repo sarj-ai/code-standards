@@ -726,6 +726,7 @@ const BUILD_OUTPUT_IGNORES = [
   "**/eslint.config.ts",
   "**/eslint.strict.mjs",
   "**/eslint.strict.ts",
+  "**/syncpack.strict.mts",
   "**/*.min.js",
   "**/*.min.mjs",
   "**/*.min.cjs",

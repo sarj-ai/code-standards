@@ -42,6 +42,7 @@ _ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
         "eslint.strict.mjs",
         "eslint.strict.d.mts",
         "eslint.strict.ts",
+        "syncpack.strict.mts",
     }
 )
 _COMMAND_TIMEOUT = timedelta(minutes=10)
