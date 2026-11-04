@@ -17,6 +17,7 @@ _OWNED_NAMES: Final = frozenset(
         ".pre-commit-config.yaml",
         ".pre-commit-config.yml",
         ".sarj-standards.toml",
+        ".gitattributes",
         ".ruff-strict.toml",
         ".pyright-strict.json",
         ".basedpyright-strict.json",

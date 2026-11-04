@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 import re
 from typing import TYPE_CHECKING
 
@@ -15,9 +16,11 @@ from sarj_sql_lint.rule_base import (
     has_file_comment_match,
     is_generated_migration,
     is_mysql,
+    is_postgres,
     is_sqlite,
     is_suppressed,
     mask_sql,
+    mask_sql_comments,
     physical_lines,
     source_location,
     sql_comments,
@@ -39,7 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from sarj_sql_lint.rule_base import Diagnostic
+    from sarj_sql_lint.rule_base import Diagnostic, SourceComment
 
 
 _GENERATED_HEADER = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
@@ -47,6 +50,7 @@ _PRESERVED_COMMENT = re.compile(
     r"\b(?:copyright|spdx|licen[cs]e|sarj-noqa|noqa|tflint|checkov|tfsec|trivy|shellcheck|yamllint|markdownlint|prettier-ignore|eslint|ruff|pyright|sqlfluff|squawk-ignore)\b|(?:coding|encoding)\s*[:=]",
     re.IGNORECASE,
 )
+_STRING_CONTINUATION_GAP = re.compile(r"(?=(?P<gap>'[ \t\r\n\f\v]+'))")
 _PROCEDURAL_SQL = re.compile(r"\b(?:DO|FUNCTION|PROCEDURE)\b", re.IGNORECASE)
 
 
@@ -112,7 +116,59 @@ def _migration_comment_edits(path: Path, source: str, diagnostics: Sequence[Diag
         for item in REGISTRY["no-migration-comment-cruft"]().check(path, source)
         if (item.line, item.col) in locations and not is_suppressed(source, item.line, item.code)
     ]
-    return _comment_edits(source, proven, banners=True)
+    edits = _comment_edits(source, proven, banners=True)
+    if is_postgres(source):
+        edits.extend(_empty_comment_edits(source, locations, edits))
+    return edits
+
+
+def _empty_comment_edits(source: str, locations: set[tuple[int, int]], existing: Sequence[TextEdit]) -> list[TextEdit]:
+    comments = [
+        comment
+        for comment in sql_comments(source, mask_dollar_literals=True)
+        if not comment.body and (comment.line, comment.column) in locations
+    ]
+    if not comments:
+        return []
+    lines = physical_lines(source, keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    masked = mask_sql_comments(source)
+    gaps = tuple(_STRING_CONTINUATION_GAP.finditer(masked))
+    covered = iter(sorted(existing, key=lambda edit: edit.start))
+    current = next(covered, None)
+    edits: list[TextEdit] = []
+    for comment in comments:
+        edit = _empty_comment_edit(source, masked, comment, lines, offsets)
+        if edit is None:
+            continue
+        if comment.block and _string_gap_covers(edit, gaps):
+            continue
+        while current is not None and current.end <= edit.start:
+            current = next(covered, None)
+        if current is None or current.start >= edit.end:
+            edits.append(edit)
+    return edits
+
+
+def _string_gap_covers(edit: TextEdit, gaps: Sequence[re.Match[str]]) -> bool:
+    index = bisect_right(gaps, edit.start, key=lambda match: match.start()) - 1
+    return index >= 0 and gaps[index].end("gap") >= edit.end
+
+
+def _empty_comment_edit(
+    source: str, masked: str, comment: SourceComment, lines: Sequence[str], offsets: Sequence[int]
+) -> TextEdit | None:
+    start = offsets[comment.line - 1] + comment.column - 1
+    if comment.block:
+        closing = source.find("*/", start + 2)
+        if closing < 0:
+            return None
+        end = closing + 2
+    else:
+        end = offsets[comment.line - 1] + len(lines[comment.line - 1].rstrip("\r\n"))
+    return TextEdit(start, end, masked[start:end])
 
 
 def _parseable(source: str) -> bool:

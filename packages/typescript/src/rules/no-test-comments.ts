@@ -103,13 +103,13 @@ export default createRule<Options, "testComment">({
   name: "no-test-comments",
   documentation: NO_TEST_COMMENTS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     fixable: "code",
     docs: { description: NO_TEST_COMMENTS_DOCUMENTATION.summary },
-    schema: [{ type: "object", properties: { allFiles: { type: "boolean" } }, additionalProperties: false }],
+    schema: [{ type: "object", properties: { allFiles: { description: "Check every eligible test file without requiring frontend framework ownership.", type: "boolean" } }, additionalProperties: false }],
     messages: { testComment: "Express this explanation in the test name, fixture or assertion, then remove the comment." },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     if (!ownsTestComments(context)) return {};

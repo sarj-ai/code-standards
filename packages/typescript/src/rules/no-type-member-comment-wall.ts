@@ -88,6 +88,7 @@ export default createRule<Options, MessageIds>({
   name: "no-type-member-comment-wall",
   documentation: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
   meta: {
+    defaultOptions: [WALL_DEFAULTS],
     type: "suggestion",
     fixable: "code",
     docs: {
@@ -100,7 +101,6 @@ export default createRule<Options, MessageIds>({
         "{{restated}} of this type's {{commented}} member comments appear to repeat names and types — review them for removal or clearer naming. Keep constraints and rationale.",
     },
   },
-  defaultOptions: [WALL_DEFAULTS],
   create(context, [provided]) {
     const options: WallOptions = { ...WALL_DEFAULTS, ...provided };
     const sourceCode = context.sourceCode;

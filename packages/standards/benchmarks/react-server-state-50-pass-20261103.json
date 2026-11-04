@@ -266,7 +266,7 @@
   ],
   "releaseCandidates": {
     "typescript": "18.0.0",
-    "standards": "8.184.0",
+    "standards": "8.192.0",
     "status": "unpublished-at-review"
   },
   "verification": {
@@ -423,5 +423,11 @@
     "Publication and consumer adoption remain separate from implementation and local qualification."
   ],
   "integrationBaseRevision": "0a0564fc6f3e0e4a729ff38d2565346706569682",
-  "method": "50 distinct source, ownership and semantic-boundary review passes. These are not 50 new rules or 50 identical executions. Canonical regression qualification is recorded separately."
+  "method": "50 distinct source, ownership and semantic-boundary review passes. These are not 50 new rules or 50 identical executions. Canonical regression qualification is recorded separately.",
+  "mainIntegration": {
+    "base": "2196bcf9e7e9b6b39b54b4832094bec822e9e095",
+    "previousStandardsCandidate": "8.184.0",
+    "standardsCandidate": "8.192.0",
+    "reason": "Preserve subsequent main analyzer, adoption and formatter fixes before the authorized admin merge. Existing bounded detector measurements are retained as historical evidence; integration is qualified separately."
+  }
 }

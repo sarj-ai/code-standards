@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "207798bed72ceb3c4b55bde9e281e873bca37f5815674221246ad06c86ecfe51",
-  "cliSha256": "ed10496c44d434b215fc87878145e17e8fc7880bff86e6daa2e143fa7113af4e",
+  "catalogSha256": "a263887e38bf60757c4319b5251c82c5e76a0e86082564c08264f1553bc07faf",
+  "cliSha256": "921224582fa6248bbeaa388135509c4dd24ba81232285080363a4c55dbb6e66f",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1678,7 +1678,7 @@
           "title": "Keep only operations with the same recovery policy in the try block"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"max\": { \"minimum\": 1, \"type\": \"integer\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"max\": {\n      \"description\": \"Maximum number of statements allowed in one try body.\",\n      \"minimum\": 1,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-first-party-module-mock": {
       "examples": [
@@ -1713,7 +1713,7 @@
           "title": "Do not replace an owned module"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"description\": \"Additional maintained module prefixes that tests must not mock.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-frontend-comments": {
       "examples": [
@@ -1821,7 +1821,7 @@
           "title": "The helper expresses its behavior in code"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allFiles\": {\n      \"description\": \"Check comments without requiring frontend framework ownership.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-generic-json-parser": {
       "examples": [
@@ -2985,7 +2985,7 @@
           "title": "Do not call global fetch here"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-readonly-prop-state": {
       "examples": [
@@ -3571,7 +3571,7 @@
           "title": "Do not load a restricted library at runtime"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"description\": \"Library import and module-load restrictions.\",\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-return-disposed-resource": {
       "examples": [
@@ -4541,7 +4541,7 @@
           "title": "Put behavior in the test name"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allFiles\": {\n      \"description\": \"Check every eligible test file without requiring frontend framework ownership.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-trailing-value-narration": {
       "examples": [
@@ -4716,7 +4716,7 @@
           "title": "Resolve the message through translation"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"attributes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"attributes\": {\n      \"description\": \"JSX attributes whose user-visible text requires localization.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-unlocalized-jsx-text": {
       "examples": [
@@ -4786,7 +4786,7 @@
           "title": "Resolve the message through translation"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"functions\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"methods\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"functions\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"methods\": {\n      \"description\": \"Toast method names whose user-visible messages require localization.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-unnecessary-use-client": {
       "examples": [
@@ -5042,7 +5042,7 @@
           "title": "Do not directly return a Promise callback chain from async code"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": { \"enum\": [\"async-return\", \"all-promise-calls\"], \"type\": \"string\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": {\n      \"description\": \"Check async return statements or every promise-valued call.\",\n      \"enum\": [\"async-return\", \"all-promise-calls\"],\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-constant-time-secret-compare": {
       "examples": [
@@ -5377,7 +5377,7 @@
           "title": "Mirror layout spacing"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowUtilities\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"checkInsets\": { \"type\": \"boolean\" },\n    \"enabled\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowUtilities\": {\n      \"description\": \"Physical utility names allowed without a logical replacement.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"checkInsets\": {\n      \"description\": \"Include physical inset utilities in direction checks.\",\n      \"type\": \"boolean\"\n    },\n    \"enabled\": {\n      \"description\": \"Enable replacement of physical direction utilities with logical equivalents.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-millisecond-control-duration-schema": {
       "examples": [
@@ -5667,7 +5667,7 @@
           "title": "Do not recreate a constant collection"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"checkRegex\": { \"type\": \"boolean\" },\n    \"ignoreTestFiles\": { \"type\": \"boolean\" },\n    \"minElements\": { \"minimum\": 1, \"type\": \"number\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"checkRegex\": {\n      \"description\": \"Include reusable regular expression literals in hoisting checks.\",\n      \"type\": \"boolean\"\n    },\n    \"ignoreTestFiles\": {\n      \"description\": \"Skip test files when recommending module-level constants.\",\n      \"type\": \"boolean\"\n    },\n    \"minElements\": {\n      \"description\": \"Minimum collection size before recommending a module-level constant.\",\n      \"minimum\": 1,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-module-level-refined-schema": {
       "examples": [
@@ -5772,7 +5772,7 @@
           "title": "Use one multi-value literal"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": { \"maximum\": 4, \"minimum\": 4, \"type\": \"integer\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": {\n      \"description\": \"Installed Zod major version used to validate multi-value literal support.\",\n      \"maximum\": 4,\n      \"minimum\": 4,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-named-callback-domain": {
       "examples": [
@@ -6223,7 +6223,7 @@
           "title": "Use a semantic color token"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": { \"type\": \"boolean\" },\n    \"requireSemanticTokens\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": {\n      \"description\": \"Use the project semantic foreground roles to check opaque foreground and background pairs.\",\n      \"type\": \"boolean\"\n    },\n    \"requireSemanticTokens\": {\n      \"description\": \"Restrict checks to projects with an existing semantic token system.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-server-actions": {
       "examples": [
@@ -6258,7 +6258,7 @@
           "title": "Call a Server Action"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-server-data-preparation": {
       "examples": [
@@ -6336,7 +6336,7 @@
           "title": "Use a shared button"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"assumeAvailable\": { \"type\": \"boolean\" },\n    \"detectProjectPrimitives\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"assumeAvailable\": {\n      \"description\": \"Assume supported shared UI primitives are available in this project.\",\n      \"type\": \"boolean\"\n    },\n    \"detectProjectPrimitives\": {\n      \"description\": \"Resolve project-owned UI primitives before recommending replacements.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shared-zod-enum": {
       "examples": [
@@ -6606,7 +6606,7 @@
           "title": "Infer the schema type"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreTypeNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"requireIdenticalShape\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreTypeNames\": {\n      \"description\": \"Regular expression patterns for type names to leave unchanged.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"requireIdenticalShape\": {\n      \"description\": \"Require the schema output and declared type to have identical property shapes.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-zod-parse-output-type": {
       "examples": [
@@ -6797,7 +6797,7 @@
           "title": "Name an icon action"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"description\": \"Module names whose imported components count as icons.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:require-camelcase-properties": {
       "examples": [
@@ -7571,6 +7571,41 @@
     },
     "iac:expression-complexity": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  value = true ? (true ? (true ? (true ? (true ? (true ? (true ? (1) : 2) : 2) : 2) : 2) : 2) : 2) : 2\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  value = 1\n}\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "closed-literal-tree",
+          "outcome": "reject",
+          "scenarioId": "closed-literal-tree",
+          "title": "Fold a complete literal conditional tree"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  value = 1\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "closed-literal-tree-fixed",
+          "outcome": "accept",
+          "scenarioId": "closed-literal-tree",
+          "title": "The selected literal retains its scalar type"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -8539,6 +8574,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A Terraform comment duplicates executable intent"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 /**/ + 2 }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 + 2 }\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "empty-inline-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-inline-comment",
+          "title": "Keep operators separated when removing an empty block comment"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 + 2 }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "empty-inline-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-inline-comment",
+          "title": "Whitespace preserves the original Terraform operators"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "#\nlocals { value = 1 }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "\nlocals { value = 1 }\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "empty-line-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-line-comment",
+          "title": "Remove an empty Terraform line comment"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "\nlocals { value = 1 }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "empty-line-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-line-comment",
+          "title": "The executable Terraform remains unchanged"
         },
         {
           "expectedCount": 0,
@@ -20535,6 +20640,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A comment cannot enforce a column range"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 /**/ AS value;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 AS value;\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-comment",
+          "title": "Remove an empty comment while keeping SQL tokens separate"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 AS value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment",
+          "title": "Whitespace preserves the executable SQL after the comment is removed"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 /**/ AS value;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 AS value;\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-with-string",
+          "outcome": "reject",
+          "scenarioId": "empty-comment-with-string",
+          "title": "Remove an empty comment beside string data"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 AS value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-with-string-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment-with-string",
+          "title": "String data and SQL tokens remain unchanged"
         },
         {
           "expectedCount": 0,

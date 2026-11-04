@@ -89,7 +89,7 @@ def abstract_ancestors(model: DeclaredClass, contracts: DeclaredContracts) -> tu
             owner = contracts.class_type(base, current.unit)
             if owner is None:
                 continue
-            if abstract_contract(owner, contracts) and contracts.inherits(owner, PORT_BASES):
+            if contracts.inherits(owner, PORT_BASES) and abstract_contract(owner, contracts):
                 found[owner.declaration] = owner
             else:
                 pending.append((owner, depth + 1))

@@ -38,6 +38,8 @@ from sarj_standards.libs.yaml_boundary import parse_yaml
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from pydantic import JsonValue
+
     from sarj_standards.cli.main import _Args  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- mirrors the private callback contract intercepted by this test.
     from tests.call_contracts import SubprocessOptions
 
@@ -651,6 +653,7 @@ def test_manifest_renders_as_valid_toml() -> None:
         "checkov",
         "jscpd",
         "knip",
+        "sqlfluff",
     ]
 
 
@@ -672,7 +675,7 @@ def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
     expected = (
         "# Managed by `code-standards setup`; commit this file.\n"
         f'bundle = "{manifest.adopted_version()}"\nrule_profile = "all"\nschema = 4\n\n'
-        '[capabilities]\ndisable = ["jscpd", "knip"]\n\n'
+        '[capabilities]\ndisable = ["jscpd", "knip", "sqlfluff"]\n\n'
         '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
         '  "docs/short",\n]\n\n'
         '[dest]\nkotlin = "."\npython = "."\nswift = "."\ntypescript = "."\n\n'
@@ -1215,6 +1218,17 @@ def test_doctor_fails_when_the_basedpyright_companion_is_edited(tmp_path: Path) 
     assert "drifted" in proc.stdout
 
 
+def test_doctor_fails_when_the_syncpack_companion_is_edited(tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    (tmp_path / "syncpack.strict.mts").write_text("export default {};\n")
+
+    proc = _cli("--root", str(tmp_path), "doctor")
+    assert proc.returncode == 1
+    assert "syncpack.strict.mts" in proc.stdout
+    assert "syncpack companion config differs from the installed bundle" in proc.stdout
+
+
 def test_setup_accepts_several_configs(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     assert (
@@ -1552,6 +1566,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     assert not (tmp_path / ".ruff-strict.toml").exists()
     peers = manifest.eslint_peers()
     assert peers["jiti"] == "2.7.0"
+    assert peers["syncpack"] == "15.3.3"
     repository = tomllib.loads((tmp_path / ".repo-standards/repository.toml").read_text(encoding="utf-8"))
     assert "repository/artifacts/untyped-javascript" not in repository.get("enabled_rules", [])
     assert "javascript" not in repository
@@ -1559,6 +1574,64 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     assert (tmp_path / "eslint.config.ts").read_bytes() == before
     assert not (tmp_path / "eslint.config.mjs").exists()
+
+
+@pytest.mark.parametrize("preset", ["eslint.strict.ts", "eslint.strict.mjs"])
+def test_syncpack_preset_drift_is_detected_and_repaired_without_replacing_local_groups(
+    tmp_path: Path, preset: str
+) -> None:
+    _typescript_repo(tmp_path)
+    (tmp_path / preset).write_text("")
+    consumer = tmp_path / ".syncpackrc.ts"
+    consumer.write_text('import strict from "./syncpack.strict.mts";\nexport default strict;\n')
+    original = consumer.read_bytes()
+    plan = service.plan_sync(tmp_path, configs=("eslint",))
+    assert service.apply_sync(plan, force=True).status == 0
+    shared = tmp_path / "syncpack.strict.mts"
+    assert shared.read_bytes() == (CONFIGS_DIR / "syncpack.strict.mts").read_bytes()
+    shared.write_text("export default {};\n")
+    assert service.apply_sync(plan, check=True).status == 1
+    assert service.apply_sync(plan, force=True).status == 0
+    assert service.apply_sync(plan, check=True).status == 0
+    assert consumer.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("root_fields", "workspace_fields", "status"),
+    [
+        ({"dependencies": {"example": "1.0.0"}}, {"dependencies": {"example": "1.0.0"}}, 0),
+        ({"dependencies": {"example": "1.0.0"}}, {"dependencies": {"example": "2.0.0"}}, 1),
+        ({"resolutions": {"example": ">=2.0.0 <3"}}, {"dependencies": {"example": "1.0.0"}}, 0),
+        ({"devDependencies": {"@eslint/js": "10.0.1"}}, {"peerDependencies": {"@eslint/js": "^9.0.0"}}, 0),
+        ({"packageManager": "yarn@4.18.1"}, {"packageManager": "yarn@4.17.0"}, 1),
+    ],
+    ids=["matching-runtime", "mismatched-runtime", "security-floor", "tested-peer-range", "package-manager-drift"],
+)
+def test_syncpack_native_policy_preserves_boundaries_and_rejects_version_drift(
+    tmp_path: Path, root_fields: dict[str, JsonValue], workspace_fields: dict[str, JsonValue], status: int
+) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "root",
+                "version": "1.0.0",
+                "private": True,
+                "type": "module",
+                "workspaces": ["packages/*"],
+                **root_fields,
+            }
+        )
+    )
+    workspace = tmp_path / "packages/example"
+    workspace.mkdir(parents=True)
+    (workspace / "package.json").write_text(json.dumps({"name": "workspace", "version": "1.0.0", **workspace_fields}))
+    shutil.copyfile(CONFIGS_DIR / "syncpack.strict.mts", tmp_path / "syncpack.strict.mts")
+    (tmp_path / ".syncpackrc.ts").write_text('import strict from "./syncpack.strict.mts";\nexport default strict;\n')
+    command = REPO_ROOT / "packages/typescript/node_modules/.bin/syncpack"
+    result = subprocess.run(
+        [str(command), "lint", "--no-ansi"], cwd=tmp_path, check=False, capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == status, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("preset", ["eslint.strict.ts", "eslint.strict.mjs"])

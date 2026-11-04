@@ -80,6 +80,83 @@ def test_native_fixes_honor_path_rule_code_and_override_exclusions(tmp_path: Pat
     assert all(path.read_bytes() == source for path, source in sources.items() if path.name != "included.py")
 
 
+@pytest.mark.parametrize("selector", ["sql:SARJ128", "sql:no-migration-comments"])
+@pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
+def test_sql_empty_comment_profile_uses_native_dispatch_and_policy(
+    tmp_path: Path, selector: str, prefix: bytes
+) -> None:
+    path = tmp_path / "migrations" / "001.sql"
+    path.parent.mkdir()
+    original = prefix + b"SELECT 'payload' AS label, 1/**/AS value;\r\n"
+    path.write_bytes(original)
+    path.chmod(0o640)
+    adopted = manifest.Manifest(
+        version="0.0.0", configs=(), python_dest=".", typescript_dest=".", excluded_rules=(selector,)
+    )
+    policy = Policy.from_manifest(tmp_path, adopted)
+
+    assert autofix.fix_paths(tmp_path, [str(path)], policy=policy) == ()
+    assert path.read_bytes() == original
+    assert autofix.fix_paths(tmp_path, [str(path)]) == (path,)
+    assert path.read_bytes() == prefix + b"SELECT 'payload' AS label, 1    AS value;\r\n"
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert autofix.fix_paths(tmp_path, [str(path)]) == ()
+
+
+@pytest.mark.parametrize(
+    ("selector", "source", "expected", "other_exclusions"),
+    [
+        pytest.param(
+            "iac:SARJ216", b"#\r\nlocals { value = 1 }\r\n", b" \r\nlocals { value = 1 }\r\n", (), id="SARJ216"
+        ),
+        pytest.param(
+            "iac:no-terraform-comments",
+            b"#\r\nlocals { value = 1 }\r\n",
+            b" \r\nlocals { value = 1 }\r\n",
+            (),
+            id="no-terraform-comments",
+        ),
+        pytest.param(
+            "iac:SARJ217",
+            b"locals {\r\n  value = true ? (true ? (true ? (true ? (true ? (true ? (true ? (1) : 2) : 2) : 2) : 2) : 2) : 2) : 2\r\n}\r\n",
+            b"locals {\r\n  value = 1\r\n}\r\n",
+            ("iac:no-nested-conditional",),
+            id="SARJ217",
+        ),
+        pytest.param(
+            "iac:expression-complexity",
+            b"locals {\r\n  value = true ? (true ? (true ? (true ? (true ? (true ? (true ? (1) : 2) : 2) : 2) : 2) : 2) : 2) : 2\r\n}\r\n",
+            b"locals {\r\n  value = 1\r\n}\r\n",
+            ("iac:no-nested-conditional",),
+            id="expression-complexity",
+        ),
+    ],
+)
+@pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
+def test_iac_policy_profiles_use_native_dispatch_and_rule_exclusions(
+    tmp_path: Path, *, selector: str, source: bytes, expected: bytes, other_exclusions: tuple[str, ...], prefix: bytes
+) -> None:
+    path = tmp_path / "main.tf"
+    original = prefix + source
+    path.write_bytes(original)
+    path.chmod(0o640)
+    blocked = manifest.Manifest(
+        version="0.0.0", configs=(), python_dest=".", typescript_dest=".", excluded_rules=(*other_exclusions, selector)
+    )
+    allowed = manifest.Manifest(
+        version="0.0.0", configs=(), python_dest=".", typescript_dest=".", excluded_rules=other_exclusions
+    )
+    assert autofix.fix_paths(tmp_path, [str(path)], policy=Policy.from_manifest(tmp_path, blocked)) == ()
+    assert path.read_bytes() == original
+    assert autofix.fix_paths(tmp_path, [str(path)], policy=Policy.from_manifest(tmp_path, allowed)) == (path,)
+    assert path.read_bytes() == prefix + expected
+    before = path.stat()
+    assert before.st_mode & 0o777 == 0o640
+    assert autofix.fix_paths(tmp_path, [str(path)], policy=Policy.from_manifest(tmp_path, allowed)) == ()
+    after = path.stat()
+    assert (before.st_ino, before.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
+
+
 def test_native_fixes_preserve_python_encoding_cookie_and_bom(tmp_path: Path) -> None:
     latin = tmp_path / "latin.py"
     latin.write_bytes(b'# coding: latin-1\r\n\r\n# ========\r\nvalue = "caf\xe9"\r\n')

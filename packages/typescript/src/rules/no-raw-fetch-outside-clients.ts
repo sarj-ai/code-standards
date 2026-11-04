@@ -216,6 +216,7 @@ export default createRule<Options, MessageIds>({
   name: "no-raw-fetch-outside-clients",
   documentation: NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -231,7 +232,7 @@ export default createRule<Options, MessageIds>({
             description:
               "Regular-expression sources matched against the filename. Replaces the defaults.",
           },
-          basePath: {
+          basePath: { description: "Static application URL base path without query strings, fragments or parent segments.",
             type: "string",
             pattern: "^/(?!$)(?!.*[?#])(?!(?:.*/)?\\.\\.?(?:/|$))(?:[^/]+/)*[^/]+$",
           },
@@ -244,7 +245,6 @@ export default createRule<Options, MessageIds>({
         "Raw `fetch()` outside a client module. Route the call through a client (e.g. `clients/*-client.ts`) so it inherits retry, timeout and status handling and stays stubbable in tests.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const filename = context.filename;
 

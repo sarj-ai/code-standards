@@ -39,13 +39,40 @@ class ExpressionComplexity(Rule):
         rationale="Large predicates hide independent deployment requirements and make an infrastructure change difficult to review.",
         remediation="Delete redundant checks or name independently meaningful expressions. Preserve lazy evaluation, null guards and dependencies; keep genuine domain validation.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Budget: 12 points per attribute, 6 per variable validation condition. Calls, operators and comprehension filters cost one; conditionals and comprehensions cost two.",
             "Scores depend on syntax, not formatting or line count. Actual template expressions count; literal data, type constraints and embedded languages such as CEL do not.",
             "Does not limit variable counts or prove that a necessary security check can be deleted. Malformed HCL is left to native validation.",
+            "Conditional safe fixes reuse the existing bounded, same-type literal-conditional evaluator for a complete single-line attribute in an unlabelled top-level locals block. Symbolic expressions, real validation, mixed scalar types, escapes, templates and values outside the evaluator bounds remain manual.",
         ),
         examples=(
+            RuleExample(
+                example_id="closed-literal-tree",
+                scenario="closed-literal-tree",
+                title="Fold a complete literal conditional tree",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "locals {\n  value = true ? (true ? (true ? (true ? (true ? (true ? (true ? (1) : 2) : 2) : 2) : 2) : 2) : 2) : 2\n}\n",
+                    ),
+                ),
+                fixed_files=(ExampleFile.iac("main.tf", "locals {\n  value = 1\n}\n"),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="closed-literal-tree-fixed",
+                scenario="closed-literal-tree",
+                title="The selected literal retains its scalar type",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.iac("main.tf", "locals {\n  value = 1\n}\n"),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="large-predicate",
                 title="A statement combines too many independent checks",

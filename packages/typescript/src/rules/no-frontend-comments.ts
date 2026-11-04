@@ -47,13 +47,13 @@ export default createRule<Options, MessageIds>({
   name: "no-frontend-comments",
   documentation: NO_FRONTEND_COMMENTS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     fixable: "code",
     docs: { description: NO_FRONTEND_COMMENTS_DOCUMENTATION.summary },
-    schema: [{ type: "object", properties: { allFiles: { type: "boolean" } }, additionalProperties: false }],
+    schema: [{ type: "object", properties: { allFiles: { description: "Check comments without requiring frontend framework ownership.", type: "boolean" } }, additionalProperties: false }],
     messages: { noFrontendComments: "Frontend comments are prohibited; express the behavior in names, types or code and review any directive or legal contract before removing it." },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (isGeneratedFile(context, context.sourceCode.text) || ownsTestComments(context)) return {};
     const jsxRanges: SourceRange[] = [];

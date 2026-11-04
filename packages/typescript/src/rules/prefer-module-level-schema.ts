@@ -248,6 +248,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-module-level-schema",
   documentation: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -289,7 +290,6 @@ export default createRule<Options, MessageIds>({
         "Move this `{{factory}}` schema to module scope. It uses nothing from `{{owner}}`, so it is rebuilt on every call for no benefit and cannot be exported, reused, or `z.infer`-ed from where it is.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const factories = new Set(options?.factories ?? DEFAULT_FACTORIES);
     const ignoreTestFiles = options?.ignoreTestFiles ?? true;

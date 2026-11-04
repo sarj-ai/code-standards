@@ -237,6 +237,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-server-actions",
   documentation: PREFER_SERVER_ACTIONS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description: "Prefer Next.js Server Actions over same-origin API mutations.",
@@ -246,7 +247,7 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          basePath: {
+          basePath: { description: "Static application URL base path without query strings, fragments or parent segments.",
             type: "string",
             pattern: "^/(?!$)(?!.*[?#])(?!(?:.*/)?\\.\\.?(?:/|$))(?:[^/]+/)*[^/]+$",
           },
@@ -258,7 +259,6 @@ export default createRule<Options, MessageIds>({
         "This client mutation targets a same-origin API route. Consider a Server Action to remove the hand-written API wrapper; retain authorization and validation, since the call still crosses a network boundary.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const filename = context.filename.replaceAll("\\", "/");
     if (SKIP_FILE_REGEX.test(filename)) {

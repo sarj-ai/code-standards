@@ -216,6 +216,7 @@ export default createRule<Options, MessageIds>({
   name: "no-dynamic-sql",
   documentation: NO_DYNAMIC_SQL_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description: NO_DYNAMIC_SQL_DOCUMENTATION.summary,
@@ -241,7 +242,6 @@ export default createRule<Options, MessageIds>({
         "Runtime fragment interpolated into SQL passed to `{{method}}()`. Bind data values; select non-bindable SQL fragments from fixed, reviewed alternatives.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const methods = new Set(options?.methods ?? DEFAULT_METHODS);
 

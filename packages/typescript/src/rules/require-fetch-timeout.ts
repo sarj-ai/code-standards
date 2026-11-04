@@ -170,6 +170,7 @@ export default createRule<Options, MessageIds>({
   name: "require-fetch-timeout",
   documentation: REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -194,7 +195,6 @@ export default createRule<Options, MessageIds>({
         "This `fetch()` has no explicit abort signal. Pass `AbortSignal.timeout(ms)` for a deadline, or an owner-managed signal for cancellation.",
     },
   },
-  defaultOptions: [{}],
   create(context, [optionsArg]) {
     // `isTestFile` knows jscodeshift's `__testfixtures__/` spelling, so the
     // local pattern this rule used to keep for it decided nothing.

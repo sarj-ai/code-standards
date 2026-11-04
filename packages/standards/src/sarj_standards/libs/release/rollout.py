@@ -152,6 +152,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "pyproject.toml",
         "pyright.strict.json",
         "pyrightconfig.json",
+        "syncpack.strict.mts",
         "uv.lock",
         "yarn.lock",
     }
@@ -159,6 +160,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
 DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
     {
         MANIFEST,
+        ".gitattributes",
         ".repo-standards/repository.toml",
         ".shellcheckrc",
         "uv.lock",
@@ -1545,11 +1547,22 @@ def secondary_javascript_roots(repo: Path, primary: Path) -> tuple[Path, ...]:
         )
         root = Path(current)
         if root == primary_root:
-            directories.clear()
+            if _declares_javascript_workspace(root):
+                directories.clear()
             continue
         if any(name in files for name, _manager in adoption_packagemanager.LOCKFILES):
             roots.append(root)
     return tuple(sorted(roots, key=lambda path: path.relative_to(repository).as_posix()))
+
+
+def _declares_javascript_workspace(root: Path) -> bool:
+    if (root / "pnpm-workspace.yaml").is_file():
+        return True
+    try:
+        package: object = parse_json((root / "package.json").read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return True
+    return not is_object(package) or "workspaces" in package
 
 
 def repository_files(repo: Path, names: frozenset[str]) -> tuple[Path, ...]:

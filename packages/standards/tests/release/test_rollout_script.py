@@ -17,6 +17,7 @@ from sarj_standards.libs.adoption import (
     launcher,
     manifest as adoption_manifest,
     scaffold as adoption_scaffold,
+    service as adoption_service,
 )
 from sarj_standards.libs.release import retirement, rollout
 
@@ -116,6 +117,25 @@ def test_only_producer_owned_legacy_mirrors_can_receive_declarations(tmp_path: P
     rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
 
     for protected in ("apps/custom/eslint.strict.d.mts", "tests/fixtures/mirror/eslint.strict.d.mts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("destination", [".", "typescript"])
+def test_managed_syncpack_companion_is_allowed_without_allowing_local_source(tmp_path: Path, destination: str) -> None:
+    _legacy_eslint_consumer(tmp_path, destination)
+    plan = adoption_service.plan_sync(tmp_path, configs=("eslint",), typescript_dest=destination)
+    companions = tuple(
+        target.destination.relative_to(tmp_path).as_posix()
+        for target in plan.targets
+        if target.destination.name == "syncpack.strict.mts"
+    )
+    assert companions == ((Path(destination) / "syncpack.strict.mts").as_posix(),)
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff(companions, allowed_paths=allowed)
+
+    for protected in (".syncpackrc.ts", "src/syncpack.strict.mts", "src/application.ts"):
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
 
@@ -606,6 +626,69 @@ class TestNativePinPermissions:
             )
 
 
+@pytest.mark.parametrize(
+    "original",
+    [
+        pytest.param(None, id="new-root-attributes"),
+        pytest.param(b"* text=auto\nspecial.test.ts -linguist-generated\n", id="authored-overrides"),
+        pytest.param(b"\xef\xbb\xbf* text=auto\r\nspecial.test.ts -linguist-generated\r\n", id="bom-crlf-overrides"),
+    ],
+)
+def test_canonical_review_defaults_can_roll_out_without_allowing_nested_attributes(
+    tmp_path: Path, original: bytes | None
+) -> None:
+    path = tmp_path / ".gitattributes"
+    if original is not None:
+        path.write_bytes(original)
+
+    plan = adoption_scaffold.build_plan(tmp_path, force=False)
+    updated = next(contents for target, contents in plan.writes if target == path)
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+    rollout.reject_unsafe_diff((MANIFEST, ".gitattributes"), allowed_paths=allowed)
+    suffix = (original or b"").removeprefix(b"\xef\xbb\xbf")
+    assert updated.encode().endswith(suffix)
+    assert updated.startswith("\ufeff") == bool(original and original.startswith(b"\xef\xbb\xbf"))
+    if original is None:
+        assert not path.exists()
+    else:
+        assert path.read_bytes() == original
+    for protected in ("nested/.gitattributes", "apps/web/.gitattributes", "apps/web/src/index.ts"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("typescript_dest", [".", "frontend"], ids=["root", "declared-nested-destination"])
+def test_canonical_typescript_companions_can_roll_out_without_changing_local_config(
+    tmp_path: Path, typescript_dest: str
+) -> None:
+    project = tmp_path / typescript_dest
+    project.mkdir(parents=True, exist_ok=True)
+    (tmp_path / MANIFEST).write_text(
+        f'schema = 4\nbundle = "8.190.0"\nrule_profile = "all"\n[dest]\ntypescript = "{typescript_dest}"\n',
+        encoding="utf-8",
+    )
+    (project / "package.json").write_text('{"name":"consumer","private":true}\n', encoding="utf-8")
+    (project / "eslint.strict.mjs").write_text("", encoding="utf-8")
+    local = project / ".syncpackrc.ts"
+    original = b'import strict from "./syncpack.strict.mts";\nexport default { ...strict, versionGroups: [] };\n'
+    local.write_bytes(original)
+
+    result = adoption_service.apply_sync(adoption_service.plan_sync(project, configs=("eslint",)), force=True)
+    assert result.status == 0
+    names = ("doctor.config.json", "syncpack.strict.mts")
+    paths = tuple((project / name).relative_to(tmp_path).as_posix() for name in names)
+    for name in names:
+        assert (project / name).read_bytes() == (CONFIGS_DIR / name).read_bytes()
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+    rollout.reject_unsafe_diff((MANIFEST, *paths), allowed_paths=allowed)
+    assert local.read_bytes() == original
+    with pytest.raises(rollout.RolloutError, match="protected paths"):
+        rollout.reject_unsafe_diff(
+            (MANIFEST, (project / "src/index.ts").relative_to(tmp_path).as_posix()), allowed_paths=allowed
+        )
+
+
 class TestSafety:
     def test_version_rejects_shell_metacharacters(self) -> None:
         with pytest.raises(rollout.RolloutError):
@@ -627,6 +710,7 @@ class TestSafety:
         rollout.reject_unsafe_diff(
             (
                 MANIFEST,
+                ".gitattributes",
                 ".repo-standards/repository.toml",
                 ".shellcheckrc",
                 "uv.lock",
@@ -2192,9 +2276,12 @@ jobs:
         assert failure.returncode == 9
         assert runner.commands == [("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "first")]
 
-    def test_installs_secondary_javascript_lock_roots_before_verification(self, tmp_path: Path) -> None:
-        primary = tmp_path / "typescript" / "dashboard"
-        primary.mkdir(parents=True)
+    @pytest.mark.parametrize("primary_at_root", [False, True], ids=["nested-primary", "root-primary"])
+    def test_installs_secondary_javascript_lock_roots_before_verification(
+        self, tmp_path: Path, *, primary_at_root: bool
+    ) -> None:
+        primary = tmp_path if primary_at_root else tmp_path / "typescript" / "dashboard"
+        primary.mkdir(parents=True, exist_ok=True)
         (primary / "package.json").write_text('{"packageManager":"pnpm@11.20.0"}\n', encoding="utf-8")
         (primary / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
         secondary = tmp_path / "secondary-app" / "web"
@@ -2204,7 +2291,8 @@ jobs:
         fixture.mkdir(parents=True)
         (fixture / "package-lock.json").write_text("{}\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript/dashboard"\n',
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\n'
+            f'typescript = "{primary.relative_to(tmp_path).as_posix()}"\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "installed")])
@@ -2225,6 +2313,31 @@ jobs:
             )
         ]
         assert runner.working_directories == [secondary]
+
+    @pytest.mark.parametrize("workspace_metadata", ["npm", "pnpm", "malformed"])
+    def test_primary_workspace_members_keep_their_existing_dependency_owner(
+        self, tmp_path: Path, workspace_metadata: str
+    ) -> None:
+        package = tmp_path / "package.json"
+        package.write_text('{"packageManager":"npm@12.2.1","workspaces":["app"]}\n', encoding="utf-8")
+        (tmp_path / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        if workspace_metadata == "pnpm":
+            package.write_text('{"packageManager":"pnpm@12.10.1"}\n', encoding="utf-8")
+            (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - app\n", encoding="utf-8")
+        elif workspace_metadata == "malformed":
+            package.write_text("{", encoding="utf-8")
+        member = tmp_path / "app"
+        member.mkdir()
+        (member / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "."\n', encoding="utf-8"
+        )
+        runner = FakeRunner([])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is None
+        assert runner.commands == []
 
     def test_stops_when_a_secondary_javascript_install_fails(self, tmp_path: Path) -> None:
         primary = tmp_path / "typescript"

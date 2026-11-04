@@ -78,6 +78,7 @@ export default createRule<Options, "unlocalized">({
   name: "no-unlocalized-jsx-attributes",
   documentation: NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ enabled: true }],
     type: "suggestion",
     docs: { description: NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION.summary },
     schema: [
@@ -85,7 +86,7 @@ export default createRule<Options, "unlocalized">({
         type: "object",
         properties: {
           ...LOCALIZATION_PROPERTIES,
-          attributes: {
+          attributes: { description: "JSX attributes whose user-visible text requires localization.",
             type: "array",
             items: { type: "string", minLength: 1 },
             uniqueItems: true,
@@ -99,7 +100,6 @@ export default createRule<Options, "unlocalized">({
         "Translate this user-facing literal or add an explicit localization exception.",
     },
   },
-  defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
       localizationExcluded(context, context.sourceCode.text, options)

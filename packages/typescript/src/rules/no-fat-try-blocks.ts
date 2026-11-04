@@ -453,6 +453,7 @@ export default createRule<Options, MessageIds>({
   name: "no-fat-try-blocks",
   documentation: NO_FAT_TRY_BLOCKS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],
     type: "problem",
     docs: {
       description: "Review try blocks exceeding the configured count of syntactically selected operations.",
@@ -461,7 +462,7 @@ export default createRule<Options, MessageIds>({
       {
         type: "object",
         properties: {
-          max: { type: "integer", minimum: 1 },
+          max: { description: "Maximum number of statements allowed in one try body.", type: "integer", minimum: 1 },
         },
         additionalProperties: false,
       },
@@ -471,7 +472,6 @@ export default createRule<Options, MessageIds>({
         "This `try` block has {{count}} syntactically selected operations (max {{max}}). Review whether they share one recovery policy; move unrelated work outside the boundary.",
     },
   },
-  defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],
   create(context, [options]) {
     if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};

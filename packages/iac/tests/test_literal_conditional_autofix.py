@@ -198,3 +198,28 @@ def _terraform_value(executable: str, root: Path) -> _TerraformValue:
         return completed.stdout.strip()
 
     return _TerraformValue(rendered=evaluate("local.value"), type_name=evaluate("type(local.value)"))
+
+
+@pytest.mark.parametrize(
+    ("scalar", "other"), [("1", "2"), ("true", "false"), ('"left"', '"right"')], ids=("number", "boolean", "string")
+)
+@pytest.mark.parametrize("condition", ["true", "false"])
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+def test_complexity_and_empty_comment_profiles_preserve_real_terraform_value_and_type(
+    tmp_path: Path, terraform_executable: str, *, scalar: str, other: str, condition: str, ending: str
+) -> None:
+    expression = scalar
+    for _ in range(7):
+        expression = f"{condition} ? ({expression}) : {other}"
+    source = f"#\n/**/\nlocals {{\n  value = {expression}\n}}\n".replace("\n", ending)
+    path = tmp_path / "main.tf"
+    path.write_bytes(source.encode())
+    before = _terraform_value(terraform_executable, tmp_path)
+
+    fixed = fix_source(Path("main.tf"), source, rule_ids=["no-terraform-comments", "expression-complexity"])
+
+    selected = scalar if condition == "true" else other
+    assert fixed == f" \n    \nlocals {{\n  value = {selected}\n}}\n".replace("\n", ending)
+    path.write_bytes(fixed.encode())
+    assert _terraform_value(terraform_executable, tmp_path) == before
+    assert fix_source(Path("main.tf"), fixed, rule_ids=["no-terraform-comments", "expression-complexity"]) == fixed
