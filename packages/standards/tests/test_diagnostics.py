@@ -83,6 +83,41 @@ def test_source_document_preserves_byte_offsets_and_utf16_columns(tmp_path: Path
     assert after_emoji == Position(line=0, character=7, byte_offset=9)
 
 
+@pytest.mark.parametrize("terminator", ["", "\n", "\r", "\r\n"])
+def test_ascii_coordinates_preserve_long_line_and_content_boundaries(tmp_path: Path, terminator: str) -> None:
+    length = 50_000
+    document = SourceDocument(tmp_path / "long.py", "x" * length + terminator)
+
+    for column in (0, 1, length // 2, length):
+        expected = Position(0, column, column)
+        assert document.point(line=1, column=column + 1) == expected
+        assert document.byte_point(line=1, column=column + 1) == expected
+        assert document.utf16_point(line=0, character=column) == expected
+        assert document.region(start_byte=column, end_byte=column) == Region(expected, expected)
+    assert document.point(line=1, column=length + 2) is None
+    assert document.byte_point(line=1, column=length + 2) is None
+    assert document.utf16_point(line=0, character=length + 1) is None
+    if terminator:
+        end = Position(1, 0, length + len(terminator))
+        assert document.region(start_byte=end.byte_offset, end_byte=end.byte_offset) == Region(end, end)
+
+
+def test_report_exit_code_preserves_issue_priority_across_tools(tmp_path: Path) -> None:
+    error = Diagnostic("E001", "error", Severity.ERROR, "fixture", Location("example.py"))
+    warning = replace(error, severity=Severity.WARNING)
+    tools = (
+        ToolReport("first", Completion.COMPLETE, (warning, error)),
+        ToolReport("second", Completion.COMPLETE, (warning,)),
+    )
+    assert AnalysisReport.from_tools(tmp_path, tools).exit_code == 1
+    failure = ToolReport("last", Completion.FAILED, issues=(ExecutionIssue("last", "failed", "unavailable"),))
+    report = AnalysisReport.from_tools(tmp_path, (*tools, failure))
+
+    assert report.exit_code == 2
+    assert report.diagnostics == (warning, error, warning)
+    assert report.issues == failure.issues
+
+
 def test_source_document_preserves_invalid_utf8_offsets_without_losing_the_report(tmp_path: Path) -> None:
     source = tmp_path / "legacy.py"
     raw = b"value = '\xff'\n"
