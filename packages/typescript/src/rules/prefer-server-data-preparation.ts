@@ -7,6 +7,7 @@
 import {
   AST_NODE_TYPES,
   ASTUtils,
+  type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 import ts from "typescript";
@@ -70,7 +71,7 @@ export const PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION = {
   category: "architecture",
   limitations: [
     "Advisory only. Local syntax cannot establish whether a caller is a Server Component, whether props change interactively or whether server preparation reduces the total cost. This rule is a review lead, never proof that code can be moved to the server. No automatic fix is provided.",
-    "Requires an explicit use client directive and parser-owned TypeScript services resolving map/filter/flatMap to the standard Array or ReadonlyArray library signature. The containing view must have an independent React useState/useReducer call or an intrinsic DOM onClick/onChange/onInput/onSubmit handler. Noninteractive boundaries remain owned by no-unnecessary-use-client; custom hooks and other indirect client requirements are unsupported.",
+    "Requires an explicit use client directive and parser-owned TypeScript services resolving map/filter/flatMap to the standard Array or ReadonlyArray library signature. The receiver beneath erased wrappers must itself have an Array, ReadonlyArray or tuple type after nullish narrowing; casts from opaque or custom collections do not establish this. Subclass and structural collection types outside those native array types are excluded. The containing view must have an independent React useState/useReducer call or a native callable type on an intrinsic DOM onClick/onChange/onInput/onSubmit handler. Nullish, noncallable and opaque handler types do not establish interaction. Noninteractive boundaries remain owned by no-unnecessary-use-client; custom hooks and indirect client requirements are unsupported.",
     "Every runtime reference to the source parameter binding must be a supported native data projection or a field-only JSX display loop. Inputs also needed for editing, whole-record forwarding, lookup, mutation, other fields or opaque helpers are excluded. Only direct first-parameter paths and synchronous single-expression callbacks are supported. Whole-row identity maps and constant maps are excluded; supported projections must read a fixed input field.",
     "JSX-rendering callbacks are never reported as preparation findings. Callback calls, captured values, destructuring defaults/rest/nesting, async callbacks, event handlers, effects, memo callbacks, opaque helpers, dynamic/optional paths, custom collection signatures, missing type services, generated source and tests are excluded. First-parameter provenance is syntactic; annotations cannot prove absence of runtime getters or patched array methods. Analysis does not claim callback purity or preserve semantics of a hypothetical move.",
     "Reports the direct source projection once; chained operations with a call receiver are not independently reported. A static subprojection may still be prepared by its producer while a union with pending local edits remains in the client.",
@@ -126,7 +127,29 @@ export default createRule<Options, MessageIds>({
     const services = getTypeServices(context);
     const checker = services.program.getTypeChecker();
     const interactions = new WeakMap<TSESTree.Node, boolean>();
+    const projectedInputs = new WeakMap<TSESLint.Scope.Variable, boolean>();
+    const callable = (node: TSESTree.Expression): boolean => {
+      const type = checker.getTypeAtLocation(
+        services.esTreeNodeToTSNodeMap.get(unwrapExpression(node)),
+      );
+      const members = type.isUnion() ? type.types : [type];
+      return members.some((member) => member.getCallSignatures().length > 0);
+    };
     const nativeArray = (node: TSESTree.CallExpression): boolean => {
+      const callee = unwrapExpression(node.callee);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+      const receiver = checker.getNonNullableType(
+        checker.getTypeAtLocation(
+          services.esTreeNodeToTSNodeMap.get(unwrapExpression(callee.object)),
+        ),
+      );
+      const members = receiver.isUnion() ? receiver.types : [receiver];
+      if (
+        !members.every(
+          (type) => checker.isArrayType(type) || checker.isTupleType(type),
+        )
+      )
+        return false;
       const declaration = checker.getResolvedSignature(
         services.esTreeNodeToTSNodeMap.get(node),
       )?.declaration;
@@ -164,17 +187,28 @@ export default createRule<Options, MessageIds>({
             callee.object,
             firstParameterBindings(context.sourceCode, component),
           ) ||
-          !projection(context.sourceCode, callback) ||
-          !nativeArray(node) ||
-          !onlyProjectedInput(context.sourceCode, callee.object, nativeArray)
+          !projection(context.sourceCode, callback)
         )
           return;
         let interactive = interactions.get(component);
         if (interactive === undefined) {
-          interactive = clientInteraction(context.sourceCode, component.body);
+          interactive = clientInteraction(
+            context.sourceCode,
+            component.body,
+            callable,
+          );
           interactions.set(component, interactive);
         }
-        if (!interactive) return;
+        if (
+          !interactive ||
+          !onlyProjectedInput(
+            context.sourceCode,
+            callee.object,
+            nativeArray,
+            projectedInputs,
+          )
+        )
+          return;
         context.report({ node, messageId: "prepareData" });
       },
     };
@@ -301,53 +335,57 @@ function onlyProjectedInput(
   source: Readonly<TypeScriptSourceCode>,
   receiver: TSESTree.Node,
   nativeArray: (node: TSESTree.CallExpression) => boolean,
+  cache: WeakMap<TSESLint.Scope.Variable, boolean>,
 ): boolean {
   let root = unwrapExpression(receiver);
   while (root.type === AST_NODE_TYPES.MemberExpression)
     root = unwrapExpression(root.object);
   if (root.type !== AST_NODE_TYPES.Identifier) return false;
   const variable = ASTUtils.findVariable(source.getScope(root), root.name);
-  return (
-    variable !== null &&
-    variable.references.every((reference) => {
-      if (typeOnlyReference(reference)) return true;
-      if (!reference.isRead()) return false;
-      let access = outerExpression(reference.identifier);
-      let parent = access.parent;
-      while (
-        parent?.type === AST_NODE_TYPES.MemberExpression &&
-        parent.object === access
-      ) {
-        access = outerExpression(parent);
-        parent = access.parent;
-      }
-      const member = unwrapExpression(access);
-      const call = parent;
-      if (call?.type !== AST_NODE_TYPES.CallExpression) return false;
-      if (
-        member.type !== AST_NODE_TYPES.MemberExpression ||
-        member.optional ||
-        !METHODS.has(ASTUtils.getPropertyName(member) ?? "") ||
-        call.optional ||
-        call.arguments.length !== 1 ||
-        !nativeArray(call)
-      )
-        return false;
-      const callback = call.arguments[0];
-      return (
-        (callback?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-          callback?.type === AST_NODE_TYPES.FunctionExpression) &&
-        (projection(source, callback) ||
-          projection(source, callback, "view")) &&
-        call.callee === access
-      );
-    })
-  );
+  if (variable === null) return false;
+  const cached = cache.get(variable);
+  if (cached !== undefined) return cached;
+  const projected = variable.references.every((reference) => {
+    if (typeOnlyReference(reference)) return true;
+    if (!reference.isRead()) return false;
+    let access = outerExpression(reference.identifier);
+    let parent = access.parent;
+    while (
+      parent?.type === AST_NODE_TYPES.MemberExpression &&
+      parent.object === access
+    ) {
+      access = outerExpression(parent);
+      parent = access.parent;
+    }
+    const member = unwrapExpression(access);
+    const call = parent;
+    if (call?.type !== AST_NODE_TYPES.CallExpression) return false;
+    if (
+      member.type !== AST_NODE_TYPES.MemberExpression ||
+      member.optional ||
+      !METHODS.has(ASTUtils.getPropertyName(member) ?? "") ||
+      call.optional ||
+      call.arguments.length !== 1 ||
+      !nativeArray(call)
+    )
+      return false;
+    const callback = call.arguments[0];
+    return (
+      (callback?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        callback?.type === AST_NODE_TYPES.FunctionExpression) &&
+      (projection(source, callback) ||
+        projection(source, callback, "view")) &&
+      call.callee === access
+    );
+  });
+  cache.set(variable, projected);
+  return projected;
 }
 
 function clientInteraction(
   source: Readonly<TypeScriptSourceCode>,
   node: TSESTree.Node,
+  callable: (node: TSESTree.Expression) => boolean,
 ): boolean {
   if (
     node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
@@ -370,13 +408,15 @@ function clientInteraction(
         attribute.type === AST_NODE_TYPES.JSXAttribute &&
         attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
         DOM_EVENTS.has(attribute.name.name) &&
-        attribute.value !== null,
+        attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
+        attribute.value.expression.type !== AST_NODE_TYPES.JSXEmptyExpression &&
+        callable(attribute.value.expression),
     )
   )
     return true;
   return forEachOwnAstChild(
     node,
-    (child) => clientInteraction(source, child),
+    (child) => clientInteraction(source, child, callable),
     (key) => key !== "tokens" && key !== "comments",
   );
 }

@@ -36,16 +36,15 @@ const CONFIG = {
   source:
     '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler","jsx":"preserve"},"include":["src/**/*"]}',
 } as const;
-const OPAQUE_TYPES =
-  ts.TypeFlags.Any |
-  ts.TypeFlags.Unknown |
-  ts.TypeFlags.Never |
-  ts.TypeFlags.TypeParameter |
-  ts.TypeFlags.Conditional |
-  ts.TypeFlags.IndexedAccess |
-  ts.TypeFlags.Substitution;
+const PRIMITIVE_TYPES =
+  ts.TypeFlags.StringLike |
+  ts.TypeFlags.NumberLike |
+  ts.TypeFlags.BigIntLike |
+  ts.TypeFlags.BooleanLike |
+  ts.TypeFlags.ESSymbolLike |
+  ts.TypeFlags.Null |
+  ts.TypeFlags.Undefined;
 const MAX_TYPE_DEPTH = 16;
-const FUNCTION_MEMBERS = ["apply", "bind", "call"] as const;
 
 export const NO_READONLY_PROP_STATE_DOCUMENTATION = {
   defaultLevel: "warning",
@@ -58,11 +57,12 @@ export const NO_READONLY_PROP_STATE_DOCUMENTATION = {
   limitations: [
     "Advisory only: initial snapshots can be intentional. There is no automatic fix because replacing state with current props changes how later updates behave.",
     "Recognizes direct React useState imports and default/namespace member calls, including renamed imports, through lexical binding identity. Checks a direct array destructure in a function containing its own JSX and a direct first-parameter property path, or a zero-argument synchronous lazy initializer returning that path.",
-    "Eager initializers require parser-owned TypeScript services and a non-callable type without Any, unknown or unresolved generics. Callable unions, constructors and legacy function-like types exposing apply/bind/call are excluded because React executes function arguments as lazy initializers. Explicit zero-argument lazy callbacks returning the prop directly do not require type information. Type annotations cannot prove runtime identity under opaque casts; lifecycle changes stay manual.",
+    "Eager initializers require parser-owned TypeScript services and primitive types, including unions composed entirely of primitives. Object and void types can hide callable values through structural assignment or ignored return values, so eager nonprimitive values, Any, unknown and unresolved generics are excluded. React executes function arguments as lazy initializers. Explicit zero-argument lazy callbacks returning a prop directly remain supported for all value types without type services. Opaque casts cannot prove runtime identity; lifecycle changes stay manual.",
     "An updater read, escape, reassignment or nontrivial destructuring excludes the finding. Unused state values remain owned by unused-variable checks. Opaque initialization, property aliases, optional/dynamic paths, rest/default bindings, dynamic eval, non-JSX hooks, generated source and tests are outside scope. This does not ban interactive useState or replace the upstream set-state-in-effect rule.",
   ],
   references: [
     "https://react.dev/learn/choosing-the-state-structure",
+    "https://react.dev/reference/react/useState",
     "https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-effect",
   ],
   examples: [
@@ -160,7 +160,7 @@ export default createRule<Options, MessageIds>({
           const type = services.program
             .getTypeChecker()
             .getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(initial));
-          if (!isNonCallableType(type)) return;
+          if (!isPrimitiveType(type)) return;
         }
         context.report({ node, messageId: "readonlyPropState" });
       },
@@ -229,17 +229,15 @@ function initializerValue(
     : null;
 }
 
-function isNonCallableType(type: ts.Type, depth = 0): boolean {
-  if (
-    depth >= MAX_TYPE_DEPTH ||
-    (type.flags & OPAQUE_TYPES) !== 0 ||
-    type.getCallSignatures().length !== 0 ||
-    type.getConstructSignatures().length !== 0 ||
-    FUNCTION_MEMBERS.every((member) => type.getProperty(member) !== undefined)
-  )
-    return false;
-  return (
-    !type.isUnionOrIntersection() ||
-    type.types.every((member) => isNonCallableType(member, depth + 1))
-  );
+function isPrimitiveType(type: ts.Type, depth = 0): boolean {
+  if (depth >= MAX_TYPE_DEPTH) return false;
+  if (type.isIntersection())
+    return (
+      type.getCallSignatures().length === 0 &&
+      type.getConstructSignatures().length === 0 &&
+      type.types.some((member) => isPrimitiveType(member, depth + 1))
+    );
+  return type.isUnion()
+    ? type.types.every((member) => isPrimitiveType(member, depth + 1))
+    : (type.flags & PRIMITIVE_TYPES) !== 0;
 }
