@@ -1,3 +1,9 @@
+/**
+ * @fileoverview prefer-server-data-preparation — prepare data projections before interactive client views.
+ *
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-data-preparation.test.ts
+ */
+
 import {
   AST_NODE_TYPES,
   ASTUtils,

@@ -3188,7 +3188,7 @@
       "ruleId": "no-test-comments",
       "state": "pending",
       "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-test-comments.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
-      "outcome": "@sarj/no-test-comments: Retain WARNING and the cataloged safe autofix policy. Keep the cataloged safe comment-only fix within proven token-boundary, legal-notice and tool-directive exclusions; preserve strings and generated source. Full campaign completion is not claimed."
+      "outcome": "@sarj/no-test-comments: Promote the existing policy to ERROR in both shipped presets so the frontend comment ban also blocks test comments without duplicate ownership. This also makes the existing nonfrontend test prose-comment policy blocking; retain its legal-notice and tool-directive exclusions. Preserve strings, generated source and the cataloged limited safe fixes; substantive frontend removals require manual migration. Full campaign completion is not claimed."
     },
     {
       "task": "rule-audit/typescript/prefer-dependency-interface",
@@ -3300,7 +3300,23 @@
       "ruleId": "no-frontend-comments",
       "state": "pending",
       "evidence": "Executable examples and focused comment controls cover JSX, framework imports/directives, nearest frontend package ownership, allFiles overrides, generated sources, comment-like strings and delegation to the existing test-comment owner. Shared isolated-corpus, duplicate-location and comparative performance evidence is recorded in packages/python/benchmarks/announcement-rule-gaps.json. Every introduced bundle location was inspected; source snapshots do not reconstruct a complete external consumer workspace or establish universal frontend ownership. Broader independent field calibration remains pending.",
-      "outcome": "Introduce the requested blanket frontend comment policy at WARNING without autofix. Report actual comment tokens, including behavioral directives and legal notices, in supported frontend source; migrate those contracts manually or use an explicit policy exception. The existing no-test-comments owner handles frontend tests without duplicate diagnostics. Preserve non-frontend directive/legal handling, strings and generated/vendor sources. Unsupported frontend roots can opt in with allFiles on both comment owners."
+      "outcome": "Promote the requested blanket frontend comment policy from WARNING to ERROR in both shipped presets. Report actual comment tokens, including behavioral directives and legal notices, in supported frontend source; substantive removals require manual migration. The existing no-test-comments owner is also promoted and handles frontend tests without duplicate diagnostics. Preset regression cases cover both owners at ERROR. Preserve non-frontend directive/legal handling, strings and generated/vendor sources. Unsupported frontend roots can opt in with allFiles on both comment owners."
+    },
+    {
+      "task": "rule-audit/typescript/no-readonly-prop-state",
+      "family": "typescript",
+      "ruleId": "no-readonly-prop-state",
+      "state": "pending",
+      "evidence": "The 47 labeled boundary cases comprise 14 reporting and 33 preserving cases with no fixture false positives or false negatives. Shared immutable corpus calibration across 103 TSX files found no new state locations; 39 files had native type/profile gaps and unlabelled zeroes are not true negatives. Six alternating baseline/candidate workers and aggregate timing/RSS limits are recorded in packages/standards/benchmarks/react-server-state-50-pass-20261103.json. Broad independent field calibration remains pending.",
+      "outcome": "Introduce the rule at WARNING without autofix. Resolve lexical React hooks and direct prop paths, require observed values and unobserved updaters, and exclude callable or opaque eager initializer types. Preserve editable state and review intentional mount snapshots manually; the bounded corpus does not establish fleet recall."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-server-data-preparation",
+      "family": "typescript",
+      "ruleId": "prefer-server-data-preparation",
+      "state": "pending",
+      "evidence": "The 53 labeled boundary cases comprise 18 reporting and 35 preserving cases with no fixture false positives or false negatives. Every new location in an immutable 103-file TSX corpus was inspected with its producer: one retained true positive and no retained false positives. Four earlier false positives led to explicit editing-workflow exclusions. The 39 native type/profile gaps, paired-worker performance observations and their limits are recorded in packages/standards/benchmarks/react-server-state-50-pass-20261103.json. Broad independent field calibration remains pending.",
+      "outcome": "Introduce the rule at WARNING without autofix. Review native array field/data projections from direct props in independently interactive client views, requiring data-only input usage. Preserve reactive captures, JSX rendering and inputs needed for editing or domain operations. Preparing an upstream producer on the server requires architectural review; local syntax does not prove server availability or end-to-end cost."
     },
     {
       "task": "rule-audit/typescript/no-runtime-typeof",

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview no-readonly-prop-state — review unmodified React state initialized from props.
+ *
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-readonly-prop-state.test.ts
+ */
+
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 

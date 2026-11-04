@@ -1,3 +1,7 @@
+/**
+ * @fileoverview _react-prop-bindings — resolve stable React hooks and direct props within the owning JSX function.
+ */
+
 import {
   AST_NODE_TYPES,
   ASTUtils,
