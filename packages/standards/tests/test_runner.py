@@ -167,29 +167,19 @@ def test_directory_walk_prunes_ignored_directories(
     source.parent.mkdir()
     source.touch()
     visited: list[str] = []
-    real_walk = os.walk
+    real_scandir = os.scandir
 
-    def recording_walk(
-        top: Path,
-        *,
-        topdown: bool,
-        followlinks: bool,
-        onerror: Callable[[OSError], None] | None,
-    ) -> Iterator[tuple[str, list[str], list[str]]]:
-        for root, dir_names, file_names in real_walk(
-            top,
-            topdown=topdown,
-            followlinks=followlinks,
-            onerror=onerror,
-        ):
-            visited.append(str(root))
-            yield root, dir_names, file_names
+    def recording_scandir(path: str | Path) -> Iterator[os.DirEntry[str]]:
+        visited.append(str(path))
+        return real_scandir(path)
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
-        os, "walk", recording_walk
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- record real directory enumeration to prove ignored trees are never opened.
+        os, "scandir", recording_scandir
     )
 
     assert runner.group_paths([str(tmp_path)]).python == [str(source)]
+    assert str(tmp_path) in visited
+    assert str(source.parent) in visited
     assert not any("node_modules" in root for root in visited)
 
 

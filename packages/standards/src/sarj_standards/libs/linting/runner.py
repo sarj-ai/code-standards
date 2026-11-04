@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from functools import partial
 from importlib import import_module
 from itertools import pairwise
 import os
@@ -18,7 +17,7 @@ from . import library_policy, textlint
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
     from .policy import Policy
 
@@ -378,37 +377,54 @@ def _route_directory(
     validate_sources: bool = True,
     python_roots: tuple[Path, ...] | None = None,
 ) -> None:
-    for root, dir_names, file_names in os.walk(
-        path, topdown=True, followlinks=False, onerror=partial(_discovery_error, policy=policy)
-    ):
-        base = Path(root)
-        dir_names[:] = sorted(
-            name
-            for name in dir_names
-            if name.casefold() not in _IGNORED_DIRS and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
-        )
-        for file_name in sorted(file_names):
-            if file_name in _IGNORED_DISCOVERED_FILES:
-                continue
-            child = Path(root, file_name)
-            if not _routable_child(
-                child,
-                policy=policy,
-                validate_sources=validate_sources,
-                python_only=python_only,
-                python_roots=python_roots,
+    for child in _directory_files(path, policy=policy):
+        if not _routable_child(
+            child,
+            policy=policy,
+            validate_sources=validate_sources,
+            python_only=python_only,
+            python_roots=python_roots,
+        ):
+            continue
+        _route_unique_path(grouped, child, str(child), seen)
+
+
+def _directory_files(path: Path, *, policy: Policy | None) -> Iterator[Path]:
+    pending = [path]
+    while pending:
+        base = pending.pop()
+        try:
+            with os.scandir(base) as entries:
+                ordered = sorted(entries, key=lambda entry: entry.name)
+        except OSError as error:
+            _discovery_error(error, path=base, policy=policy)
+            continue
+        directories: list[Path] = []
+        for entry in ordered:
+            if entry.name.casefold() in _IGNORED_DIRS or (
+                base.name in _SKILL_ARTIFACT_ROOTS and entry.name == "skills"
             ):
                 continue
-            _route_unique_path(grouped, child, str(child), seen)
+            child = base / entry.name
+            try:
+                if entry.is_symlink():
+                    continue
+                directory = entry.is_dir(follow_symlinks=False)
+            except OSError as error:
+                _discovery_error(error, path=child, policy=policy)
+                continue
+            if directory:
+                directories.append(child)
+            elif entry.name not in _IGNORED_DISCOVERED_FILES:
+                yield child
+        pending.extend(reversed(directories))
 
 
-def _discovery_error(error: OSError, *, policy: Policy | None) -> None:
-    match error:
-        case OSError(filename=str(filename)) if policy is not None and policy.excludes_tree(filename):
-            return
-        case _:
-            msg = f"cannot discover source input: {error}"
-            raise ValueError(msg) from error
+def _discovery_error(error: OSError, *, path: Path, policy: Policy | None) -> None:
+    if policy is not None and policy.excludes_tree(path):
+        return
+    msg = f"cannot discover source input: {path}: {error}"
+    raise ValueError(msg) from error
 
 
 def _routable_child(
