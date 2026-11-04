@@ -1268,12 +1268,12 @@ def _staged_input_error(args: _Args, root: Path, message: str) -> int:
 
 def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | None:
     try:
-        staged_names = _staged_file_names(root, environment=scope.git_environment)
+        staged_names = staged_file_names(root, environment=scope.git_environment)
         scope.react_doctor_triggered = _react_doctor_triggered_by(
             staged_names, policy=Policy.from_manifest(root, _declared_manifest(args))
         )
         staged = _safe_staged_paths(
-            root, _staged_file_names(root, include_deleted=False, environment=scope.git_environment)
+            root, staged_file_names(root, include_deleted=False, environment=scope.git_environment)
         )
     except (OSError, subprocess.SubprocessError) as exc:
         if args.output_format != "text":
@@ -2106,7 +2106,7 @@ def _emit_staged_adoption_health(args: _Args, root: Path, drifted: list[doctor.F
     return _emit_analysis_report(args, root, report)
 
 
-def _staged_file_names(
+def staged_file_names(
     root: Path, *, include_deleted: bool = True, environment: Mapping[str, str] | None = None
 ) -> list[str]:
     git = shutil.which("git")
@@ -2124,7 +2124,62 @@ def _staged_file_names(
         env=staged_environment(root) if environment is None else environment,
     )
     names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
-    return list(dict.fromkeys(names))
+    names = list(dict.fromkeys(names))
+    if not names:
+        return names
+    selected_environment = staged_environment(root) if environment is None else environment
+    merge_head_path = (
+        subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+            [git, "rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=selected_environment,
+        )
+        .stdout.decode("utf-8", errors="surrogateescape")
+        .strip()
+    )
+    try:
+        merge_heads = Path(merge_head_path).read_text(encoding="ascii").splitlines()
+    except FileNotFoundError:
+        return names
+    if len(merge_heads) != 1 or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", merge_heads[0]) is None:
+        return names  # Octopus merges retain the ordinary, conservative selection.
+
+    merge_head = merge_heads[0]
+    unmerged = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [git, "ls-files", "--unmerged", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=selected_environment,
+    )
+    if unmerged.stdout:
+        return names  # Do not filter an index that has unresolved conflict stages.
+    base = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [git, "merge-base", "--all", "HEAD", merge_head],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        env=selected_environment,
+    )
+    bases = base.stdout.decode("ascii").splitlines()
+    if base.returncode != 0 or len(bases) != 1:
+        return names  # Unrelated or ambiguous merge ancestry retains every staged path.
+
+    def changed_names(*arguments: str) -> set[str]:
+        result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+            [git, "diff", "--no-renames", "--name-only", "-z", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=selected_environment,
+        )
+        return {part.decode("utf-8", errors="surrogateescape") for part in result.stdout.split(b"\0") if part}
+
+    own_changes = changed_names(bases[0], "HEAD")
+    differs_from_incoming = changed_names("--cached", merge_head)
+    return [name for name in names if name in own_changes or name in differs_from_incoming]
 
 
 def _changed_file_paths(root: Path, base: str) -> list[str]:
@@ -2476,7 +2531,7 @@ def _select_staged_fix(args: _Args, root: Path) -> int | None:
 
 def staged_fix_paths(root: Path, files: Sequence[str]) -> list[str]:
     environment = staged_environment(root)
-    staged_names = _staged_file_names(root, include_deleted=False, environment=environment)
+    staged_names = staged_file_names(root, include_deleted=False, environment=environment)
     if files:
         requested = set(_repository_relative_names(root, files))
         staged_names = [name for name in staged_names if name in requested]
@@ -2491,7 +2546,7 @@ def staged_fix_paths(root: Path, files: Sequence[str]) -> list[str]:
 
 
 def _staged_files(root: Path) -> list[str]:
-    return _safe_staged_paths(root, _staged_file_names(root, include_deleted=False))
+    return _safe_staged_paths(root, staged_file_names(root, include_deleted=False))
 
 
 def cmd_inspect(args: _Args) -> int:
