@@ -128,6 +128,7 @@ export default createRule<Options, MessageIds>({
   name: "prefer-multi-value-zod-literal",
   documentation: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description:
@@ -138,7 +139,7 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          zodMajorVersion: { type: "integer", minimum: 4, maximum: 4 },
+          zodMajorVersion: { description: "Installed Zod major version used to validate multi-value literal support.", type: "integer", minimum: 4, maximum: 4 },
         },
       },
     ],
@@ -147,7 +148,6 @@ export default createRule<Options, MessageIds>({
         "Replace this literal-schema union with {{zod}}.literal([…]).",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     if (
       isTestFile(context) ||

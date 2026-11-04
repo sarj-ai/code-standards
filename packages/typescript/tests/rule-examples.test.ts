@@ -260,9 +260,32 @@ describe("dummy detector mutation proof", () => {
 
 
 describe("declarative example setup", () => {
+  it("uses native metadata defaults before legacy defaults and preserves example overrides", async () => {
+    const rule = createRule<readonly [{ readonly enabled: boolean }], "found">({
+      name: "metadata-default-example",
+      documentation: { ...DOCUMENTATION, autofix: "none", examples: [
+        { id: "matching", title: "Uses native defaults", outcome: "match", expectedCount: 1, public: true,
+          focusPath: "src/example.ts", files: [{ path: "src/example.ts", source: "debugger;" }] },
+        { id: "non-matching", title: "Allows normal code", outcome: "no-match", expectedCount: 0, public: true,
+          focusPath: "src/example.ts", files: [{ path: "src/example.ts", source: "export {};" }] },
+        { id: "explicit-options", title: "Preserves explicit options", outcome: "no-match", expectedCount: 0,
+          ruleOptions: [{ enabled: false }], focusPath: "src/example.ts", files: [{ path: "src/example.ts", source: "debugger;" }] },
+      ] },
+      meta: { type: "problem", docs: { description: DOCUMENTATION.summary },
+        schema: [{ type: "object", properties: { enabled: { type: "boolean" } } }],
+        defaultOptions: [{ enabled: true }], messages: { found: "Found." } },
+      defaultOptions: [{ enabled: false }],
+      create(context, [options]) {
+        return options.enabled ? { DebuggerStatement(node) { context.report({ node, messageId: "found" }); } } : {};
+      },
+    });
+
+    await expect(verifyRuleExamples(rule)).resolves.toBe(3);
+  });
+
   it("runs opt-in public examples while retaining empty production defaults", async () => {
-    expect(restrictedLoad.defaultOptions).toEqual([{ libraries: [] }]);
-    expect(statelessStorage.defaultOptions).toEqual([{}]);
+    expect(restrictedLoad.meta.defaultOptions).toEqual([{ libraries: [] }]);
+    expect(statelessStorage.meta.defaultOptions).toEqual([{}]);
     await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(4);
     await expect(verifyRuleExamples(statelessStorage)).resolves.toBe(2);
   });

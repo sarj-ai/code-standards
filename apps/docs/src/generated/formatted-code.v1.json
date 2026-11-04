@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "17c12a79af964fd581e46739480d83c1e31b36fd1a75bbebd4a1aad690226624",
+  "catalogSha256": "fbc02eb8f909049e8f2469fa02e61ed7a1469daaac6f029791f6c3ae0087ee84",
   "cliSha256": "20391fbfa590d8347bc2ac0860ca472dad0bceabefd266c74af8b919126e9235",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -1678,7 +1678,7 @@
           "title": "Keep only operations with the same recovery policy in the try block"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"max\": { \"minimum\": 1, \"type\": \"integer\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"max\": {\n      \"description\": \"Maximum number of statements allowed in one try body.\",\n      \"minimum\": 1,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-first-party-module-mock": {
       "examples": [
@@ -1713,7 +1713,7 @@
           "title": "Do not replace an owned module"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"description\": \"Additional maintained module prefixes that tests must not mock.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-frontend-comments": {
       "examples": [
@@ -1821,7 +1821,7 @@
           "title": "The helper expresses its behavior in code"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allFiles\": {\n      \"description\": \"Check comments without requiring frontend framework ownership.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-generic-json-parser": {
       "examples": [
@@ -2985,7 +2985,7 @@
           "title": "Do not call global fetch here"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-reduce-accumulator-copy": {
       "examples": [
@@ -3528,7 +3528,7 @@
           "title": "Do not load a restricted library at runtime"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"description\": \"Library import and module-load restrictions.\",\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-return-disposed-resource": {
       "examples": [
@@ -4498,7 +4498,7 @@
           "title": "Put behavior in the test name"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"allFiles\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allFiles\": {\n      \"description\": \"Check every eligible test file without requiring frontend framework ownership.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-trailing-value-narration": {
       "examples": [
@@ -4673,7 +4673,7 @@
           "title": "Resolve the message through translation"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"attributes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"attributes\": {\n      \"description\": \"JSX attributes whose user-visible text requires localization.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-unlocalized-jsx-text": {
       "examples": [
@@ -4743,7 +4743,7 @@
           "title": "Resolve the message through translation"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"functions\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"methods\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"functions\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"methods\": {\n      \"description\": \"Toast method names whose user-visible messages require localization.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-unnecessary-use-client": {
       "examples": [
@@ -4999,7 +4999,7 @@
           "title": "Do not directly return a Promise callback chain from async code"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": { \"enum\": [\"async-return\", \"all-promise-calls\"], \"type\": \"string\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": {\n      \"description\": \"Check async return statements or every promise-valued call.\",\n      \"enum\": [\"async-return\", \"all-promise-calls\"],\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-constant-time-secret-compare": {
       "examples": [
@@ -5334,7 +5334,7 @@
           "title": "Mirror layout spacing"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowUtilities\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"checkInsets\": { \"type\": \"boolean\" },\n    \"enabled\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowUtilities\": {\n      \"description\": \"Physical utility names allowed without a logical replacement.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"checkInsets\": {\n      \"description\": \"Include physical inset utilities in direction checks.\",\n      \"type\": \"boolean\"\n    },\n    \"enabled\": {\n      \"description\": \"Enable replacement of physical direction utilities with logical equivalents.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-millisecond-control-duration-schema": {
       "examples": [
@@ -5624,7 +5624,7 @@
           "title": "Do not recreate a constant collection"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"checkRegex\": { \"type\": \"boolean\" },\n    \"ignoreTestFiles\": { \"type\": \"boolean\" },\n    \"minElements\": { \"minimum\": 1, \"type\": \"number\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"checkRegex\": {\n      \"description\": \"Include reusable regular expression literals in hoisting checks.\",\n      \"type\": \"boolean\"\n    },\n    \"ignoreTestFiles\": {\n      \"description\": \"Skip test files when recommending module-level constants.\",\n      \"type\": \"boolean\"\n    },\n    \"minElements\": {\n      \"description\": \"Minimum collection size before recommending a module-level constant.\",\n      \"minimum\": 1,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-module-level-refined-schema": {
       "examples": [
@@ -5729,7 +5729,7 @@
           "title": "Use one multi-value literal"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": { \"maximum\": 4, \"minimum\": 4, \"type\": \"integer\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": {\n      \"description\": \"Installed Zod major version used to validate multi-value literal support.\",\n      \"maximum\": 4,\n      \"minimum\": 4,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-named-callback-domain": {
       "examples": [
@@ -6180,7 +6180,7 @@
           "title": "Use a semantic color token"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": { \"type\": \"boolean\" },\n    \"requireSemanticTokens\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": {\n      \"description\": \"Use the project semantic foreground roles to check opaque foreground and background pairs.\",\n      \"type\": \"boolean\"\n    },\n    \"requireSemanticTokens\": {\n      \"description\": \"Restrict checks to projects with an existing semantic token system.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-server-actions": {
       "examples": [
@@ -6215,7 +6215,7 @@
           "title": "Call a Server Action"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shadcn-primitives": {
       "examples": [
@@ -6250,7 +6250,7 @@
           "title": "Use a shared button"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"assumeAvailable\": { \"type\": \"boolean\" },\n    \"detectProjectPrimitives\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"assumeAvailable\": {\n      \"description\": \"Assume supported shared UI primitives are available in this project.\",\n      \"type\": \"boolean\"\n    },\n    \"detectProjectPrimitives\": {\n      \"description\": \"Resolve project-owned UI primitives before recommending replacements.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shared-zod-enum": {
       "examples": [
@@ -6520,7 +6520,7 @@
           "title": "Infer the schema type"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreTypeNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"requireIdenticalShape\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreTypeNames\": {\n      \"description\": \"Regular expression patterns for type names to leave unchanged.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"requireIdenticalShape\": {\n      \"description\": \"Require the schema output and declared type to have identical property shapes.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-zod-parse-output-type": {
       "examples": [
@@ -6711,7 +6711,7 @@
           "title": "Name an icon action"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"description\": \"Module names whose imported components count as icons.\",\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:require-camelcase-properties": {
       "examples": [

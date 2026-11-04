@@ -101,10 +101,11 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {name: (spec.source_name, spec.destination_name) for name, spec in CONFIG_SPECS.items()}
 )
 
-# ESLint consumers also receive React Doctor's data-only companion config.
+# TypeScript consumers also receive the managed quality-tool presets.
 TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         "react-doctor": ("doctor.config.json", "doctor.config.json"),
+        "syncpack": ("syncpack.strict.mts", "syncpack.strict.mts"),
     }
 )
 ESLINT_DECLARATION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(

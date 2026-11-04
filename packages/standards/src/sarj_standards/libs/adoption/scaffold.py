@@ -1146,7 +1146,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         profile=plan.profile,
         hook_manager=plan.hook_manager,
         disabled_capabilities=tuple(
-            name for name in manifest.QUALITY_ANALYZERS if current is None or name not in current.enabled_capabilities
+            name for name in manifest.OPTIONAL_ANALYZERS if current is None or name not in current.enabled_capabilities
         ),
         verify_paths=(".",) if current is None else current.verify_paths,
         excluded_paths=tuple(dict.fromkeys((*existing_exclusions, *detected_generated))),

@@ -550,6 +550,7 @@ export default createRule<Options, MessageIds>({
   name: "no-sentinel-return-on-catch",
   documentation: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -567,7 +568,6 @@ export default createRule<Options, MessageIds>({
         "This `catch` block swallows the error by returning an empty sentinel without logging it. Rethrow it, log/report it, or return a typed Result.",
     },
   },
-  defaultOptions: [{}],
   create(context, [loggingOptions]) {
     if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};

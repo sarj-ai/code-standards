@@ -220,6 +220,7 @@ export default createRule<Options, MessageIds>({
   name: "no-impossible-zod-literal-bounds",
   documentation: NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -243,7 +244,6 @@ export default createRule<Options, MessageIds>({
         "This Zod {{kind}} schema accepts no values: {{lower}} conflicts with {{upper}}.",
     },
   },
-  defaultOptions: [{}],
   create(context, [options]) {
     const sourceCode = context.sourceCode;
     if (

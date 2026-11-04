@@ -48,6 +48,7 @@ class _UpstreamRuleEngine(StrEnum):
     KNIP = "knip"
     SHELLCHECK = "shellcheck"
     SHFMT = "shfmt"
+    SQLFLUFF = "sqlfluff"
     ZIZMOR = "zizmor"
 
 
@@ -115,8 +116,10 @@ ALL_CONFIGS: Final = (
 DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema", "shfmt")
 # Opt-in analyzers: new manifests and upgrades from older bundles both record them as disabled.
 QUALITY_ANALYZERS: Final = ("jscpd", "knip")
+OPTIONAL_ANALYZERS: Final = (*QUALITY_ANALYZERS, "sqlfluff")
 _QUALITY_ANALYZERS_SINCE: Final = {"jscpd": Version("8.43.0"), "knip": Version("8.47.0")}
-ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS, *QUALITY_ANALYZERS)
+_EMBEDDED_SQL_SINCE: Final = Version("8.190.0")
+ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS, *OPTIONAL_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
     "docs/**",
@@ -153,7 +156,7 @@ class Manifest:
     profile: Profile = "standard"
     verify_paths: tuple[str, ...] = (".",)
     hook_manager: HookManager = "pre-commit"
-    disabled_capabilities: tuple[str, ...] = dataclass_field(default=QUALITY_ANALYZERS, compare=False)
+    disabled_capabilities: tuple[str, ...] = dataclass_field(default=OPTIONAL_ANALYZERS, compare=False)
     excluded_paths: tuple[str, ...] = ()
     excluded_rules: tuple[str, ...] = ()
     exclusion_overrides: tuple[ExclusionOverride, ...] = ()
@@ -177,7 +180,8 @@ class Manifest:
             for name in QUALITY_ANALYZERS
             if Version(self.version) >= _QUALITY_ANALYZERS_SINCE[name] and (name != "knip" or self.knip_application)
         )
-        enabled = (*self.configs, *analyzers, *DEVOPS_ANALYZERS, *quality)
+        embedded = ("sqlfluff",) if analyzers and Version(self.version) >= _EMBEDDED_SQL_SINCE else ()
+        enabled = (*self.configs, *analyzers, *DEVOPS_ANALYZERS, *quality, *embedded)
         return tuple(name for name in enabled if name not in self.disabled_capabilities)
 
     def render(self) -> str:
@@ -775,6 +779,10 @@ def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector:
         valid = rule == "format"
     elif engine is _UpstreamRuleEngine.KNIP:
         valid = rule == "files"
+    elif engine is _UpstreamRuleEngine.SQLFLUFF:
+        from sarj_standards.libs.linting.sqlfluff_protocol import RULES  # ruff: ignore[import-outside-top-level] -- the opt-in adapter owns its upstream selectors.
+
+        valid = rule in RULES
     else:
         known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
         valid = rule in known

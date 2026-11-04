@@ -144,6 +144,7 @@ export default createRule<Options, MessageIds>({
   name: "no-log-only-catch",
   documentation: NO_LOG_ONLY_CATCH_DOCUMENTATION,
   meta: {
+    defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
@@ -163,7 +164,6 @@ export default createRule<Options, MessageIds>({
         "Empty catch silently swallows the error. Rethrow it, handle it, or add a comment explaining why it is safe to ignore.",
     },
   },
-  defaultOptions: [{}],
   create(context, [loggingOptions]) {
     const matcher = createLogMatcher(loggingOptions);
     const filename = context.filename;
