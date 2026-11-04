@@ -23,7 +23,7 @@ from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import hooks, launcher, manifest, packagemanager, repository_baseline, uvtool
+from . import hooks, launcher, manifest, packagemanager, repository_baseline, review, uvtool
 from .configs import (
     CONFIG_SKIP_DIRECTORIES as _SKIP_DIRS,
     ESLINT_CONFIG_NAMES as _ESLINT_CONFIG_NAMES,
@@ -617,6 +617,7 @@ def build_plan(
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     _plan_repo_commit_message_policy(root, plan, enable_rules=enable_repository_rules)
+    _plan_review_attributes(root, plan)
     _plan_retired_repository_launcher(root, plan)
     _plan_language_configs(root, plan, force=force, allow_existing_nested_eslint=allow_existing_nested_eslint)
     match plan.hook_manager:
@@ -631,6 +632,23 @@ def build_plan(
     _plan_commit_policy_workflow(root, plan, force=force)
     _note_subproject_destinations(root, plan)
     return plan
+
+
+def _plan_review_attributes(root: Path, plan: Plan) -> None:
+    path = root / ".gitattributes"
+    if is_link_like(path):
+        plan.errors.append("refusing linked .gitattributes review configuration")
+        return
+    try:
+        contents = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
+        updated = review.attributes_with_review_defaults(contents)
+    except (OSError, UnicodeError, ValueError) as exc:
+        plan.errors.append(f"cannot configure GitHub test diffs: {exc}")
+        return
+    if updated != contents:
+        plan.writes.append((path, updated))
+    else:
+        plan.skips.append((path, "GitHub test diff defaults are current"))
 
 
 def _unsupported_configs(selected: Sequence[str], ecosystems: Ecosystems) -> tuple[str, ...]:
