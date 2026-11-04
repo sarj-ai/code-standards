@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 _LITERAL_HEADER: Final = re.compile(r'''(?i:[ru]?)(?:"""|\x27\x27\x27|"|\x27)''')
 _MAX_BINDING_DEPTH: Final = 16
 _MAX_QUERY_CHARS: Final = 1_000_000
+_MAX_RENDER_CHARS: Final = 2 * _MAX_QUERY_CHARS
 _MAX_RENDER_NODES: Final = 4096
 _FORMAT_PART: Final = re.compile(r"{{|}}|{([^{}]*)}")
 
@@ -150,6 +151,7 @@ class _Renderer:
         self.context = context
         self.provenance = context.static_resource_provenance
         self.remaining = _MAX_RENDER_NODES
+        self.remaining_chars = _MAX_RENDER_CHARS
 
     @cached_property
     def written_attributes(self) -> frozenset[str]:
@@ -168,18 +170,22 @@ class _Renderer:
     def render(self, expression: ast.expr, seen: frozenset[int] = frozenset()) -> _Rendered | None:
         if not seen:
             self.remaining = _MAX_RENDER_NODES
+            self.remaining_chars = _MAX_RENDER_CHARS
         self.remaining -= 1
         if self.remaining < 0 or id(expression) in seen or len(seen) >= _MAX_BINDING_DEPTH:
             return None
         seen |= {id(expression)}
         match expression:
             case ast.Constant():
+                if (
+                    not isinstance(expression.value, str)
+                    or len(expression.value) > _MAX_QUERY_CHARS
+                    or len(expression.value) > self.remaining_chars
+                ):
+                    return None
+                self.remaining_chars -= len(expression.value)
                 literal = _mapped_literal(expression, self.context.source)
-                return (
-                    _Rendered(literal, _Kind.TEXT)
-                    if literal is not None and len(literal.text) <= _MAX_QUERY_CHARS
-                    else None
-                )
+                return _Rendered(literal, _Kind.TEXT) if literal is not None else None
             case ast.Name() | ast.Attribute():
                 value = self._bound_value(expression)
                 return self.render(value, seen) if value is not None else None

@@ -392,3 +392,15 @@ def test_escaped_class_object_does_not_supply_a_stale_literal() -> None:
 
     assert not extracted.literals
     assert len(extracted.gaps) == 1
+
+
+def test_render_work_budget_is_reset_for_each_execution() -> None:
+    fragment = "x" * 750_000
+    arguments = ", ".join(f"SQL({fragment!r})" for _ in range(3))
+    source = _composed_source(f"SQL('SELECT 1').format({arguments})")
+    source += "def another(conn: Connection):\n    return conn.execute(SQL('SELECT 2'))\n"
+
+    extracted = extract_sql_literals(Path("store.py"), source)
+
+    assert [literal.text for literal in extracted.literals] == ["SELECT 2"]
+    assert len(extracted.gaps) == 1
