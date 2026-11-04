@@ -1,0 +1,1366 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "scope": "React state, server data preparation and frontend comment policies after the initial admin merge",
+  "repository": "sarj-ai/code-standards",
+  "baselineRevision": "72ae75f68cd7360f4462f297cdf0ec0da4d92e70",
+  "baselineVersions": {
+    "core": "8.194.0",
+    "typescript": "18.0.0"
+  },
+  "candidateVersions": {
+    "core": "8.197.0",
+    "typescript": "18.0.4"
+  },
+  "method": "100 distinct review points: 95 semantic controls and five integration/performance reviews. These are not 100 repeated full-suite runs.",
+  "reviewPasses": [
+    {
+      "pass": 1,
+      "focus": "primitive string snapshot",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 2,
+      "focus": "primitive numeric snapshot",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 3,
+      "focus": "primitive boolean snapshot",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 4,
+      "focus": "structural object type can hide a callable initializer",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 5,
+      "focus": "undefined snapshot",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 6,
+      "focus": "null snapshot",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 7,
+      "focus": "lazy prop return",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 8,
+      "focus": "lazy block return",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 9,
+      "focus": "renamed React hook",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 10,
+      "focus": "namespace React hook",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 11,
+      "focus": "computed React hook member",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 12,
+      "focus": "renamed prop binding",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 13,
+      "focus": "whole props parameter",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 14,
+      "focus": "nested prop path",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 15,
+      "focus": "observed updater",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 16,
+      "focus": "escaping updater",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 17,
+      "focus": "updater reassignment",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 18,
+      "focus": "mutable state binding",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 19,
+      "focus": "unused state value",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 20,
+      "focus": "async lazy initializer",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 21,
+      "focus": "generator lazy initializer",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 22,
+      "focus": "parameterized lazy initializer",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 23,
+      "focus": "multi-statement lazy initializer",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 24,
+      "focus": "callable eager prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 25,
+      "focus": "callable intersection prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 26,
+      "focus": "unresolved generic prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 27,
+      "focus": "unknown union prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 28,
+      "focus": "legacy Function prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 29,
+      "focus": "constructor prop",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 30,
+      "focus": "foreign hook import",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 31,
+      "focus": "shadowed namespace import",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 32,
+      "focus": "JSX only in nested callback",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 33,
+      "focus": "module-level hook",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": null,
+      "baselineEngineFailure": true,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 34,
+      "focus": "test state exclusion",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 35,
+      "focus": "generated state exclusion",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 36,
+      "focus": "native Array map projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 37,
+      "focus": "native Array filter projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 38,
+      "focus": "native Array flatMap projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 39,
+      "focus": "generic ReadonlyArray projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 40,
+      "focus": "nullable Array receiver with a non-null wrapper",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 41,
+      "focus": "object data projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 42,
+      "focus": "destructured projection parameter",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 43,
+      "focus": "single block return projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 44,
+      "focus": "literal computed field projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 45,
+      "focus": "logical data projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 46,
+      "focus": "conditional data projection",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 47,
+      "focus": "projection chain reports its first source once",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 48,
+      "focus": "two projections of one prop",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 2,
+      "baselineDiagnostics": 2,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 2,
+      "result": "passed"
+    },
+    {
+      "pass": 49,
+      "focus": "data and field-only display share a prop",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 50,
+      "focus": "native state establishes interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 51,
+      "focus": "native reducer establishes interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 52,
+      "focus": "callable handler binding establishes interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 53,
+      "focus": "absent handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 54,
+      "focus": "null event handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 55,
+      "focus": "undefined event handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 56,
+      "focus": "boolean event handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 57,
+      "focus": "string event handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 58,
+      "focus": "object event handler is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 59,
+      "focus": "null handler binding is not interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 60,
+      "focus": "optional callable handler remains interactive",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 61,
+      "focus": "opaque cast does not establish native collection provenance",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 62,
+      "focus": "custom map signature is not native Array",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 63,
+      "focus": "any receiver is not native Array",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 64,
+      "focus": "captured browser state keeps projection local",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 65,
+      "focus": "whole-record forwarding keeps source local",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 66,
+      "focus": "record lookup keeps source local",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 67,
+      "focus": "event closure needing raw rows keeps source local",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 68,
+      "focus": "callback index parameter is outside projection scope",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 69,
+      "focus": "generator callback is deferred computation",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 70,
+      "focus": "foreign state does not establish client interaction",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 71,
+      "focus": "server boundary exclusion",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 72,
+      "focus": "test projection exclusion",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 73,
+      "focus": "generated projection exclusion",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 74,
+      "focus": "nested helper state does not make parent interactive",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 75,
+      "focus": "optional map call remains unsupported",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 76,
+      "focus": "line comment token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 77,
+      "focus": "block comment token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 78,
+      "focus": "JSDoc token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 79,
+      "focus": "JSX comment token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 80,
+      "focus": "legal comment token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 81,
+      "focus": "TypeScript directive token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 82,
+      "focus": "pure annotation token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 83,
+      "focus": "bundler annotation token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 84,
+      "focus": "triple-slash reference token",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 85,
+      "focus": "comment-shaped string data",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 86,
+      "focus": "comment-shaped template data",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 87,
+      "focus": "comment-shaped rendered JSX text",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 88,
+      "focus": "comment-shaped regular expression",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 89,
+      "focus": "empty comment fix preserves token boundary",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 90,
+      "focus": "multiline empty comment remains manual",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 91,
+      "focus": "generated frontend exclusion",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 92,
+      "focus": "vendor frontend exclusion",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 0,
+      "result": "passed"
+    },
+    {
+      "pass": 93,
+      "focus": "explicit frontend helper override",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 94,
+      "focus": "framework-owned plain helper",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 95,
+      "focus": "frontend test has one comment owner",
+      "rule": "both-comment-owners",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "baselineEngineFailure": false,
+      "candidateDiagnostics": 1,
+      "result": "passed"
+    },
+    {
+      "pass": 96,
+      "focus": "recommended and strict severity parity",
+      "evidence": "native preset assertion: both comments error; both React suggestions warning",
+      "result": "passed"
+    },
+    {
+      "pass": 97,
+      "focus": "React suggestions preserve source and converge",
+      "evidence": "verifyAndFix twice, identical source, no unsafe boundary/lifecycle fix",
+      "result": "passed"
+    },
+    {
+      "pass": 98,
+      "focus": "malformed input remains an explicit parser failure",
+      "evidence": "native Linter fatal error is preserved and excluded from clean counts",
+      "result": "passed"
+    },
+    {
+      "pass": 99,
+      "focus": "metadata, examples and registration remain atomic",
+      "evidence": "canonical maintain/docs/catalog checks plus native authoring and flat preset tests",
+      "result": "passed"
+    },
+    {
+      "pass": 100,
+      "focus": "repeated immutable corpus and scaling performance",
+      "evidence": "run_isolated_corpora, alternating baseline/candidate workers, cold/warm medians and RSS; labeled controls and raw gaps",
+      "result": "passed"
+    }
+  ],
+  "labeledControls": {
+    "baseline": {
+      "cases": 95,
+      "matchedCases": 86,
+      "positiveCases": 45,
+      "negativeCases": 50,
+      "falsePositiveCases": 8,
+      "falseNegativeCases": 0,
+      "engineFailureCases": 1,
+      "parserFailures": 0
+    },
+    "candidate": {
+      "cases": 95,
+      "matchedCases": 95,
+      "positiveCases": 45,
+      "negativeCases": 50,
+      "falsePositiveCases": 0,
+      "falseNegativeCases": 0,
+      "engineFailureCases": 0,
+      "parserFailures": 0
+    },
+    "classification": "A case with an engine or parser failure is not counted as a clean negative. Positive and negative cases are labeled synthetic controls, not unlabeled corpus zeroes.",
+    "ownershipSupplement": {
+      "reviewPass": 91,
+      "cases": 4,
+      "matched": 4,
+      "typeProgramsCreated": 0
+    },
+    "malformedInput": "Review 98 deliberately verifies a fatal native parser diagnostic, separately from the 95 clean semantic controls."
+  },
+  "repairs": [
+    "Preserve the upstream null-Program-parent guard and verify module-level hook/projection controls while sharing parameter-binding analysis.",
+    "Require primitive eager initializer types because structural object types can hide callable React initializers; explicit lazy prop returns remain supported.",
+    "Require a callable event-handler type after removing erased wrappers before treating DOM attributes as client interaction.",
+    "Require native array or tuple receiver types after removing erased wrappers, as well as native library method signatures.",
+    "Cache first-parameter bindings by SourceCode and containing function, and validate each projection input binding once per rule invocation.",
+    "Check cached component interaction before expensive reference validation and avoid a duplicate native signature query."
+  ],
+  "verification": {
+    "focusedTypeScriptTests": 1800,
+    "focusedTypeScriptTestFiles": 7,
+    "checks": [
+      "Authored ESLint and shipped dogfood rules on all changed TypeScript files",
+      "TypeScript source and tools type checks",
+      "Native rule metadata preparation",
+      "CLI, rule catalog, third-party catalog, docs examples and docs artifact checks"
+    ],
+    "presets": {
+      "recommended": {
+        "no-frontend-comments": "error",
+        "no-test-comments": "error",
+        "no-readonly-prop-state": "warn",
+        "prefer-server-data-preparation": "warn"
+      },
+      "strict": {
+        "no-frontend-comments": "error",
+        "no-test-comments": "error",
+        "no-readonly-prop-state": "warn",
+        "prefer-server-data-preparation": "warn"
+      }
+    },
+    "sourcePreservation": "React advisories provide no automatic lifecycle or server-boundary rewrite. Native fix controls preserve source and converge. Only eligible empty comment separators are automatically fixed.",
+    "focusedTestsStage": "Initial frozen audit candidate; final integration validation is recorded separately in the follow-up PR.",
+    "fullRepositoryVerification": {
+      "command": "make -j2 verify",
+      "result": "passed",
+      "passingTests": 59211,
+      "skippedTests": 13,
+      "versions": {
+        "core": "8.197.0",
+        "typescript": "18.0.1"
+      },
+      "stage": "Frozen audit candidate before the final upstream integration. Final candidate metadata, affected checks, native hooks and exact-head CI are qualified separately."
+    }
+  },
+  "privateCorpus": {
+    "visibility": "Private source identifiers, paths, revisions and content digests are omitted from this aggregate receipt.",
+    "files": 103,
+    "compilerInputs": 4923,
+    "nativeTypeOrProfileGapFiles": 39,
+    "rounds": 3,
+    "freshWorkers": 6,
+    "lintLoopsPerWorker": 3,
+    "typescriptRuntime": "6.0.3",
+    "rulesInBothModes": [
+      "no-client-side-data-fetching",
+      "no-unnecessary-use-client",
+      "no-readonly-prop-state",
+      "prefer-server-data-preparation"
+    ],
+    "diagnosticsIdenticalAcrossAllWorkers": true,
+    "findingsByRule": {
+      "prefer-server-data-preparation": 1,
+      "no-unnecessary-use-client": 2
+    },
+    "inspection": "The one preparation advisory retained its previously inspected true-positive label. No new findings were introduced. Corpus zeroes have not been labeled as true negatives.",
+    "parserOrEngineFailures": 0,
+    "configuration": "Native tsconfig and extended configuration bytes plus compiler options were unchanged before/after; compiler input bytes were checked before/after each worker. Only pinned dependency-root paths were normalized for cross-worktree input comparison.",
+    "aggregates": {
+      "baseline": {
+        "medianColdMs": 4635.11191,
+        "medianWarmMs": 1164.746499500001,
+        "medianPeakRssKiB": 1622996,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      },
+      "candidate": {
+        "medianColdMs": 3882.9591880000007,
+        "medianWarmMs": 985.4892545000002,
+        "medianPeakRssKiB": 1675092,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      }
+    },
+    "deltaPercent": {
+      "medianColdMs": -16.227282892075824,
+      "medianWarmMs": -15.390236852134931,
+      "medianPeakRssKiB": 3.2098661980682675
+    }
+  },
+  "projectionScaling": {
+    "visibility": "Synthetic public-shape corpus; no private source included.",
+    "projectionCounts": [
+      8,
+      32,
+      128,
+      512
+    ],
+    "interactiveModes": [
+      true,
+      false
+    ],
+    "rounds": 3,
+    "freshWorkers": 48,
+    "lintLoopsPerWorker": 3,
+    "method": "Alternating paired modes run through run_isolated_corpora. Timed lint loops are uninstrumented. An additional untimed lint counts native resolved-signature queries. Native compiler diagnostics and expected finding counts are asserted in every worker.",
+    "aggregates": [
+      {
+        "projections": 8,
+        "interactive": true,
+        "baseline": {
+          "medianColdMs": 387.09715400000005,
+          "medianWarmMs": 25.094537499999888,
+          "medianPeakRssKiB": 396124,
+          "signatureQueries": [
+            72
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 390.9151610000001,
+          "medianWarmMs": 16.210607000000095,
+          "medianPeakRssKiB": 384780,
+          "signatureQueries": [
+            8
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": 0.9863175072581498,
+          "medianWarmMs": -35.401849904585134,
+          "medianPeakRssKiB": -2.8637497349314867
+        }
+      },
+      {
+        "projections": 8,
+        "interactive": false,
+        "baseline": {
+          "medianColdMs": 400.32520599999975,
+          "medianWarmMs": 17.1190459999998,
+          "medianPeakRssKiB": 386700,
+          "signatureQueries": [
+            72
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 327.7647139999999,
+          "medianWarmMs": 16.509421499999917,
+          "medianPeakRssKiB": 384124,
+          "signatureQueries": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -18.12538678865999,
+          "medianWarmMs": -3.5610892102275415,
+          "medianPeakRssKiB": -0.6661494698732895
+        }
+      },
+      {
+        "projections": 32,
+        "interactive": true,
+        "baseline": {
+          "medianColdMs": 495.9909479999999,
+          "medianWarmMs": 34.250368000000094,
+          "medianPeakRssKiB": 390620,
+          "signatureQueries": [
+            1056
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 419.12982599999987,
+          "medianWarmMs": 42.475748499999895,
+          "medianPeakRssKiB": 388832,
+          "signatureQueries": [
+            32
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -15.496476762313826,
+          "medianWarmMs": 24.015451454418766,
+          "medianPeakRssKiB": -0.45773385899339214
+        }
+      },
+      {
+        "projections": 32,
+        "interactive": false,
+        "baseline": {
+          "medianColdMs": 505.2913839999999,
+          "medianWarmMs": 37.620150999999964,
+          "medianPeakRssKiB": 388336,
+          "signatureQueries": [
+            1056
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 332.72345100000007,
+          "medianWarmMs": 34.14808249999999,
+          "medianPeakRssKiB": 387332,
+          "signatureQueries": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -34.15216219083598,
+          "medianWarmMs": -9.229278478972558,
+          "medianPeakRssKiB": -0.2585389971570984
+        }
+      },
+      {
+        "projections": 128,
+        "interactive": true,
+        "baseline": {
+          "medianColdMs": 654.8022679999999,
+          "medianWarmMs": 155.61153550000017,
+          "medianPeakRssKiB": 421028,
+          "signatureQueries": [
+            16512
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 617.074327,
+          "medianWarmMs": 129.0925239999999,
+          "medianPeakRssKiB": 423608,
+          "signatureQueries": [
+            128
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -5.761730348802008,
+          "medianWarmMs": -17.041803112340748,
+          "medianPeakRssKiB": 0.6127858479721082
+        }
+      },
+      {
+        "projections": 128,
+        "interactive": false,
+        "baseline": {
+          "medianColdMs": 768.2078499999998,
+          "medianWarmMs": 154.05987200000004,
+          "medianPeakRssKiB": 421704,
+          "signatureQueries": [
+            16512
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 619.1158049999999,
+          "medianWarmMs": 181.4624980000001,
+          "medianPeakRssKiB": 420392,
+          "signatureQueries": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -19.407774211107043,
+          "medianWarmMs": 17.786997771879264,
+          "medianPeakRssKiB": -0.3111186993720705
+        }
+      },
+      {
+        "projections": 512,
+        "interactive": true,
+        "baseline": {
+          "medianColdMs": 1452.6833120000001,
+          "medianWarmMs": 634.5066675,
+          "medianPeakRssKiB": 497960,
+          "signatureQueries": [
+            262656
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 1182.796989,
+          "medianWarmMs": 273.8516004999999,
+          "medianPeakRssKiB": 493304,
+          "signatureQueries": [
+            512
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -18.578469289939783,
+          "medianWarmMs": -56.84023280968913,
+          "medianPeakRssKiB": -0.935014860631378
+        }
+      },
+      {
+        "projections": 512,
+        "interactive": false,
+        "baseline": {
+          "medianColdMs": 1380.548389,
+          "medianWarmMs": 714.4141269999998,
+          "medianPeakRssKiB": 495680,
+          "signatureQueries": [
+            262656
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 788.1807190000002,
+          "medianWarmMs": 206.8675095000001,
+          "medianPeakRssKiB": 488600,
+          "signatureQueries": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -42.908142497568036,
+          "medianWarmMs": -71.04375436013737,
+          "medianPeakRssKiB": -1.4283408650742402
+        }
+      }
+    ]
+  },
+  "limits": [
+    "Zero false positives in these labeled controls is not a proof that all application code is covered. Broader independent field calibration remains pending.",
+    "The two React suggestions stay warning-first. Intentional initial snapshots, upstream data availability, browser requirements and unsaved edits still require manual review.",
+    "Eager structural object initializers and unsupported/custom collection receivers are excluded conservatively; explicit lazy prop returns remain supported.",
+    "The blocking comment policy covers every actual comment in maintained frontend source and tests; generated/vendor sources and string/template/JSX text are excluded.",
+    "Native type/profile gaps are reported independently and are not clean passes. Successful ESLint parsing does not prove an application type check succeeds.",
+    "Timing medians are observations on a shared host, not a guaranteed fleet speedup. Lint timing excludes program creation; peak RSS includes the native program. The private corpus observed a small median RSS increase.",
+    "Benchmarks used the frozen Core 8.197.0 / TypeScript 18.0.1 artifact. Final upstream integration preserves the measured React/comment rule implementations and native TypeScript dependencies byte-for-byte; unrelated upstream TypeScript rule repairs and the final patch-version metadata are not part of the measured artifact."
+  ],
+  "benchmarkEvaluationVersions": {
+    "core": "8.197.0",
+    "typescript": "18.0.1"
+  }
+}
