@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import pytest
 
 from sarj_standards import api
-from sarj_standards.cli.main import main, staged_fix_paths
+from sarj_standards.cli.main import main, staged_file_names, staged_fix_paths
 from sarj_standards.libs.diagnostics.baseline import changed_line_scope
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external, repo_standards
@@ -58,6 +58,93 @@ def _repository(root: Path) -> None:
     (root / "settings.toml").write_bytes(_INITIAL)
     _git(root, "add", "--all")
     _git(root, "commit", "-qm", "fixture baseline")
+
+
+def test_merge_with_conflict_selects_own_changes_and_resolved_conflict(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    _repository(root)
+    for name in ("incoming.txt", "feature.txt", "conflict.txt", "deleted.txt", "renamed.txt"):
+        (root / name).write_text("base\n", encoding="utf-8")
+    _git(root, "add", "--all")
+    _git(root, "commit", "-qm", "shared base")
+    _git(root, "branch", "incoming")
+
+    (root / "feature.txt").write_text("ours\n", encoding="utf-8")
+    (root / "conflict.txt").write_text("ours\n", encoding="utf-8")
+    _git(root, "add", "--all")
+    _git(root, "commit", "-qm", "feature branch")
+
+    _git(root, "switch", "incoming")
+    (root / "incoming.txt").write_text("theirs\n", encoding="utf-8")
+    (root / "conflict.txt").write_text("theirs\n", encoding="utf-8")
+    _git(root, "rm", "deleted.txt")
+    _git(root, "mv", "renamed.txt", "incoming-renamed.txt")
+    _git(root, "add", "--all")
+    _git(root, "commit", "-qm", "incoming branch")
+    _git(root, "switch", "-")
+    merge = subprocess.run(
+        ("git", "--no-optional-locks", "merge", "--no-commit", "--no-ff", "incoming"),
+        cwd=root,
+        capture_output=True,
+        env=_fixture_environment(),
+        check=False,
+    )
+    assert merge.returncode == 1
+    assert (root / ".git/MERGE_HEAD").exists()
+    assert "conflict.txt" in staged_file_names(root)
+
+    (root / "conflict.txt").write_text("theirs\n", encoding="utf-8")
+    (root / "feature.txt").write_text("staged feature edit\n", encoding="utf-8")
+    _git(root, "add", "conflict.txt", "feature.txt")
+    (root / "feature.txt").write_text("unstaged worktree edit\n", encoding="utf-8")
+
+    assert set(staged_file_names(root)) == {"conflict.txt", "feature.txt"}
+    assert set(staged_file_names(root, include_deleted=False)) == {"conflict.txt", "feature.txt"}
+
+
+def test_merge_selection_keeps_resolution_when_ours_renamed_incoming_file(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    _repository(root)
+    (root / "old.txt").write_text("base\n", encoding="utf-8")
+    _git(root, "add", "old.txt")
+    _git(root, "commit", "-qm", "shared base")
+    _git(root, "branch", "incoming")
+    _git(root, "mv", "old.txt", "ours-renamed.txt")
+    _git(root, "commit", "-qm", "feature rename")
+    _git(root, "switch", "incoming")
+    (root / "old.txt").write_text("theirs\n", encoding="utf-8")
+    _git(root, "add", "old.txt")
+    _git(root, "commit", "-qm", "incoming modification")
+    _git(root, "switch", "-")
+    merge = subprocess.run(
+        (
+            "git",
+            "--no-optional-locks",
+            "merge",
+            "-s",
+            "recursive",
+            "-Xno-renames",
+            "--no-commit",
+            "--no-ff",
+            "incoming",
+        ),
+        cwd=root,
+        capture_output=True,
+        env=_fixture_environment(),
+        check=False,
+    )
+    assert merge.returncode == 1
+    _git(root, "add", "old.txt")
+
+    assert "old.txt" in staged_file_names(root)
+
+
+def test_nonmerge_staged_selection_retains_deletions(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    _git(tmp_path, "rm", "settings.toml")
+
+    assert staged_file_names(tmp_path) == ["settings.toml"]
+    assert staged_file_names(tmp_path, include_deleted=False) == []
 
 
 @pytest.mark.parametrize("relative", [False, True], ids=("absolute", "relative-to-selected-root"))
