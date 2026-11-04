@@ -183,6 +183,8 @@ const PREVIOUS_STRICT_RULE_ORDER = [
   "@sarj/stepdown",
   "@sarj/source-coupled-test",
   "@sarj/sole-export-matches-filename",
+  "@sarj/no-readonly-prop-state",
+  "@sarj/prefer-server-data-preparation",
   "@sarj/test-phase-label-comment",
   "@sarj/require-pascal-case-zod-schema-name",
 ] as const;
@@ -332,6 +334,8 @@ const PREVIOUS_RECOMMENDED_RULE_ORDER = [
   "@sarj/stepdown",
   "@sarj/source-coupled-test",
   "@sarj/sole-export-matches-filename",
+  "@sarj/no-readonly-prop-state",
+  "@sarj/prefer-server-data-preparation",
   "@sarj/test-phase-label-comment",
   "@sarj/require-pascal-case-zod-schema-name",
 ] as const;
@@ -361,6 +365,24 @@ it("keeps every preset value and the previous public key order", () => {
     expect(RECOMMENDED_RULES[name]).toEqual(["error", PREVIOUS_OPTION_SETTINGS[name]]);
     expect(STRICT_RULES[name]).toEqual(["error", PREVIOUS_OPTION_SETTINGS[name]]);
   }
+});
+
+it.each(PRESETS)("blocks frontend production and test comments in %s", preset => {
+  const settings = preset === "strict" ? STRICT_RULES : RECOMMENDED_RULES;
+  const linter = new Linter();
+  const configuration = [{
+    files: ["**/*.jsx"],
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { "@sarj": plugin },
+    rules: {
+      "@sarj/no-frontend-comments": settings["@sarj/no-frontend-comments"],
+      "@sarj/no-test-comments": settings["@sarj/no-test-comments"],
+    },
+  }];
+  const diagnostics = (filename: string) => linter.verify("// Explain the view\nexport const View = () => <p />;", configuration, { filename })
+    .map(({ ruleId, severity }) => ({ ruleId, severity }));
+  expect(diagnostics("src/view.jsx")).toEqual([{ ruleId: "@sarj/no-frontend-comments", severity: 2 }]);
+  expect(diagnostics("src/view.test.jsx")).toEqual([{ ruleId: "@sarj/no-test-comments", severity: 2 }]);
 });
 
 it("retains independent option tuples and intentionally shared library data", () => {

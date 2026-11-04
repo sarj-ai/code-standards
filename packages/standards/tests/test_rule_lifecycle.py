@@ -421,6 +421,48 @@ def test_lifecycle_tracks_generated_declarations(tmp_path: Path, monkeypatch: py
         assert all(path.read_text(encoding="utf-8") == source for path, source in declarations.items())
 
 
+@pytest.mark.parametrize("outcome", ["complete", "fail"])
+def test_lifecycle_tracks_generated_eslint_declarations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    paths = _files(tmp_path)
+    directory = tmp_path / "packages/standards/src/sarj_standards/configs"
+    strict = directory / "eslint.strict.d.mts"
+    application = directory / "eslint.application.d.mts"
+    strict.write_text("original declarations\n", encoding="utf-8")
+    application.unlink()
+    before = {path: path.read_bytes() for path in paths if path.exists()}
+    artifacts = {strict: "updated strict declarations\n", application: "updated application declarations\n"}
+    real_sync = config_generation.sync_warning_levels
+    _mock_builders(monkeypatch)
+
+    def projection(_root: Path) -> dict[Path, str]:
+        return artifacts
+
+    def sync_configs(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
+        result = real_sync(root, check=check, writer=writer)
+        if outcome == "fail" and not check:
+            msg = "injected declaration failure"
+            raise RuntimeError(msg)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Exercise native transaction writes for existing and newly generated declarations.
+        config_generation, "warning_level_artifacts", projection
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Inject failure after the native synchronizer writes both declarations.
+        config_generation, "sync_warning_levels", sync_configs
+    )
+    if outcome == "fail":
+        with pytest.raises(RuntimeError, match="injected declaration failure"):
+            rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        assert strict.read_text(encoding="utf-8") == "original declarations\n"
+        assert not application.exists()
+        assert {path: path.read_bytes() for path in before} == before
+    else:
+        assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR).status == 0
+        assert {path: path.read_text(encoding="utf-8") for path in artifacts} == artifacts
+
+
 def test_stage_warning_suggests_the_closest_live_selector(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

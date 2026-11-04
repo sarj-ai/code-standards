@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bb30d08a4401890f095aa41a09b2f47622a5952db8d89c43af57921fd652427a",
-  "cliSha256": "95cb99b1257b2a97cd82fea8daaf4e5164342f39e5133dff7cdc5576915a164b",
+  "catalogSha256": "5fbb5748e1309ad7e1f5eb2cf48f3d111ab65b730ec3a9fa7f1516c259e0e852",
+  "cliSha256": "57a230207bfb5a17c6c670cd409839e7375108a8aacd8a65c2d67502ff690cb3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -3021,6 +3021,49 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-readonly-prop-state": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/status.tsx",
+              "source": "export function Status({ status }: { status: string }) {\n  return <p>{status}</p>;\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.tsx",
+          "id": "current-prop",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Render the current prop directly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/status.tsx",
+              "source": "import { useState } from \"react\";\nexport function Status({ status }: { status: string }) {\n  const [savedStatus] = useState(status);\n  return <p>{savedStatus}</p>;\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.tsx",
+          "id": "frozen-prop",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A prop snapshot has no updater"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:no-reduce-accumulator-copy": {
       "examples": [
@@ -6298,6 +6341,49 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"description\": \"Static application URL base path without query strings, fragments or parent segments.\",\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-server-data-preparation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/options.tsx",
+              "source": "\"use client\";\nimport { useState } from \"react\";\nexport function Options({ rows }: { rows: readonly { language: string }[] }) {\n  const [selected, setSelected] = useState(\"\");\n  const languages = rows.map((row) => row.language);\n  return (\n    <select value={selected} onChange={(event) => setSelected(event.target.value)}>\n      {languages.map((language) => (\n        <option key={language}>{language}</option>\n      ))}\n    </select>\n  );\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.tsx",
+          "id": "client-projection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Prepare data before the client view when possible"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/options.tsx",
+              "source": "\"use client\";\nimport { useState } from \"react\";\nexport function Options({ languages }: { languages: readonly string[] }) {\n  const [selected, setSelected] = useState(\"\");\n  return (\n    <select value={selected} onChange={(event) => setSelected(event.target.value)}>\n      {languages.map((language) => (\n        <option key={language}>{language}</option>\n      ))}\n    </select>\n  );\n}\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"preserve\"\n  },\n  \"include\": [\"src/**/*\"]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.tsx",
+          "id": "prepared-values",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The client receives prepared language values"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:prefer-shadcn-primitives": {
       "examples": [
