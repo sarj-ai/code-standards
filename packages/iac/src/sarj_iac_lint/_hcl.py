@@ -210,12 +210,13 @@ def _lexical_document(source: str) -> _LexicalDocument:
     return _HCLScanner(source).scan()
 
 
-def comment_locations(source: str) -> tuple[tuple[int, int], ...]:
+def comment_locations(source: str, *, include_templates: bool = True) -> tuple[tuple[int, int], ...]:
     lexical = _lexical_document(source)
     if not lexical.complete:
         return ()
     locations: list[tuple[int, int]] = []
-    for span in sorted((*lexical.comments, *lexical.template_comments), key=lambda item: item.start):
+    spans = (*lexical.comments, *lexical.template_comments) if include_templates else lexical.comments
+    for span in sorted(spans, key=lambda item: item.start):
         line = bisect_left(lexical.physical_newlines, span.start)
         start = lexical.physical_newlines[line - 1] + 1 if line else 0
         locations.append((line + 1, span.start - start + 1))

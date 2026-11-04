@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c2f2eae1ccdcddcfe506ea93c48c575e5d952e39b5defc843cabf6823edb7927",
-  "cliSha256": "d8c5d8a25dcc6f56ea5efb16388ac5171987d08754a70fcaaf90ab467a5f9c3c",
+  "catalogSha256": "17c12a79af964fd581e46739480d83c1e31b36fd1a75bbebd4a1aad690226624",
+  "cliSha256": "b75b4645db3e73f744e02b358fa3b7a556ae24616473bacc2095fc8959039cac",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7490,6 +7490,41 @@
           "files": [
             {
               "path": "main.tf",
+              "source": "locals {\n  value = true ? (true ? (true ? (true ? (true ? (true ? (true ? (1) : 2) : 2) : 2) : 2) : 2) : 2) : 2\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  value = 1\n}\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "closed-literal-tree",
+          "outcome": "reject",
+          "scenarioId": "closed-literal-tree",
+          "title": "Fold a complete literal conditional tree"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  value = 1\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "closed-literal-tree-fixed",
+          "outcome": "accept",
+          "scenarioId": "closed-literal-tree",
+          "title": "The selected literal retains its scalar type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
               "source": "locals {\n  ready = var.a > 0 && var.b > 0 && var.c > 0 && var.d > 0 && var.e > 0 && var.f > 0 && var.g > 0\n}\n"
             }
           ],
@@ -8453,6 +8488,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A Terraform comment duplicates executable intent"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 /**/ + 2 }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 + 2 }\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "empty-inline-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-inline-comment",
+          "title": "Keep operators separated when removing an empty block comment"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals { value = 1 + 2 }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "empty-inline-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-inline-comment",
+          "title": "Whitespace preserves the original Terraform operators"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "#\nlocals { value = 1 }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "\nlocals { value = 1 }\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "empty-line-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-line-comment",
+          "title": "Remove an empty Terraform line comment"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "\nlocals { value = 1 }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "empty-line-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-line-comment",
+          "title": "The executable Terraform remains unchanged"
         },
         {
           "expectedCount": 0,
@@ -20449,6 +20554,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A comment cannot enforce a column range"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 /**/ AS value;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 AS value;\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment",
+          "outcome": "reject",
+          "scenarioId": "empty-comment",
+          "title": "Remove an empty comment while keeping SQL tokens separate"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1 AS value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment",
+          "title": "Whitespace preserves the executable SQL after the comment is removed"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 /**/ AS value;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 AS value;\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-with-string",
+          "outcome": "reject",
+          "scenarioId": "empty-comment-with-string",
+          "title": "Remove an empty comment beside string data"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  'payload' AS label,\n  1 AS value;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "empty-comment-with-string-fixed",
+          "outcome": "accept",
+          "scenarioId": "empty-comment-with-string",
+          "title": "String data and SQL tokens remain unchanged"
         },
         {
           "expectedCount": 0,

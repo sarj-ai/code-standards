@@ -21,6 +21,7 @@ from sarj_sql_lint.rule_base import (
     is_migration_source,
     mask_sql,
     mask_sql_comments,
+    physical_lines,
     redirect_to_model,
     source_location,
     sql_comments,
@@ -78,10 +79,53 @@ class NoMigrationComments(Rule):
             "Strings and quoted identifiers are not comments, including scalar dollar-quoted data. Comments in executable bodies are checked.",
             "COMMENT ON cleanup using unquoted NULL or an empty plain, escape, or dollar-quoted string is allowed; quoted NULL and nonempty strings still store comments.",
             "Analysis stops before top-level COPY FROM STDIN; payloads and following commands are not inferred.",
-            "Conditional safe fixes reuse the existing banner and complete supported disabled-SQL line-comment profiles only when both rules report the same location. Arbitrary prose, declared ranges, COMMENT ON statements, directives, references, rollback guidance, suppression and license comments remain manual.",
+            "Conditional safe fixes replace empty PostgreSQL comments with whitespace that preserves token boundaries and physical newlines. They also reuse the existing banner and complete supported disabled-SQL line-comment profiles only when both rules report the same location. Arbitrary prose, declared ranges, COMMENT ON statements, directives, references, rollback guidance, suppression and license comments remain manual.",
+            "Empty block comments between adjacent string literals remain manual to preserve PostgreSQL string-continuation boundaries. Empty comments elsewhere remain eligible with quoted data.",
             "Safe fixes preserve physical newlines and refuse COPY input, dollar-quoted data and procedural sources. Direct source-string fixes refuse a visible BOM prefix; file fixes preserve the original UTF-8 BOM through the shared file adapter. Generated migrations remain model-owned. No constraint is invented from prose.",
         ),
         examples=(
+            RuleExample(
+                example_id="empty-comment",
+                scenario="empty-comment",
+                title="Remove an empty comment while keeping SQL tokens separate",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "SELECT 1/**/AS value;\n"),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "SELECT 1    AS value;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="empty-comment-fixed",
+                scenario="empty-comment",
+                title="Whitespace preserves the executable SQL after the comment is removed",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "SELECT 1    AS value;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="empty-comment-with-string",
+                scenario="empty-comment-with-string",
+                title="Remove an empty comment beside string data",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "SELECT 'payload' AS label, 1/**/AS value;\n"),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "SELECT 'payload' AS label, 1    AS value;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="empty-comment-with-string-fixed",
+                scenario="empty-comment-with-string",
+                title="String data and SQL tokens remain unchanged",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "SELECT 'payload' AS label, 1    AS value;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="inert-disabled-statement",
                 scenario="inert-comment",
@@ -141,7 +185,7 @@ class NoMigrationComments(Rule):
         source = sql_before_copy_input(source)
         if is_dump_file(source, path) or not is_migration_source(path, source):
             return []
-        lines = source.splitlines()
+        lines = physical_lines(source)
         findings = [
             Diagnostic(
                 path,

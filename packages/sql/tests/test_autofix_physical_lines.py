@@ -73,6 +73,21 @@ def test_physical_lines_match_sql_locations_without_losing_bytes(separator: str,
 
 
 @pytest.mark.parametrize("separator", _SEPARATORS)
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize("directive", ["migrate:up", "+goose StatementBegin", "> statement-breakpoint"])
+def test_runner_directives_after_unicode_data_use_physical_columns(separator: str, ending: str, directive: str) -> None:
+    source = f"SELECT 'before{separator}after';{ending}  -- {directive}{ending}SELECT 1;{ending}"
+    path = Path("migrations/001.sql")
+    rule_id = "no-migration-comments"
+    assert REGISTRY[rule_id]().check(path, source) == []
+    assert fix_source(path, source, rule_ids=[rule_id]) == source
+    inline = source.replace(f"  -- {directive}", f"SELECT 2; -- {directive}")
+    [finding] = REGISTRY[rule_id]().check(path, inline)
+    assert finding.line == 2
+    assert fix_source(path, inline, rule_ids=[rule_id]) == inline
+
+
+@pytest.mark.parametrize("separator", _SEPARATORS)
 @pytest.mark.parametrize("ending", ["\n", "\r\n"])
 def test_long_disabled_sql_comment_fix_uses_physical_comment_groups(separator: str, ending: str) -> None:
     prefix = f"SELECT 'before{separator}after' AS banner;{ending}"
