@@ -160,6 +160,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
 DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
     {
         MANIFEST,
+        ".gitattributes",
         ".repo-standards/repository.toml",
         ".shellcheckrc",
         "uv.lock",

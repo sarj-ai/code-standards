@@ -105,6 +105,53 @@ def test_formatter_requires_explicit_script_config_and_matching_installed_exact_
     directive_formatter.validate(owner)
 
 
+def test_biome_check_selects_only_its_frozen_formatter_component(tmp_path: Path) -> None:
+    tracked = _project(tmp_path, "biome")
+    package_path = tmp_path / "package.json"
+    package = {
+        "private": True,
+        "scripts": {"format": "biome check --write ."},
+        "devDependencies": {"@biomejs/biome": "2.6.3"},
+    }
+    package_path.write_text(json.dumps(package) + "\n", encoding="utf-8")
+    package_bytes = package_path.read_bytes()
+    source_bytes = (tmp_path / "source.js").read_bytes()
+    index_bytes = (tmp_path / ".git/index").read_bytes()
+
+    owner = directive_formatter.select(tmp_path, "source.js", tracked, _node=lambda _cwd: Path(sys.executable))
+
+    assert owner.invocation.tool == "biome"
+    assert owner.invocation.args == (
+        "format",
+        "--stdin-file-path",
+        str(tmp_path / "source.js"),
+        "--config-path",
+        str(tmp_path / "biome.json"),
+    )
+    assert any(proof.path == package_path and proof.contents == package_bytes for proof in owner.inputs)
+    directive_formatter.validate(owner)
+    assert (tmp_path / "source.js").read_bytes() == source_bytes
+    assert (tmp_path / ".git/index").read_bytes() == index_bytes
+
+    package_path.write_bytes(package_bytes + b" ")
+    with pytest.raises(ValueError, match="changed"):
+        directive_formatter.validate(owner)
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["biome check --write --unsafe .", "biome check --write . && echo changed", "node scripts/format.js"],
+)
+def test_biome_check_does_not_authorize_unsafe_flags_or_arbitrary_wrappers(tmp_path: Path, script: str) -> None:
+    tracked = _project(tmp_path, "biome")
+    path = tmp_path / "package.json"
+    package = {"private": True, "scripts": {"format": script}, "devDependencies": {"@biomejs/biome": "2.6.3"}}
+    path.write_text(json.dumps(package) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported project formatter wrapper"):
+        directive_formatter.select(tmp_path, "source.js", tracked, _node=lambda _cwd: Path(sys.executable))
+
+
 @pytest.mark.parametrize("mutation", ["replace", "remove"])
 def test_engine_without_formatter_rejects_changed_cached_runtime(tmp_path: Path, mutation: str) -> None:
     tracked = _project(tmp_path, "prettier")
