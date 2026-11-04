@@ -17,6 +17,7 @@ from sarj_standards.libs.adoption import (
     launcher,
     manifest as adoption_manifest,
     scaffold as adoption_scaffold,
+    service as adoption_service,
 )
 from sarj_standards.libs.release import retirement, rollout
 
@@ -636,6 +637,37 @@ def test_canonical_review_defaults_can_roll_out_without_allowing_nested_attribut
     for protected in ("nested/.gitattributes", "apps/web/.gitattributes", "apps/web/src/index.ts"):
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+@pytest.mark.parametrize("typescript_dest", [".", "frontend"], ids=["root", "declared-nested-destination"])
+def test_canonical_typescript_companions_can_roll_out_without_changing_local_config(
+    tmp_path: Path, typescript_dest: str
+) -> None:
+    project = tmp_path / typescript_dest
+    project.mkdir(parents=True, exist_ok=True)
+    (tmp_path / MANIFEST).write_text(
+        f'schema = 4\nbundle = "8.190.0"\nrule_profile = "all"\n[dest]\ntypescript = "{typescript_dest}"\n',
+        encoding="utf-8",
+    )
+    (project / "package.json").write_text('{"name":"consumer","private":true}\n', encoding="utf-8")
+    (project / "eslint.strict.mjs").write_text("", encoding="utf-8")
+    local = project / ".syncpackrc.ts"
+    original = b'import strict from "./syncpack.strict.mts";\nexport default { ...strict, versionGroups: [] };\n'
+    local.write_bytes(original)
+
+    result = adoption_service.apply_sync(adoption_service.plan_sync(project, configs=("eslint",)), force=True)
+    assert result.status == 0
+    names = ("doctor.config.json", "syncpack.strict.mts")
+    paths = tuple((project / name).relative_to(tmp_path).as_posix() for name in names)
+    for name in names:
+        assert (project / name).read_bytes() == (CONFIGS_DIR / name).read_bytes()
+    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+    rollout.reject_unsafe_diff((MANIFEST, *paths), allowed_paths=allowed)
+    assert local.read_bytes() == original
+    with pytest.raises(rollout.RolloutError, match="protected paths"):
+        rollout.reject_unsafe_diff(
+            (MANIFEST, (project / "src/index.ts").relative_to(tmp_path).as_posix()), allowed_paths=allowed
+        )
 
 
 class TestSafety:
