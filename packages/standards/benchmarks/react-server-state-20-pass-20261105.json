@@ -1,0 +1,511 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "repository": "sarj-ai/code-standards",
+  "scope": "Twenty additional reviews of React prop-state, server data preparation and frontend comment rules after admin-merging PR2070.",
+  "baselineRevision": "8d3278560d86da0d21a74f86ad1ddab07fb504b5",
+  "baselineVersions": {
+    "core": "8.197.0",
+    "typescript": "18.0.4"
+  },
+  "evaluatedCandidateVersions": {
+    "core": "8.198.1",
+    "typescript": "18.0.5"
+  },
+  "candidateVersions": {
+    "core": "8.199.1",
+    "typescript": "18.0.5"
+  },
+  "integration": "TypeScript source inputs are unchanged by the later core integration. Performance measurements remain tied to evaluatedCandidateVersions.",
+  "method": "20 distinct review points: 17 new semantic source controls and three performance/integration reviews. Rechecked 95 prior controls; these are not 20 repeated full-suite runs.",
+  "reviewPasses": [
+    {
+      "pass": 1,
+      "focus": "template-literal primitive state",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 2,
+      "focus": "unique-symbol primitive state",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 3,
+      "focus": "string enum primitive state",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 4,
+      "focus": "updater read through a callback container",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 5,
+      "focus": "two snapshots keep independent updater decisions",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 6,
+      "focus": "an eval-named property is not dynamic evaluation",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 7,
+      "focus": "direct eval can mutate a snapshot source",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 8,
+      "focus": "optional eval is indirect and cannot write local bindings",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 9,
+      "focus": "direct eval defeats prop-only projection provenance",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 10,
+      "focus": "an eval-named projection field remains data",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 11,
+      "focus": "indirect eval does not mutate the input parameter",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 12,
+      "focus": "native readonly tuple projection",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 13,
+      "focus": "union of native array receivers",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 14,
+      "focus": "empty comment ranges use UTF-16 offsets",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 15,
+      "focus": "template-expression separators preserve native tokens",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 16,
+      "focus": "JSX attribute comments stay manual",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 17,
+      "focus": "shared React import reference scans scale with hook calls",
+      "result": "passed",
+      "evidence": "24 fresh workers in three alternating paired rounds; native import-reference write checks change from N squared to N at all four sizes; independent CPU/wall measurements and peak RSS."
+    },
+    {
+      "pass": 18,
+      "focus": "preset levels and explicit native configuration exceptions",
+      "result": "passed",
+      "evidence": "Both recommended and strict presets keep both comment owners at error and both React advisories at warning. Native ESLint directive suppression remains an explicit configuration exception; disabling inline configuration exposes the directive comment as an error."
+    },
+    {
+      "pass": 19,
+      "focus": "cache keys preserve lexical import identity across sibling views",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "engineFailures": 0,
+      "fixConverges": true
+    },
+    {
+      "pass": 20,
+      "focus": "immutable merged provenance and metadata boundaries",
+      "result": "passed",
+      "evidence": "Merged baseline tree equals the qualified PR2070 tree. The final detector consumes native scope references and the existing direct-eval predicate. Tested source hashes match native metadata preparation; lexical binding identity and TypeScript erasures have regression coverage."
+    }
+  ],
+  "labeledControls": {
+    "newBaseline": {
+      "truePositiveCases": 12,
+      "trueNegativeCases": 2,
+      "falsePositiveCases": 1,
+      "falseNegativeCases": 2,
+      "parserFailures": 0,
+      "engineFailures": 0
+    },
+    "newCandidate": {
+      "truePositiveCases": 14,
+      "trueNegativeCases": 3,
+      "falsePositiveCases": 0,
+      "falseNegativeCases": 0,
+      "parserFailures": 0,
+      "engineFailures": 0
+    },
+    "retainedPreviousControls": 95,
+    "combinedCases": 112,
+    "uniqueSourceBodies": 108,
+    "positiveCases": 59,
+    "negativeCases": 53,
+    "sourceReuse": "Four prior source bodies intentionally recur in distinct test/vendor/ownership contexts; all 17 new source bodies are distinct from the previous controls.",
+    "limits": "Zero observed FP/FN applies to these labeled controls, not every possible program."
+  },
+  "repairs": [
+    "Distinguish direct lexical eval from properties, indirect optional calls and comma calls; preserve erased assertions and instantiated values.",
+    "Share the direct-eval exclusion between both advisories using native scope references and the existing semantic detector.",
+    "Cache validated React imports by lexical scope variable; retain hook-name checks at each call and keep sibling shadowing independent."
+  ],
+  "hookScaling": {
+    "method": "Three alternating paired rounds over the same four pinned synthetic sources, 24 fresh workers. Each worker performs three uninstrumented timing/CPU loops and a separate reference-write-count loop. Lazy state controls need no TypeScript program. Peak RSS includes the entire worker.",
+    "comparisons": [
+      {
+        "hooks": 8,
+        "baseline": {
+          "medianColdMs": 127.64225499999998,
+          "medianWarmMs": 21.39083400000004,
+          "medianColdCpuMs": 146.403,
+          "medianWarmCpuMs": 35.972,
+          "medianPeakRssKiB": 178328,
+          "importWriteQueries": [
+            64
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 126.635175,
+          "medianWarmMs": 19.164579999999944,
+          "medianColdCpuMs": 147.132,
+          "medianWarmCpuMs": 38.893,
+          "medianPeakRssKiB": 178212,
+          "importWriteQueries": [
+            8
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -0.7889863744572456,
+          "medianWarmMs": -10.407513797732681,
+          "medianColdCpuMs": 0.49794061597099315,
+          "medianWarmCpuMs": 8.12020460358056,
+          "medianPeakRssKiB": -0.06504867435287442
+        }
+      },
+      {
+        "hooks": 32,
+        "baseline": {
+          "medianColdMs": 145.20955600000002,
+          "medianWarmMs": 23.701212999999996,
+          "medianColdCpuMs": 206.62,
+          "medianWarmCpuMs": 58.346500000000006,
+          "medianPeakRssKiB": 182088,
+          "importWriteQueries": [
+            1024
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 151.127793,
+          "medianWarmMs": 22.2874185,
+          "medianColdCpuMs": 208.455,
+          "medianWarmCpuMs": 55.4995,
+          "medianPeakRssKiB": 180876,
+          "importWriteQueries": [
+            32
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": 4.075652569311616,
+          "medianWarmMs": -5.965072336171129,
+          "medianColdCpuMs": 0.8881037653663659,
+          "medianWarmCpuMs": -4.879470062471625,
+          "medianPeakRssKiB": -0.6656122314485313
+        }
+      },
+      {
+        "hooks": 128,
+        "baseline": {
+          "medianColdMs": 189.298943,
+          "medianWarmMs": 62.629758000000095,
+          "medianColdCpuMs": 338.098,
+          "medianWarmCpuMs": 149.25349999999997,
+          "medianPeakRssKiB": 231548,
+          "importWriteQueries": [
+            16384
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 181.31485699999996,
+          "medianWarmMs": 64.262832,
+          "medianColdCpuMs": 328.659,
+          "medianWarmCpuMs": 145.57999999999998,
+          "medianPeakRssKiB": 229868,
+          "importWriteQueries": [
+            128
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -4.2177129325017155,
+          "medianWarmMs": 2.6075048860956906,
+          "medianColdCpuMs": -2.7917940952031706,
+          "medianWarmCpuMs": -2.461248814935657,
+          "medianPeakRssKiB": -0.7255515055193729
+        }
+      },
+      {
+        "hooks": 512,
+        "baseline": {
+          "medianColdMs": 429.319611,
+          "medianWarmMs": 206.07613550000008,
+          "medianColdCpuMs": 830.362,
+          "medianWarmCpuMs": 413.24649999999997,
+          "medianPeakRssKiB": 336652,
+          "importWriteQueries": [
+            262144
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 386.01027299999987,
+          "medianWarmMs": 159.50403849999998,
+          "medianColdCpuMs": 775.6,
+          "medianWarmCpuMs": 373.69100000000003,
+          "medianPeakRssKiB": 321400,
+          "importWriteQueries": [
+            512
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -10.087901155766243,
+          "medianWarmMs": -22.599461547065005,
+          "medianColdCpuMs": -6.594954971446187,
+          "medianWarmCpuMs": -9.57188990106388,
+          "medianPeakRssKiB": -4.530494397775742
+        }
+      }
+    ],
+    "limits": "Shared-VM timings and memory are observations, not guaranteed speedups. Exact query counts establish the import-scan growth independently of wall-clock noise."
+  },
+  "liveCorpus": {
+    "visibility": "private; source identifiers, paths, revisions and identifying hashes are intentionally omitted",
+    "pinReused": true,
+    "method": "Native run_isolated_corpora; three alternating paired rounds, six fresh workers, three timing/CPU loops each; four React rules enabled in both modes.",
+    "compilerInputCounts": [
+      4923
+    ],
+    "typescriptApiVersions": [
+      "6.0.3"
+    ],
+    "compilerInputBytesStableAcrossWorkers": true,
+    "diagnosticsIdenticalAcrossAllWorkers": true,
+    "aggregates": {
+      "baseline": {
+        "medianColdMs": 4383.129306,
+        "medianWarmMs": 965.5159329999997,
+        "medianColdCpuMs": 8799.842,
+        "medianWarmCpuMs": 1587.487,
+        "medianPeakRssKiB": 1652152,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      },
+      "candidate": {
+        "medianColdMs": 4713.912947000001,
+        "medianWarmMs": 1302.315751,
+        "medianColdCpuMs": 8617.843,
+        "medianWarmCpuMs": 1591.2235,
+        "medianPeakRssKiB": 1661760,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      }
+    },
+    "deltaPercent": {
+      "medianColdMs": 7.5467461237613165,
+      "medianWarmMs": 34.8828855629046,
+      "medianColdCpuMs": -2.068207588272608,
+      "medianWarmCpuMs": 0.23537200619594412,
+      "medianPeakRssKiB": 0.581544555222524
+    },
+    "labeling": "The affected server-preparation hit was previously inspected as a true positive. Two unchanged findings belong to another rule. Zero-hit files are unlabeled; this corpus does not establish a false-negative rate.",
+    "limits": "Native compiler-error file counts are inherited and disclosed in both modes; type/service coverage is incomplete. Measurements exclude program construction and use the same native compiler configuration and input bytes."
+  },
+  "severity": [
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-frontend-comments",
+      "level": "error"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-test-comments",
+      "level": "error"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-readonly-prop-state",
+      "level": "warn"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/prefer-server-data-preparation",
+      "level": "warn"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-frontend-comments",
+      "level": "error"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-test-comments",
+      "level": "error"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-readonly-prop-state",
+      "level": "warn"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/prefer-server-data-preparation",
+      "level": "warn"
+    }
+  ],
+  "frontendCommentPolicy": "All actual line, block, JSDoc and JSX comments in maintained frontend scope are errors, including legal and tool-directive comments. Test comments have one owner; generated/vendor source is excluded. ESLint configuration can explicitly suppress or disable a rule.",
+  "validation": {
+    "focusedTypeScriptTests": 1814,
+    "labeledControlsPassed": 112,
+    "lint": "Complete authored and shipped checks for the changed TypeScript source/tests.",
+    "typing": "Canonical npm run typecheck, including source and tooling projects.",
+    "metadata": "Native examples, catalogs, CLI reference, documentation and artifacts checked.",
+    "implementationHashesUnchangedDuringPreparation": true
+  },
+  "recommendation": "Keep both React advisories at warning and lifecycle/boundary edits manual; preserve frontend comment errors. Use names, types and structure to express intent."
+}
