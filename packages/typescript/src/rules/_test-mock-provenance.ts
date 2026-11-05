@@ -48,6 +48,8 @@ export function acceptedTestFrameworkName(
   return name !== null && accepted.has(name) ? name : null;
 }
 
+export const EXPECT_ASSERTION: ReadonlySet<string> = new Set(["expect"]);
+
 const IMPORTED_LOCAL_NAMES_BY_PROGRAM = new WeakMap<TSESTree.Program, ReadonlySet<string>>();
 
 function importedLocalNames(program: TSESTree.Program): ReadonlySet<string> {

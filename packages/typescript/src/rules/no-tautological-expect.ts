@@ -11,12 +11,11 @@ import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { acceptedTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName, EXPECT_ASSERTION } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
-const EXPECT_NAME: ReadonlySet<string> = new Set(["expect"]);
 type MessageIds = "tautologicalComparison" | "tautologicalMatcher";
 type Options = readonly [];
 
@@ -231,7 +230,7 @@ function expectOperand(
   if (
     receiver.type !== AST_NODE_TYPES.CallExpression ||
     expectCallee?.type !== AST_NODE_TYPES.Identifier ||
-    acceptedTestFrameworkName(sourceCode, expectCallee, "assertion", EXPECT_NAME) === null ||
+    acceptedTestFrameworkName(sourceCode, expectCallee, "assertion", EXPECT_ASSERTION) === null ||
     (receiver.arguments.length !== 1 && !hasStaticMessage(receiver, expectCallee, sourceCode))
   ) {
     return null;
@@ -286,7 +285,7 @@ function collectCustomization(node: TSESTree.CallExpression, source: Readonly<Ty
   const member = unwrapExpression(node.callee);
   if (member.type !== AST_NODE_TYPES.MemberExpression) return;
   const receiver = unwrapExpression(member.object);
-  if (receiver.type !== AST_NODE_TYPES.Identifier || acceptedTestFrameworkName(source, receiver, "assertion", EXPECT_NAME) === null) return;
+  if (receiver.type !== AST_NODE_TYPES.Identifier || acceptedTestFrameworkName(source, receiver, "assertion", EXPECT_ASSERTION) === null) return;
   const method = ASTUtils.getPropertyName(member);
   const argument = node.arguments[0] === undefined ? null : unwrapExpression(node.arguments[0]);
   if (method === "addEqualityTesters" && !(argument?.type === AST_NODE_TYPES.ArrayExpression && argument.elements.length === 0)) {
