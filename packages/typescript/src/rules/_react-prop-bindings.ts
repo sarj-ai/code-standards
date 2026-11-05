@@ -12,8 +12,9 @@ import {
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { importSpecifierName } from "./_import-specifier-name.js";
+import { directEval } from "./_private-scalar-consumer.js";
 import { stableValueBinding } from "./_stable-value-binding.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 type RenderFunction =
   | TSESTree.ArrowFunctionExpression
@@ -22,6 +23,11 @@ type RenderFunction =
 type SourceCode = Readonly<TypeScriptSourceCode>;
 type ParameterBindings = ReadonlySet<TSESLint.Scope.Variable>;
 const VIEWS = new WeakMap<RenderFunction, boolean>();
+const DIRECT_EVAL = new WeakMap<SourceCode, boolean>();
+const REACT_IMPORTS = new WeakMap<
+  TSESLint.Scope.Variable,
+  TSESTree.Node | null
+>();
 const PARAMETER_BINDINGS = new WeakMap<
   SourceCode,
   WeakMap<RenderFunction, ParameterBindings>
@@ -64,6 +70,7 @@ function collectParameterBindings(
   source: SourceCode,
   node: RenderFunction,
 ): ParameterBindings {
+  if (hasDirectEval(source)) return new Set();
   const parameter = node.params[0];
   const identifiers: TSESTree.Identifier[] = [];
   if (parameter?.type === AST_NODE_TYPES.Identifier)
@@ -88,6 +95,36 @@ function collectParameterBindings(
           ) && stableValueBinding(variable),
       ),
   );
+}
+
+function hasDirectEval(source: SourceCode): boolean {
+  let found = DIRECT_EVAL.get(source);
+  if (found !== undefined) return found;
+  found =
+    source.scopeManager?.scopes.some((scope) =>
+      scope.references.some(({ identifier }) => {
+        if (
+          identifier.type !== AST_NODE_TYPES.Identifier ||
+          identifier.name !== "eval"
+        )
+          return false;
+        let callee = outerExpression(identifier);
+        while (
+          callee.parent?.type === AST_NODE_TYPES.TSInstantiationExpression &&
+          callee.parent.expression === callee
+        )
+          callee = outerExpression(callee.parent);
+        const call = callee.parent;
+        return (
+          call?.type === AST_NODE_TYPES.CallExpression &&
+          call.callee === callee &&
+          !call.optional &&
+          directEval(call)
+        );
+      }),
+    ) ?? true;
+  DIRECT_EVAL.set(source, found);
+  return found;
 }
 
 export function parameterPath(
@@ -139,27 +176,34 @@ export function reactHook(
     source.getScope(identifier),
     identifier.name,
   );
-  if (
-    variable === null ||
-    variable.defs.length !== 1 ||
-    !stableValueBinding(variable)
-  )
-    return false;
-  const definition = variable.defs[0];
-  if (
-    definition?.type !== "ImportBinding" ||
-    definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
-    definition.parent.source.value !== "react" ||
-    definition.parent.importKind === "type"
-  )
-    return false;
-  const specifier = definition.node;
+  if (variable === null) return false;
+  const specifier = reactImportSpecifier(variable);
+  if (specifier === null) return false;
   return namespace
     ? specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
         specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier
     : specifier.type === AST_NODE_TYPES.ImportSpecifier &&
         specifier.importKind !== "type" &&
         importSpecifierName(specifier) === hook;
+}
+
+function reactImportSpecifier(
+  variable: TSESLint.Scope.Variable,
+): TSESTree.Node | null {
+  let specifier = REACT_IMPORTS.get(variable);
+  if (specifier !== undefined) return specifier;
+  const definition = variable.defs[0];
+  specifier =
+    variable.defs.length === 1 &&
+    definition?.type === "ImportBinding" &&
+    definition.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+    definition.parent.source.value === "react" &&
+    definition.parent.importKind !== "type" &&
+    stableValueBinding(variable)
+      ? definition.node
+      : null;
+  REACT_IMPORTS.set(variable, specifier);
+  return specifier;
 }
 
 function containsView(node: TSESTree.Node): boolean {
