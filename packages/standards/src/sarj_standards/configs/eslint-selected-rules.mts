@@ -5,7 +5,8 @@ import { relative, resolve, sep } from "node:path";
 import type { ESLint as NativeESLint } from "eslint";
 import { record, strings } from "./tool-json.mts";
 
-import format from "./eslint-compact-formatter.mts";
+import format, { formatWithRuleExecutions } from "./eslint-compact-formatter.mts";
+import { lintWithRuleExecutions, mergeRuleExecutions, type RuleExecutionSummary } from "./eslint-rule-execution.mts";
 
 // Resolve the consumer's installed ESLint, including workspace hoisting and PnP.
 const require = createRequire(resolve("package.json"));
@@ -76,9 +77,16 @@ const options: NativeESLint.Options = {
 const eslint = new ESLint(options);
 const files = process.argv.slice(4);
 const advisories = request.upstreamAdvisories ?? [];
+const executions: RuleExecutionSummary[] = [];
+async function lint(analyzer: NativeESLint, paths: string[]): Promise<NativeESLint.LintResult[]> {
+  if (request.consoleOutput) return analyzer.lintFiles(paths);
+  const result = await lintWithRuleExecutions(analyzer, paths, { full: request.full, rules: selected });
+  executions.push(...result.executions);
+  return result.results;
+}
 let results: NativeESLint.LintResult[];
 if (advisories.length === 0) {
-  results = await eslint.lintFiles(files);
+  results = await lint(eslint, files);
 } else {
   const packages: Record<string, string> = {
     "@sarj": "@sarj/eslint-plugin",
@@ -128,7 +136,7 @@ if (advisories.length === 0) {
         rules: Object.fromEntries(advisories.map((rule) => [rule, "error"])),
       },
     });
-    results.push(...(await analyzer.lintFiles(group.files)));
+    results.push(...(await lint(analyzer, group.files)));
   }
 }
 // ESLint's API applies bulk suppressions but leaves the CLI's unused check to
@@ -225,7 +233,8 @@ if (request.full) {
 process.stdout.write(
   request.consoleOutput
     ? await (await eslint.loadFormatter("stylish")).format(results)
-    : format(results),
+    : executions.length === 0 ? format(results)
+      : formatWithRuleExecutions(results, mergeRuleExecutions(executions)),
 );
 if (unused)
   process.stderr.write(

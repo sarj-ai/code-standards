@@ -100,6 +100,8 @@
         "filePatterns": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "messageIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "optionsSchema": { "type": ["object", "null"] },
+        "requiresTypeInformation": { "type": ["boolean", "null"] },
+        "runtimeImports": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "references": {
           "type": "array",
           "items": { "type": "string", "format": "uri", "pattern": "^https://" }
