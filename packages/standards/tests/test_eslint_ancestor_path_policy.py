@@ -44,7 +44,7 @@ def _make_project(root: Path, typescript_package: Path) -> Path:
     dependencies.mkdir()
     modules = typescript_package / "node_modules"
     (dependencies / ".bin").symlink_to(modules / ".bin", target_is_directory=True)
-    for name in ("eslint", "typescript-eslint", "@eslint-community/eslint-plugin-eslint-comments"):
+    for name in ("eslint", "zod", "typescript-eslint", "@eslint-community/eslint-plugin-eslint-comments"):
         destination = dependencies / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.symlink_to(modules / name, target_is_directory=True)

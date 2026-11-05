@@ -1,6 +1,5 @@
 import { builtinRules } from "eslint/use-at-your-own-risk";
 import { ESLint, type Linter } from "eslint";
-import { record } from "../../standards/src/sarj_standards/configs/tool-json.mts";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,7 +15,10 @@ const CACHE_PREFIX = join(
   PACKAGE_ROOT,
   "node_modules/.cache/sarj-third-party-catalog-",
 );
-const PeerVersionsSchema = z.record(z.string(), z.string());
+const PeerManifestSchema = z.object({ peers: z.record(z.string(), z.string()) });
+const EffectiveConfigSchema = z.object({
+  rules: z.preprocess((value) => value ?? {}, z.record(z.string(), z.unknown())),
+});
 const OfficialDocsSchema = z.object({
   description: z.string().min(1),
   url: z.string().startsWith("https://"),
@@ -184,13 +186,11 @@ const namespaceToProvider = (namespace: string): string => {
 
 async function project() {
   const profiles = await loadProfiles();
-  const peerManifest = record(
+  const { peers } = PeerManifestSchema.parse(
     JSON.parse(
       await readFile(join(CONFIG_ROOT, "eslint.peers.json"), "utf8"),
     ) as unknown,
-    "ESLint peers",
   );
-  const peers = PeerVersionsSchema.parse(peerManifest["peers"]);
   const registries = installedRegistries(profiles);
   const records = new Map<string, ProjectedRule>();
   for (const [profile, configs] of Object.entries(profiles)) {
@@ -201,11 +201,7 @@ async function project() {
     });
     for (const [contextId, contextLabel, path] of CONTEXTS) {
       const configured: unknown = await eslint.calculateConfigForFile(path);
-      const effective = record(configured, `effective config for ${path}`);
-      const rules = record(
-        effective["rules"] ?? {},
-        `effective rules for ${path}`,
-      );
+      const { rules } = EffectiveConfigSchema.parse(configured);
       for (const [displayId, setting] of Object.entries(rules)) {
         const effectiveLevel = level(setting);
         const { provider, id } = splitRule(displayId);

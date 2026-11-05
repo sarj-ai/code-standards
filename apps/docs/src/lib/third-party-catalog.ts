@@ -6,63 +6,26 @@ import { siteHref } from "./site.ts";
 
 export const THIRD_PARTY_PROFILES = ["application", "standard"] as const;
 export const THIRD_PARTY_PAGE_SIZE = 32;
-export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
-export type ThirdPartyLevel = "error" | "warning";
-export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";
-export type ThirdPartyProjectionScope =
-  "complete" | "config-explicit" | "provider-only";
-
-export interface ThirdPartyProvider {
-  id: string;
-  label: string;
-  engine: string;
-  package: string;
-  version: string;
-  homepage: string;
-  projectionScope: ThirdPartyProjectionScope;
-}
-
-export interface ThirdPartyContext {
-  id: string;
-  label: string;
-  level: ThirdPartyLevel;
-}
-
-export interface ThirdPartyRuleProfile {
-  name: ThirdPartyProfile;
-  contexts: ThirdPartyContext[];
-}
-
-export interface ThirdPartyRule {
-  key: string;
-  provider: string;
-  id: string;
-  displayId: string;
-  summary: string;
-  docsUrl: string;
-  family: string | null;
-  autofix: ThirdPartyAutofix;
-  hasSuggestions: boolean;
-  profiles: ThirdPartyRuleProfile[];
-}
-
-export interface ThirdPartyCatalog {
-  schemaVersion: 1;
-  profiles: ThirdPartyProfile[];
-  providers: ThirdPartyProvider[];
-  rules: ThirdPartyRule[];
-}
+export type ThirdPartyProfile = ThirdPartyRuleProfile["name"];
+export type ThirdPartyLevel = ThirdPartyContext["level"];
+export type ThirdPartyAutofix = ThirdPartyRule["autofix"];
+export type ThirdPartyProjectionScope = ThirdPartyProvider["projectionScope"];
+export type ThirdPartyProvider = z.infer<typeof ProviderSchema>;
+export type ThirdPartyContext = z.infer<typeof ContextSchema>;
+export type ThirdPartyRuleProfile = z.infer<typeof ProfileSchema>;
+export type ThirdPartyRule = z.infer<typeof RuleSchema>;
+export type ThirdPartyCatalog = z.infer<typeof CatalogSchema>;
 
 const TextSchema = z.string().min(1);
 const HttpsSchema = TextSchema.startsWith("https://");
-const CONTextSchema = z.strictObject({
+const ContextSchema = z.strictObject({
   id: TextSchema,
   label: TextSchema,
   level: z.enum(["error", "warning"]),
 });
 const ProfileSchema = z.strictObject({
   name: z.enum(THIRD_PARTY_PROFILES),
-  contexts: z.array(CONTextSchema),
+  contexts: z.array(ContextSchema),
 });
 const ProviderSchema = z.strictObject({
   id: TextSchema.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
@@ -90,7 +53,7 @@ const CatalogSchema = z.strictObject({
   profiles: z.array(z.enum(THIRD_PARTY_PROFILES)),
   providers: z.array(ProviderSchema),
   rules: z.array(RuleSchema),
-}) satisfies z.ZodType<ThirdPartyCatalog>;
+});
 
 export function parseCatalog(value: unknown): z.output<typeof CatalogSchema> {
   const result = CatalogSchema.safeParse(value);

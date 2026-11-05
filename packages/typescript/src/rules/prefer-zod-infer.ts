@@ -34,6 +34,7 @@ export const PREFER_ZOD_INFER_DOCUMENTATION = {
     "Only module-level const schemas and module-level type declarations are paired; local declarations are excluded rather than matched by spelling across scopes.",
     "By default every field must positively agree; collection, nested-object and referenced-schema equivalence is not inferred from outer syntax alone.",
     "This is a bounded syntactic comparison, not general type equivalence. Review schema input versus output, interface augmentation, and separately evolving domain contracts before replacing a declaration.",
+    "A module-level string-union alias is also inspected beside a same-named direct enum schema only when every literal agrees and its const binding has no explicit type annotation. Enum alias migrations remain manual; dynamic, widened, transformed, constrained and independently named contracts are excluded.",
   ],
   examples: [
     { id: "inferred-type", title: "Infer the schema type", outcome: "no-match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;' }], focusPath: "src/user.ts", expectedCount: 0, public: true },
@@ -194,6 +195,17 @@ function exactDomain(keys: readonly (string | null)[]): ReadonlySet<string> | nu
   return domain.size === keys.length ? domain : null;
 }
 
+/** Only const assertions preserve the literal types needed for enum inference. */
+function enumLiteralExpression(node: TSESTree.Node): TSESTree.Node | null {
+  if (node.type === AST_NODE_TYPES.TSAsExpression) {
+    const annotation = node.typeAnnotation;
+    if (annotation.type !== AST_NODE_TYPES.TSTypeReference || annotation.typeName.type !== AST_NODE_TYPES.Identifier || annotation.typeName.name !== "const") return null;
+    return enumLiteralExpression(node.expression);
+  }
+  if (node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSTypeAssertion) return null;
+  return node;
+}
+
 function staticZodDomain(
   leaf: string | null,
   call: TSESTree.CallExpression | null,
@@ -218,17 +230,20 @@ function staticZodDomain(
     return exactDomain([primitiveLiteralKey(argument)]);
   }
   if (leaf === "enum") {
-    const [argument] = call.arguments;
-    if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
+    const [writtenArgument] = call.arguments;
+    if (writtenArgument === undefined || writtenArgument.type === AST_NODE_TYPES.SpreadElement) {
       return null;
     }
+    const argument = enumLiteralExpression(writtenArgument);
+    if (argument === null) return null;
     if (argument.type === AST_NODE_TYPES.ArrayExpression) {
       return exactDomain(
         argument.elements.map((element) => {
           if (element === null || element.type === AST_NODE_TYPES.SpreadElement) {
             return null;
           }
-          const key = primitiveLiteralKey(element);
+          const value = enumLiteralExpression(element);
+          const key = value === null ? null : primitiveLiteralKey(value);
           return key?.startsWith("string:") === true ? key : null;
         }),
       );
@@ -703,6 +718,7 @@ export default createRule<Options, MessageIds>({
     const inferredAliases: InferredAliasInfo[] = [];
     const literalUnionOccurrences: LiteralUnionOccurrence[] = [];
     const typeDeclarations: TypeDeclaration[] = [];
+    const enumTypeDeclarations: Array<{ readonly node: TSESTree.TSTypeAliasDeclaration; readonly domain: ReadonlySet<string> }> = [];
     /** Names intentionally constraining a `z.ZodType<...>`. */
     const constrainedTypeNames = new Set<string>();
     /** Schemas reshaped elsewhere in this module. */
@@ -728,14 +744,20 @@ export default createRule<Options, MessageIds>({
     function enumSchemaDomain(
       init: TSESTree.Node,
     ): ReadonlySet<string> | null {
+      if (init.type !== AST_NODE_TYPES.CallExpression) return null;
       const chain = twinCallChain(init, zodNamespaces);
       if (chain === null || chain.length !== 1) {
         return null;
       }
       const [call] = chain;
-      if (call === undefined || twinMethodName(call) !== "enum") {
+      if (call === undefined || call.typeArguments !== undefined || twinMethodName(call) !== "enum") {
         return null;
       }
+      const callee = call.callee;
+      const receiver = callee.type === AST_NODE_TYPES.MemberExpression ? callee.object : null;
+      if (receiver?.type !== AST_NODE_TYPES.Identifier) return null;
+      const binding = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
+      if (binding?.defs.length !== 1 || binding.defs[0]?.type !== "ImportBinding") return null;
       const domain = staticZodDomain("enum", call);
       return domain instanceof Set && domain.size >= 2 ? domain : null;
     }
@@ -855,10 +877,10 @@ export default createRule<Options, MessageIds>({
         if (fields !== null) {
           schemas.push({ name: node.id.name, fields, initializer: node.init });
         }
-        if (isModuleLevelConst(node)) {
+        if (isModuleLevelConst(node) && node.id.typeAnnotation === undefined) {
           const domain = enumSchemaDomain(node.init);
           const tokens = schemaNameTokens(node.id.name);
-          if (domain !== null && tokens.length >= 2) {
+          if (domain !== null) {
             enumSchemas.push({ domain, name: node.id.name, tokens });
           }
         }
@@ -913,6 +935,8 @@ export default createRule<Options, MessageIds>({
 
       TSTypeAliasDeclaration(node): void {
         if (!isModuleLevelDeclaration(node)) return;
+        const enumDomain = node.typeParameters === undefined ? staticStringUnionDomain(node.typeAnnotation) : null;
+        if (enumDomain !== null) enumTypeDeclarations.push({ node, domain: enumDomain });
         const schemaName = inferredSchemaName(node.typeAnnotation);
         if (schemaName !== null) {
           inferredAliases.push({
@@ -996,6 +1020,16 @@ export default createRule<Options, MessageIds>({
         }
 
         for (const declaration of typeDeclarations) { reportTwinDeclaration(declaration); }
+
+        for (const { node, domain } of enumTypeDeclarations) {
+          if (constrainedTypeNames.has(node.id.name) || ignorePatterns.some((pattern) => pattern.test(node.id.name))) continue;
+          const candidates = enumSchemas.filter((schema) =>
+            normalizeSchemaName(schema.name) === normalizeTypeName(node.id.name) &&
+            !reshapedSchemaNames.has(schema.name) && sameDomain(schema.domain, domain));
+          const [schema] = candidates;
+          if (candidates.length !== 1 || schema === undefined) continue;
+          context.report({ node: node.id, messageId: "handWrittenTwin", data: { typeName: node.id.name, schemaName: schema.name } });
+        }
 
         const aliasesBySchema = new Map<string, InferredAliasInfo[]>();
         for (const alias of inferredAliases) {

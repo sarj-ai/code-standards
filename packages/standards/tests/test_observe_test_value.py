@@ -349,7 +349,7 @@ def test_observe_vitest_oracles_redundancy_and_promise_completion(
         pytest.skip("requires the built TypeScript plugin")
     installed = tmp_path / "node_modules"
     (installed / "@sarj").mkdir(parents=True)
-    for name in ("eslint", "@typescript-eslint", "@vitest", ".bin"):
+    for name in ("eslint", "zod", "@typescript-eslint", "@vitest", ".bin"):
         (installed / name).symlink_to(modules / name, target_is_directory=True)
     (installed / "@sarj/eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
     configured = "vitest,'@sarj':sarj" if registered else ""
