@@ -4,6 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
  */
 
+import { isPresent } from "./_is-present.js";
 import type { TypeScriptSourceCode, NativeRuleContext, NativeReportFix } from "./_eslint-rule.js";
 
 
@@ -237,7 +238,7 @@ function processOwnershipValue(identifier: TSESTree.Identifier, source: Readonly
   if (binding === null || graph.values.has(binding)) return;
   graph.values.add(binding);
   const annotation = exportedValueAnnotation(source, identifier);
-  if (annotation !== undefined) graph.pending.push({ kind: "syntax", node: annotation });
+  if (isPresent(annotation)) graph.pending.push({ kind: "syntax", node: annotation });
   const resolved = exportedCallable(source, identifier, graph.cache);
   if (resolved === null) return;
   if (resolved.callable !== null) graph.callables.add(resolved.callable);
@@ -339,7 +340,7 @@ function exportedCallable(
     }
     const step = constantCallableStep(binding);
     if (step === null) break;
-    if (step.annotation !== undefined) annotations.push(step.annotation);
+    if (isPresent(step.annotation)) annotations.push(step.annotation);
     if (isFunctionNode(step.target)) {
       target = { callable: step.target, signatures: [step.target] };
       break;
@@ -384,13 +385,13 @@ function valueBinding(source: Readonly<TypeScriptSourceCode>, identifier: TSESTr
 
 function callableAnnotations(callable: SignatureNode): readonly TSESTree.Node[] {
   const annotations: TSESTree.Node[] = [];
-  if (callable.returnType !== undefined) annotations.push(callable.returnType);
-  if (callable.typeParameters !== undefined) annotations.push(callable.typeParameters);
+  if (isPresent(callable.returnType)) annotations.push(callable.returnType);
+  if (isPresent(callable.typeParameters)) annotations.push(callable.typeParameters);
   for (const raw of callable.params) {
     const parameter = raw.type === AST_NODE_TYPES.AssignmentPattern ? raw.left : raw;
     if ((parameter.type === AST_NODE_TYPES.Identifier || parameter.type === AST_NODE_TYPES.ObjectPattern ||
       parameter.type === AST_NODE_TYPES.ArrayPattern || parameter.type === AST_NODE_TYPES.RestElement) &&
-      parameter.typeAnnotation !== undefined) annotations.push(parameter.typeAnnotation);
+      isPresent(parameter.typeAnnotation)) annotations.push(parameter.typeAnnotation);
   }
   return annotations;
 }
