@@ -78,13 +78,23 @@ export function isGeneratedFile(
   if (gates.includes("externalTree") && EXTERNAL_TREE_RE.test(normalized)) {
     return true;
   }
+  return generatedHeader(sourceText);
+}
+
+// Every rule asks about the same file in turn, so remember the last header verdict.
+let lastHeaderText: string | undefined;
+let lastHeaderGenerated = false;
+
+function generatedHeader(sourceText: string): boolean {
+  if (sourceText === lastHeaderText) return lastHeaderGenerated;
   const headerBodies = leadingCommentBodies(sourceText.slice(0, 2048));
   const nonAi = headerBodies.filter((body) => !AI_ATTRIBUTION_RE.test(body));
-  if (nonAi.some((body) => GENERATED_MARKER_RE.test(body))) {
-    return true;
-  }
-  return !headerBodies.some((body) => AI_ATTRIBUTION_RE.test(body)) &&
-    headerBodies.some((body) => DO_NOT_EDIT_RE.test(body));
+  lastHeaderGenerated = nonAi.some((body) => GENERATED_MARKER_RE.test(body)) || (
+    !headerBodies.some((body) => AI_ATTRIBUTION_RE.test(body)) &&
+    headerBodies.some((body) => DO_NOT_EDIT_RE.test(body))
+  );
+  lastHeaderText = sourceText;
+  return lastHeaderGenerated;
 }
 
 /** Read only leading comment trivia, so strings and comments after code cannot claim ownership. */
@@ -135,6 +145,19 @@ export function isScriptFile(filename: FilePath): boolean {
 /** Keep checkout ancestors outside path-based source ownership decisions. */
 export function scopedFilename(input: FilePath): string {
   if (typeof input === "string") return input.replaceAll("\\", "/");
+  if (input.filename === lastScopedFilename && input.cwd === lastScopedCwd) return lastScoped;
+  lastScoped = computeScopedFilename(input);
+  lastScopedFilename = input.filename;
+  lastScopedCwd = input.cwd;
+  return lastScoped;
+}
+
+// Every rule asks about the same file in turn, so remember the last answer.
+let lastScopedFilename: string | undefined;
+let lastScopedCwd: string | undefined;
+let lastScoped = "";
+
+function computeScopedFilename(input: { readonly filename: string; readonly cwd: string }): string {
   const filename = input.filename.replaceAll("\\", "/");
   const cwd = input.cwd.replaceAll("\\", "/");
   const fileWindows = windowsAbsolute(filename);

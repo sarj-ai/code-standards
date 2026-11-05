@@ -85,8 +85,16 @@ export default createRule<readonly [], MessageIds>({
     const candidates: { readonly node: TSESTree.CallExpression; readonly errors: readonly Variable[] }[] = [];
     const changedErrors = new Set<Variable>();
     const stableBindings = new WeakMap<Variable, boolean>();
-    const referenceIdentifiers = new WeakSet(sourceCode.scopeManager?.scopes.flatMap((scope) => scope.references.filter((reference) => reference.isValueReference !== false).map((reference) => reference.identifier)) ?? []);
+    let referenceIdentifiers: WeakSet<TSESTree.Node> | undefined;
     let uncertainSerialization = false;
+    // Only catch parameters and response factories can matter, so cheap name checks skip scope lookups.
+    const catchNames = new Set<string>();
+    const responseNames = new Set(["Response", ...nextResponseLocals(sourceCode.ast)]);
+
+    function valueReference(node: TSESTree.Identifier): boolean {
+      referenceIdentifiers ??= new WeakSet(sourceCode.scopeManager?.scopes.flatMap((scope) => scope.references.filter((reference) => reference.isValueReference !== false).map((reference) => reference.identifier)) ?? []);
+      return referenceIdentifiers.has(node);
+    }
 
     function binding(identifier: TSESTree.Identifier): Variable | null {
       return ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
@@ -109,7 +117,7 @@ export default createRule<readonly [], MessageIds>({
 
     function caughtValue(node: TSESTree.Node): Variable | null {
       const value = unwrapExpression(node);
-      if (value.type !== AST_NODE_TYPES.Identifier) return null;
+      if (value.type !== AST_NODE_TYPES.Identifier || !catchNames.has(value.name)) return null;
       const variable = binding(value);
       const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
       return definition?.type === "CatchClause" && definition.node.param?.type === AST_NODE_TYPES.Identifier &&
@@ -119,7 +127,7 @@ export default createRule<readonly [], MessageIds>({
 
     function responseFactory(node: TSESTree.Node): boolean {
       const value = unwrapExpression(node);
-      if (value.type !== AST_NODE_TYPES.Identifier) return false;
+      if (value.type !== AST_NODE_TYPES.Identifier || !responseNames.has(value.name)) return false;
       const variable = binding(value);
       if (value.name === "Response" && (variable === null || variable.defs.length === 0)) {
         return variable === null || stable(variable);
@@ -218,8 +226,11 @@ export default createRule<readonly [], MessageIds>({
     }
 
     return {
+      CatchClause(node): void {
+        if (node.param?.type === AST_NODE_TYPES.Identifier) catchNames.add(node.param.name);
+      },
       Identifier(node): void {
-        if (!referenceIdentifiers.has(node)) return;
+        if ((!catchNames.has(node.name) && !responseNames.has(node.name)) || !valueReference(node)) return;
         let typeName: TSESTree.Node = node;
         while (typeName.parent?.type === AST_NODE_TYPES.TSQualifiedName) typeName = typeName.parent;
         if (typeName.parent?.type === AST_NODE_TYPES.TSTypeQuery) return;
@@ -273,3 +284,12 @@ export default createRule<readonly [], MessageIds>({
     };
   },
 });
+
+function nextResponseLocals(program: TSESTree.Program): readonly string[] {
+  return program.body.flatMap((statement) =>
+    statement.type === AST_NODE_TYPES.ImportDeclaration && statement.source.value === "next/server"
+      ? statement.specifiers.flatMap((specifier) =>
+        specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier &&
+          specifier.imported.name === "NextResponse" ? [specifier.local.name] : [])
+      : []);
+}

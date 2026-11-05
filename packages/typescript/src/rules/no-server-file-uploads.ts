@@ -114,6 +114,8 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
+    // A reference to File, or to an alias imported as File, spells `File` or an escaped identifier in the text.
+    const mayReferenceFile = sourceCode.text.includes("File") || sourceCode.text.includes("\\u");
     const program = sourceCode.ast;
     const moduleServer = !hasDirective(program.body, "use client") &&
       (hasDirective(program.body, "use server") || program.body.some(serverImport));
@@ -157,6 +159,7 @@ export default createRule<Options, MessageIds>({
 
     return {
       "Program:exit"(): void {
+        if (!mayReferenceFile) return;
         for (const scope of sourceCode.scopeManager?.scopes ?? []) {
           for (const reference of scope.references) {
             const identifier = reference.identifier;
@@ -176,9 +179,10 @@ export default createRule<Options, MessageIds>({
         }
       },
       VariableDeclarator(node: TSESTree.VariableDeclarator): void {
-        if (node.id.type !== AST_NODE_TYPES.ObjectPattern || node.init?.type !== AST_NODE_TYPES.Identifier || !nativeNamespace(node.init) || !inServer(node)) return;
+        if (node.id.type !== AST_NODE_TYPES.ObjectPattern || node.init?.type !== AST_NODE_TYPES.Identifier) return;
         for (const property of node.id.properties) {
-          if (property.type === AST_NODE_TYPES.Property && staticPropertyName(property, sourceCode) === "File") {
+          if (property.type === AST_NODE_TYPES.Property && staticPropertyName(property, sourceCode) === "File" &&
+            nativeNamespace(node.init) && inServer(node)) {
             context.report({ node: property, messageId: "serverFile" });
           }
         }

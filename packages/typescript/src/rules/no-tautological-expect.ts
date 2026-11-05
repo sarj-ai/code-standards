@@ -11,7 +11,7 @@ import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName, EXPECT_ASSERTION } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -230,7 +230,7 @@ function expectOperand(
   if (
     receiver.type !== AST_NODE_TYPES.CallExpression ||
     expectCallee?.type !== AST_NODE_TYPES.Identifier ||
-    runtimeTestFrameworkName(sourceCode, expectCallee, "assertion") !== "expect" ||
+    acceptedTestFrameworkName(sourceCode, expectCallee, "assertion", EXPECT_ASSERTION) === null ||
     (receiver.arguments.length !== 1 && !hasStaticMessage(receiver, expectCallee, sourceCode))
   ) {
     return null;
@@ -266,6 +266,8 @@ function isExceptionContract(node: TSESTree.Node, source: Readonly<TypeScriptSou
 
 function customizedMatchers(source: Readonly<TypeScriptSourceCode>): ReadonlySet<string> {
   const customized = new Set<string>();
+  // Only `expect.extend` and `expect.addEqualityTesters` customize matchers; both names appear in the text unless escaped.
+  if (!source.text.includes("extend") && !source.text.includes("addEqualityTesters") && !source.text.includes("\\u")) return customized;
   const visit = (node: TSESTree.Node): void => {
     if (node.type === AST_NODE_TYPES.CallExpression) collectCustomization(node, source, customized);
     for (const key of source.visitorKeys[node.type] ?? []) {
@@ -283,7 +285,7 @@ function collectCustomization(node: TSESTree.CallExpression, source: Readonly<Ty
   const member = unwrapExpression(node.callee);
   if (member.type !== AST_NODE_TYPES.MemberExpression) return;
   const receiver = unwrapExpression(member.object);
-  if (receiver.type !== AST_NODE_TYPES.Identifier || runtimeTestFrameworkName(source, receiver, "assertion") !== "expect") return;
+  if (receiver.type !== AST_NODE_TYPES.Identifier || acceptedTestFrameworkName(source, receiver, "assertion", EXPECT_ASSERTION) === null) return;
   const method = ASTUtils.getPropertyName(member);
   const argument = node.arguments[0] === undefined ? null : unwrapExpression(node.arguments[0]);
   if (method === "addEqualityTesters" && !(argument?.type === AST_NODE_TYPES.ArrayExpression && argument.elements.length === 0)) {
