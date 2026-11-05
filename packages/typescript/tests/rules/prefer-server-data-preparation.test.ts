@@ -28,6 +28,8 @@ const RANGE_OPTIONS = Object.entries(TIME_RANGES)
 
 TESTER.run("prefer-server-data-preparation", rule, {
   valid: [
+    { name: "direct eval can rebind the source without a lexical write reference", filename: "probe.tsx", code: CASE.replace("const languages", "eval('rows = []'); const languages") },
+    { name: "erased assertions preserve direct eval access to props", filename: "probe.tsx", code: CASE.replace("const languages", "(eval as typeof eval)('rows = []'); const languages") },
     { name: "module-level filter and map have no containing render function", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS },
     ...["null", "undefined", "false", "0", "{}", "'inactive'", "null as unknown as (() => void)"].map(handler => ({ name: `noncallable handler ${handler} does not establish interaction`, filename: "probe.tsx", code: CASE.replace("event => console.log(event.currentTarget.value)", handler) })),
     { name: "literal event attributes do not establish interaction", filename: "probe.tsx", code: CASE.replace("onChange={event => console.log(event.currentTarget.value)}", "onChange='inactive'") },
@@ -71,6 +73,9 @@ TESTER.run("prefer-server-data-preparation", rule, {
     { name: "callback this argument", filename: "probe.tsx", code: CASE.replace("row => row.language)", "row => row.language, context)") },
   ],
   invalid: [
+    { name: "cached import identity checks each requested hook name", filename: "probe.tsx", code: CASE.replace(CLIENT, CLIENT + "import { useReducer } from 'react'; ").replace("const languages", "const [open, dispatch] = useReducer((state: boolean) => !state, false); const languages").replace("<select onChange={event => console.log(event.currentTarget.value)}>", "<CustomSelect open={open} onOpenChange={dispatch}>").replace("</select>", "</CustomSelect>"), errors: [{ messageId: "prepareData" }] },
+    { name: "eval-named projection fields remain data", filename: "probe.tsx", code: CASE.replace("language: string;", "eval: string;").replace("row => row.language", "row => row.eval"), errors: [{ messageId: "prepareData" }] },
+    { name: "optional eval cannot rebind the source parameter", filename: "probe.tsx", code: CASE.replace("const languages", "eval?.('void 0'); const languages"), errors: [{ messageId: "prepareData" }] },
     { name: "module-level options do not hide a component projection", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS + VIEW, errors: [{ messageId: "prepareData" }] },
     { name: "nullable native arrays retain projection coverage", filename: "probe.tsx", code: CASE.replace("readonly { language: string; enabled: boolean }[]", "readonly { language: string; enabled: boolean }[] | null").replace("rows.map", "rows!.map"), errors: [{ messageId: "prepareData" }] },
     { name: "optional callable handlers establish interaction", filename: "probe.tsx", code: CASE.replace("{ rows }: { rows:", "{ rows, handler }: { handler?: () => void; rows:").replace("event => console.log(event.currentTarget.value)", "handler"), errors: [{ messageId: "prepareData" }] },

@@ -1302,10 +1302,6 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
           message: "This member already inherits the enclosing as const assertion. Remove the member's redundant const assertion.",
         },
         {
-          selector: "UnaryExpression[operator='typeof']:not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.right.type='Literal'][parent.right.value='undefined']):not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.left.type='Literal'][parent.left.value='undefined'])",
-          message: "Avoid runtime typeof representation checks. Preserve a known domain type or validate external input with the existing schema. Existence checks against \"undefined\" and TypeScript type queries remain allowed.",
-        },
-        {
           selector: "CallExpression[callee.property.name='forEach']",
           message: "Prefer a for-of loop over forEach.",
         },
@@ -1564,6 +1560,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/prefer-typed-reflection": "error",
       "@sarj/no-conditional-empty-object-spread": "error",
       "@sarj/no-reduce-accumulator-copy": "error",
+      "@sarj/no-growing-array-spread-in-loop": "warn",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-camelcase-properties": "error",
       // Wire keys need bracket access so they remain visibly external. The

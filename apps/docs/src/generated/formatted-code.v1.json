@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b4244dfd88609cf0001857712a00619d23471bfda42cdde63da74dde3b696598",
+  "catalogSha256": "c6ad832f5fa97c605ef4782d74e15fcd4b1df0f96138a1687fea62d6a77220b6",
   "cliSha256": "43a2c218d7b0d0d90e671e7e351d6d317a5f1f214d8c5b330002ca1e547f407b",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -1698,6 +1698,36 @@
           "title": "Inject a narrow service port"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/service.test.ts",
+              "source": "import { run } from \"./service.js\";\nrun();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/service.test.ts",
+          "id": "jest-esm-after",
+          "outcome": "accept",
+          "scenarioId": "jest-esm",
+          "title": "Exercise the maintained ESM implementation — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/service.test.ts",
+              "source": "import { jest } from \"@jest/globals\";\njest.unstable_mockModule(\"./service.js\", () => ({}));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/service.test.ts",
+          "id": "jest-esm-before",
+          "outcome": "reject",
+          "scenarioId": "jest-esm",
+          "title": "Exercise the maintained ESM implementation — before"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -1854,6 +1884,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Generic validation does not declare the field"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "import { z } from \"zod\";\nfunction load(raw: unknown) {\n  const result = z.object({ id: z.string() }).safeParse(raw);\n  if (!result.success) return;\n  return result.data.id;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "safe-parse-fields-after",
+          "outcome": "accept",
+          "scenarioId": "safe-parse-fields",
+          "title": "Validate the fields consumed after success — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "import { z } from \"zod\";\nfunction load(raw: unknown) {\n  const result = z.record(z.string(), z.unknown()).safeParse(raw);\n  if (!result.success) return;\n  return result.data.id;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "safe-parse-fields-before",
+          "outcome": "reject",
+          "scenarioId": "safe-parse-fields",
+          "title": "Validate the fields consumed after success — before"
         }
       ],
       "optionsSchemaSource": null
@@ -1889,6 +1949,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Name the module after its export"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-growing-array-spread-in-loop": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/rows.ts",
+              "source": "export function collect(input: string[]) {\n  const rows: string[] = [];\n  for (const row of input) {\n    rows.push(row);\n  }\n  return rows;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/rows.ts",
+          "id": "append-rows",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Append into a fresh unobserved output"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/rows.ts",
+              "source": "export function collect(input: string[]) {\n  let rows: string[] = [];\n  for (const row of input) {\n    rows = [...rows, row];\n  }\n  return rows;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/rows.ts",
+          "id": "copy-prefix",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Repeated spread copies the accumulated rows"
         }
       ],
       "optionsSchemaSource": null
@@ -2446,6 +2541,126 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A dictionary erases a known tool contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare function load(): { id: string };\nconst value = load();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "factory-initializer-after",
+          "outcome": "accept",
+          "scenarioId": "factory-initializer",
+          "title": "Retain the monomorphic factory contract — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare function load(): { id: string };\nconst value: unknown = load();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "factory-initializer-before",
+          "outcome": "reject",
+          "scenarioId": "factory-initializer",
+          "title": "Retain the monomorphic factory contract — before"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "type Command = \"start\";\nconst handlers = { start() {} } satisfies Record<Command, () => void>;\nhandlers.start();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "finite-registry-after",
+          "outcome": "accept",
+          "scenarioId": "finite-registry",
+          "title": "Preserve a closed registry key set — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "const handlers: Record<string, () => void> = { start() {} };\nhandlers.start();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "finite-registry-before",
+          "outcome": "reject",
+          "scenarioId": "finite-registry",
+          "title": "Preserve a closed registry key set — before"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "const value = { id: \"u1\" };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "literal-initializer-after",
+          "outcome": "accept",
+          "scenarioId": "literal-initializer",
+          "title": "Retain the independently known literal contract — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "const value: unknown = { id: \"u1\" };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "literal-initializer-before",
+          "outcome": "reject",
+          "scenarioId": "literal-initializer",
+          "title": "Retain the independently known literal contract — before"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "class Store {\n  readonly #value = { id: \"u1\" };\n  read() {\n    return this.#value;\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "private-storage-after",
+          "outcome": "accept",
+          "scenarioId": "private-storage",
+          "title": "Retain a completely owned storage contract — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "class Store {\n  readonly #value: unknown = { id: \"u1\" };\n  read() {\n    return this.#value;\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "private-storage-before",
+          "outcome": "reject",
+          "scenarioId": "private-storage",
+          "title": "Retain a completely owned storage contract — before"
         },
         {
           "expectedCount": 0,
@@ -3096,6 +3311,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Flatten report rows without copying the accumulated prefix"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const pages: string[][];\npages.flatMap((page) => page);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "reducer-aliases-after",
+          "outcome": "accept",
+          "scenarioId": "reducer-aliases",
+          "title": "Retain fresh seed and accumulator identities — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const pages: string[][];\nconst seed: string[] = [];\npages.reduce((acc, page) => {\n  const previous = acc;\n  return [...previous, ...page];\n}, seed);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "reducer-aliases-before",
+          "outcome": "reject",
+          "scenarioId": "reducer-aliases",
+          "title": "Retain fresh seed and accumulator identities — before"
         }
       ],
       "optionsSchemaSource": null
@@ -6573,6 +6818,36 @@
           "title": "Use the direct contract"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare function lookup(id: string): string;\nconst args: [string] = [\"u1\"];\nlookup(...args);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "apply-tuple-after",
+          "outcome": "accept",
+          "scenarioId": "apply-tuple",
+          "title": "Keep the callable contract with a stable tuple — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare function lookup(id: string): string;\nconst args: [string] = [\"u1\"];\nReflect.apply(lookup, undefined, args);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "apply-tuple-before",
+          "outcome": "reject",
+          "scenarioId": "apply-tuple",
+          "title": "Keep the callable contract with a stable tuple — before"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6586,6 +6861,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Preserve the explicit contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const target: { id: string };\nconst id = target.id;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "reflect-alias-after",
+          "outcome": "accept",
+          "scenarioId": "reflect-alias",
+          "title": "Keep the target contract through an alias — after"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const target: { id: string };\nconst reflection = Reflect;\nconst id = reflection.get(target, \"id\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "reflect-alias-before",
+          "outcome": "reject",
+          "scenarioId": "reflect-alias",
+          "title": "Keep the target contract through an alias — before"
         }
       ],
       "optionsSchemaSource": null

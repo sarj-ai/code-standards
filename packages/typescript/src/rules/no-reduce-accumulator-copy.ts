@@ -14,6 +14,8 @@ import { forEachAstChild } from "./_for-each-ast-child.js";
 import { literalIdentityReduceFix } from "./_literal-identity-reduce-fix.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { enclosingFunction, stableConstInitializer, typeOnlyReference } from "./_stable-value-binding.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 
 export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
   summary:
@@ -23,10 +25,12 @@ export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
   remediation:
     "Use map or flatMap where their semantics match, or append into a fresh locally owned accumulator. Preserve retained snapshots and shared state.",
   category: "performance",
+  requiresTypeInformation: true,
+  references: ["https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-reduce-accumulator-copy.ts"],
   autofix: "safe",
   limitations: [
-    "Requires type information proving the built-in Array or ReadonlyArray reduce/reduceRight method, an inline callback, and a fresh empty array or object-literal seed.",
-    "Inspects direct accumulator spreads, Object.assign with a fresh object target, Array.from, and concat/slice/toSpliced/toSorted/toReversed/with calls. Aliases, named callbacks, nested functions, and loops are outside this rule.",
+    "Requires type information proving the built-in Array or ReadonlyArray reduce/reduceRight method, an inline callback, and a fresh empty array or object-literal seed, directly or through single-use stable const aliases.",
+    "Inspects direct accumulator spreads, Object.assign with a fresh object target, Array.from, and concat/slice/toSpliced/toSorted/toReversed/with calls. Stable callback-local const accumulator aliases are resolved. Named callbacks, mutable/escaping seeds, nested functions, and loops remain outside this rule.",
     "A copy is evidence for review, not proof of growth or measured latency. Automatic edits only remove an exact identity reducer over a fresh nonempty literal-string array in a sole exported zero-argument function with an explicit string[] return. The direct literal return remains fresh on every call. Snapshots, aliases, callbacks, nonliteral values, reverse reduction, imports, comments and other control flow remain manual.",
   ],
   examples: [
@@ -80,6 +84,8 @@ export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
       focusPath: "src/reports.ts",
       expectedCount: 1,
     },
+    {"id": "reducer-aliases-before", "scenarioId": "reducer-aliases", "title": "Retain fresh seed and accumulator identities — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "declare const pages: string[][]; const seed: string[] = []; pages.reduce((acc, page) => { const previous = acc; return [...previous, ...page]; }, seed);"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
+    {"id": "reducer-aliases-after", "scenarioId": "reducer-aliases", "title": "Retain fresh seed and accumulator identities — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "declare const pages: string[][]; pages.flatMap(page => page);"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
   ],
 } as const satisfies RuleDocumentation;
 
@@ -116,6 +122,16 @@ export default createRule<[], "copy">({
     const program = services.program;
     if (program === null) return {};
     const checker = program.getTypeChecker();
+    const seedValue = (value: TSESTree.Node, seen = new Set<TSESTree.Node>()): TSESTree.Node | null => {
+      value = unwrapExpression(value);
+      if (seen.has(value)) return null;
+      seen.add(value);
+      if (value.type !== AST_NODE_TYPES.Identifier) return value;
+      const local = stableConstInitializer(context.sourceCode, value);
+      if (local === null || !local.variable.references.every(reference => reference.init === true ||
+        typeOnlyReference(reference) || reference.identifier === value)) return null;
+      return seedValue(local.value, seen);
+    };
     return {
       CallExpression(node): void {
         if (
@@ -126,7 +142,8 @@ export default createRule<[], "copy">({
           node.arguments.length !== 2
         )
           return;
-        const seed = node.arguments[1];
+        const argument = node.arguments[1];
+        const seed = argument === undefined ? null : seedValue(argument);
         const arraySeed =
           seed?.type === AST_NODE_TYPES.ArrayExpression &&
           seed.elements.length === 0;
@@ -163,12 +180,14 @@ export default createRule<[], "copy">({
         )
           return;
         const fix = literalIdentityReduceFix(context.sourceCode, node);
-        const referencesAccumulator = (value: TSESTree.Node): boolean =>
-          value.type === AST_NODE_TYPES.Identifier &&
-          ASTUtils.findVariable(
-            context.sourceCode.getScope(value),
-            value.name,
-          ) === accumulator;
+        const referencesAccumulator = (value: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean => {
+          value = unwrapExpression(value);
+          if (value.type !== AST_NODE_TYPES.Identifier || seen.has(value)) return false;
+          seen.add(value);
+          if (ASTUtils.findVariable(context.sourceCode.getScope(value), value.name) === accumulator) return true;
+          const local = stableConstInitializer(context.sourceCode, value);
+          return local !== null && enclosingFunction(local.declaration) === callback && referencesAccumulator(local.value, seen);
+        };
         const inspect = (current: TSESTree.Node): void => {
           if (
             current !== callback.body &&
@@ -240,7 +259,7 @@ export default createRule<[], "copy">({
             name === "assign" &&
             globalObject &&
             target?.type === AST_NODE_TYPES.ObjectExpression &&
-            current.arguments.slice(1).some(referencesAccumulator);
+            current.arguments.slice(1).some(argument => referencesAccumulator(argument));
           if (directCopy || fromCopy || assignCopy)
             context.report({ node: current, messageId: "copy" });
         };

@@ -182,3 +182,20 @@ SYNTAX_TESTER.run("no-reduce-accumulator-copy without a type project", rule, {
   valid: ["items.reduce((acc, item) => acc.concat(item), []);"],
   invalid: [],
 });
+
+RULE_TESTER.run("no-reduce-accumulator-copy retained extensions", rule, {
+  valid: [
+    { name: "preserves a mutated alias", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { let previous = acc; previous = page; return previous.concat(page); }, []);" },
+    { name: "preserves an escaped seed", code: "declare const pages: string[][]; const seed: string[] = []; observe(seed); pages.reduce((acc, page) => acc.concat(page), seed);" },
+    { name: "preserves seed snapshots after reduction", code: "declare const pages: string[][]; const seed: string[] = []; const rows = pages.reduce((acc, page) => acc.concat(page), seed); observe(seed);" },
+    { name: "preserves nested callback aliases", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { const copy = () => { const previous = acc; return previous.concat(page); }; return page; }, []);" },
+  ],
+  invalid: [
+    { name: "follows a stable accumulator alias", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { const previous = acc; return previous.concat(page); }, []);", output: null, errors: [{ messageId: "copy" }] },
+    { name: "follows an alias chain", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { const first = acc; const second = first; return [...second, ...page]; }, []);", output: null, errors: [{ messageId: "copy" }] },
+    { name: "recognizes a single-use seed alias", code: "declare const pages: string[][]; const seed: string[] = []; pages.reduce((acc, page) => acc.concat(page), seed);", output: null, errors: [{ messageId: "copy" }] },
+    { name: "recognizes a seed alias chain", code: "declare const pages: string[][]; const first: string[] = []; const seed = first; pages.reduce((acc, page) => acc.concat(page), seed);", output: null, errors: [{ messageId: "copy" }] },
+    { name: "keeps reverse reduction manual", code: "declare const pages: string[][]; pages.reduceRight<string[]>((acc, page) => { const previous = acc; return previous.concat(page); }, []);", output: null, errors: [{ messageId: "copy" }] },
+    { name: "keeps retained accumulator snapshots manual", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { observe(acc); const previous = acc; return previous.concat(page); }, []);", output: null, errors: [{ messageId: "copy" }] },
+  ],
+});

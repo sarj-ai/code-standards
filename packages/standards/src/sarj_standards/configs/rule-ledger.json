@@ -322,6 +322,7 @@
       "no-frontend-comments",
       "no-generic-json-parser",
       "no-generic-single-export-module",
+      "no-growing-array-spread-in-loop",
       "no-hand-rolled-sleep",
       "no-hand-rolled-spinner",
       "no-impossible-zod-literal-bounds",

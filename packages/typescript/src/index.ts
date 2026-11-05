@@ -1,3 +1,4 @@
+import noGrowingArraySpreadInLoop from "./rules/no-growing-array-spread-in-loop.js";
 import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
 import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
 import preferServerDataPreparation from "./rules/prefer-server-data-preparation.js";
@@ -160,6 +161,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-growing-array-spread-in-loop": noGrowingArraySpreadInLoop,
   "no-logical-or-fallback": noLogicalOrFallback,
   "no-zod-parse-typed-object": noZodParseTypedObject,
   "prefer-server-data-preparation": preferServerDataPreparation,
@@ -352,6 +354,7 @@ const RULE_POLICY = {
   "@sarj/prefer-typed-reflection": ["error", "both"],
   "@sarj/no-broad-return-type": ["error", "both"],
   "@sarj/no-reduce-accumulator-copy": ["error", "both"],
+  "@sarj/no-growing-array-spread-in-loop": ["warn", "both"],
   "@sarj/no-known-value-widening": ["error", "both"],
   "@sarj/no-runtime-typeof": ["error", "both"],
   "@sarj/no-invalid-typed-mutation": ["error", "both"],

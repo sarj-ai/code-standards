@@ -33,6 +33,35 @@ export function isUnshadowedTestMockGlobal(source: TypeScriptSourceCode, identif
 
 const TEST_FRAMEWORK_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
 
+/**
+ * `runtimeTestFrameworkName` limited to `accepted` names. An identifier that is neither an accepted
+ * name nor an import can only resolve to its own name or null, so it skips the scope lookup.
+ */
+export function acceptedTestFrameworkName(
+  source: Readonly<TypeScriptSourceCode>,
+  identifier: TSESTree.Identifier,
+  kind: "test" | "assertion",
+  accepted: ReadonlySet<string>,
+): string | null {
+  if (!accepted.has(identifier.name) && !importedLocalNames(source.ast).has(identifier.name)) return null;
+  const name = runtimeTestFrameworkName(source, identifier, kind);
+  return name !== null && accepted.has(name) ? name : null;
+}
+
+export const EXPECT_ASSERTION: ReadonlySet<string> = new Set(["expect"]);
+
+const IMPORTED_LOCAL_NAMES_BY_PROGRAM = new WeakMap<TSESTree.Program, ReadonlySet<string>>();
+
+function importedLocalNames(program: TSESTree.Program): ReadonlySet<string> {
+  let names = IMPORTED_LOCAL_NAMES_BY_PROGRAM.get(program);
+  if (names === undefined) {
+    names = new Set(program.body.flatMap((statement) =>
+      statement.type === AST_NODE_TYPES.ImportDeclaration ? statement.specifiers.map((specifier) => specifier.local.name) : []));
+    IMPORTED_LOCAL_NAMES_BY_PROGRAM.set(program, names);
+  }
+  return names;
+}
+
 /** Runtime binding provenance; caller-specific APIs and modifiers remain with their rule. */
 export function runtimeTestFrameworkName(
   source: Readonly<TypeScriptSourceCode>,

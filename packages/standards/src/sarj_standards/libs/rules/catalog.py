@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
 
 from sarj_standards.libs.json_boundary import parse_json
 
+from .capabilities import TypeScriptRuleSpec
 from .contracts import (
     CatalogRule,
     ExpectedOutcome,
@@ -98,6 +99,10 @@ class RuleCatalogDocument:
     @staticmethod
     def _rule_dict(rule: DocumentedRule) -> dict[str, JsonValue]:
         spec = rule.spec
+        capabilities: dict[str, JsonValue] = {}
+        if isinstance(spec, TypeScriptRuleSpec):
+            capabilities["requiresTypeInformation"] = spec.requires_type_information
+            capabilities["runtimeImports"] = list(spec.runtime_imports)
         examples = sorted(
             (example for example in spec.examples if example.public),
             key=lambda example: example.example_id,
@@ -115,6 +120,7 @@ class RuleCatalogDocument:
             "rationale": spec.rationale,
             "remediation": spec.remediation,
             "category": spec.category.value,
+            **capabilities,
             "languages": languages,
             "defaultLevel": spec.default_level.value,
             "autofix": spec.autofix.value,

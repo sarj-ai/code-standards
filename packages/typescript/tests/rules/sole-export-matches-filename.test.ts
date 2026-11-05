@@ -69,6 +69,10 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "mixed CommonJS is ambiguous", filename: "src/artifacts.ts", code: "module.exports.other = 1; export class ArtifactStore {}" },
     { name: "computed CommonJS is ambiguous", filename: "src/artifacts.ts", code: "module['exports'] = {}; export class ArtifactStore {}" },
     { name: "CommonJS property definitions are ambiguous", filename: "src/artifacts.ts", code: "Object.defineProperty(exports, 'other', { value: 1 }); export class ArtifactStore {}" },
+    { name: "CommonJS remains ambiguous beside an erased module type", filename: "src/artifacts.ts", code: "type module = string; module.exports.other = 1; export class ArtifactStore {}" },
+    { name: "CommonJS remains ambiguous beside a type-only module namespace", filename: "src/artifacts.ts", code: "namespace module { export type Value = string; } module.exports.other = 1; export class ArtifactStore {}" },
+    { name: "CommonJS remains ambiguous beside an erased exports interface", filename: "src/artifacts.ts", code: "interface exports { other: string } exports.other = 1; export class ArtifactStore {}" },
+    { name: "CommonJS remains ambiguous beside an erased Object type", filename: "src/artifacts.ts", code: "type Object = string; Object.defineProperty(exports, 'other', { value: 1 }); export class ArtifactStore {}" },
     { name: "ambient aliases are not runtime exports", filename: "src/artifacts.ts", code: "declare const value: object; export { value };" },
     { name: "type aliases are not runtime exports", filename: "src/artifacts.ts", code: "interface Contract {} export { Contract };" },
     { name: "generic helper is owned by the generic rule", filename: "src/helper.ts", code: "export class ArtifactStore {}" },
@@ -96,6 +100,7 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { filename: "src/artifacts.ts", code: "export type ArtifactStore = object;" },
   ],
   invalid: [
+    { name: "retains an outer runtime module behind an erased local type", filename: "src/artifacts.ts", code: "const module = { exports: { other: 0 } }; { type module = string; module.exports.other = 1; } export class ArtifactStore {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "Next non-image metadata extensions must be conventional", filename: join(NEXT_ROOT, "app/robots.tsx"), code: "export default function buildRobots() {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "Next image-like modules outside app remain ordinary exports", filename: join(NEXT_ROOT, "src/services/opengraph-image.ts"), code: "export default function Image() {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "Next private metadata image folders remain ordinary modules", filename: join(NEXT_ROOT, "app/_components/opengraph-image.tsx"), code: "export default function Image() {}", errors: [{ messageId: "matchSoleExport" }] },

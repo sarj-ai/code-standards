@@ -90,3 +90,43 @@ SYNTAX_TESTER.run("without type information", rule, {
   valid: ['declare const target: { id: string }; Reflect.get(target, "id");'],
   invalid: [],
 });
+
+TESTER.run("prefer-typed-reflection retained extensions", rule, {
+  valid: [
+    { name: "preserves a mutated Reflect alias", code: "const target = { id: 'a' }; const reflection = Reflect; reflection.get = customGet; reflection.get(target, 'id');" },
+    { name: "preserves a globally replaced Reflect method", code: "const target = { id: 'a' }; const reflection = Reflect; Reflect.get = customGet; reflection.get(target, 'id');" },
+    { name: "preserves an escaping Reflect alias", code: "const target = { id: 'a' }; const reflection = Reflect; mutate(reflection); reflection.get(target, 'id');" },
+    { name: "preserves a shadowed Reflect origin", code: "const Reflect = { get(target: object, key: string) { return key; } }; const reflection = Reflect; reflection.get({}, 'id');" },
+    { name: "preserves an explicit receiver through an alias", code: "const target = { id: 'a' }; const reflection = Reflect; reflection.get(target, 'id', receiver);" },
+    { name: "preserves a mutated tuple container", code: "function send(id: string) {} const args: [string] = ['a']; args.push('b'); Reflect.apply(send, undefined, args);" },
+    { name: "preserves an escaping tuple container", code: "function send(id: string) {} const args: [string] = ['a']; mutate(args); Reflect.apply(send, undefined, args);" },
+  ],
+  invalid: [
+    { name: "recognizes a global Reflect alias", code: "const target = { id: 'a' }; const reflection = Reflect; const id = reflection.get(target, 'id');", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "recognizes a Reflect alias chain", code: "const target = { id: 'a' }; const first = Reflect; const reflection = first; const id = reflection.get(target, 'id');", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "recognizes an aliased globalThis Reflect", code: "const target = { id: 'a' }; const reflection = globalThis.Reflect; const id = reflection.get(target, 'id');", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "keeps detached calls manual through aliases", code: "const target = { read() { return this; } }; const reflection = Reflect; reflection.get(target, 'read')();", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "checks a definite argument tuple", code: "function send(id: string) {} const args: [number] = [42]; Reflect.apply(send, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "checks tuple arguments through a Reflect alias", code: "function send(id: string) {} const args: [string] = ['a']; const reflection = Reflect; reflection.apply(send, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
+  ],
+});
+TESTER.run("prefer-typed-reflection audited boundaries", rule, {
+  valid: [
+    { name: "preserves cross-spelling Reflect mutations", code: "declare const target: { id: string }; const r = Reflect; globalThis.Reflect.get = custom; r.get(target, 'id');" },
+    { name: "preserves inverse cross-spelling Reflect mutations", code: "declare const target: { id: string }; const r = globalThis.Reflect; Reflect.get = custom; r.get(target, 'id');" },
+    { name: "preserves destructuring Reflect mutations", code: "declare const target: { id: string }; const r = Reflect; ({ get: globalThis.Reflect.get } = replacement); r.get(target, 'id');" },
+    { name: "preserves opaque variadic tuple calls", code: "declare const invoke: (...args: unknown[]) => unknown; const args: [string] = ['u1']; Reflect.apply(invoke, undefined, args);" },
+    { name: "preserves opaque dictionary tuple calls", code: "declare const invoke: (value: Record<string, unknown>) => unknown; const args: [{ id: string }] = [{ id: 'u1' }]; Reflect.apply(invoke, undefined, args);" },
+  ],
+  invalid: [
+    { name: "retains typed variadic tuple contracts", code: "declare const invoke: (...args: string[]) => string; const args: [string] = ['u1']; Reflect.apply(invoke, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
+  ],
+});
+TESTER.run("prefer-typed-reflection tuple wrappers and type references", rule, {
+  valid: [],
+  invalid: [
+    { name: "supports readonly const tuples", code: "declare function lookup(id: string): string; const args = ['u1'] as const; Reflect.apply(lookup, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "supports satisfies tuples", code: "declare function lookup(id: string): string; const args = ['u1'] satisfies [string]; Reflect.apply(lookup, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "ignores type-only global references", code: "declare const target: { id: string }; const r: typeof Reflect = Reflect; r.get(target, 'id');", output: null, errors: [{ messageId: "avoid" }] },
+  ],
+});

@@ -1184,6 +1184,7 @@ export default createRule<Options, MessageIds>({
       "Program:exit": (program): void => {
         declarationScope(context, program);
         for (const body of functionBodies) declarationScope(context, body);
+        if (classes.length === 0) return;
         const computedReferences: TSESTree.MemberExpression[] = [];
         walk(program, context.sourceCode.visitorKeys, (node) => {
           if (node.type === AST_NODE_TYPES.MemberExpression && node.computed)

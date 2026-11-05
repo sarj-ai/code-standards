@@ -1,9 +1,10 @@
 /** @fileoverview _runtime-exports — classify runtime exports conservatively for module naming rules. */
 
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+import { hasLocalValueBinding } from "./_has-local-value-binding.js";
 
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 export const GENERIC_MODULE_STEMS: ReadonlySet<string> = new Set([
   "common", "helper", "helpers", "misc", "shared", "stuff", "util", "utils",
@@ -144,8 +145,7 @@ export function isCommonJsExportReference(
   sourceCode: Readonly<TypeScriptSourceCode>,
 ): boolean {
   function isGlobal(node: TSESTree.Identifier): boolean {
-    const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
-    return variable === null || variable.defs.length === 0;
+    return !hasLocalValueBinding(sourceCode, node);
   }
   if (node.type === AST_NODE_TYPES.MemberExpression) {
     return node.object.type === AST_NODE_TYPES.Identifier && isGlobal(node.object) &&

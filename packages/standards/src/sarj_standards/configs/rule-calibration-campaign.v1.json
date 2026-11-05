@@ -3365,6 +3365,14 @@
       "state": "pending",
       "evidence": "Native examples and boundary tests cover the 12-point statement and 6-point variable-validation budgets, templates, nested heredocs, literal data and type constraints. All 114 initial occurrences (57 distinct expression bodies) were reviewed. Treating a map arrow as a comparison caused four incorrect budget violations; the corrected scorer retains 110 reviewed occurrences (55 distinct bodies), with no known retained parser or scoring false positives. The same immutable 481-file private corpus and shared repeated performance comparison are used. Private source, paths and identifying hashes remain local.",
       "outcome": "SARJ217 was introduced at WARNING. This separate change promotes the requested 12-point statement and 6-point variable-validation budgets to ERROR, with no variable-count cap. All 110 retained field occurrences were reviewed after repairing four map-arrow scoring false positives. Manual remediation preserves real validation, lazy evaluation and dependencies. No autofix, universal recall or complete campaign coverage is claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-growing-array-spread-in-loop",
+      "family": "typescript",
+      "ruleId": "no-growing-array-spread-in-loop",
+      "state": "complete",
+      "evidence": "Scoped calibration 2026-11-05: all 23 native rule cases and executable public examples pass. The immutable 116-case retained-rules corpus includes 16 cases for this rule: two positives and 14 boundary negatives, with all expected outcomes and no duplicate findings. Three fresh processes per variant each include two warm native ESLint runs, compared with integrity-verified published plugin 18.0.4. A fixed, content-independent sample of 80 files from 955 eligible application and library source files produced no findings for this rule across the repeated runs. External application dependencies are partial; the sample is exploratory and unlabeled, so it does not establish population recall or complete precision. Aggregate six-rule timing and memory measurements do not isolate this rule's cost. Private inputs, paths, source pins and detailed receipts remain owner-readable.",
+      "outcome": "Complete scoped calibration; retain WARNING without autofix. Require a fresh, unobserved local output and a single straight-line prefix-spread assignment in native-array for-of iteration. Parameter, import and declaration inputs may be followed through stable aliases; locally bounded literal, call and property inputs remain excluded. Preserve snapshots, escaping or captured outputs, resets, uncertain ownership, reducers and concat ownership. No error promotion, general speedup or fleet rollout is claimed."
     }
   ]
 }

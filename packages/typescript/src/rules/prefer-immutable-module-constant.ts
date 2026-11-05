@@ -10,6 +10,7 @@ import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
+import { hasLocalValueBinding } from "./_has-local-value-binding.js";
 
 type MessageIds = "preferAsConst" | "preferReadonlyCollection";
 type Options = readonly [];
@@ -347,10 +348,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    const isUnshadowedGlobal: GlobalResolver = (identifier) => {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-      return variable === null || variable.defs.length === 0;
-    };
+    const isUnshadowedGlobal: GlobalResolver = (identifier) => !hasLocalValueBinding(sourceCode, identifier);
     const isUnshadowedType: GlobalResolver = (identifier) => {
       const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
       return variable === null || !variable.defs.some((definition) => definition.isTypeDefinition);

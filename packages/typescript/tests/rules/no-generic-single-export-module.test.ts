@@ -42,6 +42,10 @@ RULE_TESTER.run("no-generic-single-export-module", rule, {
     { filename: "/repo/src/utils.ts", code: "module.exports = function buildOrder() {};" },
     { filename: "/repo/src/utils.ts", code: "Object.defineProperty(exports, 'x', { value: 1 }); export const parseOrder = () => ({});" },
     { filename: "/repo/src/utils.ts", code: "Object.assign(exports, { x: 1 }); export const parseOrder = () => ({});" },
+    { name: "preserves CommonJS beside an erased module type", filename: "/repo/src/utils.ts", code: "type module = string; module.exports.other = 1; export class ArtifactStore {}" },
+    { name: "preserves CommonJS beside a type-only module namespace", filename: "/repo/src/utils.ts", code: "namespace module { export type Value = string; } module.exports.other = 1; export class ArtifactStore {}" },
+    { name: "preserves CommonJS beside an erased exports interface", filename: "/repo/src/utils.ts", code: "interface exports { other: string } exports.other = 1; export class ArtifactStore {}" },
+    { name: "preserves CommonJS beside an erased Object type", filename: "/repo/src/utils.ts", code: "type Object = string; Object.defineProperty(exports, 'other', { value: 1 }); export class ArtifactStore {}" },
     { filename: "/repo/src/utils.ts", code: "Object.defineProperties(exports, { x: { value: 1 } }); export const parseOrder = () => ({});" },
     { filename: "/repo/src/utils.ts", code: "module['exports'] = {}; export const parseOrder = () => ({});" },
     { filename: "/repo/src/utils.ts", code: "Object['defineProperty'](exports, 'x', { value: 1 }); export const parseOrder = () => ({});" },
@@ -76,6 +80,7 @@ RULE_TESTER.run("no-generic-single-export-module", rule, {
     },
   ],
   invalid: [
+    { name: "retains an outer runtime module behind an erased local type", filename: "/repo/src/utils.ts", code: "const module = { exports: { other: 0 } }; { type module = string; module.exports.other = 1; } export class ArtifactStore {}", errors: [{ messageId: "genericSingleExport" }] },
     { name: "supporting types do not hide the sole runtime export", filename: "src/utils.ts", code: "export interface Contract {} export function parseOrder() {}", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
     { name: "type only namespaces are ignored beside runtime names", filename: "src/utils.ts", code: "export namespace Contracts { export interface Contract {} } export function parseOrder() {}", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
     { name: "namespace values are runtime exports", filename: "src/utils.ts", code: "export namespace Orders { export const count = 1; }", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "Orders" } }] },
