@@ -2,6 +2,7 @@
  * @fileoverview _discriminated-union-returns — find finite, tag-specific producer shapes hidden by flat return contracts.
  */
 
+import { isPresent } from "./_is-present.js";
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
@@ -82,7 +83,7 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: TypeScript
 
 function returnContract(node: Producer, sourceCode: TypeScriptSourceCode): Contract | undefined {
   const annotation = node.returnType;
-  if (annotation === undefined) return undefined;
+  if (!isPresent(annotation)) return undefined;
   let type = annotation.typeAnnotation;
   if (node.async && type.type === AST_NODE_TYPES.TSTypeReference && type.typeName.type === AST_NODE_TYPES.Identifier &&
     type.typeName.name === "Promise" && type.typeArguments?.params.length === 1 && definitions(type, sourceCode).length === 0) {
