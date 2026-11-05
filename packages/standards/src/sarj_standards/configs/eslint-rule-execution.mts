@@ -1,11 +1,12 @@
 import type { ESLint } from "eslint";
+import type { z } from "zod";
 
 import { resolve } from "node:path";
 
-import { record, strings } from "./tool-json.mts";
+import { record } from "./tool-json.mts";
+import { CallableSchema, DeclaredRequirementSchema, FileExecutionsSchema, type RuleExecutionStateSchema, type FileExecutionSchema } from "./eslint-tool-schemas.mts";
 
-export type RuleExecutionState =
-  "ran" | "skipped" | "untracked" | "failed" | "disabled" | "ignored";
+export type RuleExecutionState = z.infer<typeof RuleExecutionStateSchema>;
 export interface RuleExecutionSummary {
   readonly ruleId: string;
   readonly execution: RuleExecutionState;
@@ -13,79 +14,22 @@ export interface RuleExecutionSummary {
   readonly fileCount: number;
   readonly reason?: string;
 }
-interface FileExecution extends Omit<RuleExecutionSummary, "fileCount"> {
-  readonly filePath: string;
-}
+type FileExecution = z.infer<typeof FileExecutionSchema>;
 interface TrackingRequest {
   readonly full: boolean;
   readonly rules: ReadonlySet<string>;
-}
-
-function callable(value: unknown): value is (...args: never[]) => unknown {
-  // Native ESLint plugin capabilities require a callable protocol check.
-  return typeof value === "function";
-}
-
-function text(value: unknown, label: string): string {
-  const values = strings([value], label);
-  const first = values[0];
-  if (first === undefined || first.length === 0)
-    throw new Error(label + " must not be empty");
-  return first;
-}
-
-function state(value: unknown): RuleExecutionState {
-  if (
-    value === "ran" ||
-    value === "skipped" ||
-    value === "untracked" ||
-    value === "failed" ||
-    value === "disabled" ||
-    value === "ignored"
-  )
-    return value;
-  throw new Error("Invalid rule execution state");
-}
-
-function requirement(value: unknown): boolean | null {
-  if (value === true || value === false || value === null) return value;
-  throw new Error("Invalid type-information requirement");
-}
-
-function executions(value: unknown): FileExecution[] {
-  if (!Array.isArray(value))
-    throw new Error("Rule execution records must be an array");
-  const rows: readonly unknown[] = value;
-  return rows.map((value) => {
-    const row = record(value, "rule execution");
-    const parsed: {
-      ruleId: string;
-      filePath: string;
-      execution: RuleExecutionState;
-      requiresTypeInformation: boolean | null;
-      reason?: string;
-    } = {
-      ruleId: text(row["ruleId"], "rule ID"),
-      filePath: resolve(text(row["filePath"], "execution file path")),
-      execution: state(row["execution"]),
-      requiresTypeInformation: requirement(row["requiresTypeInformation"]),
-    };
-    if (row["reason"] !== undefined)
-      parsed.reason = text(row["reason"], "execution reason");
-    return parsed;
-  });
 }
 
 function tracking(
   rule: Record<string, unknown>,
 ): (() => FileExecution[]) | null {
   const begin = rule["trackExecution"];
-  if (!callable(begin)) return null;
+  if (!CallableSchema.validate(begin)) return null;
   const session = record(begin.call(rule), "rule execution tracker");
   const finish = session["finish"];
-  if (!callable(finish))
+  if (!CallableSchema.validate(finish))
     throw new Error("Rule execution tracker must expose finish");
-  return () => executions(finish.call(session));
+  return () => FileExecutionsSchema.parse(finish.call(session));
 }
 
 function key(row: {
@@ -200,8 +144,7 @@ async function beginTracking(
             ? {}
             : record(rule["documentation"], "native rule documentation");
         const declared = documentation["requiresTypeInformation"];
-        const required =
-          declared === true || declared === false ? declared : null;
+        const required = DeclaredRequirementSchema.parse(declared);
         const row: FileExecution = {
           ruleId,
           filePath,
@@ -213,7 +156,7 @@ async function beginTracking(
           fallback(row);
           continue;
         }
-        if (required !== true && required !== false) {
+        if (required === null) {
           fallback({ ...row, reason: "requirements-not-declared" });
           continue;
         }

@@ -1,4 +1,7 @@
-export type RuleSort = 'name' | 'newest' | 'oldest';
+import { z } from 'zod';
+
+const RuleSortSchema = z.enum(['name', 'newest', 'oldest']).catch('name');
+export type RuleSort = z.infer<typeof RuleSortSchema>;
 
 export interface RuleSortKey {
   readonly name: string;
@@ -7,7 +10,7 @@ export interface RuleSortKey {
 }
 
 export function ruleSort(value: string | null): RuleSort {
-  return value === 'newest' || value === 'oldest' ? value : 'name';
+  return RuleSortSchema.parse(value);
 }
 
 export function compareRules(left: RuleSortKey, right: RuleSortKey, order: RuleSort): number {

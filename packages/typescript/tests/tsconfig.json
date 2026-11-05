@@ -5,7 +5,8 @@
     "rootDir": "..",
     "types": ["node"],
     "paths": {
-      "eslint": ["../node_modules/eslint/lib/types/index.d.ts"]
+      "eslint": ["../node_modules/eslint/lib/types/index.d.ts"],
+      "zod": ["../node_modules/zod/index.d.ts"]
     }
   },
   "include": ["**/*.ts"]

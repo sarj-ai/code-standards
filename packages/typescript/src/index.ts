@@ -1,3 +1,4 @@
+import preferZodEnumValidator from "./rules/prefer-zod-enum-validator.js";
 import noGrowingArraySpreadInLoop from "./rules/no-growing-array-spread-in-loop.js";
 import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
 import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
@@ -161,6 +162,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "prefer-zod-enum-validator": preferZodEnumValidator,
   "no-growing-array-spread-in-loop": noGrowingArraySpreadInLoop,
   "no-logical-or-fallback": noLogicalOrFallback,
   "no-zod-parse-typed-object": noZodParseTypedObject,
@@ -499,6 +501,7 @@ const RULE_POLICY = {
   "@sarj/prefer-await-in-async-return": ["error", "both"],
   "@sarj/prefer-schema-for-api-payload": ["error", "both"],
   "@sarj/prefer-shared-zod-enum": ["warn", "both"],
+  "@sarj/prefer-zod-enum-validator": ["warn", "both"],
   "@sarj/prefer-switch-for-repeated-equality": ["error", "both"],
   "@sarj/prefer-semantic-colors": [
     "error",

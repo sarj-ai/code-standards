@@ -415,6 +415,7 @@
       "prefer-test-fixture-reuse",
       "prefer-typed-reflection",
       "prefer-whole-object-assertion",
+      "prefer-zod-enum-validator",
       "prefer-zod-infer",
       "prefer-zod-parse-output-type",
       "production-derived-test-cases",

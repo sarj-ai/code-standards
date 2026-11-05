@@ -1483,6 +1483,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
+      "@sarj/prefer-zod-enum-validator": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "error",
       "@sarj/require-sql-access-class": "warn",
       "@sarj/sole-export-matches-filename": "error",

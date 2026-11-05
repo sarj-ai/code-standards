@@ -7,65 +7,8 @@ import { ENGINES, validateCatalog } from "./catalog-validation";
 import { ruleIntroductions } from "./rule-introductions";
 
 export { ENGINES };
-export type Engine = (typeof ENGINES)[number];
-export type DefaultLevel = "error" | "off" | "warning";
-export type Autofix = "none" | "safe" | "suggestion";
-export type Category =
-  | "architecture"
-  | "correctness"
-  | "maintainability"
-  | "performance"
-  | "security"
-  | "style"
-  | "testing";
-export type Language =
-  "config" | "iac" | "markdown" | "python" | "shell" | "sql" | "typescript";
-
-export interface ExampleFile {
-  path: string;
-  source: string;
-}
-
-export interface RuleExample {
-  id: string;
-  scenarioId: string;
-  title: string;
-  outcome: "accept" | "reject";
-  focusPath: string;
-  expectedCount: number;
-  files: ExampleFile[];
-  fixedFiles: ExampleFile[];
-}
-
-export interface Rule {
-  key: string;
-  engine: Engine;
-  id: string;
-  code: string | null;
-  summary: string;
-  rationale: string;
-  remediation: string;
-  category: Category;
-  languages: Language[];
-  defaultLevel: DefaultLevel;
-  autofix: Autofix;
-  status: "active";
-  aliases: string[];
-  limitations: string[];
-  filePatterns: string[];
-  messageIds: string[];
-  optionsSchema: Record<string, unknown> | null;
-  references: string[];
-  since: string | null;
-  source: string;
-  test: string;
-  examples: RuleExample[];
-}
-
-export interface Catalog {
-  schemaVersion: 1;
-  rules: Rule[];
-}
+export type { Engine, DefaultLevel, Autofix, Category, Language, ExampleFile, RuleExample, Rule, Catalog } from "./catalog-validation";
+import type { Engine, Rule, Catalog } from "./catalog-validation";
 
 const catalogPath = resolve(
   process.cwd(),

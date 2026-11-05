@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c6ad832f5fa97c605ef4782d74e15fcd4b1df0f96138a1687fea62d6a77220b6",
-  "cliSha256": "65d29b56cd06066df20b2d3cdbeead1e759154ee5e994f89d5b679c2368024f6",
+  "catalogSha256": "24cd1c693903ecffd5cd40c910e80d9d2d0ad0d1929d8f4257cdf4e036fd6603",
+  "cliSha256": "2c17ea5ddbf6c4221cda2cce2e7660855dddc25c335c2e891964274cf88bca5b",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -6956,6 +6956,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Assert the object once"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-zod-enum-validator": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/status.ts",
+              "source": "type Status = \"ran\" | \"failed\";\nfunction status(value: unknown): Status {\n  if (value === \"ran\" || value === \"failed\") return value;\n  throw new Error(\"Invalid status\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "manual-validator",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Replace a closed handwritten string parser"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/status.ts",
+              "source": "import { z } from \"zod\";\nconst StatusSchema = z.enum([\"ran\", \"failed\"]);\ntype Status = z.infer<typeof StatusSchema>;\nfunction status(value: unknown): Status {\n  return StatusSchema.parse(value);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "schema-validator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Define validation and the type from one enum"
         }
       ],
       "optionsSchemaSource": null
