@@ -1,22 +1,34 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, NamedTuple, TypeGuard
+from typing import TYPE_CHECKING, NamedTuple, TypeGuard, Unpack
 
 from pydantic import JsonValue
 import pytest
 
-from sarj_standards import __version__
+from sarj_standards import __version__, api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.corpus import CorpusKind, CorpusSource, snapshot
+from sarj_standards.libs.diagnostics import (
+    AnalysisReport,
+    Completion,
+    Diagnostic,
+    Location,
+    Position,
+    Severity,
+    ToolReport,
+)
 from sarj_standards.libs.linting import policy as lint_policy
 from sarj_standards.libs.rules import RuleSelector
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
+
+    from tests.call_contracts import StandardsAnalyzeOptions
 
 
 _SELECTOR = "python:no-string-concat-in-loop"
@@ -401,3 +413,120 @@ def test_evaluate_rejects_unknown_selector(tmp_path: Path, capsys: pytest.Captur
     assert status == 2
     payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert payload["completion"] == "failed"
+
+
+@pytest.mark.parametrize(
+    ("selector", "sources"),
+    [
+        ("python:no-print", ("python", "sarj-python-lint")),
+        ("sql:no-select-star", ("sql", "sarj-sql-lint")),
+        ("iac:no-comment-cruft", ("iac", "sarj-iac-lint")),
+        ("text:no-comment-cruft", ("text", "sarj-text-lint")),
+        ("eslint:no-explicit-any", ("eslint",)),
+        ("checkov:CKV_AWS_20", ("checkov",)),
+        ("zizmor:dangerous-triggers", ("zizmor",)),
+    ],
+)
+def test_text_evaluation_counts_declared_engines_and_native_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    selector: str,
+    sources: tuple[str, ...],
+) -> None:
+    selected = RuleSelector.parse(selector)
+    findings = tuple(
+        Diagnostic(
+            source=source,
+            code=selected.native_rule_id,
+            rule_id=selected.native_rule_id if index else None,
+            message="selected finding",
+            severity=Severity.ERROR,
+            location=Location("input.py", Position(index, 0, index * 12)),
+        )
+        for index, source in enumerate(sources)
+    )
+    unrelated = Diagnostic(
+        source=sources[0],
+        code=selected.native_rule_id,
+        rule_id="unrequested-rule",
+        message="unrelated finding",
+        severity=Severity.ERROR,
+        location=Location("input.py", Position(3, 0, 36)),
+    )
+    report = AnalysisReport.from_tools(
+        tmp_path,
+        (
+            ToolReport("first", Completion.COMPLETE, diagnostics=findings[:1]),
+            ToolReport("second", Completion.COMPLETE, diagnostics=(*findings[1:], unrelated)),
+        ),
+    )
+
+    def analyze(
+        _self: api.Standards,
+        paths: Sequence[str] | None = None,  # ruff: ignore[unused-function-argument] -- matches Standards.analyze.
+        **kwargs: Unpack[StandardsAnalyzeOptions],  # ruff: ignore[unused-function-argument] -- matches Standards.analyze.
+    ) -> AnalysisReport:
+        return report
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the CLI's fixed analyzer lookup to supply typed backend reports.
+        api.Standards, "analyze", analyze
+    )
+
+    assert (
+        main(
+            [
+                "--root",
+                str(tmp_path),
+                "maintain",
+                "rules",
+                "evaluate",
+                "--rule",
+                selector,
+                "--rule",
+                selector,
+                "--format",
+                "text",
+                "input.py",
+            ]
+        )
+        == 1
+    )
+    output = capsys.readouterr().out
+    noun = "finding" if len(findings) == 1 else "findings"
+    assert output.splitlines().count(f"  {selector}: {len(findings)} {noun}") == 1
+    assert f"code-standards maintain rules stage-warning {selector}" in output
+
+
+def test_rule_summary_reports_zero_counts_in_selector_order(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "input.py").write_text("value = 1\n", encoding="utf-8")
+
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "evaluate",
+            "--rule",
+            _SELECTOR,
+            "--rule",
+            _ERROR_SELECTOR,
+            "--rule",
+            _SELECTOR,
+            "--format",
+            "text",
+            "input.py",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert status == 0
+    lines = output.splitlines()
+    summary = lines.index("calibration summary:")
+    assert lines[summary : summary + 3] == [
+        "calibration summary:",
+        f"  {_ERROR_SELECTOR}: 0 findings",
+        f"  {_SELECTOR}: 0 findings",
+    ]
+    assert f"code-standards maintain rules stage-warning {_ERROR_SELECTOR}" in output
