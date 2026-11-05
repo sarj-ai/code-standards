@@ -184,6 +184,25 @@ def test_fresh_main_registry_export_loads_only_when_requested(tmp_path: Path) ->
     assert not _fresh(tmp_path, _MAIN_REGISTRY)
 
 
+def test_shared_sql_policy_import_leaves_parser_and_rule_registries_unloaded(tmp_path: Path) -> None:
+    assert not _fresh(
+        tmp_path,
+        """
+from sarj_sql_lint import postgres_policy as _policy
+assert callable(_policy.aggregate_name)
+assert callable(_policy.normalize_group_comments)
+assert callable(_policy.normalize_postgres_ctas)
+assert callable(_policy.normalize_postgres_explain)
+assert not any(name == 'sqlglot' or name.startswith('sqlglot.') for name in _sys.modules)
+assert not any(name == 'sarj_sql_lint.rules' or name.startswith('sarj_sql_lint.rules.')
+               for name in _sys.modules)
+assert _policy.normalize_postgres_explain('SELECT 1') == 'SELECT 1'
+assert not any(name == 'sarj_sql_lint.rules' or name.startswith('sarj_sql_lint.rules.')
+               for name in _sys.modules)
+""",
+    )
+
+
 @pytest.mark.parametrize("override", ["main-only", "dual-module"])
 def test_legacy_registry_injection_controls_actual_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str

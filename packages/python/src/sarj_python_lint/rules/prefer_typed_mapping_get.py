@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._local_source import LocalSourceFacts
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingShapeFacts
@@ -176,7 +175,7 @@ class PreferTypedMappingGet(Rule):
             and call.func.attr == "get"
             and not facts.raw_boundary(call)
             and _untyped_receiver(call.func.value, facts, contracts)
-            and not is_suppressed(context.source_lines, call.lineno, self.code)
+            and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
         return list({(finding.line, finding.col): finding for finding in findings}.values())
 

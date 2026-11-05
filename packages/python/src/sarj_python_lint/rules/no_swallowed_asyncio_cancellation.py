@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
@@ -121,7 +120,7 @@ def _function_diagnostics(function: ast.AsyncFunctionDef, context: PythonFileCon
         for handler in node.handlers:
             if not _catches_cancellation(handler.type, context.imports) or not _normal_exit(handler.body):
                 continue
-            if is_suppressed(context.source_lines, handler.lineno, code):
+            if context.suppressions.is_suppressed(handler.lineno, code):
                 continue
             diagnostics.append(
                 Diagnostic(

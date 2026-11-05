@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import scope_bound_names
 from sarj_python_lint.rules._contract_annotation import annotation_reference
@@ -285,7 +284,7 @@ class _InjectionVisitor(ast.NodeVisitor):
         if origin is None or not _plain_implementation(origin, self.project, set()):
             return
         inherits = _inherits_contract(origin, contract.symbol, self.project, set())
-        if inherits is not False or is_suppressed(self.context.source_lines, value.lineno, self.code):
+        if inherits is not False or self.context.suppressions.is_suppressed(value.lineno, self.code):
             return
         if self.project.nominal_membership_is_dynamic(consumer):
             return

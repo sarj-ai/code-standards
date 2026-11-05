@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance, import_name_for_binding
@@ -217,7 +216,7 @@ class NoDiscardedValidationResult(Rule):
             )
             for statement, call in calls
             if isinstance(call, ast.Call)
-            and not is_suppressed(context.source_lines, statement.lineno, self.code)
+            and not context.suppressions.is_suppressed(statement.lineno, self.code)
             and analysis.discarded(statement, call)
         ]
 

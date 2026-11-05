@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._inert_model_annotation import inert_model_annotation
 
@@ -114,7 +113,7 @@ class SharedMutablePydanticFactory(Rule):
             result = _factory_result(factory, bindings)
             if not isinstance(result, ast.Name) or not _shared_mutable(result, bindings, imports):
                 continue
-            if is_suppressed(context.source_lines, field.lineno, self.code):
+            if context.suppressions.is_suppressed(field.lineno, self.code):
                 continue
             diagnostics.append(
                 _factory_diagnostic(

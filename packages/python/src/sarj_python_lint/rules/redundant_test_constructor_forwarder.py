@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import (
     call_matches,
@@ -112,7 +111,7 @@ class RedundantTestConstructorForwarder(ProjectRule):
             record = _record_fields(project, unit, constructor.func, context, provenance)
             if record is None or not _same_contract(function, constructor, record, project, unit):
                 continue
-            if not is_suppressed(context.source_lines, function.lineno, self.code):
+            if not context.suppressions.is_suppressed(function.lineno, self.code):
                 findings.append(
                     Diagnostic(
                         path=context.path,

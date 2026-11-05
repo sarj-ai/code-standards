@@ -3,10 +3,56 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import stat
+from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_rule_contracts import SourceChangedError, fix_file
+from sarj_rule_contracts import SourceChangedError, fix_file, iter_source_files
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
+
+
+def test_discovery_prunes_excluded_trees_and_preserves_file_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    source = root / "query.sql"
+    source.write_text("SELECT 1;\n")
+    hidden = root / ".sql"
+    hidden.write_text("SELECT 2;\n")
+    (root / "query.SQL").write_text("SELECT 3;\n")
+    ignored = root / "node_modules"
+    ignored.mkdir()
+    (ignored / "ignored.sql").write_text("SELECT 4;\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "outside.sql").write_text("SELECT 5;\n")
+    (root / "linked-directory").symlink_to(outside, target_is_directory=True)
+    link = root / "linked-file.sql"
+    link.symlink_to(source)
+    (root / "broken.sql").symlink_to(root / "missing.sql")
+    visited: list[Path] = []
+    original_scandir = os.scandir
+
+    def track_scandir(path: str | os.PathLike[str]) -> AbstractContextManager[Iterator[os.DirEntry[str]]]:
+        visited.append(Path(path))
+        return original_scandir(path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe native traversal to prove ignored and symlink directories are never entered.
+        os, "scandir", track_scandir
+    )
+    assert set(iter_source_files(root, suffixes=frozenset({".sql"}), skip_dirs=frozenset({"node_modules"}))) == {
+        source,
+        hidden,
+        link,
+    }
+    assert visited == [root]
+    assert list(iter_source_files(ignored, suffixes=frozenset({".sql"}), skip_dirs=frozenset({"node_modules"}))) == []
+    assert visited == [root]
 
 
 def test_fix_preserves_bom_crlf_unicode_and_mode(tmp_path: Path) -> None:

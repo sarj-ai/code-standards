@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
 from sarj_python_lint.rules._static_json_alias import private_static_json_alias
@@ -159,11 +158,12 @@ class PreferPydanticJsonValue(Rule):
         facts = context.session.first_party
         if not _depends_on_pydantic_v2(path, facts):
             return []
-        lines = context.source_lines
         findings: list[Diagnostic] = []
         for alias in aliases:
             name, value, location = alias
-            if is_suppressed(lines, location.lineno, self.code) or not _is_exact_json_value(name, value, semantics):
+            if context.suppressions.is_suppressed(location.lineno, self.code) or not _is_exact_json_value(
+                name, value, semantics
+            ):
                 continue
             findings.append(
                 Diagnostic(

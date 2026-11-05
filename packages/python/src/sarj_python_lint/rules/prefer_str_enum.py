@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_annotation_union
 from sarj_python_lint.rules._ast_index import children, walk, walk as walk_ast
@@ -622,8 +621,7 @@ class PreferStrEnum(Rule):
 
         diags.extend(class_findings.diagnostics)
         diags.sort(key=lambda d: (d.line, d.col))
-        source_lines = context.source_lines
-        return [diag for diag in diags if not is_suppressed(source_lines, diag.line, self.code)]
+        return [diag for diag in diags if not context.suppressions.is_suppressed(diag.line, self.code)]
 
     def _all_class_field_diags(
         self,

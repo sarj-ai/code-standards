@@ -508,7 +508,7 @@ def _callable_factory_findings(context: PythonFileContext, function: ast.Functio
         if (
             argument.arg in supplied | rebound
             or not _is_stable_local_callable(context, function, default.id)
-            or is_suppressed(context.source_lines, argument.lineno, code)
+            or context.suppressions.is_suppressed(argument.lineno, code)
         ):
             continue
         findings.append(

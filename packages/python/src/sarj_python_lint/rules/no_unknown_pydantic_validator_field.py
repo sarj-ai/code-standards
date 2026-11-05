@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._pydantic_field_contract import DECORATOR_SOURCES, direct_models, unique_members
 
@@ -84,7 +83,7 @@ class NoUnknownPydanticValidatorField(Rule):
         diagnostics: list[Diagnostic] = []
         for model in direct_models(context, methods=True):
             for decorator, missing in _missing_decorators(model, context):
-                if is_suppressed(context.source_lines, decorator.lineno, self.code):
+                if context.suppressions.is_suppressed(decorator.lineno, self.code):
                     continue
                 diagnostics.append(
                     Diagnostic(

@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -97,7 +96,7 @@ class NoGenericJsonParser(Rule):
                 severity=Severity.WARNING,
             )
             for node in candidates
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
 
 

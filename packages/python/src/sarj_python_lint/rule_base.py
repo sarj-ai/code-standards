@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final, final
 
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
@@ -26,7 +26,7 @@ from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from sarj_python_lint._analysis_session import AnalysisSession
     from sarj_python_lint._file_context import PythonFileContext
@@ -46,30 +46,43 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
-    if code.upper() in PROTECTED_SUPPRESSION_CODES or line < 1 or line > len(source_lines):
-        return False
-    text = source_lines[line - 1]
-    m = _SARJ_NOQA_RE.search(text)
-    if not m:
-        return False
-    from sarj_python_lint.rules._suppression_comments import comment_lines  # ruff: ignore[import-outside-top-level] -- comment scanner depends on rule_base.
+    return SuppressionIndex(source_lines).is_suppressed(line, code)
 
-    comment = comment_lines(tuple(source_lines)).get(line, "")
-    m = _SARJ_NOQA_RE.search(comment)
-    if m is None:
-        return False
-    codes_str = m.group(1)
-    trailing = comment[m.end() :]
-    if codes_str is None:
-        return False
-    reason = trailing.lstrip()
-    single_dash_reason = reason.startswith("-") and (codes_str[-1:].isspace() or trailing[:1].isspace())
-    if reason and not reason.startswith(("--", "—", "–")) and not single_dash_reason:
-        return False
-    parts = tuple(part.strip() for part in codes_str.split(","))
-    if any(not part for part in parts):
-        return False
-    return code.upper() in {part.upper() for part in parts}
+
+@final
+class SuppressionIndex:
+    __slots__ = ("_comments", "_source_lines")
+
+    def __init__(self, source_lines: Sequence[str]) -> None:
+        self._source_lines = source_lines
+        self._comments: Mapping[int, str] | None = None
+
+    def is_suppressed(self, line: int, code: str) -> bool:
+        normalized_code = code.upper()
+        if normalized_code in PROTECTED_SUPPRESSION_CODES or line < 1 or line > len(self._source_lines):
+            return False
+        if not _SARJ_NOQA_RE.search(self._source_lines[line - 1]):
+            return False
+        if self._comments is None:
+            from sarj_python_lint.rules._suppression_comments import comment_lines  # ruff: ignore[import-outside-top-level] -- comment scanner depends on rule_base.
+
+            self._comments = comment_lines(tuple(self._source_lines))
+        comment = self._comments.get(line, "")
+        match = _SARJ_NOQA_RE.search(comment)
+        if match is None:
+            return False
+        codes_str = match.group(1)
+        trailing = comment[match.end() :]
+        if codes_str is None:
+            return False
+        reason = trailing.lstrip()
+        single_dash_reason = reason.startswith("-") and (codes_str[-1:].isspace() or trailing[:1].isspace())
+        if reason and not reason.startswith(("--", "—", "–")) and not single_dash_reason:
+            return False
+        parts = tuple(part.strip() for part in codes_str.split(","))
+        if any(not part for part in parts):
+            return False
+        return normalized_code in {part.upper() for part in parts}
 
 
 class ColumnEncoding(StrEnum):

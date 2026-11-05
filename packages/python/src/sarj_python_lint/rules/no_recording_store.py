@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredContracts
 from sarj_python_lint.rules._imports import ImportIndex
@@ -100,8 +99,7 @@ class NoRecordingStore(ProjectRule):
                 severity=Severity.WARNING,
             )
             for owner in context.nodes(ast.ClassDef)
-            if not is_suppressed(context.source_lines, owner.lineno, self.code)
-            and _recording_owner(owner, constructors)
+            if not context.suppressions.is_suppressed(owner.lineno, self.code) and _recording_owner(owner, constructors)
         ]
 
 

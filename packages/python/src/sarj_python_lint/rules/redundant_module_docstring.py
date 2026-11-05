@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._docstrings import docstring_expression
 from sarj_python_lint.rules.no_unnecessary_docstring import module_docstring_consumed
@@ -88,8 +87,8 @@ class RedundantModuleDocstring(Rule):
         expression = docstring_expression(tree)
         if expression is None or ">>>" in (ast.get_docstring(tree, clean=False) or ""):
             return []
-        if module_docstring_consumed(context) or is_suppressed(
-            context.source_lines, expression.end_lineno or expression.lineno, self.code
+        if module_docstring_consumed(context) or context.suppressions.is_suppressed(
+            expression.end_lineno or expression.lineno, self.code
         ):
             return []
         return [

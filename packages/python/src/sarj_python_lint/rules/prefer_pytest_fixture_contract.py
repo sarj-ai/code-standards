@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts
 from sarj_python_lint.rules._fixture_contracts import abstract_ancestors, abstract_contract
@@ -128,7 +127,7 @@ class PreferPytestFixtureContract(ProjectRule):
                 or model.declaration.type_params
                 or any(isinstance(base, ast.Subscript) for base in model.declaration.bases)
                 or abstract_contract(model, contracts)
-                or is_suppressed(context.source_lines, function.lineno, self.code)
+                or context.suppressions.is_suppressed(function.lineno, self.code)
             ):
                 continue
             candidates = abstract_ancestors(model, contracts)

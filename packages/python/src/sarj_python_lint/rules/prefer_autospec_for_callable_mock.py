@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
@@ -163,7 +162,7 @@ def _scope_findings(
         name, call = candidate
         if bindings[name] != 1 or not _closed_fixed_calls(name, call, scope, scope_nodes, context.parents):
             continue
-        if is_suppressed(context.source_lines, call.lineno, code):
+        if context.suppressions.is_suppressed(call.lineno, code):
             continue
         findings.append(
             Diagnostic(

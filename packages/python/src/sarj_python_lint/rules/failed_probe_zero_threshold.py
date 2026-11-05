@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._numeric_proof import (
     assignment,
@@ -124,7 +123,7 @@ class FailedProbeZeroThreshold(Rule):
             fallback = _accepted_failure_fallback(context, branch)
             if fallback is None:
                 continue
-            if is_suppressed(context.source_lines, fallback.lineno, self.code):
+            if context.suppressions.is_suppressed(fallback.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

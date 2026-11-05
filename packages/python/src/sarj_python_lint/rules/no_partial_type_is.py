@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import executable_body
 from sarj_python_lint.rules._imports import TYPING_SOURCES
@@ -170,7 +169,7 @@ class NoPartialTypeIs(Rule):
             if not isinstance(node, ast.FunctionDef) or node.name not in unique_names:
                 continue
             statement = _partial_return(node, context)
-            if statement is None or is_suppressed(context.source_lines, statement.lineno, self.code):
+            if statement is None or context.suppressions.is_suppressed(statement.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

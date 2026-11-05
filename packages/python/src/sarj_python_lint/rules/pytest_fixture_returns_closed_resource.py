@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import fixture_declarations
@@ -118,7 +117,7 @@ class PytestFixtureReturnsClosedResource(Rule):
                 provenance.scope(returned) not in fixtures
                 or not isinstance(returned.value, ast.Name)
                 or not _returns_managed_resource(returned.value, returned, provenance)
-                or is_suppressed(context.source_lines, returned.lineno, self.code)
+                or context.suppressions.is_suppressed(returned.lineno, self.code)
             ):
                 continue
             findings.append(

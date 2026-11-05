@@ -11,7 +11,7 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file
+from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file, iter_source_files
 import typer
 
 from sarj_iac_lint import __version__
@@ -311,10 +311,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _iter_directory_inputs(p: Path) -> Iterator[Path]:
-    for child in p.rglob("*"):
-        if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
-            continue
-        if any(part in SKIP_DIR_NAMES for part in child.parts):
+    for child in iter_source_files(p, suffixes=_SCANNED_SUFFIXES, skip_dirs=SKIP_DIR_NAMES):
+        if child.suffix not in _SCANNED_SUFFIXES:
             continue
         try:
             if child.stat().st_size > _MAX_FILE_BYTES:

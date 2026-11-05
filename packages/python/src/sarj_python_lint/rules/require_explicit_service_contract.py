@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
@@ -205,7 +204,7 @@ class RequireExplicitServiceContract(ProjectRule):
             if _contract_status(node, operations, classes, context) is not False:
                 continue
             start = min((decorator.lineno for decorator in node.decorator_list), default=node.lineno)
-            if any(is_suppressed(context.source_lines, line, self.code) for line in range(start, node.lineno + 1)):
+            if any(context.suppressions.is_suppressed(line, self.code) for line in range(start, node.lineno + 1)):
                 continue
             diagnostics.append(
                 Diagnostic(

@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, bit_or_members, scope_bound_names
 from sarj_python_lint.rules._paths import is_test_path
@@ -128,7 +127,7 @@ def _model_diagnostics(model: ast.ClassDef, context: PythonFileContext, code: st
     findings: list[Diagnostic] = []
     for prefix, group in _field_groups(fields, _required_names(model, fields, context)):
         anchor = group[0]
-        if is_suppressed(context.source_lines, anchor.lineno, code):
+        if context.suppressions.is_suppressed(anchor.lineno, code):
             continue
         names = ", ".join(f"`{field.target.id}`" for field in group if isinstance(field.target, ast.Name))
         findings.append(

@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._contract_annotation import annotation_reference
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
@@ -112,7 +111,7 @@ class RequirePublicDependencyContract(ProjectRule):
             return None
         unit = project.unit(context.path)
         reference = annotation_reference(parameter.annotation)
-        if unit is None or reference is None or is_suppressed(context.source_lines, parameter.lineno, self.code):
+        if unit is None or reference is None or context.suppressions.is_suppressed(parameter.lineno, self.code):
             return None
         implementation = project.class_for(unit, reference)
         if implementation is None:

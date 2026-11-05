@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -81,7 +80,7 @@ class SubprocessKillWithoutReap(Rule):
         findings: list[Diagnostic] = []
         for handler in context.nodes(ast.ExceptHandler):
             call = _unreaped_kill(context, provenance, handler)
-            if call is None or is_suppressed(context.source_lines, call.lineno, self.code):
+            if call is None or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

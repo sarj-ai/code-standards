@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 
@@ -85,7 +84,7 @@ class PreferRuntimeValidation(Rule):
             for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
             if function.returns is not None
             and _type_guard(function.returns, facts, at=function.returns)
-            and not is_suppressed(context.source_lines, function.returns.lineno, self.code)
+            and not context.suppressions.is_suppressed(function.returns.lineno, self.code)
         ]
 
 
