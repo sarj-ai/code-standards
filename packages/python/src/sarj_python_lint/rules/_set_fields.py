@@ -13,14 +13,17 @@ if TYPE_CHECKING:
 
 
 def declared_set_fields(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, project: ProjectIndexSet, context: PythonFileContext
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    project: ProjectIndexSet,
+    context: PythonFileContext,
+    rebound_names: frozenset[str],
 ) -> set[str]:
     changed = _changed_roots(function)
     fields: set[str] = set()
     for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs):
         if argument.arg in changed or argument.annotation is None:
             continue
-        summary = _field_class(argument.annotation, project, context)
+        summary = _field_class(argument.annotation, project, context, rebound_names)
         if summary is None:
             continue
         owner = project.source_unit(summary.symbol.module)
@@ -32,13 +35,13 @@ def declared_set_fields(
     return fields
 
 
-def _field_class(annotation: ast.expr, project: ProjectIndexSet, context: PythonFileContext) -> ClassSummary | None:
+def _field_class(
+    annotation: ast.expr, project: ProjectIndexSet, context: PythonFileContext, rebound_names: frozenset[str]
+) -> ClassSummary | None:
     root = annotation
     while isinstance(root, ast.Attribute):
         root = root.value
-    if not isinstance(root, ast.Name) or any(
-        node.id == root.id and isinstance(node.ctx, (ast.Store, ast.Del)) for node in context.nodes(ast.Name)
-    ):
+    if not isinstance(root, ast.Name) or root.id in rebound_names:
         return None
     qualified = context.module_imports.resolved_qualified_name(annotation)
     unit = project.unit(context.path)

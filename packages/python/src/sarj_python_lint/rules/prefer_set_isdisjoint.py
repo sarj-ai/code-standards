@@ -128,8 +128,11 @@ class PreferSetIsdisjoint(ProjectRule):
         if tree is None:
             return []
         project = context.session.project or ProjectIndexSet.single(path, source)
+        rebound_names = frozenset(
+            node.id for node in context.nodes(ast.Name) if isinstance(node.ctx, (ast.Store, ast.Del))
+        )
         fields = {
-            node: declared_set_fields(node, project, context)
+            node: declared_set_fields(node, project, context, rebound_names)
             for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
         }
         shadowed = _shadowed_builtins(tree, node_index=context.node_index)

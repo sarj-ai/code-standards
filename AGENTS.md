@@ -24,6 +24,11 @@ targets, and Git hooks. Verification stops after a failed phase; `make -k` keeps
 going within that phase. Later phases reuse the TypeScript build from the
 successful first phase.
 
+When local admission is delayed, `Native make verify` can run the same target
+on the candidate branch. Reuse a running or successful exact-head workflow run,
+or dispatch `native-verify.yml` on that branch. A complete successful exact-head
+workflow job satisfies `make verify` before review.
+
 For release recovery, never retarget an immutable package tag. If publishable
 files changed after a tagged version, bump the affected package and exact
 sibling pins, then require a separate non-publishable merge with normal
