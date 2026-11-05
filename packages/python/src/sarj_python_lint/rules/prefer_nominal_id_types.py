@@ -412,7 +412,7 @@ class PreferNominalIdTypes(Rule):
                 severity=Severity.WARNING,
             )
             for role in raw_roles
-            if not is_suppressed(context.source_lines, role.annotation.lineno, self.code)
+            if not context.suppressions.is_suppressed(role.annotation.lineno, self.code)
         ]
 
     def _expanded_facts(self, context: PythonFileContext, tree: ast.Module, imports: ImportIndex) -> _TypeFacts:

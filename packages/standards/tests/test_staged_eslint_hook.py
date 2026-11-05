@@ -460,3 +460,52 @@ def test_installed_own_hook_builds_a_file_dependency_before_docs_only_native_esl
     assert source.read_bytes() == postimage
     assert _git(tmp_path, "ls-files", "--stage", "-z") == staged
     assert _git(tmp_path, "rev-parse", "HEAD") == head
+
+
+@pytest.mark.parametrize("selected", [False, True], ids=("cli", "selected-runner"))
+@pytest.mark.parametrize(
+    ("source_text", "expected"),
+    [
+        ("console.log('old');\n", 0),
+        ("console.log('old'); console.log('new');\n", 1),
+        ("console.log('old'); alert('new');\n", 1),
+        ("export const VALUE = 1;\n", 2),
+    ],
+)
+def test_configured_root_suppression_preserves_ratchet(
+    tmp_path: Path, *, selected: bool, source_text: str, expected: int
+) -> None:
+    from sarj_standards.libs.linting import external  # ruff: ignore[import-outside-top-level] -- native regression exercises both invocation adapters.
+
+    project = tmp_path / "apps/web"
+    project.mkdir(parents=True)
+    (tmp_path / "node_modules").symlink_to(_TYPESCRIPT / "node_modules", target_is_directory=True)
+    (project / "package.json").write_text(
+        '{"scripts":{"lint":"cd ../.. && node_modules/.bin/eslint --suppressions-location tooling/debt.json ."}}',
+        encoding="utf-8",
+    )
+    (project / "eslint.config.mjs").write_text(
+        "export default [{rules:{'no-console':'error','no-alert':'error'}}];\n", encoding="utf-8"
+    )
+    (tmp_path / "tooling").mkdir()
+    ledger = tmp_path / "tooling/debt.json"
+    debt = '{"apps/web/source.js":{"no-console":{"count":1}}}'
+    ledger.write_text(debt, encoding="utf-8")
+    source = project / "source.js"
+    source.write_text(source_text, encoding="utf-8")
+    (command,) = lifecycle.select_eslint_commands(tmp_path, [str(source)]).commands
+    assert command.cwd == tmp_path
+    if selected:
+        argv = external._selected_eslint_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- regression covers actual selected runner invocation.
+            command, frozenset(), upstream_rules=external.UpstreamESLintRules(frozenset({"no-console", "no-alert"}))
+        )
+    else:
+        arguments = external._eslint_json_argv(command.argv)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- regression covers actual CLI invocation.
+        argv = (
+            "node",
+            str(_TYPESCRIPT / "node_modules/eslint/bin/eslint.js"),
+            *arguments[arguments.index("eslint") + 1 :],
+        )
+    result = subprocess.run(argv, cwd=command.cwd, capture_output=True, text=True, check=False, timeout=30)
+    assert result.returncode == expected, result.stdout + result.stderr
+    assert ledger.read_text(encoding="utf-8") == debt

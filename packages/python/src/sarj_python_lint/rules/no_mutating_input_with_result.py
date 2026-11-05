@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._test_composition import direct_nodes
 
@@ -78,7 +77,7 @@ class NoMutatingInputWithResult(ProjectRule):
             if not _returns_result(function, context):
                 continue
             for target in _attribute_writes(function):
-                if target in owned or is_suppressed(context.source_lines, target.lineno, self.code):
+                if target in owned or context.suppressions.is_suppressed(target.lineno, self.code):
                     continue
                 name = _input_owner(target.value, function, context)
                 if name is not None:

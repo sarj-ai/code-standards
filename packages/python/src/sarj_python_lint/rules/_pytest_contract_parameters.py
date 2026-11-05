@@ -4,7 +4,7 @@ import ast
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, Severity
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._closed_helpers import call_matches
 from sarj_python_lint.rules._declared_contracts import DeclaredClass, DeclaredContracts, ordinary_pytest_test
@@ -70,8 +70,8 @@ class FixtureContractParameters:
             for parameter in parameters:
                 if (
                     parameter.annotation is None
-                    or is_suppressed(self.context.source_lines, function.lineno, code)
-                    or is_suppressed(self.context.source_lines, parameter.lineno, code)
+                    or self.context.suppressions.is_suppressed(function.lineno, code)
+                    or self.context.suppressions.is_suppressed(parameter.lineno, code)
                 ):
                     continue
                 implementation = self._instance(parameter.annotation, self.contracts.unit)

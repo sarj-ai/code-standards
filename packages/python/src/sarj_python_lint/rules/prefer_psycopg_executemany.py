@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._store_writes import depends_on_target, discarded_call, sql_query
@@ -110,8 +109,8 @@ class PreferPsycopgExecutemany(Rule):
                 or query.find(exp.Placeholder) is None
             ):
                 continue
-            if not depends_on_target(call.args[1], loop.target) or is_suppressed(
-                context.source_lines, call.lineno, self.code
+            if not depends_on_target(call.args[1], loop.target) or context.suppressions.is_suppressed(
+                call.lineno, self.code
             ):
                 continue
             findings.append(

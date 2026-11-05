@@ -13,7 +13,6 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path
@@ -82,7 +81,6 @@ class RequirePydanticForStructuredPayload(Rule):
         index = context.fastapi
         imports = context.module_imports
         structured_fields = _structured_record_fields(tree, imports)
-        lines = context.source_lines
         findings: list[Diagnostic] = []
         for function in (
             node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -95,7 +93,7 @@ class RequirePydanticForStructuredPayload(Rule):
             }
             raw_names = _nested_payload_bindings(function, parameters, structured_fields)
             for access in _fixed_key_accesses(function, raw_names):
-                if is_suppressed(lines, access.lineno, self.code):
+                if context.suppressions.is_suppressed(access.lineno, self.code):
                     continue
                 findings.append(
                     Diagnostic(

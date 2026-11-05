@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._paths import is_test_path
@@ -143,7 +142,7 @@ class PreferRegexFullmatch(Rule):
         findings: list[Diagnostic] = []
         for guard in context.nodes(ast.If, ast.Return):
             call = _validation_call(guard, context, bindings)
-            if call is None or is_suppressed(context.source_lines, call.lineno, self.code):
+            if call is None or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             pattern = _match_pattern(context, call, bindings, mutated, compiled)
             if pattern is None or not _whole_value_pattern(pattern):

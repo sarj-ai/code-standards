@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._sql import sql_string_value
 from sarj_python_lint.rules._store_sql import store_queries
@@ -140,7 +139,7 @@ class NoRedundantSqlAlias(Rule):
                 severity=Severity.WARNING,
             )
             for node, redundant in candidates.items()
-            if redundant and not is_suppressed(context.source_lines, node.lineno, self.code)
+            if redundant and not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
 
 

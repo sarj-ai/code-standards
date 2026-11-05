@@ -20,7 +20,12 @@ type RenderFunction =
   | TSESTree.FunctionDeclaration
   | TSESTree.FunctionExpression;
 type SourceCode = Readonly<TypeScriptSourceCode>;
+type ParameterBindings = ReadonlySet<TSESLint.Scope.Variable>;
 const VIEWS = new WeakMap<RenderFunction, boolean>();
+const PARAMETER_BINDINGS = new WeakMap<
+  SourceCode,
+  WeakMap<RenderFunction, ParameterBindings>
+>();
 
 export function renderFunction(node: TSESTree.Node): RenderFunction | null {
   let parent = node.parent;
@@ -41,7 +46,24 @@ export function renderFunction(node: TSESTree.Node): RenderFunction | null {
 export function firstParameterBindings(
   source: SourceCode,
   node: RenderFunction,
-): ReadonlySet<TSESLint.Scope.Variable> {
+): ParameterBindings {
+  let functions = PARAMETER_BINDINGS.get(source);
+  if (functions === undefined) {
+    functions = new WeakMap<RenderFunction, ParameterBindings>();
+    PARAMETER_BINDINGS.set(source, functions);
+  }
+  let bindings = functions.get(node);
+  if (bindings === undefined) {
+    bindings = collectParameterBindings(source, node);
+    functions.set(node, bindings);
+  }
+  return bindings;
+}
+
+function collectParameterBindings(
+  source: SourceCode,
+  node: RenderFunction,
+): ParameterBindings {
   const parameter = node.params[0];
   const identifiers: TSESTree.Identifier[] = [];
   if (parameter?.type === AST_NODE_TYPES.Identifier)

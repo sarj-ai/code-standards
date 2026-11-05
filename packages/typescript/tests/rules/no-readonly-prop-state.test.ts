@@ -21,6 +21,11 @@ const CASE = PREFIX + VIEW;
 
 TESTER.run("no-readonly-prop-state", rule, {
   valid: [
+    { name: "callable primitive intersections remain opaque", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: string & (() => string) }") },
+    { name: "structural object props can execute a callable initializer", filename: "probe.tsx", code: PREFIX + "const initial = Object.assign(() => ({ label: 'computed' }), { label: 'descriptor' }); export function View({ status }: { status: { label: string } }) { const [value] = useState(status); return <p>{value.label}</p>; } export const Example = <View status={initial} />;" },
+    { name: "void can hide ignored callable return values", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: void }").replace("{value}</p>", "{String(value)}</p>") },
+    { name: "eager array props have structural object types", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: string[] }") },
+    { name: "module-level state belongs to hook-placement checks", filename: "probe.tsx", code: PREFIX + "const status = 'ready'; const [value] = useState(status); export const View = () => <p>{value}</p>;" },
     { name: "legacy Function can execute initialization without call signatures", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: Function }") },
     { name: "legacy CallableFunction can execute initialization", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: CallableFunction }") },
     { name: "legacy NewableFunction remains unsupported", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: NewableFunction }") },
@@ -56,6 +61,10 @@ TESTER.run("no-readonly-prop-state", rule, {
     { name: "test source", filename: "probe.test.tsx", code: CASE },
   ],
   invalid: [
+    { name: "primitive brands retain eager prop coverage", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: string & { readonly brand: 'status' } }"), errors: [{ messageId: "readonlyPropState" }] },
+    { name: "primitive union retains eager prop coverage", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: string | number | null }"), errors: [{ messageId: "readonlyPropState" }] },
+    { name: "bigint retains eager prop coverage", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: bigint }"), errors: [{ messageId: "readonlyPropState" }] },
+    { name: "explicit lazy return stores an object prop as data", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: string[] }").replace("useState(status)", "useState(() => status)"), errors: [{ messageId: "readonlyPropState" }] },
     { name: "an explicit lazy callback stores a function prop as data", filename: "probe.tsx", code: CASE.replace("{ status: string }", "{ status: () => string }").replace("useState(status)", "useState(() => status)").replace("<p>{value}</p>", "<button onClick={value}>Show</button>"), errors: [{ messageId: "readonlyPropState" }] },
     { name: "unobserved updater", filename: "probe.tsx", code: CASE, errors: [{ messageId: "readonlyPropState" }] },
     { name: "omitted updater", filename: "probe.tsx", code: CASE.replace("[value, setValue]", "[value]"), errors: [{ messageId: "readonlyPropState" }] },

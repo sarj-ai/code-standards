@@ -3829,6 +3829,11 @@ def _selected_eslint_argv(
             "upstreamAdvisories": sorted(upstream_rules.ids) if upstream_rules.warning_only else [],
             "config": config,
             "passOnUnpruned": pass_on_unpruned_suppressions,
+            "suppressionsLocation": (
+                command.argv[command.argv.index("--suppressions-location") + 1]
+                if "--suppressions-location" in command.argv
+                else None
+            ),
             **({"full": True} if full else {}),
         },
         separators=(",", ":"),

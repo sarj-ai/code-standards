@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._async_lifecycle import AsyncApiProof, method_receiver
 
@@ -100,7 +99,7 @@ def _async_process_diagnostics(context: PythonFileContext, code: str) -> list[Di
             continue
         binding = candidate.binding
         call = candidate.call
-        if binding in reported or is_suppressed(context.source_lines, call.lineno, code):
+        if binding in reported or context.suppressions.is_suppressed(call.lineno, code):
             continue
         reported.add(binding)
         findings.append(

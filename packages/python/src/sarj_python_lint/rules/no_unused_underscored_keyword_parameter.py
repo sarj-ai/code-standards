@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._imports import ImportIndex
@@ -121,7 +120,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         provenance: ResourceProvenance | None = None
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             for argument in unused_keyword_parameters(context, function):
-                if is_suppressed(context.source_lines, argument.lineno, self.code):
+                if context.suppressions.is_suppressed(argument.lineno, self.code):
                     continue
                 provenance = provenance or context.resource_provenance
                 findings.append(

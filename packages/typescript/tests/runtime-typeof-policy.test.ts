@@ -7,10 +7,13 @@ import { createConfig } from "../../standards/src/sarj_standards/configs/eslint.
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/runs");
 const CONFIG_FACTORY = createConfig as unknown as (options: { projectService: boolean }) => Linter.Config[];
-const CONFIG = CONFIG_FACTORY({ projectService: false }).map((entry) => ({
-  ...entry,
-  rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([name]) => name === "no-restricted-syntax" || name === "@sarj/no-runtime-typeof")),
-}));
+function policyConfig(names: readonly string[]): Linter.Config[] {
+  return CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+    ...entry,
+    rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([name]) => names.includes(name))),
+  }));
+}
+const CONFIG = policyConfig(["no-restricted-syntax", "@sarj/no-runtime-typeof"]);
 const ESLINT = new ESLint({ cwd: FIXTURE_DIR, overrideConfigFile: true, overrideConfig: CONFIG });
 
 async function messages(source: string): Promise<Linter.LintMessage[]> {
@@ -64,5 +67,37 @@ describe("runtime typeof policy", () => {
 
   it("keeps an exact rule suppression effective in the shipped preset", async () => {
     expect(await messages('// eslint-disable-next-line @sarj/no-runtime-typeof -- The raw parser examines representation before schema validation.\nfunction inspect(value: unknown) { return typeof value === "object"; }')).toEqual([]);
+  });
+
+  it.each([
+    ['function missing(value: unknown) { return typeof value === "undefined"; }', "value === undefined"],
+    ['function missing() { return typeof arguments === "undefined"; }', "arguments === undefined"],
+  ])("applies the managed undefined-comparison fix and converges: %s", async (source, comparison) => {
+    const fixer = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: policyConfig(["@sarj/no-runtime-typeof", "unicorn/no-typeof-undefined"]),
+      fix: true,
+    });
+    const [first] = await fixer.lintText(source, { filePath: "runtime-types.ts" });
+    expect(first?.messages).toEqual([]);
+    const output = first?.output ?? source;
+    expect(output).toContain(comparison);
+    const [second] = await fixer.lintText(output, { filePath: "runtime-types.ts" });
+    expect(second?.messages).toEqual([]);
+    expect(second?.output ?? output).toBe(output);
+  });
+
+  it("preserves a global probe in a parameter initializer with the managed fixer", async () => {
+    const source = 'function missing(value = typeof Map === "undefined") { const Map = 1; return value; }';
+    const fixer = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: policyConfig(["@sarj/no-runtime-typeof", "unicorn/no-typeof-undefined"]),
+      fix: true,
+    });
+    const [result] = await fixer.lintText(source, { filePath: "runtime-types.js" });
+    expect(result?.messages).toEqual([]);
+    expect(result?.output ?? source).toBe(source);
   });
 });

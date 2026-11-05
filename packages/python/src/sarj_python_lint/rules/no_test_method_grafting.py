@@ -13,7 +13,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_position import ast_position
 from sarj_python_lint.rules._paths import is_test_path
@@ -127,7 +126,7 @@ class NoTestMethodGrafting(ProjectRule):
         diagnostics: list[Diagnostic] = []
         for target, method in context.test_provenance.method_grafts():
             position = ast_position(target, missing=1)
-            if is_suppressed(context.source_lines, position.line, self.code):
+            if context.suppressions.is_suppressed(position.line, self.code):
                 continue
             diagnostics.append(
                 Diagnostic(

@@ -21,7 +21,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace, stable_class
 from sarj_python_lint.rules._paths import is_generated
@@ -144,7 +143,7 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
             for handler in statement.handlers:
                 safe = _safe_types(handler.type, context, provenance, project, unit, seen=set())
                 if previous is not None and safe and _same_translation(previous, handler, comments):
-                    if not reported and not is_suppressed(context.source_lines, handler.lineno, self.code):
+                    if not reported and not context.suppressions.is_suppressed(handler.lineno, self.code):
                         findings.append(
                             Diagnostic(
                                 path=context.path,

@@ -13,7 +13,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -130,5 +129,5 @@ class NoInputModelMutation(ProjectRule):
                 severity=Severity.ERROR,
             )
             for node in (mutation.node for mutation in context.copy_on_write.mutations if not mutation.before_validator)
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]

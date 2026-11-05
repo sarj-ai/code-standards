@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._type_guard_symbols import (
@@ -99,7 +98,7 @@ class NoShallowContainerTypeGuard(Rule):
             if not isinstance(function, ast.FunctionDef) or function.name not in unique_names:
                 continue
             statement = _shallow_guard(function, context)
-            if statement is None or is_suppressed(context.source_lines, statement.lineno, self.code):
+            if statement is None or context.suppressions.is_suppressed(statement.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

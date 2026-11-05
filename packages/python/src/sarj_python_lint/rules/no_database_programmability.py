@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
 
@@ -83,7 +82,7 @@ class NoDatabaseProgrammability(Rule):
             value = _literal_sql(query) if query is not None else None
             if value is None or _DATABASE_BEHAVIOR.search(strip_sql_noise(value)) is None:
                 continue
-            if is_suppressed(context.source_lines, node.lineno, self.code):
+            if context.suppressions.is_suppressed(node.lineno, self.code):
                 continue
             diagnostics.append(
                 Diagnostic(

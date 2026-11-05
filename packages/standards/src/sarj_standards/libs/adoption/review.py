@@ -8,7 +8,7 @@ _TEST_PATTERNS = (
     "*_test.py",
     "conftest.py",
     "**/tests/**",
-    "**/test/**",
+    "/test/**",
     "**/__tests__/**",
     "**/__snapshots__/**",
     *(

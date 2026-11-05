@@ -620,6 +620,8 @@ def test_report_factory_preserves_order_while_linting_normalizes(tmp_path: Path)
 
     assert raw.tools is tools
     assert raw.diagnostics == (last, first)
+    assert tuple(raw.iter_diagnostics()) == (last, first)
+    assert tuple(raw.iter_diagnostics()) == raw.diagnostics
     assert all(item.fingerprint is None for item in raw.diagnostics)
     assert [tool.name for tool in normalized.tools] == ["a", "z"]
     assert [item.code for item in normalized.diagnostics] == ["A", "Z"]

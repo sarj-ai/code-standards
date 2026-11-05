@@ -20,7 +20,7 @@ export const NO_RUNTIME_TYPEOF_DOCUMENTATION = {
   autofix: "none",
   limitations: [
     "This is an explicit design policy, not a claim that runtime typeof is invalid JavaScript. It checks runtime UnaryExpression nodes in authored JavaScript and TypeScript, including type predicates and test implementations; TypeScript type queries, strings and comments remain valid.",
-    "Equality or inequality against the literal string undefined is allowed only for an identifier without a local value binding, preserving safe probes for absent globals. Erased aliases, interfaces, type-only namespaces, type parameters and expression wrappers do not create runtime bindings. Bound parameters, imports, local values, member expressions and dynamic comparisons remain checked.",
+    "Equality or inequality against the literal string undefined is allowed only for an identifier without a local value binding, preserving safe probes for absent globals. Erased aliases, interfaces, type-only namespaces, type parameters and expression wrappers do not create runtime bindings. Parameter initializers do not see body-only declarations. Bound parameters, implicit function arguments, imports, local values, member expressions and dynamic comparisons remain checked.",
     "Generated and vendored sources follow shared exclusions. There is no name-based parser exemption or automatic rewrite: inserting a schema, changing a union or moving a transformation can change accepted input, errors and public contracts.",
   ],
   references: [
@@ -136,7 +136,7 @@ export default createRule<[], "runtimeTypeof">({
           ["===", "!==", "==", "!="].includes(parent.operator)) {
           const other = unwrapExpression(parent.left === probe ? parent.right : parent.left);
           if (other.type === AST_NODE_TYPES.Literal && other.value === "undefined" &&
-            !hasLocalValueBinding(context.sourceCode, argument)) return;
+            !hasLocalValueBinding(context.sourceCode, argument, context.languageOptions.sourceType)) return;
         }
         context.report({ node, messageId: "runtimeTypeof" });
       },

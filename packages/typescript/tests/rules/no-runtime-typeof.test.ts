@@ -18,6 +18,15 @@ const ERROR = { messageId: "runtimeTypeof" } as const;
 
 RULE_TESTER.run("no-runtime-typeof", rule, {
   valid: [
+    { name: "preserves an unwrapped script arguments probe", filename: "src/probe.js", languageOptions: { sourceType: "script" }, code: 'typeof arguments === "undefined";' },
+    { name: "uses declared script mode over the CommonJS filename", filename: "src/probe.cjs", languageOptions: { sourceType: "script" }, code: 'typeof arguments === "undefined";' },
+    { name: "preserves absent module arguments", filename: "src/probe.js", code: 'typeof arguments === "undefined";' },
+    { name: "preserves absent arguments in a module arrow", filename: "src/probe.js", code: 'const probe = () => typeof arguments === "undefined";' },
+    { name: "ignores body-only declarations in parameter initializers", filename: "src/probe.js", code: 'function probe(value = typeof Map === "undefined") { const Map = 1; return value; }' },
+    { name: "ignores body-only declarations in nested parameter evaluation", filename: "src/probe.js", code: 'function probe(value = (() => typeof Map === "undefined")()) { const Map = 1; return value; }' },
+    { name: "ignores arrow body declarations in parameter initializers", filename: "src/probe.js", code: 'const probe = (value = typeof Map === "undefined") => { const Map = 1; return value; };' },
+    { name: "ignores expression body declarations in parameter initializers", filename: "src/probe.js", code: 'const probe = function (value = typeof Map === "undefined") { const Map = 1; return value; };' },
+    { name: "does not let an erased parameter expose a body value", code: 'function probe<Map>(value = typeof Map === "undefined") { const Map = 1; return value; }' },
     { name: "preserves type-only queries", code: "declare const source: { id: string }; type Value = typeof source;" },
     { name: "preserves imported type-only queries", code: "type Module = typeof import('./source');" },
     { name: "accepts a discriminated contract", code: 'type Value = { kind: "text"; value: string } | { kind: "count"; value: number }; function read(value: Value) { return value.kind === "text" ? value.value : String(value.value); }' },
@@ -42,6 +51,16 @@ RULE_TESTER.run("no-runtime-typeof", rule, {
     { name: "preserves vendored source", filename: "/repo/vendor/client.ts", code: "const kind = typeof value;" },
   ],
   invalid: [
+    { name: "retains implicit function arguments", code: 'function probe() { return typeof arguments === "undefined"; }', errors: [ERROR] },
+    { name: "retains implicit expression arguments", code: 'const probe = function () { return typeof arguments === "undefined"; };', errors: [ERROR] },
+    { name: "retains arguments captured by an arrow", code: 'function probe() { return () => typeof arguments === "undefined"; }', errors: [ERROR] },
+    { name: "retains arguments in a parameter initializer", code: 'function probe(value = typeof arguments === "undefined") { return value; }', errors: [ERROR] },
+    { name: "retains implicit method arguments", code: 'const probe = { read() { return typeof arguments === "undefined"; } };', errors: [ERROR] },
+    { name: "retains implicit CommonJS wrapper arguments", filename: "src/probe.cjs", languageOptions: { sourceType: "commonjs" }, code: 'typeof arguments === "undefined";', errors: [ERROR] },
+    { name: "retains arguments beside an erased declaration", code: 'function probe() { type arguments = number; return typeof arguments === "undefined"; }', errors: [ERROR] },
+    { name: "retains earlier parameter values", filename: "src/probe.js", code: 'function probe(Map = globalThis.Map, value = typeof Map === "undefined") { return value; }', errors: [ERROR] },
+    { name: "retains outer values used in parameter initializers", filename: "src/probe.js", code: 'const Map = 1; function probe(value = typeof Map === "undefined") { const Map = 2; return value; }', errors: [ERROR] },
+    { name: "retains body values inside the body", filename: "src/probe.js", code: 'function probe() { const Map = 1; return typeof Map === "undefined"; }', errors: [ERROR] },
     { name: "rejects ad hoc primitive parsing", code: 'function parse(value: unknown) { return typeof value === "string"; }', output: null, errors: [ERROR] },
     { name: "rejects object probing", code: 'function parse(value: unknown) { return typeof value === "object" && value !== null; }', errors: [ERROR] },
     { name: "rejects function dispatch without an explained exception", code: 'const next = typeof update === "function" ? update(previous) : update;', errors: [ERROR] },

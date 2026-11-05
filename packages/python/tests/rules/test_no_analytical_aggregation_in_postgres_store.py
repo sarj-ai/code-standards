@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_sql_lint.postgres_policy import normalize_postgres_ctas
 import sqlglot
 
 from sarj_python_lint.__main__ import analyze, check_source, main
 from sarj_python_lint.rule_base import Diagnostic, RuleExample, Severity
 from sarj_python_lint.rules._first_party import FirstPartyFacts
 from sarj_python_lint.rules._nominal_project import NominalProjectFacts
-from sarj_python_lint.rules._postgres_ctas import normalize_postgres_ctas
 from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review import (
     ComplexPostgresQueryRequiresArchitectureReview,
 )

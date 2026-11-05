@@ -29,6 +29,11 @@ const RANGE_OPTIONS = Object.entries(TIME_RANGES)
 TESTER.run("prefer-server-data-preparation", rule, {
   valid: [
     { name: "module-level filter and map have no containing render function", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS },
+    ...["null", "undefined", "false", "0", "{}", "'inactive'", "null as unknown as (() => void)"].map(handler => ({ name: `noncallable handler ${handler} does not establish interaction`, filename: "probe.tsx", code: CASE.replace("event => console.log(event.currentTarget.value)", handler) })),
+    { name: "literal event attributes do not establish interaction", filename: "probe.tsx", code: CASE.replace("onChange={event => console.log(event.currentTarget.value)}", "onChange='inactive'") },
+    { name: "null handler bindings do not establish interaction", filename: "probe.tsx", code: CASE.replace("const languages", "const handler: null = null; const languages").replace("event => console.log(event.currentTarget.value)", "handler") },
+    { name: "an Array assertion cannot disguise a custom collection", filename: "probe.tsx", code: CASE.replace("readonly { language: string; enabled: boolean }[]", "{ map: (project: (row: { language: string }) => string) => string[] }").replace("rows.map", "(rows as unknown as { language: string }[]).map") },
+    { name: "module-level projection has no owning render function", filename: "probe.tsx", code: CLIENT + "const rows: readonly { language: string }[] = []; const languages = rows.map(row => row.language); export const View = () => <select onChange={() => {}}>{languages.map(language => <option>{language}</option>)}</select>;" },
     { name: "raw records are needed by editing logic", filename: "probe.tsx", code: CASE.replace("return <select", "const edit = () => updateRows(rows); return <select") },
     { name: "a lookup still needs the raw records", filename: "probe.tsx", code: CASE.replace("return <select", "const active = rows.find(row => row.enabled); return <select") },
     { name: "raw collection forwarding", filename: "probe.tsx", code: CASE.replace("return <select", "sendRows(rows); return <select") },
@@ -67,6 +72,9 @@ TESTER.run("prefer-server-data-preparation", rule, {
   ],
   invalid: [
     { name: "module-level options do not hide a component projection", filename: "probe.tsx", code: CLIENT + MODULE_OPTIONS + VIEW, errors: [{ messageId: "prepareData" }] },
+    { name: "nullable native arrays retain projection coverage", filename: "probe.tsx", code: CASE.replace("readonly { language: string; enabled: boolean }[]", "readonly { language: string; enabled: boolean }[] | null").replace("rows.map", "rows!.map"), errors: [{ messageId: "prepareData" }] },
+    { name: "optional callable handlers establish interaction", filename: "probe.tsx", code: CASE.replace("{ rows }: { rows:", "{ rows, handler }: { handler?: () => void; rows:").replace("event => console.log(event.currentTarget.value)", "handler"), errors: [{ messageId: "prepareData" }] },
+    { name: "cached input checks preserve separate preparation findings", filename: "probe.tsx", code: CASE.replace("return <select", "const enabled = rows.filter(row => row.enabled); return <select").replace("<select onChange", "<select data-count={enabled.length} onChange"), errors: [{ messageId: "prepareData" }, { messageId: "prepareData" }] },
     { name: "a second field-only display loop preserves preparation", filename: "probe.tsx", code: CASE.replace("return <select", "const views = rows.map(row => <option key={row.language}>{row.language}</option>); return <select"), errors: [{ messageId: "prepareData" }] },
     { name: "state makes an otherwise custom view interactive", filename: "probe.tsx", code: CASE.replace(CLIENT, CLIENT + "import { useState } from 'react'; ").replace("const languages", "const [open, setOpen] = useState(false); const languages").replace("<select onChange={event => console.log(event.currentTarget.value)}>", "<CustomSelect open={open} onOpenChange={setOpen}>").replace("</select>", "</CustomSelect>"), errors: [{ messageId: "prepareData" }] },
     { name: "saved language projection", filename: "probe.tsx", code: CASE, errors: [{ messageId: "prepareData" }] },

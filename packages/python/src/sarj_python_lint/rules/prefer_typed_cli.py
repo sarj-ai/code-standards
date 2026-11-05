@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._test_composition import call_arguments
@@ -122,7 +121,7 @@ class PreferTypedCli(Rule):
                 severity=Severity.ERROR,
             )
             for node in sorted(nodes, key=lambda item: (item.lineno, item.col_offset))
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
 
 

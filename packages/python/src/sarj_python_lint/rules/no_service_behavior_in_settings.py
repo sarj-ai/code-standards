@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -152,7 +151,6 @@ class NoServiceBehaviorInSettings(Rule):
         tree = context.tree
         if tree is None:
             return []
-        source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
         for node in tree.body:
             if not isinstance(node, ast.ClassDef) or _DATA_NAME_RE.search(node.name) is None:
@@ -163,7 +161,7 @@ class NoServiceBehaviorInSettings(Rule):
                 for method in _methods(node)
                 if _is_behavioral_method(method) and _calls_collaborator(method, collaborator_fields)
             ]
-            if not behavioral_methods or is_suppressed(source_lines, node.lineno, self.code):
+            if not behavioral_methods or context.suppressions.is_suppressed(node.lineno, self.code):
                 continue
             methods = ", ".join(f"`{name}`" for name in behavioral_methods)
             diagnostics.append(

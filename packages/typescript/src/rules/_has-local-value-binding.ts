@@ -1,6 +1,7 @@
 /** @fileoverview _has-local-value-binding — preserve runtime bindings across erased type declarations. */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { Linter } from "eslint";
 
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 
@@ -8,11 +9,22 @@ import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 export function hasLocalValueBinding(
   source: Readonly<TypeScriptSourceCode>,
   identifier: TSESTree.Identifier,
+  sourceType: Linter.SourceType = source.ast.sourceType,
 ): boolean {
+  // Some parsers flatten the CommonJS wrapper when building their scope tree.
+  if (identifier.name === "arguments" && sourceType === "commonjs") return true;
   let scope: TSESLint.Scope.Scope | null = source.getScope(identifier);
   while (scope !== null) {
     const variable = scope.set.get(identifier.name);
-    if (variable?.defs.some(definition => definition.type !== "Type" &&
+    // Ordinary functions own arguments even when there is no declaration node.
+    if (variable !== undefined && identifier.name === "arguments" &&
+      scope.type === "function" && scope.block.type !== AST_NODE_TYPES.ArrowFunctionExpression) return true;
+    // Parameter initializers cannot see declarations belonging to the body.
+    const bodyStart = scope.type === "function" && scope.block.type !== AST_NODE_TYPES.Program
+      ? scope.block.body?.range[0] : undefined;
+    if (variable?.defs.some(definition =>
+      (bodyStart === undefined || identifier.range[0] >= bodyStart || definition.name.range[0] < bodyStart) &&
+      definition.type !== "Type" &&
       (definition.type !== "TSModuleName" || !isTypeOnlyNamespace(definition.node)))) return true;
     scope = scope.upper;
   }

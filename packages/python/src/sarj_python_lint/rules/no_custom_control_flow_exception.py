@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._paths import is_test_path
@@ -136,7 +135,7 @@ class NoCustomControlFlowException(Rule):
         for marker in markers.values():
             if marker not in raised_markers:
                 continue
-            if is_suppressed(context.source_lines, marker.lineno, self.code):
+            if context.suppressions.is_suppressed(marker.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

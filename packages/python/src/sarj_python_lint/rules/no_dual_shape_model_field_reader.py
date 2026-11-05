@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance, import_name_for_binding
@@ -123,7 +122,7 @@ class NoDualShapeModelFieldReader(Rule):
             model = _reader_model(function, context, provenance)
             if model is None or not _fixed_field_calls(function, model, context, provenance):
                 continue
-            if is_suppressed(context.source_lines, function.lineno, self.code):
+            if context.suppressions.is_suppressed(function.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(
