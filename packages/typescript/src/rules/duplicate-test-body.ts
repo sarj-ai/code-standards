@@ -13,7 +13,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -21,6 +21,7 @@ type MessageIds = "duplicateTestBody";
 type Options = readonly [];
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
+const ASSERTION_NAMES: ReadonlySet<string> = new Set(["assert", "expect"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
 const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.FunctionExpression,
@@ -149,7 +150,7 @@ function constAssertionLiteral(node: TSESTree.TSAsExpression): TSESTree.Literal 
 function isAssertionCall(node: TSESTree.CallExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
   const root = rootIdentifier(unwrappedNodeCallee);
-  return root !== null && ["assert", "expect"].includes(runtimeTestFrameworkName(sourceCode, root, "assertion") ?? "");
+  return root !== null && acceptedTestFrameworkName(sourceCode, root, "assertion", ASSERTION_NAMES) !== null;
 }
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
@@ -199,7 +200,22 @@ export interface DuplicateTestBodyCandidate {
   readonly fingerprint: string;
 }
 
+// duplicate-test-body and repeated-static-call-cases fingerprint the same calls; compute each once.
+const CANDIDATE_BY_CALL = new WeakMap<TSESTree.CallExpression, DuplicateTestBodyCandidate | null>();
+
 export function duplicateTestBodyCandidate(
+  call: TSESTree.CallExpression,
+  sourceCode: Readonly<TypeScriptSourceCode>,
+): DuplicateTestBodyCandidate | null {
+  let candidate = CANDIDATE_BY_CALL.get(call);
+  if (candidate === undefined) {
+    candidate = computeDuplicateTestBodyCandidate(call, sourceCode);
+    CANDIDATE_BY_CALL.set(call, candidate);
+  }
+  return candidate;
+}
+
+function computeDuplicateTestBodyCandidate(
   call: TSESTree.CallExpression,
   sourceCode: Readonly<TypeScriptSourceCode>,
 ): DuplicateTestBodyCandidate | null {
@@ -258,8 +274,7 @@ function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TypeScript
 function testCallerSignature(callee: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    const name = runtimeTestFrameworkName(sourceCode, callee, "test");
-    return name !== null && TEST_CALLERS.has(name) ? name : null;
+    return acceptedTestFrameworkName(sourceCode, callee, "test", TEST_CALLERS);
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
     const base = testCallerSignature(callee.object, sourceCode);

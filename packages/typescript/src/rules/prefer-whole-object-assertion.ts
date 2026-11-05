@@ -7,10 +7,11 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName } from "./_test-mock-provenance.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
+const EXPECT_NAME: ReadonlySet<string> = new Set(["expect"]);
 type MessageIds = "combineAssertions" | "assertArrayOnce";
 type Options = readonly [];
 
@@ -322,7 +323,7 @@ export default createRule<Options, MessageIds>({
     }
 
     function isTestExpect(callee: TSESTree.Identifier): boolean {
-      return runtimeTestFrameworkName(sourceCode, callee, "assertion") === "expect";
+      return acceptedTestFrameworkName(sourceCode, callee, "assertion", EXPECT_NAME) !== null;
     }
 
     function isExactLengthAssertion(statement: TSESTree.Statement | undefined, receiver: TSESTree.Expression): boolean {
