@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_names import terminal_name as _terminal_name
 from sarj_python_lint.rules._prose_budget import groups
@@ -166,8 +165,8 @@ def _public_contract_docstring_lines(context: PythonFileContext) -> frozenset[in
             continue
         if (
             _is_public_contract(node, parents)
-            or is_suppressed(context.source_lines, node.lineno, NoTypedDocSections.code)
-            or is_suppressed(context.source_lines, first.end_lineno or first.lineno, NoTypedDocSections.code)
+            or context.suppressions.is_suppressed(node.lineno, NoTypedDocSections.code)
+            or context.suppressions.is_suppressed(first.end_lineno or first.lineno, NoTypedDocSections.code)
         ):
             excluded.add(first.lineno)
     return frozenset(excluded)

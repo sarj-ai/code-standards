@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk as walk_ast
@@ -192,7 +191,6 @@ class NoAnyMappingTypes(Rule):
         ):
             return []
         scope_cache: dict[int, frozenset[str]] = {}
-        lines = context.source_lines
         findings: list[Diagnostic] = []
         seen: set[tuple[int, int]] = set()
         expressions = [
@@ -202,7 +200,7 @@ class NoAnyMappingTypes(Rule):
         for expression, owner in expressions:
             for mapping, location in _unshadowed_any_mappings(expression, owner, semantics, parents, scope_cache):
                 key = (location.lineno, location.col_offset)
-                if key in seen or is_suppressed(lines, location.lineno, self.code):
+                if key in seen or context.suppressions.is_suppressed(location.lineno, self.code):
                     continue
                 seen.add(key)
                 findings.append(

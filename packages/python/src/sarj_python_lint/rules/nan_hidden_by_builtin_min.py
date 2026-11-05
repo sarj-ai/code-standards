@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._numeric_proof import (
     imported_api,
@@ -122,7 +121,7 @@ class NanHiddenByBuiltinMin(Rule):
                 reduced = _unchecked_nan_reduction(context, branch, checked)
                 if reduced is None:
                     continue
-                if is_suppressed(context.source_lines, reduced.lineno, self.code):
+                if context.suppressions.is_suppressed(reduced.lineno, self.code):
                     continue
                 key = reduced.lineno, reduced.col_offset
                 findings[key] = Diagnostic(

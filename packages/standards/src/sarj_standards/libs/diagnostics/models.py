@@ -12,6 +12,7 @@ from sarj_standards.libs.typed_containers import is_object_tuple
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from typing import Self
 
 
@@ -569,7 +570,10 @@ class AnalysisReport:
 
     @property
     def diagnostics(self) -> tuple[Diagnostic, ...]:
-        return tuple(diagnostic for tool in self.tools for diagnostic in tool.diagnostics)
+        return tuple(self.iter_diagnostics())
+
+    def iter_diagnostics(self) -> Iterator[Diagnostic]:
+        return (diagnostic for tool in self.tools for diagnostic in tool.diagnostics)
 
     @property
     def issues(self) -> tuple[ExecutionIssue, ...]:
@@ -594,7 +598,7 @@ class AnalysisReport:
         _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
         rules: dict[str, RuleDescriptor] = {}
         identities: dict[str, tuple[str, str]] = {}
-        for item in self.diagnostics:
+        for item in self.iter_diagnostics():
             identity = (item.source, item.rule_id or item.code)
             key = f"{item.source}:{item.rule_id or item.code}"
             if identities.setdefault(key, identity) != identity:
@@ -613,7 +617,7 @@ class AnalysisReport:
             "exitCode": self.exit_code,
             "rules": [rules[key].as_dict() for key in sorted(rules)],
             "diagnostics": [
-                item.as_dict(include_fix_source_hashes=include_fix_source_hashes) for item in self.diagnostics
+                item.as_dict(include_fix_source_hashes=include_fix_source_hashes) for item in self.iter_diagnostics()
             ],
             "issues": [item.as_dict() for item in self.issues],
             "tools": [item.as_dict() for item in self.tools],

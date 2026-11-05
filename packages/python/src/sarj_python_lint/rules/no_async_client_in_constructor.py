@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._resource_provenance import import_name_for_binding
@@ -104,7 +103,7 @@ class NoAsyncClientInConstructor(Rule):
             for call in context.nodes(ast.Call)
             if _in_constructor(context, call, constructors)
             and _allocates(context, call, follow_factory=True, factories=factories)
-            and not is_suppressed(context.source_lines, call.lineno, self.code)
+            and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 

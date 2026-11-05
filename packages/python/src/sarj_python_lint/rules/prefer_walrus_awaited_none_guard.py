@@ -210,7 +210,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             not candidate.is_not_none and flow != "loaded"
         ):
             return None
-        if any(is_suppressed(context.source_lines, node.lineno, self.code) for node in (candidate.lookup, guard)):
+        if any(context.suppressions.is_suppressed(node.lineno, self.code) for node in (candidate.lookup, guard)):
             return None
         return Diagnostic(
             context.path,

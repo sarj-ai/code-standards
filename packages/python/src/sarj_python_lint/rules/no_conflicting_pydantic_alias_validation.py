@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._pydantic_field_contract import direct_models, has_alias_validation_options, unique_members
 
@@ -96,7 +95,7 @@ class NoConflictingPydanticAliasValidation(Rule):
                 options = _literal_options(value, context)
                 if options is None or not all(_is_false(options.get(flag)) for flag in _FLAGS):
                     continue
-                if is_suppressed(context.source_lines, member.lineno, self.code):
+                if context.suppressions.is_suppressed(member.lineno, self.code):
                     continue
                 diagnostics.append(
                     Diagnostic(

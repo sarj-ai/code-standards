@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -82,7 +81,7 @@ class PreferValidatedUuidComparison(Rule):
                     for value in (left, right)
                 )
                 for left, operator, right in zip(operands, comparison.ops, operands[1:], strict=False)
-            ) or is_suppressed(context.source_lines, comparison.lineno, self.code):
+            ) or context.suppressions.is_suppressed(comparison.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

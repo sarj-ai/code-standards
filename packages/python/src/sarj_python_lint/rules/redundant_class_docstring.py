@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._comments import is_protected, stem
 from sarj_python_lint.rules._docstrings import (
@@ -89,13 +88,12 @@ class RedundantClassDocstring(Rule):
         tree = context.tree
         if tree is None:
             return []
-        source_lines = context.source_lines
         consumed_docstrings = context.consumed_docstring_names
         diags: list[Diagnostic] = []
         for node in context.nodes(ast.ClassDef):
             if node.name not in consumed_docstrings and self._is_ceremony(node):
                 expr = node.body[0]
-                if is_suppressed(source_lines, expr.lineno, self.code):
+                if context.suppressions.is_suppressed(expr.lineno, self.code):
                     continue
                 diags.append(
                     Diagnostic(

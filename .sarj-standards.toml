@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.198.0"
+bundle = "8.199.0"
 rule_profile = "all"
 
 [capabilities]
@@ -327,3 +327,28 @@ path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "contracts"
 selector = "sarj-rule-contracts"
+
+
+[[repository.version_references]]
+path = "pyproject.toml"
+format = "exact-pin"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "packages/python/pyproject.toml"
+format = "exact-pin"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "uv.lock"
+format = "uv-lock"
+version = "sql"
+selector = "sarj-sql-lint"
+
+[[repository.version_references]]
+path = "packages/python/uv.lock"
+format = "uv-lock"
+version = "sql"
+selector = "sarj-sql-lint"

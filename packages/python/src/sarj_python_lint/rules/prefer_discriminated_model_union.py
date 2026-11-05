@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._data_union_discriminator import data_union_diagnostics
 from sarj_python_lint.rules._paths import is_test_path
@@ -210,7 +209,7 @@ class PreferDiscriminatedModelUnion(Rule):
             if not requirements:
                 continue
             first = requirements[0]
-            if is_suppressed(context.source_lines, first.guard.lineno, self.code):
+            if context.suppressions.is_suppressed(first.guard.lineno, self.code):
                 continue
             diagnostics.append(
                 Diagnostic(

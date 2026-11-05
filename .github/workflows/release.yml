@@ -427,10 +427,11 @@ jobs:
           --environment pypi-contracts-release
 
   build-python:
-    needs: [detect, publish-contracts]
+    needs: [detect, publish-contracts, publish-sql]
     if: >-
       always() &&
       (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
+      (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30

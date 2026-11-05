@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._store_writes import known_single_iteration
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import psycopg_execution_calls
@@ -89,7 +88,7 @@ class NoPsycopgExecutionInLoop(Rule):
                 severity=Severity.WARNING,
             )
             for call in unique.values()
-            if not is_suppressed(context.source_lines, call.lineno, self.code)
+            if not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
 
 

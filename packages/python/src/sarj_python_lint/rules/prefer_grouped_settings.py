@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._declared_contracts import SETTINGS_BASES, DeclaredContracts
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -127,7 +126,7 @@ class PreferGroupedSettings(ProjectRule):
         contracts = DeclaredContracts(context)
         findings: list[Diagnostic] = []
         for model in _settings_models(contracts):
-            if not is_suppressed(context.source_lines, model.declaration.lineno, self.code):
+            if not context.suppressions.is_suppressed(model.declaration.lineno, self.code):
                 findings.extend(self._model_diagnostics(context, contracts, model))
         return findings
 
@@ -150,7 +149,7 @@ class PreferGroupedSettings(ProjectRule):
             if _already_grouped(prefix, fields, namespaces, nested_fields=nested_fields):
                 continue
             first = next(iter(members.values()))
-            if is_suppressed(context.source_lines, first.lineno, self.code):
+            if context.suppressions.is_suppressed(first.lineno, self.code):
                 continue
             names = ", ".join(f"`{name}`" for name in members)
             findings.append(

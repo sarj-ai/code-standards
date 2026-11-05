@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -83,9 +82,9 @@ class RequireConstrainedApiInteger(Rule):
             args = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
             defaults = _argument_defaults(node)
             for arg in args:
-                if not _unbounded_request_argument(arg, defaults.get(arg.arg), context) or is_suppressed(
-                    context.source_lines, arg.lineno, self.code
-                ):
+                if not _unbounded_request_argument(
+                    arg, defaults.get(arg.arg), context
+                ) or context.suppressions.is_suppressed(arg.lineno, self.code):
                     continue
                 findings.append(
                     Diagnostic(

@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import (
@@ -168,7 +167,7 @@ class NoInvalidPydanticBypass(Rule):
                 continue
             model, values, construction = target
             diagnostics.extend(_invalid_values(call, model, values, construction=construction, context=context))
-        return [finding for finding in diagnostics if not is_suppressed(context.source_lines, finding.line, self.code)]
+        return [finding for finding in diagnostics if not context.suppressions.is_suppressed(finding.line, self.code)]
 
 
 def _bounded_model_annotations(context: PythonFileContext) -> bool:

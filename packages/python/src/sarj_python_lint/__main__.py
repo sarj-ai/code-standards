@@ -4,14 +4,14 @@ import ast
 from collections import Counter
 from contextlib import suppress
 from dataclasses import dataclass
-from fnmatch import fnmatch
 import json
 from pathlib import Path
+import stat
 import sys
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, NamedTuple
 
-from sarj_rule_contracts import RuleId
+from sarj_rule_contracts import RuleId, iter_source_files
 import typer
 
 from sarj_python_lint import __version__
@@ -19,7 +19,7 @@ from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint._prepared_sources import PreparedSourceInputs
 from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
-from sarj_python_lint.rule_base import Diagnostic, DiagnosticSubject, ProjectRule, Rule, Severity, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, DiagnosticSubject, ProjectRule, Rule, Severity
 from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 
@@ -76,8 +76,8 @@ SKIP_DIR_NAMES = frozenset(
 _MAX_FILE_BYTES = 500_000
 
 
-def _checked_size(path: Path) -> Path:
-    if path.stat().st_size > _MAX_FILE_BYTES:
+def _checked_size(path: Path, size: int) -> Path:
+    if size > _MAX_FILE_BYTES:
         msg = f"selected Python source exceeds {_MAX_FILE_BYTES} bytes: {path}; use an explicit path exclusion for generated source"
         raise ValueError(msg)
     return path
@@ -86,29 +86,23 @@ def _checked_size(path: Path) -> Path:
 def expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
-        if not p.exists():
+        try:
+            metadata = p.stat()
+        except FileNotFoundError as exc:
             msg = f"input does not exist: {p}"
-            raise ValueError(msg)
-        if p.is_file():
-            out.append(_checked_size(p))
+            raise ValueError(msg) from exc
+        if stat.S_ISREG(metadata.st_mode):
+            out.append(_checked_size(p, metadata.st_size))
             continue
         out.extend(_python_files(p))
     return out
 
 
 def _python_files(p: Path) -> list[Path]:
-    if not SKIP_DIR_NAMES.isdisjoint(p.parts):
-        return []
-    out: list[Path] = []
-    for directory, directories, filenames in p.walk():
-        directories[:] = [name for name in directories if name not in SKIP_DIR_NAMES]
-        for name in filenames:
-            if not fnmatch(name, "*.py") and not fnmatch(name, "*.pyi"):
-                continue
-            child = directory / name
-            if child.is_file():
-                out.append(_checked_size(child))
-    return sorted(out)
+    return sorted(
+        _checked_size(child, child.stat().st_size)
+        for child in iter_source_files(p, suffixes=frozenset({".py", ".pyi"}), skip_dirs=SKIP_DIR_NAMES)
+    )
 
 
 def _canonical_rule_ids(rule_names: Sequence[str]) -> list[RuleId]:
@@ -229,10 +223,9 @@ def check_context(rules: list[Rule], context: PythonFileContext) -> list[Diagnos
     if rules and context.tree is None:
         msg = f"selected Python source could not be parsed: {context.path}"
         raise ValueError(msg)
-    source_lines = context.source_lines
     raw = [diagnostic for rule in rules for diagnostic in rule.check_context(context)]
     return deduplicate_diagnostics(
-        [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
+        [diagnostic for diagnostic in raw if not context.suppressions.is_suppressed(diagnostic.line, diagnostic.code)],
         source=context.source,
         context=context,
     )

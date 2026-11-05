@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._mapping_shape_callbacks import RawMappingCallbacks
@@ -137,7 +136,7 @@ class RequirePydanticForMappingShape(Rule):
                 message="Declare this mapping field's type, shape and discriminator in a named Pydantic model; use a precise named record for already trusted internals instead of probing an opaque get/subscript result.",
             )
             for node in sorted(sources, key=lambda source: (source.lineno, source.col_offset))
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
 
 

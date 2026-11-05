@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -123,7 +122,6 @@ class NoDeleteStatement(Rule):
         tree = context.tree
         if tree is None:
             return []
-        source_lines = context.source_lines
         return [
             Diagnostic(
                 path=path,
@@ -137,5 +135,5 @@ class NoDeleteStatement(Rule):
                 ),
             )
             for node in context.nodes(ast.Delete)
-            if not is_suppressed(source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]

@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._async_lifecycle import AsyncApiProof, method_receiver
 
@@ -87,7 +86,7 @@ class AsyncExecutorShutdown(Rule):
             value = assigned.value
             if not isinstance(value, ast.Call) or not any(proof.imported(value.func, name) for name in _EXECUTORS):
                 continue
-            if not _unchanged_receiver(proof, binding) or is_suppressed(context.source_lines, call.lineno, self.code):
+            if not _unchanged_receiver(proof, binding) or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             diagnostics.append(
                 Diagnostic(

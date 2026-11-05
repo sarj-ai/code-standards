@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk
@@ -213,8 +212,8 @@ class NoBroadKeywordCapture(Rule):
             if function in overloads:
                 continue
             if (
-                is_suppressed(context.source_lines, argument.lineno, self.code)
-                or is_suppressed(context.source_lines, function.lineno, self.code)
+                context.suppressions.is_suppressed(argument.lineno, self.code)
+                or context.suppressions.is_suppressed(function.lineno, self.code)
                 or _signature_end_suppressed(function, context, self.code)
             ):
                 continue
@@ -247,7 +246,7 @@ def _signature_end_suppressed(
         line = _signature_end_line(header, function.lineno)
     except tokenize.TokenError, SyntaxError:
         return False
-    return line is not None and is_suppressed(context.source_lines, line, code)
+    return line is not None and context.suppressions.is_suppressed(line, code)
 
 
 def _signature_end_line(header: list[str], start_line: int) -> int | None:

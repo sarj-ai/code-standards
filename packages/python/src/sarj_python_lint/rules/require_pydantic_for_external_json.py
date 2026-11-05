@@ -236,7 +236,7 @@ class RequirePydanticForExternalJson(Rule):
 
         first_by_origin: dict[int, tuple[ast.expr, ast.Call]] = {}
         for sink, origin in sorted(findings, key=lambda item: (item[0].lineno, item[0].col_offset)):
-            if not is_suppressed(source_lines, sink.lineno, self.code):
+            if not context.suppressions.is_suppressed(sink.lineno, self.code):
                 first_by_origin.setdefault(id(origin), (sink, origin))
         return [
             Diagnostic(

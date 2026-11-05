@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 
@@ -206,7 +205,7 @@ class NoMutatingContainerTransform(Rule):
             )
             for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
             for mutation in analysis.mutations(function)
-            if not is_suppressed(context.source_lines, mutation.node.lineno, self.code)
+            if not context.suppressions.is_suppressed(mutation.node.lineno, self.code)
         ]
 
 

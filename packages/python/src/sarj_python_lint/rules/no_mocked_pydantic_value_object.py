@@ -13,7 +13,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -133,7 +132,7 @@ class NoMockedPydanticValueObject(ProjectRule):
                 ),
             )
             for call, model in context.test_provenance.model_data_mocks()
-            if not is_suppressed(context.source_lines, call.lineno, self.code)
+            if not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
         diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diagnostics

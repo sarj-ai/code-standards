@@ -8,8 +8,8 @@ from sarj_rule_contracts.examples import verify_native_rule
 import sqlglot
 
 from sarj_sql_lint.__main__ import analyze, main
+from sarj_sql_lint._postgres_ctas import normalize_postgres_ctas
 from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic
-from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
 
 

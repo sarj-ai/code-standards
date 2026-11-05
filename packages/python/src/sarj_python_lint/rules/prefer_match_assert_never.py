@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
@@ -211,7 +210,7 @@ def _suppressed_exhaustiveness_calls(context: PythonFileContext, code: str) -> l
         call_lines = range(call.lineno, (call.end_lineno or call.lineno) + 1)
         if not any(line in ignored_lines for line in call_lines):
             continue
-        if any(is_suppressed(context.source_lines, line, code) for line in call_lines):
+        if any(context.suppressions.is_suppressed(line, code) for line in call_lines):
             continue
         findings.append(
             Diagnostic(

@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ImportIndex
 
@@ -161,7 +160,7 @@ class PreferNativeStringCheck(Rule):
                 continue
             if _expects_validation_error(call, context, provenance, imports, unsafe_imports):
                 continue
-            if is_suppressed(context.source_lines, call.lineno, self.code):
+            if context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

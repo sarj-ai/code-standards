@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts
 from sarj_python_lint.rules._imports import TYPING_SOURCES
@@ -125,7 +124,7 @@ class NoDiscardedTaggedOutcome(ProjectRule):
             )
             for statement in context.nodes(ast.Expr, ast.Assign, ast.AnnAssign)
             if _direct_discard(statement)
-            and not is_suppressed(context.source_lines, statement.lineno, self.code)
+            and not context.suppressions.is_suppressed(statement.lineno, self.code)
             and analysis.discarded(statement)
         ]
 

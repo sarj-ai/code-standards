@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
@@ -111,7 +110,6 @@ class PreferStructOverNamedtuple(Rule):
         events = {id(scope): _scope_binding_events(scope) for scope in scopes}
         if _factory_identity_ambiguous(context, tree, events):
             return []
-        lines = context.source_lines
         return [
             self._diag(path, call)
             for call in sorted(
@@ -121,7 +119,7 @@ class PreferStructOverNamedtuple(Rule):
             if _is_static_owned_declaration(call, tree, parents, node_index=context.node_index)
             and _resolves_collections_namedtuple(call, tree, parents, events)
             and not _inside_compatibility_branch(call, parents)
-            and not is_suppressed(lines, call.lineno, self.code)
+            and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
 
     def _diag(self, path: Path, node: ast.AST) -> Diagnostic:
