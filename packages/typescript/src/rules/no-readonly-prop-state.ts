@@ -21,7 +21,6 @@ import {
   typeOnlyReference,
 } from "./_stable-value-binding.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { hasIdentifierNamed } from "./_unused-private-binding.js";
 
 type Options = readonly [];
 type MessageIds = "readonlyPropState";
@@ -58,7 +57,7 @@ export const NO_READONLY_PROP_STATE_DOCUMENTATION = {
     "Advisory only: initial snapshots can be intentional. There is no automatic fix because replacing state with current props changes how later updates behave.",
     "Recognizes direct React useState imports and default/namespace member calls, including renamed imports, through lexical binding identity. Checks a direct array destructure in a function containing its own JSX and a direct first-parameter property path, or a zero-argument synchronous lazy initializer returning that path.",
     "Eager initializers require parser-owned TypeScript services and primitive types, including unions composed entirely of primitives. Object and void types can hide callable values through structural assignment or ignored return values, so eager nonprimitive values, Any, unknown and unresolved generics are excluded. React executes function arguments as lazy initializers. Explicit zero-argument lazy callbacks returning a prop directly remain supported for all value types without type services. Opaque casts cannot prove runtime identity; lifecycle changes stay manual.",
-    "An updater read, escape, reassignment or nontrivial destructuring excludes the finding. Unused state values remain owned by unused-variable checks. Opaque initialization, property aliases, optional/dynamic paths, rest/default bindings, dynamic eval, non-JSX hooks, generated source and tests are outside scope. This does not ban interactive useState or replace the upstream set-state-in-effect rule.",
+    "An updater read, escape, reassignment or nontrivial destructuring excludes the finding. Unused state values remain owned by unused-variable checks. Files containing direct eval are excluded because it can observe or change lexical bindings. Indirect eval and properties named eval do not establish lexical access. Opaque initialization, property aliases, optional/dynamic paths, rest/default bindings, non-JSX hooks, generated source and tests are outside scope. This does not ban interactive useState or replace the upstream set-state-in-effect rule.",
   ],
   references: [
     "https://react.dev/learn/choosing-the-state-structure",
@@ -109,8 +108,7 @@ export default createRule<Options, MessageIds>({
           statement.type === AST_NODE_TYPES.ImportDeclaration &&
           statement.source.value === "react" &&
           statement.importKind !== "type",
-      ) ||
-      hasIdentifierNamed(context.sourceCode.ast, "eval")
+      )
     )
       return {};
     return {
