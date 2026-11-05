@@ -252,7 +252,7 @@ def select_eslint_commands(
         client = packagemanager.detect(install_root)
         config = _eslint_config(project)
         context = _eslint_suppression_context(project, repository)
-        config_args = () if config is None else ("--config", os.path.relpath(config, context.cwd))
+        config_args = () if config is None else ("--config", Path(os.path.relpath(config, context.cwd)).as_posix())
         commands.append(
             Command(
                 f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
@@ -283,7 +283,7 @@ class _EslintSuppressionContext:
     args: tuple[str, ...] = ()
 
     def files(self, project: Path, paths: Iterable[str]) -> list[str]:
-        return sorted(os.path.relpath(project / path, self.cwd) for path in paths)
+        return sorted(Path(os.path.relpath(project / path, self.cwd)).as_posix() for path in paths)
 
 
 def _eslint_suppression_context(project: Path, repository: Path) -> _EslintSuppressionContext:
