@@ -4,6 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-mutating-container-transform.test.ts
  */
 
+import { isPresent } from "./_is-present.js";
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 
 
@@ -92,7 +93,7 @@ export default createRule<[], "borrowedMutation">({
       if (node.body?.type !== AST_NODE_TYPES.BlockStatement || !returnsArray(node, sourceCode) || !supported(node.body.body)) return;
       const initial: Origins = new Map();
       for (const parameter of node.params) {
-        if (parameter.type !== AST_NODE_TYPES.Identifier || parameter.typeAnnotation === undefined) continue;
+        if (parameter.type !== AST_NODE_TYPES.Identifier || !isPresent(parameter.typeAnnotation)) continue;
         const element = arrayElement(parameter.typeAnnotation.typeAnnotation, sourceCode);
         const variable = binding(parameter);
         if (element !== null && PRIMITIVES.has(element.type) && variable !== null) initial.set(variable, parameter.name);

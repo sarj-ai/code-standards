@@ -4,6 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-mutating-input-with-result.test.ts
  */
 
+import { isPresent } from "./_is-present.js";
 import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 
 
@@ -125,7 +126,7 @@ export default createRule<[], "inputWrite">({
       if (annotation === undefined || command(annotation) || node.body === undefined) return;
       const inputs = new Map<TSESLint.Scope.Variable, ReadonlySet<string>>();
       for (const parameter of node.params) {
-        if (parameter.type !== AST_NODE_TYPES.Identifier || parameter.typeAnnotation === undefined) continue;
+        if (parameter.type !== AST_NODE_TYPES.Identifier || !isPresent(parameter.typeAnnotation)) continue;
         const variable = ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name);
         if (variable === null || variable.references.some(reference => reference.isWrite())) continue;
         const names = fields(parameter.typeAnnotation.typeAnnotation, sourceCode);

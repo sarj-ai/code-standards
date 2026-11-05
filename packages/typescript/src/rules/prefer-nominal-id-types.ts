@@ -4,6 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nominal-id-types.test.ts
  */
 
+import { isPresent } from "./_is-present.js";
 import type { NativeRuleContext } from "./_eslint-rule.js";
 
 import {
@@ -198,7 +199,7 @@ function checkBoundary(node: Boundary, context: Context): void {
   const roles = new Map<Carrier, string>();
   for (const parameter of node.params) {
     const identifier = parameterIdentifier(parameter);
-    if (identifier?.typeAnnotation === undefined) continue;
+    if (!isPresent(identifier?.typeAnnotation)) continue;
     const role = identifierRole(identifier.name);
     if (role === undefined) continue;
     const carrier = rawCarrier(
