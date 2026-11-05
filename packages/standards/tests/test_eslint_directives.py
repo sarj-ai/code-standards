@@ -369,9 +369,13 @@ def test_directive_mode_keeps_canonical_owner_and_forbids_broad_fixes(tmp_path: 
         "--format",
         "json",
         "--no-cache",
+        "--pass-on-unpruned-suppressions",
         "--",
         "-source.js",
     )
+    strict = lifecycle.select_eslint_commands(tmp_path, [str(source)])
+    fixing = lifecycle.select_eslint_commands(tmp_path, [str(source)], fix=True)
+    assert all("--pass-on-unpruned-suppressions" not in selected.commands[0].argv for selected in (strict, fixing))
     with pytest.raises(ValueError, match="broad fixes or change rule severity"):
         lifecycle.select_eslint_commands(tmp_path, [str(source)], _directive_dry_run=True, fix=True)
     with pytest.raises(ValueError, match="broad fixes or change rule severity"):
@@ -915,8 +919,9 @@ def test_private_node_fixture_refuses_an_external_modules_link(tmp_path: Path) -
 
 
 @pytest.mark.parametrize("manager", ["npm", "bun"])
+@pytest.mark.parametrize("stale_suppressions", [False, True])
 def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
-    tmp_path: Path, manager: Literal["npm", "bun"]
+    tmp_path: Path, manager: Literal["npm", "bun"], stale_suppressions: bool
 ) -> None:
     source_bytes = (
         b"/* " + b"x" * (70 * 1024) + b" */\n"
@@ -934,7 +939,8 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
     installed_node = shutil.which("node")
     assert installed_node is not None
     node = materialize_node_runtime(tmp_path, Path(installed_node))
-    _project(tmp_path, {"source.js": source_bytes, "unselected.js": _BEFORE, "nul-source.js": _NUL_SOURCE})
+    unselected = _BEFORE + (b"console.log('unselected');\n" if stale_suppressions else b"")
+    _project(tmp_path, {"source.js": source_bytes, "unselected.js": unselected, "nul-source.js": _NUL_SOURCE})
     assert local.roots["eslint"].version == "10.13.0"
     assert local.roots["prettier"].version == "3.9.10"
     (tmp_path / "package.json").write_text(
@@ -945,6 +951,14 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
     lockfile = "bun.lock" if manager == "bun" else "package-lock.json"
     (tmp_path / lockfile).write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / ".prettierrc.json").write_text('{"singleQuote":true}\n', encoding="utf-8")
+    ledger = tmp_path / "eslint-suppressions.json"
+    ledger_bytes = (
+        b'{"source.js":{"no-alert":{"count":1}},"unselected.js":{"no-console":{"count":1}}}\n'
+        if stale_suppressions
+        else b""
+    )
+    if stale_suppressions:
+        ledger.write_bytes(ledger_bytes)
     (tmp_path / "eslint.config.mjs").write_text(
         "const problem = {meta:{type:'problem',fixable:'code',schema:[]},create(context){return {"
         "Identifier(node){if(node.name==='original'){context.report({node,message:'Retained fixable problem',"
@@ -977,6 +991,7 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
                 "--format",
                 "json",
                 "--no-cache",
+                "--pass-on-unpruned-suppressions",
                 "--",
             )
             operands = tuple(command.argv[command.argv.index("--", command.argv.index("--no-cache")) + 1 :])
@@ -1007,6 +1022,18 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
         return result
 
     before_index = (tmp_path / ".git/index").read_bytes()
+    if stale_suppressions:
+        strict = subprocess.run(
+            (str(node), str(local.roots["eslint"].bins["eslint"]), "--config", "eslint.config.mjs", "--", "source.js"),
+            cwd=tmp_path,
+            env=native_byte_bridge.child_environment(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        assert strict.returncode == 2, strict
+        assert "There are suppressions left that do not occur anymore" in strict.stderr
 
     expected = eslint_directives.plan(tmp_path, ["source.js", "nul-source.js"], run=native)
 
@@ -1029,9 +1056,13 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
     assert not eslint_directives.plan(tmp_path, ["source.js"], run=native)
     assert [code for label, code in statuses if label.startswith("ESLint (")] == [1, 1]
     assert all(code == 0 for label, code in statuses if not label.startswith("ESLint ("))
-    assert (tmp_path / "unselected.js").read_bytes() == _BEFORE
+    assert (tmp_path / "unselected.js").read_bytes() == unselected
     assert (tmp_path / "nul-source.js").read_bytes() == _NUL_SOURCE
     assert (tmp_path / ".git/index").read_bytes() == before_index
+    if stale_suppressions:
+        assert ledger.read_bytes() == ledger_bytes
+    else:
+        assert not ledger.exists()
 
 
 def test_bun_audit_without_a_formatter_uses_only_its_owned_local_engine(tmp_path: Path) -> None:
@@ -1055,6 +1086,7 @@ def test_bun_audit_without_a_formatter_uses_only_its_owned_local_engine(tmp_path
             "--format",
             "json",
             "--no-cache",
+            "--pass-on-unpruned-suppressions",
             "--",
             "source.js",
         )

@@ -83,3 +83,19 @@ it("preserves outcomes for static member access and unknown member keys", async 
   }
 ] } });
 });
+
+RULE_TESTER.run("no-first-party-module-mock retained extensions", rule, {
+  valid: [
+    { name: "preserves virtual ESM modules", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.unstable_mockModule('./virtual.js', () => ({}), { virtual: true });" },
+    { name: "preserves opaque ESM options", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.unstable_mockModule('./service.js', () => ({}), options);" },
+    { name: "preserves third-party ESM mocks", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.unstable_mockModule('external-package', () => ({}));" },
+    { name: "preserves shadowed ESM APIs", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; function check(jest: LocalMocks) { jest.unstable_mockModule('./service.js', () => ({})); }" },
+    { name: "does not invent a Vitest ESM API", filename: "action.test.ts", code: "import { vi } from 'vitest'; vi.unstable_mockModule('./service.js', () => ({}));" },
+    { name: "preserves type-only ESM imports", filename: "action.test.ts", code: "import type { jest } from '@jest/globals'; jest.unstable_mockModule('./service.js', () => ({}));" },
+  ],
+  invalid: [
+    { name: "recognizes the Jest ESM API", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.unstable_mockModule('./service.js', () => ({}));", output: null, errors: [{ messageId: "noFirstPartyModuleMock" }] },
+    { name: "recognizes an aliased ESM import", filename: "action.test.ts", code: "import { jest as mocks } from '@jest/globals'; mocks.unstable_mockModule('../service.js', async () => ({}));", output: null, errors: [{ messageId: "noFirstPartyModuleMock" }] },
+    { name: "recognizes literal computed ESM methods", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest['unstable_mockModule']('./service.js', () => ({}), { virtual: false });", output: null, errors: [{ messageId: "noFirstPartyModuleMock" }] },
+  ],
+});

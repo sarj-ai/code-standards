@@ -7,12 +7,13 @@
 import { getTypeServices } from "./_eslint-rule.js";
 
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 import { staticString } from "./_static-string.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { stableConstInitializer, typeOnlyReference, writtenMember } from "./_stable-value-binding.js";
 
 export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
   summary:
@@ -22,10 +23,15 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
   remediation:
     "Use direct typed property access or call the typed function, preserving receivers and evaluation semantics.",
   category: "maintainability",
+  requiresTypeInformation: true,
+  references: [
+    "https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-reflect-get.ts",
+    "https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-reflect-apply.ts",
+  ],
   autofix: "safe",
   limitations: [
-    "Requires TypeScript type information. Inspects scope-resolved global Reflect.get with a literal key (including no-substitution templates and erased TypeScript wrappers) on a closed object type, and Reflect.apply with a known call signature and a literal argument array.",
-    "Dynamic keys, open dictionaries, unknown/any/generic targets, explicit Reflect.get receivers, aliases, and nonliteral argument arrays are excluded. Deliberate proxy or metaprogramming calls need a local suppression. Automatic fixes cover comment-free nonoptional Reflect.get calls with a known existing property on an object. Immediate calls/tags, missing keys and Reflect.apply remain manual to preserve receiver and argument contracts.",
+    "Requires TypeScript type information. Inspects scope-resolved global Reflect.get with a literal key (including no-substitution templates and erased TypeScript wrappers) on a closed object type, and Reflect.apply with a known call signature and a literal argument array or stable, unmodified const tuple. Stable local Reflect aliases are resolved.",
+    "Dynamic keys, open dictionaries, unknown/any/generic targets, explicit Reflect.get receivers, mutated/escaping aliases, and unknown argument arrays are excluded. Expanded aliases and tuple containers remain manual. Deliberate proxy or metaprogramming calls need a local suppression. Automatic fixes cover comment-free nonoptional Reflect.get calls with a known existing property on an object. Immediate calls/tags, missing keys and Reflect.apply remain manual to preserve receiver and argument contracts.",
   ],
   examples: [
     {
@@ -67,6 +73,10 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
       focusPath: "src/autofix-example.ts",
       expectedCount: 1,
     },
+    {"id": "apply-tuple-before", "scenarioId": "apply-tuple", "title": "Keep the callable contract with a stable tuple — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "declare function lookup(id: string): string; const args: [string] = [\"u1\"]; Reflect.apply(lookup, undefined, args);"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
+    {"id": "apply-tuple-after", "scenarioId": "apply-tuple", "title": "Keep the callable contract with a stable tuple — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "declare function lookup(id: string): string; const args: [string] = [\"u1\"]; lookup(...args);"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
+    {"id": "reflect-alias-before", "scenarioId": "reflect-alias", "title": "Keep the target contract through an alias — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "declare const target: { id: string }; const reflection = Reflect; const id = reflection.get(target, \"id\");"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
+    {"id": "reflect-alias-after", "scenarioId": "reflect-alias", "title": "Keep the target contract through an alias — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "declare const target: { id: string }; const id = target.id;"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
   ],
 } as const satisfies RuleDocumentation;
 
@@ -106,11 +116,66 @@ export default createRule<[], "avoid">({
     const services = getTypeServices(context);
     if (!services.program) return {};
     const checker = services.program.getTypeChecker();
-    const isReflect = (node: TSESTree.Node): boolean =>
+    const safeAliasUses = (variable: TSESLint.Scope.Variable, seen = new Set<TSESLint.Scope.Variable>()): boolean => {
+      if (seen.has(variable)) return false;
+      seen.add(variable);
+      return variable.references.every(reference => {
+        if (reference.init === true || typeOnlyReference(reference)) return true;
+        if (reference.isWrite()) return false;
+        const value = outerExpression(reference.identifier);
+        const parent = value.parent;
+        if (parent == null) return false;
+        if (parent.type === AST_NODE_TYPES.MemberExpression && parent.object === value)
+          return !writtenMember(parent);
+        if (parent.type !== AST_NODE_TYPES.VariableDeclarator || parent.init !== value ||
+          parent.id.type !== AST_NODE_TYPES.Identifier || parent.parent.kind !== "const") return false;
+        const identifier = parent.id;
+        const alias = context.sourceCode.getDeclaredVariables(parent).find(binding => binding.identifiers.includes(identifier));
+        return alias !== undefined && safeAliasUses(alias, new Set(seen));
+      });
+    };
+    const directReflect = (node: TSESTree.Node): boolean =>
       globalName(node, "Reflect") ||
       (node.type === AST_NODE_TYPES.MemberExpression &&
         ASTUtils.getPropertyName(node) === "Reflect" &&
         globalName(node.object, "globalThis"));
+    let globalsAreStable: boolean | undefined;
+    const isReflect = (node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean => {
+      node = unwrapExpression(node);
+      if (directReflect(node)) return true;
+      if (node.type !== AST_NODE_TYPES.Identifier || seen.has(node)) return false;
+      seen.add(node);
+      const local = stableConstInitializer(context.sourceCode, node);
+      if (local === null || !safeAliasUses(local.variable) || !stableReflectGlobals()) return false;
+      return isReflect(local.value, seen);
+    };
+
+    const stableReflectGlobals = (): boolean => {
+      if (globalsAreStable !== undefined) return globalsAreStable;
+      const safeUse = (node: TSESTree.Node): boolean => {
+        const value = outerExpression(node);
+        const parent = value.parent;
+        if (parent == null) return false;
+        if (parent.type === AST_NODE_TYPES.MemberExpression && parent.object === value)
+          return !writtenMember(parent);
+        if (parent.type !== AST_NODE_TYPES.VariableDeclarator || parent.init !== value ||
+          parent.id.type !== AST_NODE_TYPES.Identifier || parent.parent.kind !== "const") return false;
+        const identifier = parent.id;
+        const alias = context.sourceCode.getDeclaredVariables(parent).find(binding => binding.identifiers.includes(identifier));
+        return alias !== undefined && safeAliasUses(alias);
+      };
+      globalsAreStable = context.sourceCode.scopeManager?.scopes.every(scope => scope.references.every(reference => {
+        if (typeOnlyReference(reference)) return true;
+        const identifier = reference.identifier;
+        if (globalName(identifier, "Reflect")) return safeUse(identifier);
+        if (!globalName(identifier, "globalThis")) return true;
+        const member = outerExpression(identifier).parent;
+        if (member == null) return true;
+        return member.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(member) !== "Reflect" ||
+          !writtenMember(member) && safeUse(member);
+      })) ?? false;
+      return globalsAreStable;
+    };
 
     const globalName = (node: TSESTree.Node, name: string): boolean =>
       node.type === AST_NODE_TYPES.Identifier &&
@@ -136,12 +201,18 @@ export default createRule<[], "avoid">({
         closedObject(type)
       );
     };
+
+    const knownParameter = (parameter: ts.Symbol, call: TSESTree.CallExpression): boolean => {
+      const type = checker.getTypeOfSymbolAtLocation(parameter, services.esTreeNodeToTSNodeMap.get(call));
+      return knownType(type) && (call.arguments[2]?.type === AST_NODE_TYPES.ArrayExpression ||
+        checker.getIndexInfosOfType(type).every(index => knownType(index.type)));
+    };
     const inspectApply = (
       node: TSESTree.CallExpression,
       type: ts.Type,
     ): boolean =>
       node.arguments.length === 3 &&
-      node.arguments[2]?.type === AST_NODE_TYPES.ArrayExpression &&
+      (node.arguments[2]?.type === AST_NODE_TYPES.ArrayExpression || tupleArguments(node.arguments[2])) &&
       knownType(type) &&
       type
         .getCallSignatures()
@@ -149,14 +220,27 @@ export default createRule<[], "avoid">({
           (signature) =>
             signature.typeParameters === undefined &&
             signature.parameters.every((parameter) =>
-              knownType(
-                checker.getTypeOfSymbolAtLocation(
-                  parameter,
-                  services.esTreeNodeToTSNodeMap.get(node),
-                ),
-              ),
+              knownParameter(parameter, node),
             ),
         );
+    const tupleArguments = (node: TSESTree.CallExpressionArgument | undefined): boolean => {
+      if (node?.type !== AST_NODE_TYPES.Identifier) return false;
+      const local = stableConstInitializer(context.sourceCode, node);
+      if (local === null) return false;
+      const value = unwrapExpression(local.value);
+      if (value.type !== AST_NODE_TYPES.ArrayExpression ||
+        value.elements.some(element => element === null || element.type === AST_NODE_TYPES.SpreadElement) ||
+        !checker.isTupleType(checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node)))) return false;
+      return local.variable.references.every(reference => {
+        if (reference.init === true || typeOnlyReference(reference)) return true;
+        const argument = outerExpression(reference.identifier);
+        const call = argument.parent;
+        if (call == null) return false;
+        return !reference.isWrite() && call.type === AST_NODE_TYPES.CallExpression &&
+          call.arguments[2] === argument && call.callee.type === AST_NODE_TYPES.MemberExpression &&
+          ASTUtils.getPropertyName(call.callee) === "apply" && isReflect(call.callee.object);
+      });
+    };
     const getReplacement = (node: TSESTree.CallExpression, type: ts.Type, target: TSESTree.Expression): string | null => {
       if (node.optional || node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.optional ||
         context.sourceCode.getCommentsInside(node).length > 0) return null;
@@ -197,7 +281,7 @@ export default createRule<[], "avoid">({
           method === "get" ? inspectGet(node, type) : inspectApply(node, type)
         )
           {
-            const replacement = method === "get" ? getReplacement(node, type, target) : null;
+            const replacement = method === "get" && directReflect(node.callee.object) ? getReplacement(node, type, target) : null;
             context.report({ node, messageId: "avoid", fix: replacement === null ? null : (fixer) => fixer.replaceText(node, replacement) });
           }
       },

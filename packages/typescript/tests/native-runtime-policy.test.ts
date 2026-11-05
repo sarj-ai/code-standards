@@ -25,6 +25,7 @@ const OWNED_RULES = new Set([
   "no-iterator",
   "no-proto",
   "no-restricted-syntax",
+  "@sarj/no-runtime-typeof",
   "@typescript-eslint/no-for-in-array",
 ]);
 const ADVISORY_CASES = [
@@ -134,6 +135,8 @@ describe.each(CONFIG_FACTORIES)("%s native runtime policy", (_name, createConfig
     "for await (const item of stream) consume(item);",
     'if ("key" in record) consume(record);',
     'if (typeof input === "undefined") consume(input);',
+    'export {}; type window = number; if (typeof window === "undefined") consume(window);',
+    'if ((typeof (window as unknown) as string) === ("undefined" as const)) consume(window);',
     "type Input = typeof input;",
   ])("preserves non-target syntax and data contracts: %s", async source => {
     expect(await messages(eslint, source)).toEqual([]);
@@ -141,7 +144,14 @@ describe.each(CONFIG_FACTORIES)("%s native runtime policy", (_name, createConfig
 
   it("retains existing runtime typeof restrictions", async () => {
     expect((await messages(eslint, 'if (typeof input === "string") consume(input);')).map(({ ruleId, severity }) => ({ ruleId, severity })))
-      .toEqual([{ ruleId: "no-restricted-syntax", severity: 2 }]);
+      .toEqual([{ ruleId: "@sarj/no-runtime-typeof", severity: 2 }]);
+  });
+
+  it("honors the typeof owner exception without disabling native restrictions", async () => {
+    const source = '// eslint-disable-next-line @sarj/no-runtime-typeof -- This raw parser checks representation before schema validation.\nfunction inspect(input: unknown) { return typeof input === "string"; }\neval(input);';
+    expect((await messages(eslint, source)).map(({ ruleId, severity }) => ({ ruleId, severity }))).toEqual([
+      { ruleId: "no-eval", severity: 2 },
+    ]);
   });
 
   it("reports each nested for-in loop once", async () => {

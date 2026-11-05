@@ -29,6 +29,7 @@ from sarj_standards.libs.rules import (
     RuleSelector,
     RuleSpec,
 )
+from sarj_standards.libs.rules.capabilities import TypeScriptRuleSpec
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.schemas import RULE_CATALOG
 
@@ -70,6 +71,7 @@ _TYPESCRIPT_FIELDS: Final = frozenset(
 _TYPESCRIPT_EXAMPLE_FIELDS: Final = frozenset(
     {"expectedCount", "files", "fixedFiles", "focusPath", "id", "outcome", "scenarioId", "title"}
 )
+_TYPESCRIPT_CAPABILITY_FIELDS: Final = frozenset({"requiresTypeInformation", "runtimeImports"})
 _TYPESCRIPT_EXAMPLE_OPTIONAL_FIELDS: Final = frozenset({"ruleOptions", "installedDependencies"})
 _TYPESCRIPT_FILE_FIELDS: Final = frozenset({"path", "source"})
 _PROCESS_TIMEOUT: Final = timedelta(seconds=120)
@@ -335,7 +337,7 @@ def _typescript_spec(value: object) -> RuleSpec:
     if not _is_object(value):
         msg = "TypeScript public metadata entry must be an object"
         raise TypeError(msg)
-    if frozenset(value) != _TYPESCRIPT_FIELDS:
+    if not _TYPESCRIPT_FIELDS.issubset(value) or frozenset(value) - _TYPESCRIPT_FIELDS - _TYPESCRIPT_CAPABILITY_FIELDS:
         msg = "TypeScript public metadata entry has unexpected or missing fields"
         raise ValueError(msg)
     if value["engine"] != RuleEngine.ESLINT.value or value["code"] is not None:
@@ -353,7 +355,11 @@ def _typescript_spec(value: object) -> RuleSpec:
     if since is not None and not isinstance(since, str):
         msg = "TypeScript public metadata since must be a string or null"
         raise TypeError(msg)
-    return RuleSpec(
+    requires_info = value.get("requiresTypeInformation")
+    if requires_info is not None and not isinstance(requires_info, bool):
+        msg = "TypeScript type-information requirement must be a bool or null"
+        raise TypeError(msg)
+    return TypeScriptRuleSpec(
         engine=RuleEngine.ESLINT,
         rule_id=RuleId(_value_from_dict(value, "ruleId")),
         code=None,
@@ -371,6 +377,8 @@ def _typescript_spec(value: object) -> RuleSpec:
         options_schema=None if options is None else json.dumps(options, separators=(",", ":"), sort_keys=True),
         references=tuple(_string_list(value, "references")),
         since=since,
+        requires_type_information=requires_info,
+        runtime_imports=tuple(_string_list(value, "runtimeImports")) if "runtimeImports" in value else (),
         examples=tuple(_typescript_example(item) for item in examples),
     )
 
