@@ -573,7 +573,7 @@ def _operands(root: Path, command: lifecycle.Command, selected: Mapping[str, _Fi
     arguments = tuple(command.argv)
     start = arguments.index("--fix-dry-run")
     separator = arguments.index("--", start)
-    if arguments[start:separator] != ("--fix-dry-run", "--fix-type", "directive", "--format", "json", "--no-cache"):
+    if arguments[start:separator] != lifecycle.ESLINT_DIRECTIVE_DRY_RUN_ARGS:
         msg = "directive-fix command differs from the canonical dry-run mode"
         raise ValueError(msg)
     paths: set[str] = set()

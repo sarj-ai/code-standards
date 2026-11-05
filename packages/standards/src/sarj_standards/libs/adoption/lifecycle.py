@@ -13,7 +13,7 @@ import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
@@ -29,6 +29,17 @@ if TYPE_CHECKING:
 
 
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
+# Directive planning is read-only and must not prune a consumer's bulk ledger.
+# Normal verification and broad autofix retain ESLint's strict ledger checks.
+ESLINT_DIRECTIVE_DRY_RUN_ARGS: Final = (
+    "--fix-dry-run",
+    "--fix-type",
+    "directive",
+    "--format",
+    "json",
+    "--no-cache",
+    "--pass-on-unpruned-suppressions",
+)
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
@@ -262,11 +273,7 @@ def select_eslint_commands(
                     *config_args,
                     *context.args,
                     *(("--fix",) if fix else ()),
-                    *(
-                        ("--fix-dry-run", "--fix-type", "directive", "--format", "json", "--no-cache")
-                        if _directive_dry_run
-                        else ()
-                    ),
+                    *(ESLINT_DIRECTIVE_DRY_RUN_ARGS if _directive_dry_run else ()),
                     *(argument for rule in disabled_rules for argument in ("--rule", f"{rule}:off")),
                     "--",
                     *context.files(project, scoped),
