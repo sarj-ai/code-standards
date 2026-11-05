@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.200.10"
+version = "8.200.11"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -141,7 +141,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==6.17.1" },
+    { name = "repo-standards", specifier = "==6.19.0" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -739,17 +739,18 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "6.17.1"
+version = "6.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
+    { name = "markdown-it-py" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/6b/9dff804edf1a7b88b4355f872a581609aeace60d84726f6577e12e6832d7/repo_standards-6.17.1.tar.gz", hash = "sha256:60463f27d7da7e6b45d3e339f85d9c429a1cecd1998330f9a5e1ad3109ae4371", size = 140234, upload-time = "2026-11-04T12:01:57.984Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/38/d617de1a2f74085cfce275340749f564078fc74a002b670c948a38565395/repo_standards-6.19.0.tar.gz", hash = "sha256:3416f23d1a2282dc8ab0a7fae06d5344d5e265d04c1ca4f8beb5aaa38f61b5b1", size = 143064, upload-time = "2026-11-04T23:18:29.79Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/af/ef2d7b5c75476fc9e97ee58d21b9900fea6e6a644a0f535e2e2bcafebc46/repo_standards-6.17.1-py3-none-any.whl", hash = "sha256:df9da57b74e9a735488611d13f6407e5144503a40e105cc418561e359936b096", size = 162278, upload-time = "2026-11-04T12:01:56.413Z" },
+    { url = "https://files.pythonhosted.org/packages/10/f9/50ef45a260f420774bbcea374ff1de85438004713a29b4711c57b5669de3/repo_standards-6.19.0-py3-none-any.whl", hash = "sha256:6ae1dedc7f31cc24ed08836e40a0dced4642e20280bcca34121314ead77c36fe", size = 165560, upload-time = "2026-11-04T23:18:28.384Z" },
 ]
 
 [[package]]
