@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_names import dotted_parts as _dotted_name
 from sarj_python_lint.rules._comments import split_identifier
@@ -178,7 +177,6 @@ class RepeatedStaticCallCases(Rule):
         if not candidate_runs:
             return []
         duplicate_owners = duplicate_test_owner_ids(tree, source)
-        source_lines = context.source_lines
         findings = [
             Diagnostic(
                 path=path,
@@ -192,7 +190,7 @@ class RepeatedStaticCallCases(Rule):
                 ),
             )
             for test, run in candidate_runs
-            if id(test) not in duplicate_owners and not is_suppressed(source_lines, run[0].lineno, self.code)
+            if id(test) not in duplicate_owners and not context.suppressions.is_suppressed(run[0].lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 

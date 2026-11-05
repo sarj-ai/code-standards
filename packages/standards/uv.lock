@@ -870,7 +870,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.33.2"
+version = "0.33.3"
 source = { editable = "../iac" }
 dependencies = [
     { name = "sarj-rule-contracts" },
@@ -898,6 +898,7 @@ dependencies = [
     { name = "packaging" },
     { name = "ruff" },
     { name = "sarj-rule-contracts" },
+    { name = "sarj-sql-lint" },
     { name = "sqlglot" },
     { name = "typer" },
 ]
@@ -907,6 +908,7 @@ requires-dist = [
     { name = "packaging", specifier = "==26.3" },
     { name = "ruff", specifier = ">=0.17.2" },
     { name = "sarj-rule-contracts", editable = "../contracts" },
+    { name = "sarj-sql-lint", editable = "../sql" },
     { name = "sqlglot", specifier = "==30.24.0" },
     { name = "typer", specifier = "==0.27.3" },
 ]
@@ -921,7 +923,7 @@ dev = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.6.2"
+version = "0.7.0"
 source = { editable = "../contracts" }
 
 [package.metadata]
@@ -935,7 +937,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.44.2"
+version = "0.45.0"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },

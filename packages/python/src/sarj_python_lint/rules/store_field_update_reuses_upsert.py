@@ -18,7 +18,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._sql import is_store_module
@@ -114,7 +113,7 @@ class StoreFieldUpdateReusesUpsert(Rule):
                 continue
             for method in _redundant_updates(declared, contract, context, owners):
                 name = method.name
-                if is_suppressed(context.source_lines, method.lineno, self.code):
+                if context.suppressions.is_suppressed(method.lineno, self.code):
                     continue
                 findings.append(
                     Diagnostic(

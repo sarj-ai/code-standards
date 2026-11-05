@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
@@ -114,7 +113,7 @@ class NoRawConnectionInTests(Rule):
                 message="test code executes raw SQL; use the owning store/service API or an exact SARJ429 exception for deliberate database-level testing",
             )
             for node in sql_calls
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
         excluded_path = any(
             (

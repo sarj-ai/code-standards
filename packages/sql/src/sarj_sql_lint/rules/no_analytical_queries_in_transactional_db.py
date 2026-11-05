@@ -5,6 +5,12 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
+from sarj_sql_lint._aggregate_identity import (
+    aggregate_name,
+    aggregate_offset,
+    contains_aggregate_spelling,
+)
+from sarj_sql_lint._policy_source import normalize_group_comments
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -20,12 +26,6 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     source_location,
 )
-from sarj_sql_lint.rules._aggregate_identity import (
-    aggregate_name,
-    aggregate_offset,
-    contains_aggregate_spelling,
-)
-from sarj_sql_lint.rules._policy_source import normalize_group_comments
 
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ def _statements(source: str, dialect: str) -> Iterator[_ParsedStatement]:
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with the lazy parser.
     from sqlglot.tokenizer_core import TokenType  # ruff: ignore[import-outside-top-level] -- split statements without splitting quoted values.
 
-    from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- preserve COPY boundaries before and CTAS grammar after executing EXPLAIN normalization.
+    from sarj_sql_lint._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- preserve COPY boundaries before and CTAS grammar after executing EXPLAIN normalization.
 
     parameters = _POSTGRES_PLACEHOLDER if dialect == "postgres" else _PLACEHOLDER
     prepared = parameters.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), source)
@@ -84,7 +84,7 @@ def _statements(source: str, dialect: str) -> Iterator[_ParsedStatement]:
         prepared = normalize_postgres_ctas(prepared)
     try:
         if dialect == "postgres" and "EXPLAIN" in prepared.upper():
-            from sarj_sql_lint.rules._explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- expose only proven executing EXPLAIN queries.
+            from sarj_sql_lint._explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- expose only proven executing EXPLAIN queries.
 
             prepared = normalize_postgres_explain(prepared)
             prepared = normalize_postgres_ctas(prepared)

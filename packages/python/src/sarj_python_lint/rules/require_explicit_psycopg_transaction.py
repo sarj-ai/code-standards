@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
@@ -114,7 +113,7 @@ class RequireExplicitPsycopgTransaction(Rule):
                 message="Locking read or multiple writes without a shared explicit transaction; wrap the atomic operation in this connection's transaction() context.",
             )
             for node in sorted(findings.values(), key=lambda item: (item.lineno, item.col_offset))
-            if not is_suppressed(context.source_lines, node.lineno, self.code)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
         ]
 
 

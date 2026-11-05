@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._comments import PositionedComment, comment_runs, has_legal_notice
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
@@ -149,7 +148,7 @@ class NoTestComments(Rule):
             and comment.line not in legal_lines
             and not _DIRECTIVE.search(comment.body)
             and not has_legal_notice(comment.body)
-            and not is_suppressed(context.source_lines, comment.line, self.code)
+            and not context.suppressions.is_suppressed(comment.line, self.code)
         ]
 
 

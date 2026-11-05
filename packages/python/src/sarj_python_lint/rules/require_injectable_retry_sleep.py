@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -124,7 +123,7 @@ class RequireInjectableRetrySleep(Rule):
             for call in context.nodes(ast.Call)
             if imports.resolved_qualified_name(call.func) in _POLICIES
             and _waits_without_seam(call, imports)
-            and not is_suppressed(context.source_lines, call.lineno, self.code)
+            and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 

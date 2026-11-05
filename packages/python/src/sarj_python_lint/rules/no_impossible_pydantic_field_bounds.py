@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._pydantic_field_contract import FIELD_SOURCES, TYPING_SOURCES, direct_models, unique_members
 
@@ -116,7 +115,7 @@ class NoImpossiblePydanticFieldBounds(Rule):
             contract = _field_contract(field, context)
             if contract is None or not _empty_interval(*contract):
                 continue
-            if is_suppressed(context.source_lines, field.lineno, self.code):
+            if context.suppressions.is_suppressed(field.lineno, self.code):
                 continue
             diagnostics.append(
                 Diagnostic(

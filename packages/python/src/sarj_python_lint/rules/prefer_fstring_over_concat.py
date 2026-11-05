@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk, walk as walk_ast
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
@@ -269,7 +268,7 @@ class PreferFstringOverConcat(Rule):
         for node in adds:
             if id(node) in inner or id(node) in excluded:
                 continue
-            if is_suppressed(context.source_lines, node.lineno, self.code):
+            if context.suppressions.is_suppressed(node.lineno, self.code):
                 continue
             if not _in_callable_scope(node, parents):
                 continue

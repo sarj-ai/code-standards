@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._async_lifecycle import AsyncApiProof, method_receiver
 
@@ -82,7 +81,7 @@ class CancelOwnedTaskWithoutJoin(Rule):
         reported: set[ast.Name] = set()
         for call in context.nodes(ast.Call):
             binding = _unjoined_child(proof, call)
-            if binding is None or binding in reported or is_suppressed(context.source_lines, call.lineno, self.code):
+            if binding is None or binding in reported or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             reported.add(binding)
             diagnostics.append(

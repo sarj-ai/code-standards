@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call, executable_body
 
@@ -117,7 +116,7 @@ class DuplicateClosedPureHelper(Rule):
             )
             if key not in owners:
                 owners[key] = function
-            elif not is_suppressed(context.source_lines, function.lineno, self.code):
+            elif not context.suppressions.is_suppressed(function.lineno, self.code):
                 findings.append(
                     Diagnostic(
                         path=context.path,

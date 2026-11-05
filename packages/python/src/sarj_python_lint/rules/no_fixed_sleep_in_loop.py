@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -166,7 +165,7 @@ class NoFixedSleepInLoop(Rule):
             for reported, duration in sleeps
             if (seconds := _folded_seconds(duration, constants)) is not None
             and seconds > 0
-            and not is_suppressed(context.source_lines, reported.lineno, self.code)
+            and not context.suppressions.is_suppressed(reported.lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 

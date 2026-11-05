@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from sarj_python_lint.__main__ import analyze, check_source
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Diagnostic, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._suppression_comments import comment_lines
@@ -87,6 +88,29 @@ _CASES = (
 @pytest.mark.parametrize(("case_id", "source", "line", "suppressed"), _CASES, ids=[case[0] for case in _CASES])
 def test_suppression_requires_real_comment(case_id: str, source: str, line: int, *, suppressed: bool) -> None:
     assert is_suppressed(source.splitlines(), line, "SARJ021") is suppressed, case_id
+    context = PythonFileContext(Path("check.py"), source)
+    assert context.suppressions.is_suppressed(line, "SARJ021") is suppressed, case_id
+
+
+def test_file_owned_comments_survive_interleaved_analysis_without_rebuilding_source_keys() -> None:
+    comment_lines.cache_clear()
+    first = PythonFileContext(Path("first.py"), "query = 1 # sarj-noqa: SARJ021 -- external contract\n")
+    second = PythonFileContext(Path("second.py"), "query = 2 # sarj-noqa: SARJ999 -- independent contract\n")
+    for _ in range(3):
+        assert first.suppressions.is_suppressed(1, "SARJ021")
+        assert not second.suppressions.is_suppressed(1, "SARJ021")
+    assert comment_lines.cache_info().misses == 2
+    assert comment_lines.cache_info().hits == 0
+
+
+def test_file_owned_comment_scan_stays_lazy_for_nonmarkers_and_protected_codes() -> None:
+    comment_lines.cache_clear()
+    context = PythonFileContext(Path("check.py"), "value = 1\nvalue = 2 # sarj-noqa: SARJ419 -- needed\n")
+    assert not context.suppressions.is_suppressed(1, "SARJ021")
+    assert not context.suppressions.is_suppressed(2, "SARJ419")
+    assert not context.suppressions.is_suppressed(0, "SARJ021")
+    assert not context.suppressions.is_suppressed(3, "SARJ021")
+    assert comment_lines.cache_info().misses == 0
 
 
 @pytest.mark.parametrize("line", [0, -1, 2])
@@ -219,3 +243,5 @@ _GRAMMAR_CASES = (
 @pytest.mark.parametrize(("case_id", "source", "suppressed"), _GRAMMAR_CASES, ids=[case[0] for case in _GRAMMAR_CASES])
 def test_suppression_requires_a_complete_marker_and_code_list(case_id: str, source: str, *, suppressed: bool) -> None:
     assert is_suppressed(source.splitlines(), 1, "SARJ484") is suppressed, case_id
+    context = PythonFileContext(Path("check.py"), source)
+    assert context.suppressions.is_suppressed(1, "SARJ484") is suppressed, case_id

@@ -59,7 +59,7 @@ def to_sarif(report: AnalysisReport) -> str:
                 "rules": _sarif_rules(report),
             }
         },
-        "results": [_sarif_result(item) for item in report.diagnostics],
+        "results": [_sarif_result(item) for item in report.iter_diagnostics()],
         "columnKind": "utf16CodeUnits",
         "invocations": [
             {
@@ -82,15 +82,15 @@ def to_sarif(report: AnalysisReport) -> str:
 
 
 def to_text(report: AnalysisReport, *, max_diagnostics: int | None = None) -> str:
-    diagnostics = report.diagnostics
+    diagnostics = report.iter_diagnostics()
     omitted = 0
     if max_diagnostics is not None:
         if max_diagnostics < 0:
             msg = "max_diagnostics must be non-negative"
             raise ValueError(msg)
-        omitted = max(0, len(diagnostics) - max_diagnostics)
+        omitted = max(0, sum(len(tool.diagnostics) for tool in report.tools) - max_diagnostics)
         if omitted:
-            diagnostics = tuple(nsmallest(max_diagnostics, diagnostics, key=_diagnostic_priority))
+            diagnostics = iter(nsmallest(max_diagnostics, diagnostics, key=_diagnostic_priority))
     lines = [_text_diagnostic(item) for item in diagnostics]
     if omitted:
         lines.append(
@@ -155,7 +155,7 @@ def _github_selection(
 
 
 def _diagnostic_priority(diagnostic: Diagnostic) -> _DiagnosticPriority:
-    severity = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}[diagnostic.severity]
+    severity = 0 if diagnostic.severity is Severity.ERROR else 1 if diagnostic.severity is Severity.WARNING else 2
     location = diagnostic.location
     position = location.region.start if location.region is not None else location.position
     return _DiagnosticPriority(
@@ -239,7 +239,7 @@ def _coverage_line(source: str, reason: str, file_count: int) -> str:
 
 def _sarif_rules(report: AnalysisReport) -> list[JsonValue]:
     by_code: dict[tuple[str, str], Diagnostic] = {}
-    for diagnostic in report.diagnostics:
+    for diagnostic in report.iter_diagnostics():
         by_code.setdefault((diagnostic.source, diagnostic.code), diagnostic)
     return [
         {

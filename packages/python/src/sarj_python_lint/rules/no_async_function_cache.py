@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._imports import ambiguous_import_names as _nested_import_names
@@ -97,7 +96,7 @@ class NoAsyncFunctionCache(Rule):
             if (
                 not _is_coroutine_cache(decorator, context.imports, shadowed)
                 or has_own_yield(function)
-                or is_suppressed(context.source_lines, decorator.lineno, self.code)
+                or context.suppressions.is_suppressed(decorator.lineno, self.code)
             ):
                 continue
             target = decorator.func if isinstance(decorator, ast.Call) else decorator

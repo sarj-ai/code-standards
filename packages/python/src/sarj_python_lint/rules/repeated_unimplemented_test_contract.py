@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -116,7 +115,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
             if base.symbol not in self._duplicates:
                 self._duplicates[base.symbol] = _duplicates(indexes, base.symbol)
             methods = self._duplicates[base.symbol].get((unit.path, node.name), [])
-            if methods and not is_suppressed(context.source_lines, node.lineno, self.code):
+            if methods and not context.suppressions.is_suppressed(node.lineno, self.code):
                 findings.append(
                     Diagnostic(
                         path=context.path,

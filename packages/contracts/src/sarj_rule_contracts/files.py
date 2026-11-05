@@ -9,11 +9,23 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 
 class SourceChangedError(ValueError):
     pass
+
+
+def iter_source_files(root: Path, *, suffixes: frozenset[str], skip_dirs: frozenset[str]) -> Iterator[Path]:
+    if not skip_dirs.isdisjoint(root.parts):
+        return
+    endings = tuple(os.path.normcase(suffix) for suffix in suffixes)
+    for directory, directories, filenames in root.walk():
+        directories[:] = [name for name in directories if name not in skip_dirs]
+        for name in filenames:
+            child = directory / name
+            if os.path.normcase(name).endswith(endings) and child.is_file():
+                yield child
 
 
 @dataclass(frozen=True, slots=True)

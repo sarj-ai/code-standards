@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._pydantic_field_contract import (
     DECORATOR_SOURCES,
@@ -133,7 +132,7 @@ class NoInvalidPydanticValidatorReturn(Rule):
             if proof is None:
                 continue
             returned, fields = proof
-            if not is_suppressed(context.source_lines, returned.node.lineno, self.code):
+            if not context.suppressions.is_suppressed(returned.node.lineno, self.code):
                 findings.append(
                     Diagnostic(
                         context.path,

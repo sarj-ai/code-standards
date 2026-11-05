@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._resource_provenance import import_name_for_binding
@@ -228,7 +227,7 @@ class PreferBulkUpsert(ProjectRule):
             if candidate is None:
                 continue
             call, bulk_name = candidate.call, candidate.bulk_name
-            if is_suppressed(context.source_lines, call.lineno, self.code):
+            if context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(
