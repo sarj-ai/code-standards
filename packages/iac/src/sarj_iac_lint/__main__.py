@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from functools import partial
+from functools import lru_cache, partial
 import json
 import os
 from pathlib import Path
@@ -138,11 +138,12 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 
 
 def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dict[str, dict[str, int]]:
+    normalize_path = lru_cache(maxsize=1)(partial(_baseline_path, root=root))
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
         if d.severity is DefaultLevel.WARNING:
             continue
-        key = _baseline_path(d.path, root=root)
+        key = normalize_path(d.path)
         per_code = counts.setdefault(key, {})
         per_code[d.code] = per_code.get(d.code, 0) + 1
     return counts
@@ -170,13 +171,14 @@ def apply_baseline(
     *,
     root: Path | None = None,
 ) -> list[Diagnostic]:
+    normalize_path = lru_cache(maxsize=1)(partial(_baseline_path, root=root))
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
         if d.severity is DefaultLevel.WARNING:
             out.append(d)
             continue
-        path_key = _baseline_path(d.path, root=root)
+        path_key = normalize_path(d.path)
         key = (path_key, d.code)
         seen[key] += 1
         # The raw lookup keeps baselines written with absolute paths working.
