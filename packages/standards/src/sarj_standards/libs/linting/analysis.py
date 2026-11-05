@@ -191,6 +191,7 @@ def analyze(
             duration_ms=item.duration_ms,
             file_count=item.file_count,
             cache_status=item.cache_status,
+            rule_executions=item.rule_executions,
         )
         for item in report.tools
     )

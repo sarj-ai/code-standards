@@ -146,7 +146,20 @@
         "invocationId": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
         "fileCount": { "type": "integer", "minimum": 0 },
-        "cache": { "enum": ["disabled", "hit", "miss"] }
+        "cache": { "enum": ["disabled", "hit", "miss"] },
+        "ruleExecutions": { "type": "array", "items": { "$ref": "#/$defs/ruleExecution" } }
+      }
+    },
+    "ruleExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "execution", "requiresTypeInformation", "fileCount"],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "execution": { "enum": ["ran", "skipped", "untracked", "failed", "disabled", "ignored"] },
+        "requiresTypeInformation": { "type": ["boolean", "null"] },
+        "fileCount": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string", "minLength": 1 }
       }
     },
     "coverage": {

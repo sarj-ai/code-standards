@@ -40,6 +40,8 @@ from sarj_standards.libs.diagnostics import (
     Location,
     Position,
     Region,
+    RuleExecution,
+    RuleExecutionState,
     Severity,
     SourceDocument,
     ToolReport,
@@ -565,6 +567,7 @@ def analyze_external(
                     root=root,
                     runner=execute_eslint,
                     parser=parse_eslint,
+                    execution_parser=parse_eslint_executions,
                     validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
                     invocation_id=InvocationId(invocation_id),
                     file_count=_argv_file_count(command.argv),
@@ -612,6 +615,7 @@ def analyze_external(
             duration_ms=report.duration_ms,
             file_count=report.file_count,
             cache_status=report.cache_status,
+            rule_executions=report.rule_executions,
         )
         for report in reports
     )
@@ -2978,6 +2982,7 @@ def _invoke(
     root: Path,
     runner: ProcessExecutor,
     parser: ProtocolParser,
+    execution_parser: RuleExecutionParser | None = None,
     validator: ProtocolValidator | None = None,
     invocation_id: InvocationId | None = None,
     file_count: int,
@@ -2985,12 +2990,23 @@ def _invoke(
 ) -> ToolReport:
     started = time.monotonic()
     try:
-        report = _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser, validator=validator)
+        report = _invoke_unchecked(
+            name,
+            argv,
+            cwd=cwd,
+            root=root,
+            runner=runner,
+            parser=parser,
+            validator=validator,
+            execution_parser=execution_parser,
+            file_count=file_count,
+        )
         return ToolReport(
             report.name,
             report.completion,
             diagnostics=report.diagnostics,
             issues=report.issues,
+            rule_executions=report.rule_executions,
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
             duration_ms=round((time.monotonic() - started) * 1_000),
@@ -3019,7 +3035,9 @@ def _invoke_unchecked(
     root: Path,
     runner: ProcessExecutor,
     parser: ProtocolParser,
+    execution_parser: RuleExecutionParser | None = None,
     validator: ProtocolValidator | None = None,
+    file_count: int | None = None,
 ) -> ToolReport:
     output = runner.run(process_request(argv, cwd=cwd))
     if output.returncode not in {0, 1}:
@@ -3051,11 +3069,24 @@ def _invoke_unchecked(
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     if validator is not None and (issue := validator(output.stdout, root=root)) is not None:
         return ToolReport(name, Completion.FAILED, diagnostics=diagnostics, issues=(issue,))
-    return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics)
+    try:
+        executions = () if execution_parser is None else execution_parser(output.stdout, file_count=file_count)
+    except (TypeError, ValueError, RecursionError) as exc:
+        message = redact_message(f"invalid rule execution metadata: {exc}", root)
+        issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
+        return ToolReport(name, Completion.FAILED, diagnostics=diagnostics, issues=(issue,))
+    if any(item.execution is RuleExecutionState.FAILED for item in executions):
+        issue = ExecutionIssue(name, "incomplete-rule-execution", "one or more requested rule executions failed")
+        return ToolReport(name, Completion.FAILED, diagnostics=diagnostics, issues=(issue,), rule_executions=executions)
+    return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics, rule_executions=executions)
 
 
 class ProtocolParser(Protocol):
     def __call__(self, payload: str, *, root: Path) -> tuple[Diagnostic, ...]: ...
+
+
+class RuleExecutionParser(Protocol):
+    def __call__(self, payload: str, *, file_count: int | None = None) -> tuple[RuleExecution, ...]: ...
 
 
 class ProtocolValidator(Protocol):
@@ -3487,7 +3518,7 @@ def _shellcheck_reported_path(value: str, root: Path, virtual: Path | None) -> P
 
 
 def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    values = _array(_loads(payload), "ESLint output")
+    values = _eslint_results(payload)
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for value in values:
@@ -3498,6 +3529,62 @@ def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             for raw_message in _array(result.get("messages"), "ESLint messages")
         )
     return tuple(diagnostics)
+
+
+def _eslint_results(
+    payload: str,
+) -> list[  # sarj-noqa: SARJ528 -- Decode raw ESLint wire results before validating each file/message record.
+    object
+]:
+    value = _loads(payload)
+    if is_object_list(value):
+        return value
+    return _array(_table(value, "ESLint output").get("results"), "ESLint results")
+
+
+def parse_eslint_executions(payload: str, *, file_count: int | None = None) -> tuple[RuleExecution, ...]:
+    value = _loads(payload)
+    if is_object_list(value):
+        return ()
+    envelope = _table(value, "ESLint output")
+    rows = _array(envelope.get("ruleExecutions", []), "ESLint rule executions")
+    result: list[RuleExecution] = []
+    files = {_text(_table(row, "ESLint file result"), "filePath") for row in _eslint_results(payload)}
+    counts: dict[str, int] = {}
+    identities: set[tuple[str, RuleExecutionState, bool | None, str | None]] = set()
+    for row in rows:
+        item = _table(row, "ESLint rule execution")
+        count = item.get("fileCount")
+        if type(count) is not int or count < 1:
+            msg = "ESLint rule execution fileCount must be a positive integer"
+            raise ValueError(msg)
+        if "requiresTypeInformation" not in item:
+            msg = "ESLint rule execution must declare its type-information requirement"
+            raise ValueError(msg)
+        required = item.get("requiresTypeInformation")
+        if required is not None and not isinstance(required, bool):
+            msg = "ESLint type-information requirement must be a bool or null"
+            raise TypeError(msg)
+        result.append(
+            RuleExecution(
+                rule_id=_text(item, "ruleId"),
+                execution=RuleExecutionState(_text(item, "execution")),
+                file_count=count,
+                requires_type_information=required,
+                reason=_text(item, "reason") if "reason" in item else None,
+            )
+        )
+    for execution in result:
+        identity = (execution.rule_id, execution.execution, execution.requires_type_information, execution.reason)
+        if identity in identities:
+            msg = "ESLint rule execution summaries must not contain duplicate groups"
+            raise ValueError(msg)
+        identities.add(identity)
+        counts[execution.rule_id] = counts.get(execution.rule_id, 0) + execution.file_count
+        if counts[execution.rule_id] > (len(files) if file_count is None else file_count):
+            msg = "ESLint rule execution fileCount exceeds reported file coverage"
+            raise ValueError(msg)
+    return tuple(result)
 
 
 def parse_react_doctor(
@@ -3854,8 +3941,7 @@ def _selected_eslint_argv(
 
 def _validate_eslint_coverage(payload: str, *, root: Path, selected_files: frozenset[Path]) -> ExecutionIssue | None:
     analyzed_files = frozenset(
-        _path(_table(value, "ESLint file result"), "filePath", root)
-        for value in _array(_loads(payload), "ESLint output")
+        _path(_table(value, "ESLint file result"), "filePath", root) for value in _eslint_results(payload)
     )
     missing_count = len(selected_files - analyzed_files)
     if missing_count == 0:

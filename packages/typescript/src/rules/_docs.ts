@@ -4,6 +4,7 @@
  */
 
 import { createNativeRule } from "./_eslint-rule.js";
+import { trackableRule } from "./_trackable-rule.js";
 import type { NativeRuleConfiguration } from "./_eslint-rule.js";
 
 export const REPO_BLOB = "https://github.com/sarj-ai/code-standards/blob/main";
@@ -79,6 +80,10 @@ export interface RuleDocumentation<Options extends readonly unknown[] = readonly
   readonly rationale: string;
   readonly remediation: string;
   readonly category: RuleCategory;
+  /** Omission/null preserves undeclared prerequisites rather than assuming a syntax-only detector. */
+  readonly requiresTypeInformation?: boolean | null;
+  /** Source package roots whose imported APIs establish provenance; these are not plugin dependencies. */
+  readonly runtimeImports?: readonly string[];
   readonly defaultLevel?: DefaultLevel;
   readonly languages?: readonly "typescript"[];
   readonly autofix?: AutofixPolicy;
@@ -111,6 +116,8 @@ export interface PublicRuleSpec {
   readonly rationale: string;
   readonly remediation: string;
   readonly category: RuleCategory;
+  readonly requiresTypeInformation: boolean | null;
+  readonly runtimeImports: readonly string[];
   readonly defaultLevel: DefaultLevel;
   readonly languages: readonly "typescript"[];
   readonly autofix: AutofixPolicy;
@@ -136,7 +143,7 @@ type RuleConfiguration<
 export type DocumentedRule<
   Options extends readonly unknown[],
   MessageIds extends string,
-> = ReturnType<typeof createNativeRule<Options, MessageIds>> & {
+> = ReturnType<typeof trackableRule<Options, MessageIds>> & {
   /** Non-enumerable so the public ESLint rule shape remains unchanged. */
   readonly documentation?: NativeRuleSpec;
 };
@@ -154,7 +161,8 @@ export function createRule<
   MessageIds extends string,
 >(config: SourceRuleConfiguration<Options, MessageIds>): DocumentedRule<Options, MessageIds> {
   const { documentation } = config;
-  const rule = createNativeRule<Options, MessageIds>(config, examplesUrl);
+  const rule = trackableRule(createNativeRule<Options, MessageIds>(config, examplesUrl),
+    documentation?.requiresTypeInformation ?? null);
   if (documentation !== undefined) {
     Object.defineProperty(rule, "documentation", {
       configurable: false,
@@ -199,6 +207,8 @@ export function publicDocumentation(
         rationale: spec.rationale,
         remediation: spec.remediation,
         category: spec.category,
+        requiresTypeInformation: spec.requiresTypeInformation,
+        runtimeImports: spec.runtimeImports,
         defaultLevel: spec.defaultLevel,
         languages: spec.languages,
         autofix: spec.autofix,
@@ -292,6 +302,8 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
     rationale: documentation.rationale,
     remediation: documentation.remediation,
     category: documentation.category,
+    requiresTypeInformation: documentation.requiresTypeInformation ?? null,
+    runtimeImports: [...(documentation.runtimeImports ?? [])],
     defaultLevel: documentation.defaultLevel ?? "error",
     languages: [...(documentation.languages ?? ["typescript"])],
     autofix: documentation.autofix ?? "none",

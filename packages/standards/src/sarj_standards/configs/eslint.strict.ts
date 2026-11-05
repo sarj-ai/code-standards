@@ -1560,6 +1560,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/prefer-typed-reflection": "error",
       "@sarj/no-conditional-empty-object-spread": "error",
       "@sarj/no-reduce-accumulator-copy": "error",
+      "@sarj/no-growing-array-spread-in-loop": "warn",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-camelcase-properties": "error",
       // Wire keys need bracket access so they remain visibly external. The

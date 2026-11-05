@@ -163,6 +163,7 @@ class _ToolReportData(TypedDict):
     fileCount: NotRequired[int]
     baselinedDiagnosticCount: NotRequired[int]
     policyFailed: NotRequired[bool]
+    ruleExecutions: NotRequired[list[_RuleExecutionData]]
 
 
 _AnalysisReport = TypedDict(
@@ -469,6 +470,69 @@ class ExecutionIssue:
         return result
 
 
+class RuleExecutionState(StrEnum):
+    RAN = "ran"
+    SKIPPED = "skipped"
+    UNTRACKED = "untracked"
+    FAILED = "failed"
+    DISABLED = "disabled"
+    IGNORED = "ignored"
+
+
+class _RuleExecutionData(TypedDict):
+    ruleId: str
+    execution: str
+    requiresTypeInformation: bool | None
+    fileCount: int
+    reason: NotRequired[str]
+
+
+@dataclass(frozen=True, slots=True)
+class RuleExecution:
+    rule_id: str
+    execution: RuleExecutionState
+    file_count: int
+    requires_type_information: bool | None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text(self.rule_id, "execution rule ID")
+        _require_instance(self.execution, RuleExecutionState, "rule execution state")
+        _require_int(self.file_count, "rule execution file count")
+        if self.file_count < 1:
+            msg = "rule execution must describe at least one file"
+            raise ValueError(msg)
+        if self.requires_type_information is not None:
+            _require_instance(self.requires_type_information, bool, "type-information requirement")
+        if self.reason is not None:
+            _require_text(self.reason, "rule execution reason")
+        if self.execution is RuleExecutionState.RAN and self.requires_type_information is None:
+            msg = "evaluated rules must declare their type-information requirement"
+            raise ValueError(msg)
+        if self.execution is RuleExecutionState.RAN and self.reason is not None:
+            msg = "completed rule execution must not carry an unevaluated reason"
+            raise ValueError(msg)
+        if self.execution is not RuleExecutionState.RAN and self.reason is None:
+            msg = "unevaluated rule execution states must explain their reason"
+            raise ValueError(msg)
+        if self.reason == "missing-type-information" and (
+            self.requires_type_information is not True or self.execution is not RuleExecutionState.SKIPPED
+        ):
+            msg = "missing type information requires a skipped, explicitly typed rule"
+            raise ValueError(msg)
+
+    def as_dict(self) -> _RuleExecutionData:
+        result: _RuleExecutionData = {
+            "ruleId": self.rule_id,
+            "execution": self.execution.value,
+            "requiresTypeInformation": self.requires_type_information,
+            "fileCount": self.file_count,
+        }
+        if self.reason is not None:
+            result["reason"] = self.reason
+        return result
+
+
 @dataclass(frozen=True, slots=True)
 class ToolReport:
     name: str
@@ -483,12 +547,19 @@ class ToolReport:
     cache_status: CacheStatus = CacheStatus.DISABLED
     baselined_count: int = 0
     policy_failed: bool = False
+    rule_executions: tuple[RuleExecution, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.name, "tool name")
         _require_instance(self.completion, Completion, "tool completion")
         _require_tuple_items(self.diagnostics, Diagnostic, "tool diagnostics")
         _require_tuple_items(self.issues, ExecutionIssue, "tool issues")
+        _require_tuple_items(self.rule_executions, RuleExecution, "rule executions")
+        if self.completion is Completion.COMPLETE and any(
+            item.execution is RuleExecutionState.FAILED for item in self.rule_executions
+        ):
+            msg = "a complete tool report cannot contain failed rule executions"
+            raise ValueError(msg)
         if self.completion is Completion.COMPLETE and self.issues:
             msg = "a complete tool report cannot contain execution issues"
             raise ValueError(msg)
@@ -536,6 +607,8 @@ class ToolReport:
             result["baselinedDiagnosticCount"] = self.baselined_count
         if self.policy_failed:
             result["policyFailed"] = True
+        if self.rule_executions:
+            result["ruleExecutions"] = [item.as_dict() for item in self.rule_executions]
         return result
 
 

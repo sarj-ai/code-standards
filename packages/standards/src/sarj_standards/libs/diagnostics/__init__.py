@@ -20,6 +20,8 @@ from .models import (
     Region as Region,
     RelatedLocation as RelatedLocation,
     RuleDescriptor as RuleDescriptor,
+    RuleExecution as RuleExecution,
+    RuleExecutionState as RuleExecutionState,
     Severity as Severity,
     TextEdit as TextEdit,
     ToolReport as ToolReport,
