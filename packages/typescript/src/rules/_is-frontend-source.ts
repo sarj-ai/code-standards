@@ -19,21 +19,8 @@ export function isFrontendSource(context: FrontendContext): boolean {
   return /\.[jt]sx$/u.test(context.filename) || frontendModule(context.sourceCode.ast) || frontendPackage(context.filename);
 }
 
-// Manifests do not change during a lint run, so answer each directory once.
-const FRONTEND_PACKAGE_BY_DIRECTORY = new Map<string, boolean>();
-
 function frontendPackage(filename: string): boolean {
-  const directory = dirname(resolve(filename));
-  let cached = FRONTEND_PACKAGE_BY_DIRECTORY.get(directory);
-  if (cached === undefined) {
-    cached = nearestManifestDeclaresFrontend(directory);
-    FRONTEND_PACKAGE_BY_DIRECTORY.set(directory, cached);
-  }
-  return cached;
-}
-
-function nearestManifestDeclaresFrontend(start: string): boolean {
-  let directory = start;
+  let directory = dirname(resolve(filename));
   for (;;) {
     const manifestPath = join(directory, "package.json");
     if (existsSync(manifestPath)) {

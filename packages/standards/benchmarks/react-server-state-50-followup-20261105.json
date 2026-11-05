@@ -1,0 +1,1185 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "repository": "sarj-ai/code-standards",
+  "scope": "Fifty further reviews of React prop-state, server preparation and frontend comment rules after PR2078.",
+  "initialBaseline": {
+    "revision": "434235a7d1402f0cddd61d9cc4c9afd9a95aa9d4",
+    "core": "8.200.10",
+    "typescript": "18.1.4"
+  },
+  "measurementBaseline": {
+    "revision": "af2c6191419d6aeeb7d881c975a3f48ea25393c6",
+    "core": "8.200.12",
+    "typescript": "18.1.5"
+  },
+  "evaluatedCandidateVersions": {
+    "core": "8.200.13",
+    "typescript": "18.1.6"
+  },
+  "candidateVersions": {
+    "core": "8.202.5",
+    "typescript": "18.1.6"
+  },
+  "integration": "Both historical baselines reproduce the same 12 source-control gaps. Paired performance comparisons use the integrated baseline. Later core/Python integration leaves the evaluated TypeScript source and dependencies unchanged; timings remain tied to evaluatedCandidateVersions.",
+  "method": "50 distinct review points: 45 new semantic source controls and five integration/performance reviews. Rechecked 112 previous controls. This is not 50 repeated full-suite runs.",
+  "reviewPasses": [
+    {
+      "pass": 1,
+      "focus": "Erased namespace assertion preserves the React import",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 2,
+      "focus": "Non-null namespace wrapper preserves the React import",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 3,
+      "focus": "Satisfies namespace wrapper preserves the React import",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 4,
+      "focus": "Erased default-import object wrapper preserves hook identity",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 5,
+      "focus": "Erased named-hook callee remains recognized",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 6,
+      "focus": "Computed literal namespace hook retains provenance",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 7,
+      "focus": "A type-only namespace supplies no runtime React hook",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 8,
+      "focus": "An unrelated package namespace is not React",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 9,
+      "focus": "Explicitly overwritten default-import useState is not proven React",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 10,
+      "focus": "Writing a different namespace field does not replace useState",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 11,
+      "focus": "Writing a property on a named hook does not replace its callable",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 12,
+      "focus": "Trailing tuple comma retains a readonly state value",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 13,
+      "focus": "Updater escaping through a record remains interactive",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 14,
+      "focus": "A type-only setter query does not establish a runtime updater",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 15,
+      "focus": "Named lazy initializer shadows a similarly named prop",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 16,
+      "focus": "A second parameter cannot establish first-prop provenance",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 17,
+      "focus": "Only nested JSX does not establish the owning render function",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 18,
+      "focus": "A rest-captured updater tuple remains outside readonly scope",
+      "result": "passed",
+      "rule": "no-readonly-prop-state",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 19,
+      "focus": "Tuple-shaped option data is a prop-only projection",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 20,
+      "focus": "Readonly tuple output is still data preparation",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 21,
+      "focus": "Nested object and array output remains field-only",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 22,
+      "focus": "FlatMap over literal field values remains data-only",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 23,
+      "focus": "Captured values prevent array-output preparation",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 24,
+      "focus": "Opaque iterable spreads remain outside array projection support",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 25,
+      "focus": "Arrays containing JSX remain rendering callbacks",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 26,
+      "focus": "Destructured callback fields can form option tuples",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 27,
+      "focus": "Whole-record object spreads remain unsupported",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 28,
+      "focus": "An index parameter remains outside the single-parameter boundary",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 29,
+      "focus": "Synchronous function callbacks can return data tuples",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 30,
+      "focus": "Wrapped namespace useReducer establishes independent interaction",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 31,
+      "focus": "A callable bound DOM handler establishes interaction",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 32,
+      "focus": "A noncallable handler does not establish interaction",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 33,
+      "focus": "Dynamic first-prop member paths remain unsupported",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 34,
+      "focus": "String-literal destructuring aliases retain source provenance",
+      "result": "passed",
+      "rule": "prefer-server-data-preparation",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 35,
+      "focus": "Empty trailing line comment preserves CRLF",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 36,
+      "focus": "A Unicode line separator prevents block-comment deletion",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 37,
+      "focus": "Nonbreaking whitespace can be replaced by a separator",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 38,
+      "focus": "Comment delimiters inside regular expressions remain data",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 39,
+      "focus": "Rendered JSX comment delimiters remain user-visible text",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 0,
+      "baselineDiagnostics": 0,
+      "candidateDiagnostics": 0,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 40,
+      "focus": "Empty comments inside JSX spread attributes remain manual",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 41,
+      "focus": "An empty comment after JSX is outside its range",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 42,
+      "focus": "Frontend test license comments have one owner despite CRLF",
+      "result": "passed",
+      "rule": "both-comment-owners",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 43,
+      "focus": "Executable shebangs in a frontend module remain manual",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 44,
+      "focus": "Dynamic-import build annotations remain manual",
+      "result": "passed",
+      "rule": "no-frontend-comments",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 45,
+      "focus": "Explicit allFiles policy transfers test ownership without duplicate fixes",
+      "result": "passed",
+      "rule": "both-comment-owners",
+      "expectedDiagnostics": 1,
+      "baselineDiagnostics": 1,
+      "candidateDiagnostics": 1,
+      "parserFailures": 0,
+      "ownersAgree": true,
+      "outputAgrees": true,
+      "fixConverges": true
+    },
+    {
+      "pass": 46,
+      "focus": "Preset severities and explicit native suppression policy",
+      "result": "passed",
+      "evidence": "Both presets retain comment errors and advisory warnings. Explicit native ESLint suppression remains supported; no-inline-configuration exposes the directive as an error."
+    },
+    {
+      "pass": 47,
+      "focus": "Destructured parameter binding membership scaling",
+      "result": "passed",
+      "evidence": "Three alternating paired rounds at four sizes; 24 fresh workers. Parameter-identifier reads change from N*(N+1)/2 to N with unchanged diagnostic counts."
+    },
+    {
+      "pass": 48,
+      "focus": "Pinned live-corpus diagnostics and repeat cold/warm CPU/RSS",
+      "result": "passed",
+      "evidence": "Original private corpus pin reused: 103 files, six fresh workers, three loops each. Compiler input bytes and diagnostics are stable across all workers. Coverage limitations are disclosed below."
+    },
+    {
+      "pass": 49,
+      "focus": "Shared-owner, parser-scope and cache-lifetime review",
+      "result": "passed",
+      "evidence": "Four stateful package-ownership transition scenarios pass for fresh text and reused SourceCode objects. Backend legal groups are scanned once; frontend policy skips legal classification. Native parser/scope and duplicate-owner controls remain green."
+    },
+    {
+      "pass": 50,
+      "focus": "Native metadata, version alignment and merged-baseline custody",
+      "result": "passed",
+      "evidence": "Native metadata/artifact checks passed. The later main integration changes no evaluated TypeScript source, dependency graph or tool versions. Final release identifiers are recorded separately from the evaluated snapshot."
+    }
+  ],
+  "labeledControls": {
+    "newBaseline": {
+      "truePositiveCases": 17,
+      "trueNegativeCases": 16,
+      "falsePositiveCases": 1,
+      "falseNegativeCases": 11,
+      "parserFailures": 0,
+      "engineFailures": 0
+    },
+    "newCandidate": {
+      "truePositiveCases": 28,
+      "trueNegativeCases": 17,
+      "falsePositiveCases": 0,
+      "falseNegativeCases": 0,
+      "parserFailures": 0,
+      "engineFailures": 0
+    },
+    "retainedPreviousControls": 112,
+    "combinedCases": 157,
+    "uniqueSourceBodies": 153,
+    "positiveCases": 87,
+    "negativeCases": 70,
+    "sourceReuse": "All 45 new source bodies differ from the previous controls. Four older source bodies intentionally recur in distinct test/vendor/ownership contexts.",
+    "limits": "Zero observed FP/FN applies to these labeled controls, not every possible program."
+  },
+  "ownershipTransitions": {
+    "method": "Separate from the 157 source-body controls: add/remove a frontend dependency in a persistent plugin process, using fresh text and reused SourceCode objects; two evaluations per scenario.",
+    "baselineMatchedScenarios": 0,
+    "candidateMatchedScenarios": 4,
+    "scenarios": 4,
+    "parserFailures": 0,
+    "engineFailures": 0
+  },
+  "repairs": [
+    "Follow erased namespace-object wrappers while retaining lexical React import identity.",
+    "Exclude explicit replacement of the requested imported hook member; preserve unrelated members and writes to properties of the hook function.",
+    "Accept dense field-only array data projections, including nested shapes and readonly tuples; exclude holes, spreads, captures and JSX outputs.",
+    "Use identifier-set membership for destructured props and reuse the existing import-reference scan for hook replacements.",
+    "Skip backend legal-notice classification for frontend tests and reuse marked backend legal groups.",
+    "Read current package ownership rather than retaining process-global frontend verdicts across manifest changes."
+  ],
+  "parameterScaling": {
+    "method": "Native run_isolated_corpora; three alternating paired rounds, four immutable synthetic sizes, 24 fresh workers. Three uninstrumented CPU/wall loops plus a separate native identifier-access count. No TypeScript program; RSS includes the entire worker.",
+    "comparisons": [
+      {
+        "parameters": 8,
+        "baseline": {
+          "medianColdMs": 116.508918,
+          "medianWarmMs": 13.297445000000096,
+          "medianColdCpuMs": 136.838,
+          "medianWarmCpuMs": 32.806,
+          "medianPeakRssKiB": 174808,
+          "parameterIdentifierReads": [
+            36
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 102.24498800000003,
+          "medianWarmMs": 18.818494500000043,
+          "medianColdCpuMs": 121.103,
+          "medianWarmCpuMs": 32.7325,
+          "medianPeakRssKiB": 175428,
+          "parameterIdentifierReads": [
+            8
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -12.242779561303585,
+          "medianWarmMs": 41.51962651471699,
+          "medianColdCpuMs": -11.498998816118334,
+          "medianWarmCpuMs": -0.22404438212521027,
+          "medianPeakRssKiB": 0.35467484325659715
+        }
+      },
+      {
+        "parameters": 32,
+        "baseline": {
+          "medianColdMs": 135.12036699999987,
+          "medianWarmMs": 20.797509500000047,
+          "medianColdCpuMs": 192.164,
+          "medianWarmCpuMs": 47.843,
+          "medianPeakRssKiB": 177996,
+          "parameterIdentifierReads": [
+            528
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 123.73344700000007,
+          "medianWarmMs": 19.67928999999998,
+          "medianColdCpuMs": 186.292,
+          "medianWarmCpuMs": 50.538,
+          "medianPeakRssKiB": 178064,
+          "parameterIdentifierReads": [
+            32
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -8.427241764374294,
+          "medianWarmMs": -5.376699070627011,
+          "medianColdCpuMs": -3.05572323640223,
+          "medianWarmCpuMs": 5.633007963547421,
+          "medianPeakRssKiB": 0.03820310568776186
+        }
+      },
+      {
+        "parameters": 128,
+        "baseline": {
+          "medianColdMs": 187.45702599999993,
+          "medianWarmMs": 75.73853350000002,
+          "medianColdCpuMs": 310.988,
+          "medianWarmCpuMs": 129.2945,
+          "medianPeakRssKiB": 217460,
+          "parameterIdentifierReads": [
+            8256
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 168.71795599999996,
+          "medianWarmMs": 63.502158500000064,
+          "medianColdCpuMs": 287.587,
+          "medianWarmCpuMs": 139.7985,
+          "medianPeakRssKiB": 216048,
+          "parameterIdentifierReads": [
+            128
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -9.996461802397306,
+          "medianWarmMs": -16.156075955708793,
+          "medianColdCpuMs": -7.524727642224138,
+          "medianWarmCpuMs": 8.124088805014896,
+          "medianPeakRssKiB": -0.6493148165179763
+        }
+      },
+      {
+        "parameters": 512,
+        "baseline": {
+          "medianColdMs": 359.01514199999986,
+          "medianWarmMs": 157.9232915,
+          "medianColdCpuMs": 674.029,
+          "medianWarmCpuMs": 362.104,
+          "medianPeakRssKiB": 310104,
+          "parameterIdentifierReads": [
+            131328
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 330.254272,
+          "medianWarmMs": 162.877842,
+          "medianColdCpuMs": 661.467,
+          "medianWarmCpuMs": 362.57550000000003,
+          "medianPeakRssKiB": 302884,
+          "parameterIdentifierReads": [
+            512
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -8.011046509007647,
+          "medianWarmMs": 3.137314612012121,
+          "medianColdCpuMs": -1.863718029936401,
+          "medianWarmCpuMs": 0.13021121003911063,
+          "medianPeakRssKiB": -2.3282511673503037
+        }
+      }
+    ],
+    "limits": "Exact counts establish linear membership work. Shared-VM CPU/wall and memory observations include improvements and regressions; they do not guarantee a universal speedup."
+  },
+  "commentScaling": {
+    "method": "Native run_isolated_corpora; three alternating paired rounds, four immutable synthetic sizes, frontend/backend policies, 48 fresh workers. Three uninstrumented CPU/wall loops plus separate cluster-comparison instrumentation. Frontend emits N manual errors; backend emits zero for legal groups in both modes.",
+    "comparisons": [
+      {
+        "policy": "frontend",
+        "comments": 8,
+        "baseline": {
+          "medianColdMs": 93.7536980000001,
+          "medianWarmMs": 8.761239999999987,
+          "medianColdCpuMs": 104.801,
+          "medianWarmCpuMs": 13.3335,
+          "medianPeakRssKiB": 167836,
+          "clusterComparisons": [
+            56
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 79.78541899999993,
+          "medianWarmMs": 6.104569500000025,
+          "medianColdCpuMs": 88.425,
+          "medianWarmCpuMs": 9.7685,
+          "medianPeakRssKiB": 167464,
+          "clusterComparisons": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -14.898909907532554,
+          "medianWarmMs": -30.322996516474443,
+          "medianColdCpuMs": -15.62580509727961,
+          "medianWarmCpuMs": -26.737165785427685,
+          "medianPeakRssKiB": -0.22164493910722394
+        }
+      },
+      {
+        "policy": "frontend",
+        "comments": 32,
+        "baseline": {
+          "medianColdMs": 109.28296799999998,
+          "medianWarmMs": 6.304214999999999,
+          "medianColdCpuMs": 117.727,
+          "medianWarmCpuMs": 11.5665,
+          "medianPeakRssKiB": 168000,
+          "clusterComparisons": [
+            992
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 85.92291799999998,
+          "medianWarmMs": 5.036110000000008,
+          "medianColdCpuMs": 98.733,
+          "medianWarmCpuMs": 10.5215,
+          "medianPeakRssKiB": 168152,
+          "clusterComparisons": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -21.375746310257615,
+          "medianWarmMs": -20.11519277181999,
+          "medianColdCpuMs": -16.133936989815425,
+          "medianWarmCpuMs": -9.034712315739423,
+          "medianPeakRssKiB": 0.09047619047619637
+        }
+      },
+      {
+        "policy": "frontend",
+        "comments": 128,
+        "baseline": {
+          "medianColdMs": 151.9818170000001,
+          "medianWarmMs": 9.93178499999999,
+          "medianColdCpuMs": 142.646,
+          "medianWarmCpuMs": 21.009999999999998,
+          "medianPeakRssKiB": 175856,
+          "clusterComparisons": [
+            16256
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 85.50916799999993,
+          "medianWarmMs": 8.113750000000039,
+          "medianColdCpuMs": 100.214,
+          "medianWarmCpuMs": 16.3455,
+          "medianPeakRssKiB": 174224,
+          "clusterComparisons": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -43.73723798814704,
+          "medianWarmMs": -18.305219051761124,
+          "medianColdCpuMs": -29.74636512765867,
+          "medianWarmCpuMs": -22.201332698714882,
+          "medianPeakRssKiB": -0.9280320262032626
+        }
+      },
+      {
+        "policy": "frontend",
+        "comments": 512,
+        "baseline": {
+          "medianColdMs": 118.36748799999998,
+          "medianWarmMs": 20.551999000000023,
+          "medianColdCpuMs": 164.072,
+          "medianWarmCpuMs": 37.601,
+          "medianPeakRssKiB": 176352,
+          "clusterComparisons": [
+            261632
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 115.6124769999999,
+          "medianWarmMs": 10.661335000000122,
+          "medianColdCpuMs": 152.781,
+          "medianWarmCpuMs": 24.1295,
+          "medianPeakRssKiB": 176088,
+          "clusterComparisons": [
+            0
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -2.3275065193578137,
+          "medianWarmMs": -48.12507046151515,
+          "medianColdCpuMs": -6.881734848115462,
+          "medianWarmCpuMs": -35.82750458764394,
+          "medianPeakRssKiB": -0.14970059880239361
+        }
+      },
+      {
+        "policy": "backend",
+        "comments": 8,
+        "baseline": {
+          "medianColdMs": 89.971408,
+          "medianWarmMs": 5.008355499999993,
+          "medianColdCpuMs": 98.113,
+          "medianWarmCpuMs": 8.515,
+          "medianPeakRssKiB": 167760,
+          "clusterComparisons": [
+            56
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 98.40876800000001,
+          "medianWarmMs": 5.956519500000013,
+          "medianColdCpuMs": 100.436,
+          "medianWarmCpuMs": 9.9115,
+          "medianPeakRssKiB": 167856,
+          "clusterComparisons": [
+            7
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": 9.377823674827912,
+          "medianWarmMs": 18.931643330830262,
+          "medianColdCpuMs": 2.3676780854728907,
+          "medianWarmCpuMs": 16.40046975924838,
+          "medianPeakRssKiB": 0.05722460658081907
+        }
+      },
+      {
+        "policy": "backend",
+        "comments": 32,
+        "baseline": {
+          "medianColdMs": 86.443758,
+          "medianWarmMs": 5.661234500000035,
+          "medianColdCpuMs": 96.934,
+          "medianWarmCpuMs": 10.657499999999999,
+          "medianPeakRssKiB": 168008,
+          "clusterComparisons": [
+            992
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 86.98077799999999,
+          "medianWarmMs": 5.448444999999936,
+          "medianColdCpuMs": 98.414,
+          "medianWarmCpuMs": 9.550999999999998,
+          "medianPeakRssKiB": 167900,
+          "clusterComparisons": [
+            31
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": 0.6212362956270256,
+          "medianWarmMs": -3.758711991176089,
+          "medianColdCpuMs": 1.5268120576887423,
+          "medianWarmCpuMs": -10.38235984048792,
+          "medianPeakRssKiB": -0.06428265320699289
+        }
+      },
+      {
+        "policy": "backend",
+        "comments": 128,
+        "baseline": {
+          "medianColdMs": 89.53443800000002,
+          "medianWarmMs": 8.060844999999972,
+          "medianColdCpuMs": 103.983,
+          "medianWarmCpuMs": 20.0605,
+          "medianPeakRssKiB": 175844,
+          "clusterComparisons": [
+            16256
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 97.61781800000006,
+          "medianWarmMs": 7.4281500000000165,
+          "medianColdCpuMs": 111.963,
+          "medianWarmCpuMs": 16.597,
+          "medianPeakRssKiB": 174292,
+          "clusterComparisons": [
+            127
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": 9.028235593548972,
+          "medianWarmMs": -7.848991017690555,
+          "medianColdCpuMs": 7.674331381091126,
+          "medianWarmCpuMs": -17.265272550534625,
+          "medianPeakRssKiB": -0.8826004867951154
+        }
+      },
+      {
+        "policy": "backend",
+        "comments": 512,
+        "baseline": {
+          "medianColdMs": 112.07083699999998,
+          "medianWarmMs": 19.100549499999943,
+          "medianColdCpuMs": 150.439,
+          "medianWarmCpuMs": 34.766999999999996,
+          "medianPeakRssKiB": 176428,
+          "clusterComparisons": [
+            261632
+          ]
+        },
+        "candidate": {
+          "medianColdMs": 107.73673700000006,
+          "medianWarmMs": 17.458679500000017,
+          "medianColdCpuMs": 142.187,
+          "medianWarmCpuMs": 36.951,
+          "medianPeakRssKiB": 176208,
+          "clusterComparisons": [
+            511
+          ]
+        },
+        "deltaPercent": {
+          "medianColdMs": -3.8672861879312292,
+          "medianWarmMs": -8.595930708694699,
+          "medianColdCpuMs": -5.485279747937688,
+          "medianWarmCpuMs": 6.281818966261121,
+          "medianPeakRssKiB": -0.12469676015145481
+        }
+      }
+    ],
+    "limits": "Exact counts change from N*(N-1) to zero for frontend and N-1 for backend. End-to-end timings and memory include parser/reporting costs and shared-VM noise."
+  },
+  "liveCorpus": {
+    "visibility": "private; source identifiers, paths, revisions and identifying hashes are omitted",
+    "pinReused": true,
+    "files": 103,
+    "bytes": 537448,
+    "method": "Native run_isolated_corpora; three alternating paired rounds, six fresh workers, three CPU/wall loops each; four React rules enabled in both modes.",
+    "compilerInputCounts": [
+      4923
+    ],
+    "typescriptApiVersions": [
+      "6.0.3"
+    ],
+    "compilerInputBytesStableAcrossWorkers": true,
+    "diagnosticsIdenticalAcrossAllWorkers": true,
+    "aggregates": {
+      "baseline": {
+        "medianColdMs": 5089.574874,
+        "medianWarmMs": 1520.4593450000002,
+        "medianColdCpuMs": 8675.756,
+        "medianWarmCpuMs": 1886.5455000000002,
+        "medianPeakRssKiB": 1656332,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      },
+      "candidate": {
+        "medianColdMs": 4123.939587,
+        "medianWarmMs": 1084.7287154999995,
+        "medianColdCpuMs": 8280.564,
+        "medianWarmCpuMs": 1630.5520000000001,
+        "medianPeakRssKiB": 1584500,
+        "files": [
+          103
+        ],
+        "nativeErrorFiles": [
+          39
+        ],
+        "byRule": {
+          "@sarj/prefer-server-data-preparation": 1,
+          "@sarj/no-unnecessary-use-client": 2
+        }
+      }
+    },
+    "deltaPercent": {
+      "medianColdMs": -18.972808356409686,
+      "medianWarmMs": -28.657828368308046,
+      "medianColdCpuMs": -4.555130411689756,
+      "medianWarmCpuMs": -13.569431535046462,
+      "medianPeakRssKiB": -4.336811702001775
+    },
+    "labeling": "The unchanged server-preparation hit was previously inspected as a true positive. Two other unchanged findings belong to another rule. Zero-hit files are unlabeled and do not establish a false-negative rate.",
+    "limits": "Both modes inherit 39 files with native compiler errors. Type/service coverage is incomplete. Timings exclude program construction and use the same native compiler configuration and input bytes."
+  },
+  "severity": [
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-frontend-comments",
+      "level": "error"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-test-comments",
+      "level": "error"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/no-readonly-prop-state",
+      "level": "warn"
+    },
+    {
+      "preset": "recommended",
+      "rule": "@sarj/prefer-server-data-preparation",
+      "level": "warn"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-frontend-comments",
+      "level": "error"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-test-comments",
+      "level": "error"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/no-readonly-prop-state",
+      "level": "warn"
+    },
+    {
+      "preset": "strict",
+      "rule": "@sarj/prefer-server-data-preparation",
+      "level": "warn"
+    }
+  ],
+  "frontendCommentPolicy": "All actual line, block, JSDoc and JSX comments in maintained frontend scope are errors, including legal/tool comments. Frontend tests have one comment owner; generated/vendor source is excluded. Explicit ESLint configuration can suppress or disable rules. Regex, strings and rendered JSX text remain data.",
+  "validation": {
+    "focusedTypeScriptTests": 1869,
+    "sourceControlsPassed": 157,
+    "statefulOwnershipScenariosPassed": 4,
+    "lint": "Complete authored and shipped checks for all nine changed TypeScript source/test targets.",
+    "typing": "Canonical npm run typecheck includes source and tooling projects.",
+    "metadata": "Native examples, catalogs, CLI reference, documentation and artifact checks passed.",
+    "fullTypeScriptTests": 14503,
+    "fullTypeScriptFiles": 243,
+    "compilerContractRecovery": "The original full matrix had one 60-second compiler-contract timeout with two workers. Both compiler preflight tests and the complete 14,503-test TypeScript suite passed with one worker, preserving the timeout, assertions and source.",
+    "remainingNativeGates": "tsconfig validation, repository policy, private-reference delegation and shell checks passed.",
+    "finalTreeQualification": "The combined release tree requires canonical exact-tree CI separately before merge. Backend matrix results are retained with their original pre-integration provenance."
+  },
+  "limitations": [
+    "React provenance does not model reflective or external API mutation.",
+    "Server preparation remains a warning and review lead with no automatic rewrite; caller/server cost and runtime purity are not proven.",
+    "Comment diagnostics containing content or syntax-sensitive positions remain manual; safe empty-comment fixes were checked for convergence."
+  ]
+}

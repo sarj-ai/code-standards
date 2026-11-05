@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import * as parser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
@@ -137,3 +141,26 @@ function nativeTokens(source: string): readonly string[] {
   if (tokens === undefined) throw new Error("Native parsing did not return the required token stream.");
   return tokens.map(token => `${token.type}:${token.value}`);
 }
+
+it.each([
+  { name: "removed dependency with source text", initial: true, current: false, reuseSource: false },
+  { name: "added dependency with source text", initial: false, current: true, reuseSource: false },
+  { name: "removed dependency with an existing source object", initial: true, current: false, reuseSource: true },
+  { name: "added dependency with an existing source object", initial: false, current: true, reuseSource: true },
+])("refreshes package ownership for $name", ({ initial, current, reuseSource }) => {
+    const directory = mkdtempSync(join(tmpdir(), "frontend-ownership-"));
+    const filename = join(directory, "helper.ts");
+    const code = "// The current package owns this helper\nexport const ownership = 1;";
+    const configuration = [{ files: ["**/*.ts"], languageOptions: { parser }, plugins: { sarj: { rules: { "no-frontend-comments": rule } } }, rules: { "sarj/no-frontend-comments": "error" as const } }];
+    const manifest = (frontend: boolean) => JSON.stringify(frontend ? { private: true, dependencies: { react: "19.2.0" } } : { private: true });
+    try {
+      const linter = new Linter({ cwd: directory });
+      writeFileSync(join(directory, "package.json"), manifest(initial));
+      expect(linter.verify(code, configuration, { filename })).toHaveLength(initial ? 1 : 0);
+      const source = linter.getSourceCode();
+      writeFileSync(join(directory, "package.json"), manifest(current));
+      expect(linter.verify(reuseSource ? source : code, configuration, { filename })).toHaveLength(current ? 1 : 0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+});

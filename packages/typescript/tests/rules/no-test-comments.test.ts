@@ -14,6 +14,7 @@ const TESTER = new RuleTester({ languageOptions: { parser }, defaultFilenames: {
 
 TESTER.run("no-test-comments", rule, {
   valid: [
+    {"name": "adjacent legal markers share their complete backend notice", "filename": "src/grouped-notice.test.ts", "code": "// Copyright first holder\n// Copyright second holder\n// Terms remain part of the same notice\nexport const legalValue = 1;"},
     NO_TEST_COMMENTS_DOCUMENTATION.examples[1].files[0].source,
     { name: "production prose", filename: "src/request.ts", code: "// Preserve the wire contract\nconst value = 1;" },
     { name: "production implementation with ambiguous basename", filename: "src/rules/source-coupled-test.ts", code: "// This module implements a test-quality rule\nexport const value = 1;" },
@@ -82,6 +83,7 @@ TESTER.run("no-test-comments", rule, {
     { name: "local suppression", code: "// eslint-disable-next-line @rule-tester/no-test-comments -- legal review requires this exact rationale\n// Retained contractual explanation\nexpect(run()).toBe(true);" },
   ],
   invalid: [
+    {"name": "frontend legal clusters retain every manual diagnostic", "filename": "src/grouped-notice.test.tsx", "code": "// Copyright first frontend holder\n// Copyright second frontend holder\n// Terms remain comments in frontend tests\nexport const legalView = <span/>;", "errors": [{"messageId": "testComment"}, {"messageId": "testComment"}, {"messageId": "testComment"}], "output": null},
     ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map(ending => ({
       name: "inline multiline prose retains its exact terminator " + JSON.stringify(ending),
       code: `function f() { return/* prose${ending}more */value; }`,

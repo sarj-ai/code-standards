@@ -99,6 +99,24 @@ export function ownsTestComments(context: Pick<NativeRuleContext<string, readonl
     return unambiguous || framework;
 }
 
+function legalNoticeComments(comments: readonly TSESTree.Comment[]): ReadonlySet<TSESTree.Comment> {
+  const legal = new Set<TSESTree.Comment>();
+  for (const [index, comment] of comments.entries()) {
+    if (legal.has(comment) || comment.type !== "Line" || !LEGAL.test(comment.value)) continue;
+    legal.add(comment);
+    for (const direction of [-1, 1]) {
+      let previous = comment;
+      for (let next = index + direction; next >= 0 && next < comments.length; next += direction) {
+        const neighbor = comments[next];
+        if (neighbor?.type !== "Line" || Math.abs(neighbor.loc.start.line - previous.loc.start.line) !== 1) break;
+        legal.add(neighbor);
+        previous = neighbor;
+      }
+    }
+  }
+  return legal;
+}
+
 export default createRule<Options, "testComment">({
   name: "no-test-comments",
   documentation: NO_TEST_COMMENTS_DOCUMENTATION,
@@ -117,23 +135,10 @@ export default createRule<Options, "testComment">({
     return {
       Program(): void {
         const comments = context.sourceCode.getAllComments();
-        const legalLines = new Set<number>();
-        for (const [index, comment] of comments.entries()) {
-          if (comment.type !== "Line" || !LEGAL.test(comment.value)) continue;
-          legalLines.add(index);
-          for (const direction of [-1, 1]) {
-            let previous = comment;
-            for (let next = index + direction; next >= 0 && next < comments.length; next += direction) {
-              const neighbor = comments[next];
-              if (neighbor?.type !== "Line" || Math.abs(neighbor.loc.start.line - previous.loc.start.line) !== 1) break;
-              legalLines.add(next);
-              previous = neighbor;
-            }
-          }
-        }
-        for (const [index, comment] of comments.entries()) {
+        const legal = frontend ? undefined : legalNoticeComments(comments);
+        for (const comment of comments) {
           const body = comment.value.trim().replace(/^\*\s*/u, "");
-          if (!frontend && (DIRECTIVE.test(body) || BEHAVIORAL_DIRECTIVE.test(comment.value) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text))) continue;
+          if (!frontend && (DIRECTIVE.test(body) || BEHAVIORAL_DIRECTIVE.test(comment.value) || LEGAL.test(comment.value) || legal?.has(comment) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text))) continue;
           context.report({
             node: comment,
             messageId: "testComment",

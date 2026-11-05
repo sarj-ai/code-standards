@@ -13,7 +13,7 @@ import type { TypeScriptSourceCode } from "./_eslint-rule.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { importSpecifierName } from "./_import-specifier-name.js";
 import { directEval } from "./_private-scalar-consumer.js";
-import { stableValueBinding } from "./_stable-value-binding.js";
+import { stableValueBinding, writtenMember } from "./_stable-value-binding.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 type RenderFunction =
@@ -22,11 +22,15 @@ type RenderFunction =
   | TSESTree.FunctionExpression;
 type SourceCode = Readonly<TypeScriptSourceCode>;
 type ParameterBindings = ReadonlySet<TSESLint.Scope.Variable>;
+interface ReactImport {
+  readonly specifier: TSESTree.Node;
+  readonly replacedMembers: ReadonlySet<string | null> | undefined;
+}
 const VIEWS = new WeakMap<RenderFunction, boolean>();
 const DIRECT_EVAL = new WeakMap<SourceCode, boolean>();
 const REACT_IMPORTS = new WeakMap<
   TSESLint.Scope.Variable,
-  TSESTree.Node | null
+  ReactImport | null
 >();
 const PARAMETER_BINDINGS = new WeakMap<
   SourceCode,
@@ -72,9 +76,9 @@ function collectParameterBindings(
 ): ParameterBindings {
   if (hasDirectEval(source)) return new Set();
   const parameter = node.params[0];
-  const identifiers: TSESTree.Identifier[] = [];
+  const identifiers = new Set<TSESTree.Identifier>();
   if (parameter?.type === AST_NODE_TYPES.Identifier)
-    identifiers.push(parameter);
+    identifiers.add(parameter);
   if (parameter?.type === AST_NODE_TYPES.ObjectPattern) {
     for (const property of parameter.properties) {
       if (
@@ -82,7 +86,7 @@ function collectParameterBindings(
         !property.computed &&
         property.value.type === AST_NODE_TYPES.Identifier
       )
-        identifiers.push(property.value);
+        identifiers.add(property.value);
     }
   }
   return new Set(
@@ -90,8 +94,8 @@ function collectParameterBindings(
       .getDeclaredVariables(node)
       .filter(
         (variable) =>
-          identifiers.some((identifier) =>
-            variable.identifiers.includes(identifier),
+          variable.identifiers.some((identifier) =>
+            identifiers.has(identifier),
           ) && stableValueBinding(variable),
       ),
   );
@@ -166,10 +170,11 @@ export function reactHook(
   else if (
     callee.type === AST_NODE_TYPES.MemberExpression &&
     !callee.optional &&
-    ASTUtils.getPropertyName(callee) === hook &&
-    callee.object.type === AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === hook
   ) {
-    identifier = callee.object;
+    const object = unwrapExpression(callee.object);
+    if (object.type !== AST_NODE_TYPES.Identifier) return false;
+    identifier = object;
     namespace = true;
   } else return false;
   const variable = ASTUtils.findVariable(
@@ -177,33 +182,50 @@ export function reactHook(
     identifier.name,
   );
   if (variable === null) return false;
-  const specifier = reactImportSpecifier(variable);
-  if (specifier === null) return false;
+  const imported = reactImport(variable);
+  if (imported === null) return false;
+  const { specifier, replacedMembers } = imported;
   return namespace
-    ? specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-        specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier
+    ? (specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+        specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) &&
+        replacedMembers?.has(null) !== true &&
+        replacedMembers?.has(hook) !== true
     : specifier.type === AST_NODE_TYPES.ImportSpecifier &&
         specifier.importKind !== "type" &&
         importSpecifierName(specifier) === hook;
 }
 
-function reactImportSpecifier(
+function reactImport(
   variable: TSESLint.Scope.Variable,
-): TSESTree.Node | null {
-  let specifier = REACT_IMPORTS.get(variable);
-  if (specifier !== undefined) return specifier;
+): ReactImport | null {
+  let imported = REACT_IMPORTS.get(variable);
+  if (imported !== undefined) return imported;
   const definition = variable.defs[0];
-  specifier =
+  imported = null;
+  if (
     variable.defs.length === 1 &&
     definition?.type === "ImportBinding" &&
     definition.parent.type === AST_NODE_TYPES.ImportDeclaration &&
     definition.parent.source.value === "react" &&
-    definition.parent.importKind !== "type" &&
-    stableValueBinding(variable)
-      ? definition.node
-      : null;
-  REACT_IMPORTS.set(variable, specifier);
-  return specifier;
+    definition.parent.importKind !== "type"
+  ) {
+    const specifier = definition.node;
+    const replacedMembers = specifier.type === AST_NODE_TYPES.ImportSpecifier
+      ? undefined : new Set<string | null>();
+    if (stableValueBinding(variable, replacedMembers === undefined ? undefined : (reference) => {
+      const object = outerExpression(reference.identifier);
+      const member = object.parent;
+      if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== object)
+        return true;
+      const target = outerExpression(member);
+      if (target.parent?.type === AST_NODE_TYPES.MemberExpression && target.parent.object === target)
+        return true;
+      if (writtenMember(member)) replacedMembers.add(ASTUtils.getPropertyName(member));
+      return true;
+    })) imported = { specifier, replacedMembers };
+  }
+  REACT_IMPORTS.set(variable, imported);
+  return imported;
 }
 
 function containsView(node: TSESTree.Node): boolean {
