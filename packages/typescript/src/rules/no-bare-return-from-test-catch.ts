@@ -12,7 +12,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/util
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName, runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -62,7 +62,7 @@ function isDirectTestCallback(node: TSESTree.Node, context: Context): node is Fu
   const call = directArgumentCall(node);
   if (call === null) return false;
   const root = testRoot(call.callee);
-  return root !== null && TEST_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "test") ?? "");
+  return root !== null && acceptedTestFrameworkName(context.sourceCode, root, "test", TEST_NAMES) !== null;
 }
 
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
@@ -94,14 +94,14 @@ function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) =
 function isAssertion(node: TSESTree.Node, context: Context): boolean {
   if (node.type !== AST_NODE_TYPES.CallExpression) return false;
   const root = rootIdentifier(node.callee);
-  return root !== null && ASSERTION_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "assertion") ?? "");
+  return root !== null && acceptedTestFrameworkName(context.sourceCode, root, "assertion", ASSERTION_NAMES) !== null;
 }
 
 function isExplicitSkip(node: TSESTree.Node, context: Context): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression || staticMemberName(unwrappedNodeCallee) !== "skip") return false;
   const root = rootIdentifier(unwrappedNodeCallee.object);
-  return root !== null && TEST_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "test") ?? "");
+  return root !== null && acceptedTestFrameworkName(context.sourceCode, root, "test", TEST_NAMES) !== null;
 }
 
 function isUnconditionalContextSkip(node: TSESTree.Node, owner: FunctionNode, context: Context): boolean {

@@ -9,7 +9,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/util
 import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { acceptedTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
@@ -193,8 +193,8 @@ export default createRule<Options, MessageIds>({
       }
       return identifiers.has(identifier);
     };
-    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => TEST_CALLERS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "test") ?? "");
-    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => ASSERTION_ROOTS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "assertion") ?? "");
+    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "test", TEST_CALLERS) !== null;
+    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "assertion", ASSERTION_ROOTS) !== null;
     return {
       ForOfStatement(node: TSESTree.ForOfStatement): void {
         const enclosing = nearestEnclosingFunction(node);

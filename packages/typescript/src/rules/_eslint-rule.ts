@@ -123,8 +123,16 @@ export function createNativeRule<Options extends readonly unknown[], MessageIds 
   const defaults = metadataDefaults ?? legacyDefaults;
   if (defaults === undefined) throw new TypeError("Declared defaults disappeared while creating the rule.");
   const create = config.create;
+  // Hosts reuse one options array for every file, so merge defaults once per array.
+  const applied = new WeakMap<object, Options>();
   return { ...base, create(context: EngineRuleContext<MessageIds, Options>) {
-    return create(context, ESLintUtils.applyDefault(defaults, context.options));
+    const options = context.options;
+    let merged = applied.get(options);
+    if (merged === undefined) {
+      merged = ESLintUtils.applyDefault(defaults, options);
+      applied.set(options, merged);
+    }
+    return create(context, merged);
   } };
 }
 
