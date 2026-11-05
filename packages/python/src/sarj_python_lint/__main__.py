@@ -4,6 +4,7 @@ import ast
 from collections import Counter
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import lru_cache, partial
 import json
 from pathlib import Path
 import stat
@@ -511,11 +512,12 @@ def _explain(wanted: str) -> int:
 
 
 def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
+    normalize_path = lru_cache(maxsize=1)(_baseline_path)
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
         if d.severity is Severity.WARNING or d.code in PROTECTED_SUPPRESSION_CODES:
             continue
-        key = _baseline_path(d.path)
+        key = normalize_path(d.path)
         counts.setdefault(key, {})
         counts[key][d.code] = counts[key].get(d.code, 0) + 1
     return counts
@@ -560,13 +562,14 @@ def _apply_baseline(
     *,
     root: Path | None = None,
 ) -> list[Diagnostic]:
+    normalize_path = lru_cache(maxsize=1)(partial(_baseline_path, root=root))
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
         if d.severity is Severity.WARNING or d.code in PROTECTED_SUPPRESSION_CODES:
             out.append(d)
             continue
-        path_key = _baseline_path(d.path, root=root)
+        path_key = normalize_path(d.path)
         key = (path_key, d.code)
         seen[key] += 1
         # The raw lookup preserves compatibility with baselines written before

@@ -89,7 +89,7 @@ _REACT_DOCTOR_METADATA = frozenset(
     }
 )
 _REACT_DOCTOR_TYPESCRIPT_SUFFIXES = frozenset({".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"})
-_BASELINE_RULE_SOURCE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+_RULE_SOURCE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "sarj-iac-lint": "iac",
         "sarj-python-lint": "python",
@@ -98,7 +98,7 @@ _BASELINE_RULE_SOURCE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 _BASELINE_RULE_ENGINE_SOURCES: Final[Mapping[str, str]] = MappingProxyType(
-    {engine: source for source, engine in _BASELINE_RULE_SOURCE_ALIASES.items()}
+    {engine: source for source, engine in _RULE_SOURCE_ALIASES.items()}
 )
 _REACT_DOCTOR_RULE_SOURCES: Final = frozenset({"react-doctor", "react-hooks-js"})
 _REACT_DOCTOR_RULE_PREFIXES: Final = tuple(f"{source}/" for source in sorted(_REACT_DOCTOR_RULE_SOURCES))
@@ -1471,7 +1471,7 @@ def _run_canonical_check(
     if rendered:
         print(rendered, end="" if rendered.endswith("\n") else "\n")
     exit_code = report.exit_code
-    if staged and exit_code != 0 and report.diagnostics:
+    if staged and exit_code != 0 and any(tool.diagnostics for tool in report.tools):
         print(
             "Agent: address the findings above. Run `code-standards fix --staged` for safe mechanical fixes, "
             "review the changes, stage the intended edits, and retry the commit."
@@ -1750,24 +1750,26 @@ def _observation_paths(args: _Args, root: Path) -> list[str] | None:
 
 def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) -> str:
     from sarj_standards.libs.diagnostics import AnalysisReport  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
-    from sarj_standards.libs.rules import RuleEngine  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.rules only when this selected operation executes.
 
     if not isinstance(report, AnalysisReport):
         msg = "rule evaluation report has an invalid internal type"
         raise TypeError(msg)
-    sources = {
-        RuleEngine.ESLINT: frozenset(("eslint",)),
-        RuleEngine.IAC: frozenset(("iac", "sarj-iac-lint")),
-        RuleEngine.PYTHON: frozenset(("python", "sarj-python-lint")),
-        RuleEngine.SQL: frozenset(("sql", "sarj-sql-lint")),
-        RuleEngine.TEXT: frozenset(("text", "sarj-text-lint")),
-    }
+    counts: dict[str, dict[str, int]] = {}
+    for selector in selectors:
+        counts.setdefault(selector.engine.value, {})[selector.native_rule_id] = 0
+    for source, engine in _RULE_SOURCE_ALIASES.items():
+        if engine in counts:
+            counts[source] = counts[engine]
+    for item in report.iter_diagnostics():
+        source_counts = counts.get(item.source)
+        if source_counts is None:
+            continue
+        rule_id = item.rule_id or item.code
+        if rule_id in source_counts:
+            source_counts[rule_id] += 1
     lines = ["calibration summary:"]
     for selector in sorted(set(selectors)):
-        count = sum(
-            item.source in sources[selector.engine] and (item.rule_id or item.code) == selector.native_rule_id
-            for item in report.diagnostics
-        )
+        count = counts[selector.engine.value][selector.native_rule_id]
         noun = "finding" if count == 1 else "findings"
         lines.append(f"  {selector}: {count} {noun}")
     lines.extend(
@@ -2865,7 +2867,7 @@ def _eligible_baseline_diagnostics(
     return tuple(
         item
         for report in reports
-        for item in report.diagnostics
+        for item in report.iter_diagnostics()
         if baseline.is_baselineable(item) and (not selectors or _diagnostic_matches(item, selected))
     )
 
@@ -2880,8 +2882,8 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
             continue
         if selector == "shellcheck:*" or re.fullmatch(r"shellcheck:SC[0-9]{4}", selector) is not None:
             continue
-        if separator and source in _BASELINE_RULE_SOURCE_ALIASES:
-            normalized.append(f"{_BASELINE_RULE_SOURCE_ALIASES[source]}:{rule_id}")
+        if separator and source in _RULE_SOURCE_ALIASES:
+            normalized.append(f"{_RULE_SOURCE_ALIASES[source]}:{rule_id}")
         elif selector.startswith("eslint:@sarj/"):
             normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
         elif selector.startswith("eslint:"):

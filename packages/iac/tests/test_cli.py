@@ -214,3 +214,25 @@ def test_environment_rule_cli_preserves_per_finding_severity(
 
     assert main(["check", "--rule", _RULE, str(src)]) == expected_status
     assert f"SARJ204 {warning_label}`selected`" in capsys.readouterr().out
+
+
+def test_baseline_paths_follow_each_cli_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    first = tmp_path / "first"
+    first.mkdir()
+    second = tmp_path / "second"
+    second.mkdir()
+    target = first / "example.tf"
+    target.write_text(_TWO_BRANCHES, encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    command = ["check", "--rule", _RULE]
+    monkeypatch.chdir(first)
+
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert read_baseline(baseline) == {"example.tf": {"SARJ204": 2}}
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
+
+    monkeypatch.chdir(second)
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 1
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert read_baseline(baseline) == {str(target): {"SARJ204": 2}}
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0

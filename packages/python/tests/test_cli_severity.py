@@ -434,3 +434,25 @@ def test_cli_repeated_rules_and_option_like_paths(tmp_path: Path, monkeypatch: p
     monkeypatch.chdir(tmp_path)
     (tmp_path / "--source.py").write_text("", encoding="utf-8")
     assert main(["check", "--rule", "no-comment-cruft", "--rule", "no-comment-cruft", "--", "--source.py"]) == 0
+
+
+def test_baseline_paths_follow_each_cli_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    first = tmp_path / "first"
+    first.mkdir()
+    second = tmp_path / "second"
+    second.mkdir()
+    target = first / "example.py"
+    target.write_text("# ----------------\nvalue = 2\n", encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    command = ["check", "--rule", "no-comment-cruft"]
+    monkeypatch.chdir(first)
+
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {"example.py": {"SARJ016": 1}}
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
+
+    monkeypatch.chdir(second)
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 1
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1}}
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
