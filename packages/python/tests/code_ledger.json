@@ -350,5 +350,6 @@
   "SARJ559": "no-shared-mutable-default",
   "SARJ560": "no-psycopg-execution-in-loop",
   "SARJ561": "prefer-single-psycopg-cursor",
-  "SARJ562": "prefer-validated-uuid-comparison"
+  "SARJ562": "prefer-validated-uuid-comparison",
+  "SARJ563": "fastapi-route-declares-security"
 }

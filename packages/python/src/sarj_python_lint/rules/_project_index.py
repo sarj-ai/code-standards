@@ -272,6 +272,8 @@ class ProjectIndexSet:
         sealed: bool = False,
     ) -> None:
         self._units = MappingProxyType(dict(units))
+        # Borrow the prepared graph without filesystem discovery or reparsing.
+        self.source_units: tuple[SourceUnit, ...] = tuple(self._units.values())
         self._roots = tuple(roots)
         self._aliases = MappingProxyType({} if aliases is None else dict(aliases))
         self._sealed = sealed
