@@ -44,6 +44,9 @@ PATH = ".repo-standards/baseline.json"
 # Policy 33 excludes nonconsolidatable migrations from counts; the rule already
 # exists in 6.16.3, so counts change without changing identities or scope. Reach
 # it only by composing the existing policy 32 migration with the reviewed 32 -> 33 step.
+# Policy 34 changes PR-template fingerprints. Preserve nonempty debt only when
+# the configured repository has no template review policy; active scopes need
+# a separate provenance review. Empty baselines contain no accepted identities.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -63,6 +66,7 @@ _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 _IMAGE_POLICY_BASE = 30
 _IMAGE_ERROR_POLICY = 32
 _MIGRATION_COUNTS_POLICY = 33
+_PR_TEMPLATE_POLICY = 34
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -91,6 +95,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
+    if target_policy_version == _PR_TEMPLATE_POLICY and baseline.policy_version != _MIGRATION_COUNTS_POLICY:
+        intermediate = migrate(contents, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
+        return migrate(intermediate, manifest, target_policy_version=_PR_TEMPLATE_POLICY)
     if target_policy_version == _MIGRATION_COUNTS_POLICY and baseline.policy_version != _IMAGE_ERROR_POLICY:
         intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_ERROR_POLICY)
         return migrate(intermediate, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
@@ -100,7 +107,14 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     transition = (baseline.policy_version, target_policy_version)
     empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32)} and not baseline.fingerprints
     error_only_compatible = transition in {(29, 30), (31, 32)} and not baseline.include_warnings
-    if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible and not error_only_compatible:
+    review_policy_absent = configured.pull_request is None or configured.pull_request.review_policy is None
+    template_compatible = transition == (33, 34) and (not baseline.fingerprints or review_policy_absent)
+    if (
+        transition not in _COMPATIBLE_TRANSITIONS
+        and not empty_compatible
+        and not error_only_compatible
+        and not template_compatible
+    ):
         msg = (
             f"repository baseline migration {baseline.policy_version} -> {target_policy_version} "
             "requires a separately reviewed compatibility decision"
