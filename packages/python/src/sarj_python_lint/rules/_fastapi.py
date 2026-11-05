@@ -15,7 +15,7 @@ from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
 
@@ -59,6 +59,7 @@ class Route:
     inherited_responses: ast.expr | None = None
     inherited_response_class: ast.expr | None = None
     inherited_prefix: ast.expr | None = None
+    inherited_dependencies: ast.expr | None = None
     inherited_has_unpack: bool = False
 
     @property
@@ -149,7 +150,7 @@ class FastapiIndex:
         self.tree: ast.Module = tree
         self.path: Path | None = path
         self.imports: ImportIndex = ImportIndex.from_tree(tree, module_scope_only=True)
-        self._imported_dependency_cache: dict[_ImportedReference, bool] = {}
+        self._imported_alias_cache: dict[tuple[_ImportedReference, Callable[[tuple[str, ...]], bool]], bool] = {}
         self._imported_module_cache: dict[Path, ast.Module | None] = {}
         self.modules: set[str] = set()
         self.module_symbols: dict[str, str] = {}
@@ -176,6 +177,10 @@ class FastapiIndex:
         self._index_scopes(tree)
         self._read_imports(tree)
         self._read_aliases(tree)
+        self.access_dependencies: dict[str, ast.expr | None] = {
+            f"{key.scope}:{key.name}": self.receiver_defaults.get(key, {}).get("dependencies")
+            for key in set(self.receiver_origins.values())
+        }
 
     def _index_scopes(self, tree: ast.Module) -> None:
         pending = [_ScopeFrame(tree, 0, None)]
@@ -403,7 +408,7 @@ class FastapiIndex:
             self.receiver_defaults[key] = {
                 keyword.arg: keyword.value
                 for keyword in value.keywords
-                if keyword.arg in {"responses", "default_response_class", "prefix"}
+                if keyword.arg in {"responses", "default_response_class", "prefix", "dependencies"}
             }
             if any(keyword.arg is None for keyword in value.keywords):
                 self.unpacked_receivers.add(key)
@@ -477,6 +482,13 @@ class FastapiIndex:
             routes.extend(self._decorator_routes(function, scope, decorator))
         return tuple(routes)
 
+    def receiver_identity(self, expression: ast.expr) -> str | None:
+        key = self._receiver_key(self._node_scopes.get(id(expression), 0), _binding_name(expression))
+        if key is None:
+            return None
+        origin = self.receiver_origins[key]
+        return f"{origin.scope}:{origin.name}"
+
     def _decorator_routes(
         self, function: ast.FunctionDef | ast.AsyncFunctionDef, scope: int, decorator: ast.Call
     ) -> tuple[Route, ...]:
@@ -510,6 +522,7 @@ class FastapiIndex:
                 inherited_responses=defaults.get("responses"),
                 inherited_response_class=defaults.get("default_response_class"),
                 inherited_prefix=defaults.get("prefix"),
+                inherited_dependencies=defaults.get("dependencies"),
                 inherited_has_unpack=origin in self.unpacked_receivers,
             )
             for route_method in route_methods
@@ -764,18 +777,33 @@ class FastapiIndex:
             return None
         return ParameterMarker(canonical, node)
 
+    def is_security_marker(self, node: ast.expr) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and not self._is_shadowed_in_enclosing_scope(node.func)
+            and self.imports.resolved_qualified_name(node.func)
+            in {"fastapi.Security", "fastapi.param_functions.Security", "fastapi.params.Security"}
+        )
+
     def is_injection(self, node: ast.expr | None) -> bool:
         resolved = self.resolve_annotation(node)
         return isinstance(resolved, (ast.Name, ast.Attribute)) and self.canonical(resolved) in INJECTION_TYPES
 
     def is_imported_dependency_alias(self, node: ast.expr | None) -> bool:
+        return self._imported_alias_matches(node, _is_single_dependency)
+
+    def is_imported_security_alias(self, node: ast.expr | None) -> bool:
+        return self._imported_alias_matches(node, _declares_security)
+
+    def _imported_alias_matches(self, node: ast.expr | None, accepts: Callable[[tuple[str, ...]], bool]) -> bool:
         if self.path is None or node is None or isinstance(node, ast.Constant):
             return False
         reference = _imported_reference(self.tree, node)
         if reference is None or self._is_shadowed_in_enclosing_scope(node):
             return False
-        if reference in self._imported_dependency_cache:
-            return self._imported_dependency_cache[reference]
+        key = (reference, accepts)
+        if key in self._imported_alias_cache:
+            return self._imported_alias_cache[key]
         target = _resolve_module_path(self.path, reference)
         if target is None:
             return False
@@ -785,8 +813,9 @@ class FastapiIndex:
             set(),
             self._imported_module_cache,
             0,
+            accepts=accepts,
         )
-        self._imported_dependency_cache[reference] = resolved
+        self._imported_alias_cache[key] = resolved
         return resolved
 
     def _is_shadowed_in_enclosing_scope(self, node: ast.expr) -> bool:
@@ -1038,6 +1067,8 @@ def _module_symbol_is_dependency_alias(
     seen: set[tuple[Path, str]],
     module_cache: dict[Path, ast.Module | None],
     depth: int,
+    *,
+    accepts: Callable[[tuple[str, ...]], bool],
 ) -> bool:
     if depth >= _MAX_IMPORT_HOPS:
         return False
@@ -1058,6 +1089,7 @@ def _module_symbol_is_dependency_alias(
                 seen,
                 module_cache,
                 depth + 1,
+                accepts=accepts,
             )
         imported = _imported_reference(tree, expression)
         if imported is not None:
@@ -1068,8 +1100,9 @@ def _module_symbol_is_dependency_alias(
                 seen,
                 module_cache,
                 depth + 1,
+                accepts=accepts,
             )
-        return _expression_is_dependency_alias(tree, expression)
+        return accepts(_annotated_marker_names(tree, expression))
     if isinstance(binding, ast.ImportFrom):
         imported = _imported_reference(tree, ast.Name(id=symbol))
         if imported is None:
@@ -1081,17 +1114,29 @@ def _module_symbol_is_dependency_alias(
             seen,
             module_cache,
             depth + 1,
+            accepts=accepts,
         )
     return False
 
 
-def _expression_is_dependency_alias(tree: ast.Module, expression: ast.expr) -> bool:
+def _annotated_marker_names(tree: ast.Module, expression: ast.expr) -> tuple[str, ...]:
     index = FastapiIndex(tree)
     parts = index.annotated_parts(expression)
     if parts is None:
-        return False
-    markers = [marker for item in parts.metadata if (marker := index.marker(item)) is not None]
-    return len(markers) == 1 and markers[0].name in _DEPENDENCY_MARKERS
+        return ()
+    return tuple(
+        marker.name
+        for item in parts.metadata
+        if (marker := index.marker(item)) is not None and (marker.name != "Security" or index.is_security_marker(item))
+    )
+
+
+def _is_single_dependency(markers: tuple[str, ...]) -> bool:
+    return len(markers) == 1 and markers[0] in _DEPENDENCY_MARKERS
+
+
+def _declares_security(markers: tuple[str, ...]) -> bool:
+    return "Security" in markers
 
 
 def _binding_expression(binding: ast.stmt | None, symbol: str) -> ast.expr | None:
