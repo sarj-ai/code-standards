@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_names import assignment_names as _bound_target_names
 from sarj_python_lint.rules._first_party import FirstPartyFacts, has_first_party_source, is_first_party_module
@@ -509,7 +508,6 @@ class ProductionDerivedTestCases(Rule):
         tests = _collected_tests(tree)
         independently_asserted = _independently_asserted_collections(tree, imported, tests)
         builtin_wrappers = _COLLECTION_WRAPPERS - binding_counts.keys()
-        source_lines = context.source_lines
         findings: list[Diagnostic] = []
         for node, blocked in tests:
             for decorator in node.decorator_list:
@@ -525,7 +523,7 @@ class ProductionDerivedTestCases(Rule):
                 if (
                     collection is None
                     or collection.id in independently_asserted
-                    or is_suppressed(source_lines, decorator.lineno, self.code)
+                    or context.suppressions.is_suppressed(decorator.lineno, self.code)
                 ):
                     continue
                 findings.append(

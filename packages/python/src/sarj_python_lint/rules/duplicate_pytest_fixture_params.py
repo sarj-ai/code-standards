@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path
@@ -95,7 +94,7 @@ class DuplicatePytestFixtureParams(Rule):
                 if key is None:
                     continue
                 first = first_values.setdefault(key, value)
-                if first is value or is_suppressed(context.source_lines, value.lineno, self.code):
+                if first is value or context.suppressions.is_suppressed(value.lineno, self.code):
                     continue
                 findings.append(
                     Diagnostic(

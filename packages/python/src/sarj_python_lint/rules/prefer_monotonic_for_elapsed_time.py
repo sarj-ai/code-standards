@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -100,7 +99,7 @@ class PreferMonotonicForElapsedTime(Rule):
         findings: list[Diagnostic] = []
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             for start in _elapsed_starts(context, function):
-                if is_suppressed(context.source_lines, start.lineno, self.code):
+                if context.suppressions.is_suppressed(start.lineno, self.code):
                     continue
                 findings.append(
                     Diagnostic(

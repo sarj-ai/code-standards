@@ -5,10 +5,10 @@ from dataclasses import dataclass
 import re
 from typing import TYPE_CHECKING
 
+from sarj_sql_lint.postgres_policy import aggregate_name, normalize_group_comments
+
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._sql import sql_string_value
-from sarj_python_lint.rules._sql_aggregate_identity import aggregate_name
-from sarj_python_lint.rules._sql_policy_source import normalize_group_comments
 
 
 if TYPE_CHECKING:
@@ -134,11 +134,11 @@ def _prepared_sql(sql: str, dialect: str) -> str:
         parameters.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), sql),
     )
     if dialect == "postgres":
-        from sarj_python_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- recover PostgreSQL temporary-table queries only after the SELECT gate.
+        from sarj_sql_lint.postgres_policy import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- recover PostgreSQL temporary-table queries only after the SELECT gate.
 
         prepared = normalize_postgres_ctas(prepared)
         if "EXPLAIN" in prepared.upper():
-            from sarj_python_lint.rules._sql_explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- only executing EXPLAIN needs native token normalization.
+            from sarj_sql_lint.postgres_policy import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- only executing EXPLAIN needs native token normalization.
 
             prepared = normalize_postgres_ctas(normalize_postgres_explain(prepared))
     if "GROUP" in prepared.upper() and ("/*" in prepared or "--" in prepared):

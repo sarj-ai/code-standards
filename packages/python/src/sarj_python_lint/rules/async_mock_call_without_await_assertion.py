@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
@@ -306,7 +305,7 @@ def _test_diagnostics(
             message=message,
         )
         for call in calls
-        if not is_suppressed(context.source_lines, call.lineno, code)
+        if not context.suppressions.is_suppressed(call.lineno, code)
     ]
 
 

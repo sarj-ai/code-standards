@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._store_sql import query_owner
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import psycopg_cursor_calls
@@ -81,7 +80,7 @@ class PreferSinglePsycopgCursor(Rule):
             previous: list[ast.Call] = []
             for call in sorted(calls, key=lambda node: (node.lineno, node.col_offset)):
                 if any(not _exclusive(earlier, call, context) for earlier in previous):
-                    if not is_suppressed(context.source_lines, call.lineno, self.code):
+                    if not context.suppressions.is_suppressed(call.lineno, self.code):
                         findings.append(
                             Diagnostic(
                                 context.path,

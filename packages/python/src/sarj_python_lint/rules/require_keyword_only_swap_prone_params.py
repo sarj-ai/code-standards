@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._ast_names import dotted_parts as _dotted_name
@@ -214,7 +213,6 @@ class RequireKeywordOnlySwapProneParams(Rule):
         externally_owned_method_ids = _externally_owned_method_node_ids(tree, node_index=context.node_index)
         protocol_method_names = _protocol_method_names(tree, node_index=context.node_index)
         trusted_hmac_bindings = _trusted_hmac_bindings(tree)
-        source_lines = context.source_lines
         diags: list[Diagnostic] = []
         for node, offending in candidates:
             exclusions = (
@@ -223,7 +221,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
                 id(node) in externally_owned_method_ids,
                 id(node) in method_ids and node.name in protocol_method_names,
                 _is_symmetric_rejection_guard(node, offending.parameters, trusted_hmac_bindings),
-                is_suppressed(source_lines, node.lineno, self.code),
+                context.suppressions.is_suppressed(node.lineno, self.code),
             )
             if any(exclusions):
                 continue

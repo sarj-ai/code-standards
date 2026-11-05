@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._logging import LOG_METHODS
@@ -143,7 +142,7 @@ class PreferDeclarativeBatchValidation(Rule):
                 and (batch.factory.lineno, batch.factory.col_offset + 1) in facts.database_owners
             ):
                 continue
-            if is_suppressed(context.source_lines, node.lineno, self.code):
+            if context.suppressions.is_suppressed(node.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

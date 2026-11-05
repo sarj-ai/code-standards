@@ -4,7 +4,7 @@ import ast
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
-from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, Severity
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._pydantic_field_contract import MODEL_SOURCES, unique_members
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
@@ -115,7 +115,7 @@ class _DataUnions:
         findings: list[Diagnostic] = []
         for name, value in self.aliases.items():
             node = self.declarations[name]
-            if is_suppressed(self.context.source_lines, node.lineno, code) or not self._untagged_union(value):
+            if self.context.suppressions.is_suppressed(node.lineno, code) or not self._untagged_union(value):
                 continue
             findings.append(
                 Diagnostic(

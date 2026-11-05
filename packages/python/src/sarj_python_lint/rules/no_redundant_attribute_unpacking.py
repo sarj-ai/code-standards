@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -91,7 +90,7 @@ class NoRedundantAttributeUnpacking(Rule):
                 if (
                     not isinstance(node, ast.Assign)
                     or not _redundant_unpacking(node)
-                    or is_suppressed(context.source_lines, node.lineno, self.code)
+                    or context.suppressions.is_suppressed(node.lineno, self.code)
                 ):
                     continue
                 findings.append(

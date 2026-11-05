@@ -7,7 +7,7 @@ import stat
 import sys
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file
+from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file, iter_source_files
 import typer
 
 from sarj_sql_lint import __version__
@@ -188,11 +188,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _iter_directory_inputs(p: Path) -> Iterator[Path]:
-    for child in p.rglob("*.sql"):
-        if not child.is_file():
-            continue
-        if any(part in SKIP_DIR_NAMES for part in child.parts):
-            continue
+    for child in iter_source_files(p, suffixes=frozenset({".sql"}), skip_dirs=SKIP_DIR_NAMES):
         try:
             if child.stat().st_size > MAX_FILE_BYTES:
                 continue

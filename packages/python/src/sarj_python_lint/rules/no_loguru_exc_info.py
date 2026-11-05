@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 from sarj_python_lint.rules._imports import ambiguous_import_names as _ambiguous_import_names
 from sarj_python_lint.rules._loguru import logger_imports_untouched
@@ -129,7 +128,7 @@ class NoLoguruExcInfo(Rule):
             if not isinstance(call.func, ast.Attribute) or call.func.attr not in _METHODS:
                 continue
             keyword = _unused_exc_info_keyword(call)
-            if keyword is None or is_suppressed(context.source_lines, keyword.lineno, self.code):
+            if keyword is None or context.suppressions.is_suppressed(keyword.lineno, self.code):
                 continue
             receiver = _unconfigured_loguru_root(call.func.value, context, shadowed)
             if receiver is None:

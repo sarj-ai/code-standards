@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final
 
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._source import python_source_lines, symbol_prefilter_source
+from sarj_python_lint.rule_base import SuppressionIndex
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._ast_index import NodeIndex
 from sarj_python_lint.rules._binding_inventory import BindingInventory
@@ -52,6 +53,10 @@ class PythonFileContext:
     @cached_property
     def source_lines(self) -> list[str]:
         return python_source_lines(self.source)
+
+    @cached_property
+    def suppressions(self) -> SuppressionIndex:
+        return SuppressionIndex(self.source_lines)
 
     @cached_property
     def generated(self) -> bool:

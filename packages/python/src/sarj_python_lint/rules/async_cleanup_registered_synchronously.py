@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    is_suppressed,
 )
 
 
@@ -75,7 +74,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
         provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         for call in context.nodes(ast.Call):
-            if not _wrong_callback(call, provenance) or is_suppressed(context.source_lines, call.lineno, self.code):
+            if not _wrong_callback(call, provenance) or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             findings.append(
                 Diagnostic(

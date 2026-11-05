@@ -269,14 +269,22 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
             f"needs.build-{package}.result == 'success'" in publisher[0]
         )
     for package in ("python", "sql", "iac"):
-        job = re.search(rf"(?ms)^  build-{package}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
-        assert job is not None
-        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
-            "needs: [detect, publish-contracts]" in job[0]
+        job = _workflow_job(f"build-{package}", "release.yml")
+        dependencies = ("contracts", "sql") if package == "python" else ("contracts",)
+        assert job["needs"] == ["detect", *(f"publish-{dependency}" for dependency in dependencies)]
+        condition = job["if"]
+        assert isinstance(condition, str)
+        assert condition.startswith(
+            "always() &&"
+        )  # sarj-noqa: SARJ402 -- an already-published sibling is skipped without blocking this build.
+        assert (  # sarj-noqa: SARJ402 -- build only when this exact package requires publication.
+            f"needs.detect.outputs.{package} == 'true'" in condition
         )
-        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
-            "needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped'" in job[0]
-        )
+        for dependency in dependencies:
+            assert (  # sarj-noqa: SARJ402 -- dependency publication must succeed or already exist before artifact smoke installs it.
+                f"(needs.publish-{dependency}.result == 'success' || needs.publish-{dependency}.result == 'skipped')"
+                in condition
+            )
 
 
 def test_typescript_release_does_not_emit_source_maps() -> None:

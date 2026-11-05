@@ -83,6 +83,7 @@ source = { editable = "." }
 dependencies = [
     { name = "packaging" },
     { name = "sarj-rule-contracts" },
+    { name = "sarj-sql-lint" },
     { name = "sqlglot" },
     { name = "typer" },
 ]
@@ -91,13 +92,14 @@ dependencies = [
 requires-dist = [
     { name = "packaging", specifier = "==26.3" },
     { name = "sarj-rule-contracts", editable = "packages/contracts" },
+    { name = "sarj-sql-lint", editable = "packages/sql" },
     { name = "sqlglot", specifier = "==30.24.0" },
     { name = "typer", specifier = "==0.27.3" },
 ]
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.6.2"
+version = "0.7.0"
 source = { editable = "packages/contracts" }
 
 [package.metadata]
@@ -106,6 +108,31 @@ source = { editable = "packages/contracts" }
 dev = [
     { name = "basedpyright", specifier = ">=1.40.2" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.17.2" },
+]
+
+[[package]]
+name = "sarj-sql-lint"
+version = "0.45.0"
+source = { editable = "packages/sql" }
+dependencies = [
+    { name = "sarj-rule-contracts" },
+    { name = "sqlglot" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "sarj-rule-contracts", editable = "packages/contracts" },
+    { name = "sqlglot", specifier = "==30.24.0" },
+    { name = "typer", specifier = "==0.27.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.40.2" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-benchmark", specifier = ">=5.3.0" },
     { name = "ruff", specifier = ">=0.17.2" },
 ]
 
