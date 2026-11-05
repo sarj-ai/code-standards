@@ -19,6 +19,16 @@ if TYPE_CHECKING:
 
 _MANIFEST = b'repository_id = "fixture"\ncomponents = []\n'
 
+_COMMIT_ONLY_MANIFEST = _MANIFEST + b'[pull_request.commit_history]\nadvisory_base_ref = "main"\n'
+_REVIEW_MANIFEST = _COMMIT_ONLY_MANIFEST + (
+    b"[pull_request.review_policy]\n"
+    b"zero_review_below_counted_lines = 50\n"
+    b"two_reviews_above_counted_lines = 500\n"
+    b"migration_roots = []\n"
+    b'required_checks = ["Standards"]\n'
+    b'required_body_sections = ["Test evidence"]\n'
+)
+
 
 def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
     return (
@@ -40,7 +50,7 @@ def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
 
 @pytest.mark.parametrize(
     ("before", "after"),
-    [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (32, 33)],
+    [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (32, 33), (33, 34)],
 )
 @pytest.mark.parametrize(
     "fingerprints",
@@ -142,7 +152,8 @@ def test_policy28_migrates_empty_baselines_without_changing_the_warning_ratchet(
         (28, 27),
         (29, 28),
         (18, 33),
-        (32, 34),
+        (32, 35),
+        (34, 33),
         (30, 29),
         (25, 29),
         (26, 29),
@@ -539,3 +550,74 @@ def test_rollout_cannot_create_or_delete_a_repository_baseline(tmp_path: Path) -
     path.unlink()
     with pytest.raises(rollout.RolloutError, match="removed"):
         rollout.repository_baseline_migration(tmp_path, _baseline(18))
+
+
+@pytest.mark.parametrize("before", [32, 33], ids=["composed-policy32", "policy33"])
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy", "errors", "warnings"])
+@pytest.mark.parametrize(
+    "manifest",
+    [pytest.param(_MANIFEST, id="no-pull-request"), pytest.param(_COMMIT_ONLY_MANIFEST, id="no-review-policy")],
+)
+def test_policy34_preserves_nonempty_debt_when_template_review_cannot_run(
+    before: int, include_warnings: bool | None, manifest: bytes
+) -> None:
+    original = _baseline(before, fingerprints=("a" * 64, "f" * 64))
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    migrated = repository_baseline.migrate(original, manifest, target_policy_version=34)
+
+    assert migrated == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 34')
+    assert json.loads(migrated)["fingerprints"] == ["a" * 64, "f" * 64]
+
+
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy", "errors", "warnings"])
+@pytest.mark.parametrize("required_sections", [True, False], ids=["required-heading", "empty-headings"])
+def test_policy34_requires_separate_review_for_nonempty_template_scope_debt(
+    include_warnings: bool | None, *, required_sections: bool
+) -> None:
+    manifest = _REVIEW_MANIFEST if required_sections else _REVIEW_MANIFEST.replace(b'["Test evidence"]', b"[]")
+    original = _baseline(33, fingerprints=("b" * 64,))
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+    assert scope_digest(parse_manifest_bytes(manifest)) == scope_digest(parse_manifest_bytes(_MANIFEST))
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, manifest, target_policy_version=34)
+
+
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy", "errors", "warnings"])
+@pytest.mark.parametrize("required_sections", [True, False], ids=["required-heading", "empty-headings"])
+def test_policy34_can_migrate_an_empty_template_scope_without_accepting_new_debt(
+    include_warnings: bool | None, *, required_sections: bool
+) -> None:
+    manifest = _REVIEW_MANIFEST if required_sections else _REVIEW_MANIFEST.replace(b'["Test evidence"]', b"[]")
+    original = _baseline(33)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    migrated = repository_baseline.migrate(original, manifest, target_policy_version=34)
+
+    assert migrated == original.replace(b'"policy_version": 33', b'"policy_version": 34')
+    assert json.loads(migrated)["fingerprints"] == []
+
+
+@pytest.mark.parametrize(
+    "before", [27, 29, 31], ids=["operational-debt", "migration-warning-debt", "image-warning-debt"]
+)
+def test_policy34_composition_preserves_prior_nonempty_warning_debt_rejections(before: int) -> None:
+    original = _baseline(before, fingerprints=("b" * 64,)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=34)
