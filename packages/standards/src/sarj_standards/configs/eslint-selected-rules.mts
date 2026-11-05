@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 import { relative, resolve, sep } from "node:path";
 
 import type { ESLint as NativeESLint } from "eslint";
-import { record, strings } from "./tool-json.mts";
+import { record } from "./tool-json.mts";
+import { SelectedRequestSchema, SuppressionsSchema } from "./eslint-tool-schemas.mts";
 
 import format, { formatWithRuleExecutions } from "./eslint-compact-formatter.mts";
 import { lintWithRuleExecutions, mergeRuleExecutions, type RuleExecutionSummary } from "./eslint-rule-execution.mts";
@@ -14,35 +15,7 @@ const { ESLint } = require("eslint") as typeof import("eslint");
 const argument = process.argv[2];
 if (argument === undefined)
   throw new Error("Selected ESLint request is required");
-const rawRequest = record(
-  JSON.parse(argument) as unknown,
-  "Selected ESLint request",
-);
-const configPath = rawRequest["config"];
-if (configPath !== null && typeof configPath !== "string")
-  throw new Error("Selected ESLint config must be a path or null");
-const suppressionsLocation = rawRequest["suppressionsLocation"] ?? null;
-if (suppressionsLocation !== null && typeof suppressionsLocation !== "string")
-  throw new Error(
-    "Selected ESLint suppressions location must be a path or null",
-  );
-const request = {
-  full: rawRequest["full"] === true,
-  consoleOutput: rawRequest["consoleOutput"] === true,
-  failOnWarnings: rawRequest["failOnWarnings"] === true,
-  rules: strings(rawRequest["rules"], "Selected ESLint rules"),
-  config: configPath,
-  suppressionsLocation,
-  upstreamRules: strings(
-    rawRequest["upstreamRules"] ?? [],
-    "Selected upstream rules",
-  ),
-  upstreamAdvisories: strings(
-    rawRequest["upstreamAdvisories"] ?? [],
-    "Selected upstream advisories",
-  ),
-  passOnUnpruned: rawRequest["passOnUnpruned"] === true,
-};
+const request = SelectedRequestSchema.parse(JSON.parse(argument) as unknown);
 const selected = new Set([
   ...request.rules.map((rule) => `@sarj/${rule}`),
   ...(request.upstreamRules ?? []),
@@ -145,26 +118,18 @@ let unused = false;
 if (!request.passOnUnpruned) {
   const suppressions = new Map<string, Map<string, { count: number }>>();
   try {
-    const document = record(
+    const document = SuppressionsSchema.parse(
       JSON.parse(
         await readFile(
           request.suppressionsLocation ?? "eslint-suppressions.json",
           "utf8",
         ),
       ) as unknown,
-      "ESLint suppressions",
     );
     for (const [path, value] of Object.entries(document)) {
       const entries = new Map<string, { count: number }>();
-      for (const [id, entry] of Object.entries(
-        record(value, "ESLint file suppressions"),
-      )) {
-        const count = record(entry, "ESLint suppression")["count"];
-        if (typeof count !== "number" || !Number.isInteger(count) || count < 0)
-          throw new Error(
-            "ESLint suppression count must be a nonnegative integer",
-          );
-        entries.set(id, { count });
+      for (const [id, entry] of Object.entries(value)) {
+        entries.set(id, entry);
       }
       suppressions.set(path, entries);
     }

@@ -1945,12 +1945,20 @@
       "outcome": "Retain the compatible rule name, stage this judgment-heavy rule as a warning, and remove automatic assertion merging. Recommend manual grouping only when property presence, identity, getter and proxy reads preserve intended semantics. Array recommendations remain manual. Remove the UI automatic-fix claim without treating shorter tests as proof of equivalent assertions. Follow-up matching resolves assertion helpers by their imported binding, not spelling alone."
     },
     {
+      "task": "rule-audit/eslint/prefer-zod-enum-validator",
+      "family": "typescript",
+      "ruleId": "prefer-zod-enum-validator",
+      "state": "complete",
+      "evidence": "Bounded calibration inspected 63 authored controls (20 true positives, 43 true negatives, zero false positives or missed in-scope cases) and 45 public Code Standards source files: all 31 selected helper files and a disclosed hash-ranked sample of 14 of 226 rule modules. The linked execution-state parser was the only live source hit. Three balanced fresh processes and four warm passes per process against published plugin 18.1.5 measured first-pass wall time +35.8%, warm lint time +7.4% and peak RSS +0.9%; the shared host and uncontrolled filesystem cache limit timing attribution. These results describe the bounded controls and sample, not a whole-Platform scan.",
+      "outcome": "Warning only, with manual migration to a named enum schema and an inferred type. Inspect complete synchronous single-parameter unknown/string validators built from strict equality branches or a closed switch. Exclude normalization, extra guards, transformed returns, collection membership and contextual, generic or method contracts. Preserve predicate versus parser behavior and intentional errors, initialization and constructor hooks."
+    },
+    {
       "task": "rule-audit/eslint/prefer-zod-infer",
       "family": "typescript",
       "ruleId": "prefer-zod-infer",
       "state": "complete",
-      "evidence": "Three independent source, test and UI reviews accepted the repair; 57 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures cover module visibility and every modeled field including collection elements. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
-      "outcome": "Require module-visible pairing and positive leaf agreement; unknown collections abstain. Input/output and domain identity remain manual."
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 57 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures cover module visibility and every modeled field including collection elements. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes. The enum/union expansion adds eight positive controls and 21 near misses; all 93 owner cases pass. Controls exclude widened arguments, annotations, explicit generics, casted factories or receivers, transformed schemas and independent owners.",
+      "outcome": "Require module-visible pairing and positive leaf agreement; unknown collections abstain. Input/output and domain identity remain manual. Same-named direct enum/union twins require exact literal-domain agreement and an unannotated const schema; enum alias migration remains manual."
     },
     {
       "task": "rule-audit/eslint/prefer-zod-parse-output-type",

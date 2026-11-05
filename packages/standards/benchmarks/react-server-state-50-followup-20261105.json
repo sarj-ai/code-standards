@@ -18,10 +18,10 @@
     "typescript": "18.1.6"
   },
   "candidateVersions": {
-    "core": "8.202.5",
-    "typescript": "18.1.6"
+    "core": "8.203.1",
+    "typescript": "18.2.1"
   },
-  "integration": "Both historical baselines reproduce the same 12 source-control gaps. Paired performance comparisons use the integrated baseline. Later core/Python integration leaves the evaluated TypeScript source and dependencies unchanged; timings remain tied to evaluatedCandidateVersions.",
+  "integration": "Both historical baselines reproduce the same 12 source-control gaps. Paired comparisons use the integrated baseline. Nine evaluated React/comment implementation and dependency files remain unchanged across later integrations. The final package also includes an upstream Zod rule and newer release metadata. All timing/RSS results apply only to the preserved evaluated bundle and evaluatedCandidateVersions.",
   "method": "50 distinct review points: 45 new semantic source controls and five integration/performance reviews. Rechecked 112 previous controls. This is not 50 repeated full-suite runs.",
   "reviewPasses": [
     {
@@ -637,7 +637,7 @@
       "pass": 50,
       "focus": "Native metadata, version alignment and merged-baseline custody",
       "result": "passed",
-      "evidence": "Native metadata/artifact checks passed. The later main integration changes no evaluated TypeScript source, dependency graph or tool versions. Final release identifiers are recorded separately from the evaluated snapshot."
+      "evidence": "Native metadata/artifact checks passed. Nine evaluated React/comment implementation and dependency files remain unchanged. The final package adds an unrelated upstream Zod rule; timing/RSS measurements remain scoped to the preserved evaluated bundle. Final release identifiers and exact-tree CI qualification are separate."
     }
   ],
   "labeledControls": {
@@ -1172,6 +1172,7 @@
     "typing": "Canonical npm run typecheck includes source and tooling projects.",
     "metadata": "Native examples, catalogs, CLI reference, documentation and artifact checks passed.",
     "fullTypeScriptTests": 14503,
+    "fullTypeScriptEvaluationVersion": "18.1.6; before the upstream Zod integration. Final-package full tests require canonical CI.",
     "fullTypeScriptFiles": 243,
     "compilerContractRecovery": "The original full matrix had one 60-second compiler-contract timeout with two workers. Both compiler preflight tests and the complete 14,503-test TypeScript suite passed with one worker, preserving the timeout, assertions and source.",
     "remainingNativeGates": "tsconfig validation, repository policy, private-reference delegation and shell checks passed.",

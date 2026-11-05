@@ -1,26 +1,29 @@
 import { hash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { z } from "zod";
 
-import type { Rule, RuleExample } from "./catalog";
+import type { Rule } from "./catalog";
+import { ExampleSchema } from "./catalog-validation";
 
-interface DisplayRule {
-  examples: RuleExample[];
-  optionsSchemaSource: string | null;
-}
-
-interface DisplayProjection {
-  schemaVersion: 1;
-  catalogSha256: string;
-  cliSha256: string;
-  rules: Partial<Record<string, DisplayRule>>;
-  static: {
-    quickSetup: string;
-    runOnce: string;
-    bootstrap: string;
-    usage: Record<string, string>;
-  };
-}
+const DisplayRuleSchema = z.object({
+  examples: z.array(ExampleSchema),
+  optionsSchemaSource: z.string().nullable(),
+});
+const DisplayProjectionSchema = z.object({
+  schemaVersion: z.literal(1),
+  catalogSha256: z.string(),
+  cliSha256: z.string(),
+  rules: z.partialRecord(z.string(), DisplayRuleSchema),
+  static: z.object({
+    quickSetup: z.string(),
+    runOnce: z.string(),
+    bootstrap: z.string(),
+    usage: z.record(z.string(), z.string()),
+  }),
+});
+type DisplayRule = z.infer<typeof DisplayRuleSchema>;
+type DisplayProjection = z.infer<typeof DisplayProjectionSchema>;
 
 const repositoryRoot = resolve(process.cwd(), "../..");
 const projectionPath = resolve(
@@ -37,9 +40,9 @@ const cliPath = resolve(
 );
 
 async function readProjection(): Promise<DisplayProjection> {
-  const projection = JSON.parse(
+  const projection = DisplayProjectionSchema.parse(JSON.parse(
     await readFile(projectionPath, "utf8"),
-  ) as DisplayProjection;
+  ) as unknown);
   if (
     projection.catalogSha256 !== sha256(await readFile(catalogPath, "utf8"))
   ) {

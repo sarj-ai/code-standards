@@ -1,12 +1,10 @@
 import { z } from "zod";
 
-import type { Catalog, RuleExample } from "./catalog.ts";
-
 export const ENGINES = ["python", "eslint", "iac", "sql", "text"] as const;
 
 const TextSchema = z.string().min(1);
 const FileSchema = z.object({ path: TextSchema, source: TextSchema });
-const ExampleSchema = z.object({
+export const ExampleSchema = z.object({
   id: TextSchema,
   scenarioId: TextSchema,
   title: TextSchema,
@@ -40,7 +38,17 @@ const RuleSchema = z.object({
   test: TextSchema,
   examples: z.array(ExampleSchema),
 });
-const CatalogSchema = z.object({ schemaVersion: z.literal(1), rules: z.array(RuleSchema) }) satisfies z.ZodType<Catalog>;
+const CatalogSchema = z.object({ schemaVersion: z.literal(1), rules: z.array(RuleSchema) });
+
+export type ExampleFile = z.infer<typeof FileSchema>;
+export type RuleExample = z.infer<typeof ExampleSchema>;
+export type Rule = z.infer<typeof RuleSchema>;
+export type Catalog = z.infer<typeof CatalogSchema>;
+export type Engine = Rule["engine"];
+export type DefaultLevel = Rule["defaultLevel"];
+export type Autofix = Rule["autofix"];
+export type Category = Rule["category"];
+export type Language = Rule["languages"][number];
 
 export function validateCatalog(value: unknown): asserts value is Catalog {
   const result = CatalogSchema.safeParse(value);

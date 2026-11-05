@@ -9,6 +9,7 @@
     "ignoreDeprecations": "6.0",
     "paths": {
       "typescript": ["./node_modules/typescript/lib/typescript.d.ts"],
+      "zod": ["./node_modules/zod/index.d.ts"],
       "eslint": ["./node_modules/eslint/lib/types/index.d.ts"],
       "@eslint/js": ["./node_modules/@eslint/js/types/index.d.ts"],
       "globals": ["./node_modules/globals/index.d.ts"],
