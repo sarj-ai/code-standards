@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import quote, quote_from_bytes
 
-from .models import AnalysisReport, Diagnostic, Fix, FixSafety, Location, Severity, TextEdit
+from .models import AnalysisReport, Diagnostic, Fix, FixSafety, Location, RuleExecutionState, Severity, TextEdit
 
 
 if TYPE_CHECKING:
@@ -50,6 +50,10 @@ def to_sarif(report: AnalysisReport) -> str:
     notifications.extend(
         {"descriptor": {"id": "baseline-notice"}, "message": {"text": line}, "level": "note"}
         for line in _baseline_lines(report)
+    )
+    notifications.extend(
+        {"descriptor": {"id": "rule-execution"}, "message": {"text": line}, "level": "note"}
+        for line in _rule_execution_lines(report)
     )
     run: dict[str, JsonValue] = {
         "tool": {
@@ -98,6 +102,7 @@ def to_text(report: AnalysisReport, *, max_diagnostics: int | None = None) -> st
         )
     lines.extend(f"{issue.source}: {issue.kind}: {issue.message}" for issue in report.issues)
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.extend(_rule_execution_lines(report))
     lines.extend(_baseline_lines(report))
     lines.extend(_policy_failure_lines(report))
     lines.append(_summary(report))
@@ -135,6 +140,7 @@ def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHU
             "use JSON or SARIF for the complete report"
         )
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.extend(_rule_execution_lines(report))
     lines.extend(_baseline_lines(report))
     lines.extend(_policy_failure_lines(report))
     lines.append(_summary(report))
@@ -223,6 +229,26 @@ def _summary(report: AnalysisReport) -> str:
         f"code-standards: {counts[Severity.ERROR]} error(s), {counts[Severity.WARNING]} warning(s), "
         f"{counts[Severity.INFO]} notice(s), {len(report.issues)} execution issue(s)"
     )
+
+
+def _rule_execution_lines(report: AnalysisReport) -> list[str]:
+    lines: list[str] = []
+    for tool in report.tools:
+        untracked: dict[str, set[str]] = {}
+        for row in tool.rule_executions:
+            if row.execution is RuleExecutionState.SKIPPED:
+                lines.append(
+                    f"code-standards execution: {tool.name}: {row.rule_id} skipped on "
+                    f"{row.file_count} file(s): {row.reason}"
+                )
+            elif row.execution is RuleExecutionState.UNTRACKED:
+                reason = row.reason or "execution-reporting-unavailable"
+                untracked.setdefault(reason, set()).add(row.rule_id)
+        lines.extend(
+            f"code-standards execution: {tool.name}: {len(rules)} rule(s) untracked: {reason}"
+            for reason, rules in sorted(untracked.items())
+        )
+    return lines
 
 
 def _baseline_lines(report: AnalysisReport) -> list[str]:
