@@ -72,6 +72,30 @@ def test_reports_native_failure_on_the_original_python_line(tmp_path: Path) -> N
         assert finding.location.position.byte_offset >= path.read_bytes().index(b"SELECT")
 
 
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("SQL('SELECT {} UNION SELECT {}').format(SQL('a'), SQL('a, b'))", {"AM07"}),
+        ("SQL(' JOIN ').join([SQL('SELECT a.id FROM a'), Identifier('b')])", {"AM08"}),
+        ("SQL('SELECT {} FROM {}').format(Identifier('id'), Identifier('calls'))", set[str]()),
+    ],
+)
+def test_native_sqlfluff_checks_composed_queries(tmp_path: Path, expression: str, expected: set[str]) -> None:
+    path = _write_query(tmp_path, expression)
+    path.write_text("from psycopg.sql import SQL, Identifier\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    report = analyze_sources((str(path),), root=tmp_path)
+
+    assert report.completion is Completion.COMPLETE
+    assert not report.issues
+    assert {item.code for item in report.diagnostics} == expected
+    for finding in report.diagnostics:
+        assert finding.location.position is not None
+        assert finding.location.position.line == 3
+        token = b"SELECT" if finding.code == "AM07" else b"JOIN"
+        assert path.read_bytes()[finding.location.position.byte_offset :].startswith(token)
+
+
 def test_dynamic_sql_is_a_visible_nonblocking_coverage_gap(tmp_path: Path) -> None:
     path = _write_query(tmp_path, 'f"SELECT {column} FROM calls"')
 
