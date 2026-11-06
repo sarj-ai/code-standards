@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "df69a40cb930b16d112044d573a25b71be62b3cabacf6da0b2a0de23c68af5ed",
+  "catalogSha256": "77562c5b15b503c8995d24d12a186f6162f14b5fb1374a900264d9ec0f79e3ca",
   "cliSha256": "5783dab6128439f7d595e2eef789309712a82fdf8aba6d7e5e47565f2cd5047e",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -8056,6 +8056,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:conditional-resource-presence": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_service\" \"this\" {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "stable-provisioning",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The desired resource is declared directly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_service\" \"this\" {\n  count = var.use_new ? 1 : 0\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "temporary-provisioning-switch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A migration switch retains two provisioning paths"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:expression-complexity": {
       "examples": [
         {
@@ -8666,6 +8701,41 @@
           "outcome": "reject",
           "scenarioId": "ambiguous-identity",
           "title": "Cloud project identity names a deployment environment"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-hardcoded-deployment-location": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_storage_bucket\" \"this\" {\n  location = \"us-central1\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "literal-placement",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The resource ignores caller placement configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"region\" { type = string }\nresource \"google_storage_bucket\" \"this\" {\n  location = var.region\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "placement-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The caller owns placement through a typed input"
         }
       ],
       "optionsSchemaSource": null

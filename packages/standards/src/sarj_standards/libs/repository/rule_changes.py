@@ -66,6 +66,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "iac:no-managed-service-account-key",
         # Explicit strict DevOps admission: proven broad project Owner/Editor grants.
         "iac:no-project-basic-privilege",
+        # User-requested blocking placement-input policy, qualified with paired
+        # native fixtures and inspected immutable Terraform corpus evidence.
+        "iac:no-hardcoded-deployment-location",
         # Invalid build ordering or substitution into executable shell syntax.
         "text:cloudbuild-contract",
         # User-approved architecture policy: literal/import-proven interpreter source

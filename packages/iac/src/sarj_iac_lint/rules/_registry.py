@@ -3,12 +3,14 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_iac_lint.rules.conditional_resource_presence import ConditionalResourcePresence
 from sarj_iac_lint.rules.expression_complexity import ExpressionComplexity
 from sarj_iac_lint.rules.no_boolean_enable_variable import NoBooleanEnableVariable
 from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_iac_lint.rules.no_dead_environment_input import NoDeadEnvironmentInput
 from sarj_iac_lint.rules.no_duplicate_deployment_literal import NoDuplicateDeploymentLiteral
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
+from sarj_iac_lint.rules.no_hardcoded_deployment_location import NoHardcodedDeploymentLocation
 from sarj_iac_lint.rules.no_managed_service_account_key import NoManagedServiceAccountKey
 from sarj_iac_lint.rules.no_mocked_terraform_test_oracle import NoMockedTerraformTestOracle
 from sarj_iac_lint.rules.no_nested_conditional import NoNestedConditional
@@ -31,6 +33,8 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ConditionalResourcePresence.id: ConditionalResourcePresence,
+        NoHardcodedDeploymentLocation.id: NoHardcodedDeploymentLocation,
         NoBooleanEnableVariable.id: NoBooleanEnableVariable,
         NoDuplicateDeploymentLiteral.id: NoDuplicateDeploymentLiteral,
         ExpressionComplexity.id: ExpressionComplexity,
