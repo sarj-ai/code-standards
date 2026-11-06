@@ -25,6 +25,7 @@ def physical_lines(source: str, *, keepends: bool = False) -> list[str]:
 
 _MAX_BLOCK_DEPTH = 128
 _PARENTHESIS_PAIR_LENGTH = 2
+_MIN_CALL_TOKENS = 3
 _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
 
@@ -409,6 +410,43 @@ def ungrouped_expression(value: str) -> str:
     if removed == 0:
         return value
     return value[matches[removed].start : matches[-removed - 1].end] if unwrapped else ""
+
+
+def conditional_branches(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    parts = strip_outer_parentheses(parts)
+    depth = 0
+    pending = 0
+    question = 0
+    for index, part in enumerate(parts):
+        if part in {"(", "[", "{"}:
+            depth += 1
+        elif part in {")", "]", "}"}:
+            depth -= 1
+        elif part == "?" and depth == 0:
+            if pending == 0:
+                question = index
+            pending += 1
+        elif part == ":" and depth == 0 and pending:
+            pending -= 1
+            if pending == 0:
+                branches = parts[question + 1 : index], parts[index + 1 :]
+                return branches if all(branches) else ()
+    return ()
+
+
+def call_arguments(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...] | None:
+    parts = strip_outer_parentheses(parts)
+    if len(parts) < _MIN_CALL_TOKENS or parts[1] != "(" or parts[-1] != ")":
+        return None
+    depth = 0
+    for index, part in enumerate(parts[1:], start=1):
+        if part == "(":
+            depth += 1
+        elif part == ")":
+            depth -= 1
+            if depth == 0:
+                return comma_parts(parts[2:-1]) if index == len(parts) - 1 else None
+    return None
 
 
 def literal_token(value: str) -> str | None:
