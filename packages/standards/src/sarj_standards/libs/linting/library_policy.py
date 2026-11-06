@@ -575,11 +575,12 @@ def _scan_manifests(
     root: Path,
     paths: Iterable[Path],
     *,
-    allowed_ids: Iterable[str],
+    allowed_ids: frozenset[str],
 ) -> tuple[Finding, ...]:
-    allowed = frozenset(allowed_ids)
     package_index = _package_index()
     findings: list[Finding] = []
+    text_source: Path | None = None
+    text = ""
     for path in paths:
         dependencies: tuple[tuple[Path, Ecosystem, str], ...]
         match path.name:
@@ -593,9 +594,11 @@ def _scan_manifests(
                 dependencies = _requirements_dependencies(path, root, frozenset())
         for source, ecosystem, package in dependencies:
             entry = package_index.get(_PackageKey(ecosystem, _normalize(package, ecosystem)))
-            if entry is None or entry.id in allowed:
+            if entry is None or entry.id in allowed_ids:
                 continue
-            text = source.read_text(encoding="utf-8-sig")
+            if source != text_source:
+                text = source.read_text(encoding="utf-8-sig")
+                text_source = source
             line, column = _location(text, package)
             findings.append(
                 Finding(entry.id, source.relative_to(root), line, column, package, entry.replacement, entry.message)
