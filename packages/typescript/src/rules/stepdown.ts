@@ -105,7 +105,7 @@ interface Definition {
     TSESTree.FunctionDeclaration | TSESTree.VariableDeclarator;
 }
 
-function isFunction(node: TSESTree.Node): node is FunctionNode {
+function isFunction(node: TSESTree.Node) {
   return (
     node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
     node.type === AST_NODE_TYPES.FunctionDeclaration ||
@@ -331,16 +331,9 @@ function cycleComponents(
   return components;
 }
 
-type ErasedExpression =
-  | TSESTree.TSAsExpression
-  | TSESTree.TSTypeAssertion
-  | TSESTree.TSSatisfiesExpression
-  | TSESTree.TSNonNullExpression
-  | TSESTree.TSInstantiationExpression;
-
 type Variable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
 
-function isErasedExpression(node: TSESTree.Node): node is ErasedExpression {
+function isErasedExpression(node: TSESTree.Node) {
   return (
     node.type === AST_NODE_TYPES.TSAsExpression ||
     node.type === AST_NODE_TYPES.TSTypeAssertion ||
@@ -804,7 +797,7 @@ function classScope(
   privateBandOnly: boolean,
 ): void {
   const methods = node.body.body.filter(
-    (member): member is TSESTree.MethodDefinition =>
+    (member) =>
       member.type === AST_NODE_TYPES.MethodDefinition,
   );
   const counts = classMethodCounts(node.body, methods);

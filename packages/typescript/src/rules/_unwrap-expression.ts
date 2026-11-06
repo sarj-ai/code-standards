@@ -32,7 +32,7 @@ export function directArgumentCall(node: TSESTree.Node): TSESTree.CallExpression
     ? call : null;
 }
 
-function isErasedExpression(node: TSESTree.Node): node is TSESTree.TSAsExpression | TSESTree.TSSatisfiesExpression | TSESTree.TSNonNullExpression | TSESTree.TSTypeAssertion {
+function isErasedExpression(node: TSESTree.Node) {
   return node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
     node.type === AST_NODE_TYPES.TSNonNullExpression || node.type === AST_NODE_TYPES.TSTypeAssertion;
 }

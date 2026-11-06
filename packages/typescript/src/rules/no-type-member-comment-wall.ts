@@ -76,7 +76,7 @@ export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
 /** A member the rule can judge: a named property or method signature. */
 type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
 
-function isNamedMember(node: TSESTree.TypeElement): node is NamedMember {
+function isNamedMember(node: TSESTree.TypeElement) {
   return (
     (node.type === AST_NODE_TYPES.TSPropertySignature ||
       node.type === AST_NODE_TYPES.TSMethodSignature) &&

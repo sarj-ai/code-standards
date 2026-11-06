@@ -122,7 +122,7 @@ function nameWords(name: string): string[] {
  */
 function isMathRandomCall(
   node: TSESTree.Node,
-): node is TSESTree.CallExpression {
+) {
   if (node.type !== "CallExpression") {
     return false;
   }

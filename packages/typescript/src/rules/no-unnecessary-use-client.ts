@@ -112,7 +112,7 @@ const subtreeReadsImportedBinding = (
 
 const isUseClientDirective = (
   node: TSESTree.Statement,
-): node is TSESTree.ExpressionStatement => {
+) => {
   return (
     node.type === AST_NODE_TYPES.ExpressionStatement &&
     node.directive === "use client"

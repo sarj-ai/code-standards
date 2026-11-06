@@ -4,6 +4,7 @@ import eslintPlugin from "eslint-plugin-eslint-plugin";
 import tseslint from "typescript-eslint";
 
 import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.ts";
+import noExplicitTypePredicate from "./src/rules/no-explicit-type-predicate.ts";
 import noRuntimeTypeof from "./src/rules/no-runtime-typeof.ts";
 
 export default defineConfig(
@@ -12,7 +13,7 @@ export default defineConfig(
     name: "sarj/typescript",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
-    plugins: { "@sarj": { rules: { "no-runtime-typeof": noRuntimeTypeof } } },
+    plugins: { "@sarj": { rules: { "no-explicit-type-predicate": noExplicitTypePredicate, "no-runtime-typeof": noRuntimeTypeof } } },
     languageOptions: {
       parserOptions: {
         projectService: {
@@ -22,7 +23,7 @@ export default defineConfig(
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
-    rules: { "@sarj/no-runtime-typeof": "error" },
+    rules: { "@sarj/no-explicit-type-predicate": "error", "@sarj/no-runtime-typeof": "error" },
   },
   {
     name: "sarj/rule-authoring",

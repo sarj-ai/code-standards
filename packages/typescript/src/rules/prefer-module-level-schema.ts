@@ -306,7 +306,7 @@ export default createRule<Options, MessageIds>({
 
     const zodNamespaces = new Set<string>();
 
-    function isZodCall(node: TSESTree.Node): node is TSESTree.CallExpression {
+    function isZodCall(node: TSESTree.Node) {
       const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
       if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
       const receiver = unwrapExpression(unwrappedNodeCallee.object);
@@ -340,6 +340,7 @@ export default createRule<Options, MessageIds>({
       while (current !== undefined) {
         if (
           current !== node &&
+          current.type === AST_NODE_TYPES.CallExpression &&
           isZodCall(current) &&
           current.callee.type === AST_NODE_TYPES.MemberExpression &&
           ASTUtils.getPropertyName(current.callee) !== null &&

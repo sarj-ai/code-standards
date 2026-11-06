@@ -101,12 +101,12 @@ function uuidModule(
     declaration.kind !== "const" ||
     declaration.declare ||
     declaration.declarations.length !== 1 ||
-    !stringFunction(native) ||
-    !stringFunction(legacy) ||
+    native?.type !== AST_NODE_TYPES.FunctionDeclaration || !stringFunction(native) ||
+    legacy?.type !== AST_NODE_TYPES.FunctionDeclaration || !stringFunction(legacy) ||
     exported?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
     exported.specifiers.length !== 0 ||
     exported.source !== null ||
-    !arrayFunction(exported.declaration)
+    exported.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration || !arrayFunction(exported.declaration)
   )
     return null;
   const provider = declaration.declarations[0];
@@ -127,8 +127,8 @@ function uuidModule(
 }
 
 function stringFunction(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   return (
     ordinaryFunction(node) &&
     node.returnType?.typeAnnotation.type === AST_NODE_TYPES.TSStringKeyword
@@ -136,8 +136,8 @@ function stringFunction(
 }
 
 function arrayFunction(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   if (!ordinaryFunction(node)) return false;
   const annotation = node.returnType?.typeAnnotation;
   return (
@@ -147,10 +147,9 @@ function arrayFunction(
 }
 
 function ordinaryFunction(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   return (
-    node?.type === AST_NODE_TYPES.FunctionDeclaration &&
     node.id !== null &&
     !node.declare &&
     !node.async &&
@@ -188,7 +187,9 @@ function nativeProvider(
     call.optional ||
     call.typeArguments !== undefined ||
     call.arguments.length !== 1 ||
+    call.callee.type !== AST_NODE_TYPES.MemberExpression ||
     !member(call.callee, "bind") ||
+    call.callee.object.type !== AST_NODE_TYPES.MemberExpression ||
     !member(call.callee.object, "randomUUID")
   )
     return false;
@@ -207,11 +208,10 @@ function nativeProvider(
 }
 
 function member(
-  node: TSESTree.Node,
+  node: TSESTree.MemberExpression,
   property: string,
-): node is TSESTree.MemberExpression {
+): boolean {
   return (
-    node.type === AST_NODE_TYPES.MemberExpression &&
     !node.computed &&
     !node.optional &&
     node.property.type === AST_NODE_TYPES.Identifier &&
@@ -309,6 +309,7 @@ function isUuidRecipe(
     node.type !== AST_NODE_TYPES.CallExpression ||
     node.optional ||
     node.typeArguments !== undefined ||
+    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
     !member(node.callee, "replace") ||
     node.callee.object.type !== AST_NODE_TYPES.Literal ||
     node.callee.object.value !== UUID_TEMPLATE ||

@@ -330,7 +330,7 @@ function optionsSchema(value: unknown): object | null {
     : { type: "array", items };
 }
 
-function isObject(value: unknown): value is object {
+function isObject(value: unknown) {
   return value !== null && typeof value === "object";
 }
 
@@ -411,16 +411,16 @@ function validateExpectedSuggestion(value: unknown, exampleId: string, messageId
 }
 
 function validateExpectedLocation(value: unknown, exampleId: string): void {
-  if (!isObject(value) || !("line" in value) || !positiveCoordinate(value.line) ||
-      !("column" in value) || !positiveCoordinate(value.column)) {
+  if (!isObject(value) || !("line" in value) || typeof value.line !== "number" || !positiveCoordinate(value.line) ||
+      !("column" in value) || typeof value.column !== "number" || !positiveCoordinate(value.column)) {
     throw new TypeError(`${exampleId}: expected diagnostic location requires positive integer coordinates`);
   }
   if (!("end" in value)) {
     assertFields(value, ["line", "column"], exampleId);
     return;
   }
-  if (!isObject(value.end) || !("line" in value.end) || !positiveCoordinate(value.end.line) ||
-      !("column" in value.end) || !positiveCoordinate(value.end.column) ||
+  if (!isObject(value.end) || !("line" in value.end) || typeof value.end.line !== "number" || !positiveCoordinate(value.end.line) ||
+      !("column" in value.end) || typeof value.end.column !== "number" || !positiveCoordinate(value.end.column) ||
       value.end.line < value.line || (value.end.line === value.line && value.end.column < value.column)) {
     throw new TypeError(`${exampleId}: expected diagnostic end point must be complete and ordered`);
   }
@@ -428,8 +428,8 @@ function validateExpectedLocation(value: unknown, exampleId: string): void {
   assertFields(value, ["line", "column", "end"], exampleId);
 }
 
-function positiveCoordinate(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+function positiveCoordinate(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 1;
 }
 
 function assertFields(value: object, expected: readonly string[], exampleId: string): void {

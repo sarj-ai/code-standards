@@ -28,8 +28,8 @@ export function serverActionErrorResults(sourceCode: TypeScriptSourceCode): read
     node.callee.type === AST_NODE_TYPES.Identifier && node.callee.name === "eval")) return [];
   const analysis = new ActionResults(sourceCode);
   const actionSet = new Set(actions);
-  return nodes.filter((node): node is TSESTree.ReturnStatement => {
-    if (node.type !== AST_NODE_TYPES.ReturnStatement || node.argument === null) return false;
+  return nodes.filter((node) => node.type === AST_NODE_TYPES.ReturnStatement).filter((node) => {
+    if (node.argument === null) return false;
     const owner = functionOwner(node);
     return owner !== null && actionSet.has(owner) && escapingActionReturn(node, owner, sourceCode) && analysis.payload(node.argument, owner);
   });
@@ -43,7 +43,7 @@ function directive(body: readonly TSESTree.Statement[], name: string): boolean {
   return false;
 }
 
-function isFunction(node: TSESTree.Node): node is FunctionNode {
+function isFunction(node: TSESTree.Node) {
   return node.type === AST_NODE_TYPES.FunctionDeclaration || node.type === AST_NODE_TYPES.FunctionExpression || node.type === AST_NODE_TYPES.ArrowFunctionExpression;
 }
 

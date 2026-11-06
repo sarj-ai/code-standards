@@ -20,9 +20,9 @@ export function uuidPredicateWitness(
   services: TypeServices,
 ): string | undefined {
   const success = unwrapExpression(expression);
-  if (!member(success, "success")) return undefined;
+  if (success.type !== AST_NODE_TYPES.MemberExpression || !member(success, "success")) return undefined;
   const parse = unwrapExpression(success.object);
-  if (parse.type !== AST_NODE_TYPES.CallExpression || parse.optional || parse.arguments.length !== 1 || !member(parse.callee, "safeParse")) return undefined;
+  if (parse.type !== AST_NODE_TYPES.CallExpression || parse.optional || parse.arguments.length !== 1 || parse.callee.type !== AST_NODE_TYPES.MemberExpression || !member(parse.callee, "safeParse")) return undefined;
   const argument = parse.arguments[0];
   if (argument === undefined || unwrapExpression(argument).type !== AST_NODE_TYPES.Identifier) return undefined;
   const value = unwrapExpression(argument);
@@ -43,16 +43,16 @@ function binding(node: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): V
   return ASTUtils.findVariable(sourceCode.getScope(node), node.name);
 }
 
-function member(node: TSESTree.Node | undefined, name: string): node is TSESTree.MemberExpression {
-  return node?.type === AST_NODE_TYPES.MemberExpression && !node.optional && !node.computed &&
+function member(node: TSESTree.MemberExpression, name: string): boolean {
+  return !node.optional && !node.computed &&
     node.property.type === AST_NODE_TYPES.Identifier && node.property.name === name;
 }
 
 function uuidNamespace(initializer: TSESTree.Node, sourceCode: TypeScriptSourceCode, services: TypeServices): Variable | null {
-  if (!noArguments(initializer) || !member(initializer.callee, "uuid")) return null;
+  if (initializer.type !== AST_NODE_TYPES.CallExpression || !noArguments(initializer) || initializer.callee.type !== AST_NODE_TYPES.MemberExpression || !member(initializer.callee, "uuid")) return null;
   let receiver = unwrapExpression(initializer.callee.object);
   let legacy = false;
-  if (noArguments(receiver) && member(receiver.callee, "string")) {
+  if (receiver.type === AST_NODE_TYPES.CallExpression && noArguments(receiver) && receiver.callee.type === AST_NODE_TYPES.MemberExpression && member(receiver.callee, "string")) {
     receiver = unwrapExpression(receiver.callee.object);
     legacy = true;
   }
@@ -71,8 +71,8 @@ function uuidNamespace(initializer: TSESTree.Node, sourceCode: TypeScriptSourceC
   return namespace ?? null;
 }
 
-function noArguments(node: TSESTree.Node): node is TSESTree.CallExpression {
-  return node.type === AST_NODE_TYPES.CallExpression && !node.optional && node.arguments.length === 0;
+function noArguments(node: TSESTree.CallExpression): boolean {
+  return !node.optional && node.arguments.length === 0;
 }
 
 function installedZod(node: TSESTree.Identifier, services: TypeServices): boolean {
@@ -94,7 +94,7 @@ function closedSchema(schema: Variable): boolean {
     const receiver = outerExpression(reference.identifier);
     const property = receiver.parent;
     if (property?.type === AST_NODE_TYPES.ExportSpecifier && property.local === receiver) return true;
-    if (!member(property, "safeParse") || property.object !== receiver) return false;
+    if (property?.type !== AST_NODE_TYPES.MemberExpression || !member(property, "safeParse") || property.object !== receiver) return false;
     const call = property.parent;
     return call?.type === AST_NODE_TYPES.CallExpression && call.callee === property && !call.optional &&
       call.arguments.length === 1 && call.arguments[0]?.type !== AST_NODE_TYPES.SpreadElement;

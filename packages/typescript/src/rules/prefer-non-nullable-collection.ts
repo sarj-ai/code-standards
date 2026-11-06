@@ -306,13 +306,13 @@ function exportedValueAnnotation(source: Readonly<TypeScriptSourceCode>, identif
     ? declaration.id.typeAnnotation : undefined;
 }
 
-function isFunctionNode(node: TSESTree.Node | null | undefined): node is FunctionNode {
+function isFunctionNode(node: TSESTree.Node | null | undefined) {
   return node?.type === AST_NODE_TYPES.FunctionDeclaration ||
     node?.type === AST_NODE_TYPES.FunctionExpression ||
     node?.type === AST_NODE_TYPES.ArrowFunctionExpression;
 }
 
-function isSignatureNode(node: TSESTree.Node | null | undefined): node is SignatureNode {
+function isSignatureNode(node: TSESTree.Node | null | undefined) {
   return isFunctionNode(node) || node?.type === AST_NODE_TYPES.TSDeclareFunction;
 }
 
@@ -666,12 +666,12 @@ export default createRule<Options, MessageIds>({
       function checkDestructuredProperties(parameter: TSESTree.ObjectPattern, properties: readonly NullableProperty[]): void {
         for (const property of properties) {
           const bindingProperty = parameter.properties.find(
-            (entry): entry is TSESTree.Property =>
+            (entry) =>
               entry.type === AST_NODE_TYPES.Property &&
               !entry.computed &&
               ASTUtils.getPropertyName(entry) === property.name,
           );
-          if (bindingProperty === undefined) continue;
+          if (bindingProperty?.type !== AST_NODE_TYPES.Property) continue;
           const value = bindingProperty.value;
           const binding = value.type === AST_NODE_TYPES.AssignmentPattern ? value.left : value;
           if (binding.type !== AST_NODE_TYPES.Identifier) {

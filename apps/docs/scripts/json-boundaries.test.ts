@@ -27,8 +27,9 @@ await test("validates nested CLI options rather than trusting the envelope", asy
 });
 
 await test("retains catalog relationships after structural schema validation", async () => {
-  const value: unknown = JSON.parse(await readFile(new URL("../../../packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json", import.meta.url), "utf8"));
-  validateCatalog(value);
+  const raw: unknown = JSON.parse(await readFile(new URL("../../../packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json", import.meta.url), "utf8"));
+  const value = validateCatalog(raw);
+  assert.equal(value, raw);
   const first = value.rules[0];
   assert.ok(first);
   const example = first.examples[0];

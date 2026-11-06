@@ -242,7 +242,7 @@ function containsView(node: TSESTree.Node): boolean {
   );
 }
 
-function isFunction(node: TSESTree.Node): node is RenderFunction {
+function isFunction(node: TSESTree.Node) {
   return (
     node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
     node.type === AST_NODE_TYPES.FunctionDeclaration ||

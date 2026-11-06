@@ -64,6 +64,7 @@ const PREVIOUS_STRICT_RULE_ORDER = [
   "@sarj/no-invalid-typed-mutation",
   "@sarj/no-contradictory-type-predicate",
   "@sarj/no-partial-type-predicate",
+  "@sarj/no-explicit-type-predicate",
   "@sarj/no-boolean-selector-parameter",
   "@sarj/no-invalid-zod-custom-parse",
   "@sarj/no-contradictory-overload-return",
@@ -208,6 +209,7 @@ const PREVIOUS_RECOMMENDED_RULE_ORDER = [
   "@sarj/no-invalid-typed-mutation",
   "@sarj/no-contradictory-type-predicate",
   "@sarj/no-partial-type-predicate",
+  "@sarj/no-explicit-type-predicate",
   "@sarj/no-boolean-selector-parameter",
   "@sarj/no-invalid-zod-custom-parse",
   "@sarj/no-contradictory-overload-return",
@@ -404,6 +406,7 @@ it("retains independent option tuples and intentionally shared library data", ()
     .toBe(STRICT_RULES["no-restricted-imports"][1].patterns);
 });
 
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- Object.keys erases this closed fixture's literal keys; the native public tuple identity contract requires those precise keys.
 function isConfiguredRuleName(name: string): name is keyof typeof PREVIOUS_OPTION_SETTINGS {
   return Object.hasOwn(PREVIOUS_OPTION_SETTINGS, name);
 }
