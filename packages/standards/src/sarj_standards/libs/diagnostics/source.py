@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from typing import Self
 
 
+_UTF16_ASTRAL_START = 0x10000
+
+
 class _Utf16Index(NamedTuple):
     starts: array[int]
     ends: array[int]
@@ -133,7 +136,11 @@ class SourceDocument:
         utf16_offset = 0
         byte_offset = 0
         for codepoint_index, value in enumerate(content):
-            units = len(value.encode("utf-16-le", errors="surrogatepass")) // 2
+            if value.isascii():
+                utf16_offset += 1
+                byte_offset += 1
+                continue
+            units = 2 if ord(value) >= _UTF16_ASTRAL_START else 1
             byte_length = len(value.encode("utf-8", errors="surrogateescape"))
             if units != 1 or byte_length != 1:
                 end = utf16_offset + units

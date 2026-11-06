@@ -102,6 +102,35 @@ def test_ascii_coordinates_preserve_long_line_and_content_boundaries(tmp_path: P
         assert document.region(start_byte=end.byte_offset, end_byte=end.byte_offset) == Region(end, end)
 
 
+@pytest.mark.parametrize("prefix_length", [0, 64, 8192])
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        pytest.param("é漢😀\udcff", id="mixed-widths"),
+        pytest.param("\uffff\U00010000\U0010ffff\udc80\udcff", id="unicode-boundaries"),
+    ],
+)
+def test_utf16_coordinates_preserve_mixed_widths_after_ascii_runs(
+    tmp_path: Path, prefix_length: int, suffix: str
+) -> None:
+    content = "x" * prefix_length + suffix
+    document = SourceDocument(tmp_path / "mixed.py", content + "\r\n")
+
+    boundaries: set[int] = set()
+    for index in range(prefix_length, len(content) + 1):
+        prefix = content[:index]
+        units = len(prefix.encode("utf-16-le", errors="surrogatepass")) // 2
+        offset = len(prefix.encode("utf-8", errors="surrogateescape"))
+        boundaries.add(units)
+        assert document.utf16_point(line=0, character=units) == Position(0, units, offset)
+    for character in range(prefix_length, max(boundaries) + 2):
+        if character not in boundaries:
+            assert document.utf16_point(line=0, character=character) is None
+    assert document.utf16_point(line=1, character=0) == Position(
+        1, 0, len(content.encode("utf-8", errors="surrogateescape")) + 2
+    )
+
+
 def test_report_exit_code_preserves_issue_priority_across_tools(tmp_path: Path) -> None:
     error = Diagnostic("E001", "error", Severity.ERROR, "fixture", Location("example.py"))
     warning = replace(error, severity=Severity.WARNING)
