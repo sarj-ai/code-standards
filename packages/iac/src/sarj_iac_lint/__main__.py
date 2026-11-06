@@ -110,7 +110,19 @@ def _source_diagnostics(rules: Sequence[Rule], path: Path, source: str) -> list[
             if diagnostic.suppressible and is_suppressed(lines, diagnostic.line, diagnostic.code, comments=comments):
                 continue
             diagnostics.append(diagnostic)
-    return diagnostics
+    precedence = {
+        "SARJ204": ("SARJ221", "SARJ215"),
+        "SARJ219": ("SARJ218",),
+        "SARJ221": ("SARJ215",),
+    }
+    covered = {
+        (diagnostic.line, diagnostic.col, code)
+        for diagnostic in diagnostics
+        for code in precedence.get(diagnostic.code, ())
+    }
+    return [
+        diagnostic for diagnostic in diagnostics if (diagnostic.line, diagnostic.col, diagnostic.code) not in covered
+    ]
 
 
 def _blocking_comment_ban(rules: Sequence[Rule]) -> bool:
