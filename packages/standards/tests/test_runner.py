@@ -61,6 +61,62 @@ def test_json_variable_files_route_to_iac_without_routing_other_json(tmp_path: P
     assert runner.accepts_hook_path(variables, root=tmp_path)
 
 
+@pytest.mark.parametrize("relative", ["pnpm-lock.yaml", "frontend/pnpm-lock.yaml"])
+def test_large_pnpm_graph_preserves_text_and_hook_inputs_without_iac_dispatch(tmp_path: Path, relative: str) -> None:
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    contents = b"lockfileVersion: '9.0'\npackages: {}\n#" + b"x" * 500_001 + b"\n"
+    source.write_bytes(contents)
+    source.chmod(0o750)
+    original_mode = source.stat().st_mode
+
+    for paths in ([str(source)], [str(tmp_path)]):
+        grouped = runner.group_paths(paths)
+        assert not grouped.iac
+        assert grouped.text == [str(source)]
+        report = Standards(tmp_path).analyze(paths, rules=("iac:no-restated-comment", "text:cloudbuild-contract"))
+        assert report.exit_code == 0
+        assert not report.issues
+        assert not report.diagnostics
+    iac_only = Standards(tmp_path).analyze([str(source)], rules=("iac:no-restated-comment",))
+    assert iac_only.exit_code == 2
+    assert not iac_only.issues
+    assert runner.accepts_hook_path(source, root=tmp_path)
+    assert source.read_bytes() == contents
+    assert source.stat().st_mode == original_mode
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "pnpm-lock.yml",
+        "PNPM-LOCK.yaml",
+        ".github/workflows/pnpm-lock.yaml",
+        ".github/cache/../workflows/pnpm-lock.yaml",
+    ],
+)
+def test_pnpm_lookalikes_and_genuine_workflows_retain_iac_limits(tmp_path: Path, relative: str) -> None:
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"name: authored\n#" + b"x" * 500_001 + b"\n")
+
+    assert runner.group_paths([str(source)]).iac == [str(source)]
+    report = Standards(tmp_path).analyze([str(source)], rules=("iac:no-restated-comment",))
+    assert report.exit_code == 2
+    assert report.issues
+    assert any("500,000-byte analysis limit" in issue.message for issue in report.issues)
+
+
+def test_malformed_pnpm_data_remains_visible_to_text_and_hook_checks(tmp_path: Path) -> None:
+    source = tmp_path / "pnpm-lock.yaml"
+    contents = "# sarj-noqa: SARJ000 -- retained consumer annotation\nlockfileVersion: [\n"
+    source.write_text(contents, encoding="utf-8")
+
+    assert runner.group_paths([str(source)]).text == [str(source)]
+    assert runner.accepts_hook_path(source, root=tmp_path)
+    assert source.read_text(encoding="utf-8") == contents
+
+
 @pytest.mark.parametrize("name", ["cloudbuild.json", "release.cloudbuild.json", "cloudbuild.custom.json"])
 def test_cloudbuild_json_is_checked_from_direct_directory_and_staged_inputs(tmp_path: Path, name: str) -> None:
     source = tmp_path / name
