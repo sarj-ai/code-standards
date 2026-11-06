@@ -21,6 +21,7 @@ from . import (
     lifecycle,
     manifest,
     packagemanager,
+    repository_baseline,
     retired_suppressions,
     scaffold,
     transaction,
@@ -477,11 +478,32 @@ def unmigrated_retired_findings(plan: UpgradePlan, findings: Sequence[doctor.Fin
     return blockers
 
 
+def baseline_and_suppression_changes(plan: UpgradePlan) -> tuple[Path, ...]:
+    protected = {plan.root / repository_baseline.PATH}
+    if plan.adopted.diagnostic_baseline is not None:
+        protected.add(plan.root / plan.adopted.diagnostic_baseline)
+    writes = [*plan.baseline_writes, *plan.suppression_writes]
+    writes.extend(
+        (path, contents)
+        for path, contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits, *plan.pin_writes)
+        if path in protected
+    )
+    changed = {path for path, contents in writes if contents.encode("utf-8") != plan.preconditions.get(path)}
+    changed.update(
+        target
+        for source, target in plan.config_writes
+        if target in protected and source.read_bytes() != plan.preconditions.get(target)
+    )
+    changed.update(path for path in plan.scaffold_plan.deletes if path in protected)
+    return tuple(sorted(changed))
+
+
 def apply(
     plan: UpgradePlan,
     *,
     install: bool = True,
     allow_retired_debt: bool = False,
+    preserve_baselines: bool = False,
 ) -> int:
     if Version(plan.adopted.version) > Version(manifest.adopted_version()):
         return 2
@@ -489,6 +511,8 @@ def apply(
     if blockers and not allow_retired_debt:
         return 2
     try:
+        if preserve_baselines and baseline_and_suppression_changes(plan):
+            return 2
         transaction.validate_targets(plan.root, tuple(plan.preconditions))
         stale = any(
             (path.read_bytes() if path.is_file() else None) != expected for path, expected in plan.preconditions.items()

@@ -57,7 +57,7 @@ class BaselineRunner:
         return subprocess.CompletedProcess(rendered, 0, "", "")
 
 
-def _prepare(repo: Path, runner: BaselineRunner) -> rollout._RolloutBaseline:  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression.
+def _prepare(repo: Path, runner: BaselineRunner, *, preserve_baselines: bool = False) -> rollout._RolloutBaseline:  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression.
     (repo / rollout.MANIFEST).write_text(_MANIFEST_SOURCE)
     return rollout._prepare_rollout_baseline(  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression. # ruff: ignore[private-member-access]
         rollout.Consumer("Example", "example/consumer", "main", ("make", "check")),
@@ -67,6 +67,7 @@ def _prepare(repo: Path, runner: BaselineRunner) -> rollout._RolloutBaseline:  #
         ("mise", "exec", "--"),
         tool=("code-standards",),
         environment={"PATH": "/declared-tools"},
+        preserve_baselines=preserve_baselines,
     )
 
 
@@ -135,3 +136,45 @@ def test_bootstrap_cannot_change_baseline_bytes_or_absence(tmp_path: Path, relat
         _prepare(tmp_path, runner)
 
     assert len(runner.commands) == 1
+
+
+def test_preservation_skips_scoped_baseline_generation_after_bootstrap(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostic-baseline.json"
+    path.write_bytes(b"original baseline\n")
+    path.chmod(0o640)
+    runner = BaselineRunner(tmp_path)
+
+    result = _prepare(tmp_path, runner, preserve_baselines=True)
+
+    assert result.allowed_paths == frozenset()
+    assert result.expected == path.read_bytes() == b"original baseline\n"
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert len(runner.commands) == 1
+    assert runner.commands[0][-1] == "generate-analysis-inputs"
+
+
+@pytest.mark.parametrize("mutation", ["create", "replace", "delete", "chmod"])
+def test_preservation_guards_declared_and_absent_consumer_baselines(tmp_path: Path, mutation: str) -> None:
+    (tmp_path / rollout.MANIFEST).write_text(_MANIFEST_SOURCE)
+    path = tmp_path / "custom-baseline.json"
+    if mutation != "create":
+        path.write_bytes(b"retained\n")
+    consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"), baseline_paths=(path.name,))
+    preserved = rollout.snapshot_consumer_baselines(tmp_path, consumer)
+    rollout.assert_preserved_baselines(tmp_path, preserved)
+    match mutation:
+        case "delete":
+            path.unlink()
+        case "chmod":
+            path.chmod(0o750)
+        case _:
+            path.write_bytes(b"expanded\n")
+
+    with pytest.raises(rollout.RolloutError, match="controller-owned"):
+        rollout.assert_preserved_baselines(tmp_path, preserved)
+
+
+def test_disabled_preservation_does_not_inspect_baseline_targets(tmp_path: Path) -> None:
+    consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"))
+
+    assert rollout.snapshot_consumer_baselines(tmp_path / "not-cloned", consumer, preserve_baselines=False) == {}

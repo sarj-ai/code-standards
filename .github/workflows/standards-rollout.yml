@@ -12,6 +12,11 @@ on:
         description: Exact published Standards bundle version
         required: true
         type: string
+      preserve_baselines:
+        description: Refuse baseline and suppression migrations
+        required: false
+        default: true
+        type: boolean
       enable_repository_rule:
         description: Optional reviewed error-stage rule to activate in new rollout PRs
         required: false
@@ -140,6 +145,7 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           CONSUMER: ${{ matrix.consumer.identity }}
           EVENT_NAME: ${{ github.event_name }}
+          PRESERVE_BASELINES: ${{ github.event_name == 'schedule' || inputs.preserve_baselines }}
           REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         shell: bash

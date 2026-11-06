@@ -1334,13 +1334,14 @@ def fix_source(
     if not _allows_text_fix(path, source, base, comment_facts=comment_facts):
         return source
     lines = _text_source_lines(path, source, keepends=True)
+    offsets = [0]
     edits = (
-        _hidden_heading_edits(path, source, lines, comment_facts=comment_facts)
+        _hidden_heading_edits(path, source, lines, offsets, comment_facts=comment_facts)
         if "hidden-markdown-heading" in selected
         else []
     )
     if selected.intersection({"config-comment-wall", "exact-config-comment-restatement", "commented-out-config"}):
-        edits.extend(_config_comment_edits(path, source, lines, selected))
+        edits.extend(_config_comment_edits(path, source, lines, offsets, selected))
     fixed = apply_edits(source, sorted(set(edits), key=lambda edit: edit.start))
     if path.suffix.lower() in {".yaml", ".yml", ".toml"}:
         try:
@@ -1388,7 +1389,12 @@ def _allows_text_fix(
 
 
 def _hidden_heading_edits(
-    path: Path, source: str, lines: list[str], *, comment_facts: _MarkdownCommentFacts | None = None
+    path: Path,
+    source: str,
+    lines: list[str],
+    offsets: list[int],
+    *,
+    comment_facts: _MarkdownCommentFacts | None = None,
 ) -> list[TextEdit]:
     edits: list[TextEdit] = []
     for finding in _markdown_hidden_comment_findings(path, source, comment_facts=comment_facts):
@@ -1404,7 +1410,7 @@ def _hidden_heading_edits(
                 and removed.count("-->") == 1
                 and not _AUTOFIX_PRESERVED_COMMENT.search(removed)
             ):
-                edits.append(_blank_text_lines(lines, finding.line, last))
+                edits.append(_blank_text_lines(lines, offsets, finding.line, last))
     return edits
 
 
@@ -1427,8 +1433,10 @@ def _plain_markdown_fix_context(source: str) -> bool:
     return opening is None or "\n" not in prose[opening[1] :]
 
 
-def _blank_text_lines(lines: list[str], first: int, last: int) -> TextEdit:
-    start = sum(map(len, lines[: first - 1]))
+def _blank_text_lines(lines: list[str], offsets: list[int], first: int, last: int) -> TextEdit:
+    for index in range(len(offsets) - 1, first - 1):
+        offsets.append(offsets[-1] + len(lines[index]))
+    start = offsets[first - 1]
     original = "".join(lines[first - 1 : last])
     return TextEdit(start, start + len(original), "".join(re.findall(r"\r\n|\r|\n", original)))
 
@@ -1439,7 +1447,9 @@ def _parsed_config_value(
     return tomllib.loads(source) if path.suffix.lower() == ".toml" else parse_yaml_documents(source)
 
 
-def _config_comment_edits(path: Path, source: str, lines: list[str], selected: frozenset[str]) -> list[TextEdit]:
+def _config_comment_edits(
+    path: Path, source: str, lines: list[str], offsets: list[int], selected: frozenset[str]
+) -> list[TextEdit]:
     if path.suffix.lower() not in {".yaml", ".yml", ".toml"}:
         return []
     edits: list[TextEdit] = []
@@ -1448,16 +1458,16 @@ def _config_comment_edits(path: Path, source: str, lines: list[str], selected: f
         if _AUTOFIX_PRESERVED_COMMENT.search(lines[finding.line - 1]):
             continue
         if finding.code == "SARJ306" and "exact-config-comment-restatement" in selected:
-            edits.append(_blank_text_lines(lines, finding.line, finding.line))
+            edits.append(_blank_text_lines(lines, offsets, finding.line, finding.line))
         elif finding.code == "SARJ301" and "commented-out-config" in selected:
-            if edit := _disabled_config_group_edit(path, lines, finding.line):
+            if edit := _disabled_config_group_edit(path, lines, offsets, finding.line):
                 edits.append(edit)
         elif finding.code == "SARJ300" and "config-comment-wall" in selected:
-            edits.extend(_config_wall_edits(path, lines, attached, finding.line))
+            edits.extend(_config_wall_edits(path, lines, offsets, attached, finding.line))
     return edits
 
 
-def _disabled_config_group_edit(path: Path, lines: list[str], first: int) -> TextEdit | None:
+def _disabled_config_group_edit(path: Path, lines: list[str], offsets: list[int], first: int) -> TextEdit | None:
     leader = _standalone_comment(path, lines[first - 1])
     if leader is None:
         return None
@@ -1476,18 +1486,22 @@ def _disabled_config_group_edit(path: Path, lines: list[str], first: int) -> Tex
         and not _AUTOFIX_PRESERVED_COMMENT.search(comment.body)
         for comment in comments
     ):
-        return _blank_text_lines(lines, first, last)
+        return _blank_text_lines(lines, offsets, first, last)
     return None
 
 
-def _config_wall_edits(path: Path, lines: list[str], attached: list[_AttachedComment], first: int) -> list[TextEdit]:
+def _config_wall_edits(
+    path: Path, lines: list[str], offsets: list[int], attached: list[_AttachedComment], first: int
+) -> list[TextEdit]:
     edits: list[TextEdit] = []
     for group in _attached_groups(attached, lines, path=path):
         weak = [line for line, _indent, is_weak in group if is_weak]
         if not weak or weak[0] != first:
             continue
         edits.extend(
-            _blank_text_lines(lines, number, number) for number in weak if _restated_config_comment(path, lines, number)
+            _blank_text_lines(lines, offsets, number, number)
+            for number in weak
+            if _restated_config_comment(path, lines, number)
         )
     return edits
 
