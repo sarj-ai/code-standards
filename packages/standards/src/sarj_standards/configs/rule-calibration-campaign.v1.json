@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/iac/no-duplicate-deployment-literal",
+      "family": "iac",
+      "ruleId": "no-duplicate-deployment-literal",
+      "state": "pending",
+      "evidence": "Thirty focused tests cover eight matching and nineteen nonmatching primary cases plus three integration/documentation cases. Isolated runs over 520 immutable Terraform files produced eight findings; all eight were inspected as maintainability opportunities, with zero known inspected false positives or duplicate locations. Three paired runs preserve every other diagnostic; median elapsed time was 1.498 seconds without the candidate and 1.510 seconds with it. The baseline includes the candidate module import, and later rounds are disk-cache-warm in fresh processes. Redacted results are in packages/standards/benchmarks/deployment-literals-calibration.json; private source, paths and identifying pins remain local.",
+      "outcome": "Introduce SARJ218 at WARNING without autofix. Recommend shared references, locals or inputs for repeated direct cloud scope/location literals within one Terraform file, keeping explicit provider bindings separate. Preserve fixed evidence data and composition boundaries. Broader public-project calibration remains pending; equal literals do not establish shared configuration intent or justify error promotion."
+    },
+    {
       "task": "rule-audit/python/fastapi-route-declares-security",
       "family": "python",
       "ruleId": "fastapi-route-declares-security",

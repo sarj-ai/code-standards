@@ -274,6 +274,7 @@
       "expression-complexity",
       "no-comment-cruft",
       "no-dead-environment-input",
+      "no-duplicate-deployment-literal",
       "no-environment-conditional",
       "no-managed-service-account-key",
       "no-mocked-terraform-test-oracle",
@@ -724,7 +725,8 @@
       "SARJ214",
       "SARJ215",
       "SARJ216",
-      "SARJ217"
+      "SARJ217",
+      "SARJ218"
     ],
     "text": [
       "SARJ300",
