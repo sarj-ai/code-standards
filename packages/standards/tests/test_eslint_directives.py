@@ -934,18 +934,18 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(
             "eslint": _ROOT / "packages/typescript/node_modules/eslint",
             "prettier": _ROOT / "apps/docs/node_modules/prettier",
         },
-        expected_versions={"eslint": "10.13.0", "prettier": "3.9.10"},
+        expected_versions={"eslint": "10.14.0", "prettier": "3.9.10"},
     )
     installed_node = shutil.which("node")
     assert installed_node is not None
     node = materialize_node_runtime(tmp_path, Path(installed_node))
     unselected = _BEFORE + (b"console.log('unselected');\n" if stale_suppressions else b"")
     _project(tmp_path, {"source.js": source_bytes, "unselected.js": unselected, "nul-source.js": _NUL_SOURCE})
-    assert local.roots["eslint"].version == "10.13.0"
+    assert local.roots["eslint"].version == "10.14.0"
     assert local.roots["prettier"].version == "3.9.10"
     (tmp_path / "package.json").write_text(
         '{"private":true,"type":"module","scripts":{"format":"prettier --write ."},'
-        '"devDependencies":{"eslint":"10.13.0","prettier":"3.9.10"}}\n',
+        '"devDependencies":{"eslint":"10.14.0","prettier":"3.9.10"}}\n',
         encoding="utf-8",
     )
     lockfile = "bun.lock" if manager == "bun" else "package-lock.json"
@@ -1164,7 +1164,7 @@ def test_pinned_eslint_at_workspace_root_audits_nested_yarn_project(tmp_path: Pa
     root = tmp_path / "consumer 'with spaces"
     root.mkdir(mode=0o700)
     packages = {"eslint": _ROOT / "packages/typescript/node_modules/eslint"}
-    versions = {"eslint": "10.13.0"}
+    versions = {"eslint": "10.14.0"}
     if rewrite:
         packages["prettier"] = _ROOT / "apps/docs/node_modules/prettier"
         versions["prettier"] = "3.9.10"
