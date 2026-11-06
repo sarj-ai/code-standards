@@ -205,6 +205,7 @@ class _Args:
     prepared_targets: list[str] = field(default_factory=list)
     prepared_only: bool = False
     web_policy: Path | None = None
+    preserve_baselines: bool = False
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -575,7 +576,7 @@ def cmd_update(args: _Args) -> int:
     if args.offline:
         args.no_install = True
     root = _resolve_dest(args.dest)
-    migrated_legacy = _prepare_update_manifest(root, check=args.check)
+    migrated_legacy = _prepare_update_manifest(root, check=args.check or args.preserve_baselines)
     if migrated_legacy is None:
         return 2
     try:
@@ -584,7 +585,7 @@ def cmd_update(args: _Args) -> int:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
         return 2
     preflight_findings = list(plan.preflight_findings)
-    if not _update_preflight(plan, preflight_findings):
+    if not _update_preflight(plan, preflight_findings, preserve_baselines=args.preserve_baselines):
         return 2
     preview = upgrade.render(plan.changes)
     if args.check:
@@ -617,6 +618,8 @@ def _bootstrap_update(args: _Args, target_version: str | None) -> int:
         command.append("--check")
     if args.no_install:
         command.append("--no-install")
+    if args.preserve_baselines:
+        command.append("--preserve-baselines")
     environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
     environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
     environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", launcher.PYTHON_DOWNLOADS)
@@ -661,9 +664,20 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
     return migrated_legacy
 
 
-def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding]) -> bool:
+def _update_preflight(
+    plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding], *, preserve_baselines: bool = False
+) -> bool:
     from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
+    try:
+        protected = upgrade.baseline_and_suppression_changes(plan) if preserve_baselines else ()
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: cannot preserve baseline state: {exc}", file=sys.stderr)
+        return False
+    if protected:
+        paths = ", ".join(str(path.relative_to(plan.root)) for path in protected)
+        print(f"error: baseline preservation requires a separate migration for: {paths}", file=sys.stderr)
+        return False
     invalid = [finding for finding in preflight_findings if finding.id in _INVALID_DOCTOR_IDS]
     if invalid:
         for finding in invalid:
@@ -724,7 +738,7 @@ def _apply_update(
         print(f"current: {root} already matches standards {__version__}")
         return 0
     print(preview or f"current: {root} already matches standards {__version__}")
-    status = upgrade.apply(plan, install=not args.no_install)
+    status = upgrade.apply(plan, install=not args.no_install, preserve_baselines=args.preserve_baselines)
     if status:
         return _report_failed_update(root, status)
     return _update_postflight(root, skipped_commands, no_install=args.no_install)
@@ -3590,6 +3604,9 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             ),
         ] = None,
         no_install: Annotated[bool, typer.Option("--no-install", help="do not install dependencies or hooks")] = False,
+        preserve_baselines: Annotated[
+            bool, typer.Option("--preserve-baselines", help="refuse baseline and suppression migrations before writing")
+        ] = False,
     ) -> int:
         return handler(
             _Args(
@@ -3599,6 +3616,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 offline=offline,
                 target_version=target_version if target_version is not None else None,
                 no_install=no_install,
+                preserve_baselines=preserve_baselines,
             )
         )
 

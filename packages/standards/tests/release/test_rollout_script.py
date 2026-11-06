@@ -474,8 +474,10 @@ def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPat
         _runner: rollout.CommandRunner,
         *,
         dry_run: bool,
+        preserve_baselines: bool = False,
         enable_repository_rules: Sequence[str] = (),
     ) -> rollout.Outcome:
+        assert not preserve_baselines
         assert dry_run is False
         assert enable_repository_rules == ()
         applied.append(item.identity)

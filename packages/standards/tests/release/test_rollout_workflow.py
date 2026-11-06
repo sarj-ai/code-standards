@@ -6,7 +6,6 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from typing import TypeGuard
@@ -215,84 +214,65 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert '-f version="$version"' in command
 
 
-@pytest.mark.parametrize("failure", ["", "list", "compare", "cancel", "published"])
-def test_publication_supersedes_only_older_automatic_controllers(tmp_path: Path, failure: str) -> None:
-    published = "invalid" if failure == "published" else "e" * 40
-    records = [
-        {"databaseId": 1, "event": "schedule", "status": "in_progress", "headSha": "a" * 40},
-        {"databaseId": 2, "event": "schedule", "status": "pending", "headSha": published},
-        {"databaseId": 3, "event": "schedule", "status": "in_progress", "headSha": "b" * 40},
-        {"databaseId": 4, "event": "schedule", "status": "queued", "headSha": "c" * 40},
-        {"databaseId": 5, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
-        {"databaseId": 6, "event": "schedule", "status": "completed", "headSha": "a" * 40},
-        {"databaseId": 7, "event": "schedule", "status": "pending", "headSha": "invalid"},
-        {"databaseId": "invalid", "event": "schedule", "status": "pending", "headSha": "a" * 40},
-        {"databaseId": 8, "event": "schedule", "status": "pending", "headSha": "a" * 40},
-        {"databaseId": 9, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
-        {"databaseId": 10, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
-        {"databaseId": 11, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
-    ]
-    runs = tmp_path / "runs.json"
-    runs.write_text(json.dumps(records), encoding="utf-8")
-    events = tmp_path / "events.txt"
-    stub = r"""
-gh() {
-  if [[ "$1 $2" == 'run list' ]]; then
-    [[ "$FAILURE" != list ]] || return 17
-    cat "$RUNS"
-  elif [[ "$1" == api ]]; then
-    [[ "$FAILURE" != compare ]] || return 19
-    case "$2" in
-      */actions/runs/9) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"standards-v8.38.3","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"github-actions[bot]"},"run_attempt":1}\n' ;;
-      */actions/runs/10) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"standards-v8.38.3","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"human"},"run_attempt":2}\n' ;;
-      */actions/runs/11) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"main","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"github-actions[bot]"},"run_attempt":1}\n' ;;
-      *"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...$PUBLISHED_SHA") printf 'ahead\n' ;;
-      *"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...$PUBLISHED_SHA") printf 'behind\n' ;;
-      *"cccccccccccccccccccccccccccccccccccccccc...$PUBLISHED_SHA") printf 'diverged\n' ;;
-      *) return 23 ;;
-    esac
-  elif [[ "$1 $2" == 'run cancel' ]]; then
-    printf 'cancel %s\n' "$3" >> "$EVENTS"
-    [[ "$FAILURE" != cancel ]] || return 21
-  elif [[ "$1 $2" == 'workflow run' ]]; then
-    printf 'dispatch\n' >> "$EVENTS"
-  else
-    return 29
-  fi
-}
-"""
-    jq = shutil.which("jq")
-    assert jq is not None
-    environment = {
-        "PATH": f"{Path(jq).parent}{os.pathsep}{os.defpath}",
-        "GITHUB_REPOSITORY": "example/standards",
-        "RUNS": str(runs),
-        "EVENTS": str(events),
-        "FAILURE": failure,
+@pytest.mark.parametrize(
+    ("state", "finished", "dispatch"),
+    [
+        ("in_progress", False, False),
+        ("pending", False, False),
+        ("waiting", False, False),
+        ("requested", False, False),
+        ("queued", False, False),
+        ("in_progress", True, True),
+        ("", False, True),
+    ],
+)
+@pytest.mark.parametrize("event", ["schedule", "workflow_dispatch"])
+def test_publication_preserves_active_controllers_without_duplicate_dispatch(
+    tmp_path: Path, state: str, finished: bool, dispatch: bool, event: str
+) -> None:
+    records = [{"databaseId": 17, "status": state, "event": event, "attempt": 1}] if state else []
+    jobs = {
+        "total_count": 2,
+        "jobs": [
+            {"name": "plan", "status": "completed"},
+            {"name": "report", "status": "completed" if finished else "in_progress"},
+        ],
     }
-
-    environment.update(_dispatch_step_environment(published))
-
-    result = subprocess.run(
-        ("bash", "-c", stub + _release_dispatch_command()),
-        cwd=tmp_path,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=20,
+    recorder = _rollout_recorder(
+        tmp_path,
+        ACTIVE_RUNS=json.dumps(records),
+        ROLLOUT_JOBS=json.dumps(jobs),
+        STANDARDS_TAG="standards-v8.38.4",
     )
+
+    recorder.environment.update(_dispatch_step_environment("e" * 40))
+    result = _run_rollout("dispatch-standards-rollout.sh", recorder.environment)
 
     assert result.returncode == 0, result.stderr
-    expected = (
-        ["dispatch"]
-        if failure in {"list", "compare", "published"}
-        else ["cancel 1", "cancel 8", "cancel 9", "dispatch"]
-    )
-    assert events.read_text(encoding="utf-8").splitlines() == expected
+    commands = _recorded_commands(recorder.commands)
+    mutations = [command for command in commands if command[:3] == ["gh", "workflow", "run"]]
+    assert bool(mutations) is dispatch
+    assert not any(command[:3] == ["gh", "run", "cancel"] for command in commands)
+    if dispatch:
+        assert mutations[0][-4:] == ["-f", "version=8.38.4", "-f", "preserve_baselines=true"]
     concurrency = _workflow()["concurrency"]
     assert _is_object(concurrency)
     assert concurrency["cancel-in-progress"] == "false"
+
+
+@pytest.mark.parametrize("failure", ["list", "jobs"])
+def test_publication_does_not_dispatch_when_running_job_metadata_is_unavailable(tmp_path: Path, failure: str) -> None:
+    recorder = _rollout_recorder(
+        tmp_path,
+        ACTIVE_RUNS='[{"databaseId":17,"status":"in_progress","attempt":1}]',
+        GH_LIST_STATUS="17" if failure == "list" else "0",
+        GH_JOBS_STATUS="19" if failure == "jobs" else "0",
+        STANDARDS_TAG="standards-v8.38.4",
+    )
+
+    assert _run_rollout("dispatch-standards-rollout.sh", recorder.environment).returncode != 0
+    commands = _recorded_commands(recorder.commands)
+    assert not any(command[:3] in (["gh", "run", "cancel"], ["gh", "workflow", "run"]) for command in commands)
 
 
 def _release_dispatch_command() -> str:
@@ -355,6 +335,17 @@ elif name == "uv":
     sys.exit(int(os.environ.get("UV_STATUS", "0")))
 elif name == "gh" and args[:2] == ["issue", "list"]:
     print(os.environ.get("ISSUES", "[]"))
+elif name == "gh" and args[:2] == ["run", "list"]:
+    status = int(os.environ.get("GH_LIST_STATUS", "0"))
+    if status:
+        sys.exit(status)
+    selected = args[args.index("--status") + 1]
+    print(json.dumps([row for row in json.loads(os.environ.get("ACTIVE_RUNS", "[]")) if row["status"] == selected]))
+elif name == "gh" and args[0] == "api" and "/jobs?" in args[1]:
+    status = int(os.environ.get("GH_JOBS_STATUS", "0"))
+    if status:
+        sys.exit(status)
+    print(os.environ.get("ROLLOUT_JOBS", "{}"))
 elif name == "curl":
     Path(args[args.index("--output") + 1]).write_text("fixture bootstrap\n")
 elif name == "sha256sum":
@@ -541,6 +532,7 @@ def test_rollout_apply_uses_exact_consumer_and_preserves_failure(
         environment["VERSION"],
         "--consumer",
         consumer,
+        "--preserve-baselines",
     ]
 
 
@@ -703,3 +695,105 @@ def test_rollout_report_rejects_invalid_consumer_json_before_querying_controller
     assert result.returncode != 0
     assert not Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
     assert _recorded_commands(commands) == []
+
+
+@pytest.mark.parametrize("mode", ["true", "false"])
+def test_rollout_apply_forwards_explicit_preservation_mode(tmp_path: Path, mode: str) -> None:
+    recorder = _rollout_recorder(
+        tmp_path, EVENT_NAME="workflow_dispatch", CONSUMER="example/app", PRESERVE_BASELINES=mode
+    )
+
+    assert _run_rollout("rollout-apply.sh", recorder.environment).returncode == 0
+    commands = _recorded_commands(recorder.commands)
+    controller = commands[-1]
+    assert ("--preserve-baselines" in controller) is (mode == "true")
+
+
+def test_rollout_apply_rejects_invalid_preservation_mode_before_authentication(tmp_path: Path) -> None:
+    recorder = _rollout_recorder(
+        tmp_path, EVENT_NAME="workflow_dispatch", CONSUMER="example/app", PRESERVE_BASELINES="unknown"
+    )
+
+    assert _run_rollout("rollout-apply.sh", recorder.environment).returncode == 2
+    assert not _recorded_commands(recorder.commands)
+
+
+def test_rollout_workflow_defaults_to_preservation_and_keeps_explicit_manual_choice() -> None:
+    workflow = _workflow()
+    events = workflow["on"]
+    assert _is_object(events)
+    dispatch = events["workflow_dispatch"]
+    assert _is_object(dispatch)
+    inputs = dispatch["inputs"]
+    assert _is_object(inputs)
+    preservation = inputs["preserve_baselines"]
+    assert _is_object(preservation)
+    assert preservation["type"] == "boolean"
+    assert preservation["default"] == "true"
+    jobs = workflow["jobs"]
+    assert _is_object(jobs)
+    job = jobs["rollout"]
+    assert _is_object(job)
+    steps = job["steps"]
+    assert _is_array(steps)
+    selected = [
+        step
+        for step in steps
+        if _is_object(step) and step.get("name") == "Apply or reconcile the deterministic rollout"
+    ]
+    assert len(selected) == 1
+    step = selected[0]
+    assert _is_object(step)
+    environment = step["env"]
+    assert _is_object(environment)
+    assert environment["PRESERVE_BASELINES"] == "${{ github.event_name == 'schedule' || inputs.preserve_baselines }}"
+
+
+@pytest.mark.parametrize(
+    "jobs",
+    [
+        '{"total_count":1,"jobs":[{"name":"plan","status":"completed"}]}',
+        '{"total_count":3,"jobs":[{"name":"report","status":"completed"}]}',
+        '{"total_count":2,"jobs":[{"name":"report","status":"completed"},{"name":"rollout","status":"in_progress"}]}',
+    ],
+)
+def test_publication_requires_the_complete_current_attempt_and_terminal_report(tmp_path: Path, jobs: str) -> None:
+    recorder = _rollout_recorder(
+        tmp_path,
+        ACTIVE_RUNS='[{"databaseId":17,"status":"in_progress","attempt":2}]',
+        ROLLOUT_JOBS=jobs,
+        STANDARDS_TAG="standards-v8.38.4",
+    )
+
+    assert _run_rollout("dispatch-standards-rollout.sh", recorder.environment).returncode == 0
+    commands = _recorded_commands(recorder.commands)
+    assert any("/attempts/2/jobs?" in command[-1] for command in commands)
+    assert not any(command[:3] == ["gh", "workflow", "run"] for command in commands)
+
+
+def test_publication_keeps_a_new_attempt_while_an_older_header_is_stale(tmp_path: Path) -> None:
+    recorder = _rollout_recorder(
+        tmp_path,
+        ACTIVE_RUNS='[{"databaseId":17,"status":"in_progress","attempt":1},{"databaseId":17,"status":"queued","attempt":2}]',
+        ROLLOUT_JOBS='{"total_count":1,"jobs":[{"name":"report","status":"completed"}]}',
+        STANDARDS_TAG="standards-v8.38.4",
+    )
+
+    assert _run_rollout("dispatch-standards-rollout.sh", recorder.environment).returncode == 0
+    commands = _recorded_commands(recorder.commands)
+    assert not any(command[:3] == ["gh", "workflow", "run"] for command in commands)
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        '[{"databaseId":null,"status":"pending","attempt":1}]',
+        '[{"databaseId":17,"status":"queued","attempt":0}]',
+    ],
+)
+def test_publication_refuses_incomplete_run_identity(tmp_path: Path, runs: str) -> None:
+    recorder = _rollout_recorder(tmp_path, ACTIVE_RUNS=runs, STANDARDS_TAG="standards-v8.38.4")
+
+    assert _run_rollout("dispatch-standards-rollout.sh", recorder.environment).returncode != 0
+    commands = _recorded_commands(recorder.commands)
+    assert not any(command[:3] == ["gh", "workflow", "run"] for command in commands)

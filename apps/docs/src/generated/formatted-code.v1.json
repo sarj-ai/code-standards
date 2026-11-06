@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "624182dbd787d90b73e55df3a5a2db53042e31e0fdd3454434dbc7148b77f85c",
-  "cliSha256": "4efb08428c8cf2406285d4e7faa318109dacd0590504405646d0cb78ca20c9ec",
+  "cliSha256": "5de1e5007dab7137e885e83a7907143ea83333001e788e403faea3c1decbfc87",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -22514,7 +22514,7 @@
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",
-      "update": "code-standards update [-h] [--check] [--offline] [--to VERSION] [--no-install]\n",
+      "update": "code-standards update [-h] [--check] [--offline] [--to VERSION] [--no-install] [--preserve-baselines]\n",
       "baseline": "code-standards baseline [-h] {init,update}\n",
       "baseline/init": "code-standards baseline init [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [FILES ...]\n",
       "baseline/update": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]\n",

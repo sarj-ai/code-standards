@@ -82,6 +82,89 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
+@pytest.mark.parametrize("kind", ["diagnostic", "repository", "suppression"])
+def test_preserved_update_refuses_planned_baseline_or_suppression_writes(tmp_path: Path, kind: str) -> None:
+    _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    path = tmp_path / (".repo-standards/baseline.json" if kind == "repository" else "accepted.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"retained baseline or waiver\n")
+    path.chmod(0o640)
+    plan.preconditions[path] = path.read_bytes()
+    match kind:
+        case "repository":
+            plan.scaffold_plan.edits.append((path, "changed\n"))
+        case "diagnostic":
+            plan.baseline_writes.append((path, "changed\n"))
+        case _:
+            plan.suppression_writes.append((path, "changed\n"))
+    before = {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()}
+
+    assert path in upgrade.baseline_and_suppression_changes(plan)
+    assert upgrade.apply(plan, install=False, preserve_baselines=True) == 2
+    assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+def test_preserved_update_refuses_an_unreadable_planned_baseline_source(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    target = tmp_path / ".repo-standards/baseline.json"
+    plan.config_writes.append((tmp_path / "missing-source.json", target))
+    before = {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()}
+
+    assert upgrade.apply(plan, install=False, preserve_baselines=True) == 2
+    assert {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+def test_preserved_update_keeps_retired_waivers_and_configuration_byte_identical(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    source = tmp_path / "service.py"
+    source.write_text("import logging  # sarj-noqa: SARJ052 -- SDK log bridge\n")
+    source.chmod(0o750)
+    before = {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()}
+
+    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 2
+    assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+def test_preserved_update_refuses_diagnostic_provenance_migration_without_writes(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        replace(adopted, diagnostic_baseline="diagnostic-baseline.json").render()
+    )
+    path = tmp_path / "diagnostic-baseline.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "provenance": {
+                    "bundleVersion": "0.0.1",
+                    "consumerBaseSha": "0" * 40,
+                    "catalogDigest": "1" * 64,
+                },
+                "diagnostics": [],
+            }
+        )
+        + "\n"
+    )
+    path.chmod(0o640)
+    before = {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()}
+
+    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 2
+    assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+def test_preserved_update_accepts_a_current_plan_without_debt_migrations(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    plan = upgrade.build_plan(tmp_path)
+
+    assert upgrade.baseline_and_suppression_changes(plan) == ()
+    assert upgrade.apply(plan, install=False, preserve_baselines=True) == 0
+
+
 def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_installs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1213,7 +1296,10 @@ def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyP
     _outdated_python_repo(tmp_path)
     install_values: list[bool] = []
 
-    def apply_without_side_effects(_plan: upgrade.UpgradePlan, *, install: bool = True) -> int:
+    def apply_without_side_effects(
+        _plan: upgrade.UpgradePlan, *, install: bool = True, preserve_baselines: bool = False
+    ) -> int:
+        assert not preserve_baselines
         install_values.append(install)
         return 0
 
@@ -1412,7 +1498,10 @@ def test_update_refuses_to_discard_a_legacy_python_baseline(
     assert baseline.read_text(encoding="utf-8") == '{"service.py":{"SARJ012":1}}\n'
 
 
-def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("mode", ["--check", "--preserve-baselines"])
+def test_update_check_explains_the_safe_legacy_migration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], mode: str
+) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "fixture"\nversion = "0.0.0"\n',
         encoding="utf-8",
@@ -1422,11 +1511,13 @@ def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys:
         encoding="utf-8",
     )
 
-    status = _main(["update", "--offline", "--check", "--no-install", str(tmp_path)])
+    before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    status = _main(["update", "--offline", mode, "--no-install", str(tmp_path)])
 
     error = capsys.readouterr().err
     assert status == 2
     assert "code-standards doctor --repair --no-install" in error
+    assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
 @pytest.mark.parametrize("check", [False, True])

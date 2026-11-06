@@ -162,3 +162,48 @@ def test_update_handoff_does_not_change_caller_environment_or_later_commands() -
     assert runner.environments[0] == before
     assert runner.environments[1] == {**before, "SARJ_STANDARDS_BOOTSTRAPPED": "1"}
     assert runner.environments[2] == before
+
+
+def test_preserved_consumer_update_forwards_the_guard_to_the_exact_bundle() -> None:
+    runner = FakeRolloutRunner([(0, f"code-standards {VERSION}"), (0, "updated")], probe_consumer_release=False)
+
+    rollout.update_consumer_bundle(Path("consumer"), VERSION, runner, (), TOOL, environment={}, preserve_baselines=True)
+
+    assert runner.commands[-1][-4:] == ("update", "--to", VERSION, "--preserve-baselines")
+    assert runner.environments[-1] == {"SARJ_STANDARDS_BOOTSTRAPPED": "1"}
+
+
+def test_preserved_consumer_update_rejects_rule_activation_before_commands() -> None:
+    runner = FakeRolloutRunner()
+
+    with pytest.raises(rollout.RolloutError, match="cannot activate"):
+        rollout.update_consumer_bundle(
+            Path("consumer"),
+            VERSION,
+            runner,
+            (),
+            TOOL,
+            environment={},
+            preserve_baselines=True,
+            enable_repository_rules=("repository/artifacts/makefile-growth",),
+        )
+
+    assert not runner.commands
+
+
+def test_preservation_skips_directive_cleanup_before_repository_or_tool_access(tmp_path: Path) -> None:
+    runner = FakeRolloutRunner()
+
+    assert (
+        rollout.prepare_unused_eslint_directives(
+            tmp_path / "not-cloned",
+            runner,
+            (),
+            environment={},
+            version=VERSION,
+            base_sha="a" * 40,
+            preserve_baselines=True,
+        )
+        == {}
+    )
+    assert not runner.commands

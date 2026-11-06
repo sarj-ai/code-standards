@@ -74,7 +74,10 @@ def test_release_verification_rejects_invalid_tags_without_waiting(refs: str) ->
 
 
 @pytest.mark.parametrize("command", ["plan", "apply", "status", "reconcile"])
-def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("preserve_baselines", [False, True])
+def test_rollout_cli_preserves_command_options(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preserve_baselines: bool
+) -> None:
     calls: list[rollout.RolloutArgs] = []
     runner = FakeRolloutRunner()
 
@@ -90,6 +93,8 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
     argv = ["--registry", str(path), command, "--version", "7.10.2", "--channel", "canary"]
     if command in {"apply", "reconcile"}:
         argv.extend(("--dry-run", "--consumer", "sarj-ai/platform@dev"))
+        if preserve_baselines:
+            argv.append("--preserve-baselines")
 
     assert rollout.main(argv, runner=runner) == 1
     assert calls == [
@@ -99,6 +104,7 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
             version="7.10.2",
             channel=rollout.RolloutChannel.CANARY,
             dry_run=command in {"apply", "reconcile"},
+            preserve_baselines=preserve_baselines and command in {"apply", "reconcile"},
             consumer="sarj-ai/platform@dev" if command in {"apply", "reconcile"} else None,
         )
     ]
@@ -170,3 +176,12 @@ def test_consumers_cli_rejects_an_unusable_registry(
 
     assert rollout.main(["--registry", str(path), "consumers"]) == 2
     assert "standards-rollout:" in capsys.readouterr().err
+
+
+def test_preservation_keeps_existing_rollout_argument_positions() -> None:
+    args = rollout.RolloutArgs(
+        rollout.DEFAULT_REGISTRY, rollout.RolloutCommand.APPLY, "8.38.1", False, rollout.RolloutChannel.CANARY
+    )
+
+    assert args.channel is rollout.RolloutChannel.CANARY
+    assert not args.preserve_baselines
