@@ -178,7 +178,7 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         calls = [node for node in context.nodes(ast.Call) if _is_logging_call(node)]
         if not calls:
             return []
-        facts = _analysis_facts(context)
+        facts = _analysis_facts(context, calls)
         diagnostics: list[Diagnostic] = []
         for node in calls:
             statement = _containing_statement(node, facts.parents)
@@ -300,11 +300,17 @@ def _is_payload_reference(value: ast.expr, *, label: str | None = None) -> bool:
     return bool(_REQUEST_RESPONSE.intersection(tokens) and _PAYLOAD_TERMINALS.intersection(tokens))
 
 
-def _analysis_facts(context: PythonFileContext) -> _AnalysisFacts:
+def _analysis_facts(context: PythonFileContext, calls: list[ast.Call]) -> _AnalysisFacts:
     suites: dict[int, _SuiteFacts] = {}
     statement_suites: dict[int, int] = {}
     parents = context.parents
-    for owner in context.nodes(ast.AST):
+    owners: set[ast.AST] = set()
+    for call in calls:
+        statement = _containing_statement(call, parents)
+        owner = parents.get(statement) if statement is not None else None
+        if owner is not None:
+            owners.add(owner)
+    for owner in owners:
         for field_name in owner._fields:
             statements = _statement_list(
                 getattr(  # sarj-noqa: SARJ557 -- Inspect parser-declared fields across heterogeneous AST node types.
