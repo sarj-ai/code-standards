@@ -23,9 +23,9 @@
     "audit:dependencies": "node scripts/audit-dependencies.ts"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.42.7",
+    "@astrojs/starlight": "0.42.8",
     "@sarj/design": "0.5.0",
-    "astro": "7.4.2",
+    "astro": "7.4.5",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -38,11 +38,11 @@
     "prettier": "3.9.10",
     "prettier-plugin-sh": "0.20.2",
     "prettier-plugin-toml": "4.1.0",
-    "react-doctor": "0.9.18",
+    "react-doctor": "0.9.22",
     "sql-formatter": "15.9.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.72.0",
-    "wrangler": "4.152.0",
+    "wrangler": "4.156.2",
     "@typescript/native": "npm:typescript@7.0.2",
     "jiti": "2.7.0",
     "@types/node": "26.6.5"
