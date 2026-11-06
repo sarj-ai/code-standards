@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/iac/no-boolean-enable-variable",
+      "family": "iac",
+      "ruleId": "no-boolean-enable-variable",
+      "state": "pending",
+      "evidence": "Twenty-seven focused tests include two executable examples and cover explicit Boolean switch declarations, provider attributes, object fields, other inputs, comments, strings, malformed syntax and suppression. The complete IaC package passes 1,983 tests. Three immutable private snapshots contain 520 Terraform files and 249 policy matches. A deterministic SHA256-ranked sample of 50 matches includes feature, optional topology, security and migration controls; all inspected declarations match the stated name/type policy. Three isolated paired timing rounds show no observed regression; child RSS stays below 39 MB. Private source, paths and identifying pins remain local.",
+      "outcome": "Ship SARJ220 at WARNING without autofix as the explicitly requested interface policy. Matching does not prove redundancy: necessary optional or billable capabilities require owner review. Preserve provider Boolean attributes, object fields and other inputs. Broader public-project and cluster-stratified calibration remain pending; do not promote to error or automatically remove resources."
+    },
+    {
       "task": "rule-audit/iac/no-duplicate-deployment-literal",
       "family": "iac",
       "ruleId": "no-duplicate-deployment-literal",
