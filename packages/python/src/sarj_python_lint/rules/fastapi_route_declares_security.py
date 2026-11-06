@@ -178,9 +178,12 @@ class FastapiRouteDeclaresSecurity(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if is_test_path(context.path) or context.generated or context.tree is None:
             return []
+        functions = context.nodes(*_FUNCTIONS)
+        if not any(context.fastapi.routes(function) for function in functions):
+            return []
         graph = context.session.fastapi_access.for_context(context)
         findings: list[Diagnostic] = []
-        for function in context.nodes(*_FUNCTIONS):
+        for function in functions:
             for routes in _routes_without_security(context, function, graph):
                 decorator = routes[0].decorator
                 findings.append(
