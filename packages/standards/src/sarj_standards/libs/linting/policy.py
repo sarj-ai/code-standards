@@ -123,7 +123,12 @@ class Policy:
         return frozenset(selector.removeprefix(prefix) for selector in selectors if selector.startswith(prefix))
 
     def filter_diagnostics(self, diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
-        return tuple(item for item in diagnostics if self.allows_path(item.location.path) and self.allows_rule(item))
+        allows_path = (
+            self.allows_path
+            if isinstance(diagnostics, tuple) and len(diagnostics) <= 1
+            else lru_cache()(self.allows_path)
+        )
+        return tuple(item for item in diagnostics if allows_path(item.location.path) and self.allows_rule(item))
 
     def relative(self, path: str | Path) -> str:
         candidate = Path(path)
