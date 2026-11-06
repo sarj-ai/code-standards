@@ -153,3 +153,35 @@ def test_reports_one_diagnostic_when_a_payload_alias_is_repeated_in_one_sink() -
         "body = response.text\nlogger.error('provider failed', response_body=body, extra={'body': body})"
     )
     assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def handle():\n    body = response.text\n    logger.info(body)\n",
+        "if ready:\n    pass\nelse:\n    body = response.text\n    logger.info(body)\n",
+        "try:\n    receive()\nexcept ProviderError:\n    body = response.text\n    logger.info(body)\n",
+        "try:\n    receive()\nfinally:\n    body = response.text\n    logger.info(body)\n",
+        "for item in items:\n    pass\nelse:\n    body = response.text\n    logger.info(body)\n",
+        "class Event:\n    body = response.text\n    logger.info(body)\n",
+        "match status:\n    case 500:\n        body = response.text\n        logger.info(body)\n",
+        "body = response.text\ndef handle(value=logger.info(body)):\n    pass\n",
+    ],
+    ids=["function", "else", "except", "finally", "loop-else", "class", "match", "default-value"],
+)
+def test_stable_payload_aliases_are_resolved_in_each_statement_suite(source: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ436"
+
+
+def test_logging_calls_in_distinct_suites_keep_their_own_aliases() -> None:
+    diagnostics = _check(
+        "def handle():\n"
+        "    first = response.text\n"
+        "    logger.info(first)\n"
+        "    if ready:\n"
+        "        second = request.body\n"
+        "        logger.info(second)\n"
+    )
+
+    assert [(finding.line, finding.code) for finding in diagnostics] == [(2, "SARJ436"), (5, "SARJ436")]

@@ -160,8 +160,9 @@ def _arguments(output: str, config: Path) -> tuple[str, ...]:
 def parse_jscpd(payload: str, root: Path, *, allows_path: Callable[[str], bool]) -> tuple[Diagnostic, ...]:
     root = root.resolve()
     copies: defaultdict[_Block, set[_Block]] = defaultdict(set)
+    paths: dict[str, str] = {}
     for clone in _Report.model_validate_json(payload).duplicates:
-        first, second = _block(root, clone.first_file), _block(root, clone.second_file)
+        first, second = _block(root, clone.first_file, paths), _block(root, clone.second_file, paths)
         if allows_path(first.path) and allows_path(second.path):
             copies[first].add(second)
             copies[second].add(first)
@@ -174,12 +175,15 @@ def parse_jscpd(payload: str, root: Path, *, allows_path: Callable[[str], bool])
     return tuple(_diagnostic(block, sorted(others), source) for block, others in sorted(copies.items()))
 
 
-def _block(root: Path, side: _Side) -> _Block:
-    path = Path(side.name).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
-        message = "jscpd reported a copy outside the repository's files"
-        raise ValueError(message)
-    relative = path.relative_to(root).as_posix()
+def _block(root: Path, side: _Side, paths: dict[str, str]) -> _Block:
+    relative = paths.get(side.name)
+    if relative is None:
+        path = Path(side.name).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            message = "jscpd reported a copy outside the repository's files"
+            raise ValueError(message)
+        relative = path.relative_to(root).as_posix()
+        paths[side.name] = relative
     if side.end < side.start:
         message = f"jscpd reported a reversed line range in {relative}"
         raise ValueError(message)
