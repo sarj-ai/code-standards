@@ -57,8 +57,7 @@ function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
   return null;
 }
 
-function isDirectTestCallback(node: TSESTree.Node, context: Context): node is FunctionNode {
-  if (node.type !== AST_NODE_TYPES.ArrowFunctionExpression && node.type !== AST_NODE_TYPES.FunctionExpression) return false;
+function isDirectTestCallback(node: FunctionNode, context: Context): boolean {
   const call = directArgumentCall(node);
   if (call === null) return false;
   const root = testRoot(call.callee);
@@ -208,7 +207,7 @@ export default createRule<Options, MessageIds>({
       ReturnStatement(node: TSESTree.ReturnStatement): void {
         if (node.argument !== null) return;
         const owner = nearestFunction(node);
-        if (owner === null || !isDirectTestCallback(owner, context)) return;
+        if ((owner?.type !== AST_NODE_TYPES.ArrowFunctionExpression && owner?.type !== AST_NODE_TYPES.FunctionExpression) || !isDirectTestCallback(owner, context)) return;
         let catchClause: TSESTree.CatchClause | null = null;
         for (let current: TSESTree.Node | null | undefined = node.parent; current !== owner; current = current?.parent) {
           if (current?.type === AST_NODE_TYPES.CatchClause) { catchClause = current; break; }

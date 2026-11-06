@@ -1,0 +1,364 @@
+{
+  "rule": "@sarj/no-explicit-type-predicate",
+  "evaluationDate": "2026-11-06",
+  "policy": "Report authored value is Type and asserts value is Type annotations; prefer direct discriminators, compiler-inferred narrowing and schema-validated values.",
+  "recommendation": "WARNING without autofix under the repository warning-first lifecycle.",
+  "reviewMethod": "Fifty distinct focused source audits covering design, syntax, migration, calibration and example convergence. Canonical verification, all native hooks, exact-head CI and authorized merge remain additional delivery gates. These are not fifty independent reviewers or repeated full-suite runs.",
+  "sourceReviewPasses": [
+    {
+      "pass": 1,
+      "focus": "Unsound explicit predicate witness",
+      "decision": "The compiler accepts a return-true implementation for value is string; introduce a source policy rather than pretending TypeScript proves that annotation."
+    },
+    {
+      "pass": 2,
+      "focus": "True and false branch contract",
+      "decision": "A predicate also narrows the false branch. A schema boolean wrapper cannot promise all strings when it accepts only a refined subset."
+    },
+    {
+      "pass": 3,
+      "focus": "Existing owner and enforcement gap",
+      "decision": "Keep no-contradictory-type-predicate and no-partial-type-predicate as correctness controls; they deliberately cover narrower proofs and do not own a policy ban."
+    },
+    {
+      "pass": 4,
+      "focus": "Direct discriminators",
+      "decision": "Check a discriminated union directly after values enter the typed domain. A tag on unknown JSON does not validate the payload."
+    },
+    {
+      "pass": 5,
+      "focus": "Compiler-inferred predicates",
+      "decision": "Allow inferred null filters and discriminator helpers: no handwritten is claim exists to drift from the implementation."
+    },
+    {
+      "pass": 6,
+      "focus": "Typed assertion bypass",
+      "decision": "Include asserts value is T under the same policy; leave plain asserts condition outside the explicit type-promise scope."
+    },
+    {
+      "pass": 7,
+      "focus": "Library declaration contracts",
+      "decision": "Use the shared generated/declaration exclusions and preserve consumption of imported library guards. Authored signatures in .ts remain checked."
+    },
+    {
+      "pass": 8,
+      "focus": "Migration and severity",
+      "decision": "No automatic annotation deletion: public callbacks, false-branch consumers and overloads can change. Follow mandatory warning-first lifecycle and check local exact-rule suppression semantics."
+    },
+    {
+      "pass": 9,
+      "focus": "lying-function",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 10,
+      "focus": "sound-discriminator",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 11,
+      "focus": "arrow-predicate",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 12,
+      "focus": "function-expression",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 13,
+      "focus": "filter-callback",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 14,
+      "focus": "find-callback",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 15,
+      "focus": "exported-predicate",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 16,
+      "focus": "default-export",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 17,
+      "focus": "generic-predicate",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 18,
+      "focus": "rest-parameter-type",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 19,
+      "focus": "described-parameter",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 20,
+      "focus": "object-method",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 21,
+      "focus": "class-method",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 22,
+      "focus": "private-class-method",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 23,
+      "focus": "this-predicate",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 24,
+      "focus": "function-type",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 25,
+      "focus": "variable-type",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 26,
+      "focus": "interface-method",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 27,
+      "focus": "interface-call",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 28,
+      "focus": "object-property",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 29,
+      "focus": "authored-ambient",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 30,
+      "focus": "namespace-declaration",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 31,
+      "focus": "overload-signature",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 32,
+      "focus": "abstract-method",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 33,
+      "focus": "typed-assertion",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 34,
+      "focus": "assertion-arrow",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 35,
+      "focus": "this-assertion",
+      "decision": "Report every authored explicit type predicate in this syntax position."
+    },
+    {
+      "pass": 36,
+      "focus": "Valid discriminator branches",
+      "decision": "Leave direct union-tag branches and switches unchanged."
+    },
+    {
+      "pass": 37,
+      "focus": "Inferred narrowing and filters",
+      "decision": "Leave compiler-inferred predicates and null filtering unchanged."
+    },
+    {
+      "pass": 38,
+      "focus": "Boundary schema consumers",
+      "decision": "Accept parse, safeParse-result discrimination and schema.validate without handwritten predicate wrappers."
+    },
+    {
+      "pass": 39,
+      "focus": "Plain assertion boundary",
+      "decision": "Retain asserts condition and ordinary boolean/void returns."
+    },
+    {
+      "pass": 40,
+      "focus": "Imported API consumption",
+      "decision": "Accept imported native guards and predicate types without attempting to ban dependency declarations."
+    },
+    {
+      "pass": 41,
+      "focus": "Generated scope and path custody",
+      "decision": "Check maintained tests and AI-authored source; exempt actual generated/vendor/declaration files; checkout ancestor names cannot suppress authored source."
+    },
+    {
+      "pass": 42,
+      "focus": "Comments and other syntax",
+      "decision": "Only AST predicate nodes are findings; comments, strings, JSDoc text and unrelated identifiers are not."
+    },
+    {
+      "pass": 43,
+      "focus": "Compiler proof and repository migration",
+      "decision": "compiler-proof.json: 7 witnesses; final source/tools type checks pass with native compiler7.0.2; final-focused-tests.log:212passing tests;64 annotations migrated and7native bridge exceptions retained."
+    },
+    {
+      "pass": 44,
+      "focus": "Immutable corpus and every live finding",
+      "decision": "corpus-results-final.json:597 files;36TP/24TN/0FP/0FN;all71sourcefindings across46files match exact frozen hashes, signatures and multiplicities in corpus-signature-reconciliation.json and finding-review.json.537sourcefiles/57uniquecontrolpayloads."
+    },
+    {
+      "pass": 45,
+      "focus": "Repeated baseline performance",
+      "decision": "Three balanced fresh processes per exact base/candidate and four warm passes per process; same pinned parser, files and machine; report wall medians and peak RSS with limitations."
+    },
+    {
+      "pass": 46,
+      "focus": "Metadata, schemas and lifecycle",
+      "decision": "Native prepare, presets, calibration task, version reservations, catalog/CLI/docs generation and public examples."
+    },
+    {
+      "pass": 47,
+      "focus": "Native parser-service identity",
+      "decision": "Preserve the original SDK services object and maps with a narrow, reasoned local contract exception; a three-field copy violates the existing identity assertion."
+    },
+    {
+      "pass": 48,
+      "focus": "Information loss under inferred Array.isArray",
+      "decision": "Normalize the native array result to a readonly unknown[] local. Remove the handwritten predicate without spreading inferred any[]."
+    },
+    {
+      "pass": 49,
+      "focus": "Caller structure after partial-guard migration",
+      "decision": "Remove the leftover opaque node helper and directly discriminate the already narrowed function body; preserve stepdown and the catch rule behavior."
+    },
+    {
+      "pass": 50,
+      "focus": "Authored and formatted example convergence",
+      "decision": "Regenerate the new displayed examples and require canonical tests to preserve the behavior of source and formatted examples, including migrated helper consumers."
+    }
+  ],
+  "compilerWitnesses": {
+    "typescriptApiVersion": "6.0.3",
+    "cases": [
+      {
+        "name": "explicit-guard-can-lie",
+        "diagnosticCodes": []
+      },
+      {
+        "name": "partial-guard-overclaims-false-branch",
+        "diagnosticCodes": []
+      },
+      {
+        "name": "wrong-discriminator-branch-is-rejected",
+        "diagnosticCodes": [
+          2339
+        ]
+      },
+      {
+        "name": "direct-discriminator-is-checked",
+        "diagnosticCodes": []
+      },
+      {
+        "name": "helper-inference-preserves-narrowing",
+        "diagnosticCodes": []
+      },
+      {
+        "name": "inferred-filter-preserves-narrowing",
+        "diagnosticCodes": []
+      },
+      {
+        "name": "inferred-filter-rejects-wrong-field",
+        "diagnosticCodes": [
+          2339
+        ]
+      }
+    ]
+  },
+  "labeledControls": {
+    "tp": 36,
+    "fp": 0,
+    "fn": 0,
+    "tn": 24,
+    "cases": 60,
+    "expectedDiagnostics": 37,
+    "uniqueCodePayloads": 57,
+    "duplicatePayloadGroups": 3,
+    "duplicateExplanation": "Path and generated-header controls intentionally reuse code; cases are not independent field observations."
+  },
+  "repositoryCalibration": {
+    "selection": "Complete tracked TypeScript implementation, tests, configuration and scripts in the disclosed standards-plugin, tool and documentation roots; dedicated fixtures excluded. The initial immutable source pin is retained after integrating newer main. Exact paths, source and identifying hashes stay local.",
+    "files": 537,
+    "policyMatches": 71,
+    "findingFiles": 46,
+    "review": "Every finding was inspected and reconciled with the source inventory. These are requested design-policy matches, not demonstrated runtime defects.",
+    "nativeContractExceptions": 7,
+    "migratedAnnotations": 64,
+    "inlineDirectives": "Ignored only for isolated single-rule classification; exact native suppressions and unused-directive tests remain mandatory.",
+    "sourceDuplicateContentGroups": 0
+  },
+  "malformedInputs": {
+    "cases": 2,
+    "nativeParserDiagnostics": 2,
+    "ruleCrashes": 0
+  },
+  "performance": {
+    "method": "Incremental cost of enabling the new rule versus the exact main plugin with no policy visitor: same parser, inputs and pinned Node. Three balanced fresh processes per mode and four warm native passes per process. Every eleventh source file after SHA256 path ranking; filesystem cache uncontrolled and shared-host load limits timing attribution. Candidate also incorporates the reconciled main React follow-up; process-wall/startup includes plugin-load changes. Only the new visitor runs; inline configuration is disabled identically for isolated measurement.",
+    "files": 49,
+    "summary": {
+      "baseline": {
+        "first_native_ms_median": 1574.060353,
+        "warm_native_ms_median": 802.7922820000003,
+        "process_wall_seconds_median": 6.233383249025792,
+        "max_rss_kb_median": 598980
+      },
+      "candidate": {
+        "first_native_ms_median": 1747.24911,
+        "warm_native_ms_median": 921.0344389999998,
+        "process_wall_seconds_median": 6.61747459997423,
+        "max_rss_kb_median": 659984
+      },
+      "percent_changes": {
+        "first_native_ms_median": 11.002675765889137,
+        "warm_native_ms_median": 14.728860709201408,
+        "process_wall_seconds_median": 6.1618439875081865,
+        "max_rss_kb_median": 10.184647233630507
+      }
+    },
+    "limits": "Single-rule enablement versus a parser-only baseline; no estimate of full-preset cost, fleet overhead, general speedup or memory bound. Shared-host load and filesystem caches are uncontrolled. Process wall includes plugin-load differences from the reconciled React follow-up."
+  },
+  "boundaries": [
+    "Compiler-inferred predicates, direct tags, ordinary boolean returns, plain asserts condition and imported guard consumption remain allowed.",
+    "Generated, vendored and declaration files retain shared exclusions; maintained tests remain checked.",
+    "A discriminator on unknown data does not validate its payload. Consume schema data or its result discriminator; do not repeat an unchecked narrowing promise around safeParse.",
+    "No automatic annotation deletion: public callbacks, overloads, both branches, declaration output and compiler versions need caller review.",
+    "Seven exact local exceptions preserve native policy-table keys, readonly arrays, generic option tuples, parser-service identity and parser-key AST reflection.",
+    "Finite labeled and repository calibration does not establish universal precision or recall."
+  ],
+  "deliveryQualification": "Required separately: complete make verify, every native commit/push hook, all latest exact-head required checks and classic statuses, canonical aggregate CI artifact, exact-head admin squash and merged-tree/main-ancestry verification.",
+  "tools": {
+    "node": "24.22.1",
+    "npm": "12.2.1",
+    "parser": "8.72.0",
+    "sourceAndToolsCompiler": "7.0.2",
+    "compilerWitnessApi": "6.0.3"
+  }
+}

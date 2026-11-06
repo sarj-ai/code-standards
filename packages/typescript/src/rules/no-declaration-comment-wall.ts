@@ -155,7 +155,7 @@ export default createRule<Options, MessageIds>({
     }
 
     function check(node: TSESTree.Node, members: readonly TSESTree.Node[]): void {
-      const judged = members.map(named).filter((member): member is Judged => member !== undefined);
+      const judged = members.map(named).filter((member) => member !== undefined);
       if (judged.length === 0) return;
 
       const documented = judged.map((member) => ({

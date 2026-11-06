@@ -437,7 +437,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       const [result] = await eslint.lintText(testCase.source, { filePath: testCase.path });
       const actual = (result?.messages ?? [])
         .map((message) => message.ruleId)
-        .filter((ruleId): ruleId is string => ruleId !== null && testCase.expected.includes(ruleId as never))
+        .filter((ruleId) => ruleId !== null && testCase.expected.includes(ruleId as never))
         .toSorted();
       expect(actual).toEqual([...testCase.expected].toSorted());
       const [nearMiss] = await eslint.lintText(testCase.nearMiss, { filePath: testCase.path });

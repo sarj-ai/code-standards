@@ -162,12 +162,8 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
 /** `g` and `y` carry `lastIndex` between calls, so hoisting changes behaviour. */
 const HAS_STATEFUL_FLAG_RE = /[gy]/;
 
-function isRegexLiteral(node: TSESTree.Node): node is TSESTree.RegExpLiteral {
-  return (
-    node.type === AST_NODE_TYPES.Literal &&
-    "regex" in node &&
-    node.regex !== undefined
-  );
+function literalRegex(node: TSESTree.Node) {
+  return node.type === AST_NODE_TYPES.Literal && "regex" in node ? node.regex : undefined;
 }
 
 function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
@@ -182,7 +178,7 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
       // — bypassed the top-level `g`/`y` check and the recommended hoist would
       // have carried `lastIndex` across calls.
       return !(
-        isRegexLiteral(inner) && HAS_STATEFUL_FLAG_RE.test(inner.regex.flags)
+        HAS_STATEFUL_FLAG_RE.test(literalRegex(inner)?.flags ?? "")
       );
     }
     case AST_NODE_TYPES.TemplateLiteral: {
@@ -234,11 +230,12 @@ function classify(
 ): Candidate | null {
   const node = unwrapObjectFreeze(init, sourceCode);
 
-  if (isRegexLiteral(node)) {
+  const regex = literalRegex(node);
+  if (regex !== undefined) {
     if (!checkRegex) {
       return null;
     }
-    if (HAS_STATEFUL_FLAG_RE.test(node.regex.flags)) {
+    if (HAS_STATEFUL_FLAG_RE.test(regex.flags)) {
       return null;
     }
     return { kind: "regex", size: 1 };

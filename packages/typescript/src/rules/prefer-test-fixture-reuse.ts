@@ -12,6 +12,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
+import { forEachAstChild } from "./_for-each-ast-child.js";
 
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
 type FixtureConstructors = ReadonlyMap<string, TSESLint.Scope.Variable>;
@@ -126,8 +127,8 @@ function fixtureConstructor(source: Readonly<TypeScriptSourceCode>, value: TSEST
   const use = value.params[1];
   if (use?.type !== AST_NODE_TYPES.Identifier) return null;
   const binding = stableBinding(source, use);
-  const calls = scopeNodes(value.body, source).filter((node): node is TSESTree.CallExpression =>
-    node.type === AST_NODE_TYPES.CallExpression && !node.optional && node.arguments.length === 1 &&
+  const calls = scopeNodes(value.body, source).filter(node => node.type === AST_NODE_TYPES.CallExpression).filter((node) =>
+    !node.optional && node.arguments.length === 1 &&
     node.callee.type === AST_NODE_TYPES.Identifier && stableBinding(source, node.callee) === binding);
   if (calls.length !== 1 || binding === null) return null;
   const argument = calls[0]?.arguments[0];
@@ -155,17 +156,9 @@ function scopeNodes(root: TSESTree.Node, source: Readonly<TypeScriptSourceCode>)
     result.push(node);
     if (node !== root && (node.type === AST_NODE_TYPES.ArrowFunctionExpression || node.type === AST_NODE_TYPES.FunctionExpression ||
         node.type === AST_NODE_TYPES.FunctionDeclaration || node.type === AST_NODE_TYPES.ClassDeclaration || node.type === AST_NODE_TYPES.ClassExpression)) continue;
-    for (const key of source.visitorKeys[node.type] ?? []) {
-      const value: unknown = Reflect.get(node, key);
-      if (Array.isArray(value)) pending.push(...value.filter(isNode));
-      else if (isNode(value)) pending.push(value);
-    }
+    forEachAstChild(node, source.visitorKeys, child => { pending.push(child); });
   }
   return result;
-}
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
 }
 
 function testApiCallee(expression: TSESTree.Node): TSESTree.Node {
