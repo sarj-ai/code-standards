@@ -1,0 +1,55 @@
+{
+  "at": "2026-11-06T01:31:34.920473+00:00",
+  "rule": "iac:no-duplicate-deployment-literal",
+  "severity": "warning",
+  "private_corpus_roots": 3,
+  "files": 520,
+  "bytes": 2683246,
+  "candidate_findings": 8,
+  "duplicate_diagnostic_locations": 0,
+  "all_non_candidate_diagnostics_preserved": true,
+  "paired_without_rule_seconds": [
+    1.49768,
+    1.49812,
+    1.492805
+  ],
+  "paired_with_rule_seconds": [
+    1.512132,
+    1.510113,
+    1.5089
+  ],
+  "without_rule_median_seconds": 1.49768,
+  "with_rule_median_seconds": 1.510113,
+  "baseline_note": "The same installed engine disables the candidate in baseline runs. This measures incremental detector work, not removal of its module import. Fresh processes per <=250-file batch; later rounds are disk-cache-warm, not persistent-process warm.",
+  "public_mature_project_corpus": "No suitable already-local public corpus was available; external corpus validation remains a warning-stage release limitation.",
+  "live_findings_classification": "All eight live findings inspected in full provider/resource context; eight maintainability opportunities, zero known inspected false positives. These are not claimed infrastructure faults.",
+  "labeled_tests_passed": 30,
+  "live_TP": 8,
+  "inspected_live_FP": 0,
+  "known_labeled_FN": 0,
+  "recommendation": "ship-warning; no autofix, no error promotion, wider public-project calibration remains pending",
+  "known_blind_spots": [
+    "Cross-file repetition",
+    "Indirect aliases or template expressions",
+    "Terraform JSON",
+    "Unknown provider attributes",
+    "Provider configuration and unknown module inputs"
+  ],
+  "source_snapshots": "Owner-readable immutable Git-object snapshots with full private provenance and content digests; source and identifying pins are excluded from this public report.",
+  "package_versions": {
+    "sarj-iac-lint": "0.34.0",
+    "code-standards": "8.204.0"
+  },
+  "labeled_primary_cases": {
+    "true_positives": 8,
+    "true_negatives": 19,
+    "false_positives": 0,
+    "false_negatives": 0
+  },
+  "additional_integration_and_documentation_tests": 3,
+  "paired_process_peak_rss_bytes": {
+    "without": 43876352,
+    "with": 43876352
+  },
+  "memory_note": "macOS ru_maxrss per fresh worker; observed maxima on a shared machine, not a fleet memory bound."
+}

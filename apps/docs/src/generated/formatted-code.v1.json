@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "624182dbd787d90b73e55df3a5a2db53042e31e0fdd3454434dbc7148b77f85c",
-  "cliSha256": "5de1e5007dab7137e885e83a7907143ea83333001e788e403faea3c1decbfc87",
+  "catalogSha256": "88f3b7b41874b89c640fa4d2126886501091cc76687742c8445291c88959a282",
+  "cliSha256": "5783dab6128439f7d595e2eef789309712a82fdf8aba6d7e5e47565f2cd5047e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8346,6 +8346,41 @@
           "outcome": "reject",
           "scenarioId": "sensitive-shared-input",
           "title": "Sensitive input duplicated instead of injected once"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-duplicate-deployment-literal": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_storage_bucket\" \"a\" { project = \"example-project\" }\nresource \"google_cloud_run_v2_job\" \"b\" { project = \"example-project\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "repeated-project",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Resources repeat one deployment project"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"project_id\" { type = string }\nresource \"google_storage_bucket\" \"a\" { project = var.project_id }\nresource \"google_cloud_run_v2_job\" \"b\" { project = var.project_id }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "shared-project-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Resources use their shared deployment input"
         }
       ],
       "optionsSchemaSource": null

@@ -177,6 +177,24 @@ def test_scan_ignores_generated_requirements_exports(tmp_path: Path) -> None:
     assert library_policy.scan(tmp_path) == ()
 
 
+def test_selected_requirements_preserve_locations_across_includes_and_fresh_scans(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.in"
+    requirements.write_bytes(b"\xef\xbb\xbfRequests[socks]>=2\r\n-r extra.in\r\npandas>=2\r\n")
+    (tmp_path / "extra.in").write_text("ujson>=5\nflask>=3\n", encoding="utf-8")
+
+    findings = library_policy.scan_paths(tmp_path, [requirements])
+
+    assert [(item.id, str(item.path), item.line, item.column) for item in findings] == [
+        ("LIB005", "extra.in", 1, 1),
+        ("LIB006", "extra.in", 2, 1),
+        ("LIB004", "requirements.in", 1, 1),
+        ("LIB003", "requirements.in", 3, 1),
+    ]
+    requirements.write_text("httpx>=1\n", encoding="utf-8")
+
+    assert library_policy.scan_paths(tmp_path, [requirements]) == ()
+
+
 def test_scan_accepts_pep735_includes_and_ignores_requirement_fixtures_and_unnamed_urls(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[dependency-groups]\ndev = [{ include-group = "test" }, "requests"]\ntest = ["pytest"]\n',
