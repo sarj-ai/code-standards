@@ -736,6 +736,33 @@ def test_policy_scoped_rule_exclusion_does_not_leak_to_other_paths(tmp_path: Pat
     assert policy.filter_diagnostics((test_finding, source_finding)) == (source_finding,)
 
 
+def test_policy_path_decisions_refresh_between_filter_calls(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    source = root / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    generated = root / "generated"
+    generated.mkdir()
+    generated_source = generated / "source.py"
+    generated_source.write_text("value = 2\n", encoding="utf-8")
+    alias = root / "alias.py"
+    alias.symlink_to(source)
+    policy = Policy.from_manifest(
+        root,
+        Manifest("1.2.3", (), ".", ".", excluded_paths=("generated/**",)),
+    )
+    finding = Diagnostic("F401", "unused import", Severity.WARNING, "ruff", Location("alias.py"))
+
+    assert policy.filter_diagnostics((finding, finding)) == (finding, finding)
+    alias.unlink()
+    alias.symlink_to(generated_source)
+    assert policy.filter_diagnostics((finding, finding)) == ()
+    alias.unlink()
+    alias.symlink_to(tmp_path / "outside.py")
+    with pytest.raises(ValueError, match="outside repository root"):
+        policy.filter_diagnostics((finding,))
+
+
 def test_explicitly_excluded_file_is_nonblocking_coverage(tmp_path: Path) -> None:
     source = tmp_path / "generated" / "client.py"
     source.parent.mkdir()
