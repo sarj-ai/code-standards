@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "88f3b7b41874b89c640fa4d2126886501091cc76687742c8445291c88959a282",
-  "cliSha256": "16370f5e0793f6d79d2699b7cfc46a60459833704ceeb42dec5e136dd8fdee6a",
+  "catalogSha256": "efb2feff2fb7ccdac2474cbeaa697aa424f73f0975e2154fd373a26056c09762",
+  "cliSha256": "47f4f7b2caf684ad2303c376e9b02b0d6af265e65220d461d2a7e49473daa591",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8057,6 +8057,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A small range validation remains readable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-boolean-enable-variable": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"keyless_storage_enabled\" {\n  type = bool\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "boolean-enable-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An extra switch gates the intended implementation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_storage\" \"app\" {\n  enabled = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "direct-provider-configuration",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Configure the provider directly"
         }
       ],
       "optionsSchemaSource": null
