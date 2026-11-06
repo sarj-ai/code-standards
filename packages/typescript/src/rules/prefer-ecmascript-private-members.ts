@@ -72,7 +72,7 @@ function reportClass(
 ): void {
   const groups = new Map<string, PrivateConvertibleMember[]>();
   for (const member of owner.body.body) {
-    if (!isConvertible(member)) continue;
+    if ((member.type !== AST_NODE_TYPES.MethodDefinition && member.type !== AST_NODE_TYPES.PropertyDefinition && member.type !== AST_NODE_TYPES.AccessorProperty) || !isConvertible(member)) continue;
     const name = convertibleMemberName(member);
     if (name === null) continue;
     const members = groups.get(name) ?? [];
@@ -91,12 +91,7 @@ function reportClass(
   }
 }
 
-function isConvertible(member: TSESTree.ClassElement): member is PrivateConvertibleMember {
-  if (
-    member.type !== AST_NODE_TYPES.MethodDefinition &&
-    member.type !== AST_NODE_TYPES.PropertyDefinition &&
-    member.type !== AST_NODE_TYPES.AccessorProperty
-  ) return false;
+function isConvertible(member: PrivateConvertibleMember): boolean {
   return (
     member.accessibility === "private" &&
     !(member.type === AST_NODE_TYPES.MethodDefinition && member.kind === "constructor") &&

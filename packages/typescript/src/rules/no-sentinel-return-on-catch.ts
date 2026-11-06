@@ -110,19 +110,11 @@ function isSentinelArgument(arg: TSESTree.Expression | null): boolean {
 
 function isFunctionNode(
   node: TSESTree.Node,
-): node is TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression {
+) {
   return (
     node.type === AST_NODE_TYPES.FunctionDeclaration ||
     node.type === AST_NODE_TYPES.FunctionExpression ||
     node.type === AST_NODE_TYPES.ArrowFunctionExpression
-  );
-}
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === "string"
   );
 }
 
@@ -330,7 +322,7 @@ function enclosingFunctionName(node: TSESTree.Node): string | null {
     if (isFunctionNode(current)) {
       if (
         "id" in current &&
-        isNode(current.id) &&
+        current.id !== null &&
         current.id.type === AST_NODE_TYPES.Identifier
       ) {
         return current.id.name;
@@ -490,9 +482,7 @@ function enclosingFunctionBody(
   while (current !== undefined && current !== null) {
     if (
       isFunctionNode(current) &&
-      "body" in current &&
-      isNode(current.body) &&
-      current.body.type === AST_NODE_TYPES.BlockStatement
+      current.body?.type === AST_NODE_TYPES.BlockStatement
     ) {
       return current.body;
     }

@@ -28,6 +28,7 @@ export function forEachAstChildKey(
   return false;
 }
 
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- Only parser-declared child keys of an existing ESTree node cross this native reflection boundary; this is not a general payload validator.
 function isNode(value: unknown): value is TSESTree.Node {
   return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
 }

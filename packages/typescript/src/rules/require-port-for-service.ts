@@ -881,9 +881,8 @@ const isFluentConstructionObject = (
   getText: (node: TSESTree.Node) => string,
 ): boolean => {
   if (node.id === null) return false;
-  const methods = node.body.body.filter(
-    (member): member is TSESTree.MethodDefinition =>
-      member.type === AST_NODE_TYPES.MethodDefinition &&
+  const methods = node.body.body.filter(member => member.type === AST_NODE_TYPES.MethodDefinition).filter(
+    (member) =>
       member.kind === "method" &&
       !member.static &&
       member.accessibility !== "private" &&
@@ -1118,13 +1117,13 @@ export default createRule<Options, MessageIds>({
         if (node.decorators.length > 0) return;
 
         const ctor = node.body.body.find(
-          (member): member is TSESTree.MethodDefinition =>
+          (member) =>
             member.type === AST_NODE_TYPES.MethodDefinition &&
             member.kind === "constructor" &&
             member.value.body !== null &&
             member.value.body !== undefined,
         );
-        if (ctor === undefined) return;
+        if (ctor?.type !== AST_NODE_TYPES.MethodDefinition) return;
 
         const constructorFacts = readConstructor(
           ctor,
@@ -1210,12 +1209,12 @@ export function createServiceOperationResolver(
   let declaredTypes: FileTypeIndex | null = null;
   return (node): readonly string[] => {
     const ctor = node.body.body.find(
-      (member): member is TSESTree.MethodDefinition =>
+      (member) =>
         member.type === AST_NODE_TYPES.MethodDefinition &&
         member.kind === "constructor" &&
         member.value.body !== null,
     );
-    if (ctor === undefined) return [];
+    if (ctor?.type !== AST_NODE_TYPES.MethodDefinition) return [];
     const declared = (): FileTypeIndex =>
       (declaredTypes ??= fileTypeIndex(program));
     const facts = readConstructor(

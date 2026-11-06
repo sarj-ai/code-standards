@@ -46,9 +46,7 @@ const rawCatalog = await readGeneratedJson(
   catalogPath,
   "Generated rule catalog",
 );
-validateCatalog(rawCatalog);
-
-export const catalog: Catalog = rawCatalog;
+export const catalog: Catalog = validateCatalog(rawCatalog);
 const sourceCounts = new Map<string, number>();
 for (const rule of catalog.rules) sourceCounts.set(rule.source, (sourceCounts.get(rule.source) ?? 0) + 1);
 export const introductions = await ruleIntroductions(resolve(process.cwd(), '../..'), catalog.rules.map((rule) => {

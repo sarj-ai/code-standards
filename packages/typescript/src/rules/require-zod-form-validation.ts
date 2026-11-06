@@ -461,20 +461,20 @@ export default createRule<Options, MessageIds>({
         .filter((reference) => !reference.isWriteOnly())
         .map((reference) => reference.identifier)
         .filter(
-          (identifier): identifier is TSESTree.Identifier =>
+          (identifier) =>
             identifier.type === AST_NODE_TYPES.Identifier,
         );
       if (references.length === 0) return false;
       const narrowings = references
         .map(narrowingIf)
         .filter(
-          (value): value is { readonly branch: TSESTree.IfStatement; readonly positive: boolean } =>
+          (value) =>
             value !== null,
         );
       const validationStatements = references
         .map((reference) => guaranteedValidationStatement(declarator, reference))
         .filter(
-          (statement): statement is TSESTree.Statement => statement !== null,
+          (statement) => statement !== null,
         );
       const declarationStatement = containingStatement(declarator);
       const declarationBlock = declarationStatement?.parent;

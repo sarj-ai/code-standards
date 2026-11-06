@@ -230,11 +230,11 @@ function injectedMembers(
 ): ReadonlySet<string> {
   const injected = new Set<string>();
   const constructor = owner.body.body.find(
-    (member): member is TSESTree.MethodDefinition =>
+    (member) =>
       member.type === AST_NODE_TYPES.MethodDefinition &&
       member.kind === "constructor",
   );
-  if (constructor === undefined) return injected;
+  if (constructor?.type !== AST_NODE_TYPES.MethodDefinition) return injected;
   const parameters = new Set<string>();
   for (const parameter of constructor.value.params) {
     for (const name of parameterNames(parameter)) parameters.add(name);

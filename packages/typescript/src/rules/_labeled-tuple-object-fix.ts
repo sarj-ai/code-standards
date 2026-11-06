@@ -34,9 +34,9 @@ export function labeledTupleObjectFix(
     return null;
   const [helper, statement] = sourceCode.ast.body;
   if (
-    !isOrdinary(helper) ||
+    helper?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(helper) ||
     statement?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    !isOrdinary(statement.declaration) ||
+    statement.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(statement.declaration) ||
     helper.returnType?.typeAnnotation !== annotation
   )
     return null;
@@ -68,10 +68,9 @@ export function labeledTupleObjectFix(
 }
 
 function isOrdinary(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   return (
-    node?.type === AST_NODE_TYPES.FunctionDeclaration &&
     node.id !== null &&
     !node.declare &&
     !node.async &&

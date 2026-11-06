@@ -67,7 +67,7 @@ function importedName(identifier: TSESTree.Identifier, context: Context, modules
   return null;
 }
 
-function isDirectTestCallback(node: TSESTree.Node, context: Context): node is FunctionNode {
+function isDirectTestCallback(node: TSESTree.Node, context: Context) {
   if (node.type !== AST_NODE_TYPES.ArrowFunctionExpression && node.type !== AST_NODE_TYPES.FunctionExpression) return false;
   const call = directArgumentCall(node);
   if (call === null) return false;

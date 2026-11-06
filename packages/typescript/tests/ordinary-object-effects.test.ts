@@ -437,7 +437,7 @@ type NativeJSXSource = ts.SourceFile & {imports?: readonly ts.Node[]};
 function implicitRuntimeNode(source: ts.SourceFile, name: string): ts.StringLiteral {
   const imports = (source as NativeJSXSource).imports;
   if (!Array.isArray(imports)) throw new Error("Pinned native implicit-import metadata is unavailable");
-  const selected = (imports as readonly ts.Node[]).filter((node): node is ts.StringLiteral => ts.isStringLiteral(node) && node.text === name);
+  const selected = (imports as readonly ts.Node[]).filter((node) => ts.isStringLiteral(node) && node.text === name);
   expect(selected).toHaveLength(1);
   const node = selected[0];
   if (!node || !ts.isImportDeclaration(node.parent)) throw new Error("Pinned native implicit-import parent is unavailable");

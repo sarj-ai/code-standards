@@ -327,8 +327,7 @@ if (mode === "--format-json") await formatJson();
 else {
   const catalogSource = await readFile(catalogPath, "utf8");
   const cliSource = await readFile(cliPath, "utf8");
-  const catalog: unknown = JSON.parse(catalogSource);
-  validateCatalog(catalog);
+  const catalog = validateCatalog(JSON.parse(catalogSource) as unknown);
   const cli = parseReference(JSON.parse(cliSource) as unknown);
 
   await prefetchPythonExamples(

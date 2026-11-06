@@ -73,7 +73,7 @@ function reportClass(
   if (contract === null) return;
   const groups = new Map<string, TSESTree.MethodDefinition[]>();
   for (const member of owner.body.body) {
-    if (!candidate(member)) continue;
+    if (member.type !== AST_NODE_TYPES.MethodDefinition || !candidate(member)) continue;
     const name = convertibleMemberName(member);
     if (name === null || contract.has(name)) continue;
     // Avoid duplicate diagnostics: the dedicated modern-private rule owns this
@@ -95,9 +95,8 @@ function reportClass(
   }
 }
 
-function candidate(member: TSESTree.ClassElement): member is TSESTree.MethodDefinition {
+function candidate(member: TSESTree.MethodDefinition): boolean {
   return (
-    member.type === AST_NODE_TYPES.MethodDefinition &&
     member.kind !== "constructor" &&
     !member.static &&
     member.accessibility !== "protected" &&
