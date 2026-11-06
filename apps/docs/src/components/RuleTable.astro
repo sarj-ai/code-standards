@@ -77,14 +77,18 @@ const rows = rules.map((rule) => ({
     if (category instanceof HTMLSelectElement) category.value = params.get('category') ?? '';
     if (language instanceof HTMLSelectElement) language.value = params.get('language') ?? '';
     if (sort instanceof HTMLSelectElement) sort.value = ruleSort(params.get('sort'));
+    let currentSort = 'name';
     const apply = () => {
       const selectedCategory = category instanceof HTMLSelectElement ? category.value : '';
       const selectedLanguage = language instanceof HTMLSelectElement ? language.value : '';
       const selectedSort = ruleSort(sort instanceof HTMLSelectElement ? sort.value : null);
       directory.querySelector('[data-sort-name]')?.setAttribute('aria-sort', selectedSort === 'name' ? 'ascending' : 'none');
       directory.querySelector('[data-sort-introduced]')?.setAttribute('aria-sort', selectedSort === 'newest' ? 'descending' : selectedSort === 'oldest' ? 'ascending' : 'none');
-      const key = (row: HTMLTableRowElement) => ({ name: row.dataset.ruleName ?? '', key: row.dataset.ruleKey ?? '', introducedAt: row.dataset.introducedAt ?? null });
-      body?.append(...rows.toSorted((left, right) => compareRules(key(left), key(right), selectedSort)));
+      if (selectedSort !== currentSort) {
+        const key = (row: HTMLTableRowElement) => ({ name: row.dataset.ruleName ?? '', key: row.dataset.ruleKey ?? '', introducedAt: row.dataset.introducedAt ?? null });
+        body?.append(...rows.toSorted((left, right) => compareRules(key(left), key(right), selectedSort)));
+        currentSort = selectedSort;
+      }
       let visible = 0;
       for (const row of rows) {
         if (!(row instanceof HTMLTableRowElement)) continue;
