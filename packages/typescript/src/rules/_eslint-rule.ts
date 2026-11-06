@@ -58,8 +58,8 @@ export function getTypeServices<MessageIds extends string, Options extends reado
   throw new Error(messages.join("\n"));
 }
 
-function hasTypeInformation(services: Partial<ParserServices> | undefined):
-  services is Partial<ParserServices> & TypeServices {
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- The native Partial<ParserServices> SDK type does not reconstruct required fields after member checks; return the original service object to preserve its identity and maps.
+function hasTypeInformation(services: Partial<ParserServices> | undefined): services is Partial<ParserServices> & TypeServices {
   return services?.program != null && services.esTreeNodeToTSNodeMap != null &&
     services.tsNodeToESTreeNodeMap != null;
 }
@@ -142,12 +142,14 @@ function hasNoDefaultOptions<Options extends readonly unknown[], MessageIds exte
   _config: NativeRuleConfiguration<Options, MessageIds>,
   metaDefaults: Readonly<Options> | undefined,
   legacyDefaults: Readonly<Options> | undefined,
+  // eslint-disable-next-line @sarj/no-explicit-type-predicate -- NativeRuleConfiguration requires defaults for nonempty option tuples; TypeScript cannot narrow that generic conditional from the absence of both defaults.
 ): _config is NativeRuleConfiguration<Options, MessageIds> & {
   create(this: void, context: NativeRuleContext<MessageIds, Options>, options: readonly []): NativeRuleListener;
 } {
   return metaDefaults === undefined && legacyDefaults === undefined;
 }
 
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- Native Array.isArray narrows mutable arrays only; ESLint's metadata bridge must also preserve its readonly array contract.
 function schemaList(schema: JSONSchema.JSONSchema4 | readonly JSONSchema.JSONSchema4[]): schema is readonly JSONSchema.JSONSchema4[] {
   return Array.isArray(schema);
 }

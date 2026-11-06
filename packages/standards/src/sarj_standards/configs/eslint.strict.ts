@@ -1552,6 +1552,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/no-invalid-typed-mutation": "error",
       "@sarj/no-contradictory-type-predicate": "error",
       "@sarj/no-partial-type-predicate": "error",
+      "@sarj/no-explicit-type-predicate": "warn",
       // One calibrated owner prevents duplicate native selector reports.
       "sonarjs/no-selector-parameter": "off",
       "@sarj/no-boolean-selector-parameter": "warn",

@@ -27,11 +27,11 @@ export function existingDomainComparisonFix(
     return null;
   const [comparator, exported] = sourceCode.ast.body;
   if (
-    !isOrdinary(comparator) ||
+    comparator?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(comparator) ||
     comparator.id === null ||
     exported?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
     exported.exportKind !== "value" ||
-    !isOrdinary(exported.declaration)
+    exported.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(exported.declaration)
   )
     return null;
   const fields = comparatorFields(comparator);
@@ -56,10 +56,9 @@ export function existingDomainComparisonFix(
 }
 
 function isOrdinary(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   return (
-    node?.type === AST_NODE_TYPES.FunctionDeclaration &&
     node.id !== null &&
     !node.declare &&
     !node.async &&

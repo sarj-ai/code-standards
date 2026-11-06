@@ -192,8 +192,7 @@ async function verify() {
     redirect: "manual",
   });
   assert.equal(missing.status, 404);
-  const catalog: unknown = JSON.parse(catalogText);
-  validateCatalog(catalog);
+  const catalog = validateCatalog(JSON.parse(catalogText) as unknown);
   const aliasedRule = catalog.rules.find(({ aliases }) => aliases.length > 0);
   assert.ok(aliasedRule, "catalog must contain an alias redirect fixture");
   const aliasRedirect = await response(

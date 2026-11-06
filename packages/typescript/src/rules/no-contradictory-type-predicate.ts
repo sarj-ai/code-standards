@@ -22,9 +22,8 @@ import { contradictoryArrayPredicate } from "./_contradictory-array-predicate.js
 type Options = readonly [];
 type MessageIds = "contradictoryPredicate" | "closedLiteralPredicate" | "nullAccepted" | "uncheckedArrayElements" | "uncheckedRecordFields";
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
-type RuntimeKind = "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function";
-
-const RUNTIME_KINDS: ReadonlySet<string> = new Set(["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"]);
+const RUNTIME_KINDS = ["string", "number", "bigint", "boolean", "symbol", "undefined", "object", "function"] as const;
+type RuntimeKind = (typeof RUNTIME_KINDS)[number];
 const PRIMITIVE_KINDS: readonly (readonly [ts.TypeFlags, RuntimeKind])[] = [
   [ts.TypeFlags.String, "string"], [ts.TypeFlags.Number, "number"], [ts.TypeFlags.BigInt, "bigint"],
   [ts.TypeFlags.ESSymbol, "symbol"], [ts.TypeFlags.Undefined, "undefined"],
@@ -107,9 +106,9 @@ export default createRule<Options, MessageIds>({
         annotation.asserts || annotation.parameterName.type !== AST_NODE_TYPES.Identifier || annotation.typeAnnotation === undefined) return;
       const name = annotation.parameterName.name;
       if (hasSeparatePredicateContract(services.esTreeNodeToTSNodeMap.get(node), checker)) return;
-      const parameter = node.params.find((candidate): candidate is TSESTree.Identifier => candidate.type === AST_NODE_TYPES.Identifier && candidate.name === name);
+      const parameter = node.params.find((candidate) => candidate.type === AST_NODE_TYPES.Identifier && candidate.name === name);
       const expression = singleReturn(node);
-      if (parameter?.typeAnnotation === undefined || expression === undefined) return;
+      if (parameter?.type !== AST_NODE_TYPES.Identifier || parameter.typeAnnotation === undefined || expression === undefined) return;
       const check = typeofCheck(expression);
       if (check !== undefined && !sameParameter(parameter, check.parameter, context.sourceCode)) return;
       const input = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(check?.parameter ?? parameter));
@@ -211,16 +210,13 @@ function typeofCheck(expression: TSESTree.Expression): TypeofCheck | undefined {
   if (value.type !== AST_NODE_TYPES.BinaryExpression || (value.operator !== "===" && value.operator !== "==")) return undefined;
   for (const [tested, expected] of [[value.left, value.right], [value.right, value.left]] as const) {
     const operand = unwrapExpression(tested);
-    const kind = staticString(expected);
+    const expectedKind = staticString(expected);
+    const kind = RUNTIME_KINDS.find(candidate => candidate === expectedKind);
     if (operand.type !== AST_NODE_TYPES.UnaryExpression || operand.operator !== "typeof" ||
-      operand.argument.type !== AST_NODE_TYPES.Identifier || kind === null || !isRuntimeKind(kind)) continue;
+      operand.argument.type !== AST_NODE_TYPES.Identifier || kind === undefined) continue;
     return { parameter: operand.argument, kind };
   }
   return undefined;
-}
-
-function isRuntimeKind(value: string): value is RuntimeKind {
-  return RUNTIME_KINDS.has(value);
 }
 
 function sameParameter(declared: TSESTree.Identifier, tested: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {

@@ -1,3 +1,4 @@
+import noExplicitTypePredicate from "./rules/no-explicit-type-predicate.js";
 import preferZodEnumValidator from "./rules/prefer-zod-enum-validator.js";
 import noGrowingArraySpreadInLoop from "./rules/no-growing-array-spread-in-loop.js";
 import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
@@ -162,6 +163,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-explicit-type-predicate": noExplicitTypePredicate,
   "prefer-zod-enum-validator": preferZodEnumValidator,
   "no-growing-array-spread-in-loop": noGrowingArraySpreadInLoop,
   "no-logical-or-fallback": noLogicalOrFallback,
@@ -362,6 +364,7 @@ const RULE_POLICY = {
   "@sarj/no-invalid-typed-mutation": ["error", "both"],
   "@sarj/no-contradictory-type-predicate": ["error", "both"],
   "@sarj/no-partial-type-predicate": ["error", "both"],
+  "@sarj/no-explicit-type-predicate": ["warn", "both"],
   "@sarj/no-boolean-selector-parameter": ["warn", "both"],
   "@sarj/no-invalid-zod-custom-parse": ["error", "both"],
   "@sarj/no-contradictory-overload-return": ["error", "both"],
@@ -567,10 +570,12 @@ const FLAT_STRICT_RULES = presetRules("strict");
 const RECOMMENDED_RULES: PresetRules<"recommended"> = FLAT_RECOMMENDED_RULES;
 const STRICT_RULES: PresetRules<"strict"> = FLAT_STRICT_RULES;
 
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- Object.keys erases this private closed policy table's literal keys and warning discriminators.
 function isAdvisoryRuleName(name: string): name is AdvisoryRuleName {
   return isPolicyName(name) && RULE_POLICY[name][0] === "warn";
 }
 
+// eslint-disable-next-line @sarj/no-explicit-type-predicate -- Native Object.keys loses the literal keys of this private closed policy table; membership derives from that same table.
 function isPolicyName(name: string): name is PolicyName {
   return Object.hasOwn(RULE_POLICY, name);
 }

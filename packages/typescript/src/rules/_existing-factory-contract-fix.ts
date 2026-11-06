@@ -38,7 +38,7 @@ export function existingFactoryContractFix(
     implementation?.type !== AST_NODE_TYPES.ClassDeclaration ||
     implementation !== candidate ||
     !ordinaryClass(implementation) ||
-    !ordinaryFactory(factory)
+    factory?.type !== AST_NODE_TYPES.FunctionDeclaration || !ordinaryFactory(factory)
   )
     return null;
   const operation = contractOperation(contract);
@@ -77,10 +77,9 @@ function ordinaryClass(node: TSESTree.ClassDeclaration): boolean {
 }
 
 function ordinaryFactory(
-  node: TSESTree.Node | null | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   return (
-    node?.type === AST_NODE_TYPES.FunctionDeclaration &&
     node.id !== null &&
     !node.declare &&
     !node.async &&

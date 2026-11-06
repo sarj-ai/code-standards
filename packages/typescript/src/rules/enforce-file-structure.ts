@@ -131,7 +131,7 @@ export default createRule<Options, MessageIds>({
 
         const firstBody = body.find((statement) => classifyStatement(statement) === "body" && !(statement.type === AST_NODE_TYPES.ExpressionStatement && statement.directive !== undefined));
         const misplacedTypeImports = firstBody === undefined ? [] : body.filter(
-          (statement): statement is TSESTree.ImportDeclaration => statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          (statement) => statement.type === AST_NODE_TYPES.ImportDeclaration &&
             statement.importKind === "type" && statement.range[0] > firstBody.range[0],
         );
         const fixTypeImports = firstBody === undefined || context.sourceCode.getAllComments().length > 0 || misplacedTypeImports.length === 0

@@ -82,7 +82,7 @@ export function privateMemberFixes(
 
   const checker = services.program.getTypeChecker();
   const symbols = members.map((member) => symbolAt(services, checker, member.key)).filter(
-    (symbol): symbol is ts.Symbol => symbol !== undefined,
+    (symbol) => symbol !== undefined,
   );
   if (symbols.length === 0) return undefined;
   const references: TSESTree.MemberExpression[] = [];
@@ -166,7 +166,7 @@ export function isUnobservedPrivateClass(
   sourceCode: Readonly<TypeScriptSourceCode>,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
   filename: string,
-): owner is TSESTree.ClassDeclaration {
+) {
   return owner.type === AST_NODE_TYPES.ClassDeclaration && owner.id !== null &&
     owner.superClass === null && owner.decorators.length === 0 &&
     !owner.body.body.some((member) => member.type === AST_NODE_TYPES.StaticBlock ||

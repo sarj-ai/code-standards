@@ -92,7 +92,7 @@ function directAsyncReturnOwner(node: TSESTree.CallExpression): RuntimeFunction 
   return owner !== undefined && owner.async && !owner.generator ? owner : null;
 }
 
-function isRuntimeFunction(node: TSESTree.Node): node is RuntimeFunction {
+function isRuntimeFunction(node: TSESTree.Node) {
   return (
     node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
     node.type === AST_NODE_TYPES.FunctionDeclaration ||

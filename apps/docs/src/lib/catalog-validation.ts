@@ -50,12 +50,12 @@ export type Autofix = Rule["autofix"];
 export type Category = Rule["category"];
 export type Language = Rule["languages"][number];
 
-export function validateCatalog(value: unknown): asserts value is Catalog {
-  const result = CatalogSchema.safeParse(value);
-  if (!result.success) {
+export function validateCatalog(value: unknown): Catalog {
+  if (!CatalogSchema.validate(value)) {
+    const result = CatalogSchema.safeParse(value);
     throw new TypeError("rule catalog is invalid.", { cause: result.error });
   }
-  const { rules } = result.data;
+  const { rules } = value;
   const keys = new Set<string>();
   for (const [index, rule] of rules.entries()) {
     const context = `rule catalog rules[${String(index)}]`;
@@ -78,6 +78,7 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
       aliases.add(aliasKey);
     }
   }
+  return value;
 }
 
 function validateScenarioPairs(examples: RuleExample[], context: string): void {

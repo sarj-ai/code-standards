@@ -23,10 +23,6 @@ type Options = readonly [];
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 const ASSERTION_NAMES: ReadonlySet<string> = new Set(["assert", "expect"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
-]);
 const OMITTED_AST_KEYS: ReadonlySet<string> = new Set([
   "end",
   "loc",
@@ -262,8 +258,8 @@ function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TypeScript
     return null;
   }
   const callback = call.arguments.map(unwrapExpression).find(
-    (argument): argument is TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression =>
-      argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
+    (argument) =>
+      argument.type === AST_NODE_TYPES.FunctionExpression || argument.type === AST_NODE_TYPES.ArrowFunctionExpression,
   );
   if (callback === undefined || call.arguments.length !== 2 || containsInlineSnapshot(callback.body)) {
     return null;

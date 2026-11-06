@@ -163,7 +163,7 @@ export default createRule<Options, MessageIds>({
 
     function isGlobalReceiver(
       node: TSESTree.Node,
-    ): node is TSESTree.Identifier {
+    ) {
       return (
         node.type === AST_NODE_TYPES.Identifier &&
         GLOBAL_RECEIVERS.has(node.name) &&
