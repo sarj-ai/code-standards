@@ -43,7 +43,7 @@ function localNamedImports(
 ): string[] {
   return node.specifiers
     .filter(
-      (specifier): specifier is TSESTree.ImportSpecifier =>
+      (specifier) =>
         specifier.type === AST_NODE_TYPES.ImportSpecifier &&
         (specifier.imported.type === AST_NODE_TYPES.Identifier
           ? specifier.imported.name
@@ -60,7 +60,7 @@ function elementName(node: TSESTree.JSXOpeningElement): string | null {
 
 function jsxAncestors(occurrence: Occurrence): TSESTree.JSXElement[] {
   return occurrence.ancestors.filter(
-    (ancestor): ancestor is TSESTree.JSXElement =>
+    (ancestor) =>
       ancestor.type === AST_NODE_TYPES.JSXElement,
   );
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "88f3b7b41874b89c640fa4d2126886501091cc76687742c8445291c88959a282",
+  "catalogSha256": "df69a40cb930b16d112044d573a25b71be62b3cabacf6da0b2a0de23c68af5ed",
   "cliSha256": "5783dab6128439f7d595e2eef789309712a82fdf8aba6d7e5e47565f2cd5047e",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -1641,6 +1641,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Seven nested decisions exceed the error limit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-explicit-type-predicate": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "type Job = { kind: \"queued\"; queue: string } | { kind: \"done\"; result: string };\nfunction render(job: Job) {\n  return job.kind === \"done\" ? job.result : job.queue;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "direct-discriminator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Let the compiler narrow the tagged union"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "type Job = { kind: \"queued\"; queue: string } | { kind: \"done\"; result: string };\nconst isDone = (job: Job) => job.kind === \"done\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "inferred-predicate",
+          "outcome": "accept",
+          "scenarioId": "inference",
+          "title": "Infer a discriminator helper from its body"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "type Job = { kind: \"queued\"; queue: string } | { kind: \"done\"; result: string };\ntype Done = Extract<Job, { kind: \"done\" }>;\nfunction isDone(job: Job): job is Done {\n  return job.kind === \"done\";\n}\nfunction render(job: Job) {\n  return isDone(job) ? job.result : job.queue;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "manual-predicate",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Avoid an unchecked narrowing annotation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "type Job = { kind: \"queued\"; queue: string } | { kind: \"done\"; result: string };\ntype Done = Extract<Job, { kind: \"done\" }>;\nconst isDone = (job: Job): job is Done => job.kind === \"done\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "written-predicate",
+          "outcome": "reject",
+          "scenarioId": "inference",
+          "title": "A written predicate remains an unchecked promise"
         }
       ],
       "optionsSchemaSource": null
@@ -8057,6 +8122,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A small range validation remains readable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-boolean-enable-variable": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"keyless_storage_enabled\" {\n  type = bool\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "boolean-enable-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An extra switch gates the intended implementation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_storage\" \"app\" {\n  enabled = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "direct-provider-configuration",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Configure the provider directly"
         }
       ],
       "optionsSchemaSource": null

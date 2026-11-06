@@ -272,6 +272,7 @@
     ],
     "iac": [
       "expression-complexity",
+      "no-boolean-enable-variable",
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-duplicate-deployment-literal",
@@ -318,6 +319,7 @@
       "no-exception-text-in-5xx-response",
       "no-excess-jsx-props",
       "no-excessive-cognitive-complexity",
+      "no-explicit-type-predicate",
       "no-fat-try-blocks",
       "no-first-party-module-mock",
       "no-frontend-comments",
@@ -726,7 +728,8 @@
       "SARJ215",
       "SARJ216",
       "SARJ217",
-      "SARJ218"
+      "SARJ218",
+      "SARJ220"
     ],
     "text": [
       "SARJ300",

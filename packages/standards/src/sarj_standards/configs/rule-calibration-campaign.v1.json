@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/iac/no-boolean-enable-variable",
+      "family": "iac",
+      "ruleId": "no-boolean-enable-variable",
+      "state": "pending",
+      "evidence": "Twenty-seven focused tests include two executable examples and cover explicit Boolean switch declarations, provider attributes, object fields, other inputs, comments, strings, malformed syntax and suppression. The complete IaC package passes 1,983 tests. Three immutable private snapshots contain 520 Terraform files and 249 policy matches. A deterministic SHA256-ranked sample of 50 matches includes feature, optional topology, security and migration controls; all inspected declarations match the stated name/type policy. Three isolated paired timing rounds show no observed regression; child RSS stays below 39 MB. Private source, paths and identifying pins remain local.",
+      "outcome": "Ship SARJ220 at WARNING without autofix as the explicitly requested interface policy. Matching does not prove redundancy: necessary optional or billable capabilities require owner review. Preserve provider Boolean attributes, object fields and other inputs. Broader public-project and cluster-stratified calibration remain pending; do not promote to error or automatically remove resources."
+    },
+    {
       "task": "rule-audit/iac/no-duplicate-deployment-literal",
       "family": "iac",
       "ruleId": "no-duplicate-deployment-literal",
@@ -3389,6 +3397,14 @@
       "state": "complete",
       "evidence": "Scoped calibration 2026-11-05: all 23 native rule cases and executable public examples pass. The immutable 116-case retained-rules corpus includes 16 cases for this rule: two positives and 14 boundary negatives, with all expected outcomes and no duplicate findings. Three fresh processes per variant each include two warm native ESLint runs, compared with integrity-verified published plugin 18.0.4. A fixed, content-independent sample of 80 files from 955 eligible application and library source files produced no findings for this rule across the repeated runs. External application dependencies are partial; the sample is exploratory and unlabeled, so it does not establish population recall or complete precision. Aggregate six-rule timing and memory measurements do not isolate this rule's cost. Private inputs, paths, source pins and detailed receipts remain owner-readable.",
       "outcome": "Complete scoped calibration; retain WARNING without autofix. Require a fresh, unobserved local output and a single straight-line prefix-spread assignment in native-array for-of iteration. Parameter, import and declaration inputs may be followed through stable aliases; locally bounded literal, call and property inputs remain excluded. Preserve snapshots, escaping or captured outputs, resets, uncertain ownership, reducers and concat ownership. No error promotion, general speedup or fleet rollout is claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-explicit-type-predicate",
+      "family": "typescript",
+      "ruleId": "no-explicit-type-predicate",
+      "state": "complete",
+      "evidence": "Scoped calibration on 2026-11-06: 60 labeled controls produce 36 TP and 24 TN, with zero FP/FN and 37 expected diagnostics. The controls contain 57 unique code payloads; three reused payload groups deliberately test path ownership. Seven compiler witnesses demonstrate unchecked handwritten promises and compiler-checked discriminators/inference. Native source/tools checks and 212 focused tests pass. Two malformed inputs remain native parser errors. Isolated immutable analysis inspects all 537 tracked TypeScript files in the selected plugin/tool/docs roots; every one of the 71 annotations in 46 files was individually inspected and reconciled by frozen bytes, exact predicate signatures and multiplicities. Seven native contracts retain reasoned exact-rule exceptions; 64 annotations are migrated. Three paired fresh processes per mode with four warm repetitions each use the same 49 deterministically selected source files. Parser-only baseline versus single-rule enablement gives first/warm medians 1.574/0.803 versus 1.747/0.921 seconds and median peak RSS 598980 versus 659984 KiB. Shared-host load, cache effects and reconciled plugin-load changes limit attribution. Redacted aggregate evidence and fifty focused source-review scopes are recorded in packages/standards/benchmarks/type-predicate-policy-50-20261106.json. Exact corpus source, paths and identifying hashes remain local. Canonical verification, normal hooks and exact-head hosted qualification remain separate mandatory delivery gates.",
+      "outcome": "Complete scoped calibration; introduce WARNING without autofix. Report authored value is Type and asserts value is Type annotations in every supported syntax position. Prefer direct discriminators or compiler-inferred helpers/filters for owned unions, and consume schema-validated data/results at unknown boundaries. Preserve plain asserts condition, imported guard use and shared generated/vendor/declaration exclusions. Native readonly/generic/parser-identity/reflection and closed-key contracts use seven narrow local exceptions, without a folder exemption or replacement casts. Retain existing partial/contradictory correctness controls. These are design-policy matches, not 71 demonstrated runtime defects. Error promotion, universal precision/recall, full-preset cost and consumer rollout are not claimed."
     }
   ]
 }

@@ -20,8 +20,8 @@ export function literalSelectorFix(
     return null;
   const [first, second, declaration, statement] = sourceCode.ast.body;
   if (
-    !isLiteralOperation(first) ||
-    !isLiteralOperation(second) ||
+    first?.type !== AST_NODE_TYPES.FunctionDeclaration || !isLiteralOperation(first) ||
+    second?.type !== AST_NODE_TYPES.FunctionDeclaration || !isLiteralOperation(second) ||
     declaration?.type !== AST_NODE_TYPES.VariableDeclaration ||
     declaration.declare ||
     declaration.kind !== "const" ||
@@ -34,6 +34,8 @@ export function literalSelectorFix(
   if (
     binding?.id.type !== AST_NODE_TYPES.Identifier ||
     binding.id.typeAnnotation !== undefined ||
+    binding.init?.type !== AST_NODE_TYPES.ArrowFunctionExpression ||
+    binding.init.body.type !== AST_NODE_TYPES.ConditionalExpression ||
     !isSelector(binding.init, parameter)
   )
     return null;
@@ -58,10 +60,9 @@ export function literalSelectorFix(
 }
 
 function isLiteralOperation(
-  node: TSESTree.Node | undefined,
-): node is TSESTree.FunctionDeclaration {
+  node: TSESTree.FunctionDeclaration,
+): boolean {
   if (
-    node?.type !== AST_NODE_TYPES.FunctionDeclaration ||
     node.id === null ||
     node.declare ||
     node.async ||
@@ -81,12 +82,9 @@ function isLiteralOperation(
 }
 
 function isSelector(
-  node: TSESTree.Expression | null,
+  node: TSESTree.ArrowFunctionExpression,
   parameter: TSESTree.Identifier,
-): node is TSESTree.ArrowFunctionExpression & {
-  body: TSESTree.ConditionalExpression;
-} {
-  if (node?.type !== AST_NODE_TYPES.ArrowFunctionExpression) return false;
+): boolean {
   const actual = node.params[0];
   return (
     actual?.type === AST_NODE_TYPES.Identifier &&

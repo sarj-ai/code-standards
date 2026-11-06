@@ -1874,6 +1874,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-invalid-typed-mutation": "error",
                 "@sarj/no-contradictory-type-predicate": "error",
                 "@sarj/no-partial-type-predicate": "error",
+                "@sarj/no-explicit-type-predicate": "warn",
                 "sonarjs/no-selector-parameter": "off",
                 "@sarj/no-boolean-selector-parameter": "warn",
                 "@sarj/no-invalid-zod-custom-parse": "error",

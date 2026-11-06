@@ -99,7 +99,7 @@ function localBindingReferences(identifier: TSESTree.Identifier, source: Readonl
   if (!definitions?.length || !definitions.every(moduleTypeDeclaration)) return null;
   const first = definitions[0];
   if (definitions.length === 1 && first?.type === AST_NODE_TYPES.TSTypeAliasDeclaration && !first.typeParameters) return [first.typeAnnotation];
-  const interfaces = definitions.filter((definition): definition is TSESTree.TSInterfaceDeclaration => definition.type === AST_NODE_TYPES.TSInterfaceDeclaration);
+  const interfaces = definitions.filter((definition) => definition.type === AST_NODE_TYPES.TSInterfaceDeclaration);
   if (interfaces.length !== definitions.length || interfaces.some((declaration) => declaration.typeParameters)) return null;
   if (interfaces.length > 1) {
     const checker = services.program.getTypeChecker();
@@ -107,7 +107,7 @@ function localBindingReferences(identifier: TSESTree.Identifier, source: Readonl
     if (!symbol || interfaces.some((declaration) => checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(declaration.id)) !== symbol)) return null;
   }
   const bases = interfaces.flatMap((declaration) => declaration.extends.map((base) => base.expression));
-  return bases.every((base): base is TSESTree.Identifier => base.type === AST_NODE_TYPES.Identifier) ? bases : null;
+  return bases.every((base) => base.type === AST_NODE_TYPES.Identifier) ? bases : null;
 }
 
 /** Local proof excludes declarations introduced by namespaces or global augmentation. */

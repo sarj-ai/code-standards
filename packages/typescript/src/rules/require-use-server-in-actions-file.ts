@@ -77,7 +77,7 @@ export default createRule<Options, MessageIds>({
         if (!ACTION_MODULE_RE.test(filename)) return;
         if (node.body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use server")) return;
         const exportedAction = node.body.find(
-          (statement): statement is TSESTree.ExportNamedDeclaration =>
+          (statement) =>
             statement.type === "ExportNamedDeclaration" && isExportedAsyncFunction(statement),
         );
         if (exportedAction) context.report({ node: exportedAction, messageId: "requireUseServerInActionsFile" });
