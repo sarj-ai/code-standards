@@ -129,12 +129,24 @@ def test_repeated_paths_still_validate_each_clone_range(tmp_path: Path, later_ra
 def test_report_paths_are_revalidated_for_each_report(tmp_path: Path) -> None:
     first = _write(tmp_path, "a.py", _BLOCK)
     second = _write(tmp_path, "b.py", _BLOCK)
-    payload = _report(_clone(first, (1, 3), second, (1, 3)))
+    payload = _report(_clone(first, (1, 3), second, (1, 3)), _clone(second, (1, 3), first, (1, 3)))
     assert len(parse_jscpd(payload, tmp_path, allows_path=lambda _path: True)) == 2
     Path(first).unlink()
 
     with pytest.raises(ValueError, match="jscpd reported a copy outside"):
         parse_jscpd(payload, tmp_path, allows_path=lambda _path: True)
+
+
+def test_one_clone_can_report_two_ranges_of_the_same_file(tmp_path: Path) -> None:
+    source = _write(tmp_path, "a.py", _BLOCK + "\n" + _BLOCK)
+
+    findings = parse_jscpd(_report(_clone(source, (1, 3), source, (5, 7))), tmp_path, allows_path=lambda _path: True)
+
+    assert [finding.location.path for finding in findings] == ["a.py", "a.py"]
+    assert [finding.message for finding in findings] == [
+        "This 3-line block also appears at a.py:5-7.",
+        "This 3-line block also appears at a.py:1-3.",
+    ]
 
 
 def test_analysis_scans_the_whole_tree_with_the_pinned_detector(tmp_path: Path) -> None:

@@ -38,6 +38,7 @@ from sarj_standards.libs.adoption import (
     packagemanager as adoption_packagemanager,
     repository_baseline,
     scaffold as adoption_scaffold,
+    transaction as adoption_transaction,
     upgrade as adoption_upgrade,
     uvtool as adoption_uvtool,
 )
@@ -263,6 +264,7 @@ class RolloutArgs:
     command_timeout: float = 900
     github_output: Path | None = None
     enable_repository_rules: tuple[str, ...] = ()
+    preserve_baselines: bool = False
 
 
 class CommandRunner(Protocol):
@@ -1011,7 +1013,10 @@ def prepare_unused_eslint_directives(
     environment: Mapping[str, str],
     version: str,
     base_sha: str,
+    preserve_baselines: bool = False,
 ) -> Mapping[str, eslint_directives.SourcePostimage]:
+    if preserve_baselines:
+        return _NO_DIRECTIVE_REWRITES
     adopted = adoption_manifest.load(repo)
     if adopted is None or "eslint" not in adopted.configs or "eslint" not in adopted.enabled_capabilities:
         return _NO_DIRECTIVE_REWRITES
@@ -1355,6 +1360,31 @@ def assert_baseline_unchanged(path: Path | None, expected: bytes | None) -> None
 def assert_baselines_unchanged(expected: Mapping[Path, bytes]) -> None:
     for path, contents in expected.items():
         assert_baseline_unchanged(path, contents)
+
+
+def assert_preserved_baselines(repo: Path, expected: Mapping[Path, adoption_transaction.FileSnapshot]) -> None:
+    if not expected:
+        return
+    paths = tuple(expected)
+    adoption_transaction.validate_targets(repo, paths)
+    current = adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
+    if current != expected:
+        msg = "consumer verification mutated controller-owned baseline bytes or metadata"
+        raise RolloutError(msg)
+
+
+def snapshot_consumer_baselines(
+    repo: Path, consumer: Consumer, *, preserve_baselines: bool = True
+) -> Mapping[Path, adoption_transaction.FileSnapshot]:
+    if not preserve_baselines:
+        return {}
+    adopted = load_consumer_manifest(repo)
+    names = {repository_baseline.PATH, *consumer.baseline_paths}
+    if adopted is not None and adopted.diagnostic_baseline is not None:
+        names.add(adopted.diagnostic_baseline)
+    paths = tuple(repo / name for name in sorted(names))
+    adoption_transaction.validate_targets(repo, paths)
+    return adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
 
 
 def repository_baseline_migration(repo: Path, before: bytes | None) -> dict[Path, bytes]:
@@ -1772,11 +1802,18 @@ def apply_one(
     runner: CommandRunner,
     *,
     dry_run: bool = False,
+    preserve_baselines: bool = False,
     enable_repository_rules: Sequence[str] = (),
 ) -> Outcome:
     with timed_progress(consumer) as report:
         return _apply_one(
-            consumer, version, runner, dry_run=dry_run, report=report, enable_repository_rules=enable_repository_rules
+            consumer,
+            version,
+            runner,
+            dry_run=dry_run,
+            preserve_baselines=preserve_baselines,
+            report=report,
+            enable_repository_rules=enable_repository_rules,
         )
 
 
@@ -1808,6 +1845,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
     runner: CommandRunner,
     *,
     dry_run: bool,
+    preserve_baselines: bool,
     report: Callable[[str], None],
     enable_repository_rules: Sequence[str] = (),
 ) -> Outcome:
@@ -1843,6 +1881,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         if re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
             msg = f"{consumer.name}: cloned base did not resolve to a full commit SHA"
             raise RolloutError(msg)
+        preserved = snapshot_consumer_baselines(repo, consumer, preserve_baselines=preserve_baselines)
         preparation = prepare_branch(repo, version, base_sha, runner)
         branch = preparation.branch
         previous_react_doctor_policy = react_doctor_policy_snapshot(repo)
@@ -1884,26 +1923,36 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                     tool_prefix,
                     tool,
                     environment=unauthenticated,
+                    preserve_baselines=preserve_baselines,
                     enable_repository_rules=enable_repository_rules,
                 )
             except subprocess.CalledProcessError as exc:
-                msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
+                msg = f"{consumer.name}: update failed before a coherent rollout patch was prepared:\n"
                 raise RolloutError(msg + process_failure_detail(exc)) from exc
+            assert_preserved_baselines(repo, preserved)
             repository_baselines = repository_baseline_migration(repo, previous_repository_baseline)
             assert_consumer_base_current(consumer, base_sha, runner)
-            report("bootstrapping consumer and refreshing scoped baselines")
+            report("bootstrapping consumer and checking baseline state")
             baseline_rules = rollout_baseline_rules(
                 consumer,
                 previous_react_doctor_policy,
                 react_doctor_policy_snapshot(repo),
             )
             allowed_baseline_paths, baseline_path, expected_baseline, bootstrap = _prepare_rollout_baseline(
-                consumer, repo, candidate_runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
+                consumer,
+                repo,
+                candidate_runner,
+                baseline_rules,
+                tool_prefix,
+                tool=tool,
+                environment=unauthenticated,
+                preserve_baselines=preserve_baselines,
+                repository_baseline_paths=tuple(repository_baselines),
             )
-            allowed_baseline_paths |= frozenset(path.relative_to(repo).as_posix() for path in repository_baselines)
+            assert_preserved_baselines(repo, preserved)
             if bootstrap is None:
                 if eslint_directives.SUPPORTS_DIRECTIVE_REWRITES:
-                    report("preparing canonical unused ESLint directive cleanup")
+                    report("checking canonical ESLint directive state")
                     directive_rewrites = prepare_unused_eslint_directives(
                         repo,
                         candidate_runner,
@@ -1911,6 +1960,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                         environment=unauthenticated,
                         version=version,
                         base_sha=base_sha,
+                        preserve_baselines=preserve_baselines,
                     )
                 else:
                     report("leaving ESLint directives unchanged: canonical rewrites require POSIX privacy checks")
@@ -1923,8 +1973,16 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
             assert_baseline_unchanged(baseline_path, expected_baseline)
             assert_baselines_unchanged(repository_baselines)
             consumer_baselines = _update_consumer_baselines(
-                consumer, repo, candidate_runner, tool_prefix, bootstrap, environment=unauthenticated, failures=failures
+                consumer,
+                repo,
+                candidate_runner,
+                tool_prefix,
+                bootstrap,
+                environment=unauthenticated,
+                failures=failures,
+                preserve_baselines=preserve_baselines,
             )
+            assert_preserved_baselines(repo, preserved)
             assert_baselines_unchanged(repository_baselines)
             consumer_baselines.update(repository_baselines)
         worktree_paths = changed_paths(repo, runner)
@@ -1933,7 +1991,9 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         directive_paths = validate_rollout_directives(repo, directive_rewrites, runner)
         native_pin_rewrites = native_bootstrap_rewrites(repo, base_sha, worktree_paths, runner, version=version)
         native_paths = validate_rollout_native_pins(repo, native_pin_rewrites, runner)
-        retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
+        retired_baselines = frozenset(
+            path for path in retired_paths if not preserve_baselines and "baseline" in path.lower()
+        )
         reject_unsafe_diff(
             worktree_paths,
             allowed_source_paths=retired_paths | native_paths | directive_paths,
@@ -1991,6 +2051,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
             comparison=f"origin/{consumer.branch}...HEAD",
         )
         report("validating and pushing managed head")
+        assert_preserved_baselines(repo, preserved)
         pushed_head_sha = push_rollout_head(
             repo, consumer, preparation, base_sha, runner, version=version, environment=unauthenticated
         )
@@ -2024,9 +2085,13 @@ def update_consumer_bundle(
     tool: tuple[str, ...],
     *,
     environment: Mapping[str, str],
+    preserve_baselines: bool = False,
     sleep: Callable[[float], None] = time.sleep,
     enable_repository_rules: Sequence[str] = (),
 ) -> None:
+    if preserve_baselines and enable_repository_rules:
+        msg = "baseline-preserving rollout cannot activate repository rules; use a separate migration"
+        raise RolloutError(msg)
     # Refresh once for consumer-specific uv and newly published siblings; reuse its cache afterward.
     command = (*tool_prefix, tool[0], "--refresh", *tool[1:], "--version")
     for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
@@ -2052,7 +2117,8 @@ def update_consumer_bundle(
     # The CLI still rejects an executing-version mismatch, installs consumer
     # dependencies and performs its complete preflight/postflight checks.
     update_environment = {**environment, "SARJ_STANDARDS_BOOTSTRAPPED": "1"}
-    runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=update_environment)
+    options = ("--preserve-baselines",) if preserve_baselines else ()
+    runner.run((*tool_prefix, *tool, "update", "--to", version, *options), cwd=repo, env=update_environment)
     if enable_repository_rules:
         rule_options = tuple(f"--enable-repository-rule={rule_id}" for rule_id in enable_repository_rules)
         runner.run((*tool_prefix, *tool, "setup", "--no-install", *rule_options), cwd=repo, env=environment)
@@ -2152,6 +2218,7 @@ def apply(
     runner: CommandRunner,
     *,
     dry_run: bool = False,
+    preserve_baselines: bool = False,
     consumer: str | None = None,
     jobs: int = 1,
     enable_repository_rules: Sequence[str] = (),
@@ -2179,7 +2246,13 @@ def apply(
     settled.update(
         (item.consumer, item)
         for item in _apply_consumers(
-            ready, version, runner, dry_run=dry_run, jobs=jobs, enable_repository_rules=enable_repository_rules
+            ready,
+            version,
+            runner,
+            dry_run=dry_run,
+            preserve_baselines=preserve_baselines,
+            jobs=jobs,
+            enable_repository_rules=enable_repository_rules,
         )
     )
     return tuple(settled[item] for item in targets)
@@ -2301,6 +2374,7 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
                 consumers,
                 runner,
                 dry_run=args.dry_run,
+                preserve_baselines=args.preserve_baselines,
                 consumer=args.consumer,
                 jobs=args.jobs,
                 enable_repository_rules=args.enable_repository_rules,
@@ -2363,6 +2437,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         channel: RolloutChannel,
         *,
         dry_run: bool = False,
+        preserve_baselines: bool = False,
         consumer: str | None = None,
         enable_repository_rules: Sequence[str] = (),
     ) -> None:
@@ -2371,6 +2446,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         args.version = version
         args.channel = channel
         args.dry_run = dry_run
+        args.preserve_baselines = preserve_baselines
         args.consumer = consumer
         args.enable_repository_rules = tuple(enable_repository_rules)
         exit_code = _execute_cli(args, runner or SubprocessRunner(command_timeout=args.command_timeout))
@@ -2404,6 +2480,9 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         version: Annotated[str, typer.Option("--version")],
         channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+        preserve_baselines: Annotated[
+            bool, typer.Option("--preserve-baselines", help="preserve baseline bytes and suppressions")
+        ] = False,
         consumer: Annotated[
             str | None, typer.Option("--consumer", help="repository@branch; default: every consumer")
         ] = None,
@@ -2417,6 +2496,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
             version,
             channel,
             dry_run=dry_run,
+            preserve_baselines=preserve_baselines,
             consumer=consumer,
             enable_repository_rules=enable_repository_rule or (),
         )
@@ -2442,11 +2522,21 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         version: Annotated[str | None, typer.Option("--version", help="default: latest published version")] = None,
         channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+        preserve_baselines: Annotated[
+            bool, typer.Option("--preserve-baselines", help="preserve baseline bytes and suppressions")
+        ] = False,
         consumer: Annotated[
             str | None, typer.Option("--consumer", help="repository@branch; default: every consumer")
         ] = None,
     ) -> None:
-        run(RolloutCommand.RECONCILE, version, channel, dry_run=dry_run, consumer=consumer)
+        run(
+            RolloutCommand.RECONCILE,
+            version,
+            channel,
+            dry_run=dry_run,
+            preserve_baselines=preserve_baselines,
+            consumer=consumer,
+        )
 
     try:
         app(args=None if argv is None else list(argv), prog_name="standards-rollout")
@@ -2698,12 +2788,20 @@ def _apply_consumers(
     runner: CommandRunner,
     *,
     dry_run: bool,
+    preserve_baselines: bool = False,
     jobs: int = 1,
     enable_repository_rules: Sequence[str] = (),
 ) -> tuple[Outcome, ...]:
     return map_consumers(
         consumers,
-        lambda item: apply_one(item, version, runner, dry_run=dry_run, enable_repository_rules=enable_repository_rules),
+        lambda item: apply_one(
+            item,
+            version,
+            runner,
+            dry_run=dry_run,
+            preserve_baselines=preserve_baselines,
+            enable_repository_rules=enable_repository_rules,
+        ),
         jobs=jobs,
     )
 
@@ -2945,14 +3043,20 @@ def _prepare_rollout_baseline(
     *,
     tool: tuple[str, ...],
     environment: Mapping[str, str],
+    preserve_baselines: bool = False,
+    repository_baseline_paths: Sequence[Path] = (),
 ) -> _RolloutBaseline:
     adopted = load_consumer_manifest(repo)
     baseline_relative = None if adopted is None else adopted.diagnostic_baseline
     allowed_baseline_paths = frozenset(
-        (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
+        (
+            *(() if baseline_relative is None else (baseline_relative,)),
+            *consumer.baseline_paths,
+            *(path.relative_to(repo).as_posix() for path in repository_baseline_paths),
+        )
     )
     baseline_path = None if baseline_relative is None else repo / baseline_relative
-    if baseline_rules and (baseline_path is None or baseline_relative is None):
+    if baseline_rules and not preserve_baselines and (baseline_path is None or baseline_relative is None):
         msg = (
             f"{consumer.name}: registry declares promoted baseline rules, but the updated "
             "consumer manifest does not declare diagnostic_baseline"
@@ -2960,7 +3064,13 @@ def _prepare_rollout_baseline(
         raise RolloutError(msg)
     # Declared generators must finish before analysis captures accepted diagnostics.
     bootstrap = _bootstrap_for_baseline(repo, tool_prefix, runner, environment, baseline_path=baseline_path)
-    if bootstrap is None and baseline_path is not None and baseline_relative is not None and baseline_rules:
+    if (
+        not preserve_baselines
+        and bootstrap is None
+        and baseline_path is not None
+        and baseline_relative is not None
+        and baseline_rules
+    ):
         baseline_command = [
             *tool_prefix,
             *tool,
@@ -2983,7 +3093,9 @@ def _prepare_rollout_baseline(
             msg = f"{consumer.name}: scoped diagnostic baseline generation did not create {baseline_path}"
             raise RolloutError(msg)
     expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
-    return _RolloutBaseline(allowed_baseline_paths, baseline_path, expected_baseline, bootstrap)
+    return _RolloutBaseline(
+        frozenset() if preserve_baselines else allowed_baseline_paths, baseline_path, expected_baseline, bootstrap
+    )
 
 
 def _bootstrap_for_baseline(
@@ -3200,8 +3312,9 @@ def _update_consumer_baselines(
     *,
     environment: Mapping[str, str],
     failures: list[str],
+    preserve_baselines: bool = False,
 ) -> dict[Path, bytes]:
-    if bootstrap is None and consumer.baseline_update:
+    if bootstrap is None and consumer.baseline_update and not preserve_baselines:
         baseline_update = runner.run(
             (*tool_prefix, *consumer.baseline_update),
             cwd=repo,

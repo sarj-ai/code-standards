@@ -18,9 +18,11 @@ def _find_uvx(_name: str) -> str:
     return "/opt/uvx"
 
 
+@pytest.mark.parametrize("preserve_baselines", [False, True])
 def test_update_to_bootstraps_the_exact_requested_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    preserve_baselines: bool,
 ) -> None:
     observed: list[tuple[list[str], dict[str, object]]] = []
 
@@ -33,7 +35,8 @@ def test_update_to_bootstraps_the_exact_requested_version(
 
     monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
-    status = cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1", "--check"])
+    options = ["--preserve-baselines"] if preserve_baselines else []
+    status = cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1", "--check", *options])
 
     assert status == 0
     assert len(observed) == 2
@@ -44,7 +47,7 @@ def test_update_to_bootstraps_the_exact_requested_version(
     assert resolver_options["timeout"] == 120
     assert command[:4] == ["/resolved/bin/python", "-I", "-m", "sarj_standards"]
     assert update_options["timeout"] == 1800
-    assert command[-3:] == ["--to", "5.7.1", "--check"]
+    assert command[-(3 + len(options)) :] == ["--to", "5.7.1", "--check", *options]
     assert "--offline" not in command
     environment = update_options["env"]
     assert isinstance(environment, dict)

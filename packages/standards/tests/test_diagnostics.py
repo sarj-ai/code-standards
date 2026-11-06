@@ -102,6 +102,35 @@ def test_ascii_coordinates_preserve_long_line_and_content_boundaries(tmp_path: P
         assert document.region(start_byte=end.byte_offset, end_byte=end.byte_offset) == Region(end, end)
 
 
+@pytest.mark.parametrize("prefix_length", [0, 64, 8192])
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        pytest.param("é漢😀\udcff", id="mixed-widths"),
+        pytest.param("\uffff\U00010000\U0010ffff\udc80\udcff", id="unicode-boundaries"),
+    ],
+)
+def test_utf16_coordinates_preserve_mixed_widths_after_ascii_runs(
+    tmp_path: Path, prefix_length: int, suffix: str
+) -> None:
+    content = "x" * prefix_length + suffix
+    document = SourceDocument(tmp_path / "mixed.py", content + "\r\n")
+
+    boundaries: set[int] = set()
+    for index in range(prefix_length, len(content) + 1):
+        prefix = content[:index]
+        units = len(prefix.encode("utf-16-le", errors="surrogatepass")) // 2
+        offset = len(prefix.encode("utf-8", errors="surrogateescape"))
+        boundaries.add(units)
+        assert document.utf16_point(line=0, character=units) == Position(0, units, offset)
+    for character in range(prefix_length, max(boundaries) + 2):
+        if character not in boundaries:
+            assert document.utf16_point(line=0, character=character) is None
+    assert document.utf16_point(line=1, character=0) == Position(
+        1, 0, len(content.encode("utf-8", errors="surrogateescape")) + 2
+    )
+
+
 def test_report_exit_code_preserves_issue_priority_across_tools(tmp_path: Path) -> None:
     error = Diagnostic("E001", "error", Severity.ERROR, "fixture", Location("example.py"))
     warning = replace(error, severity=Severity.WARNING)
@@ -734,6 +763,33 @@ def test_policy_scoped_rule_exclusion_does_not_leak_to_other_paths(tmp_path: Pat
     source_finding = Diagnostic("S101", "assert", Severity.ERROR, "ruff", Location("src/app.py"))
 
     assert policy.filter_diagnostics((test_finding, source_finding)) == (source_finding,)
+
+
+def test_policy_path_decisions_refresh_between_filter_calls(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    source = root / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    generated = root / "generated"
+    generated.mkdir()
+    generated_source = generated / "source.py"
+    generated_source.write_text("value = 2\n", encoding="utf-8")
+    alias = root / "alias.py"
+    alias.symlink_to(source)
+    policy = Policy.from_manifest(
+        root,
+        Manifest("1.2.3", (), ".", ".", excluded_paths=("generated/**",)),
+    )
+    finding = Diagnostic("F401", "unused import", Severity.WARNING, "ruff", Location("alias.py"))
+
+    assert policy.filter_diagnostics((finding, finding)) == (finding, finding)
+    alias.unlink()
+    alias.symlink_to(generated_source)
+    assert policy.filter_diagnostics((finding, finding)) == ()
+    alias.unlink()
+    alias.symlink_to(tmp_path / "outside.py")
+    with pytest.raises(ValueError, match="outside repository root"):
+        policy.filter_diagnostics((finding,))
 
 
 def test_explicitly_excluded_file_is_nonblocking_coverage(tmp_path: Path) -> None:

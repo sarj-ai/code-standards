@@ -5,33 +5,35 @@ if [[ -z "$version" || "$version" == "$STANDARDS_TAG" ]]; then
   echo "::error::invalid immutable Standards tag: $STANDARDS_TAG"
   exit 2
 fi
-# Keep mutation serialized, but let a published release replace work
-# from an older automatic controller instead of waiting behind it.
-if [[ "$PUBLISHED_SHA" =~ ^[0-9a-f]{40}$ ]] && active="$(
-  for state in in_progress pending queued; do
-    gh run list --repo "$GITHUB_REPOSITORY" --workflow standards-rollout.yml \
-      --status "$state" --limit 20 \
-      --json databaseId,event,headSha,status
-  done | jq -sc 'add | unique_by(.databaseId)'
+# Preserve active controllers; scheduled reconciliation selects the new release later.
+if ! active="$(
+  for state in in_progress waiting pending requested queued; do
+    timeout --kill-after=5s 30s gh run list --repo "$GITHUB_REPOSITORY" --workflow standards-rollout.yml \
+      --status "$state" --limit 20 --json databaseId,status,attempt || exit "$?"
+  done | jq -sc 'if any(.[]; type != "array" or length >= 20) then error("incomplete active-rollout inventory") else add | unique_by([.databaseId, .attempt, .status]) end'
 )"; then
-  run_rows=$(jq -r '.[] | select((.event == "schedule" or .event == "workflow_dispatch") and (.status == "in_progress" or .status == "pending" or .status == "queued")) | [.databaseId, .headSha, .event] | @tsv' <<<"$active") || run_rows=''
-  while IFS=$'\t' read -r run_id source_sha event; do
-    [[ "$run_id" =~ ^[0-9]+$ && "$source_sha" =~ ^[0-9a-f]{40}$ && "$source_sha" != "$PUBLISHED_SHA" ]] || continue
-    if [[ "$event" == workflow_dispatch ]]; then
-      automatic="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" |
-        jq -r --arg sha "$source_sha" '.event == "workflow_dispatch" and .head_sha == $sha and (.head_branch | test("^standards-v[0-9]+\\.[0-9]+\\.[0-9]+")) and .actor.login == "github-actions[bot]" and .triggering_actor.login == "github-actions[bot]" and .run_attempt == 1')" || automatic=false
-      [[ "$automatic" == true ]] || continue
-    fi
-    comparison=$(gh api "repos/$GITHUB_REPOSITORY/compare/$source_sha...$PUBLISHED_SHA" --jq .status) || comparison=''
-    if [[ "$comparison" == ahead ]]; then
-      gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" ||
-        echo "::warning::could not cancel superseded automatic rollout $run_id"
-    fi
-  done <<<"$run_rows"
-else
-  echo "::warning::could not inspect automatic rollouts; dispatching normally"
+  echo "::error::could not inspect active rollouts; leaving them unchanged"
+  exit 1
 fi
+run_rows="$(jq -r 'if all(.[]; (.databaseId | type) == "number" and (.attempt | type) == "number" and (.status | type) == "string") then .[] | [.databaseId, .status, .attempt] | @tsv else error("invalid rollout metadata") end' <<<"$active")"
+while IFS=$'\t' read -r run_id state attempt; do
+  [[ -n "$run_id" ]] || continue
+  if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$attempt" =~ ^[1-9][0-9]*$ || ! "$state" =~ ^(in_progress|waiting|pending|requested|queued|completed)$ ]]; then
+    echo "::error::invalid rollout metadata; leaving existing runs unchanged"
+    exit 1
+  fi
+  [[ "$state" != completed ]] || continue
+  if [[ "$state" == in_progress ]]; then
+    jobs="$(timeout --kill-after=5s 30s gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100")"
+    if jq -e '.total_count == (.jobs | length) and any(.jobs[]; .name == "report" and .status == "completed") and all(.jobs[]; .status == "completed")' >/dev/null <<<"$jobs"; then
+      continue
+    fi
+  fi
+  echo "Rollout $run_id is active; scheduled reconciliation will pick up $version"
+  exit 0
+done <<<"$run_rows"
 gh workflow run standards-rollout.yml \
   --repo "$GITHUB_REPOSITORY" \
   --ref "$STANDARDS_TAG" \
-  -f version="$version"
+  -f version="$version" \
+  -f preserve_baselines=true

@@ -158,6 +158,42 @@ def test_adjacent_disabled_groups_with_distinct_indentation_do_not_overlap(
     assert fix_source(path, fixed, rule_ids=["commented-out-config"]) == fixed
 
 
+@pytest.mark.parametrize(("name", "assignment"), [("config.toml", " = "), ("config.yaml", ": ")])
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+@pytest.mark.parametrize("terminal", ["", "\n"])
+def test_separated_config_fixes_preserve_unicode_offsets_and_final_line(
+    name: str, assignment: str, ending: str, terminal: str
+) -> None:
+    lines = [
+        f'title{assignment}"☃ — retained"',
+        "# retries is 3",
+        f"retries{assignment}3",
+        f'note{assignment}"different width"',
+        "# timeout is 30",
+        f"timeout{assignment}30",
+    ]
+    source = ending.join(lines) + (ending if terminal else "")
+    expected = ending.join("" if line.startswith("#") else line for line in lines) + (ending if terminal else "")
+    path = Path(name)
+
+    fixed = fix_source(path, source, rule_ids=["exact-config-comment-restatement"])
+
+    assert fixed == expected
+    parser = tomllib.loads if path.suffix == ".toml" else parse_yaml_documents
+    assert parser(fixed) == parser(source)
+    assert fix_source(path, fixed, rule_ids=["exact-config-comment-restatement"]) == fixed
+
+
+def test_separated_hidden_headings_preserve_visible_unicode_and_mixed_endings() -> None:
+    source = "☃ visible\r\n<!--\n# Old\r\n-->\nRetained prose.\r\n<!--\n## Retired\n-->"
+    expected = "☃ visible\r\n\n\r\n\nRetained prose.\r\n\n\n"
+
+    fixed = fix_source(Path("README.md"), source, rule_ids=["hidden-markdown-heading"])
+
+    assert fixed == expected
+    assert fix_source(Path("README.md"), fixed, rule_ids=["hidden-markdown-heading"]) == fixed
+
+
 def test_plain_markdown_comment_with_single_line_code_and_fenced_html_is_fixable() -> None:
     source = "`inline code`\n\n```html\n<script>\n```\n\n<!--\n# Retired\n-->\n"
     expected = "`inline code`\n\n```html\n<script>\n```\n\n\n\n\n"
