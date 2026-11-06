@@ -2379,7 +2379,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         lines.extend(
             (
                 "      - name: Harden the runner",
-                "        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2",
+                "        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3",
                 "        with:",
                 "          egress-policy: audit",
             )
@@ -2403,7 +2403,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2",
+            "      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2691,7 +2691,7 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     harden = (
         """\
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
 """
