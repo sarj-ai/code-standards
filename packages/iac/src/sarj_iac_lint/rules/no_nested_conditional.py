@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import header_comment_lines, strip_outer_parentheses, tokens
+from sarj_iac_lint._hcl import conditional_branches, header_comment_lines, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -155,25 +155,4 @@ def _nested_selection(expression: str) -> bool:
     parts = tokens(expression)
     if parts.count("?") < _MIN_CONDITIONALS:
         return False
-    return any(_conditional_branches(branch) for branch in _conditional_branches(parts))
-
-
-def _conditional_branches(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
-    parts = strip_outer_parentheses(parts)
-    depth = 0
-    pending = 0
-    question = 0
-    for index, part in enumerate(parts):
-        if part in {"(", "[", "{"}:
-            depth += 1
-        elif part in {")", "]", "}"}:
-            depth -= 1
-        elif part == "?" and depth == 0:
-            if pending == 0:
-                question = index
-            pending += 1
-        elif part == ":" and depth == 0 and pending:
-            pending -= 1
-            if pending == 0:
-                return parts[question + 1 : index], parts[index + 1 :]
-    return ()
+    return any(conditional_branches(branch) for branch in conditional_branches(parts))

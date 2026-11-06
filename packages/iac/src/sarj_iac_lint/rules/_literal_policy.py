@@ -37,12 +37,26 @@ def local_collections(top: tuple[Block, ...]) -> dict[str, str]:
     return {attr.name: attr.value for attr in attributes if counts[attr.name] == 1}
 
 
+def resolve_local_tokens(parts: tuple[str, ...], local_values: Mapping[str, str]) -> tuple[str, ...] | None:
+    seen: set[str] = set()
+    for _ in range(_MAX_LOCAL_ALIAS_DEPTH):
+        parts = strip_outer_parentheses(parts)
+        if len(parts) != 1 or not parts[0].startswith("local."):
+            return parts
+        name = parts[0].removeprefix("local.")
+        if name in seen or name not in local_values:
+            return None
+        seen.add(name)
+        parts = tokens(local_values[name])
+    return None
+
+
 def grant_roles(block: Block, collections: Mapping[str, str] | None = None) -> frozenset[str]:
     attr = block.attribute("role")
     if attr is None:
         return frozenset()
     value = attr.value.strip()
-    literal = None if value.endswith(",") else _static_string(tokens(value), collections or {})
+    literal = None if value.endswith(",") else static_string(tokens(value), collections or {})
     if literal is not None:
         return frozenset({literal})
     if attr.value.strip() not in {"each.value", "each.key"} or (each := block.attribute("for_each")) is None:
@@ -52,7 +66,7 @@ def grant_roles(block: Block, collections: Mapping[str, str] | None = None) -> f
     return frozenset(value for value in values if value is not None) if all(values) else frozenset()
 
 
-def _static_string(
+def static_string(
     parts: tuple[str, ...], local_values: Mapping[str, str], seen: frozenset[str] = frozenset(), depth: int = 0
 ) -> str | None:
     if depth >= _MAX_STATIC_EXPRESSION_DEPTH:
@@ -64,7 +78,7 @@ def _static_string(
             return literal
         alias = parts[0].removeprefix("local.") if parts[0].startswith("local.") else ""
         if alias in local_values and alias not in seen and len(seen) < _MAX_LOCAL_ALIAS_DEPTH:
-            return _static_string(tokens(local_values[alias]), local_values, seen | {alias}, depth + 1)
+            return static_string(tokens(local_values[alias]), local_values, seen | {alias}, depth + 1)
         return None
     return _static_join(parts, local_values, seen, depth)
 
@@ -77,11 +91,11 @@ def _static_join(
     arguments = comma_parts(parts[2:-1])
     if len(arguments) != _JOIN_ARGUMENT_COUNT:
         return None
-    separator = _static_string(arguments[0], local_values, seen, depth + 1)
+    separator = static_string(arguments[0], local_values, seen, depth + 1)
     collection = arguments[1]
     if separator is None or collection[:1] != ("[",) or collection[-1:] != ("]",):
         return None
-    elements = [_static_string(element, local_values, seen, depth + 1) for element in comma_parts(collection[1:-1])]
+    elements = [static_string(element, local_values, seen, depth + 1) for element in comma_parts(collection[1:-1])]
     return (
         separator.join(element for element in elements if element is not None)
         if all(element is not None for element in elements)

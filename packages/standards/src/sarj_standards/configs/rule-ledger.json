@@ -271,12 +271,14 @@
       "require-fk-index"
     ],
     "iac": [
+      "conditional-resource-presence",
       "expression-complexity",
       "no-boolean-enable-variable",
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-duplicate-deployment-literal",
       "no-environment-conditional",
+      "no-hardcoded-deployment-location",
       "no-managed-service-account-key",
       "no-mocked-terraform-test-oracle",
       "no-nested-conditional",
@@ -729,7 +731,9 @@
       "SARJ216",
       "SARJ217",
       "SARJ218",
-      "SARJ220"
+      "SARJ219",
+      "SARJ220",
+      "SARJ221"
     ],
     "text": [
       "SARJ300",

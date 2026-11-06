@@ -487,6 +487,7 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
     [
         "iac:no-managed-service-account-key",
         "iac:no-project-basic-privilege",
+        "iac:no-hardcoded-deployment-location",
         "text:cloudbuild-contract",
         "python:no-interpreter-source-arguments",
         "python:no-blanket-suppression",
