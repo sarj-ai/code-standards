@@ -73,6 +73,7 @@ export const PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION = {
     "Advisory only. Local syntax cannot establish whether a caller is a Server Component, whether props change interactively or whether server preparation reduces the total cost. This rule is a review lead, never proof that code can be moved to the server. No automatic fix is provided.",
     "Requires an explicit use client directive and parser-owned TypeScript services resolving map/filter/flatMap to the standard Array or ReadonlyArray library signature. The receiver beneath erased wrappers must itself have an Array, ReadonlyArray or tuple type after nullish narrowing; casts from opaque or custom collections do not establish this. Subclass and structural collection types outside those native array types are excluded. The containing view must have an independent React useState/useReducer call or a native callable type on an intrinsic DOM onClick/onChange/onInput/onSubmit handler. Nullish, noncallable and opaque handler types do not establish interaction. Noninteractive boundaries remain owned by no-unnecessary-use-client; custom hooks and indirect client requirements are unsupported.",
     "Every runtime reference to the source parameter binding must be a supported native data projection or a field-only JSX display loop. Inputs also needed for editing, whole-record forwarding, lookup, mutation, other fields or opaque helpers are excluded. Files containing direct eval are excluded because it can observe or change lexical bindings; indirect eval and properties named eval do not establish lexical access. Only direct first-parameter paths and synchronous single-expression callbacks are supported. Whole-row identity maps and constant maps are excluded; supported projections must read a fixed input field.",
+    "Field-only object and dense array literals can form nested data shapes, including readonly tuples and flatMap outputs. Array holes, spreads, captured values and JSX outputs remain unsupported. Hook recognition follows erased namespace wrappers and excludes direct writes to the requested imported member; reflective or external API patches are not modeled.",
     "JSX-rendering callbacks are never reported as preparation findings. Callback calls, captured values, destructuring defaults/rest/nesting, async callbacks, event handlers, effects, memo callbacks, opaque helpers, dynamic/optional paths, custom collection signatures, missing type services, generated source and tests are excluded. First-parameter provenance is syntactic; annotations cannot prove absence of runtime getters or patched array methods. Analysis does not claim callback purity or preserve semantics of a hypothetical move.",
     "Reports the direct source projection once; chained operations with a call receiver are not independently reported. A static subprojection may still be prepared by its producer while a union with pending local edits remains in the client.",
   ],
@@ -290,6 +291,12 @@ function projection(
         inspect(node.test, depth + 1) &&
         inspect(node.consequent, depth + 1) &&
         inspect(node.alternate, depth + 1)
+      );
+    if (node.type === AST_NODE_TYPES.ArrayExpression)
+      return node.elements.every(
+        (element) => element !== null &&
+          element.type !== AST_NODE_TYPES.SpreadElement &&
+          inspect(element, depth + 1),
       );
     if (node.type === AST_NODE_TYPES.ObjectExpression)
       return node.properties.every(
