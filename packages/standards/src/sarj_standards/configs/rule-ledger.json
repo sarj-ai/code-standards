@@ -272,6 +272,7 @@
     ],
     "iac": [
       "expression-complexity",
+      "no-boolean-enable-variable",
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-duplicate-deployment-literal",
@@ -726,7 +727,8 @@
       "SARJ215",
       "SARJ216",
       "SARJ217",
-      "SARJ218"
+      "SARJ218",
+      "SARJ220"
     ],
     "text": [
       "SARJ300",
