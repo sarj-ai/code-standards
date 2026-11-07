@@ -443,9 +443,37 @@ def test_generated_workflows_on_blacksmith_start_at_checkout(tmp_path: Path) -> 
         f'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "{runner}"\n', encoding="utf-8"
     )
 
-    for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow(runner)):
+    standards = scaffold.github_ci_workflow(tmp_path)
+    commit_policy = scaffold.commit_policy_github_workflow(runner)
+    for workflow in (standards, commit_policy):
         assert "harden-runner" not in workflow
-        assert _first_step(workflow).startswith("      - uses: actions/checkout@")
+    assert _first_step(standards).startswith("      - uses: actions/checkout@")
+    assert _first_step(commit_policy).startswith("      - uses: useblacksmith/checkout@")
+
+
+@pytest.mark.parametrize(
+    ("runner", "checkout"),
+    [
+        ("ubuntu-latest", "actions/checkout@"),
+        ("blacksmith-2vcpu-ubuntu-2404", "useblacksmith/checkout@"),
+        ("blacksmith-2vcpu-ubuntu-2404-arm", "useblacksmith/checkout@"),
+        ("blacksmith-6vcpu-macos-15", "actions/checkout@"),
+    ],
+)
+def test_commit_policy_reuses_the_blacksmith_git_mirror_only_on_blacksmith_linux(runner: str, checkout: str) -> None:
+    workflow = scaffold.commit_policy_github_workflow(runner)
+
+    assert (
+        f"      - uses: {checkout}"
+        in workflow.partition("    steps:\n")[2].partition("        with:\n          ref: ")[0]
+    )
+    assert workflow.count("checkout@") == 1
+    assert (
+        "        with:\n"
+        "          ref: ${{ github.event.pull_request.merged && github.event.pull_request.head.sha || '' }}\n"
+        "          fetch-depth: 0\n"
+        "          persist-credentials: false\n"
+    ) in workflow
 
 
 @pytest.mark.parametrize(
