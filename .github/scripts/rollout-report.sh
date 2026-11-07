@@ -21,6 +21,10 @@ done
 if ((operation_status == 0)) && [[ "$ROLLOUT_RESULT" != success ]] && [[ "$CONSUMERS" != '[]' ]]; then
   operation_status=1
 fi
+# A consumer skipped because identical inputs already failed has still not adopted.
+if ((operation_status == 0)) && [[ "${SKIPPED:-[]}" != '[]' ]]; then
+  operation_status=1
+fi
 status_status=0
 run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 status --version "$VERSION" || status_status=$?
 if ((operation_status != 0 || status_status > 1)); then

@@ -34,9 +34,13 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
-      consumers: ${{ steps.plan.outputs.consumers }}
+      consumers: ${{ steps.unchanged.outputs.consumers || steps.plan.outputs.consumers }}
+      skipped: ${{ steps.unchanged.outputs.skipped || '[]' }}
       plan_status: ${{ steps.plan.outputs.plan_status }}
     steps:
       - name: Harden the runner
@@ -78,6 +82,24 @@ jobs:
           REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: bash .github/scripts/rollout-plan.sh
+      # Stuck consumers otherwise repeat the same failing apply on paid runners
+      # every 15 minutes. A failure here keeps every planned consumer.
+      - name: Skip consumers whose identical inputs already failed
+        id: unchanged
+        if: steps.plan.outputs.plan_status == '0'
+        continue-on-error: true
+        env:
+          CONSUMER_TOKEN: ${{ steps.app-token.outputs.token }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          CONSUMERS: ${{ steps.plan.outputs.consumers }}
+          VERSION: ${{ steps.version.outputs.version }}
+          CONTROLLER_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          PRESERVE_BASELINES: ${{ github.event_name == 'schedule' || inputs.preserve_baselines }}
+          REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
+          REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
+        run: bash .github/scripts/rollout-unchanged-failures.sh
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
@@ -140,6 +162,7 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
       - name: Apply or reconcile the deterministic rollout
+        id: apply
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ needs.plan.outputs.version }}
@@ -150,6 +173,19 @@ jobs:
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         shell: bash
         run: bash .github/scripts/rollout-apply.sh
+      # A controller outcome failure (status 1) with these exact inputs repeats
+      # until one of them changes; the planner reads this marker and skips it.
+      - name: Record the failed rollout inputs
+        if: >-
+          failure() && steps.app-token.outcome == 'success' &&
+          steps.apply.outputs.status == '1' && matrix.consumer.failure_key != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.consumer.failure_key }}
+          path: ${{ runner.temp }}/standards-rollout.status
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
@@ -208,6 +244,7 @@ jobs:
           PLAN_STATUS: ${{ needs.plan.outputs.plan_status }}
           CONSUMERS: ${{ needs.plan.outputs.consumers }}
           ROLLOUT_RESULT: ${{ needs.rollout.result }}
+          SKIPPED: ${{ needs.plan.outputs.skipped }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: bash .github/scripts/rollout-report.sh
       - name: Publish durable rollout status
