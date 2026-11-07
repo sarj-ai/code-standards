@@ -5,12 +5,15 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from repo_standards.core import commit_message
 
 from sarj_standards import __version__
+from sarj_standards.__main__ import main
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import Never
 
 
 def test_importing_cli_does_not_eagerly_load_command_implementations() -> None:
@@ -41,6 +44,48 @@ def test_version_probe_preserves_public_output_without_loading_analysis() -> Non
     result = subprocess.run([sys.executable, "-c", script], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout == f"code-standards {__version__}\n"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "feat: add search\n",
+        "[OPS-42] fix(api): preserve body\n\nBody\n\nSigned-off-by: Test <test@example.test>\n",
+        "fixup! existing subject\n",
+    ],
+)
+def test_valid_commit_message_avoids_command_imports_without_changing_file(tmp_path: Path, message: str) -> None:
+    path = tmp_path / "COMMIT_EDITMSG"
+    path.write_text(message, encoding="utf-8")
+    before = path.stat()
+    script = (
+        "import sys; from sarj_standards.__main__ import main; "
+        f"sys.argv = ['code-standards', 'commit-message', {str(path)!r}]; "
+        "assert main() == 0; "
+        "assert not {'typer', 'sarj_standards.cli.main'} & sys.modules.keys()"
+    )
+    result = subprocess.run([sys.executable, "-c", script], check=False, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not result.stdout
+    assert not result.stderr
+    assert path.read_text(encoding="utf-8") == message
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+    assert path.stat().st_mode == before.st_mode
+
+
+def test_commit_message_validation_interrupt_keeps_native_exit_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def interrupt(_path: Path, *, fix_safe: bool = False, allow_temporary: bool = False) -> Never:
+        assert not fix_safe
+        assert allow_temporary
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Test the CLI's global lookup; injection would change its API.
+        commit_message, "check_commit_message_file", interrupt
+    )
+    assert main(["commit-message", str(tmp_path / "COMMIT_EDITMSG")]) == 130
+    assert capsys.readouterr().err == "error: interrupted\n"
 
 
 def test_update_parser_exposes_the_complete_bundle_controls() -> None:
