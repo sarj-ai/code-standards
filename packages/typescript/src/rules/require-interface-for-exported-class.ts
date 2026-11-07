@@ -1,220 +1,61 @@
 /**
  * @fileoverview require-interface-for-exported-class — exported behavior needs an explicit substitutable contract.
  *
+ * Port of the 18.x `require-interface-for-exported-class` rule. Same
+ * algorithm; the file gates run in `before()`.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-interface-for-exported-class.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { existingFactoryContractFix } from "../utils/existing-factory-contract-fix.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { existingFactoryContractFix } from "./_existing-factory-contract-fix.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+const NAME = "require-interface-for-exported-class";
+const JAVASCRIPT_FILE_RE = /\.(?:js|jsx|mjs|cjs)$/iu;
 
-type MessageIds = "requireContract";
-type Options = [];
-type ClassLike = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+type ClassLike = ESTree.Class;
+type ProgramStatement = ESTree.Program["body"][number];
 
 interface ClassBinding {
   readonly declaration: ClassLike;
   readonly name: string;
 }
 
-export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary:
-    "Require exported concrete classes with public behavior to declare a contract.",
-  rationale:
-    "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",
-  remediation:
-    "Declare a focused interface and add an implements clause, or inherit from an intentional base contract.",
-  category: "architecture",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes only add the exact existing closed type alias named by an already-authored direct factory return annotation. A complete comment-free four-declaration module must contain one exported closed object type alias containing one zero-argument void method, one local matching worker interface, one ordinary nonabstract nongeneric class with an empty constructor retaining a private readonly worker parameter and one matching public forwarding method, and one exported ordinary required-worker-parameter factory returning that exact new class as the port. Unique lexical bindings, no heritage/decorators/defaults/imports/merges/other members or authority, and exact existing types/calls are required. Mergeable public interfaces are refused because downstream declaration augmentation can introduce a private-field compatibility error. No contract, method, field, import or name is invented; emitted JavaScript remains identical. Other shapes remain manual.",
-    "JavaScript files are excluded because implements is TypeScript syntax; imported framework base contracts still require manual policy review.",
-    "An exported injected service may also receive require-port-for-service: the two diagnostics intentionally enforce distinct service-boundary and general exported-contract policy scopes.",
-    "The rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
-    "An extends clause satisfies the contract only when its target is a locally declared abstract class; imported base-class contracts require an explicit implements clause.",
-    "Static factories and data-only classes without public instance methods are outside the contract requirement.",
-  ],
-  examples: [
-    {
-      id: "implemented-store-contract",
-      title: "Export behavior through a focused contract",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/artifact-store.ts",
-          source:
-            "export interface ArtifactStorage { read(id: string): Promise<Uint8Array>; } export class ArtifactStore implements ArtifactStorage { async read(id: string) { return new Uint8Array(); } }",
-        },
-      ],
-      focusPath: "src/artifact-store.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "concrete-only-store",
-      title: "Do not export behavior only through a concrete class",
-      outcome: "match",
-      files: [
-        {
-          path: "src/artifact-store.ts",
-          source:
-            "export class ArtifactStore { async read(id: string) { return new Uint8Array(); } }",
-        },
-      ],
-      focusPath: "src/artifact-store.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "The existing factory already names the service contract",
-      outcome: "match",
-      files: [
-        {
-          path: "src/service.ts",
-          source:
-            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/service.ts",
-          source:
-            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
-        },
-      ],
-      focusPath: "src/service.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+function isPublicInstanceMember(member: ESTree.MethodDefinition | ESTree.PropertyDefinition): boolean {
+  return !member.static && member.accessibility !== "private" && member.accessibility !== "protected" &&
+    member.key.type !== "PrivateIdentifier";
+}
 
 function hasPublicInstanceBehavior(node: ClassLike): boolean {
   return node.body.body.some((member) => {
-    if (member.type === AST_NODE_TYPES.MethodDefinition) {
-      return (
-        member.kind !== "constructor" &&
-        !member.static &&
-        member.accessibility !== "private" &&
-        member.accessibility !== "protected" &&
-        member.key.type !== AST_NODE_TYPES.PrivateIdentifier
-      );
-    }
-    if (member.type !== AST_NODE_TYPES.PropertyDefinition || member.static)
-      return false;
-    if (
-      member.accessibility === "private" ||
-      member.accessibility === "protected" ||
-      member.key.type === AST_NODE_TYPES.PrivateIdentifier
-    )
-      return false;
-    return (
-      member.value?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      member.value?.type === AST_NODE_TYPES.FunctionExpression ||
-      member.typeAnnotation?.typeAnnotation.type ===
-        AST_NODE_TYPES.TSFunctionType
+    if (member.type === "MethodDefinition") return member.kind !== "constructor" && isPublicInstanceMember(member);
+    return member.type === "PropertyDefinition" && isPublicInstanceMember(member) && (
+      member.value?.type === "ArrowFunctionExpression" ||
+      member.value?.type === "FunctionExpression" ||
+      member.typeAnnotation?.typeAnnotation.type === "TSFunctionType"
     );
   });
 }
 
-function classBindings(
-  statement: TSESTree.ProgramStatement,
-): readonly ClassBinding[] {
-  const declaration =
-    statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-      ? statement.declaration
-      : statement;
-  if (declaration?.type === AST_NODE_TYPES.ClassDeclaration) {
-    return declaration.id === null
-      ? []
-      : [{ declaration, name: declaration.id.name }];
+function classBindings(statement: ProgramStatement): readonly ClassBinding[] {
+  const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+  if (declaration?.type === "ClassDeclaration") {
+    return declaration.id === null ? [] : [{ declaration, name: declaration.id.name }];
   }
-  if (declaration?.type !== AST_NODE_TYPES.VariableDeclaration) return [];
+  if (declaration?.type !== "VariableDeclaration") return [];
   return declaration.declarations.flatMap((item) =>
-    item.id.type === AST_NODE_TYPES.Identifier &&
-    item.init?.type === AST_NODE_TYPES.ClassExpression
+    item.id.type === "Identifier" && item.init?.type === "ClassExpression"
       ? [{ declaration: item.init, name: item.id.name }]
       : [],
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "require-interface-for-exported-class",
-  documentation: REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION,
-  meta: {
-    type: "suggestion",
-    docs: {
-      description:
-        "Require exported concrete classes with public behavior to declare a contract.",
-    },
-    schema: [],
-    fixable: "code",
-    messages: {
-      requireContract:
-        "Exported class `{{name}}` has public behavior but no declared interface or base contract; add a focused contract and implement it.",
-    },
-  },
-  defaultOptions: [],
-  create(context) {
-    if (
-      /\.(?:js|jsx|mjs|cjs)$/iu.test(context.filename) ||
-      isTestFile(context) ||
-      isStoryFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    )
-      return {};
-    return {
-      "Program:exit"(program): void {
-        const classes = new Map<string, ClassLike>();
-        const abstractBases = new Set<string>();
-        function collectClassBindings(
-          statement: TSESTree.ProgramStatement,
-        ): void {
-          for (const binding of classBindings(statement)) {
-            classes.set(binding.name, binding.declaration);
-            if (binding.declaration.abstract) abstractBases.add(binding.name);
-          }
-        }
-
-        for (const statement of program.body) {
-          collectClassBindings(statement);
-        }
-
-        const exported = exportedClasses(program, classes);
-
-        for (const [declaration, exportedName] of exported) {
-          const extendsLocalAbstractBase =
-            declaration.superClass?.type === AST_NODE_TYPES.Identifier &&
-            abstractBases.has(declaration.superClass.name);
-          if (
-            declaration.abstract ||
-            declaration.implements.length > 0 ||
-            extendsLocalAbstractBase ||
-            !hasPublicInstanceBehavior(declaration)
-          )
-            continue;
-          context.report({
-            node: declaration.id ?? declaration,
-            messageId: "requireContract",
-            data: { name: exportedName },
-            fix: existingFactoryContractFix(context.sourceCode, declaration),
-          });
-        }
-      },
-    };
-  },
-});
-
-function exportedClasses(
-  program: TSESTree.Program,
-  classes: ReadonlyMap<string, ClassLike>,
-): Map<ClassLike, string> {
+function exportedClasses(program: ESTree.Program, classes: ReadonlyMap<string, ClassLike>): Map<ClassLike, string> {
   const exported = new Map<ClassLike, string>();
-  function collectExportedClass(statement: TSESTree.ProgramStatement): void {
-    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+  function collectExportedClass(statement: ProgramStatement): void {
+    if (statement.type === "ExportNamedDeclaration") {
       for (const binding of classBindings(statement)) {
         exported.set(binding.declaration, binding.name);
       }
@@ -222,16 +63,10 @@ function exportedClasses(
       collectClassSpecifiers(statement);
       return;
     }
-    if (statement.type !== AST_NODE_TYPES.ExportDefaultDeclaration) return;
-    if (
-      statement.declaration.type === AST_NODE_TYPES.ClassDeclaration ||
-      statement.declaration.type === AST_NODE_TYPES.ClassExpression
-    ) {
-      exported.set(
-        statement.declaration,
-        statement.declaration.id?.name ?? "default",
-      );
-    } else if (statement.declaration.type === AST_NODE_TYPES.Identifier) {
+    if (statement.type !== "ExportDefaultDeclaration") return;
+    if (statement.declaration.type === "ClassDeclaration" || statement.declaration.type === "ClassExpression") {
+      exported.set(statement.declaration, statement.declaration.id?.name ?? "default");
+    } else if (statement.declaration.type === "Identifier") {
       const candidate = classes.get(statement.declaration.name);
       if (candidate !== undefined) {
         exported.set(candidate, statement.declaration.name);
@@ -239,17 +74,13 @@ function exportedClasses(
     }
   }
 
-  function collectClassSpecifiers(
-    statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>,
-  ): void {
+  function collectClassSpecifiers(statement: ESTree.ExportNamedDeclaration): void {
     for (const specifier of statement.specifiers) {
       if (specifier.exportKind === "type") continue;
-      const candidate = classes.get(specifier.local.name);
+      // TS-ESTree reads `local.name`; a string-literal local only occurs with a `source`.
+      const candidate = classes.get((specifier.local as { name: string }).name);
       if (candidate === undefined) continue;
-      const exportedName =
-        specifier.exported.type === AST_NODE_TYPES.Identifier
-          ? specifier.exported.name
-          : specifier.exported.value;
+      const exportedName = specifier.exported.type === "Identifier" ? specifier.exported.name : specifier.exported.value;
       exported.set(candidate, exportedName);
     }
   }
@@ -260,3 +91,62 @@ function exportedClasses(
 
   return exported;
 }
+
+export default defineRule({
+  meta: {
+    type: "suggestion",
+    docs: {
+      description: "Require exported concrete classes with public behavior to declare a contract.",
+      url: docsUrl(NAME),
+    },
+    schema: [],
+    fixable: "code",
+    messages: {
+      requireContract:
+        "Exported class `{{name}}` has public behavior but no declared interface or base contract; add a focused contract and implement it.",
+    },
+  },
+  createOnce(context) {
+    return {
+      before(): boolean | void {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (
+          JAVASCRIPT_FILE_RE.test(file.filename) ||
+          isTestFile(file) ||
+          isStoryFile(file) ||
+          isGeneratedFile(file, context.sourceCode.text)
+        )
+          return false;
+      },
+      "Program:exit"(program): void {
+        const classes = new Map<string, ClassLike>();
+        const abstractBases = new Set<string>();
+        for (const statement of program.body) {
+          for (const binding of classBindings(statement)) {
+            classes.set(binding.name, binding.declaration);
+            if (binding.declaration.abstract) abstractBases.add(binding.name);
+          }
+        }
+
+        for (const [declaration, exportedName] of exportedClasses(program, classes)) {
+          const extendsLocalAbstractBase =
+            declaration.superClass?.type === "Identifier" && abstractBases.has(declaration.superClass.name);
+          if (
+            declaration.abstract ||
+            (declaration.implements?.length ?? 0) > 0 ||
+            extendsLocalAbstractBase ||
+            !hasPublicInstanceBehavior(declaration)
+          )
+            continue;
+          const fix = existingFactoryContractFix(context.sourceCode, declaration);
+          context.report({
+            node: declaration.id ?? declaration,
+            messageId: "requireContract",
+            data: { name: exportedName },
+            ...(fix !== null && { fix }),
+          });
+        }
+      },
+    };
+  },
+});

@@ -1,37 +1,41 @@
-/**
- * @fileoverview _existing-overload-brand-fix — reuse existing nominal overload types.
- */
+/** @fileoverview _existing-overload-brand-fix — reuse existing nominal overload types. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable } from "../utils/static-string.js";
+import { plainFunctionBody } from "./_closed-module.js";
 
 const DECLARATION_COUNT = 4;
 const PARAMETER_COUNT = 2;
 
+interface Replacement {
+  readonly node: Node;
+  readonly text: string;
+}
+
 /** Reuse an existing public overload's two nominal types without changing its API. */
 export function existingOverloadBrandFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Node,
-): NativeReportFix | null {
+  sourceCode: SourceCode,
+  node: Node,
+): FixFn | null {
   if (
     sourceCode.ast.body.length !== DECLARATION_COUNT ||
     sourceCode.getAllComments().length > 0
   )
     return null;
   const declarations = sourceCode.ast.body.map((statement) =>
-    statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+    statement.type === "ExportNamedDeclaration"
       ? statement.declaration
       : null,
   );
   const [first, second, overload, implementation] = declarations;
   if (
-    first?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    second?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    overload?.type !== AST_NODE_TYPES.TSDeclareFunction ||
-    implementation?.type !== AST_NODE_TYPES.FunctionDeclaration ||
+    first?.type !== "TSTypeAliasDeclaration" ||
+    second?.type !== "TSTypeAliasDeclaration" ||
+    overload?.type !== "TSDeclareFunction" ||
+    implementation?.type !== "FunctionDeclaration" ||
     implementation !== node ||
     !isEmptyImplementation(implementation) ||
     !isSingleOverload(overload, implementation) ||
@@ -41,40 +45,12 @@ export function existingOverloadBrandFix(
   )
     return null;
   const aliases = [first, second];
-  const replacements: { node: TSESTree.TypeNode; text: string }[] = [];
+  const replacements: Replacement[] = [];
   const used = new Set<string>();
   for (const [index, parameter] of implementation.params.entries()) {
-    const promised = overload.params[index];
-    if (
-      parameter.type !== AST_NODE_TYPES.Identifier ||
-      parameter.optional ||
-      parameter.typeAnnotation?.typeAnnotation.type !==
-        AST_NODE_TYPES.TSStringKeyword ||
-      promised?.type !== AST_NODE_TYPES.Identifier ||
-      promised.optional ||
-      parameter.name !== promised.name ||
-      promised.typeAnnotation?.typeAnnotation.type !==
-        AST_NODE_TYPES.TSTypeReference
-    )
-      return null;
-    const annotation = promised.typeAnnotation.typeAnnotation;
-    const alias = aliases.find(
-      (candidate) =>
-        annotation.typeName.type === AST_NODE_TYPES.Identifier &&
-        candidate.id.name === annotation.typeName.name,
-    );
-    if (
-      alias === undefined ||
-      annotation.typeArguments !== undefined ||
-      used.has(alias.id.name) ||
-      !sameTypeBinding(sourceCode, alias, annotation, parameter)
-    )
-      return null;
-    used.add(alias.id.name);
-    replacements.push({
-      node: parameter.typeAnnotation.typeAnnotation,
-      text: sourceCode.getText(annotation),
-    });
+    const replacement = brandReplacement(sourceCode, parameter, overload.params[index], aliases, used);
+    if (replacement === null) return null;
+    replacements.push(replacement);
   }
   return (fixer) =>
     replacements.map((replacement) =>
@@ -82,70 +58,101 @@ export function existingOverloadBrandFix(
     );
 }
 
-function isEmptyImplementation(node: TSESTree.FunctionDeclaration): boolean {
+/** Retype a `string` parameter with the not yet used brand its overload promises. */
+function brandReplacement(
+  sourceCode: SourceCode,
+  parameter: ESTree.ParamPattern,
+  promised: ESTree.ParamPattern | undefined,
+  aliases: readonly ESTree.TSTypeAliasDeclaration[],
+  used: Set<string>,
+): Replacement | null {
+  if (
+    parameter.type !== "Identifier" ||
+    parameter.optional ||
+    parameter.typeAnnotation?.typeAnnotation.type !== "TSStringKeyword" ||
+    promised?.type !== "Identifier" ||
+    promised.optional ||
+    parameter.name !== promised.name ||
+    promised.typeAnnotation?.typeAnnotation.type !== "TSTypeReference"
+  )
+    return null;
+  const annotation = promised.typeAnnotation.typeAnnotation;
+  const alias = aliases.find(
+    (candidate) =>
+      annotation.typeName.type === "Identifier" &&
+      candidate.id.name === annotation.typeName.name,
+  );
+  if (
+    alias === undefined ||
+    isPresent(annotation.typeArguments) ||
+    used.has(alias.id.name) ||
+    !sameTypeBinding(sourceCode, alias, annotation, parameter)
+  )
+    return null;
+  used.add(alias.id.name);
+  return { node: parameter.typeAnnotation.typeAnnotation, text: sourceCode.getText(annotation) };
+}
+
+function isEmptyImplementation(node: ESTree.Function): boolean {
   return (
-    !node.declare &&
-    !node.async &&
-    !node.generator &&
-    node.typeParameters === undefined &&
+    plainFunctionBody(node)?.length === 0 &&
     node.params.length === PARAMETER_COUNT &&
     node.id !== null &&
-    node.body.body.length === 0 &&
-    node.returnType?.typeAnnotation.type === AST_NODE_TYPES.TSVoidKeyword
+    node.returnType?.typeAnnotation.type === "TSVoidKeyword"
   );
 }
 
 function isSingleOverload(
-  node: TSESTree.TSDeclareFunction,
-  implementation: TSESTree.FunctionDeclaration,
+  node: ESTree.Function,
+  implementation: ESTree.Function,
 ): boolean {
   return (
     !node.declare &&
     !node.async &&
-    node.typeParameters === undefined &&
+    !isPresent(node.typeParameters) &&
     node.params.length === PARAMETER_COUNT &&
     node.id?.name === implementation.id?.name &&
-    node.returnType?.typeAnnotation.type === AST_NODE_TYPES.TSVoidKeyword
+    node.returnType?.typeAnnotation.type === "TSVoidKeyword"
   );
 }
 
-function isStringBrand(node: TSESTree.TSTypeAliasDeclaration): boolean {
+function isStringBrand(node: ESTree.TSTypeAliasDeclaration): boolean {
   const annotation = node.typeAnnotation;
   if (
     node.declare ||
-    node.typeParameters !== undefined ||
-    annotation.type !== AST_NODE_TYPES.TSIntersectionType ||
+    isPresent(node.typeParameters) ||
+    annotation.type !== "TSIntersectionType" ||
     annotation.types.length !== PARAMETER_COUNT
   )
     return false;
   const [carrier, brand] = annotation.types;
   if (
-    carrier?.type !== AST_NODE_TYPES.TSStringKeyword ||
-    brand?.type !== AST_NODE_TYPES.TSTypeLiteral ||
+    carrier?.type !== "TSStringKeyword" ||
+    brand?.type !== "TSTypeLiteral" ||
     brand.members.length !== 1
   )
     return false;
   const property = brand.members[0];
-  if (property?.type !== AST_NODE_TYPES.TSPropertySignature) return false;
+  if (property?.type !== "TSPropertySignature") return false;
   const value = property.typeAnnotation?.typeAnnotation;
   return (
-    property.key.type === AST_NODE_TYPES.Identifier &&
+    property.key.type === "Identifier" &&
     !property.computed &&
     !property.optional &&
     !property.static &&
-    property.accessibility === undefined &&
+    !isPresent(property.accessibility) &&
     property.readonly &&
-    value?.type === AST_NODE_TYPES.TSTypeOperator &&
+    value?.type === "TSTypeOperator" &&
     value.operator === "unique" &&
-    value.typeAnnotation?.type === AST_NODE_TYPES.TSSymbolKeyword
+    value.typeAnnotation?.type === "TSSymbolKeyword"
   );
 }
 
 function sameTypeBinding(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  alias: TSESTree.TSTypeAliasDeclaration,
-  annotation: TSESTree.TSTypeReference,
-  parameter: TSESTree.Identifier,
+  sourceCode: SourceCode,
+  alias: ESTree.TSTypeAliasDeclaration,
+  annotation: ESTree.TSTypeReference,
+  parameter: Node,
 ): boolean {
   const binding = sourceCode
     .getDeclaredVariables(alias)
@@ -153,9 +160,7 @@ function sameTypeBinding(
   return (
     binding?.defs.length === 1 &&
     binding.defs[0]?.node === alias &&
-    ASTUtils.findVariable(sourceCode.getScope(annotation), alias.id.name) ===
-      binding &&
-    ASTUtils.findVariable(sourceCode.getScope(parameter), alias.id.name) ===
-      binding
+    findVariable(sourceCode.getScope(annotation), alias.id.name) === binding &&
+    findVariable(sourceCode.getScope(parameter), alias.id.name) === binding
   );
 }

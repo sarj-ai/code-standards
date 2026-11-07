@@ -1,194 +1,89 @@
 /**
  * @fileoverview prefer-named-complex-return-type — large inline return contracts obscure reusable domain shapes.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts
+ * Port of the 18.x `prefer-named-complex-return-type` rule. Untyped.
+ * Oxlint sets an absent `returnType`/`typeArguments` to `null` where TS-ESTree
+ * leaves them `undefined`; optional chaining treats both alike.
  */
 
-import type { NativeRuleContext } from "./_eslint-rule.js";
+import { defineRule, type Context, type ESTree, type Node } from "../types.js";
+import { forEachOwnAstChild } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { existingTypeAliasFix } from "../utils/existing-type-alias-fix.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
+const NAME = "prefer-named-complex-return-type";
 
+type ReturnTyped =
+  | ESTree.ArrowFunctionExpression
+  | ESTree.Function
+  | ESTree.TSMethodSignature;
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { existingTypeAliasFix } from "./_existing-type-alias-fix.js";
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "nameComplexReturnType";
-type Options = [];
-
-export const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary:
-    "Prefer a named contract for structurally complex function return types.",
-  rationale:
-    "A large inline return annotation hides a reusable domain concept and makes signatures difficult to scan.",
-  remediation:
-    "Name the complex nested shape while preserving its generic wrappers and type parameters; reference the named contract from the return annotation.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes only reuse one existing exported nongeneric alias with exactly matching context-free type tokens for an unused private function declaration. Shared/public functions, missing or ambiguous aliases and locally dependent types remain manual.",
-    "Only explicit object types with at least three members and unions with at least three object variants are reported.",
-    "Any single-argument generic wrapper is traversed to find nested shapes, not assumed semantically transparent. Inferred return types are outside this rule; extraction is manual and must preserve locally bound type parameters with generic named contracts. Types depending on polymorphic this or a local value query are excluded.",
-  ],
-  examples: [
-    {
-      id: "named-result",
-      title: "Name a multi-state result",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/queue.ts",
-          source:
-            "type ClaimResult = { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string }; export function claim(): ClaimResult { return { state: 'idle' }; }",
-        },
-      ],
-      focusPath: "src/queue.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "inline-result",
-      title: "Do not inline a multi-state result",
-      outcome: "match",
-      files: [
-        {
-          path: "src/queue.ts",
-          source:
-            "export function claim(): { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string } { return { state: 'idle' }; }",
-        },
-      ],
-      focusPath: "src/queue.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing authored domain alias",
-      outcome: "match",
-      files: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export type Claim = { id: string; name: string; active: boolean }; function claim(): { id: string; name: string; active: boolean } { return { id: '', name: '', active: true }; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export type Claim = { id: string; name: string; active: boolean }; function claim(): Claim { return { id: '', name: '', active: true }; }",
-        },
-      ],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function unwrap(node: TSESTree.TypeNode): TSESTree.TypeNode {
-  if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeArguments?.params.length === 1
-  ) {
+function unwrap(node: ESTree.TSType): ESTree.TSType {
+  if (node.type === "TSTypeReference" && node.typeArguments?.params.length === 1) {
     const [inner] = node.typeArguments.params;
     if (inner !== undefined) return unwrap(inner);
   }
   return node;
 }
 
-function report(
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-  node: TSESTree.Node & {
-    readonly returnType: TSESTree.TSTypeAnnotation | undefined;
-  },
-): void {
+function report(context: Context, node: ReturnTyped): void {
   const annotation = node.returnType?.typeAnnotation;
-  if (
-    annotation !== undefined &&
-    isComplex(annotation) &&
-    !hasValueDependency(annotation)
-  ) {
-    const name =
-      node.type === AST_NODE_TYPES.FunctionDeclaration &&
-      node.id !== null &&
-      isUnusedPrivateBinding(
-        context.sourceCode,
-        node,
-        node.id,
-        context.filename,
-      )
-        ? existingTypeAliasFix(context.sourceCode, annotation)
-        : null;
-    context.report({
-      node: annotation,
-      messageId: "nameComplexReturnType",
-      fix:
-        name === null
-          ? null
-          : (fixer) =>
-              fixer.replaceText(
-                annotation,
-                name +
-                  context.sourceCode
-                    .getText(annotation)
-                    .replace(/[^\r\n]/gu, ""),
-              ),
-    });
+  if (annotation === undefined || !isComplex(annotation) || hasValueDependency(annotation)) return;
+  const sourceCode = context.sourceCode;
+  const name =
+    node.type === "FunctionDeclaration" &&
+    node.id !== null &&
+    isUnusedPrivateBinding(sourceCode, node, node.id, context.filename)
+      ? existingTypeAliasFix(sourceCode, annotation)
+      : null;
+  if (name === null) {
+    context.report({ node: annotation, messageId: "nameComplexReturnType" });
+    return;
   }
+  context.report({
+    node: annotation,
+    messageId: "nameComplexReturnType",
+    fix: (fixer) => fixer.replaceText(annotation, name + sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")),
+  });
 }
 
-function hasValueDependency(node: TSESTree.Node): boolean {
-  return (
-    node.type === AST_NODE_TYPES.TSThisType ||
-    node.type === AST_NODE_TYPES.TSTypeQuery ||
-    forEachOwnAstChild(node, hasValueDependency)
-  );
+function hasValueDependency(node: Node): boolean {
+  return node.type === "TSThisType" || node.type === "TSTypeQuery" || forEachOwnAstChild(node, hasValueDependency);
 }
 
-function isComplex(node: TSESTree.TypeNode): boolean {
+function isComplex(node: ESTree.TSType): boolean {
   const type = unwrap(node);
-  if (type.type === AST_NODE_TYPES.TSTypeLiteral)
-    return type.members.length >= 3;
-  if (type.type !== AST_NODE_TYPES.TSUnionType || type.types.length < 3)
-    return false;
-  return type.types.every(
-    (member) => unwrap(member).type === AST_NODE_TYPES.TSTypeLiteral,
-  );
+  if (type.type === "TSTypeLiteral") return type.members.length >= 3;
+  if (type.type !== "TSUnionType" || type.types.length < 3) return false;
+  return type.types.every((member) => unwrap(member).type === "TSTypeLiteral");
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-named-complex-return-type",
-  documentation: PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
-      description:
-        "Prefer a named contract for structurally complex function return types.",
+      description: "Prefer a named contract for structurally complex function return types.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
-      nameComplexReturnType:
-        "Extract this structurally complex return annotation to a named type or interface.",
+      nameComplexReturnType: "Extract this structurally complex return annotation to a named type or interface.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    )
-      return {};
+  createOnce(context) {
     return {
-      ArrowFunctionExpression: (node): void => report(context, node),
-      FunctionDeclaration: (node): void => report(context, node),
-      FunctionExpression: (node): void => report(context, node),
-      TSDeclareFunction: (node): void => report(context, node),
-      TSMethodSignature: (node): void => report(context, node),
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        return !(isTestFile(file) || isGeneratedFile(file, context.sourceCode.text));
+      },
+      ArrowFunctionExpression: (node) => report(context, node),
+      FunctionDeclaration: (node) => report(context, node),
+      FunctionExpression: (node) => report(context, node),
+      TSDeclareFunction: (node) => report(context, node),
+      TSMethodSignature: (node) => report(context, node),
     };
   },
 });

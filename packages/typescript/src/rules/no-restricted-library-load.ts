@@ -1,14 +1,18 @@
 /**
- * @fileoverview no-restricted-library-load — literal runtime module loads must obey the same library policy as static imports.
+ * @fileoverview no-restricted-library-load — configured library restrictions also cover runtime loads.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restricted-library-load.test.ts
+ * Port of the 18.x `no-restricted-library-load` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { findVariable, staticString } from "../utils/static-string.js";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+type IdentifierNode = Extract<Node, { type: "Identifier" }>;
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
+const NAME = "no-restricted-library-load";
 
 export interface RestrictedLibrary {
   readonly id: string;
@@ -17,75 +21,29 @@ export interface RestrictedLibrary {
   readonly note?: string;
 }
 
-type MessageIds = "restrictedLibraryLoad";
-type Options = readonly [
-  {
-    libraries: readonly RestrictedLibrary[];
-  },
-];
-
-export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
-  summary: "Apply configured library restrictions to literal runtime loads and CommonJS resolution references.",
-  rationale: "Dynamic imports, CommonJS loads, and package resolution checks can bypass library restrictions enforced for static imports.",
-  remediation: "Use the configured replacement for the runtime dependency reference; resolution checks do not themselves load a module.",
-  category: "architecture",
-  limitations: ["Only literal dynamic imports, unshadowed CommonJS loads/resolution calls, and runtime TypeScript import-equals declarations are checked; erased type imports are excluded. A configured restriction list is required."],
-  examples: [
-    { id: "configured-replacement", title: "Use the configured library replacement", outcome: "no-match", files: [{ path: "src/client.ts", source: "import ky from 'ky'; const client = ky;" }], focusPath: "src/client.ts", expectedCount: 0, public: true, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
-    { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
-    { id: "static-import-owned-upstream", title: "Leave static restrictions to the owning import rule", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
-    {
-      id: "checked-runtime-load",
-      title: "Identify the exact restricted runtime argument",
-      outcome: "match",
-      files: [{ path: "src/client.ts", source: "const client = require('axios');" }],
-      focusPath: "src/client.ts",
-      expectedCount: 1,
-      ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }],
-      expectedDiagnostics: [{
-        messageId: "restrictedLibraryLoad",
-        message: "LIB101: Replace this runtime dependency reference to axios with Ky.",
-        location: { line: 1, column: 24, end: { line: 1, column: 31 } },
-        automaticFix: false,
-        suggestions: [],
-      }],
-    },
-  ],
-} as const satisfies RuleDocumentation<Options>;
-
-function staticModule(node: TSESTree.Node | undefined): string | null {
-  node = node === undefined ? undefined : unwrapExpression(node);
-  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
-    return node.value;
-  }
-  if (node?.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0) {
-    return node.quasis[0]?.value.cooked ?? null;
-  }
-  return null;
+interface Options {
+  readonly libraries: readonly RestrictedLibrary[];
 }
 
 function matchesModule(source: string, module: string): boolean {
   return source === module || source.startsWith(`${module}/`);
 }
 
-function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  return node.computed && node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
+function staticMemberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") return node.property.name;
+  return node.computed && node.property.type === "Literal" && typeof node.property.value === "string"
     ? node.property.value
     : null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-restricted-library-load",
-  documentation: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{ libraries: [] }],
     type: "problem",
     docs: {
-      description: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.summary,
+      description:
+        "Apply configured library restrictions to literal runtime loads and CommonJS resolution references.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -93,7 +51,8 @@ export default createRule<Options, MessageIds>({
         additionalProperties: false,
         required: ["libraries"],
         properties: {
-          libraries: { description: "Library import and module-load restrictions.",
+          libraries: {
+            description: "Library import and module-load restrictions.",
             type: "array",
             items: {
               type: "object",
@@ -115,13 +74,11 @@ export default createRule<Options, MessageIds>({
         "{{id}}: Replace this runtime dependency reference to {{module}} with {{replacement}}.{{note}}",
     },
   },
-  create(context, [options]) {
-    const restrictions = options.libraries;
+  createOnce(context) {
+    let restrictions: readonly RestrictedLibrary[] = [];
 
-    function report(node: TSESTree.Node, source: string): void {
-      const restriction = restrictions.find((entry) =>
-        matchesModule(source, entry.module),
-      );
+    function report(node: Node, source: string): void {
+      const restriction = restrictions.find((entry) => matchesModule(source, entry.module));
       if (restriction === undefined) return;
       context.report({
         node,
@@ -135,43 +92,44 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function isUnshadowedRequire(node: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(node),
-        node.name,
-      );
+    function isUnshadowedRequire(node: IdentifierNode): boolean {
+      const variable = findVariable(context.sourceCode.getScope(node), node.name);
       return variable === null || variable.defs.length === 0;
     }
 
     return {
-      ImportExpression(node: TSESTree.ImportExpression): void {
-        const source = staticModule(node.source);
+      before() {
+        restrictions = (context.options[0] as Options | undefined)?.libraries ?? [];
+        // No restriction can match, so no file can report.
+        if (restrictions.length === 0) return false;
+        return undefined;
+      },
+      ImportExpression(node: ESTree.ImportExpression): void {
+        const source = staticString(node.source);
         if (source !== null) report(node.source, source);
       },
-      CallExpression(node: TSESTree.CallExpression): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        let requireIdentifier: TSESTree.Identifier | null = null;
-        if (
-          unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier &&
-          unwrappedNodeCallee.name === "require"
-        ) {
-          requireIdentifier = unwrappedNodeCallee;
+      CallExpression(node: ESTree.CallExpression): void {
+        const callee = unwrapExpression(node.callee);
+        let requireIdentifier: IdentifierNode | null = null;
+        if (callee.type === "Identifier" && callee.name === "require") {
+          requireIdentifier = callee;
         } else if (
-          unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression &&
-          unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
-          unwrappedNodeCallee.object.name === "require" &&
-          staticMemberName(unwrappedNodeCallee) === "resolve"
+          callee.type === "MemberExpression" &&
+          callee.object.type === "Identifier" &&
+          callee.object.name === "require" &&
+          staticMemberName(callee) === "resolve"
         ) {
-          requireIdentifier = unwrappedNodeCallee.object;
+          requireIdentifier = callee.object;
         }
         if (requireIdentifier === null || !isUnshadowedRequire(requireIdentifier)) return;
-        const source = staticModule(node.arguments[0]);
-        if (source !== null) report(node.arguments[0] as TSESTree.Node, source);
+        const argument = node.arguments[0];
+        const source = staticString(argument);
+        if (source !== null && argument !== undefined) report(argument, source);
       },
-      TSImportEqualsDeclaration(node: TSESTree.TSImportEqualsDeclaration): void {
+      TSImportEqualsDeclaration(node: ESTree.TSImportEqualsDeclaration): void {
         if (node.importKind === "type") return;
-        if (node.moduleReference.type !== AST_NODE_TYPES.TSExternalModuleReference) return;
-        const source = staticModule(node.moduleReference.expression);
+        if (node.moduleReference.type !== "TSExternalModuleReference") return;
+        const source = staticString(node.moduleReference.expression);
         if (source !== null) report(node.moduleReference.expression, source);
       },
     };

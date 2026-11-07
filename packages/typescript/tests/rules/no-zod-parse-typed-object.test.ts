@@ -1,27 +1,19 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-zod-parse-typed-object.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { ESLint, Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, { NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION } from "../../src/rules/no-zod-parse-typed-object.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
 const ROW = 'import { z } from "zod"; const RowSchema = z.object({ id: z.string() });';
 const KNOWN = ROW + 'declare const row: { id: string };';
 const ERROR = { messageId: "typedObject" } as const;
 
-TESTER.run("no-zod-parse-typed-object", rule, {
+const UNKNOWN_BOUNDARY_EXAMPLE = 'import { z } from "zod"; const RowSchema = z.object({ id: z.string() }); export function read(raw: unknown) { return RowSchema.parse(raw); }';
+const TYPED_SERVICE_EXAMPLE = 'import { z } from "zod"; const RowSchema = z.object({ id: z.string() }); declare function load(): Promise<{ id: string }>; export async function read() { return RowSchema.parse(await load()); }';
+const TYPED_DEFAULT_EXAMPLE = 'import { z } from "zod"; const RowSchema = z.object({ id: z.string(), enabled: z.boolean().default(false) }); declare function load(): Promise<{ id: string; enabled?: boolean }>; export async function read() { return RowSchema.parse(await load()); }';
+
+TESTER.run("no-zod-parse-typed-object", rule, typed({
   valid: [
-    { name: "unknown boundary", code: NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION.examples[1].files[0].source },
+    { name: "unknown boundary", code: UNKNOWN_BOUNDARY_EXAMPLE },
     { name: "unknown response", code: ROW + 'declare function load(): Promise<unknown>; async function read() { return RowSchema.parse(await load()); }' },
     { name: "untyped response", code: ROW + 'declare const row: any; const value = RowSchema.parse(row);' },
     { name: "unknown nested property", code: ROW + 'declare const row: { id: unknown }; const value = RowSchema.parse(row);' },
@@ -53,8 +45,8 @@ TESTER.run("no-zod-parse-typed-object", rule, {
     { name: "optional call is not a direct parse", code: KNOWN + 'const value = RowSchema.parse?.(row);' },
   ],
   invalid: [
-    { name: "documented typed service result", code: NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION.examples[2].files[0].source, output: null, errors: [ERROR] },
-    { name: "documented typed result with a default", code: NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION.examples[3].files[0].source, output: null, errors: [ERROR] },
+    { name: "documented typed service result", code: TYPED_SERVICE_EXAMPLE, output: null, errors: [ERROR] },
+    { name: "documented typed result with a default", code: TYPED_DEFAULT_EXAMPLE, output: null, errors: [ERROR] },
     ...["parse", "safeParse", "parseAsync", "safeParseAsync"].map(method => ({
       name: "known object through " + method, code: KNOWN + "const value = RowSchema." + method + "(row);", output: null, errors: [ERROR],
     })),
@@ -74,27 +66,9 @@ TESTER.run("no-zod-parse-typed-object", rule, {
     { name: "typed service with nested SDK defaults and refinements", code: 'import { z } from "zod"; const NoticeSchema = z.object({ id: z.string().min(1), title: z.string().trim().min(1), enabled: z.boolean().default(false), messages: z.record(z.string(), z.string()), startsAt: z.iso.datetime(), timezone: z.string().refine(value => value.length > 0) }); const ResultSchema = z.object({ notice: NoticeSchema, revision: z.number().int().positive() }); declare const service: { stop(): Promise<{ notice: { id: string; title: string; enabled?: boolean; messages: { en?: string; ar?: string }; startsAt: string; timezone: string }; revision: number }> }; async function stop() { return { data: ResultSchema.parse(await service.stop()) }; }', output: null, errors: [ERROR] },
     { name: "one diagnostic per parse", code: KNOWN + 'const first = RowSchema.parse(row); const second = RowSchema.safeParse(row);', output: null, errors: [ERROR, ERROR] },
   ],
-});
+}));
 
-it("executes documented examples with the installed native Zod declarations", async () => {
-  await expect(verifyRuleExamples(rule, { installedDependencyRoot: new URL("../../", import.meta.url).pathname })).resolves.toBe(4);
-});
-
-it("leaves syntax-only linting available without fabricating a type proof", () => {
-  const messages = new Linter().verify(KNOWN + 'const value = RowSchema.parse(row);', {
-    files: ["**/*.ts"],
-    languageOptions: { parser }, plugins: { test: { rules: { "known-object": rule } } }, rules: { "test/known-object": "error" },
-  }, "row.ts");
-  expect(messages).toEqual([]);
-});
-
-it("honors a documented local suppression for intentional revalidation", async () => {
-  const cwd = join(import.meta.dirname, "..", "fixtures");
-  const eslint = new ESLint({ cwd, overrideConfigFile: true, overrideConfig: [{
-    files: ["**/*.ts"], languageOptions: { parser, parserOptions: { projectService: { allowDefaultProject: ["*.ts"] }, tsconfigRootDir: cwd } },
-    plugins: { "@sarj": { rules: { "no-zod-parse-typed-object": rule } } }, rules: { "@sarj/no-zod-parse-typed-object": "warn" },
-  }] });
-  const results = await eslint.lintText(KNOWN + '\n// eslint-disable-next-line @sarj/no-zod-parse-typed-object -- Revalidate after an external plugin mutates this record.\nconst value = RowSchema.parse(row);', { filePath: join(cwd, "row.ts") });
-  expect(results.flatMap(result => result.messages)).toEqual([]);
-  expect(results.flatMap(result => result.suppressedMessages).map(message => message.ruleId)).toEqual(["@sarj/no-zod-parse-typed-object"]);
+TESTER.run("no-zod-parse-typed-object without types", rule, {
+  valid: [{ name: "leaves syntax-only linting available without fabricating a type proof", code: KNOWN + "const value = RowSchema.parse(row);", filename: "row.ts", settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });

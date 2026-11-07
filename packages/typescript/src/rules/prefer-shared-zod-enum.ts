@@ -1,39 +1,29 @@
 /**
  * @fileoverview prefer-shared-zod-enum — repeated literal enum domains can drift within one module.
  *
+ * Port of the 18.x `prefer-shared-zod-enum` rule. Same algorithm; the
+ * test/generated file gate and per-file state reset run in `before()`.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type TsVariable } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName, staticString } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 
-import { importSpecifierName } from "./_import-specifier-name.js";
+const NAME = "prefer-shared-zod-enum";
+type Identifier = Extract<Node, { type: "Identifier" }>;
+interface Candidate { readonly node: ESTree.CallExpression; readonly named: boolean }
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { staticString } from "./_static-string.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
-
-type MessageIds = "shareEnumDomain";
-type Options = [];
-
-export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Give repeated literal Zod enum domains one reusable module-level schema.",
-  rationale: "Repeated literal domains hide a shared contract and allow equivalent fields to drift independently.",
-  remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",
-  category: "maintainability",
-  limitations: ["Only two or more exact, same-order direct z.enum calls with string-literal arrays (including no-substitution templates and erased TypeScript wrappers) and no customization argument in one module are inspected; one-off, computed, and customized domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership or future evolution differs, and review initialization order before extraction."],
-  examples: [
-    { id: "shared-provider", title: "Reuse a named enum schema", outcome: "no-match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });" }], focusPath: "src/provider.ts", expectedCount: 0, public: true },
-    { id: "inline-provider", title: "Do not repeat an inline enum domain", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) }); const StatusSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });" }], focusPath: "src/provider.ts", expectedCount: 2, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-function literalDomain(node: TSESTree.CallExpression): readonly string[] | null {
+function literalDomain(node: ESTree.CallExpression): readonly string[] | null {
   if (node.arguments.length !== 1) return null;
-  const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
-  if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
+  const first = node.arguments[0];
+  const argument = first === undefined ? undefined : unwrapExpression(first);
+  if (argument?.type !== "ArrayExpression" || argument.elements.length < 2) return null;
   const values: string[] = [];
   for (const element of argument.elements) {
     const value = element === null ? null : staticString(element);
@@ -43,85 +33,84 @@ function literalDomain(node: TSESTree.CallExpression): readonly string[] | null 
   return values;
 }
 
-function isModuleLevelNamedSchema(node: TSESTree.CallExpression): boolean {
-  let current: TSESTree.Node = node;
-  while (
-    current.parent?.type === AST_NODE_TYPES.MemberExpression &&
-    current.parent.object === current
-  ) {
-    current = current.parent;
-    if (
-      current.parent?.type === AST_NODE_TYPES.CallExpression &&
-      current.parent.callee === current
-    ) current = current.parent;
-  }
-  const declarator = current.parent;
-  if (
-    declarator?.type !== AST_NODE_TYPES.VariableDeclarator ||
-    declarator.init !== current ||
-    declarator.id.type !== AST_NODE_TYPES.Identifier ||
-    declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration
-  ) return false;
-  const declarationParent = declarator.parent.parent;
-  return (
-    declarationParent.type === AST_NODE_TYPES.Program ||
-    (declarationParent.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      declarationParent.parent.type === AST_NODE_TYPES.Program)
-  );
+/** `const X = z.enum([…]).describe(…)`: the enum, through its method chain, initializes a module-level binding. */
+function isModuleLevelNamedSchema(node: ESTree.CallExpression): boolean {
+  const schema = methodChainEnd(node);
+  const declarator = parentOf(schema);
+  if (declarator?.type !== "VariableDeclarator" || declarator.init !== schema || declarator.id.type !== "Identifier") return false;
+  const declaration = parentOf(declarator);
+  return declaration?.type === "VariableDeclaration" && isModuleLevelStatement(declaration);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-shared-zod-enum",
-  documentation: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION,
+/** The outermost `node.a(…).b` expression that calls or reads methods on `node`. */
+function methodChainEnd(node: Node): Node {
+  let current = node;
+  for (let parent = parentOf(current); parent?.type === "MemberExpression" && parent.object === current; parent = parentOf(current)) {
+    current = parent;
+    const call = parentOf(current);
+    if (call?.type === "CallExpression" && call.callee === current) current = call;
+  }
+  return current;
+}
+
+function isModuleLevelStatement(statement: Node): boolean {
+  const parent = parentOf(statement);
+  return parent?.type === "Program" || (parent?.type === "ExportNamedDeclaration" && parentOf(parent)?.type === "Program");
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.summary },
+    docs: {
+      description: "Give repeated literal Zod enum domains one reusable module-level schema.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       shareEnumDomain: "Extract this literal Zod enum to one module-level named schema and reuse it.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
-    const zodBindings = new Set<TSESLint.Scope.Variable>();
-    const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
-      ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-    const candidates = new Map<string, Array<{ readonly node: TSESTree.CallExpression; readonly named: boolean }>>();
+  createOnce(context) {
+    const zodBindings = new Set<TsVariable>();
+    const candidates = new Map<string, Candidate[]>();
+    const bindingOf = (node: Identifier): TsVariable | null => findVariable(context.sourceCode.getScope(node), node.name);
+
     return {
-      ImportDeclaration(node): void {
+      before() {
+        zodBindings.clear();
+        candidates.clear();
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        return undefined;
+      },
+      ImportDeclaration(node) {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              importSpecifierName(specifier) === "z")
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier" ||
+            (specifier.type === "ImportSpecifier" && importSpecifierName(specifier) === "z")
           ) {
             const binding = bindingOf(specifier.local);
             if (binding !== null) zodBindings.add(binding);
           }
         }
       },
-      CallExpression(node): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
-        if (
-          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
-          (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "enum"
-        ) return;
-        const binding = bindingOf(receiver);
-        if (binding === null || !zodBindings.has(binding)) return;
+      CallExpression(node) {
+        const callee = unwrapExpression(node.callee);
+        if (callee.type !== "MemberExpression") return;
+        const receiver = unwrapExpression(callee.object);
+        if (receiver.type !== "Identifier" || getPropertyName(callee) !== "enum") return;
         const domain = literalDomain(node);
         if (domain === null) return;
+        const binding = bindingOf(receiver);
+        if (binding === null || !zodBindings.has(binding)) return;
         const key = JSON.stringify(domain);
         const group = candidates.get(key) ?? [];
         group.push({ node, named: isModuleLevelNamedSchema(node) });
         candidates.set(key, group);
       },
-      "Program:exit"(): void {
+      "Program:exit"() {
         for (const group of candidates.values()) {
           if (group.length < 2) continue;
           const canonical = group.find((candidate) => candidate.named);

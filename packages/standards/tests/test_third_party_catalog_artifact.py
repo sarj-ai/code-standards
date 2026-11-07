@@ -97,11 +97,11 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "deptry",
         "detekt",
         "devops",
-        "eslint",
         "jscpd",
         "knip",
         "ktlint",
         "mobsfscan",
+        "oxlint",
         "react-doctor",
         "ruff",
         "sqlfluff",
@@ -121,8 +121,9 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "sqlfluff",
         "swiftformat",
         "swiftlint",
-        "typescript-eslint",
+        "typescript",
         "unicorn",
+        "unicorn-js",
     } <= provider_ids
     assert len({_text(value["key"]) for value in rules}) == len(rules)
 

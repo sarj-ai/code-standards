@@ -1,18 +1,11 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-generic-single-export-module.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION } from "../../src/rules/no-generic-single-export-module.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, sourceType: "module" },
-});
+const RESPONSIBILITY_NAMED_EXAMPLE = "export function parseOrder() { return {}; }";
+const GENERIC_MODULE_EXAMPLE = "export function parseOrder() { return {}; }";
 
 RULE_TESTER.run("no-generic-single-export-module", rule, {
   valid: [
@@ -26,7 +19,7 @@ RULE_TESTER.run("no-generic-single-export-module", rule, {
     { name: "two public names remain distinct", filename: "src/utils.ts", code: "const parseOrder = () => ({}); export { parseOrder, parseOrder as parse };" },
     { name: "does not claim a sole export alongside destructured bindings", filename: "src/utils.ts", code: "export const {first, second} = pair; export function third() {}" },
     { name: "does not overlook nested array exports", filename: "src/utils.ts", code: "export const [first, ...rest] = values; export function third() {}" },
-    { filename: "/repo/src/order-parser.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[0].files[0].source },
+    { filename: "/repo/src/order-parser.ts", code: RESPONSIBILITY_NAMED_EXAMPLE },
     { filename: "/repo/src/utils.ts", code: "export function parseOrder() { return {}; }\nexport function formatOrder() { return ''; }" },
     { filename: "/repo/src/types.ts", code: "export interface Order { id: string }" },
     {
@@ -86,7 +79,7 @@ RULE_TESTER.run("no-generic-single-export-module", rule, {
     { name: "namespace values are runtime exports", filename: "src/utils.ts", code: "export namespace Orders { export const count = 1; }", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "Orders" } }] },
     { name: "identifier defaults use local responsibility names", filename: "src/utils.ts", code: "function parseOrder() {} export default parseOrder;", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
     { name: "named aliases use public keys", filename: "src/utils.ts", code: "function internal() {} export { internal as parseOrder };", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
-    { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
+    { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: GENERIC_MODULE_EXAMPLE, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
     {
       name: "a generic export does not make a generic filename informative",
       filename: "/repo/src/utils.ts",

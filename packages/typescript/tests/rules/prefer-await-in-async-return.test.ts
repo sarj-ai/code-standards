@@ -1,33 +1,9 @@
-import { join } from "node:path";
+import rule from "../../src/rules/prefer-await-in-async-return.js";
+import { FIXTURES, ruleTester, typed, untyped } from "./_tester.js";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, {
-  PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
-} from "../../src/rules/prefer-await-in-async-return.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const TYPED_RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-
-TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
+TESTER.run("prefer-await-in-async-return", rule, typed({
   valid: [
     {
       name: "allows an erased React lazy loader and transform",
@@ -52,7 +28,7 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
     },
     {
       name: "accepts the documented explicit await",
-      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0].source,
+      code: "async function load() { const value = await Promise.resolve(1); return value + 1; }",
     },
     {
       name: "allows a dynamic import adapter in a non-async function",
@@ -142,7 +118,7 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   invalid: [
     {
       name: "reports the documented direct async return",
-      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[1].files[0].source,
+      code: "async function load() { return Promise.resolve(1).then((value) => value + 1); }",
       errors: [{ messageId: "preferAwait" }],
     },
     {
@@ -185,13 +161,9 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
       errors: [{ messageId: "preferAwait" }],
     },
   ],
-});
+}));
 
-const UNTYPED_RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-});
-
-TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rule, {
+TESTER.run("prefer-await-in-async-return with all Promise calls", rule, typed({
   valid: [
     {
       name: "reads JSON Schema conditional data",
@@ -330,9 +302,9 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rul
       errors: [{ messageId: "preferAwaitCall" }, { messageId: "preferAwaitCall" }],
     },
   ],
-});
+}));
 
-UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", rule, {
+TESTER.run("prefer-await-in-async-return without type services", rule, untyped({
   valid: [
     {
       name: "stays silent when the parser has no type information",
@@ -347,38 +319,22 @@ UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", ru
     },
   ],
   invalid: [],
-});
+}));
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "returned-then-transform-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/load.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/load.ts",
-        "source": "async function load() { return Promise[\"resolve\"](1)[\"then\"]((value) => value + 1); }"
-      }
-    ]
-  },
-  {
-    "id": "returned-then-transform-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/load.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/load.ts",
-        "source": "async function load() { return Promise[auditDynamicMember](1)[auditDynamicMember]((value) => value + 1); }"
-      }
-    ]
-  }
-] } });
-});
+TESTER.run("preserves outcomes for static member access and unknown member keys", rule, typed({
+  valid: [
+    {
+      name: "returned-then-transform-dynamic-member",
+      filename: "src/load.ts",
+      code: "async function load() { return Promise[auditDynamicMember](1)[auditDynamicMember]((value) => value + 1); }",
+    },
+  ],
+  invalid: [
+    {
+      name: "returned-then-transform-static-member",
+      filename: "src/load.ts",
+      code: "async function load() { return Promise[\"resolve\"](1)[\"then\"]((value) => value + 1); }",
+      errors: [{ messageId: "preferAwait" }],
+    },
+  ],
+}));

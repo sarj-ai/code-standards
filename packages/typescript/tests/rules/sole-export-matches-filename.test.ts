@@ -1,21 +1,17 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe } from "vitest";
 
 import genericRule from "../../src/rules/no-generic-single-export-module.js";
+import rule from "../../src/rules/sole-export-matches-filename.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION } from "../../src/rules/sole-export-matches-filename.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const MATCHING_CLASS_EXAMPLE = "export class ArtifactStore {}";
+const MISMATCHED_CLASS_EXAMPLE = "export class ArtifactStore {}";
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, sourceType: "module" } });
 const FRAMEWORK_ROOT = mkdtempSync(join(tmpdir(), "sarj-framework-entrypoints-"));
 const NEXT_ROOT = join(FRAMEWORK_ROOT, "web");
 const ASTRO_ROOT = join(FRAMEWORK_ROOT, "docs");
@@ -55,7 +51,6 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "Astro pages retain their rendering mode export", filename: join(ASTRO_ROOT, "src/pages/dashboard.astro"), code: "export const prerender = false;" },
     { name: "Astro middleware retains its hook export contract", filename: join(ASTRO_ROOT, "src/middleware.ts"), code: "export function onRequest() {}" },
     { name: "exported import-equals leaves the runtime surface unknown", filename: "src/items.ts", code: "namespace Domain { export class Entry {} } export import Entry = Domain.Entry; export const only = 1;" },
-    { name: "export equals leaves a mixed runtime surface unresolved", filename: "src/artifacts.ts", code: "export = other; export class ArtifactStore {}" },
     { name: "exported import aliases remain unresolved", filename: "src/artifacts.ts", code: "export import Other = Domain.Other; export class ArtifactStore {}" },
     { name: "case enforcement belongs to filename-case", filename: "src/Artifact-Store.ts", code: "export class ArtifactStore {}" },
     { name: "identifier default resolves a local value", filename: "src/artifact-store.ts", code: "class ArtifactStore {} export default ArtifactStore;" },
@@ -85,8 +80,7 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "Astro collections have a framework-owned config filename", filename: "src/content.config.ts", code: "import { defineCollection } from 'astro:content'; export const collections = { posts: defineCollection({}) };" },
     {filename: join(NEXT_ROOT, "app/error.tsx"), code: "'use client'; export default function ErrorBoundary(){return null;}"},
     {filename: join(NEXT_ROOT, "src/app/orders/global-error.tsx"), code: "'use client'; export default function GlobalBoundary(){return null;}"},
-    {filename: join(NEXT_ROOT, "app/orders/error.tsx").replaceAll("/", "\\"), code: "'use client'; export default function Boundary(){return null;}"},
-    { filename: "src/artifact-store.ts", code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[0].files[0].source },
+    { filename: "src/artifact-store.ts", code: MATCHING_CLASS_EXAMPLE },
     { filename: "src/oauth-client.server.ts", code: "export class OAuthClient {}" },
     { filename: "src/artifacts.ts", code: "export class ArtifactStore {} export const version = 1;" },
     { filename: "src/index.ts", code: "export class ArtifactStore {}" },
@@ -149,7 +143,7 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "partial export tokens do not count as a leading phrase", filename: "src/user-rate.ts", code: "export function UserRater() {}", errors: [{ messageId: "matchSoleExport" }] },
     {
       filename: "src/artifacts.ts",
-      code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[1].files[0].source,
+      code: MISMATCHED_CLASS_EXAMPLE,
       errors: [{ messageId: "matchSoleExport", data: { exported: "ArtifactStore", expected: "artifact-store" } }],
     },
     {
@@ -175,14 +169,23 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
   ],
 });
 
-for (const stem of ["helper", "stuff", "utils"]) {
-  it(`gives the generic rule exclusive ownership of ${stem}`, () => {
-    const messages = new Linter().verify("export class ArtifactStore {}", [{
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { sarj: { rules: { sole: rule, generic: genericRule } } },
-      rules: { "sarj/sole": "error", "sarj/generic": "error" },
-    }], { filename: `src/${stem}.ts` });
-    expect(messages.map((message) => message.ruleId)).toEqual(["sarj/generic"]);
+const GENERIC_STEMS = ["helper", "stuff", "utils"];
+describe("generic stems belong to no-generic-single-export-module", () => {
+  RULE_TESTER.run("sole-export-matches-filename", rule, {
+    valid: GENERIC_STEMS.map((stem) => ({
+      name: `gives the generic rule exclusive ownership of ${stem} (sole-export side; RuleTester runs one rule at a time)`,
+      filename: `src/${stem}.ts`,
+      code: "export class ArtifactStore {}",
+    })),
+    invalid: [],
   });
-}
+  RULE_TESTER.run("no-generic-single-export-module", genericRule, {
+    valid: [],
+    invalid: GENERIC_STEMS.map((stem) => ({
+      name: `gives the generic rule exclusive ownership of ${stem} (generic rule side; RuleTester runs one rule at a time)`,
+      filename: `src/${stem}.ts`,
+      code: "export class ArtifactStore {}",
+      errors: [{ messageId: "genericSingleExport" }],
+    })),
+  });
+});

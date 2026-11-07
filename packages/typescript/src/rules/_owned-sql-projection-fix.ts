@@ -1,12 +1,11 @@
-/**
- * @fileoverview _owned-sql-projection-fix — expand a closed owned literal SQL projection.
- */
+/** @fileoverview _owned-sql-projection-fix — expand a closed owned literal SQL projection. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Identifier, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable } from "../utils/static-string.js";
+import { soleConstDeclarator } from "./_closed-module.js";
 
 const IDENTIFIER = '"[A-Za-z_][A-Za-z0-9_]{0,62}"';
 const INTEGER = "[0-9]{1,9}";
@@ -29,22 +28,22 @@ interface Projection {
 }
 
 interface Owner {
-  readonly imported: TSESTree.ImportSpecifier;
-  readonly declaration: TSESTree.VariableDeclaration;
-  readonly variable: TSESTree.VariableDeclarator;
-  readonly constructor: TSESTree.Identifier;
-  readonly receivers: readonly TSESTree.Identifier[];
-  readonly literal: TSESTree.StringLiteral;
+  readonly imported: ESTree.ImportSpecifier;
+  readonly declaration: ESTree.VariableDeclaration;
+  readonly variable: ESTree.VariableDeclarator;
+  readonly constructor: Identifier;
+  readonly receivers: readonly Identifier[];
+  readonly literal: ESTree.StringLiteral;
 }
 
 /** Expand only a complete literal relation consumed by a fresh default pg Client. */
 export function ownedSqlProjectionFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Node,
+  sourceCode: Readonly<SourceCode>,
+  node: Node,
   original: string,
-): NativeReportFix | null {
+): FixFn | null {
   if (
-    node.type !== AST_NODE_TYPES.Literal ||
+    node.type !== "Literal" ||
     typeof node.value !== "string" ||
     sourceCode.getAllComments().length !== 0 ||
     sourceCode.ast.body.length !== 2
@@ -95,47 +94,30 @@ function literalProjection(query: string): Projection | null {
   };
 }
 
-function ownedLiteral(sourceCode: Readonly<TypeScriptSourceCode>): Owner | null {
+function ownedLiteral(sourceCode: Readonly<SourceCode>): Owner | null {
   const [imported, exported] = sourceCode.ast.body;
+  const specifier = imported?.type === "ImportDeclaration" ? pgClientSpecifier(sourceCode, imported) : null;
   if (
-    imported?.type !== AST_NODE_TYPES.ImportDeclaration ||
-    imported.importKind !== "value" ||
-    imported.source.value !== "pg" ||
-    imported.specifiers.length !== 1 ||
-    imported.attributes.length !== 0 ||
-    exported?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    exported.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration ||
+    specifier === null ||
+    exported?.type !== "ExportNamedDeclaration" ||
+    exported.declaration?.type !== "FunctionDeclaration" ||
     exported.specifiers.length !== 0 ||
     exported.source !== null
   )
     return null;
-  const specifier = imported.specifiers[0];
-  if (
-    specifier?.type !== AST_NODE_TYPES.ImportSpecifier ||
-    specifier.importKind !== "value" ||
-    specifier.imported.type !== AST_NODE_TYPES.Identifier ||
-    specifier.imported.name !== "Client" ||
-    specifier.local.name !== "Client" ||
-    sourceCode.getText(specifier) !== "Client"
-  )
-    return null;
   const owner = exported.declaration;
-  if (!plainOwner(owner)) return null;
-  const [declaration, attempted] = owner.body.body;
+  const [declaration, attempted] = plainOwnerBody(owner)?.body ?? [];
   if (
-    declaration?.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declaration.kind !== "const" ||
-    declaration.declare ||
-    declaration.declarations.length !== 1 ||
-    attempted?.type !== AST_NODE_TYPES.TryStatement ||
+    declaration?.type !== "VariableDeclaration" ||
+    attempted?.type !== "TryStatement" ||
     attempted.handler !== null ||
     attempted.block.body.length !== 2 ||
     attempted.finalizer?.body.length !== 1
   )
     return null;
-  const variable = declaration.declarations[0];
+  const variable = soleConstDeclarator(declaration);
   const constructor = defaultClient(variable, owner.id?.name);
-  if (variable === undefined || constructor === null || variable.id.type !== AST_NODE_TYPES.Identifier)
+  if (variable === null || constructor === null || variable.id.type !== "Identifier")
     return null;
   const [connected, returned] = attempted.block.body;
   const connection = awaitedMethod(connected, variable.id.name, "connect");
@@ -152,35 +134,54 @@ function ownedLiteral(sourceCode: Readonly<TypeScriptSourceCode>): Owner | null 
   };
 }
 
-function plainOwner(owner: TSESTree.FunctionDeclaration): boolean {
+/** The only specifier of a plain `import { Client } from "pg"`. */
+function pgClientSpecifier(sourceCode: Readonly<SourceCode>, imported: ESTree.ImportDeclaration): ESTree.ImportSpecifier | null {
+  const specifier = imported.specifiers[0];
+  if (
+    (imported.importKind ?? "value") !== "value" ||
+    imported.source.value !== "pg" ||
+    imported.specifiers.length !== 1 ||
+    imported.attributes.length !== 0 ||
+    specifier?.type !== "ImportSpecifier" ||
+    (specifier.importKind ?? "value") !== "value" ||
+    specifier.imported.type !== "Identifier" ||
+    specifier.imported.name !== "Client" ||
+    specifier.local.name !== "Client" ||
+    sourceCode.getText(specifier) !== "Client"
+  )
+    return null;
+  return specifier;
+}
+
+function plainOwnerBody(owner: ESTree.Function): ESTree.FunctionBody | null {
   return (
     owner.async &&
-    !owner.declare &&
+    owner.declare !== true &&
     !owner.generator &&
     owner.id !== null &&
     owner.id.name !== "Client" &&
     ASCII_NAME.test(owner.id.name) &&
     owner.params.length === 0 &&
-    owner.typeParameters === undefined &&
-    owner.returnType === undefined &&
-    owner.body.body.length === 2
-  );
+    !isPresent(owner.typeParameters) &&
+    !isPresent(owner.returnType) &&
+    owner.body?.body.length === 2
+  ) ? owner.body : null;
 }
 
 function defaultClient(
-  variable: TSESTree.VariableDeclarator | undefined,
+  variable: ESTree.VariableDeclarator | null,
   owner: string | undefined,
-): TSESTree.Identifier | null {
+): Identifier | null {
   if (
-    variable?.id.type !== AST_NODE_TYPES.Identifier ||
-    variable.id.typeAnnotation !== undefined ||
+    variable?.id.type !== "Identifier" ||
+    isPresent(variable.id.typeAnnotation) ||
     !ASCII_NAME.test(variable.id.name) ||
     variable.id.name === "Client" ||
     variable.id.name === owner ||
-    variable.init?.type !== AST_NODE_TYPES.NewExpression ||
-    variable.init.typeArguments !== undefined ||
+    variable.init?.type !== "NewExpression" ||
+    isPresent(variable.init.typeArguments) ||
     variable.init.arguments.length !== 0 ||
-    variable.init.callee.type !== AST_NODE_TYPES.Identifier ||
+    variable.init.callee.type !== "Identifier" ||
     variable.init.callee.name !== "Client"
   )
     return null;
@@ -188,20 +189,20 @@ function defaultClient(
 }
 
 function methodReceiver(
-  node: TSESTree.Node,
+  node: Node,
   receiver: string,
   method: string,
-): TSESTree.Identifier | null {
+): Identifier | null {
   if (
-    node.type !== AST_NODE_TYPES.CallExpression ||
+    node.type !== "CallExpression" ||
     node.optional ||
-    node.typeArguments !== undefined ||
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    isPresent(node.typeArguments) ||
+    node.callee.type !== "MemberExpression" ||
     node.callee.optional ||
     node.callee.computed ||
-    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.property.type !== "Identifier" ||
     node.callee.property.name !== method ||
-    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.object.type !== "Identifier" ||
     node.callee.object.name !== receiver
   )
     return null;
@@ -209,14 +210,14 @@ function methodReceiver(
 }
 
 function awaitedMethod(
-  node: TSESTree.Statement | undefined,
+  node: ESTree.Statement | undefined,
   receiver: string,
   method: string,
-): TSESTree.Identifier | null {
+): Identifier | null {
   if (
-    node?.type !== AST_NODE_TYPES.ExpressionStatement ||
-    node.expression.type !== AST_NODE_TYPES.AwaitExpression ||
-    node.expression.argument.type !== AST_NODE_TYPES.CallExpression ||
+    node?.type !== "ExpressionStatement" ||
+    node.expression.type !== "AwaitExpression" ||
+    node.expression.argument.type !== "CallExpression" ||
     node.expression.argument.arguments.length !== 0
   )
     return null;
@@ -224,37 +225,37 @@ function awaitedMethod(
 }
 
 function returnedQuery(
-  node: TSESTree.Statement | undefined,
+  node: ESTree.Statement | undefined,
   receiver: string,
 ): {
-  readonly receiver: TSESTree.Identifier;
-  readonly literal: TSESTree.StringLiteral;
+  readonly receiver: Identifier;
+  readonly literal: ESTree.StringLiteral;
 } | null {
   if (
-    node?.type !== AST_NODE_TYPES.ReturnStatement ||
-    node.argument?.type !== AST_NODE_TYPES.MemberExpression ||
+    node?.type !== "ReturnStatement" ||
+    node.argument?.type !== "MemberExpression" ||
     node.argument.optional ||
     node.argument.computed ||
-    node.argument.property.type !== AST_NODE_TYPES.Identifier ||
+    node.argument.property.type !== "Identifier" ||
     node.argument.property.name !== "rows" ||
-    node.argument.object.type !== AST_NODE_TYPES.AwaitExpression ||
-    node.argument.object.argument.type !== AST_NODE_TYPES.CallExpression ||
+    node.argument.object.type !== "AwaitExpression" ||
+    node.argument.object.argument.type !== "CallExpression" ||
     node.argument.object.argument.arguments.length !== 1
   )
     return null;
   const call = node.argument.object.argument;
   const binding = methodReceiver(call, receiver, "query");
   const literal = call.arguments[0];
-  if (binding === null || literal?.type !== AST_NODE_TYPES.Literal || typeof literal.value !== "string")
+  if (binding === null || literal?.type !== "Literal" || typeof literal.value !== "string")
     return null;
   return { receiver: binding, literal };
 }
 
 function ownedBindings(
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  sourceCode: Readonly<SourceCode>,
   owner: Owner,
 ): boolean {
-  const imported = ASTUtils.findVariable(sourceCode.getScope(owner.constructor), "Client");
+  const imported = findVariable(sourceCode.getScope(owner.constructor), "Client");
   const binding = sourceCode.getDeclaredVariables(owner.declaration)[0];
   return (
     imported?.defs.length === 1 &&
@@ -268,7 +269,7 @@ function ownedBindings(
         owner.receivers.some((receiver) => receiver === reference.identifier),
     ) &&
     owner.receivers.every(
-      (receiver) => ASTUtils.findVariable(sourceCode.getScope(receiver), receiver.name) === binding,
+      (receiver) => findVariable(sourceCode.getScope(receiver), receiver.name) === binding,
     )
   );
 }

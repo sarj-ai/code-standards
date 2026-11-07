@@ -45,11 +45,7 @@ def _files(root: Path) -> tuple[Path, ...]:
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/rule-ledger.json",
         "packages/typescript/src/index.ts",
-        "packages/standards/src/sarj_standards/configs/eslint.strict.ts",
-        "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
-        "packages/standards/src/sarj_standards/configs/eslint.application.mjs",
-        "packages/standards/src/sarj_standards/configs/eslint.strict.d.mts",
-        "packages/standards/src/sarj_standards/configs/eslint.application.d.mts",
+        "packages/standards/src/sarj_standards/configs/oxlint.strict.mts",
     )
     paths = tuple(root / item for item in relative)
     for path in paths:
@@ -98,8 +94,7 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         writer: Callable[[Path, str], None] | None = None,
     ) -> bool:
         if writer is not None:
-            for name in ("eslint.strict.d.mts", "eslint.application.d.mts"):
-                writer(_root / "packages/standards/src/sarj_standards/configs" / name, "export {};\n")
+            writer(_root / "packages/standards/src/sarj_standards/configs/oxlint.strict.mts", "export {};\n")
         return True
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
@@ -221,8 +216,7 @@ def test_lifecycle_tracks_created_declarations_atomically(
 ) -> None:
     paths = _files(tmp_path)
     declarations = tuple(
-        tmp_path / "packages/standards/src/sarj_standards/configs" / name
-        for name in ("eslint.strict.d.mts", "eslint.application.d.mts")
+        tmp_path / "packages/standards/src/sarj_standards/configs" / name for name in ("oxlint.strict.mts",)
     )
     for path in declarations:
         path.unlink(missing_ok=True)
@@ -391,9 +385,8 @@ def test_lifecycle_tracks_generated_declarations(tmp_path: Path, monkeypatch: py
     native_sync = config_generation.sync_warning_levels
     _mock_builders(monkeypatch)
     declarations = {
-        tmp_path / "packages/standards/src/sarj_standards/configs/eslint.strict.d.mts": "declare const strict: [];\n",
-        tmp_path
-        / "packages/standards/src/sarj_standards/configs/eslint.application.d.mts": "export { default } from './eslint.strict.mjs';\n",
+        tmp_path / "packages/standards/src/sarj_standards/configs/oxlint.strict.mts": "export default {};\n",
+        tmp_path / "packages/typescript/src/index.ts": "export {};\n",
     }
 
     def artifacts(_root: Path) -> Mapping[Path, str]:
@@ -422,17 +415,16 @@ def test_lifecycle_tracks_generated_declarations(tmp_path: Path, monkeypatch: py
 
 
 @pytest.mark.parametrize("outcome", ["complete", "fail"])
-def test_lifecycle_tracks_generated_eslint_declarations(
+def test_lifecycle_tracks_generated_typescript_configs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
 ) -> None:
     paths = _files(tmp_path)
-    directory = tmp_path / "packages/standards/src/sarj_standards/configs"
-    strict = directory / "eslint.strict.d.mts"
-    application = directory / "eslint.application.d.mts"
-    strict.write_text("original declarations\n", encoding="utf-8")
-    application.unlink()
+    strict = tmp_path / "packages/standards/src/sarj_standards/configs/oxlint.strict.mts"
+    entrypoint = tmp_path / "packages/typescript/src/index.ts"
+    strict.write_text("original config\n", encoding="utf-8")
+    entrypoint.unlink()
     before = {path: path.read_bytes() for path in paths if path.exists()}
-    artifacts = {strict: "updated strict declarations\n", application: "updated application declarations\n"}
+    artifacts = {strict: "updated strict config\n", entrypoint: "updated entrypoint\n"}
     real_sync = config_generation.sync_warning_levels
     _mock_builders(monkeypatch)
 
@@ -455,8 +447,8 @@ def test_lifecycle_tracks_generated_eslint_declarations(
     if outcome == "fail":
         with pytest.raises(RuntimeError, match="injected declaration failure"):
             rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
-        assert strict.read_text(encoding="utf-8") == "original declarations\n"
-        assert not application.exists()
+        assert strict.read_text(encoding="utf-8") == "original config\n"
+        assert not entrypoint.exists()
         assert {path: path.read_bytes() for path in before} == before
     else:
         assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR).status == 0
@@ -487,7 +479,7 @@ def test_stage_warning_points_to_rule_discovery_when_no_selector_is_close(
     with pytest.raises(ValueError, match=r"maintain rules manifest"):
         rule_lifecycle.stage_warning(
             tmp_path,
-            RuleSelector(RuleEngine.ESLINT, RuleId("unrelated-name")),
+            RuleSelector(RuleEngine.OXLINT, RuleId("unrelated-name")),
         )
 
 
@@ -506,7 +498,7 @@ def test_stage_warning_rejects_source_without_rule_documentation(
 @pytest.mark.parametrize(
     ("engine", "source", "field"),
     [
-        (RuleEngine.ESLINT, "const SAMPLE_DOCUMENTATION = {\n  summary: 'example',\n};\n", 'defaultLevel: "warning"'),
+        (RuleEngine.OXLINT, "const SAMPLE_DOCUMENTATION = {\n  summary: 'example',\n};\n", 'defaultLevel: "warning"'),
         (
             RuleEngine.TEXT,
             'REGISTRY = {\n        "sample": RuleMeta(\n            code="SARJ999",\n        ),\n}\n',
@@ -524,15 +516,55 @@ def test_source_severity_editor_round_trips_other_engines(
     path.write_text(source, encoding="utf-8")
     selector = RuleSelector(engine, RuleId("sample"))
 
-    root = Path(__file__).resolve().parents[3] if engine is RuleEngine.ESLINT else tmp_path
+    root = Path(__file__).resolve().parents[3] if engine is RuleEngine.OXLINT else tmp_path
     staged = rule_level_source.prepare(root, selector, str(path), DefaultLevel.WARNING)
     assert staged.current is DefaultLevel.ERROR
     assert field in staged.after
     path.write_text(staged.after, encoding="utf-8")
     promoted = rule_level_source.prepare(root, selector, str(path), DefaultLevel.ERROR)
     assert promoted.current is DefaultLevel.WARNING
-    expected = staged.after.replace('"warning"', '"error"') if engine is RuleEngine.ESLINT else source
+    expected = staged.after.replace('"warning"', '"error"') if engine is RuleEngine.OXLINT else source
     assert promoted.after == expected
+
+
+def test_typescript_lifecycle_edits_separate_documentation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _files(tmp_path)
+    _mock_builders(monkeypatch)
+    implementation = tmp_path / "packages/typescript/src/rules/sample.ts"
+    documentation = tmp_path / "packages/typescript/src/docs/sample.ts"
+    implementation.parent.mkdir(parents=True, exist_ok=True)
+    documentation.parent.mkdir(parents=True, exist_ok=True)
+    implementation.write_text("export default {};\n", encoding="utf-8")
+    documentation.write_text("export const SAMPLE_DOCUMENTATION = { summary: 'sample' };\n", encoding="utf-8")
+
+    def build_inventory(_root: Path) -> dict[str, JsonValue]:
+        return {
+            "schemaVersion": 1,
+            "rules": [{"family": "typescript", "id": "sample", "source": str(implementation.relative_to(tmp_path))}],
+        }
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate the lifecycle to one rule with the actual split module layout.
+        rule_inventory_artifact, "build", build_inventory
+    )
+    prepare_source = rule_level_source.prepare
+    package_root = Path(__file__).resolve().parents[3]
+
+    def prepare_documentation(
+        root: Path, selector: RuleSelector, source: str, level: DefaultLevel
+    ) -> rule_level_source.LevelEdit:
+        return prepare_source(package_root, selector, str(root / source), level)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- use the installed parser while the candidate files live in a private fixture.
+        rule_level_source, "prepare", prepare_documentation
+    )
+    selector = RuleSelector.parse("oxlint:sample")
+
+    assert rule_lifecycle.stage_warning(tmp_path, selector).changed
+    assert 'defaultLevel: "warning"' in documentation.read_text(encoding="utf-8")
+    assert implementation.read_text(encoding="utf-8") == "export default {};\n"
+    assert not rule_lifecycle.stage_warning(tmp_path, selector).changed
+    assert rule_lifecycle.promote_error(tmp_path, selector).changed
+    assert 'defaultLevel: "error"' in documentation.read_text(encoding="utf-8")
 
 
 def test_stage_warning_projects_new_severity_after_rule_was_imported(

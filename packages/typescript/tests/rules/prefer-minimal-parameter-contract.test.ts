@@ -1,12 +1,17 @@
+import { join } from "node:path";
+
 import rule from "../../src/rules/prefer-minimal-parameter-contract.js";
-import { CONSUMER_PREFIX, INLINE_CONTRACT, PRIVATE_CONSUMER_TESTER, runPrivateConsumerBoundaries } from "../private-consumer-cases.js";
+import { CONSUMER_PREFIX, INLINE_CONTRACT, runPrivateConsumerBoundaries } from "./_private-consumer-cases.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
+
+const TESTER = ruleTester({ cwd: join(FIXTURES, "minimal-consumer") });
 
 const PREFIX = CONSUMER_PREFIX;
 runPrivateConsumerBoundaries("prefer-minimal-parameter-contract", rule, INLINE_CONTRACT);
 for (const contract of ["{name: string; email: string}", "{readonly name: string; email: string}", "{name: string; email: string | null}", "{readonly name: string; email: undefined | string}"]) {
   runPrivateConsumerBoundaries("prefer-minimal-parameter-contract " + contract, rule, contract);
 }
-PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
+TESTER.run("prefer-minimal-parameter-contract", rule, typed({
   valid: [
     ...([
       ["all required fields consumed", `function label(p: ${INLINE_CONTRACT}): string {return p.name + p.email;}`],
@@ -40,7 +45,7 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
       ["optional field retained alongside used required field", "function label(p: {readonly name: string; readonly email: string; readonly suffix?: string}): string {return p.name + (p.suffix ?? '');}", "function label(p: {readonly name: string;  readonly suffix?: string}): string {return p.name + (p.suffix ?? '');}"],
     ] as const).map(([name, declaration, fixed, argument = "account"]) => ({name, filename: "probe.tsx", code: `${PREFIX}${declaration}label(${argument});`, output: `${PREFIX}${fixed}label(${argument});`, errors: [{messageId: "minimal" as const}]})),
   ],
-});
+}));
 
 const NULLISH_PRIMITIVES = [["string", "'a'"], ["number", "1"], ["boolean", "true"], ["bigint", "1n"]] as const;
 const NULLISH_CONTRACT = "{name: string; email: string | null}";
@@ -49,7 +54,7 @@ for (const [primitive, value] of NULLISH_PRIMITIVES) {
   for (const nullish of ["null", "undefined"]) {
     for (const reverse of [false, true]) {
       const type = reverse ? `${nullish} | ${primitive}` : `${primitive} | ${nullish}`;
-      PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread " + type, rule, {
+      TESTER.run("prefer-minimal-parameter-contract unread " + type, rule, typed({
         valid: [],
         invalid: ["", "readonly "].map((modifier) => {
           const prefix = `export {}; const full = {name: 'Ada', email: ${value}}; const empty = {name: 'Bob', email: ${nullish}};`;
@@ -58,13 +63,13 @@ for (const [primitive, value] of NULLISH_PRIMITIVES) {
           const code = `${prefix}${declaration}label(full); label(empty);`;
           return {name: "required unread " + modifier + type, filename: "probe.tsx", code, output: code.replace(`${modifier}email: ${type}`, ""), errors: [{messageId: "minimal" as const}]};
         }),
-      });
+      }));
     }
   }
 }
 for (const [primitive, value] of NULLISH_PRIMITIVES) {
   for (const nullish of ["null", "undefined"]) {
-    PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract retained " + primitive + " | " + nullish, rule, {
+    TESTER.run("prefer-minimal-parameter-contract retained " + primitive + " | " + nullish, rule, typed({
       valid: [
         {name: "every field is read", filename: "probe.tsx", code: `export {}; const input = {name: 'Ada', value: ${value}}; function label(p: {name: string; value: ${primitive} | ${nullish}}): string {return p.name + typeof p.value;} label(input);`},
         {name: "optional-only retained reads preserve weak-type exclusion", filename: "probe.tsx", code: `export {}; const input = {spare: 'audit'}; function label(p: {value?: ${primitive} | ${nullish}; spare: string}): string {return typeof p.value;} label(input);`},
@@ -73,10 +78,10 @@ for (const [primitive, value] of NULLISH_PRIMITIVES) {
         const code = `export {}; const input = {name: 'Ada', value: ${value}, spare: 'audit'}; function label(p: {readonly name: string; readonly value${optional ? "?" : ""}: ${primitive} | ${nullish}; readonly spare: string}): string {return p.name + typeof p.value;} label(input);`;
         return {name: "retain " + (optional ? "optional" : "required") + " nullable read", filename: "probe.tsx", code, output: code.replace("readonly spare: string", ""), errors: [{messageId: "minimal" as const, data: {used: "name, value", unused: "spare"}}]};
       }),
-    });
+    }));
   }
 }
-PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fields", rule, {
+TESTER.run("prefer-minimal-parameter-contract unread nullish fields", rule, typed({
   valid: [
     ...([
       ["optional nullish member excludes the whole contract", "function label(p: {name: string; email?: string | null; spare: string}): string {return p.name;}"],
@@ -131,9 +136,9 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
     {name: "nullable annotation comments keep a manual finding", filename: "probe.tsx", code: `${PREFIX}${NULLISH_DECLARATION.replace("string | null", "string | /* rationale */ null")}label(account);`, output: null, errors: [{messageId: "minimal"}]},
     {name: "nullable suppression must not become unused", filename: "probe.tsx", code: `export {}; const input = {name: 'Ada'}; ${NULLISH_DECLARATION}\n// @ts-expect-error the original required nullable field is missing\nlabel(input);`, output: null, errors: [{messageId: "minimal"}]},
   ],
-});
+}));
 
-PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract safe source edits", rule, {
+TESTER.run("prefer-minimal-parameter-contract safe source edits", rule, typed({
   valid: [],
   invalid: [
     {name: "a first inline member owns only its horizontal leading trivia", filename: "probe.tsx",
@@ -160,11 +165,11 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract safe source edits
     {name: "unresolved error caller field remains manual", filename: "probe.tsx", code: `${PREFIX}declare const value: {name: string; email: Missing}; function label(p: ${INLINE_CONTRACT}): string {return p.name;} label(value);`, output: null, errors: [{messageId: "minimal"}]},
     {name: "a required ts-expect-error must not become unused", filename: "probe.tsx", code: `export {}; const account = {name: 'Ada'}; function label(p: ${INLINE_CONTRACT}): string {return p.name;}\n// @ts-expect-error the original private contract requires email\nlabel(account);`, output: null, errors: [{messageId: "minimal"}]},
   ],
-});
+}));
 
 const SCALAR_HELPER = "function formatName(name: string): string {return name.toUpperCase();}";
 const HELPER_CONSUMER = "function label(p: {name: string; email: string}): string {return formatName(p.name);}";
-PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract scalar helpers", rule, {
+TESTER.run("prefer-minimal-parameter-contract scalar helpers", rule, typed({
   valid: [
     ...([
       ["inferred helper returns remain unsupported", "function formatName(name: string) {return name;}", HELPER_CONSUMER],
@@ -188,10 +193,10 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract scalar helpers", 
     {name: "an Any caller cannot certify an automatic contract edit", filename: "probe.tsx",
       code: `${PREFIX}${SCALAR_HELPER}${HELPER_CONSUMER}declare const opaque: {name: string; email: any}; label(account); label(opaque);`, output: null, errors: [{messageId: "minimal"}]},
   ],
-});
+}));
 
 const AUXILIARY_PREFIX = `${PREFIX}const text = 'x';`;
-PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary correspondence", rule, {
+TESTER.run("prefer-minimal-parameter-contract auxiliary correspondence", rule, typed({
   valid: [
     ...([
       ["optional auxiliary", `function label(p: ${INLINE_CONTRACT}, text?: string): string {return (text ?? '') + p.name;}`],
@@ -228,4 +233,4 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract auxiliary corresp
       return {name: "broad primitive auxiliary " + type, filename: "probe.tsx", code, output: code.replace("readonly email: string", ""), errors: [{messageId: "minimal" as const}]};
     }),
   ],
-});
+}));

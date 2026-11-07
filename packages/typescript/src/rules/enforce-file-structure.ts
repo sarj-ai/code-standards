@@ -1,75 +1,34 @@
 /**
- * @fileoverview enforce-file-structure — imports come first, then step-down order; a `use server` directive that is not the first statement is inert.
+ * @fileoverview enforce-file-structure — imports before body statements, and `use server` first.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
+ * Port of the 18.x `enforce-file-structure` rule. The rule is untyped,
+ * so the port covers all of it. Oxlint gives non-directive expression
+ * statements `directive: null` where TS-ESTree leaves it undefined.
  */
 
-import type { NativeRuleFixer, NativeRuleFix } from "./_eslint-rule.js";
+import type { Fix, Fixer } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type SourceCode } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
 
+const NAME = "enforce-file-structure";
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "importsFirst" | "useServerDirective";
-type Options = readonly [];
-
-export const ENFORCE_FILE_STRUCTURE_DOCUMENTATION = {
-  summary: "Require imports before body statements and require `use server` to be the first statement.",
-  rationale:
-    "Interleaved imports obscure module dependencies, while a displaced `use server` string is not an active directive.",
-  remediation:
-    "Move `use server` to the first statement when present, then place imports before declarations and executable statements.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "The rule skips tests and generated files, treats re-exports as neutral, and does not order body declarations. Only misplaced import type declarations in comment-free files are automatically moved; runtime imports and directive activation remain manual.",
-  ],
-  examples: [
-    {
-      id: "imports-first",
-      title: "Imports precede module declarations",
-      outcome: "no-match",
-      files: [{ path: "src/component.ts", source: "import { z } from 'zod';\nexport const schema = z.string();" }],
-      focusPath: "src/component.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "import-after-declaration",
-      title: "An import follows a module declaration",
-      outcome: "match",
-      files: [{ path: "src/component.ts", source: "export const x = 1;\nimport { z } from 'zod';" }],
-      focusPath: "src/component.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; const value = 1; import type { Foo } from \"foo\";" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; import type { Foo } from \"foo\";\nconst value = 1; " }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Statement = ESTree.Program["body"][number];
 
 type StatementKind = "import" | "reexport" | "body";
 
 /** Classify declarations by what they introduce; re-exports are neutral. */
 const classifyStatement = (
-  statement: TSESTree.ProgramStatement,
+  statement: Statement,
 ): StatementKind => {
   switch (statement.type) {
-    case AST_NODE_TYPES.ImportDeclaration:
+    case "ImportDeclaration":
       return "import";
-    case AST_NODE_TYPES.ExportAllDeclaration:
+    case "ExportAllDeclaration":
       return "reexport";
-    case AST_NODE_TYPES.ExportNamedDeclaration:
+    case "ExportNamedDeclaration":
       // Only `export <declaration>` introduces a body statement.
       return statement.declaration === null ? "reexport" : "body";
     default:
@@ -77,29 +36,50 @@ const classifyStatement = (
   }
 };
 
-const isStringDirective = (statement: TSESTree.ProgramStatement): boolean =>
-  statement.type === AST_NODE_TYPES.ExpressionStatement &&
-  statement.expression.type === AST_NODE_TYPES.Literal &&
+const isStringDirective = (statement: Statement): boolean =>
+  statement.type === "ExpressionStatement" &&
+  statement.expression.type === "Literal" &&
   typeof statement.expression.value === "string" &&
   statement.expression.value.startsWith("use ");
 
 const isUseServerDirective = (
-  statement: TSESTree.ProgramStatement,
+  statement: Statement,
 ): boolean => {
-  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
+  if (statement.type !== "ExpressionStatement") return false;
   const expr = statement.expression;
-  if (expr.type !== AST_NODE_TYPES.Literal) return false;
+  if (expr.type !== "Literal") return false;
   return expr.value === "use server";
 };
 
-export default createRule<Options, MessageIds>({
-  name: "enforce-file-structure",
-  documentation: ENFORCE_FILE_STRUCTURE_DOCUMENTATION,
+/** Move type imports that follow the first body statement above it, in a file without comments. */
+function typeImportsFix(
+  body: readonly Statement[],
+  sourceCode: SourceCode,
+): { readonly first: Statement; readonly fix: (fixer: Fixer) => Fix[] } | null {
+  const firstBody = body.find((statement) => classifyStatement(statement) === "body" && !(statement.type === "ExpressionStatement" && isPresent(statement.directive)));
+  if (firstBody === undefined || sourceCode.getAllComments().length > 0) return null;
+  const misplacedTypeImports = body.filter(
+    (statement) => statement.type === "ImportDeclaration" &&
+      statement.importKind === "type" && statement.range[0] > firstBody.range[0],
+  );
+  const first = misplacedTypeImports[0];
+  if (first === undefined) return null;
+  return {
+    first,
+    fix: (fixer) => [
+      fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => sourceCode.getText(statement)).join("\n") + "\n"),
+      ...misplacedTypeImports.map((statement) => fixer.remove(statement)),
+    ],
+  };
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description: "Require imports before body statements and require `use server` to be the first statement.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -109,14 +89,14 @@ export default createRule<Options, MessageIds>({
         "A 'use server' directive must be the first statement in the file",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
-
+  createOnce(context) {
     return {
-      Program(node: TSESTree.Program): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        return undefined;
+      },
+      Program(node: ESTree.Program): void {
         const body = node.body;
 
         const misplacedUseServer = body.find(
@@ -129,18 +109,7 @@ export default createRule<Options, MessageIds>({
           });
         }
 
-        const firstBody = body.find((statement) => classifyStatement(statement) === "body" && !(statement.type === AST_NODE_TYPES.ExpressionStatement && statement.directive !== undefined));
-        const misplacedTypeImports = firstBody === undefined ? [] : body.filter(
-          (statement) => statement.type === AST_NODE_TYPES.ImportDeclaration &&
-            statement.importKind === "type" && statement.range[0] > firstBody.range[0],
-        );
-        const fixTypeImports = firstBody === undefined || context.sourceCode.getAllComments().length > 0 || misplacedTypeImports.length === 0
-          ? null
-          : (fixer: NativeRuleFixer): NativeRuleFix[] => [
-              fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => context.sourceCode.getText(statement)).join("\n") + "\n"),
-              ...misplacedTypeImports.map((statement) => fixer.remove(statement)),
-            ];
-
+        const typeImports = typeImportsFix(body, context.sourceCode);
         let seenBody = false;
         let inMisplacedRun = false;
 
@@ -160,7 +129,7 @@ export default createRule<Options, MessageIds>({
                 context.report({
                   node: statement,
                   messageId: "importsFirst",
-                  fix: statement === misplacedTypeImports[0] ? fixTypeImports : null,
+                  ...(typeImports?.first === statement && { fix: typeImports.fix }),
                 });
               }
               continue;

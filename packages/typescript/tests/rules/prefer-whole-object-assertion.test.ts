@@ -1,24 +1,10 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import rule, { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "../../src/rules/prefer-whole-object-assertion.js";
+import rule from "../../src/rules/prefer-whole-object-assertion.js";
+import { ruleTester } from "./_tester.js";
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
-
+const RULE_TESTER = ruleTester();
 
 const FILENAME = "src/user.test.ts";
 
@@ -57,7 +43,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
     },
     { name: "preserves a locally supplied custom expect", filename: FILENAME, code: "function check(expect: CustomAssertion) { expect(obj.a).toBe(1); expect(obj.b).toBe(2); }" },
     { name: "preserves a non-runner imported expect", filename: FILENAME, code: "import { expect } from './custom'; expect(obj.a).toBe(1); expect(obj.b).toBe(2);" },
-    { name: "accepts the documented whole-object assertion", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented whole-object assertion", filename: FILENAME, code: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" },
 
     { filename: FILENAME, code: `expect(obj).toMatchObject({ a: 1, b: 2 });` },
 
@@ -70,7 +56,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj2.b).toBe(2);
       `,
     },
-
 
     {
       filename: "src/user.ts",
@@ -86,7 +71,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj.b).toBe(2);
       `,
     },
-
 
     {
       filename: FILENAME,
@@ -112,7 +96,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
     {
       filename: FILENAME,
       code: `
@@ -120,7 +103,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(utils.container).toHaveTextContent("b:success");
       `,
     },
-
 
     {
       filename: FILENAME,
@@ -130,7 +112,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj.c).toBe(3);
       `,
     },
-
 
     {
       filename: FILENAME,
@@ -156,7 +137,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
     {
       filename: FILENAME,
       code: `
@@ -171,7 +151,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(res.headers).toEqual({ "content-type": "application/json" });
       `,
     },
-
 
     {
       filename: FILENAME,
@@ -243,7 +222,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
     {
       filename: FILENAME,
       code: `
@@ -286,11 +264,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
-
-
-
-
     {
       filename: FILENAME,
       code: `
@@ -306,10 +279,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
-
-
-
     {
       filename: FILENAME,
       code: `
@@ -317,8 +286,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(a?.b.d).toBe(2);
       `,
     },
-
-
 
     {
       filename: FILENAME,
@@ -328,14 +295,10 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
-
     {
       filename: FILENAME,
       code: "\n        expect(obj.a).toBe(`x${y}`);\n        expect(obj.b).toBe(`z${y}`);\n      ",
     },
-
-
 
     {
       filename: FILENAME,
@@ -353,14 +316,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
-
-
-
-
-
-
-
     {
       filename: FILENAME,
       code: `
@@ -369,7 +324,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-
     {
       filename: FILENAME,
       code: `
@@ -377,7 +331,6 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(rows[1]).toEqual("b");
       `,
     },
-
 
     {
       filename: FILENAME,
@@ -431,8 +384,7 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    { name: "reports the documented member assertion run without rewriting it", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[1].files[0].source, output: null, errors: [{ messageId: "combineAssertions" }] },
-
+    { name: "reports the documented member assertion run without rewriting it", filename: FILENAME, code: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');", output: null, errors: [{ messageId: "combineAssertions" }] },
 
     {
       filename: FILENAME,
@@ -443,8 +395,6 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-
-
 
     {
       filename: FILENAME,
@@ -490,7 +440,6 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "combineAssertions" }],
     },
 
-
     {
       filename: FILENAME,
       code: `
@@ -510,13 +459,6 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "assertArrayOnce" }],
     },
-
-
-
-
-
-
-
 
     {
       filename: FILENAME,
@@ -539,9 +481,6 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "assertArrayOnce" }],
     },
 
-
-
-
     {
       filename: FILENAME,
       code: `
@@ -552,14 +491,12 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "combineAssertions" }],
     },
 
-
     {
       filename: FILENAME,
       code: "\n        expect(obj.a).toBe(`x`);\n        expect(obj.b).toBe(`y`);\n      ",
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-
 
     {
       filename: FILENAME,
@@ -573,92 +510,24 @@ expect(config.stt.model).toBe("nova");`,
   ],
 });
 
-
-
-
-
-
-
-
-
-
-
 describe("prefer-whole-object-assertion autofix soundness", () => {
-  const linter = new Linter();
-  const config = [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { local: { rules: { "prefer-whole-object-assertion": rule } } },
-      rules: { "local/prefer-whole-object-assertion": "error" },
-
-
-
-      linterOptions: { reportUnusedDisableDirectives: "off" },
-    },
-  ] as unknown as Linter.Config[];
-
-  const fix = (code: string): string => linter.verifyAndFix(code, config, FILENAME).output;
-
-  it("preserves absent-property semantics instead of adding a presence assertion", () => {
+  it("preserves absent-property semantics instead of adding a presence assertion (runtime fact)", () => {
     const user: { name: string; missing?: string } = { name: "Ada" };
     expect(user.missing).toBeUndefined();
     expect(() => expect(user).toMatchObject({ name: "Ada", missing: undefined })).toThrow();
-    const code = `expect(user.name).toBe("Ada");\nexpect(user.missing).toBeUndefined();`;
-    expect(fix(code)).toBe(code);
   });
 
-  it("does not rewrite repeated reads of an observable getter", () => {
-    const code = `let reads = 0;
-      const user = { get child() { return { id: ++reads, name: String(reads) }; } };
-      expect(user.child.id).toBe(1);
-      expect(user.child.name).toBe("2");`;
-    expect(fix(code)).toBe(code);
-    expect(rule.meta.fixable).toBeUndefined();
+  it("does not declare a fixer", () => {
+    expect(rule.meta?.fixable).toBeUndefined();
   });
 
-  it("leaves substring, length and ordering matchers alone", () => {
-    const code = `expect(o.name).toContain("ab");\nexpect(o.items).toHaveLength(3);\nexpect(o.n).toBeGreaterThan(5);\n`;
-    expect(fix(code)).toBe(code);
-  });
-
-  it("leaves spy assertions alone", () => {
-    const code = `expect(m.get).toHaveBeenCalledWith("k");\nexpect(m.set).toHaveBeenCalledWith("k", 1);\n`;
-    expect(fix(code)).toBe(code);
-  });
-
-  it("never emits a duplicate object key", () => {
-    const code = `expect(o.a).toBe(1);\nexpect(o.a).toBe(2);\n`;
-    expect(fix(code)).toBe(code);
-  });
-
-  it("never downgrades toBe on a non-literal to structural equality", () => {
-    const code = `expect(c.auth).toBe(auth);\nexpect(c.zoho).toBe(zoho);\n`;
-    expect(fix(code)).toBe(code);
-  });
-
-  it("never rewrites an indexed run, which would add a length assertion", () => {
-    const code = `expect(bodies[0]).toEqual("a");\nexpect(bodies[1]).toEqual("b");\n`;
-    expect(fix(code)).toBe(code);
-  });
-
-  it("preserves a complete length contract with intentionally partial element observations", () => {
+  it("preserves a complete length contract with intentionally partial element observations (runtime fact)", () => {
     const rows = ["a", "b", "opaque"];
     expect(rows).toHaveLength(3);
     expect(rows[0]).toEqual("a");
     expect(rows[1]).toEqual("b");
     expect(() => expect(rows).toEqual(["a", "b"])).toThrow();
-    const code = "expect(rows).toHaveLength(3); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');";
-    expect(linter.verify(code, config, FILENAME)).toEqual([]);
-    expect(fix(code)).toBe(code);
   });
-
-
-
-
-
-
-
 
   describe("__proto__ is a prototype setter, not a key", () => {
     it("Object.keys drops it — the language fact the guard rests on", () => {
@@ -673,87 +542,47 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
 
       expect(Object.getPrototypeOf(received)).not.toBeNull();
 
-
       expect(received["b"]).toBe(2);
     });
-
-    it("is never merged or rewritten", () => {
-      const code = `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\n`;
-      expect(fix(code)).toBe(code);
-    });
-
-    it("preserves the entire run when it includes a prototype assertion", () => {
-      expect(fix(`expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`)).toBe(
-        `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`,
-      );
-    });
-  });
-
-
-
-
-
-
-  describe("comments inside the run", () => {
-    it("does not orphan a leading comment", () => {
-      const code = `expect(o.a).toBe(1);\n// b matters because the API returns it second\nexpect(o.b).toBe(2);\n`;
-      expect(fix(code)).toBe(code);
-    });
-
-    it("does not strand an eslint-disable directive", () => {
-      const code = `expect(o.a).toBe(1);\n// eslint-disable-next-line local/prefer-whole-object-assertion\nexpect(o.b).toBe(2);\n`;
-      expect(fix(code)).toBe(code);
-    });
-
-    it("does not swallow a comment inside a merged statement", () => {
-      const code = `expect(o.a /* the a */).toBe(1);\nexpect(o.b).toBe(2);\n`;
-      expect(fix(code)).toBe(code);
-    });
-
-    it("preserves the source when comments sit outside the span", () => {
-      expect(fix(`// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`)).toBe(
-        `// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`,
-      );
-    });
-  });
-
-  it("leaves ordinary property runs available for manual review", () => {
-    expect(fix(`expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`)).toBe(
-      `expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`,
-    );
   });
 });
 
+RULE_TESTER.run("prefer-whole-object-assertion autofix soundness", rule, {
+  valid: [
+    { name: "preserves absent-property semantics instead of adding a presence assertion", filename: FILENAME, code: `expect(user.name).toBe("Ada");\nexpect(user.missing).toBeUndefined();` },
+    { name: "leaves substring, length and ordering matchers alone", filename: FILENAME, code: `expect(o.name).toContain("ab");\nexpect(o.items).toHaveLength(3);\nexpect(o.n).toBeGreaterThan(5);\n` },
+    { name: "leaves spy assertions alone", filename: FILENAME, code: `expect(m.get).toHaveBeenCalledWith("k");\nexpect(m.set).toHaveBeenCalledWith("k", 1);\n` },
+    { name: "never emits a duplicate object key", filename: FILENAME, code: `expect(o.a).toBe(1);\nexpect(o.a).toBe(2);\n` },
+    { name: "never downgrades toBe on a non-literal to structural equality", filename: FILENAME, code: `expect(c.auth).toBe(auth);\nexpect(c.zoho).toBe(zoho);\n` },
+    { name: "preserves a complete length contract with intentionally partial element observations", filename: "src/user-length.test.ts", code: "expect(rows).toHaveLength(3); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');" },
+    { name: "__proto__ is never merged or rewritten", filename: FILENAME, code: `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\n` },
+  ],
+  invalid: [
+    {
+      name: "does not rewrite repeated reads of an observable getter",
+      filename: FILENAME,
+      code: `let reads = 0;
+      const user = { get child() { return { id: ++reads, name: String(reads) }; } };
+      expect(user.child.id).toBe(1);
+      expect(user.child.name).toBe("2");`,
+      output: null,
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    { name: "never rewrites an indexed run, which would add a length assertion", filename: FILENAME, code: `expect(bodies[0]).toEqual("a");\nexpect(bodies[1]).toEqual("b");\n`, output: null, errors: [{ messageId: "assertArrayOnce" }] },
+    { name: "preserves the entire run when it includes a prototype assertion", filename: FILENAME, code: `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+    { name: "comments inside the run: does not orphan a leading comment", filename: FILENAME, code: `expect(o.a).toBe(1);\n// b matters because the API returns it second\nexpect(o.b).toBe(2);\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+    { name: "comments inside the run: does not strand an eslint-disable directive", filename: FILENAME, code: `expect(o.a).toBe(1);\n// eslint-disable-next-line local/prefer-whole-object-assertion\nexpect(o.b).toBe(2);\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+    { name: "comments inside the run: does not swallow a comment inside a merged statement", filename: FILENAME, code: `expect(o.a /* the a */).toBe(1);\nexpect(o.b).toBe(2);\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+    { name: "comments inside the run: preserves the source when comments sit outside the span", filename: FILENAME, code: `// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+    { name: "leaves ordinary property runs available for manual review", filename: FILENAME, code: `expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`, output: null, errors: [{ messageId: "combineAssertions" }] },
+  ],
+});
 
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "member-run-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/user.test.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/user.test.ts",
-        "source": "expect(user[\"id\"])[\"toBe\"](1);\nexpect(user[\"name\"])[\"toBe\"]('Ada');"
-      }
-    ]
-  },
-  {
-    "id": "member-run-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/user.test.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/user.test.ts",
-        "source": "expect(user[auditDynamicMember])[auditDynamicMember](1);\nexpect(user[auditDynamicMember])[auditDynamicMember]('Ada');"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("preserves outcomes for static member access and unknown member keys", rule, {
+  valid: [
+    {"name": "member-run-dynamic-member", "filename": "src/user.test.ts", "code": "expect(user[auditDynamicMember])[auditDynamicMember](1);\nexpect(user[auditDynamicMember])[auditDynamicMember]('Ada');"},
+  ],
+  invalid: [
+    {"name": "member-run-static-member", "filename": "src/user.test.ts", "code": "expect(user[\"id\"])[\"toBe\"](1);\nexpect(user[\"name\"])[\"toBe\"]('Ada');", "errors": [{"messageId": "combineAssertions"}] },
+  ],
 });

@@ -1,162 +1,110 @@
 /**
  * @fileoverview prefer-millisecond-control-duration-schema — second-granularity control fields make application API timing imprecise.
  *
+ * Port of the 18.x `prefer-millisecond-control-duration-schema` rule.
+ * The rule is untyped, so the port covers all of it.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts
  */
 
-import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type TsVariable } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 
-import { importSpecifierName } from "./_import-specifier-name.js";
+const NAME = "prefer-millisecond-control-duration-schema";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
-
-type MessageIds = "preferMilliseconds";
-type Options = readonly [];
-
-export const PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Require application-owned Zod control-duration fields to use millisecond granularity.",
-  rationale:
-    "Second-granularity timeout and scheduling controls lose precision and invite implicit unit conversion at API boundaries. Encoding milliseconds in the schema keeps the unit explicit and composes with platform timing APIs.",
-  remediation:
-    "Rename the field with an `Ms`/`_ms` suffix and express its bounds and default in milliseconds; update the owning API contract rather than converting in application code.",
-  category: "correctness",
-  autofix: "none",
-  limitations: [
-    "Only direct identifier keys with recognizable numeric Zod leaves in application-owned z.object/z.strictObject schemas are checked; aliases and transformations are not inferred.",
-    "The rule covers control timings such as timeout, delay, interval, backoff, TTL, lease, heartbeat, debounce, and throttle; observed durations and business-domain periods are excluded.",
-    "Quoted/computed protocol keys, generated/vendor code, tests, fixtures, and non-Zod schemas are excluded.",
-  ],
-  examples: [
-    {
-      id: "millisecond-timeout-schema",
-      title: "Encode control timing in milliseconds",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/request.ts",
-          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1000).max(300000).default(30000) });",
-        },
-      ],
-      focusPath: "src/request.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "second-timeout-schema",
-      title: "Do not expose second-granularity timeout controls",
-      outcome: "match",
-      files: [
-        {
-          path: "src/request.ts",
-          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1).max(300).default(30) });",
-        },
-      ],
-      focusPath: "src/request.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const CONTROL_SECONDS_RE =
   /(?:^|_)(?:timeout|delay|interval|backoff|ttl|lease|heartbeat|debounce|throttle)_seconds$/i;
 const CONTROL_SECONDS_CAMEL_RE =
   /(?:timeout|delay|interval|backoff|ttl|lease|heartbeat|debounce|throttle)Seconds$/i;
+const NUMERIC_REFINEMENTS: ReadonlySet<string> = new Set(["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"]);
 
-function directIdentifierKey(node: TSESTree.Property): TSESTree.Identifier | null {
-  return !node.computed && node.key.type === AST_NODE_TYPES.Identifier ? node.key : null;
+function directIdentifierKey(node: ESTree.ObjectProperty): Identifier | null {
+  return !node.computed && node.key.type === "Identifier" ? node.key : null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-millisecond-control-duration-schema",
-  documentation: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.summary },
+    docs: {
+      description: "Require application-owned Zod control-duration fields to use millisecond granularity.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       preferMilliseconds:
         "Zod control-duration field `{{name}}` uses seconds; define the owning API contract in milliseconds with an `Ms`/`_ms` suffix.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      isTestFile(context, ["fixtureTree"])
-    ) {
-      return {};
+  createOnce(context) {
+    let zodNamespaces = new Set<TsVariable>();
+    let objectFactories = new Set<TsVariable>();
+    let numberFactories = new Set<TsVariable>();
+
+    function binding(identifier: Identifier): TsVariable | null {
+      return findVariable(context.sourceCode.getScope(identifier), identifier.name);
     }
 
-    const zodNamespaces = new Set<TSESLint.Scope.Variable>();
-    const objectFactories = new Set<TSESLint.Scope.Variable>();
-    const numberFactories = new Set<TSESLint.Scope.Variable>();
-
-    function binding(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
-    }
-
-    function record(target: Set<TSESLint.Scope.Variable>, identifier: TSESTree.Identifier): void {
+    function record(target: Set<TsVariable>, identifier: Identifier): void {
       const variable = binding(identifier);
       if (variable !== null) target.add(variable);
     }
 
-    function isZodObjectCall(node: TSESTree.CallExpression): boolean {
+    function isZodObjectCall(node: ESTree.CallExpression): boolean {
       const callee = unwrapExpression(node.callee);
-
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         const variable = binding(callee);
         return variable !== null && objectFactories.has(variable);
       }
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
-        ASTUtils.getPropertyName(callee) === null ||
-        ((ASTUtils.getPropertyName(callee) ?? "") !== "object" && (ASTUtils.getPropertyName(callee) ?? "") !== "strictObject")
-      ) {
-        return false;
-      }
+      if (callee.type !== "MemberExpression") return false;
+      const calleeReceiver = unwrapExpression(callee.object);
+      const method = getPropertyName(callee);
+      if (calleeReceiver.type !== "Identifier" || (method !== "object" && method !== "strictObject")) return false;
       const variable = binding(calleeReceiver);
       return variable !== null && zodNamespaces.has(variable);
     }
 
-    function isNumericSchema(node: TSESTree.Node): boolean {
+    function isNumericSchema(node: Node): boolean {
       node = unwrapExpression(node);
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+      if (node.type !== "CallExpression") return false;
       const callee = unwrapExpression(node.callee);
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         const variable = binding(callee);
         return variable !== null && numberFactories.has(variable);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) return false;
-      if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
+      const method = callee.type === "MemberExpression" ? getPropertyName(callee) : null;
+      if (callee.type !== "MemberExpression" || method === null) return false;
+      const calleeReceiver = unwrapExpression(callee.object);
+      if (calleeReceiver.type === "Identifier") {
         const variable = binding(calleeReceiver);
-        return (ASTUtils.getPropertyName(callee) ?? "") === "number" && variable !== null && zodNamespaces.has(variable);
+        return method === "number" && variable !== null && zodNamespaces.has(variable);
       }
-      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes((ASTUtils.getPropertyName(callee) ?? "")) &&
-        isNumericSchema(calleeReceiver);
+      return NUMERIC_REFINEMENTS.has(method) && isNumericSchema(calleeReceiver);
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isGeneratedFile(file, context.sourceCode.text) || isTestFile(file, ["fixtureTree"])) return false;
+        zodNamespaces = new Set();
+        objectFactories = new Set();
+        numberFactories = new Set();
+        return undefined;
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          const importedName = specifier.type === AST_NODE_TYPES.ImportSpecifier ? importSpecifierName(specifier) : null;
+          const importedName = specifier.type === "ImportSpecifier" ? importSpecifierName(specifier) : null;
           if (importedName === "number") record(numberFactories, specifier.local);
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier" ||
             importedName === "z"
           ) {
             record(zodNamespaces, specifier.local);
@@ -165,16 +113,16 @@ export default createRule<Options, MessageIds>({
           }
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (!isZodObjectCall(node)) return;
+      CallExpression(node: ESTree.CallExpression): void {
         const shape = node.arguments[0];
-        if (shape?.type !== AST_NODE_TYPES.ObjectExpression) return;
+        if (shape?.type !== "ObjectExpression" || !isZodObjectCall(node)) return;
         for (const member of shape.properties) {
-          if (member.type !== AST_NODE_TYPES.Property || !isNumericSchema(member.value)) continue;
+          if (member.type !== "Property") continue;
           const key = directIdentifierKey(member);
           if (
             key === null ||
-            (!CONTROL_SECONDS_RE.test(key.name) && !CONTROL_SECONDS_CAMEL_RE.test(key.name))
+            (!CONTROL_SECONDS_RE.test(key.name) && !CONTROL_SECONDS_CAMEL_RE.test(key.name)) ||
+            !isNumericSchema(member.value)
           ) {
             continue;
           }

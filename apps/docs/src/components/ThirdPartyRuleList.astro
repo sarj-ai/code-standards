@@ -210,7 +210,8 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
       const currentRequest = ++request;
       const query = search.value.trim().toLocaleLowerCase('en-US');
       const next = new URL(location.href);
-      query ? next.searchParams.set('q', search.value.trim()) : next.searchParams.delete('q');
+      if (query) next.searchParams.set('q', search.value.trim());
+      else next.searchParams.delete('q');
       history.replaceState(null, '', next);
       if (clear instanceof HTMLButtonElement) clear.hidden = query.length === 0;
       const searching = query.length > 0;

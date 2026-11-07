@@ -335,7 +335,7 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     assert reuse["if"] == "needs.detect.outputs.lane == 'main'"
     for name in [
         "Build package and exact local dependency wheels",
-        "Build the plugin for native ESLint integration tests",
+        "Build the plugin for native Oxlint integration tests",
         "Install the manifest formatter",
         "Install the pinned native tool bootstrap",
         "Install and attest integration native tools",
@@ -346,9 +346,9 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
         assert step["if"] == "steps.reuse.outputs.reused != 'true'"
     names = [step.get("name") for step in build]
     assert names.index("Install the rule authoring parser") < names.index(
-        "Build the plugin for native ESLint integration tests"
+        "Build the plugin for native Oxlint integration tests"
     )
-    assert names.index("Build the plugin for native ESLint integration tests") < names.index(
+    assert names.index("Build the plugin for native Oxlint integration tests") < names.index(
         "Test against the built wheel"
     )
     assert names.index("Install the manifest formatter") < names.index("Test against the built wheel")

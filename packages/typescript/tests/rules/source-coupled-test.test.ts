@@ -1,42 +1,28 @@
-// vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { ESLint } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe } from "vitest";
 
 import iacRule from "../../src/rules/iac-source-coupled-test.js";
 import rule from "../../src/rules/source-coupled-test.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { sourceType: "module" } } });
+const TESTER = ruleTester();
 const NAMED_FS = "import { readFileSync } from 'node:fs';";
 const FS_OBJECT = "import fs from 'node:fs';";
 
-it.each([
+const OWNERS = [
   ["policy.json", "source-coupled-test"],
   ["main.tf.jsonc", "source-coupled-test"],
   ["main.tf.json", "iac-source-coupled-test"],
   ["main.tftest.json", "iac-source-coupled-test"],
-])("assigns %s to its single source-oracle owner", async (path, owner) => {
-  const eslint = new ESLint({
-    overrideConfigFile: true,
-    overrideConfig: [{
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { sarj: { rules: { "source-coupled-test": rule, "iac-source-coupled-test": iacRule } } },
-      rules: { "sarj/source-coupled-test": "error", "sarj/iac-source-coupled-test": "error" },
-    }],
+] as const;
+const ownerCode = (path: string): string => `${NAMED_FS} test('policy', () => { expect(readFileSync('${path}', 'utf8')).toContain('resource'); });`;
+for (const [ruleName, ruleUnderTest] of [["source-coupled-test", rule], ["iac-source-coupled-test", iacRule]] as const) {
+  describe(`assigns each path to its single source-oracle owner (${ruleName})`, () => {
+    TESTER.run(ruleName, ruleUnderTest, {
+      valid: OWNERS.filter(([, owner]) => owner !== ruleName).map(([path]) => ({ name: `assigns ${path} to its single source-oracle owner (checked per rule; the original linted both rules together)`, filename: "policy.test.ts", code: ownerCode(path) })),
+      invalid: OWNERS.filter(([, owner]) => owner === ruleName).map(([path]) => ({ name: `assigns ${path} to its single source-oracle owner (checked per rule; the original linted both rules together)`, filename: "policy.test.ts", code: ownerCode(path), errors: [{ messageId: "rawSourceOracle", line: 1 }] })),
+    });
   });
-  const [result] = await eslint.lintText(
-    `${NAMED_FS} test('policy', () => { expect(readFileSync('${path}', 'utf8')).toContain('resource'); });`,
-    { filePath: "policy.test.ts" },
-  );
-  expect(result?.messages.map(message => [message.ruleId, message.line])).toEqual([[`sarj/${owner}`, 1]]);
-});
+}
 
 TESTER.run("source-coupled-test", rule, {
   valid: [

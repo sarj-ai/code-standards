@@ -1,190 +1,95 @@
 /**
  * @fileoverview prefer-await-in-async-return — replace a directly returned Promise `.then` transform with explicit async control flow.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-await-in-async-return.test.ts
+ * Port of the 18.x `prefer-await-in-async-return` rule. Typed: without
+ * tsrs types it reports nothing, as the original returns no visitors without
+ * type services. The walk collects `.then` calls that pass the syntactic
+ * checks; `Program:exit` proves their receivers are built-in Promises.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeServices } from "./_eslint-rule.js";
+import type { Type } from "tsrs/sync";
 
+import { defineRule, type ESTree, type Node, type TsVariable } from "../types.js";
+import { directArgumentCall, outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { type NativeTypes, nativeTypes, type TsNode } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
+const NAME = "prefer-await-in-async-return";
 
-import { ASTUtils, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
-import * as ts from "typescript";
-
-import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-
-type MessageIds = "preferAwait" | "preferAwaitCall";
-type Options = readonly [{ readonly scope: "async-return" | "all-promise-calls" }];
-
-export const PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION = {
-  summary:
-    "Prefer explicit `await` for proven Promise `.then` calls; the default scope checks direct async returns.",
-  rationale:
-    "Promise callback chains mix explicit async control flow with nested callbacks, making sequencing and failure handling harder to read.",
-  remediation:
-    "Consider awaiting the Promise and returning the transformed value with ordinary async statements. Preserve catch boundaries, callback behavior, and observable scheduling when rewriting manually.",
-  category: "maintainability",
-  since: "15.6.3",
-  limitations: [
-    "The default async-return scope checks one directly returned `.then` call with an inline callback. The all-promise-calls scope checks direct calls to built-in Promise/PromiseLike.then, including optional and literal-computed calls, without automatic rewrites.",
-    "The receiver must be proven Promise-like by TypeScript; an earlier chain can still produce that receiver. The default async-return scope excludes rejection handlers and named callbacks. This is not the upstream return-await policy and no scheduling equivalence is promised.",
-    "The default async-return scope excludes direct loader callbacks passed to resolved `React.lazy` and `next/dynamic` imports because returning the module Promise is their framework contract.",
-    "All-promise-calls requires type information and excludes unproven/custom thenables, dynamic property names, property reads, destructuring, and extracted method aliases. Catch and finally remain available. Framework callback exclusions apply only to the default async-return scope.",
-  ],
-  examples: [
-    {
-      id: "explicit-async-transform",
-      title: "Use explicit async control flow",
-      outcome: "no-match",
-      files: [{
-        path: "src/load.ts",
-        source:
-          "async function load() { const value = await Promise.resolve(1); return value + 1; }",
-      }],
-      focusPath: "src/load.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "returned-then-transform",
-      title: "Do not directly return a Promise callback chain from async code",
-      outcome: "match",
-      files: [{
-        path: "src/load.ts",
-        source:
-          "async function load() { return Promise.resolve(1).then((value) => value + 1); }",
-      }],
-      focusPath: "src/load.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-type RuntimeFunction =
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression;
+type RuntimeFunction = ESTree.ArrowFunctionExpression | ESTree.Function;
+type MessageId = "preferAwait" | "preferAwaitCall";
 
 /** A direct return owned by an ordinary async function, never an async generator. */
-function directAsyncReturnOwner(node: TSESTree.CallExpression): RuntimeFunction | null {
-  const parent = node.parent;
-  if (
-    parent.type === AST_NODE_TYPES.ArrowFunctionExpression &&
-    parent.body === node
-  ) {
+function directAsyncReturnOwner(node: ESTree.CallExpression): RuntimeFunction | null {
+  const parent = parentOf(node);
+  if (parent?.type === "ArrowFunctionExpression" && parent.body === node) {
     return parent.async && !parent.generator ? parent : null;
   }
-  if (
-    parent.type !== AST_NODE_TYPES.ReturnStatement ||
-    parent.argument !== node
-  ) {
-    return null;
+  if (parent?.type !== "ReturnStatement" || parent.argument !== node) return null;
+  for (let owner = parentOf(parent); owner !== null; owner = parentOf(owner)) {
+    if (owner.type === "ArrowFunctionExpression" || owner.type === "FunctionDeclaration" || owner.type === "FunctionExpression") {
+      return owner.async && !owner.generator ? owner : null;
+    }
   }
-
-  let owner: TSESTree.Node | undefined = parent.parent;
-  while (owner !== undefined && !isRuntimeFunction(owner)) {
-    owner = owner.parent;
-  }
-  return owner !== undefined && owner.async && !owner.generator ? owner : null;
-}
-
-function isRuntimeFunction(node: TSESTree.Node) {
-  return (
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression
-  );
+  return null;
 }
 
 /** A single `.then` transform whose rewrite does not need catch/finally logic. */
-function promiseThenReceiver(
-  node: TSESTree.CallExpression,
-): TSESTree.Expression | null {
+function promiseThenReceiver(node: ESTree.CallExpression): Node | null {
   const callee = unwrapExpression(node.callee);
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.optional ||
-    ASTUtils.getPropertyName(callee) === null ||
-    (ASTUtils.getPropertyName(callee) ?? "") !== "then" ||
-    node.optional ||
-    node.arguments.length !== 1
-  ) {
-    return null;
-  }
+  if (callee.type !== "MemberExpression" || callee.optional || getPropertyName(callee) !== "then" ||
+    node.optional || node.arguments.length !== 1) return null;
   const argument = node.arguments[0];
   const callback = argument === undefined ? undefined : unwrapExpression(argument);
-  if (
-    callback === undefined ||
-    (callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      callback.type !== AST_NODE_TYPES.FunctionExpression)
-  ) {
-    return null;
-  }
+  if (callback === undefined || (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression")) return null;
   return callee.object;
 }
 
-function directThenReceiver(node: TSESTree.CallExpression): TSESTree.Expression | null {
+function directThenReceiver(node: ESTree.CallExpression): Node | null {
   const callee = unwrapExpression(node.callee);
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+  if (callee.type !== "MemberExpression") return null;
   const property = callee.property;
   const isThen = callee.computed
-    ? (property.type === AST_NODE_TYPES.Literal && property.value === "then") ||
-      (property.type === AST_NODE_TYPES.TemplateLiteral &&
-        property.expressions.length === 0 && property.quasis[0]?.value.cooked === "then")
-    : property.type === AST_NODE_TYPES.Identifier && property.name === "then";
+    ? (property.type === "Literal" && property.value === "then") ||
+      (property.type === "TemplateLiteral" && property.expressions.length === 0 && property.quasis[0]?.value.cooked === "then")
+    : property.type === "Identifier" && property.name === "then";
   return isThen ? callee.object : null;
 }
 
-function isProvenPromiseLike(
-  node: TSESTree.Expression,
-  services: TypeServices,
-): boolean {
-  const checker = services.program.getTypeChecker();
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  const receiverType = checker.getNonNullableType(checker.getTypeAtLocation(tsNode));
-  const members = receiverType.isUnion() ? receiverType.types : [receiverType];
-  return members.every((member) => isBuiltInPromiseType(member, services));
+function isProvenPromiseLike(native: NativeTypes, node: Node): boolean {
+  const tsNode = native.node(node);
+  if (tsNode === undefined) return false;
+  const receiverType = native.checker.getNonNullableType(native.checker.getTypeAtLocation(tsNode));
+  const members = receiverType.isUnionType() ? receiverType.getTypes() : [receiverType];
+  return members.every((member) => isBuiltInPromiseType(native, member));
 }
 
-function isBuiltInPromiseType(type: ts.Type, services: TypeServices): boolean {
-  if (
-    (type.flags &
-      (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !==
-    0
-  ) {
-    return false;
-  }
-  const thenSymbol = services.program.getTypeChecker().getPropertyOfType(type, "then");
-  const declarations = thenSymbol?.declarations;
+function isBuiltInPromiseType(native: NativeTypes, type: Type): boolean {
+  const flags = native.sync.TypeFlags;
+  if ((type.flags & (flags.Any | flags.Unknown | flags.Never)) !== 0) return false;
+  const declarations = native.checker.getPropertyOfType(type, "then")?.declarations;
   if (declarations === undefined || declarations.length === 0) return false;
-  return declarations.every(
-    (declaration) => {
-      let owner: ts.Node | undefined = declaration.parent;
-      while (owner !== undefined && !ts.isInterfaceDeclaration(owner)) {
-        owner = owner.parent;
-      }
-      return (
-        owner !== undefined &&
-        (owner.name.text === "Promise" || owner.name.text === "PromiseLike") &&
-        services.program.isSourceFileDefaultLibrary(owner.getSourceFile())
-      );
-    },
-  );
+  return declarations.every((handle) => {
+    // Default-library metadata is cheap; only then fetch the declaration to find its interface.
+    if (native.program.getSourceFileMetadataByPath(handle.path)?.isDefaultLibrary !== true) return false;
+    const declaration = handle.resolve(native.program.getProject()) as TsNode | undefined;
+    let owner: TsNode | undefined = declaration?.parent;
+    while (owner !== undefined && !native.ast.isInterfaceDeclaration(owner)) owner = owner.parent;
+    return owner !== undefined && (owner.name.text === "Promise" || owner.name.text === "PromiseLike") &&
+      native.program.isSourceFileDefaultLibrary(owner.getSourceFile());
+  });
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-await-in-async-return",
-  documentation: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{ scope: "async-return" }],
     type: "suggestion",
     docs: {
       description:
         "Prefer explicit `await` for proven Promise `.then` calls; the default scope checks direct async returns.",
+      url: docsUrl(NAME),
     },
     schema: [{
       type: "object",
@@ -198,62 +103,70 @@ export default createRule<Options, MessageIds>({
         "This call uses built-in Promise.then(). Use async/await, preserving rejection handling and observable scheduling when rewriting.",
     },
   },
-  create(context, [options]) {
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
-    }
-    if (services === null) return {};
-    type ScopeVariable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
-    const frameworkLoaders = new Set<ScopeVariable>();
-    const rememberFrameworkLoader = (identifier: TSESTree.Identifier): void => {
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let allPromiseCalls = false;
+    let frameworkLoaders = new Set<TsVariable>();
+    let candidates: { readonly node: ESTree.CallExpression; readonly receiver: Node; readonly messageId: MessageId }[] = [];
+
+    const rememberFrameworkLoader = (identifier: ESTree.BindingIdentifier): void => {
+      const variable = findVariable(context.sourceCode.getScope(identifier), identifier.name);
       if (variable !== null) frameworkLoaders.add(variable);
     };
     const isFrameworkLoaderCallback = (owner: RuntimeFunction): boolean => {
       const parent = directArgumentCall(owner);
       if (parent === null || parent.arguments[0] !== outerExpression(owner)) return false;
       const callee = unwrapExpression(parent.callee);
-      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(callee), callee.name);
+      if (callee.type !== "Identifier") return false;
+      const variable = findVariable(context.sourceCode.getScope(callee), callee.name);
       return variable !== null && frameworkLoaders.has(variable);
     };
 
     return {
-      ImportDeclaration(node): void {
+      before() {
+        frameworkLoaders = new Set();
+        candidates = [];
+        const options = context.options[0] as { readonly scope?: string } | undefined;
+        allPromiseCalls = options?.scope === "all-promise-calls";
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      ImportDeclaration(node) {
         if (node.source.value === "react") {
           for (const specifier of node.specifiers) {
-            if (
-              specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              (specifier.imported.type === AST_NODE_TYPES.Identifier
-                ? specifier.imported.name
-                : specifier.imported.value) === "lazy"
-            ) rememberFrameworkLoader(specifier.local);
+            if (specifier.type === "ImportSpecifier" &&
+              (specifier.imported.type === "Identifier" ? specifier.imported.name : specifier.imported.value) === "lazy") {
+              rememberFrameworkLoader(specifier.local);
+            }
           }
         }
         if (node.source.value === "next/dynamic") {
           for (const specifier of node.specifiers) {
-            if (specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier) rememberFrameworkLoader(specifier.local);
+            if (specifier.type === "ImportDefaultSpecifier") rememberFrameworkLoader(specifier.local);
           }
         }
       },
-      CallExpression(node): void {
-        if (options.scope === "all-promise-calls") {
+      CallExpression(node) {
+        if (allPromiseCalls) {
           const receiver = directThenReceiver(node);
-          if (receiver !== null && isProvenPromiseLike(receiver, services)) {
-            context.report({ node, messageId: "preferAwaitCall" });
-          }
+          if (receiver !== null) candidates.push({ node, receiver, messageId: "preferAwaitCall" });
           return;
         }
         const owner = directAsyncReturnOwner(node);
         if (owner === null || isFrameworkLoaderCallback(owner)) return;
         const receiver = promiseThenReceiver(node);
-        if (receiver === null || !isProvenPromiseLike(receiver, services)) {
-          return;
-        }
-        context.report({ node, messageId: "preferAwait" });
+        if (receiver !== null) candidates.push({ node, receiver, messageId: "preferAwait" });
+      },
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const proven = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          return candidates.map((candidate) => isProvenPromiseLike(native, candidate.receiver));
+        });
+        if (proven === null) return;
+        candidates.forEach(({ node, messageId }, i) => {
+          if (proven[i] === true) context.report({ node, messageId });
+        });
       },
     };
   },

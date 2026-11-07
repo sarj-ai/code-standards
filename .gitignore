@@ -8,7 +8,6 @@ build/
 .turbo/
 .tsup/
 .vitest-cache/
-.eslintcache
 coverage/
 
 __pycache__/

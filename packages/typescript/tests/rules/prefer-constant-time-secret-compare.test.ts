@@ -1,20 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-constant-time-secret-compare.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION } from "../../src/rules/prefer-constant-time-secret-compare.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
   valid: [
@@ -37,7 +25,7 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     { name: "does not confuse parser-token identity with authentication", code: "if (firstToken === lastToken || token !== startToken || currentToken !== finalToken) advance();" },
     { name: "does not confuse token navigation metadata with secret bytes", code: "if (firstTokenLine === secondTokenLine || tokenBefore === commentList[index - 1]) advance();" },
     { name: "leaves ambiguous token names to typed or domain-specific analysis", code: "if (token === expectedToken) consume();" },
-    { name: "public no-match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/auth.ts", code: "if (await constantTimeEqual(presentedAccessToken, expectedAccessToken)) { allow(); }" },
     {
       name: "allows identity checks against a camelCase marker ending in Token",
       code: "if (options.queryFn === skipToken) { options.enabled = false; }",
@@ -116,7 +104,7 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     { name: "retains credential provenance through a const header assertion", code: 'function check(req: Request, expected: string) { const given = req.headers.get(("x-webhook-secret" as const)); return given === expected; }', errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
     { name: "recognizes static computed native header access", code: 'function check(req: Request, expected: string) { return req["headers"]["get"](`x-webhook-secret`) === expected; }', errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
 
-    { name: "public match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
+    { name: "public match example", filename: "src/auth.ts", code: "if (presentedAccessToken === expectedAccessToken) { allow(); }", errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
 
     {
       name: "requires a runtime-supported primitive without prescribing a nonexistent WebCrypto method",
@@ -133,10 +121,6 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
       code: "if (presented === expectedAccessToken) { await next(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],
     },
-
-
-
-
 
     {
       code: "if (token === env.INTERNAL_ADMIN_TOKEN) { await next(); }",

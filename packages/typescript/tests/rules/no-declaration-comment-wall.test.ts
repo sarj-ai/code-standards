@@ -1,22 +1,13 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-declaration-comment-wall.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
-} from "../../src/rules/no-declaration-comment-wall.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-declaration-comment-wall", rule, {
   valid: [
 
-    { code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
+    { code: "enum Status { Pending = 'pending', Finished = 'finished', Failed = 'failed' }" },
     {
       name: "preserves rationale in consecutive line-comment blocks",
       code: [
@@ -34,7 +25,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: [
         "enum Status {",
@@ -48,10 +38,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
-
     {
       code: [
         "enum TargetMode {",
@@ -62,8 +48,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -92,10 +76,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
-
     {
       code: [
         "class Theme {",
@@ -108,9 +88,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
-
 
     {
       code: [
@@ -125,7 +102,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: [
         "enum Status {",
@@ -137,8 +113,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -158,8 +132,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
     {
       code: [
         "enum Status {",
@@ -172,8 +144,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -190,7 +160,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: [
         "enum Code {",
@@ -203,8 +172,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -287,14 +254,12 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}".replaceAll("\n", ending),
       errors: [{ messageId: "commentWall" as const }],
     })),
-    { name: "automatically removes only exact multiword member names", code: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}", output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}", errors: [{ messageId: "commentWall" }] },
-
+    { name: "automatically removes only exact multiword member names (distinct filename: Oxlint's RuleTester rejects duplicate code)", filename: "src/client.ts", code: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}", output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}", errors: [{ messageId: "commentWall" }] },
 
     {
-      code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
+      code: "enum Status {\n  /** The pending status. */\n  Pending = 'pending',\n  /** The finished status. */\n  Finished = 'finished',\n  /** The failed status. */\n  Failed = 'failed',\n}",
       errors: [{ messageId: "commentWall" }],
     },
-
 
     {
       code: [
@@ -310,8 +275,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
 
-
-
     {
       code: [
         "enum Status {",
@@ -322,9 +285,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-
-
-
 
     {
       code: [
@@ -345,9 +305,6 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"), output: "class Config {\n\n  retryCount = 4;\n\n  baseUrl = 'https://x';\n\n  userAgent = 'y';\n\n  // transport\n  socketPath = null;\n\n  // credentials\n  tokenValue = 'c';\n}",
       errors: [{ messageId: "commentWall" }],
     },
-
-
-
 
     {
       code: [

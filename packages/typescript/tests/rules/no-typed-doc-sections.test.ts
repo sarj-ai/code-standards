@@ -1,35 +1,33 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as tsParser from "@typescript-eslint/parser";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
-import rule, {
-  NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
-} from "../../src/rules/no-typed-doc-sections.js";
 import restatedJsdoc from "../../src/rules/no-restated-jsdoc.js";
+import rule from "../../src/rules/no-typed-doc-sections.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
-it.each([
+const NO_TYPED_DOC_SECTIONS_DOCUMENTATION = {
+  examples: [
+    { files: [{ source: "/** Retries when the vendor returns 429. */\nexport function fetchValue(id: string): number { return 1; }" }] },
+    { files: [{ source: "/** @param userId the user identifier */\nexport function fetchValue(userId: string): number { return 1; }" }] },
+  ],
+} as const;
+
+const BOTH_RULES_CONTRACTS = [
   "/** @param value مطلوب */\nfunction f(value: string): void {}",
   "/** @param [value=ready] */\nfunction f(value: string): void {}",
   "/** @param missing */\nfunction f(value: string): void {}",
   "/** @returns 'string' */\nfunction f(): string { return 'string'; }",
-])("preserves a contract with both JSDoc rules enabled: %s", (source) => {
-  const findings = new Linter().verify(source, [{
-    files: ["**/*.ts"],
-    languageOptions: { parser: tsParser },
-    plugins: { sarj: { rules: { typed: rule, restated: restatedJsdoc } } },
-    rules: { "sarj/typed": "warn", "sarj/restated": "warn" },
-  }], { filename: "src/contracts.ts" });
-  expect(findings).toEqual([]);
+].map((code) => ({ name: `preserves a contract with both JSDoc rules enabled: ${code}`, filename: "src/contracts.ts", code }));
+RULE_TESTER.run("preserves a contract with both JSDoc rules enabled (no-typed-doc-sections)", rule, {
+  valid: BOTH_RULES_CONTRACTS,
+  invalid: [],
+});
+RULE_TESTER.run("preserves a contract with both JSDoc rules enabled (no-restated-jsdoc)", restatedJsdoc, {
+  valid: BOTH_RULES_CONTRACTS,
+  invalid: [],
 });
 
-new RuleTester().run("no-typed-doc-sections", rule, {
+RULE_TESTER.run("no-typed-doc-sections", rule, {
   valid: [
     { name: "preserves explicit types that differ from the signature", code: "/** @param value {unused}\n * @returns {string}\n */\nfunction f(value: number): number { return value; }" },
     { name: "preserves a narrower explicit parameter type", code: "/** @param {string} value */\nfunction f(value: unknown): void {}" },
@@ -113,7 +111,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
       output: "\nfunction f(value: string): void {}".replaceAll("\n", ending),
       errors: [{ messageId: "typedSection" as const }],
     })),
-    { name: "reports an exact primitive parameter type repetition", code: "/** @param {string} value */\nfunction f(value: string): void {}", output: "\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
+    { name: "reports an exact primitive parameter type repetition (distinct filename: Oxlint's RuleTester rejects duplicate code)", filename: "src/repetition.ts", code: "/** @param {string} value */\nfunction f(value: string): void {}", output: "\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
     {
       name: "flags a description-free parameter tag",
       code: "/** @param id */\nexport function fetchValue(id: string): number { return 1; }", output: "\nexport function fetchValue(id: string): number { return 1; }",

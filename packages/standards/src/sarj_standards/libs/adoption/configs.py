@@ -34,9 +34,9 @@ CONFIG_SPECS: Final[Mapping[str, ConfigSpec]] = MappingProxyType(
             destination_name=".pyright-strict.json",
             destination_kind="python",
         ),
-        "eslint": ConfigSpec(
-            source_name="eslint.strict.ts",
-            destination_name="eslint.strict.ts",
+        "typescript": ConfigSpec(
+            source_name="oxlint.strict.mts",
+            destination_name="oxlint.strict.mts",
             destination_kind="typescript",
         ),
         "swiftformat": ConfigSpec(
@@ -101,20 +101,12 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {name: (spec.source_name, spec.destination_name) for name, spec in CONFIG_SPECS.items()}
 )
 
-# TypeScript consumers also receive the managed quality-tool presets.
+# TypeScript consumers also receive the managed formatter and quality-tool presets.
 TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
+        "oxfmt": ("oxfmt.strict.mts", "oxfmt.strict.mts"),
         "react-doctor": ("doctor.config.json", "doctor.config.json"),
         "syncpack": ("syncpack.strict.mts", "syncpack.strict.mts"),
-    }
-)
-ESLINT_DECLARATION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
-    {"eslint-declaration": ("eslint.strict.d.mts", "eslint.strict.d.mts")}
-)
-_LEGACY_TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
-    {
-        **TYPESCRIPT_COMPANION_CONFIGS,
-        **ESLINT_DECLARATION_CONFIGS,
     }
 )
 PYTHON_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
@@ -136,7 +128,6 @@ MOBILE_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyTyp
 APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "ruff": "ruff.strict.toml",
-        "eslint": "eslint.strict.mjs",
     }
 )
 PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})
@@ -185,7 +176,18 @@ CONFIG_SKIP_DIRECTORIES: Final = frozenset(
     }
 )
 
-ESLINT_CONFIG_NAMES: Final = (
+OXLINT_PRESET: Final = "oxlint.strict.mts"
+#: The repository-owned entrypoint `setup` scaffolds once; it extends the synced preset.
+OXLINT_ENTRYPOINT: Final = "oxlint.config.mts"
+#: Every config file Oxlint discovers on its own, in its precedence order.
+OXLINT_CONFIG_NAMES: Final = (".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.mts")
+OXFMT_ENTRYPOINT: Final = "oxfmt.config.mts"
+OXLINT_SUPPRESSIONS: Final = "oxlint-suppressions.json"
+#: JavaScript and TypeScript source suffixes Oxlint lints.
+TYPESCRIPT_SOURCE_SUFFIXES: Final = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
+BIOME_CONFIG_NAMES: Final = ("biome.json", "biome.jsonc")
+#: ESLint-era files `update` migrates away from.
+LEGACY_ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
     "eslint.config.mjs",
     "eslint.config.cjs",
@@ -193,53 +195,18 @@ ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.mts",
     "eslint.config.cts",
 )
-ESLINT_PRESET_NAMES: Final = frozenset({"eslint.strict.ts", "eslint.strict.mjs"})
+LEGACY_ESLINT_PRESET_NAMES: Final = ("eslint.strict.ts", "eslint.strict.mjs", "eslint.strict.d.mts")
+LEGACY_ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
 _LOCAL_MODULE = re.compile(
     r"(?m)^\s*(?:import\b[^;\n]*?\bfrom\s+|import\s*|export\b[^;\n]*?\bfrom\s+)"
     r"[\"'](?P<path>\.[^\"']+)[\"']"
 )
 
 
-def typescript_companion_configs(preset_name: str) -> Mapping[str, tuple[str, str]]:
-    if preset_name == "eslint.strict.mjs":
-        return _LEGACY_TYPESCRIPT_COMPANION_CONFIGS
-    return TYPESCRIPT_COMPANION_CONFIGS
-
-
-def eslint_preset_name(destination: Path) -> str:
-    typed = "eslint.strict.ts"
-    legacy = "eslint.strict.mjs"
-    for preset in (typed, legacy):
-        if any(
-            eslint_wiring_reaches_strict(destination / name, destination, planned_strict=destination / preset)
-            for name in ESLINT_CONFIG_NAMES
-        ):
-            return preset
-    if (destination / typed).exists():
-        return typed
-    if (destination / legacy).exists():
-        return legacy
-    entrypoints = tuple(
-        owner / name
-        for owner in configuration_roots(destination, ESLINT_CONFIG_NAMES)
-        for name in ESLINT_CONFIG_NAMES
-        if (owner / name).is_file()
-    )
-    for preset in (typed, legacy):
-        if any(
-            eslint_wiring_reaches_strict(path, destination, planned_strict=destination / preset) for path in entrypoints
-        ):
-            return preset
-    return typed
-
-
-def eslint_wiring_reaches_strict(
-    path: Path,
-    root: Path,
-    seen: set[Path] | None = None,
-    *,
-    planned_strict: Path | None = None,
+def oxlint_wiring_reaches_strict(
+    path: Path, root: Path, seen: set[Path] | None = None, *, planned: bool = False
 ) -> bool:
+    # `planned`: setup syncs the preset after planning, so an import of a missing one still counts.
     visited: set[Path] = set() if seen is None else seen
     resolved = path.resolve()
     if resolved in visited or not resolved.is_file() or not resolved.is_relative_to(root.resolve()):
@@ -247,18 +214,13 @@ def eslint_wiring_reaches_strict(
     visited.add(resolved)
     for match in _LOCAL_MODULE.finditer(resolved.read_text(encoding="utf-8", errors="replace")):
         target = (resolved.parent / match.group("path")).resolve()
-        if target.name in ESLINT_PRESET_NAMES and (
-            target.is_file() if planned_strict is None else target == planned_strict.resolve()
-        ):
+        if target.name == OXLINT_PRESET and (planned or target.is_file()):
             return True
         candidates = (
             target,
             *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")),
         )
-        if any(
-            eslint_wiring_reaches_strict(candidate, root, visited, planned_strict=planned_strict)
-            for candidate in candidates
-        ):
+        if any(oxlint_wiring_reaches_strict(candidate, root, visited, planned=planned) for candidate in candidates):
             return True
     return False
 

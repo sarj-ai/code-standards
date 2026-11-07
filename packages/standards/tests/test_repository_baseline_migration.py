@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
 from repo_standards.core.canonical import scope_digest
 from repo_standards.policy_sarj import SarjPolicy
-from repo_standards.repository import parse_manifest_bytes
+from repo_standards.repository import RepositoryAnalysisRequest, analyze_repository, parse_manifest_bytes
 
 from sarj_standards.libs.adoption import repository_baseline, scaffold, service
 from sarj_standards.libs.release import rollout
@@ -441,6 +442,138 @@ def test_rollout_accepts_the_empty_migration_and_rejects_other_baseline_changes(
     path.write_bytes(changed)
     with pytest.raises(rollout.RolloutError, match="fields beyond reviewed policy metadata"):
         rollout.repository_baseline_migration(tmp_path, original)
+
+
+_ARTIFACT = (
+    b'\n[[javascript.artifacts]]\npath = "eslint.strict.mjs"\nkind = "generated"\nsource = "a.toml"\nreason = "r"\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("previous", "manifest", "rescoped"),
+    [
+        pytest.param(_MANIFEST + _ARTIFACT, _MANIFEST, True, id="dropped-artifact"),
+        pytest.param(_MANIFEST, _MANIFEST, False, id="unchanged-scope"),
+    ],
+)
+def test_rescope_follows_a_manifest_that_only_drops_javascript_artifacts(
+    previous: bytes, manifest: bytes, *, rescoped: bool
+) -> None:
+    original = _baseline(34, fingerprints=("f" * 64,)).replace(
+        scope_digest(parse_manifest_bytes(_MANIFEST)).encode(), scope_digest(parse_manifest_bytes(previous)).encode()
+    )
+
+    result = repository_baseline.rescope(original, previous, manifest)
+
+    expected = original.replace(
+        scope_digest(parse_manifest_bytes(previous)).encode(), scope_digest(parse_manifest_bytes(manifest)).encode()
+    )
+    assert result == expected
+    assert (result != original) is rescoped
+
+
+@pytest.mark.parametrize(
+    ("previous", "manifest"),
+    [
+        pytest.param(_MANIFEST, _MANIFEST + _ARTIFACT, id="added-artifact"),
+        pytest.param(_MANIFEST + _ARTIFACT, b'repository_id = "other"\ncomponents = []\n', id="other-scope-change"),
+    ],
+)
+def test_rescope_rejects_any_other_scope_change(previous: bytes, manifest: bytes) -> None:
+    original = _baseline(34).replace(
+        scope_digest(parse_manifest_bytes(_MANIFEST)).encode(), scope_digest(parse_manifest_bytes(previous)).encode()
+    )
+
+    with pytest.raises(ValueError, match="scope does not match"):
+        repository_baseline.rescope(original, previous, manifest)
+
+
+def test_rollout_accepts_the_rescoped_baseline_of_a_dropped_artifact(tmp_path: Path) -> None:
+    manifest = tmp_path / ".repo-standards" / "repository.toml"
+    manifest.parent.mkdir()
+    manifest.write_bytes(_MANIFEST)
+    previous = _MANIFEST + _ARTIFACT
+    original = _baseline(SarjPolicy.policy_version).replace(
+        scope_digest(parse_manifest_bytes(_MANIFEST)).encode(), scope_digest(parse_manifest_bytes(previous)).encode()
+    )
+    path = tmp_path / repository_baseline.PATH
+    path.write_bytes(_baseline(SarjPolicy.policy_version))
+
+    assert rollout.repository_baseline_migration(tmp_path, original, previous) == {path: path.read_bytes()}
+    with pytest.raises(rollout.RolloutError, match="not compatible"):
+        rollout.repository_baseline_migration(tmp_path, original)
+
+
+@pytest.mark.parametrize(
+    ("retired", "kept"),
+    [
+        pytest.param(("b" * 64,), ("a" * 64, "c" * 64), id="middle"),
+        pytest.param(("c" * 64, "d" * 64), ("a" * 64, "b" * 64), id="last-and-unknown"),
+        pytest.param(("a" * 64, "b" * 64, "c" * 64), (), id="all"),
+        pytest.param((), ("a" * 64, "b" * 64, "c" * 64), id="none"),
+    ],
+)
+def test_rescope_drops_exactly_the_retired_fingerprints(retired: tuple[str, ...], kept: tuple[str, ...]) -> None:
+    original = _baseline(34, fingerprints=("a" * 64, "b" * 64, "c" * 64))
+
+    result = repository_baseline.rescope(original, _MANIFEST, _MANIFEST, frozenset(retired))
+
+    assert result == _baseline(34, fingerprints=kept)
+
+
+def test_rollout_accepts_only_the_retired_fingerprint_removals(tmp_path: Path) -> None:
+    manifest = tmp_path / ".repo-standards" / "repository.toml"
+    manifest.parent.mkdir()
+    manifest.write_bytes(_MANIFEST)
+    previous = _MANIFEST + _ARTIFACT
+    rescoped = (
+        scope_digest(parse_manifest_bytes(_MANIFEST)).encode(),
+        scope_digest(parse_manifest_bytes(previous)).encode(),
+    )
+    original = _baseline(SarjPolicy.policy_version, fingerprints=("a" * 64, "b" * 64)).replace(*rescoped)
+    path = tmp_path / repository_baseline.PATH
+    path.write_bytes(_baseline(SarjPolicy.policy_version, fingerprints=("a" * 64,)))
+
+    retired = frozenset({"b" * 64})
+    assert rollout.repository_baseline_migration(tmp_path, original, previous, retired) == {path: path.read_bytes()}
+    with pytest.raises(rollout.RolloutError, match="fields beyond reviewed policy metadata"):
+        rollout.repository_baseline_migration(tmp_path, original, previous)
+    path.write_bytes(_baseline(SarjPolicy.policy_version))
+    with pytest.raises(rollout.RolloutError, match="fields beyond reviewed policy metadata"):
+        rollout.repository_baseline_migration(tmp_path, original, previous, retired)
+
+
+def test_retired_fingerprints_name_the_committed_findings_on_deleted_files(tmp_path: Path) -> None:
+    manifest = tmp_path / ".repo-standards" / "repository.toml"
+    manifest.parent.mkdir()
+    manifest.write_bytes(b'enabled_rules = ["repository/artifacts/untyped-javascript"]\n' + _MANIFEST)
+    for name in ("eslint.config.mjs", "tool.mjs"):
+        (tmp_path / name).write_text("export default [];\n", encoding="utf-8")
+
+    baseline = tmp_path / repository_baseline.PATH
+    baseline.write_bytes(_baseline(SarjPolicy.policy_version))
+
+    assert repository_baseline.retired_fingerprints(tmp_path, {"eslint.config.mjs"}) == frozenset()
+    _commit(tmp_path)
+    report = analyze_repository(RepositoryAnalysisRequest(root=tmp_path))
+    expected = {item.fingerprint for item in report.diagnostics if item.path == "eslint.config.mjs"}
+
+    assert len(expected) == 1
+    assert repository_baseline.retired_fingerprints(tmp_path, {"eslint.config.mjs"}) == expected
+    assert repository_baseline.retired_fingerprints(tmp_path, set()) == frozenset()
+    baseline.unlink()
+    assert repository_baseline.retired_fingerprints(tmp_path, {"eslint.config.mjs"}) == frozenset()
+
+
+def _commit(root: Path) -> None:
+    identity = ("-c", "user.name=Standards Test", "-c", "user.email=standards-test@example.invalid")
+    subprocess.run(("git", "init", "--quiet"), cwd=root, check=True)
+    subprocess.run(("git", "add", "."), cwd=root, check=True)
+    subprocess.run(
+        ("git", *identity, "-c", "commit.gpgsign=false", "commit", "--quiet", "--no-verify", "-m", "fixture"),
+        cwd=root,
+        check=True,
+    )
 
 
 def test_current_repository_baseline_is_preserved_without_reserialization() -> None:

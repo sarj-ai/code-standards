@@ -1,15 +1,15 @@
 // vitest: shared-module-graph
 import { expect, test } from "vitest";
 
-import { NO_ENUM_DOCUMENTATION } from "../src/rules/no-enum.js";
-import { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "../src/rules/no-fat-try-blocks.js";
-import { NO_UNSAFE_MOCK_CASTING_DOCUMENTATION } from "../src/rules/no-unsafe-mock-casting.js";
-import { NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION } from "../src/rules/no-vague-suppression-description.js";
-import { PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION } from "../src/rules/prefer-await-in-async-return.js";
-import { PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION } from "../src/rules/prefer-named-complex-return-type.js";
-import { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "../src/rules/prefer-node-crypto-hash.js";
-import { REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION } from "../src/rules/require-interface-for-exported-class.js";
-import { REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION } from "../src/rules/require-static-next-matcher.js";
+import { NO_ENUM_DOCUMENTATION } from "../src/docs/no-enum.js";
+import { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "../src/docs/no-fat-try-blocks.js";
+import { NO_UNSAFE_MOCK_CASTING_DOCUMENTATION } from "../src/docs/no-unsafe-mock-casting.js";
+import { NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION } from "../src/docs/no-vague-suppression-description.js";
+import { PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION } from "../src/docs/prefer-await-in-async-return.js";
+import { PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION } from "../src/docs/prefer-named-complex-return-type.js";
+import { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "../src/docs/prefer-node-crypto-hash.js";
+import { REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION } from "../src/docs/require-interface-for-exported-class.js";
+import { REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION } from "../src/docs/require-static-next-matcher.js";
 
 test.each([
   ["enum policy", NO_ENUM_DOCUMENTATION, "const-enum", "manual"],

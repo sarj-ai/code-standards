@@ -1,40 +1,19 @@
 /**
- * @fileoverview sole-export-matches-filename — a single public runtime responsibility should be findable by filename.
+ * @fileoverview sole-export-matches-filename — a module's filename should reflect its sole runtime export.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/sole-export-matches-filename.test.ts
+ * Port of the 18.x `sole-export-matches-filename` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "../utils/runtime-exports.js";
 import { isFrameworkEntrypoint } from "./_is-framework-entrypoint.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "./_runtime-exports.js";
 
-type MessageIds = "matchSoleExport";
-type Options = [];
+const NAME = "sole-export-matches-filename";
 
-export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary: "Make a module filename reflect its sole named public runtime export.",
-  rationale: "When a module owns one runtime responsibility, matching names make that responsibility directly discoverable.",
-  remediation: "Name the module for the exported responsibility, using the full kebab-case export name; otherwise colocate genuinely related exports.",
-  category: "maintainability",
-  limitations: [
-    "Framework entrypoints, generic stems covered by no-generic-single-export-module, tests, generated files, anonymous defaults, CommonJS, unresolved re-exports, and emission-dependent exports are excluded.",
-    "The rule compares the primary filename stem and preserves a single private underscore prefix and conventional suffixes such as .server or .worker. Supporting types do not exempt a sole runtime export; public runtime aliases count as distinct exports.",
-    "Exported destructuring patterns are excluded rather than undercounted as public exports.",
-    "Next.js metadata routes, instrumentation, and other Next.js and Astro entrypoint exemptions require the nearest package.json to declare the framework, a conventional entrypoint path, and its expected runtime export. Custom routing roots and pageExtensions are not inferred.",
-  ],
-  examples: [
-    { id: "matching-class", title: "Match a class and module", outcome: "no-match", files: [{ path: "src/artifact-store.ts", source: "export class ArtifactStore {}" }], focusPath: "src/artifact-store.ts", expectedCount: 0, public: true },
-    { id: "mismatched-class", title: "Do not hide a sole class behind another filename", outcome: "match", files: [{ path: "src/artifacts.ts", source: "export class ArtifactStore {}" }], focusPath: "src/artifacts.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-const EXCLUDED_STEMS: ReadonlySet<string> = new Set([
-  "global", "index", "types",
-]);
+const EXCLUDED_STEMS: ReadonlySet<string> = new Set(["global", "index", "types"]);
 
 function stem(filename: string): string {
   const base = filename.replaceAll("\\", "/").split("/").at(-1) ?? "";
@@ -50,34 +29,44 @@ function kebabCase(name: string): string {
     .toLowerCase();
 }
 
-export default createRule<Options, MessageIds>({
-  name: "sole-export-matches-filename",
-  documentation: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.summary },
+    docs: {
+      description: "Make a module filename reflect its sole named public runtime export.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       matchSoleExport: "This module's sole runtime export is `{{exported}}`; rename the file stem to `{{expected}}`.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const fileStem = stem(context.filename);
-    const normalizedFilename = context.filename.replaceAll("\\", "/");
-    if (
-      EXCLUDED_STEMS.has(fileStem) ||
-      GENERIC_MODULE_STEMS.has(fileStem) ||
-      context.filename.endsWith(".d.ts") ||
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    ) return {};
+  createOnce(context) {
+    let fileStem = "";
+    let normalizedFilename = "";
     let hasCommonJsExport = false;
+    function checkCommonJs(node: ESTree.CallExpression | ESTree.MemberExpression): void {
+      if (isCommonJsExportReference(node, context.sourceCode)) hasCommonJsExport = true;
+    }
     return {
-      "CallExpression, MemberExpression"(node: TSESTree.CallExpression | TSESTree.MemberExpression): void {
-        if (isCommonJsExportReference(node, context.sourceCode)) hasCommonJsExport = true;
+      before() {
+        hasCommonJsExport = false;
+        const filename = context.filename;
+        fileStem = stem(filename);
+        normalizedFilename = filename.replaceAll("\\", "/");
+        const scoped = { filename, cwd: context.cwd };
+        if (
+          EXCLUDED_STEMS.has(fileStem) ||
+          GENERIC_MODULE_STEMS.has(fileStem) ||
+          filename.endsWith(".d.ts") ||
+          isTestFile(scoped) ||
+          isGeneratedFile(scoped, context.sourceCode.text)
+        ) return false;
+        return undefined;
       },
-      "Program:exit"(program): void {
+      CallExpression: checkCommonJs,
+      MemberExpression: checkCommonJs,
+      "Program:exit"(program: ESTree.Program): void {
         if (hasCommonJsExport) return;
         const exports = runtimeExports(program);
         if (exports.ambiguous || exports.exports.length !== 1) return;
@@ -91,7 +80,7 @@ export default createRule<Options, MessageIds>({
         if (
           only.name === "collections" &&
           /(?:^|\/)src\/content\.config\.(?:ts|js|mjs)$/u.test(normalizedFilename) &&
-          program.body.some((statement) => statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          program.body.some((statement) => statement.type === "ImportDeclaration" &&
             statement.source.value === "astro:content")
         ) return;
         const exportedStem = kebabCase(only.name);

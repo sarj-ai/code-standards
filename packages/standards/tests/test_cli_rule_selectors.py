@@ -76,9 +76,46 @@ def test_check_runs_python_type_checking_unless_skipped() -> None:
     assert _parse(("check", "--skip-python-type-check")).python_type_check is False
 
 
-def test_check_runs_eslint_unless_skipped() -> None:
-    assert _parse(("check",)).eslint is True
-    assert _parse(("check", "--skip-eslint")).eslint is False
+def test_check_runs_typescript_unless_skipped() -> None:
+    assert _parse(("check",)).typescript is True
+    assert _parse(("check", "--skip-typescript")).typescript is False
+
+
+def test_skip_eslint_is_a_hidden_alias_for_skip_typescript() -> None:
+    assert _parse(("check", "--skip-eslint")).typescript is False
+    result = CliRunner().invoke(build_app(), ["check", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-typescript" in result.output
+    assert "--skip-eslint" not in result.output
+
+
+def test_baseline_rule_selectors_accept_eslint_spellings() -> None:
+    legacy = _parse(("baseline", "update", "--rule", "eslint:@sarj/no-enum", "--rule", "eslint:no-enum"))
+    current = _parse(("baseline", "update", "--rule", "oxlint:@sarj/no-enum", "--rule", "oxlint:no-enum"))
+
+    assert legacy.baseline_rules == current.baseline_rules == ["oxlint:@sarj/no-enum", "oxlint:no-enum"]
+
+
+def test_baseline_rule_selectors_rename_third_party_eslint_rules() -> None:
+    args = _parse(("baseline", "update", "--rule", "eslint:@typescript-eslint/no-explicit-any"))
+
+    assert args.baseline_rules == ["oxlint:typescript/no-explicit-any"]
+
+
+def test_baseline_rule_selector_for_a_dropped_eslint_rule_is_rejected() -> None:
+    result = CliRunner().invoke(
+        build_app(),
+        ["baseline", "update", "--rule", "eslint:shadcn/no-restyle"],
+    )
+
+    assert result.exit_code == 2
+    assert "Oxlint does not run" in result.output
+
+
+def test_rule_selector_accepts_the_eslint_engine_alias() -> None:
+    args = _parse(("check", "--rule", "eslint:no-enum", "app.ts"))
+
+    assert args.selected_rules == [RuleSelector(RuleEngine.OXLINT, RuleId("no-enum"))]
 
 
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:

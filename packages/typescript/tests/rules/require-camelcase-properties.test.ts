@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-camelcase-properties.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
-} from "../../src/rules/require-camelcase-properties.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 const ERROR = { messageId: "requireCamelcaseProperty" as const };
 
 RULE_TESTER.run("require-camelcase-properties", rule, {
@@ -19,8 +10,8 @@ RULE_TESTER.run("require-camelcase-properties", rule, {
     { name: "preserves implicit declaration-file property contracts", filename: "src/contracts.d.ts", code: "import type { Imported } from './other'; interface Local { user_id: string }" },
     {
       name: "accepts the documented application property",
-      filename: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[0].focusPath,
-      code: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[0].files[0].source,
+      filename: "src/calls-date-range.ts",
+      code: "export function range(): { dateFrom: string; dateTo: string } { return { dateFrom: '', dateTo: '' }; }",
     },
     {
       name: "keeps quoted wire keys explicit",
@@ -53,8 +44,8 @@ RULE_TESTER.run("require-camelcase-properties", rule, {
     { name: "preserves inherited property contracts", code: "export {}; interface Base { userId: number } interface Local extends Base { user_id: string }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
     {
       name: "reports the pull-request return shape",
-      filename: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[1].focusPath,
-      code: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[1].files[0].source,
+      filename: "src/calls-date-range.ts",
+      code: "export function range(): { date_from: string; date_to: string } { return { dateFrom: '', dateTo: '' }; }",
       errors: [ERROR, ERROR],
     },
     {

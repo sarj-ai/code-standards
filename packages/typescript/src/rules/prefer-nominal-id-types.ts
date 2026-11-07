@@ -1,29 +1,27 @@
 /**
  * @fileoverview prefer-nominal-id-types — distinguish identifier roles at callable boundaries.
  *
+ * Port of the 18.x `prefer-nominal-id-types` rule. The rule is untyped.
+ * The original only follows a type alias whose `typeParameters` is
+ * `undefined`; Oxlint gives null there, so under Oxlint the original never
+ * resolves an alias to its primitive carrier. This port accepts null and
+ * undefined, which matches the original under ESLint.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nominal-id-types.test.ts
  */
 
-import { isPresent } from "./_is-present.js";
-import type { NativeRuleContext } from "./_eslint-rule.js";
-
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type Context, type ESTree, type Node, type Scope, type TsDefinition } from "../types.js";
+import { tsVariable } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile } from "../utils/paths.js";
 import { existingOverloadBrandFix } from "./_existing-overload-brand-fix.js";
-import { isGeneratedFile } from "./_paths.js";
 
-type MessageIds = "preferNominalIds";
-type Options = [];
-type Context = Readonly<NativeRuleContext<MessageIds, Options>>;
+const NAME = "prefer-nominal-id-types";
+
 type Carrier = "string" | "number" | "string[]" | "number[]";
-type Boundary = TSESTree.Node & {
-  readonly params: readonly TSESTree.Parameter[];
-};
+type Boundary = Node & { readonly params: readonly Node[] };
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const OPERATIONAL_ROLES: ReadonlySet<string> = new Set([
   "request",
@@ -36,77 +34,7 @@ const OPERATIONAL_ROLES: ReadonlySet<string> = new Set([
   "interval",
 ]);
 const MAX_ALIAS_DEPTH = 16;
-
-export const PREFER_NOMINAL_ID_TYPES_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary:
-    "Distinguish identifier roles sharing primitive types at callable boundaries.",
-  rationale:
-    "Two identifier roles represented by the same primitive accept each other's values, so swapped arguments survive type checking. Transparent aliases do not prevent this.",
-  remediation:
-    "Introduce distinct branded identifier types at a validated domain boundary and use them in the callable contract. Keep wire representations primitive until validation; suppress a required external signature locally with a reason.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes only copy two existing distinct exported string-brand parameter types from a sole public overload into its empty ordinary implementation. The complete module must contain only those two nongeneric brands and the overload/implementation pair; comments, imports, additional declarations, defaults/rest/optional parameters and all operational bodies remain manual.",
-    "Requires two distinct Id/Ids or _id/_ids parameter roles with the same proven string, number, or homogeneous array carrier. Plural names require array carriers. Scalars and arrays remain distinct; object fields, destructuring, tuples, inferred types and generic aliases are not checked.",
-    "Resolves only scope-correct file-local transparent aliases, up to 16 levels. Intersections, imported types, ambiguous declarations and mixed branded/raw pairs are deliberately skipped.",
-    "Generated files and request, trace, span, correlation, process, thread, timeout and interval identifiers are excluded. Raw wire object schemas are not callable boundaries; required external callable signatures need a local suppression. API and adapter paths are not blanket-excluded.",
-  ],
-  examples: [
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing public overload's identifier brands",
-      outcome: "match",
-      files: [
-        {
-          path: "src/ids.ts",
-          source:
-            "export type AccountId = string & { readonly account: unique symbol }; export type InvoiceId = string & { readonly invoice: unique symbol }; export function load(accountId: AccountId, invoiceId: InvoiceId): void; export function load(accountId: string, invoiceId: string): void {}",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/ids.ts",
-          source:
-            "export type AccountId = string & { readonly account: unique symbol }; export type InvoiceId = string & { readonly invoice: unique symbol }; export function load(accountId: AccountId, invoiceId: InvoiceId): void; export function load(accountId: AccountId, invoiceId: InvoiceId): void {}",
-        },
-      ],
-      focusPath: "src/ids.ts",
-      expectedCount: 1,
-    },
-    {
-      id: "raw-identifiers",
-      title: "Do not accept interchangeable identifiers",
-      outcome: "match",
-      files: [
-        {
-          path: "src/store.ts",
-          source:
-            "function load(accountId: string, invoiceId: string): void {}",
-        },
-      ],
-      focusPath: "src/store.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "branded-identifiers",
-      title: "Distinguish domain identifiers",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/store.ts",
-          source:
-            "type AccountId = string & { readonly account: unique symbol }; type InvoiceId = string & { readonly invoice: unique symbol }; function load(accountId: AccountId, invoiceId: InvoiceId): void {}",
-        },
-      ],
-      focusPath: "src/store.ts",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const ARRAY_TYPE_NAMES: ReadonlySet<string> = new Set(["Array", "ReadonlyArray"]);
 
 function arrayCarrier(carrier: Carrier | undefined): Carrier | undefined {
   if (carrier === "string") return "string[]";
@@ -114,27 +42,27 @@ function arrayCarrier(carrier: Carrier | undefined): Carrier | undefined {
   return undefined;
 }
 
-function isNullish(node: TSESTree.TypeNode): boolean {
+function isNullish(node: Node): boolean {
   return (
-    node.type === AST_NODE_TYPES.TSUndefinedKeyword ||
-    node.type === AST_NODE_TYPES.TSNullKeyword ||
-    (node.type === AST_NODE_TYPES.TSLiteralType &&
-      node.literal.type === AST_NODE_TYPES.Literal &&
+    node.type === "TSUndefinedKeyword" ||
+    node.type === "TSNullKeyword" ||
+    (node.type === "TSLiteralType" &&
+      node.literal.type === "Literal" &&
       node.literal.value === null)
   );
 }
 
 function referenceCarrier(
-  node: TSESTree.TSTypeReference,
+  node: ESTree.TSTypeReference,
   context: Context,
   depth: number,
 ): Carrier | undefined {
-  if (node.typeName.type !== AST_NODE_TYPES.Identifier) return undefined;
+  if (node.typeName.type !== "Identifier") return undefined;
   const definitions = typeDefinitions(node, context);
   const args = node.typeArguments?.params;
   if (
     definitions.length === 0 &&
-    ["Array", "ReadonlyArray"].includes(node.typeName.name) &&
+    ARRAY_TYPE_NAMES.has(node.typeName.name) &&
     args?.length === 1
   ) {
     return arrayCarrier(rawCarrier(args[0], context, depth + 1));
@@ -142,21 +70,22 @@ function referenceCarrier(
   if (args !== undefined || definitions.length !== 1) return undefined;
   const declaration = definitions[0]?.node;
   if (
-    declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    declaration.typeParameters !== undefined
+    declaration?.type !== "TSTypeAliasDeclaration" ||
+    isPresent(declaration.typeParameters)
   )
     return undefined;
   return rawCarrier(declaration.typeAnnotation, context, depth + 1);
 }
 
 function typeDefinitions(
-  node: TSESTree.TSTypeReference,
+  node: ESTree.TSTypeReference,
   context: Context,
-): readonly TSESLint.Scope.Definition[] {
-  if (node.typeName.type !== AST_NODE_TYPES.Identifier) return [];
-  let scope: TSESLint.Scope.Scope | null = context.sourceCode.getScope(node);
+): readonly TsDefinition[] {
+  if (node.typeName.type !== "Identifier") return [];
+  let scope: Scope | null = context.sourceCode.getScope(node);
   while (scope !== null) {
-    const variable = scope.set.get(node.typeName.name);
+    const found = scope.set.get(node.typeName.name);
+    const variable = found === undefined ? undefined : tsVariable(found);
     const definitions =
       variable?.defs.filter((definition) => definition.isTypeDefinition) ?? [];
     if (definitions.length > 0 || variable?.isTypeVariable === true)
@@ -167,28 +96,28 @@ function typeDefinitions(
 }
 
 function rawCarrier(
-  node: TSESTree.TypeNode | undefined,
+  node: Node | undefined,
   context: Context,
   depth = 0,
 ): Carrier | undefined {
   if (node === undefined || depth >= MAX_ALIAS_DEPTH) return undefined;
   switch (node.type) {
-    case AST_NODE_TYPES.TSStringKeyword:
+    case "TSStringKeyword":
       return "string";
-    case AST_NODE_TYPES.TSNumberKeyword:
+    case "TSNumberKeyword":
       return "number";
-    case AST_NODE_TYPES.TSArrayType:
+    case "TSArrayType":
       return arrayCarrier(rawCarrier(node.elementType, context, depth + 1));
-    case AST_NODE_TYPES.TSTypeOperator:
+    case "TSTypeOperator":
       return node.operator === "readonly"
         ? rawCarrier(node.typeAnnotation, context, depth + 1)
         : undefined;
-    case AST_NODE_TYPES.TSUnionType: {
+    case "TSUnionType": {
       const members = node.types.filter((member) => !isNullish(member));
       if (members.length !== 1) return undefined;
       return rawCarrier(members[0], context, depth + 1);
     }
-    case AST_NODE_TYPES.TSTypeReference:
+    case "TSTypeReference":
       return referenceCarrier(node, context, depth);
     default:
       return undefined;
@@ -199,7 +128,7 @@ function checkBoundary(node: Boundary, context: Context): void {
   const roles = new Map<Carrier, string>();
   for (const parameter of node.params) {
     const identifier = parameterIdentifier(parameter);
-    if (!isPresent(identifier?.typeAnnotation)) continue;
+    if (identifier === undefined || !isPresent(identifier.typeAnnotation)) continue;
     const role = identifierRole(identifier.name);
     if (role === undefined) continue;
     const carrier = rawCarrier(
@@ -213,10 +142,11 @@ function checkBoundary(node: Boundary, context: Context): void {
       continue;
     const previous = roles.get(carrier);
     if (previous !== undefined && previous !== role) {
+      const fix = existingOverloadBrandFix(context.sourceCode, node);
       context.report({
         node: identifier,
         messageId: "preferNominalIds",
-        fix: existingOverloadBrandFix(context.sourceCode, node),
+        ...(fix !== null && { fix }),
       });
       return;
     }
@@ -232,29 +162,26 @@ function identifierRole(name: string): string | undefined {
   return OPERATIONAL_ROLES.has(role) ? undefined : role;
 }
 
-function parameterIdentifier(
-  parameter: TSESTree.Parameter,
-): TSESTree.Identifier | undefined {
-  if (parameter.type === AST_NODE_TYPES.Identifier) return parameter;
+function parameterIdentifier(parameter: Node): Identifier | undefined {
+  if (parameter.type === "Identifier") return parameter;
   if (
-    parameter.type === AST_NODE_TYPES.AssignmentPattern &&
-    parameter.left.type === AST_NODE_TYPES.Identifier
+    parameter.type === "AssignmentPattern" &&
+    parameter.left.type === "Identifier"
   )
     return parameter.left;
-  if (parameter.type === AST_NODE_TYPES.TSParameterProperty)
+  if (parameter.type === "TSParameterProperty")
     return parameterIdentifier(parameter.parameter);
   return undefined;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-nominal-id-types",
-  documentation: PREFER_NOMINAL_ID_TYPES_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Distinguish identifier roles sharing primitive types at callable boundaries.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -262,22 +189,23 @@ export default createRule<Options, MessageIds>({
         "Distinct identifier roles share an interchangeable primitive type. Use distinct branded identifier types at this callable boundary.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
+  createOnce(context) {
+    const check = (node: Boundary): void => checkBoundary(node, context);
     return {
-      ArrowFunctionExpression: (node): void => checkBoundary(node, context),
-      FunctionDeclaration: (node): void => checkBoundary(node, context),
-      FunctionExpression: (node): void => checkBoundary(node, context),
-      TSDeclareFunction: (node): void => checkBoundary(node, context),
-      TSEmptyBodyFunctionExpression: (node): void =>
-        checkBoundary(node, context),
-      TSCallSignatureDeclaration: (node): void => checkBoundary(node, context),
-      TSConstructSignatureDeclaration: (node): void =>
-        checkBoundary(node, context),
-      TSConstructorType: (node): void => checkBoundary(node, context),
-      TSFunctionType: (node): void => checkBoundary(node, context),
-      TSMethodSignature: (node): void => checkBoundary(node, context),
+      before() {
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        return undefined;
+      },
+      ArrowFunctionExpression: check,
+      FunctionDeclaration: check,
+      FunctionExpression: check,
+      TSDeclareFunction: check,
+      TSEmptyBodyFunctionExpression: check,
+      TSCallSignatureDeclaration: check,
+      TSConstructSignatureDeclaration: check,
+      TSConstructorType: check,
+      TSFunctionType: check,
+      TSMethodSignature: check,
     };
   },
 });

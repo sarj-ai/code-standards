@@ -1,21 +1,11 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION } from "../../src/rules/no-storage-in-stateless-modules.js";
+import rule from "../../src/rules/no-storage-in-stateless-modules.js";
+import { ruleTester } from "./_tester.js";
+import { lintOnce } from "../utils/_probe.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 const STATELESS_MODULE_FILENAME = "/repo/src/engineer-digest/post.ts";
 const STATELESS_MODULE_OPTIONS = [
@@ -23,26 +13,8 @@ const STATELESS_MODULE_OPTIONS = [
 ];
 
 it("rejects malformed module patterns instead of silently disabling itself", () => {
-  const linter = new Linter();
-  expect(() =>
-    linter.verify(
-      "kv.put(k, v);",
-      [
-        {
-          files: ["**/*.ts"],
-          languageOptions: { parser: tsParser },
-          plugins: { sarj: { rules: { stateless: rule } } },
-          rules: {
-            "sarj/stateless": [
-              "error",
-              { modules: ["([unterminated"] },
-            ],
-          },
-        },
-      ],
-      { filename: "src/engineer-digest/post.ts" },
-    ),
-  ).toThrow(/Invalid regular expression/u);
+  expect(() => lintOnce("kv.put(k, v);", rule, { filename: "src/engineer-digest/post.ts", options: [{ modules: ["([unterminated"] }] }))
+    .toThrow(/Invalid regular expression/u);
 });
 
 RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
@@ -55,7 +27,7 @@ RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
       options: [{ modules: ["engineer-digest"] }],
       code: `await mockKv.put("digest:last", timestamp);`,
     },
-    { name: "accepts the documented system-of-record read", filename: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[0].focusPath, code: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[0].files[0].source, options: STATELESS_MODULE_OPTIONS },
+    { name: "accepts the documented system-of-record read", filename: "src/engineer-digest/post.ts", code: "const issues = await linear.listIssues();", options: STATELESS_MODULE_OPTIONS },
     {
       name: "allows prepare until a stateless module is configured",
       code: "db.prepare('select 1');",
@@ -130,7 +102,7 @@ RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
   ],
   invalid: [
     { name: "reports static bracket storage in a configured stateless module", filename: STATELESS_MODULE_FILENAME, options: STATELESS_MODULE_OPTIONS, code: "store['put'](k, v);", errors: [{ messageId: "storageInStatelessModule" }] },
-    { name: "reports the documented private storage", filename: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].focusPath, code: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
+    { name: "reports the documented private storage", filename: "src/engineer-digest/post.ts", code: "export {}; await kv.put('digest:last', timestamp);", options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
     {
       name: "reports SQL prepare inside a configured stateless module",
       code: "const row = db.prepare('select * from digest_state').first();",

@@ -1,213 +1,108 @@
 /**
  * @fileoverview require-assert-never — a switch over a union whose `default` does no runtime work stops being exhaustive the day the union grows.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-assert-never.test.ts
+ * Port of the 18.x `require-assert-never` rule. Typed: without tsrs type
+ * services it skips the file, as the original returns no visitors without a
+ * program.
+ *
+ * The visitor runs the original's syntactic checks and collects the switches
+ * they leave; `Program:exit` proves exhaustiveness for all of them at once,
+ * in a few batched tsrs requests (discriminant and case types, union members,
+ * then `typeToString` for the finite ones). The fix helper is
+ * `_empty-assertion-fix.ts`.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
-
-
-
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
-import ts from "typescript";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree, type SourceCode } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import type { TsrsFile, TsrsServices, TsrsTypeFlags } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 import { emptyAssertionFix } from "./_empty-assertion-fix.js";
 
-type MessageIds = "missingAssertNever";
-type Options = readonly [];
-
-export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
-  summary:
-    "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
-  rationale:
-    "An empty default silently accepts new union members instead of making the compiler identify the missing case.",
-  remediation:
-    "Call `assertNever` with the discriminant in the exhaustive switch default.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "Requires type information and singleton case values covering the current union. The helper must accept never to provide a compile-time check; its spelling alone is not a proof of that contract. Review the desired runtime behavior for unexpected external values.",
-    "Automatic fixes reuse only an existing private ordinary assertNever function with one never parameter, explicit void return and an exactly empty body. The complete comment-free module must otherwise contain only one exported ordinary function with an explicit primitive return type, one string-literal-union parameter, a complete switch with primitive literal returns and a final empty or break default, followed by a primitive fallback return. The existing helper is called in that default, preserving unexpected-value continuation while adding the never compile guard. Throwing helpers, other statements or exports, imports, defaults, aliases and dynamic behavior remain manual.",
-  ],
-  examples: [
-    {
-      id: "assert-never-default",
-      title: "Make the default exhaustive",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/render.ts",
-          source:
-            "function assertNever(value: never): never { throw new Error(`Unexpected kind: ${String(value)}`); }\ndeclare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }",
-        },
-      ],
-      focusPath: "src/render.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "empty-default",
-      title: "Do not leave an exhaustive default empty",
-      outcome: "match",
-      files: [
-        {
-          path: "src/render.ts",
-          source:
-            "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: }",
-        },
-      ],
-      focusPath: "src/render.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing no-op never guard",
-      outcome: "match",
-      files: [
-        {
-          path: "src/render.ts",
-          source:
-            "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: break; } return 0; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/render.ts",
-          source:
-            "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: assertNever(kind); break; } return 0; }",
-        },
-      ],
-      focusPath: "src/render.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "require-assert-never";
 
 /** Empty statements and empty blocks are not runtime handling. */
-const isRuntimeHandlingStatement = (statement: TSESTree.Statement): boolean => {
-  if (statement.type === AST_NODE_TYPES.EmptyStatement) return false;
-  if (statement.type === AST_NODE_TYPES.BreakStatement) {
-    return statement.label !== null;
-  }
-  if (
-    statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    statement.type === AST_NODE_TYPES.TSInterfaceDeclaration
-  ) {
-    return false;
-  }
-  if (statement.type === AST_NODE_TYPES.BlockStatement) {
-    return statement.body.some(isRuntimeHandlingStatement);
-  }
+function isRuntimeHandlingStatement(statement: ESTree.Statement): boolean {
+  if (statement.type === "EmptyStatement") return false;
+  if (statement.type === "BreakStatement") return statement.label !== null;
+  if (statement.type === "TSTypeAliasDeclaration" || statement.type === "TSInterfaceDeclaration") return false;
+  if (statement.type === "BlockStatement") return statement.body.some(isRuntimeHandlingStatement);
   return true;
-};
+}
 
 /** An empty non-final default falls through to a case that handles it. */
-const isFallthroughDefault = (
-  node: TSESTree.SwitchStatement,
-  defaultIndex: number,
-): boolean => {
+function isFallthroughDefault(node: ESTree.SwitchStatement, defaultIndex: number): boolean {
   const defaultCase = node.cases[defaultIndex];
-  return (
-    defaultCase !== undefined &&
-    defaultCase.consequent.length === 0 &&
-    defaultIndex < node.cases.length - 1
-  );
-};
+  return defaultCase !== undefined && defaultCase.consequent.length === 0 && defaultIndex < node.cases.length - 1;
+}
 
 /** Honor a comment that makes an empty default an intentional no-op. */
-const isCommentOnlyNoopDefault = (
-  defaultCase: TSESTree.SwitchCase,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): boolean => {
+function isCommentOnlyNoopDefault(defaultCase: ESTree.SwitchCase, sourceCode: SourceCode): boolean {
   if (defaultCase.consequent.length === 0) {
     const defaultToken = sourceCode.getFirstToken(defaultCase);
-    const colonToken = defaultToken
-      ? sourceCode.getTokenAfter(defaultToken)
-      : null;
-    return (
-      colonToken !== null && sourceCode.getCommentsAfter(colonToken).length > 0
-    );
+    const colonToken = defaultToken ? sourceCode.getTokenAfter(defaultToken) : null;
+    return colonToken !== null && sourceCode.getCommentsAfter(colonToken).length > 0;
   }
   const only = defaultCase.consequent[0];
   if (
-    only !== undefined &&
-    defaultCase.consequent.length === 1 &&
-    only.type === AST_NODE_TYPES.BlockStatement &&
+    only !== undefined && defaultCase.consequent.length === 1 && only.type === "BlockStatement" &&
     !only.body.some(isRuntimeHandlingStatement)
   ) {
     return sourceCode.getCommentsInside(only).length > 0;
   }
   return false;
-};
+}
 
-/** Prove that explicit cases cover every finite constituent of the discriminant. */
-function isExhaustiveFiniteSwitch(
-  node: TSESTree.SwitchStatement,
-  services: TypeServices,
-): boolean {
-  const checker = services.program.getTypeChecker();
-  const discriminant = services.esTreeNodeToTSNodeMap.get(node.discriminant);
-  const discriminantType = checker.getTypeAtLocation(discriminant);
-  const constituents = discriminantType.isUnion()
-    ? discriminantType.types
-    : [discriminantType];
-  if (!discriminantType.isUnion() || constituents.length < 2) return false;
+interface Candidate {
+  readonly node: ESTree.SwitchStatement;
+  readonly defaultCase: ESTree.SwitchCase;
+}
 
+/** Which candidates have explicit cases covering every finite constituent of the discriminant, in batched requests. */
+function exhaustiveSwitches(file: TsrsFile, candidates: readonly Candidate[]): boolean[] {
+  const finite = finiteFlags(file.flags);
+  const discriminants = file.typesOf(candidates.map(({ node }) => node.discriminant));
+  const unions = discriminants.map((type) => type?.isUnionType() === true ? type : undefined);
+  const present = unions.filter((type) => type !== undefined);
+  const memberLists = file.batch(present.map((type) => type.getTypes.gen()));
+  let next = 0;
+  const constituents = unions.map((type) => type === undefined ? undefined : memberLists[next++] ?? []);
   // A fully covered boolean switch has no evolving domain for assertNever to
   // guard, so requiring a default assertion would only add ceremony.
-  if (
-    constituents.every(
-      (constituent) => (constituent.flags & ts.TypeFlags.BooleanLiteral) !== 0,
-    )
-  ) {
-    return false;
-  }
-
-  const expected = new Set<string>();
-  for (const constituent of constituents) {
-    const key = finiteTypeKey(constituent, checker);
-    if (key === null) return false;
-    expected.add(key);
-  }
-
-  const handled = new Set<string>();
-  for (const caseNode of node.cases) {
-    if (caseNode.test === null) continue;
-    const test = services.esTreeNodeToTSNodeMap.get(caseNode.test);
-    const testType = checker.getTypeAtLocation(test);
-    // A union-valued expression evaluates to one value, not every alternative.
-    if (testType.isUnion()) continue;
-    const key = finiteTypeKey(testType, checker);
-    if (key !== null) handled.add(key);
-  }
-  return [...expected].every((key) => handled.has(key));
+  const open = constituents.map((members) => members === undefined || members.length < 2 ||
+    members.every((member) => (member.flags & file.flags.BooleanLiteral) !== 0) ||
+    members.some((member) => (member.flags & finite) === 0));
+  const tests = candidates.map(({ node }, i) => open[i] === true ? [] : node.cases.flatMap((caseNode) => caseNode.test ?? []));
+  const testTypes = file.typesOf(tests.flat());
+  // A union-valued expression evaluates to one value, not every alternative.
+  const finiteTests = testTypes.map((type) => type !== undefined && !type.isUnionType() && (type.flags & finite) !== 0 ? type : undefined);
+  const named = [...new Set([
+    ...constituents.flatMap((members, i) => open[i] === true ? [] : members ?? []),
+    ...finiteTests.filter((type) => type !== undefined),
+  ])];
+  const names = file.batch(named.map((type) => file.checker.typeToString.gen(type)));
+  const nameOf = new Map(named.map((type, i) => [type, names[i]]));
+  let offset = 0;
+  return candidates.map((_candidate, i) => {
+    const caseTypes = finiteTests.slice(offset, offset + (tests[i]?.length ?? 0));
+    offset += tests[i]?.length ?? 0;
+    if (open[i] === true) return false;
+    const handled = new Set(caseTypes.flatMap((type) => type === undefined ? [] : [nameOf.get(type)]));
+    return (constituents[i] ?? []).every((member) => handled.has(nameOf.get(member)));
+  });
 }
 
-/** A stable key for a finite switch constituent; open primitive types return null. */
-function finiteTypeKey(type: ts.Type, checker: ts.TypeChecker): string | null {
-  const finiteFlags =
-    ts.TypeFlags.StringLiteral |
-    ts.TypeFlags.NumberLiteral |
-    ts.TypeFlags.BooleanLiteral |
-    ts.TypeFlags.EnumLiteral |
-    ts.TypeFlags.UniqueESSymbol |
-    ts.TypeFlags.Null |
-    ts.TypeFlags.Undefined;
-  return (type.flags & finiteFlags) !== 0 ? checker.typeToString(type) : null;
+function finiteFlags(flags: TsrsTypeFlags): number {
+  return flags.StringLiteral | flags.NumberLiteral | flags.BooleanLiteral | flags.EnumLiteral | flags.UniqueESSymbol |
+    flags.Null | flags.Undefined;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "require-assert-never",
-  documentation: REQUIRE_ASSERT_NEVER_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
     docs: {
-      description:
-        "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
+      description: "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -215,44 +110,44 @@ export default createRule<Options, MessageIds>({
         "Empty switch `default` case — add runtime handling or call `assertNever()` so the discriminated union is exhaustively checked at compile time.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      // Exhaustiveness cannot be proven from syntax alone. The typed strict
-      // preset supplies services; standalone syntax-only use stays silent.
-      services = null;
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: Candidate[] = [];
+
+    function report(exhaustive: readonly boolean[]): void {
+      candidates.forEach(({ node, defaultCase }, i) => {
+        if (exhaustive[i] !== true) return;
+        const fix = emptyAssertionFix(context.sourceCode, node, defaultCase);
+        context.report({ node: defaultCase, messageId: "missingAssertNever", ...(fix !== null && { fix }) });
+      });
     }
-    if (services === null) return {};
 
     return {
-      SwitchStatement(node: TSESTree.SwitchStatement): void {
-        const defaultIndex = node.cases.findIndex(
-          (caseNode) => caseNode.test === null,
-        );
+      before() {
+        candidates = [];
+        // Exhaustiveness cannot be proven from syntax alone; without types the rule stays silent.
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      SwitchStatement(node) {
+        const defaultIndex = node.cases.findIndex((caseNode) => caseNode.test === null);
         // Only present no-op defaults opt into this syntactic check.
         if (defaultIndex === -1) return;
         const defaultCase = node.cases[defaultIndex];
         if (defaultCase === undefined) return;
-
         // Any runtime work, including assertNever(), handles the default.
         if (defaultCase.consequent.some(isRuntimeHandlingStatement)) return;
-
         // A non-final empty default is handled by its following case.
         if (isFallthroughDefault(node, defaultIndex)) return;
-
         // Comments distinguish deliberate no-ops without requiring type info.
         if (isCommentOnlyNoopDefault(defaultCase, context.sourceCode)) return;
-        if (!isExhaustiveFiniteSwitch(node, services)) return;
-
-        const fix = emptyAssertionFix(context.sourceCode, node, defaultCase);
-        context.report({
-          node: defaultCase,
-          messageId: "missingAssertNever",
-          fix,
-        });
+        candidates.push({ node, defaultCase });
+      },
+      "Program:exit"() {
+        if (tsrs === null || candidates.length === 0) return;
+        const exhaustive = tsrs.run((file) => exhaustiveSwitches(file, candidates));
+        if (exhaustive === null) return;
+        report(exhaustive);
       },
     };
   },

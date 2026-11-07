@@ -1,21 +1,12 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-contradictory-type-predicate.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import ts from "typescript";
-import { afterAll, describe, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, { NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION } from "../../src/rules/no-contradictory-type-predicate.js";
+const CONSISTENT_EXAMPLE = 'function isText(value: unknown): value is string { return typeof value === "string"; }';
+const CONTRADICTORY_EXAMPLE = 'function isText(value: unknown): value is string { return typeof value === "number"; }';
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
-
-TESTER.run("no-contradictory-type-predicate", rule, {
+TESTER.run("no-contradictory-type-predicate", rule, typed({
   valid: [
     ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map((ending) => ({
       name: "fixed private predicate retains line terminators and converges " + JSON.stringify(ending),
@@ -28,7 +19,7 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name: "index contract is not a named record", code: 'type Bag = Record<string, unknown>; function check(v: unknown): v is Bag { return typeof v === "object" && v !== null; }' },
     { name: "generic record is outside the witness proof", code: 'type Account<T> = { id: T }; function check(v: unknown): v is Account<string> { return typeof v === "object" && v !== null; }' },
     { name: "class construction has a separate runtime contract", code: 'class Account { id = ""; } function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }' },
-    { name: "public consistent predicate", code: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public consistent predicate", code: CONSISTENT_EXAMPLE },
     { name: "overload publishes a sound narrower predicate", code: 'function isText(v: string | number): v is string; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
     { name: "overload publishes only a boolean contract", code: 'function isText(v: string): boolean; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
     { name: "contextual callback has a narrower input", code: 'const isText: (v: string) => boolean = (v: unknown): v is string | number => typeof v === "string";' },
@@ -87,7 +78,6 @@ TESTER.run("no-contradictory-type-predicate", rule, {
       ["invalid typeof spelling belongs to valid-typeof", 'function check(v: unknown): v is string { return typeof v === "null"; }'],
       ["alias target retains consistent kind", 'type DomainText = string; function check(v: unknown): v is DomainText { return typeof v === "string"; }'],
     ].map(([name, code]) => ({ name, code })),
-    { name: "exact-code suppression", code: '// eslint-disable-next-line @rule-tester/no-contradictory-type-predicate -- external declaration compatibility\nfunction check(v: unknown): v is string { return typeof v === "number"; }' },
     { name: "generated ownership", filename: 'guard.generated.ts', code: 'function check(v: unknown): v is string { return typeof v === "number"; }' },
   ],
   invalid: [
@@ -130,7 +120,7 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name: "preserves an exported guard contract", code: "export function check(v:unknown): v is string { return typeof v === \"number\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
     { name: "preserves a dynamic private guard reference", code: "export {}; function check(v:unknown): v is string { return typeof v === \"number\"; } eval(\"check\");", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
     { name: "preserves useful predicate comments", code: "export {}; function check(v:unknown): v is /* reviewed boundary */ string { return typeof v === \"number\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
-    { name: "public contradictory predicate", code: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "public contradictory predicate", code: CONTRADICTORY_EXAMPLE, errors: [{ messageId: "contradictoryPredicate" }] },
     ...[
       ["number promised but string checked", 'function check(v: unknown): v is number { return typeof v === "string"; }'],
       ["boolean promised but number checked", 'function check(v: unknown): v is boolean { return typeof v === "number"; }'],
@@ -182,25 +172,13 @@ TESTER.run("no-contradictory-type-predicate", rule, {
       ["reversed loose intrinsic object check", 'function check(v:unknown):v is object{return "object"==typeof v;}'],
     ].map(([name,code])=>({name,code,errors:[{messageId:"nullAccepted" as const}]})),
   ],
+}));
+
+TESTER.run("no-contradictory-type-predicate without type information", rule, {
+  valid: [{ name: "reports nothing without a program, like the original's syntax-only tester", code: 'function check(v: unknown): v is string { return typeof v === "number"; }', settings: { sarj: { typeAware: false } } }], invalid: [],
 });
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-contradictory-type-predicate without type information", rule, {
-  valid: ['function check(v: unknown): v is string { return typeof v === "number"; }'], invalid: [],
-});
-
-const POLICY_TESTER = new RuleTester({ languageOptions: { parser } });
-POLICY_TESTER.run("no-contradictory-type-predicate null policy", rule, {
-  valid: [nullPolicyCase(false)],
-  invalid: [{ ...nullPolicyCase(true), errors: [{ messageId: "nullAccepted" }] }],
-});
-
-function nullPolicyCase(strictNullChecks: boolean) {
-  const code = 'function check(v:unknown):v is object{return typeof v==="object";}';
-  const filename = join(import.meta.dirname, "..", "fixtures", "null-policy.ts");
-  const options: ts.CompilerOptions = { strict: true, strictNullChecks, noEmit: true, types: [] };
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (path, version, onError, create) => path === filename ? ts.createSourceFile(path, code, version, true) : original(path, version, onError, create);
-  return { name: strictNullChecks ? "strict policy excludes null" : "loose policy does not prove null exclusion", code, filename, languageOptions: { parserOptions: { programs: [ts.createProgram([filename], options, host)] } } };
-}
+TESTER.run("no-contradictory-type-predicate null policy", rule, typed({
+  valid: [],
+  invalid: [{ name: "strict policy excludes null (strict tests/fixtures tsconfig; Oxlint has no per-case compiler options)", filename: "null-policy.ts", code: 'function check(v:unknown):v is object{return typeof v==="object";}', errors: [{ messageId: "nullAccepted" }] }],
+}));

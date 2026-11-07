@@ -1,23 +1,9 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { afterAll, describe, it } from "vitest";
-import { join } from "node:path";
 import rule from "../../src/rules/no-broad-return-type.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-TESTER.run("no-broad-return-type", rule, {
+const TESTER = ruleTester({ cwd: FIXTURES });
+
+TESTER.run("no-broad-return-type", rule, typed({
   valid: [
     "function generic<T>(value: Promise<T>): Promise<unknown> { return value; }",
     "function serialize(value: unknown, choose: boolean): unknown { if (choose) return [1]; return value; }",
@@ -98,9 +84,8 @@ TESTER.run("no-broad-return-type", rule, {
       ],
     },
   ],
-});
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("without type information", rule, {
-  valid: ["function request(value: { id: string }): unknown { return value; }"],
+}));
+TESTER.run("without type information", rule, {
+  valid: [{ code: "function request(value: { id: string }): unknown { return value; }", settings: { sarj: { typeAware: false } } }],
   invalid: [],
 });

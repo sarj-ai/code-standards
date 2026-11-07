@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,6 +10,17 @@ from sarj_standards.api import Standards
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.diagnostics import Severity
+from tests.oxlint_project import project
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+# A selected run must never execute an unselected rule.
+_UNRELATED_GUARD = (
+    'export default {meta:{name:"guard"},rules:{unrelated:{create(){throw new Error("UNRELATED RULE EXECUTED");}}}};\n'
+)
 
 
 def _report(output: str) -> dict[str, object]:
@@ -193,10 +203,11 @@ def test_observe_checks_execution_and_independent_case_oracles(
             False,
             True,
         ),
+        # Oxlint's expect-expect does not follow same-file helpers; the forced advisory has no options.
         (
             "function verify(value){expect(value).toEqual('hello');}\ntest('delivery', () => {verify(deliver());});",
             "",
-            None,
+            "vitest/expect-expect",
             False,
             False,
         ),
@@ -216,7 +227,7 @@ def test_observe_checks_execution_and_independent_case_oracles(
         ),
         (
             "test('delivery', () => {deliver();});",
-            "// eslint-disable-next-line vitest/expect-expect\n",
+            "// eslint-disable-next-line vitest/expect-expect -- delivery has no observable result\n",
             None,
             False,
             True,
@@ -341,44 +352,29 @@ def test_observe_vitest_oracles_redundancy_and_promise_completion(
     bulk: bool,
     registered: bool,
 ) -> None:
-    modules = Path(__file__).resolve().parents[2] / "typescript/node_modules"
-    if shutil.which("node") is None or not (modules / "@vitest/eslint-plugin/package.json").is_file():
-        pytest.skip("requires the repository's locked TypeScript dependencies")
-    plugin = modules.parent / "dist/index.js"
-    if not plugin.is_file():
-        pytest.skip("requires the built TypeScript plugin")
-    installed = tmp_path / "node_modules"
-    (installed / "@sarj").mkdir(parents=True)
-    for name in ("eslint", "zod", "@typescript-eslint", "@vitest", ".bin"):
-        (installed / name).symlink_to(modules / name, target_is_directory=True)
-    (installed / "@sarj/eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
-    configured = "vitest,'@sarj':sarj" if registered else ""
     active = (
-        "'@sarj/no-tautological-expect':'error','@sarj/no-duplicate-test-case':'error',"
-        "'@sarj/duplicate-test-body':'error',"
-        "'@sarj/no-bare-return-from-test-catch':'error',"
-        "'@sarj/source-coupled-test':'error','@sarj/iac-source-coupled-test':'error',"
+        '"@sarj/no-tautological-expect":"error","@sarj/no-duplicate-test-case":"error",'
+        '"@sarj/duplicate-test-body":"error","@sarj/no-bare-return-from-test-catch":"error",'
+        '"@sarj/source-coupled-test":"error","@sarj/iac-source-coupled-test":"error",'
+        '"vitest/expect-expect":["off",{"assertFunctionNames":["expect","verify"]}],'
         if registered
         else ""
     )
-    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text(
-        "import parser from '@typescript-eslint/parser';\n"
-        "import vitest from '@vitest/eslint-plugin';\n"
-        f"import sarj from {json.dumps(plugin.as_uri())};\n"
-        "const unrelated={create(){throw new Error('UNRELATED RULE EXECUTED');}};\n"
-        "export default [{files:['**/*.ts'],languageOptions:{parser},"
-        f"plugins:{{guard:{{rules:{{unrelated}}}}{',' + configured if configured else ''}}},"
-        f"rules:{{'guard/unrelated':'error',{active}"
-        "'vitest/expect-expect':['off',{assertFunctionNames:['expect','verify']}]}}];\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "delivery.test.ts").write_text(
-        "import {test, expect} from 'vitest';\n" + directive + body + "\n",
-        encoding="utf-8",
+    plugins = '"typescript","vitest"' if registered else '"typescript"'
+    sarj = ',{"name":"@sarj","specifier":"@sarj/eslint-plugin"}' if registered else ""
+    project(
+        tmp_path,
+        {
+            "guard.mjs": _UNRELATED_GUARD,
+            "delivery.test.ts": "import {test, expect} from 'vitest';\n" + directive + body + "\n",
+        },
+        config=(
+            f'export default {{"plugins":[{plugins}],"jsPlugins":["./guard.mjs"{sarj}],'
+            f'"categories":{{"correctness":"off"}},"rules":{{"guard/unrelated":"error",{active}}}}};\n'
+        ),
     )
     if bulk:
-        (tmp_path / "eslint-suppressions.json").write_text(
+        (tmp_path / "oxlint-suppressions.json").write_text(
             json.dumps({"delivery.test.ts": {expected: {"count": 1}}}), encoding="utf-8"
         )
     status = main(["--root", str(tmp_path), "observe", "--test-value", "--trust-repository-code", "--format", "json"])
@@ -393,6 +389,6 @@ def test_observe_vitest_oracles_redundancy_and_promise_completion(
 
     if expected and expected.startswith("@sarj/") and not bulk and registered:
         policy = Standards(tmp_path).analyze(
-            ["delivery.test.ts"], external=True, trust="trusted", rules=["eslint:" + expected.removeprefix("@sarj/")]
+            ["delivery.test.ts"], external=True, trust="trusted", rules=["oxlint:" + expected.removeprefix("@sarj/")]
         )
         assert [(item.rule_id, item.severity) for item in policy.diagnostics] == [(expected, Severity.ERROR)]

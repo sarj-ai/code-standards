@@ -1,41 +1,30 @@
 /**
  * @fileoverview prefer-shadcn-primitives — visible application UI should use shared shadcn primitives.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts
+ * Port of the 18.x `prefer-shadcn-primitives` rule. The rule is untyped,
+ * so the port covers all of it. Project detection parses primitive modules
+ * with `oxc-parser` (Oxlint's own parser, loaded at runtime) instead of
+ * `@typescript-eslint/typescript-estree`; a module that cannot be parsed, or a
+ * missing parser, fails closed exactly like the original's parse error path.
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { parse as parseTypeScript } from "@typescript-eslint/typescript-estree";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
-import { parse as parseJsonc, type ParseError } from "jsonc-parser";
+// esbuild resolves the package `main` (a UMD build with dynamic requires) for Node; bundle the ESM build instead.
+import { parse as parseJsonc, type ParseError } from "jsonc-parser/lib/esm/main.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { isErasedExpression, parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
 
-type MessageIds = "preferShadcnPrimitive";
-export interface RuleOptions {
+const NAME = "prefer-shadcn-primitives";
+
+interface RuleOptions {
   readonly assumeAvailable?: boolean;
   readonly detectProjectPrimitives?: boolean;
 }
-type Options = readonly [RuleOptions?];
-
-export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
-  summary: "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
-  rationale: "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
-  remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
-  category: "style",
-  limitations: [
-    "Native multiple selects and controls with possibly enabled hidden attributes are excluded. Unknown JSX spreads can hide controls; visual equivalence is not inferred.",
-    "Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded.",
-    "Tests and the shared components/ui primitive implementation tree are excluded.",
-    "Package-local project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
-  ],
-  examples: [
-    { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
-    { id: "raw-button", title: "Do not use a raw button", outcome: "match", files: [{ path: "src/form.tsx", source: "import { Card } from '@/components/ui/card'; const action = <button>Save</button>;" }], focusPath: "src/form.tsx", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
 
 const RAW_PRIMITIVES = {
   button: { capability: "Button", replacement: "Button" },
@@ -248,34 +237,46 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
   return resolve(packageRoot, baseUrl, match);
 }
 
+interface OxcParseResult {
+  readonly program: ESTree.Program;
+  readonly errors: readonly unknown[];
+}
+type ParseModule = (filename: string, source: string, options: { lang: "tsx"; sourceType: "module" }) => OxcParseResult;
+
+let parseModule: ParseModule | null | undefined;
+
 function exportsPrimitive(path: string, exportName: PrimitiveCapability): boolean {
   try {
     const source = readSmallRegularFile(path);
     if (source === null) return false;
-    const program = parseTypeScript(source, { jsx: true, sourceType: "module" });
+    const parse = moduleParser();
+    if (parse === null) return false;
+    // typescript-estree's `parse` (jsx: true) throws on any syntax diagnostic.
+    const { program, errors } = parse(path, source, { lang: "tsx", sourceType: "module" });
+    if (errors.length > 0) return false;
     return program.body.some((statement) => {
-      if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) return false;
+      if (statement.type !== "ExportNamedDeclaration") return false;
       if (statement.exportKind === "type") return false;
       if (
         statement.specifiers.some(
           (specifier) =>
-            specifier.type === AST_NODE_TYPES.ExportSpecifier &&
+            specifier.type === "ExportSpecifier" &&
             specifier.exportKind !== "type" &&
-            specifier.exported.type === AST_NODE_TYPES.Identifier &&
+            specifier.exported.type === "Identifier" &&
             specifier.exported.name === exportName,
         )
       ) {
         return true;
       }
       const declaration = statement.declaration;
-      if (declaration?.type === AST_NODE_TYPES.VariableDeclaration) {
+      if (declaration?.type === "VariableDeclaration") {
         return declaration.declarations.some(
-          (item) => item.id.type === AST_NODE_TYPES.Identifier && item.id.name === exportName,
+          (item) => item.id.type === "Identifier" && item.id.name === exportName,
         );
       }
       return (
-        (declaration?.type === AST_NODE_TYPES.FunctionDeclaration ||
-          declaration?.type === AST_NODE_TYPES.ClassDeclaration) &&
+        (declaration?.type === "FunctionDeclaration" ||
+          declaration?.type === "ClassDeclaration") &&
         declaration.id?.name === exportName
       );
     });
@@ -284,10 +285,22 @@ function exportsPrimitive(path: string, exportName: PrimitiveCapability): boolea
   }
 }
 
+/** `oxc-parser`, loaded once on first use; null when it is not installed. */
+function moduleParser(): ParseModule | null {
+  if (parseModule !== undefined) return parseModule;
+  try {
+    const loaded = createRequire(import.meta.url)("oxc-parser") as { parseSync: ParseModule };
+    parseModule = loaded.parseSync;
+  } catch {
+    parseModule = null;
+  }
+  return parseModule;
+}
+
 function rawElementName(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
 ): RawPrimitive | null {
-  if (node.name.type !== AST_NODE_TYPES.JSXIdentifier) return null;
+  if (node.name.type !== "JSXIdentifier") return null;
   const name = node.name.name;
   return Object.hasOwn(RAW_PRIMITIVES, name)
     ? (name as RawPrimitive)
@@ -300,15 +313,15 @@ type StaticAttribute =
   | { readonly kind: "unknown" };
 
 function effectiveAttribute(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   attributeName: string,
 ): StaticAttribute {
   for (const attribute of node.attributes.toReversed()) {
-    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) {
+    if (attribute.type === "JSXSpreadAttribute") {
       return { kind: "unknown" };
     }
     if (
-      attribute.name.type !== AST_NODE_TYPES.JSXIdentifier ||
+      attribute.name.type !== "JSXIdentifier" ||
       attribute.name.name !== attributeName
     ) {
       continue;
@@ -321,21 +334,21 @@ function effectiveAttribute(
   return { kind: "missing" };
 }
 
-function staticString(value: TSESTree.JSXAttribute["value"]): string | null {
-  if (value?.type === AST_NODE_TYPES.Literal) {
+function staticString(value: ESTree.JSXAttribute["value"]): string | null {
+  if (value?.type === "Literal") {
     return typeof value.value === "string" ? value.value : null;
   }
-  if (value?.type !== AST_NODE_TYPES.JSXExpressionContainer) return null;
+  if (value?.type !== "JSXExpressionContainer") return null;
   return staticExpressionString(value.expression);
 }
 
 function staticExpressionString(
-  expression: TSESTree.Expression | TSESTree.JSXEmptyExpression,
+  expression: ESTree.Expression | ESTree.JSXEmptyExpression,
 ): string | null {
-  if (expression.type === AST_NODE_TYPES.Literal) {
+  if (expression.type === "Literal") {
     return typeof expression.value === "string" ? expression.value : null;
   }
-  if (expression.type === AST_NODE_TYPES.TemplateLiteral) {
+  if (expression.type === "TemplateLiteral") {
     let value = expression.quasis[0]?.value.cooked ?? "";
     for (const [index, substitution] of expression.expressions.entries()) {
       const staticSubstitution = staticExpressionString(substitution);
@@ -345,19 +358,11 @@ function staticExpressionString(
     }
     return value;
   }
-  if (
-    expression.type === AST_NODE_TYPES.TSAsExpression ||
-    expression.type === AST_NODE_TYPES.TSNonNullExpression ||
-    expression.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    expression.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    return staticExpressionString(expression.expression);
-  }
-  return null;
+  return isErasedExpression(expression) ? staticExpressionString(expression.expression) : null;
 }
 
-function isLabelableElement(node: TSESTree.JSXElement): boolean {
-  if (node.openingElement.name.type !== AST_NODE_TYPES.JSXIdentifier) {
+function isLabelableElement(node: ESTree.JSXElement): boolean {
+  if (node.openingElement.name.type !== "JSXIdentifier") {
     return false;
   }
   const name = node.openingElement.name.name;
@@ -372,30 +377,30 @@ function isLabelableElement(node: TSESTree.JSXElement): boolean {
 }
 
 function containsLabelableElement(
-  node: TSESTree.JSXElement | TSESTree.JSXFragment,
+  node: ESTree.JSXElement | ESTree.JSXFragment,
 ): boolean {
   return node.children.some((child) => {
-    if (child.type === AST_NODE_TYPES.JSXElement) {
+    if (child.type === "JSXElement") {
       return isLabelableElement(child) || containsLabelableElement(child);
     }
-    if (child.type === AST_NODE_TYPES.JSXFragment) {
+    if (child.type === "JSXFragment") {
       return containsLabelableElement(child);
     }
     return false;
   });
 }
 
-function isStaticallyAssociatedLabel(node: TSESTree.JSXOpeningElement): boolean {
+function isStaticallyAssociatedLabel(node: ESTree.JSXOpeningElement): boolean {
   const htmlFor = effectiveAttribute(node, "htmlFor");
   if (htmlFor.kind === "known" && htmlFor.value.trim().length > 0) return true;
   return (
-    node.parent.type === AST_NODE_TYPES.JSXElement &&
+    node.parent.type === "JSXElement" &&
     containsLabelableElement(node.parent)
   );
 }
 
 function replacementFor(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   element: RawPrimitive,
 ): Replacement | null {
   if (element === "select" && mayHaveBooleanAttribute(node, "multiple")) return null;
@@ -415,26 +420,25 @@ function replacementFor(
   return RAW_PRIMITIVES.input;
 }
 
-function mayHaveBooleanAttribute(node: TSESTree.JSXOpeningElement, name: string): boolean {
+function mayHaveBooleanAttribute(node: ESTree.JSXOpeningElement, name: string): boolean {
   for (const attribute of node.attributes.toReversed()) {
-    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return true;
-    if (attribute.name.type !== AST_NODE_TYPES.JSXIdentifier || attribute.name.name !== name) continue;
-    return !(attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-      attribute.value.expression.type === AST_NODE_TYPES.Literal &&
+    if (attribute.type === "JSXSpreadAttribute") return true;
+    if (attribute.name.type !== "JSXIdentifier" || attribute.name.name !== name) continue;
+    return !(attribute.value?.type === "JSXExpressionContainer" &&
+      attribute.value.expression.type === "Literal" &&
       attribute.value.expression.value === false);
   }
   return false;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-shadcn-primitives",
-  documentation: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description:
         "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -451,17 +455,9 @@ export default createRule<Options, MessageIds>({
         "Use the shared {{ replacement }} shadcn primitive instead of raw <{{ element }}> markup.",
     },
   },
-  create(context, [options]) {
-    const filename = context.filename.replaceAll("\\", "/");
-    if (
-      isTestFile(context) ||
-      isStoryFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text) ||
-      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
-    ) {
-      return {};
-    }
-    const detectsProject = options?.detectProjectPrimitives === true;
+  createOnce(context) {
+    let options: RuleOptions | undefined;
+    let detectsProject = false;
     // ESLint rules see one file at a time. Require local proof that the
     // repository actually owns a shadcn primitive tree before prescribing it;
     // otherwise every raw control in a non-shadcn project becomes noise.
@@ -470,11 +466,29 @@ export default createRule<Options, MessageIds>({
     const candidates: Array<{
       readonly capability: PrimitiveCapability;
       readonly element: RawPrimitive;
-      readonly node: TSESTree.JSXOpeningElement;
+      readonly node: ESTree.JSXOpeningElement;
       readonly replacement: string;
     }> = [];
     return {
-      ImportDeclaration(node): void {
+      before() {
+        const filename = context.filename.replaceAll("\\", "/");
+        const path = { filename: context.filename, cwd: context.cwd };
+        if (
+          isTestFile(path) ||
+          isStoryFile(path) ||
+          isGeneratedFile(path, context.sourceCode.text) ||
+          SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
+        ) {
+          return false;
+        }
+        options = context.options[0] as RuleOptions | undefined;
+        detectsProject = options?.detectProjectPrimitives === true;
+        hasSharedPrimitiveImport = false;
+        importedCapabilities.clear();
+        candidates.length = 0;
+        return undefined;
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (typeof node.source.value !== "string") return;
         const match = SHARED_PRIMITIVE_IMPORT_RE.exec(node.source.value);
         if (match?.[1] === undefined) return;
@@ -485,14 +499,10 @@ export default createRule<Options, MessageIds>({
           if (match[1].toLowerCase() === moduleName) importedCapabilities.add(capability);
         }
       },
-      JSXOpeningElement(node): void {
+      JSXOpeningElement(node: ESTree.JSXOpeningElement): void {
         const element = rawElementName(node);
         if (element === null) return;
-        if (mayHaveBooleanAttribute(node, "hidden") ||
-          context.sourceCode.getAncestors(node).some((ancestor) =>
-            ancestor.type === AST_NODE_TYPES.JSXElement &&
-            mayHaveBooleanAttribute(ancestor.openingElement, "hidden"),
-          )) return;
+        if (mayHaveBooleanAttribute(node, "hidden") || hasHiddenAncestor(node)) return;
         if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;
@@ -525,6 +535,15 @@ export default createRule<Options, MessageIds>({
   },
 });
 
+
+/** Same as the original's `getAncestors(node).some(...)` check, without building the ancestor array. */
+function hasHiddenAncestor(node: Node): boolean {
+  for (let ancestor = parentOf(node); ancestor !== null; ancestor = parentOf(ancestor)) {
+    if (ancestor.type === "JSXElement" && mayHaveBooleanAttribute(ancestor.openingElement, "hidden")) return true;
+  }
+  return false;
+}
+
 function realpathOrOriginal(path: string): string {
   try {
     return realpathSync(path);
@@ -550,7 +569,7 @@ function matchingAliasTargets(paths: Record<string, unknown>, alias: string): st
     const suffix = pattern.slice(star + 1);
     if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
     const substitution = alias.slice(prefix.length, alias.length - suffix.length);
-    matches.push(target.replace("*", substitution));
+    matches.push(target.replaceAll("*", () => substitution));
   }
   return matches;
 }

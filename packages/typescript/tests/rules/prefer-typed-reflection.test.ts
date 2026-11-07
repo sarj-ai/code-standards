@@ -1,23 +1,9 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { afterAll, describe, it } from "vitest";
-import { join } from "node:path";
 import rule from "../../src/rules/prefer-typed-reflection.js";
+import { FIXTURES, ruleTester, typed, untyped } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-TESTER.run("prefer-typed-reflection", rule, {
+const TESTER = ruleTester({ cwd: FIXTURES });
+
+TESTER.run("prefer-typed-reflection", rule, typed({
   valid: [
     { name: "preserves Reflect.get on a primitive", code: 'declare const target: string; Reflect.get(target, "length");' },
     { name: "keeps interpolated property keys dynamic", code: 'declare const target: { id: string }; declare const suffix: string; Reflect.get(target, `id${suffix}`);' },
@@ -84,14 +70,13 @@ TESTER.run("prefer-typed-reflection", rule, {
       ],
     },
   ],
-});
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("without type information", rule, {
+}));
+TESTER.run("without type information", rule, untyped({
   valid: ['declare const target: { id: string }; Reflect.get(target, "id");'],
   invalid: [],
-});
+}));
 
-TESTER.run("prefer-typed-reflection retained extensions", rule, {
+TESTER.run("prefer-typed-reflection retained extensions", rule, typed({
   valid: [
     { name: "preserves a mutated Reflect alias", code: "const target = { id: 'a' }; const reflection = Reflect; reflection.get = customGet; reflection.get(target, 'id');" },
     { name: "preserves a globally replaced Reflect method", code: "const target = { id: 'a' }; const reflection = Reflect; Reflect.get = customGet; reflection.get(target, 'id');" },
@@ -109,8 +94,8 @@ TESTER.run("prefer-typed-reflection retained extensions", rule, {
     { name: "checks a definite argument tuple", code: "function send(id: string) {} const args: [number] = [42]; Reflect.apply(send, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
     { name: "checks tuple arguments through a Reflect alias", code: "function send(id: string) {} const args: [string] = ['a']; const reflection = Reflect; reflection.apply(send, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
   ],
-});
-TESTER.run("prefer-typed-reflection audited boundaries", rule, {
+}));
+TESTER.run("prefer-typed-reflection audited boundaries", rule, typed({
   valid: [
     { name: "preserves cross-spelling Reflect mutations", code: "declare const target: { id: string }; const r = Reflect; globalThis.Reflect.get = custom; r.get(target, 'id');" },
     { name: "preserves inverse cross-spelling Reflect mutations", code: "declare const target: { id: string }; const r = globalThis.Reflect; Reflect.get = custom; r.get(target, 'id');" },
@@ -121,12 +106,12 @@ TESTER.run("prefer-typed-reflection audited boundaries", rule, {
   invalid: [
     { name: "retains typed variadic tuple contracts", code: "declare const invoke: (...args: string[]) => string; const args: [string] = ['u1']; Reflect.apply(invoke, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
   ],
-});
-TESTER.run("prefer-typed-reflection tuple wrappers and type references", rule, {
+}));
+TESTER.run("prefer-typed-reflection tuple wrappers and type references", rule, typed({
   valid: [],
   invalid: [
     { name: "supports readonly const tuples", code: "declare function lookup(id: string): string; const args = ['u1'] as const; Reflect.apply(lookup, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
     { name: "supports satisfies tuples", code: "declare function lookup(id: string): string; const args = ['u1'] satisfies [string]; Reflect.apply(lookup, undefined, args);", output: null, errors: [{ messageId: "avoid" }] },
     { name: "ignores type-only global references", code: "declare const target: { id: string }; const r: typeof Reflect = Reflect; r.get(target, 'id');", output: null, errors: [{ messageId: "avoid" }] },
   ],
-});
+}));

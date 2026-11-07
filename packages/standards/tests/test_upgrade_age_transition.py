@@ -52,7 +52,7 @@ def test_install_retains_existing_exact_approval_then_restores_canonical_policy(
 ) -> None:
     fixture = _plan(tmp_path)
     plan, policy = fixture.plan, fixture.policy
-    target = f"@sarj/eslint-plugin@{manifest.eslint_age_gate_preapprovals()['@sarj/eslint-plugin']}"
+    target = f"@sarj/eslint-plugin@{manifest.typescript_age_gate_preapprovals()['@sarj/eslint-plugin']}"
     canonical = dict(plan.pin_writes)[policy]
     seen: list[object] = []
 
@@ -130,7 +130,7 @@ def test_transition_only_retains_previously_approved_exact_owned_versions(tmp_pa
         f'minimumReleaseAgeExclude: ["{OLD}", "@sarj/eslint-plugin@*", '
         '"@sarj/eslint-plugin@^15.0.0", "@typescript-eslint/parser@8.70.1", "unrelated@1.0.0"]\n'
     )
-    target = f"@sarj/eslint-plugin@{manifest.eslint_age_gate_preapprovals()['@sarj/eslint-plugin']}"
+    target = f"@sarj/eslint-plugin@{manifest.typescript_age_gate_preapprovals()['@sarj/eslint-plugin']}"
     canonical = (
         f'minimumReleaseAgeExclude: ["{target}", "unrelated@2.0.0"] # keep\n'
         if flow
@@ -160,7 +160,7 @@ def test_transition_never_writes_an_unplanned_policy(tmp_path: Path) -> None:
 def test_transition_rejects_anchored_policy_without_modifying_aliases(tmp_path: Path) -> None:
     policy = tmp_path / "pnpm-workspace.yaml"
     original = f'minimumReleaseAgeExclude: ["{OLD}"]\n'
-    target = f"@sarj/eslint-plugin@{manifest.eslint_age_gate_preapprovals()['@sarj/eslint-plugin']}"
+    target = f"@sarj/eslint-plugin@{manifest.typescript_age_gate_preapprovals()['@sarj/eslint-plugin']}"
     canonical = f'minimumReleaseAgeExclude: &approved ["{target}"]\nother: *approved\n'
     policy.write_text(original)
     files = transaction.FileTransaction.capture(tmp_path, (policy,))

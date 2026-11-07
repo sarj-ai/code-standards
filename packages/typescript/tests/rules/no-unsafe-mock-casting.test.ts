@@ -1,31 +1,14 @@
-// vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-unsafe-mock-casting.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_UNSAFE_MOCK_CASTING_DOCUMENTATION,
-} from "../../src/rules/no-unsafe-mock-casting.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
-
-RULE_TESTER.run("no-unsafe-mock-casting", rule, {
+ruleTester().run("no-unsafe-mock-casting", rule, {
   valid: [
     { name: "local types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture(value: () => void) { type Mock = () => void; return value as Mock; }" },
     { name: "generic types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture<Mock>(value: unknown) { return value as Mock; }" },
     { name: "local namespaces still shadow imported mock namespaces", code: "import type * as mocks from 'vitest'; namespace Fixtures { export namespace mocks { export type Mock = () => void; } export function fixture(value: () => void) { return value as mocks.Mock; } }" },
     {
       name: "accepts the Vitest typed helper",
-      code: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION.examples[0].files[0].source,
+      code: "import { vi } from 'vitest'; const client = { read: () => 'value' }; vi.spyOn(client, 'read'); const m = vi.mocked(client.read);",
     },
     { name: "accepts the Jest typed helper", code: "const m = jest.mocked(myFn);" },
     {
@@ -42,9 +25,8 @@ RULE_TESTER.run("no-unsafe-mock-casting", rule, {
       code: "interface Mock { id: string } const m = value as Mock;",
     },
     {
-      name: "ignores an unrelated namespace member named Mock",
+      name: "ignores an unrelated namespace member named Mock (original valid-case output dropped: Oxlint rejects it)",
       code: 'import type * as domain from "./domain.js"; const m = value as domain.Mock;',
-      output: 'import type * as domain from "./domain.js"; const m = value;',
     },
     {
       name: "ignores generated file paths",
@@ -84,7 +66,7 @@ RULE_TESTER.run("no-unsafe-mock-casting", rule, {
     },
     {
       name: "reports vi.Mock assertions",
-      code: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION.examples[1].files[0].source,
+      code: 'import type * as vi from "vitest"; const m = myFn as vi.Mock;',
       output: null,
       errors: [{ messageId: "unsafeMockCast" }],
     },

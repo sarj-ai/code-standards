@@ -41,7 +41,7 @@ def retain_previous_approvals(
 def _retain_exact_approvals(original: str, canonical: str) -> str:
     previous = _approvals(original)
     current = _approvals(canonical)
-    owned = manifest.eslint_age_gate_preapprovals()
+    owned = manifest.typescript_age_gate_preapprovals()
     retained = sorted(
         approval
         for approval in previous - current

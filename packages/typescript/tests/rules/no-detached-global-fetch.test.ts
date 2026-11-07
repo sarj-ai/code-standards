@@ -1,18 +1,9 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-detached-global-fetch.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION,
-} from "../../src/rules/no-detached-global-fetch.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const PRODUCTION = "/repo/apps/worker/src/client.ts";
 
 RULE_TESTER.run("no-detached-global-fetch", rule, {
@@ -22,7 +13,7 @@ RULE_TESTER.run("no-detached-global-fetch", rule, {
     {
       name: "accepts the documented forwarding wrapper",
       filename: PRODUCTION,
-      code: NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION.examples[0].files[0].source,
+      code: "class Client { readonly request = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init); }",
     },
     {
       name: "allows a direct ambient call",
@@ -336,7 +327,7 @@ RULE_TESTER.run("no-detached-global-fetch", rule, {
     {
       name: "reports the documented receiver-unsafe field",
       filename: PRODUCTION,
-      code: NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION.examples[1].files[0].source,
+      code: "class Client { readonly request = fetch; }",
       errors: [{ messageId: "detachedGlobalFetch" }],
     },
     {

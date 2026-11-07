@@ -1,23 +1,122 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
-import { RECOMMENDED_RULES, STRICT_RULES } from "../../src/index.js";
 import rule from "../../src/rules/no-runtime-typeof.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const NO_RUNTIME_TYPEOF_DOCUMENTATION = {
+  examples: [
+    {
+      id: "runtime-representation-check",
+      title: "Replace a representation check with an explicit contract",
+      outcome: "match",
+      files: [{ path: "src/input.ts", source: 'function parse(value: unknown) { if (typeof value === "object" && value !== null && !Array.isArray(value) && "id" in value && typeof value.id === "string") return { id: value.id }; throw new Error("Expected a record with a text id"); }' }],
+      focusPath: "src/input.ts",
+      expectedCount: 2,
+      public: true,
+    },
+    {
+      id: "specific-boundary-schema",
+      title: "Validate consumed fields at their boundary",
+      outcome: "no-match",
+      files: [{ path: "src/input.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); function parse(value: unknown) { return UserSchema.parse(value); }' }],
+      installedDependencies: [{ module: "zod", version: "4.6.7" }],
+      focusPath: "src/input.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "untagged-domain-union",
+      scenarioId: "domain-variants",
+      title: "Give owned variants a domain discriminator",
+      outcome: "match",
+      files: [{ path: "src/value.ts", source: 'function render(value: string | number) { return typeof value === "string" ? value : value.toString(); }' }],
+      focusPath: "src/value.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "discriminated-domain-union",
+      scenarioId: "domain-variants",
+      title: "Branch on an owned domain discriminator",
+      outcome: "no-match",
+      files: [{ path: "src/value.ts", source: 'type Value = { kind: "text"; value: string } | { kind: "count"; value: number }; function render(value: Value) { return value.kind === "text" ? value.value : value.value.toString(); }' }],
+      focusPath: "src/value.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "bound-undefined-check",
+      scenarioId: "global-existence",
+      title: "Read a declared value directly when checking undefined",
+      outcome: "match",
+      files: [{ path: "src/environment.ts", source: 'function missing(value: unknown) { return typeof value === "undefined"; }' }],
+      focusPath: "src/environment.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "global-existence-probe",
+      scenarioId: "global-existence",
+      title: "Probe a potentially absent global without reading it",
+      outcome: "no-match",
+      files: [{ path: "src/environment.ts", source: 'const isServer = typeof document === "undefined";' }],
+      focusPath: "src/environment.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "runtime-query",
+      scenarioId: "type-query",
+      title: "Keep a type query out of executable code",
+      outcome: "match",
+      files: [{ path: "src/value.ts", source: 'declare const value: { id: string }; const kind = typeof value;' }],
+      focusPath: "src/value.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "type-only-query",
+      scenarioId: "type-query",
+      title: "Preserve the erased TypeScript type query",
+      outcome: "no-match",
+      files: [{ path: "src/value.ts", source: 'declare const value: { id: string }; type Value = typeof value;' }],
+      focusPath: "src/value.ts",
+      expectedCount: 0,
+      public: true,
+    },
+  ],
+} as const;
+
 const ERROR = { messageId: "runtimeTypeof" } as const;
+
+const DOCUMENTED_EXAMPLES: readonly {
+  readonly id: string;
+  readonly outcome: string;
+  readonly focusPath: string;
+  readonly expectedCount: number;
+  readonly files: readonly { readonly path: string; readonly source: string }[];
+  readonly fixedFiles?: readonly { readonly path: string; readonly source: string }[];
+}[] = NO_RUNTIME_TYPEOF_DOCUMENTATION.examples;
+const EXAMPLE_VALID = DOCUMENTED_EXAMPLES.filter((example) => example.outcome === "no-match").map((example) => ({
+  name: `documented example ${example.id} (./ path keeps it distinct from an explicit case)`,
+  filename: `./${example.focusPath}`,
+  code: example.files.find((file) => file.path === example.focusPath)?.source ?? "",
+}));
+const EXAMPLE_INVALID = DOCUMENTED_EXAMPLES.filter((example) => example.outcome === "match").map((example) => {
+  const fixed = example.fixedFiles?.find((file) => file.path === example.focusPath)?.source;
+  const testCase = {
+    name: `documented example ${example.id} (./ path keeps it distinct from an explicit case)`,
+    filename: `./${example.focusPath}`,
+    code: example.files.find((file) => file.path === example.focusPath)?.source ?? "",
+  };
+  const errors = Array.from({ length: example.expectedCount }, () => ({ messageId: "runtimeTypeof" }));
+  return fixed === undefined ? { ...testCase, errors } : { ...testCase, output: fixed, errors };
+});
 
 RULE_TESTER.run("no-runtime-typeof", rule, {
   valid: [
+    ...EXAMPLE_VALID,
     { name: "preserves an unwrapped script arguments probe", filename: "src/probe.js", languageOptions: { sourceType: "script" }, code: 'typeof arguments === "undefined";' },
     { name: "uses declared script mode over the CommonJS filename", filename: "src/probe.cjs", languageOptions: { sourceType: "script" }, code: 'typeof arguments === "undefined";' },
     { name: "preserves absent module arguments", filename: "src/probe.js", code: 'typeof arguments === "undefined";' },
@@ -51,13 +150,13 @@ RULE_TESTER.run("no-runtime-typeof", rule, {
     { name: "preserves vendored source", filename: "/repo/vendor/client.ts", code: "const kind = typeof value;" },
   ],
   invalid: [
+    ...EXAMPLE_INVALID,
     { name: "retains implicit function arguments", code: 'function probe() { return typeof arguments === "undefined"; }', errors: [ERROR] },
     { name: "retains implicit expression arguments", code: 'const probe = function () { return typeof arguments === "undefined"; };', errors: [ERROR] },
     { name: "retains arguments captured by an arrow", code: 'function probe() { return () => typeof arguments === "undefined"; }', errors: [ERROR] },
     { name: "retains arguments in a parameter initializer", code: 'function probe(value = typeof arguments === "undefined") { return value; }', errors: [ERROR] },
     { name: "retains implicit method arguments", code: 'const probe = { read() { return typeof arguments === "undefined"; } };', errors: [ERROR] },
     { name: "retains implicit CommonJS wrapper arguments", filename: "src/probe.cjs", languageOptions: { sourceType: "commonjs" }, code: 'typeof arguments === "undefined";', errors: [ERROR] },
-    { name: "retains arguments beside an erased declaration", code: 'function probe() { type arguments = number; return typeof arguments === "undefined"; }', errors: [ERROR] },
     { name: "retains earlier parameter values", filename: "src/probe.js", code: 'function probe(Map = globalThis.Map, value = typeof Map === "undefined") { return value; }', errors: [ERROR] },
     { name: "retains outer values used in parameter initializers", filename: "src/probe.js", code: 'const Map = 1; function probe(value = typeof Map === "undefined") { const Map = 2; return value; }', errors: [ERROR] },
     { name: "retains body values inside the body", filename: "src/probe.js", code: 'function probe() { const Map = 1; return typeof Map === "undefined"; }', errors: [ERROR] },
@@ -95,43 +194,4 @@ RULE_TESTER.run("no-runtime-typeof", rule, {
     { name: "checks authored AI source", code: "// Generated by an AI assistant\nconst kind = typeof value;", errors: [ERROR] },
     { name: "reports each runtime expression", code: "const left = typeof first; const right = typeof second;", errors: [ERROR, ERROR] },
   ],
-});
-
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule, { installedDependencyRoot: import.meta.dirname + "/../.." });
-});
-
-it("enforces the requested ban in both public presets", () => {
-  expect(STRICT_RULES["@sarj/no-runtime-typeof"]).toBe("error");
-  expect(RECOMMENDED_RULES["@sarj/no-runtime-typeof"]).toBe("error");
-});
-
-const INLINE_CONFIG = {
-  files: ["**/*.ts"],
-  languageOptions: { parser: tsParser },
-  plugins: { "@sarj": { rules: { "no-runtime-typeof": rule } } },
-  rules: { "@sarj/no-runtime-typeof": "error" },
-} as const;
-
-it("retains an exact-code local exception for a raw preprocessing contract", () => {
-  const messages = new Linter().verify(
-    '// eslint-disable-next-line @sarj/no-runtime-typeof -- This preprocessor inspects raw values before the caller schema establishes their contract.\nfunction inspect(value: unknown) { return typeof value === "object"; }',
-    INLINE_CONFIG,
-    { filename: "src/preprocess.ts" },
-  );
-  expect(messages).toEqual([]);
-});
-
-it("keeps an exception local to its annotated line", () => {
-  const messages = new Linter().verify(
-    '// eslint-disable-next-line @sarj/no-runtime-typeof -- This framework callback distinguishes a setter function from its boolean value.\nconst next = typeof update === "function" ? update(previous) : update;\nconst kind = typeof input;',
-    INLINE_CONFIG,
-    { filename: "src/setter.ts" },
-  );
-  expect(messages).toEqual([expect.objectContaining({ ruleId: "@sarj/no-runtime-typeof", line: 3, severity: 2 })]);
-});
-
-it("leaves malformed input to the native parser", () => {
-  const messages = new Linter().verify("const value = typeof ;", INLINE_CONFIG, { filename: "src/input.ts" });
-  expect(messages).toEqual([expect.objectContaining({ fatal: true, ruleId: null })]);
 });

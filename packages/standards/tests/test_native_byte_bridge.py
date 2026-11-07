@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from sarj_standards.libs.adoption import lifecycle
 
 
-_Tool = Literal["eslint", "biome", "prettier"]
 _SOURCE = b"\xef\xbb\xbf// raw \xff\x00\r\n" + "export const face = '😀';\r\n".encode()
 _STDOUT = b"\xef\xbb\xbf\xff\x00first\r\nsecond\n" + "😀".encode()
 _STDERR = b"warning\r\n\xff\x00"
@@ -41,51 +40,28 @@ def private_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return base
 
 
-def _fixture(root: Path, tool: _Tool = "prettier") -> bridge.NativeInvocation:
+def _fixture(root: Path) -> bridge.NativeInvocation:
     root.mkdir(exist_ok=True)
     node = root / "runtime" / "node"
     node.parent.mkdir()
     node.write_bytes(b"protocol fixture; never executed\n")
     node.chmod(0o700)
-    packages: dict[_Tool, tuple[str, str, str]] = {
-        "eslint": ("eslint", "eslint", "10.13.0"),
-        "biome": ("@biomejs/biome", "biome", "2.6.3"),
-        "prettier": ("prettier", "prettier", "3.9.10"),
-    }
-    name, binary, version = packages[tool]
-    package = root / "node_modules" / name
+    package = root / "node_modules" / "oxfmt"
     package.mkdir(parents=True)
     entrypoint = package / "bin" / "native.js"
     entrypoint.parent.mkdir()
     entrypoint.write_bytes(b"// protocol fixture; never executed\n")
     (package / "package.json").write_text(
-        json.dumps({"name": name, "version": version, "bin": {binary: "bin/native.js"}}),
+        json.dumps({"name": "oxfmt", "version": "0.76.0", "bin": {"oxfmt": "bin/native.js"}}),
         encoding="utf-8",
     )
     config = root / "native.config.json"
     config.write_bytes(b"{}\n")
     source = root / "source.js"
     source.write_bytes(_SOURCE)
-    match tool:
-        case "eslint":
-            args = (
-                "--config",
-                str(config),
-                "--fix-dry-run",
-                "--fix-type",
-                "directive",
-                "--format",
-                "json",
-                "--no-cache",
-                "--stdin",
-                "--stdin-filename",
-                str(source),
-            )
-        case "biome":
-            args = ("format", "--stdin-file-path", str(source), "--config-path", str(config))
-        case "prettier":
-            args = ("--config", str(config), "--stdin-filepath", str(source))
-    return bridge.NativeInvocation(tool, node, entrypoint, root, args)
+    return bridge.NativeInvocation(
+        "oxfmt", node, entrypoint, root, (f"--config={config}", f"--stdin-filepath={source}")
+    )
 
 
 def _request(invocation: bridge.NativeInvocation) -> dict[str, process.JsonValue]:
@@ -107,15 +83,13 @@ def _completed(command: lifecycle.Command, status: int = 0) -> subprocess.Comple
     return subprocess.CompletedProcess(command.argv, 0, process.response(status, _STDOUT, _STDERR).decode("ascii"), "")
 
 
-@pytest.mark.parametrize("tool", ["eslint", "biome", "prettier"])
 @pytest.mark.parametrize("status", [0, 1, -15])
 def test_transport_keeps_raw_bytes_status_and_fixed_isolated_invocation(
     tmp_path: Path,
     private_tmp: Path,
-    tool: _Tool,
     status: int,
 ) -> None:
-    invocation = _fixture(tmp_path / "project", tool)
+    invocation = _fixture(tmp_path / "project")
     calls: list[lifecycle.Command] = []
 
     def run(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
@@ -147,10 +121,9 @@ def test_transport_keeps_raw_bytes_status_and_fixed_isolated_invocation(
         invocation.tool = "other"  # pyright: ignore[reportAttributeAccessIssue] -- exercise the frozen runtime contract.
 
 
-@pytest.mark.parametrize("tool", ["eslint", "biome", "prettier"])
 @pytest.mark.parametrize("extra", ["--write", "--fix", "--rule", "--", "source.js", "--unknown"])
-def test_argv_rejects_writes_overrides_and_file_operands(tmp_path: Path, tool: _Tool, extra: str) -> None:
-    invocation = _fixture(tmp_path / "project", tool)
+def test_argv_rejects_writes_overrides_and_file_operands(tmp_path: Path, extra: str) -> None:
+    invocation = _fixture(tmp_path / "project")
     with pytest.raises(ValueError, match="argv"):
         _request(replace(invocation, args=(*invocation.args, extra)))
 
@@ -158,7 +131,7 @@ def test_argv_rejects_writes_overrides_and_file_operands(tmp_path: Path, tool: _
 def test_stdin_path_config_package_bin_and_runtime_are_bound(tmp_path: Path) -> None:
     invocation = _fixture(tmp_path / "project")
     with pytest.raises(ValueError, match="outside"):
-        _request(replace(invocation, args=(*invocation.args[:-1], str(tmp_path / "outside.js"))))
+        _request(replace(invocation, args=(*invocation.args[:-1], f"--stdin-filepath={tmp_path / 'outside.js'}")))
     with pytest.raises(ValueError, match="entrypoint"):
         _request(replace(invocation, entrypoint=invocation.cwd / "source.js"))
     invocation.node.chmod(0o722)
@@ -166,9 +139,7 @@ def test_stdin_path_config_package_bin_and_runtime_are_bound(tmp_path: Path) -> 
         _request(invocation)
     invocation.node.chmod(0o700)
     package = invocation.entrypoint.parents[1]
-    (package / "package.json").write_text(
-        '{"name":"prettier","version":"latest","bin":"bin/native.js"}', encoding="utf-8"
-    )
+    (package / "package.json").write_text('{"name":"oxfmt","version":"latest","bin":"bin/native.js"}', encoding="utf-8")
     with pytest.raises(ValueError, match="version"):
         _request(invocation)
 
@@ -176,7 +147,7 @@ def test_stdin_path_config_package_bin_and_runtime_are_bound(tmp_path: Path) -> 
 def test_internal_pnpm_package_link_is_allowed_but_external_package_link_is_refused(tmp_path: Path) -> None:
     invocation = _fixture(tmp_path / "project")
     package = invocation.entrypoint.parents[1]
-    internal = package.parent / ".pnpm" / "prettier@3.9.10" / "node_modules" / "prettier"
+    internal = package.parent / ".pnpm" / "oxfmt@0.76.0" / "node_modules" / "oxfmt"
     internal.parent.mkdir(parents=True)
     package.rename(internal)
     package.symlink_to(internal, target_is_directory=True)
@@ -238,7 +209,7 @@ def test_native_input_mutation_is_checked_even_when_callback_raises(
         "runtime": invocation.node,
         "entrypoint": invocation.entrypoint,
         "manifest": invocation.entrypoint.parents[1] / "package.json",
-        "config": Path(invocation.args[1]),
+        "config": Path(invocation.args[0].removeprefix("--config=")),
     }
 
     def run(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:

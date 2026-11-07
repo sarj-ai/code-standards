@@ -1,111 +1,72 @@
-/**
- * @fileoverview _literal-lookup-hoist-fix — hoist a private readonly literal lookup.
- */
+/** @fileoverview _literal-lookup-hoist-fix — hoist a private readonly literal lookup. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { getPropertyName } from "../utils/static-string.js";
+import { soleConstDeclarator, soleExportedFunction } from "./_closed-module.js";
 
 /** A sole module entry reads its private readonly literal lookup only through native includes. */
-export function literalLookupHoistFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.VariableDeclarator,
-): NativeReportFix | null {
+export function literalLookupHoistFix(sourceCode: SourceCode, node: ESTree.VariableDeclarator): FixFn | null {
   if (
-    sourceCode.ast.body.length !== 1 ||
-    sourceCode.getAllComments().length > 0 ||
-    node.id.type !== AST_NODE_TYPES.Identifier ||
+    node.id.type !== "Identifier" ||
     !readonlyStrings(node.id.typeAnnotation?.typeAnnotation) ||
-    node.init?.type !== AST_NODE_TYPES.ArrayExpression ||
-    !node.init.elements.every(
-      (element) =>
-        element?.type === AST_NODE_TYPES.Literal &&
-        typeof element.value === "string",
-    )
+    node.init?.type !== "ArrayExpression" ||
+    !node.init.elements.every((element) => element?.type === "Literal" && typeof element.value === "string")
   )
     return null;
-  const statement = sourceCode.ast.body[0];
-  if (
-    statement?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    statement.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration
-  )
+  const collection = node.id.name;
+  const entry = soleExportedFunction(sourceCode);
+  if (entry === null || entry.owner.id?.name === collection || entry.owner.params.length !== 1 || entry.body.length !== 2)
     return null;
-  const owner = statement.declaration;
+  const { statement, owner } = entry;
+  const [argument] = owner.params;
+  const [declaration, returned] = entry.body;
   if (
-    owner.id === null ||
-    owner.async ||
-    owner.declare ||
-    owner.generator ||
-    owner.typeParameters !== undefined ||
-    owner.params.length !== 1 ||
-    owner.body.body.length !== 2 ||
-    owner.id.name === node.id.name
-  )
-    return null;
-  const argument = owner.params[0];
-  const [declaration, returned] = owner.body.body;
-  if (
-    argument?.type !== AST_NODE_TYPES.Identifier ||
+    argument?.type !== "Identifier" ||
     argument.optional ||
-    argument.name === node.id.name ||
-    argument.typeAnnotation?.typeAnnotation.type !==
-      AST_NODE_TYPES.TSStringKeyword ||
-    declaration?.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declaration.declare ||
-    declaration.kind !== "const" ||
-    declaration.declarations.length !== 1 ||
-    declaration.declarations[0] !== node ||
-    returned?.type !== AST_NODE_TYPES.ReturnStatement
+    argument.name === collection ||
+    argument.typeAnnotation?.typeAnnotation.type !== "TSStringKeyword" ||
+    declaration?.type !== "VariableDeclaration" ||
+    soleConstDeclarator(declaration) !== node ||
+    returned?.type !== "ReturnStatement" ||
+    (isPresent(owner.returnType) && owner.returnType.typeAnnotation.type !== "TSBooleanKeyword") ||
+    !includesArgument(returned.argument, collection, argument.name)
   )
-    return null;
-  if (
-    owner.returnType !== undefined &&
-    owner.returnType.typeAnnotation.type !== AST_NODE_TYPES.TSBooleanKeyword
-  )
-    return null;
-  if (!includesArgument(returned.argument, node.id.name, argument.name))
     return null;
   const newline = sourceCode.text.includes("\r\n") ? "\r\n" : "\n";
   return (fixer) => [
-    fixer.insertTextBefore(
-      statement,
-      `${sourceCode.getText(declaration)}${newline}`,
-    ),
+    fixer.insertTextBefore(statement, `${sourceCode.getText(declaration)}${newline}`),
     fixer.removeRange([declaration.range[0], returned.range[0]]),
   ];
 }
 
-function readonlyStrings(node: TSESTree.TypeNode | undefined): boolean {
+function readonlyStrings(node: ESTree.TSType | null | undefined): boolean {
   return (
-    node?.type === AST_NODE_TYPES.TSTypeOperator &&
+    node?.type === "TSTypeOperator" &&
     node.operator === "readonly" &&
-    node.typeAnnotation?.type === AST_NODE_TYPES.TSArrayType &&
-    node.typeAnnotation.elementType.type === AST_NODE_TYPES.TSStringKeyword
+    node.typeAnnotation?.type === "TSArrayType" &&
+    node.typeAnnotation.elementType.type === "TSStringKeyword"
   );
 }
 
-function includesArgument(
-  node: TSESTree.Expression | null,
-  collection: string,
-  argument: string,
-): boolean {
+function includesArgument(node: Node | null | undefined, collection: string, argument: string): boolean {
   if (
-    node?.type !== AST_NODE_TYPES.CallExpression ||
+    node?.type !== "CallExpression" ||
     node.optional ||
     node.arguments.length !== 1 ||
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.type !== "MemberExpression" ||
     node.callee.optional
   )
     return false;
   const member = node.callee;
   const value = node.arguments[0];
   return (
-    member.object.type === AST_NODE_TYPES.Identifier &&
+    member.object.type === "Identifier" &&
     member.object.name === collection &&
-    ASTUtils.getPropertyName(member) === "includes" &&
-    value?.type === AST_NODE_TYPES.Identifier &&
+    getPropertyName(member) === "includes" &&
+    value?.type === "Identifier" &&
     value.name === argument
   );
 }

@@ -22,12 +22,16 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { RENAMED_RULES, RETIRED_RULES, RULES } from "../src/index.js";
-import { examplesPath, examplesUrl, REPO_BLOB, TESTS_DIR } from "../src/rules/_docs.js";
+import { RULES } from "../src/catalog.js";
+import plugin from "../src/index.js";
+import { RENAMED_RULES } from "../src/rules/_renamed-rules.js";
+import { RETIRED_RULES } from "../src/rules/_retired-rules.js";
+import { docsUrl } from "../src/utils/docs-url.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 const RULES_DIR = resolve(HERE, "../src/rules");
+const REPO_BLOB = "https://github.com/sarj-ai/code-standards/blob/main";
 
 
 
@@ -35,7 +39,6 @@ const RULES_DIR = resolve(HERE, "../src/rules");
 
 
 
-const MAX_FILEOVERVIEW_LINES = 6;
 
 
 
@@ -49,7 +52,6 @@ const MODULE_NAMES = readdirSync(RULES_DIR)
   .filter((file) => file.endsWith(".ts"))
   .map((file) => file.replace(/\.ts$/u, ""))
   .sort();
-const HELPER_NAMES = MODULE_NAMES.filter((name) => name.startsWith("_"));
 
 function moduleSource(name: string): string {
   return readFileSync(resolve(RULES_DIR, `${name}.ts`), "utf8");
@@ -94,77 +96,38 @@ function commentLines(source: string): { line: number; text: string }[] {
   return out;
 }
 
-describe("the executable-example links are derived, not typed", () => {
-  it("links to this repository's main branch", () => {
-    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/code-standards/blob/main");
+describe("the documentation links are derived, not typed", () => {
+  it("links to the rule's page on the documentation site", () => {
+    expect(docsUrl("no-enum")).toBe("https://code-standards.sarj.ai/rules/oxlint/no-enum/");
   });
 
-  it("keeps executable examples in the rule test directory", () => {
-    expect(TESTS_DIR).toBe("packages/typescript/tests/rules");
-  });
-
-  it("derives the examples path from the rule name", () => {
-    expect(examplesPath("no-enum")).toBe(`${TESTS_DIR}/no-enum.test.ts`);
-  });
-
-  it("hangs the URL off the repo blob", () => {
-    expect(examplesUrl("no-enum")).toBe(`${REPO_BLOB}/${examplesPath("no-enum")}`);
-  });
-
-  it("tracks the name it is given, which is the whole point", () => {
-    expect(examplesUrl("made-up-rule")).toBe(
-      `${REPO_BLOB}/${TESTS_DIR}/made-up-rule.test.ts`,
-    );
-  });
-
-  it.each(RULE_NAMES)("%s points meta.docs.url at its executable examples", (name) => {
-    const rule = RULES[name as keyof typeof RULES];
-    expect(rule.meta.docs?.url).toBe(examplesUrl(name));
+  it.each(RULE_NAMES)("%s points meta.docs.url at its documentation page", (name) => {
+    expect(RULES[name as keyof typeof RULES].meta?.docs?.url).toBe(docsUrl(name));
   });
 });
 
-describe("every rule module is a claim plus its derived links", () => {
-  it.each(MODULE_NAMES)("%s opens with a capped @fileoverview", (name) => {
-    const lines = fileoverviewLines(moduleSource(name));
-    expect(lines.length).toBeGreaterThan(0);
-    expect(
-      lines.length,
-      `${name}: @fileoverview is ${lines.length} content lines, cap is ${MAX_FILEOVERVIEW_LINES}. ` +
-        "Behavior belongs in its paired test.",
-    ).toBeLessThanOrEqual(MAX_FILEOVERVIEW_LINES);
-  });
-
+describe("every rule module is a claim", () => {
   it.each(MODULE_NAMES)("%s states its own name and a claim on line one", (name) => {
     const [first] = fileoverviewLines(moduleSource(name));
     expect(first).toMatch(new RegExp(`^@fileoverview ${name} — \\S`, "u"));
   });
 
-  it.each(RULE_NAMES)("%s carries the derived examples link", (name) => {
-    expect(fileoverviewLines(moduleSource(name))).toContain(
-      `Examples: ${examplesUrl(name)}`,
-    );
-  });
-
-  it.each(HELPER_NAMES)("%s carries no examples link, having no test module", (name) => {
-    expect(fileoverviewLines(moduleSource(name)).join("\n")).not.toContain("Examples:");
-  });
-
-  it.each(MODULE_NAMES.filter((name) => name !== "_docs"))("%s hand-writes no repo link", (name) => {
-    const stray = moduleSource(name)
-      .split("\n")
-      .filter(
-        (line) =>
-          line.includes(REPO_BLOB) &&
-          !line.includes(examplesUrl(name)),
-      );
-    expect(stray).toEqual([]);
+  it.each(MODULE_NAMES)("%s hand-writes no repo link", (name) => {
+    const exampleUrl = `${REPO_BLOB}/packages/typescript/tests/rules/${name}.test.ts`;
+    for (const [text] of moduleSource(name).matchAll(/https?:\/\/[^\s]+/gu)) {
+      const url = new URL(text);
+      if (url.hostname === "github.com" && url.pathname.startsWith("/sarj-ai/code-standards/")) {
+        expect(url.href).toBe(exampleUrl);
+      }
+    }
   });
 });
 
 describe("the behavior lives in executable tests", () => {
-  it.each(RULE_NAMES)("%s has a non-empty examples module", (name) => {
-    const file = resolve(REPO_ROOT, examplesPath(name));
-    expect(statSync(file).size, `${examplesPath(name)} is empty`).toBeGreaterThan(0);
+  it.each(RULE_NAMES)("%s has a non-empty test module and documentation module", (name) => {
+    for (const path of [`tests/rules/${name}.test.ts`, `src/docs/${name}.ts`]) {
+      expect(statSync(resolve(HERE, "..", path)).size, `${path} is empty`).toBeGreaterThan(0);
+    }
   });
 
   it.each(MODULE_NAMES)("%s carries no measurement in a code comment", (name) => {
@@ -337,26 +300,15 @@ describe("a rename ships a map, not a hole", () => {
 
   it("deprecates no live rule, so no name points at a dead end", () => {
     for (const to of Object.values(RENAMED_RULES)) {
-      expect(RULES[to].meta.deprecated).toBeUndefined();
+      expect(RULES[to].meta?.deprecated).toBeUndefined();
     }
   });
 
-  it("keeps the old names out of both presets", () => {
-
-
-    for (const from of Object.keys(RENAMED_RULES)) {
-      expect(plugin.configs.strict.rules).not.toHaveProperty(`@sarj/${from}`);
-      expect(plugin.configs.recommended.rules).not.toHaveProperty(`@sarj/${from}`);
-    }
-  });
-
-  it("leaves no old name in the shipped strict config", () => {
+  it("leaves no old name in the shipped oxlint.strict.mts", () => {
     const configured = configuredSarjRuleNames(
-      readFileSync(
-        resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.ts"),
-        "utf8",
-      ),
+      readFileSync(resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/oxlint.strict.mts"), "utf8"),
     );
+    expect(configured.size).toBeGreaterThan(0);
     for (const from of Object.keys(RENAMED_RULES)) {
       expect(configured).not.toContain(from);
     }
@@ -365,7 +317,7 @@ describe("a rename ships a map, not a hole", () => {
   it("records each migration on the live rule that generates docs and redirects", () => {
     for (const [from, to] of Object.entries(RENAMED_RULES)) {
       expect(RULES[to as keyof typeof RULES]).toBeDefined();
-      expect(RULES[to as keyof typeof RULES]?.documentation?.aliases).toContain(from);
+      expect(RULES[to as keyof typeof RULES].documentation.aliases).toContain(from);
     }
   });
 });

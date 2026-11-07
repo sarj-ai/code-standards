@@ -1,0 +1,83 @@
+{
+  "oxlint": "1.91.0",
+  "cases": {
+    "lint": {
+      "files": {
+        "src/a.ts": "// café — multibyte before the finding\nexport const x: any = null;\ndebugger;\n// eslint-disable-next-line no-console -- needed\nconsole.log(\"é\");\n// eslint-disable-next-line no-debugger -- this line has no debugger\nexport const y = 1;\n// eslint-disable-next-line no-console, no-debugger -- logging is the point here\nconsole.info(2);\nfunction f(a = undefined) { return a; }\nexport { f };\nexport async function g(): Promise<void> { Promise.resolve(1); }\nexport const n: number = \"x\";\n",
+        "src/broken.ts": "export const = ;\n",
+        "src/view.tsx": "import { useState } from \"react\";\nexport function View({ on }: { on: boolean }) {\n  let ended = false;\n  if (on) useState(0);\n  const stop = () => { ended = true; };\n  return <img src=\"a.png\" alt=\"\" onClick={stop} data-ended={ended} />;\n}\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "--type-aware",
+        "--type-check",
+        "src"
+      ],
+      "returncode": 1,
+      "stdout": "{ \"diagnostics\": [{\"message\": \"Unexpected token\",\"severity\": \"error\",\"filename\": \"src/broken.ts\",\"labels\": [{\"span\": {\"offset\": 13,\"length\": 1,\"line\": 1,\"column\": 14}}]},\n{\"message\": \"Unexpected `any`. Specify a different type.\",\"code\": \"typescript(no-explicit-any)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/typescript/no-explicit-any.html\",\"help\": \"Use `unknown` instead, this will force you to explicitly, and safely, assert the type is correct.\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 58,\"length\": 3,\"line\": 2,\"column\": 17}}]},\n{\"message\": \"Do not use `null` literals\",\"code\": \"unicorn(no-null)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/unicorn/no-null.html\",\"help\": \"Replace `null` with `undefined`.\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 64,\"length\": 4,\"line\": 2,\"column\": 23}}]},\n{\"message\": \"`debugger` statement is not allowed\",\"code\": \"eslint(no-debugger)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-debugger.html\",\"help\": \"Remove the debugger statement\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 70,\"length\": 9,\"line\": 3,\"column\": 1}}]},\n{\"message\": \"Suppression description `needed` does not explain why the suppressed diagnostic is safe here. Name the concrete type/runtime mismatch, external contract, or invariant.\",\"code\": \"@sarj(no-vague-suppression-description)\",\"severity\": \"error\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 80,\"length\": 48,\"line\": 4,\"column\": 1}}]},\n{\"message\": \"Do not use useless `undefined`.\",\"code\": \"unicorn-js(no-useless-undefined)\",\"severity\": \"error\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 350,\"length\": 9,\"line\": 10,\"column\": 16}}]},\n{\"message\": \"Cannot reassign variable after render completes\",\"code\": \"react(immutability)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/react/immutability.html\",\"help\": \"Reassigning `ended` after render has completed can cause inconsistent behavior on subsequent renders. Consider using state instead\",\"note\": \"React Compiler skipped optimizing this component or hook. Additional guidance: https://react.dev/reference/eslint-plugin-react-hooks/lints/immutability\",\"filename\": \"src/view.tsx\",\"labels\": [{\"label\": \"Cannot reassign `ended` after render completes\",\"span\": {\"offset\": 149,\"length\": 5,\"line\": 5,\"column\": 24}},{\"label\": \"`ended` is declared here\",\"span\": {\"offset\": 88,\"length\": 5,\"line\": 3,\"column\": 7}}]},\n{\"message\": \"Cannot modify local variables after render completes\",\"code\": \"react(immutability)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/react/immutability.html\",\"help\": \"This argument is a function which may reassign or mutate `ended` after render, which can cause inconsistent behavior on subsequent renders. Consider using state instead\",\"note\": \"React Compiler skipped optimizing this component or hook. Additional guidance: https://react.dev/reference/eslint-plugin-react-hooks/lints/immutability\",\"filename\": \"src/view.tsx\",\"labels\": [{\"label\": \"This modifies `ended`\",\"span\": {\"offset\": 149,\"length\": 5,\"line\": 5,\"column\": 24}},{\"label\": \"This function may (indirectly) reassign or modify `ended` after render\",\"span\": {\"offset\": 141,\"length\": 7,\"line\": 5,\"column\": 16}}]},\n{\"message\": \"React Hook \\\"useState\\\" is called conditionally. React Hooks must be called in the exact same order in every component render.\",\"code\": \"react-hooks(rules-of-hooks)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/react/rules-of-hooks.html\",\"help\": \"Move the Hook call before the condition, or call it unconditionally and branch inside the Hook/effect instead.\",\"filename\": \"src/view.tsx\",\"labels\": [{\"label\": \"This Hook call is not reachable on every render path.\",\"span\": {\"offset\": 113,\"length\": 11,\"line\": 4,\"column\": 11}},{\"label\": \"When this condition is false, this Hook is skipped.\",\"span\": {\"offset\": 109,\"length\": 2,\"line\": 4,\"column\": 7}}]},\n{\"message\": \"Using `<img>` could result in slower LCP and higher bandwidth.\",\"code\": \"next(no-img-element)\",\"severity\": \"warning\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/nextjs/no-img-element.html\",\"help\": \"Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images.\",\"note\": \"See https://nextjs.org/docs/messages/no-img-element\",\"filename\": \"src/view.tsx\",\"labels\": [{\"label\": \"Use `<Image />` from `next/image` instead.\",\"span\": {\"offset\": 176,\"length\": 3,\"line\": 6,\"column\": 11}},{\"label\": \"Use a static image import instead.\",\"span\": {\"offset\": 184,\"length\": 7,\"line\": 6,\"column\": 19}}]},\n{\"message\": \"Type 'string' is not assignable to type 'number'.\",\"code\": \"typescript(TS2322)\",\"severity\": \"error\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 467,\"length\": 1,\"line\": 13,\"column\": 14}}]},\n{\"message\": \"Promises must be awaited, add void operator to ignore.\",\"code\": \"typescript(no-floating-promises)\",\"severity\": \"error\",\"url\": \"https://oxc.rs/docs/guide/usage/linter/rules/typescript/no-floating-promises.html\",\"help\": \"The promise must end with a call to .catch, or end with a call to .then with a rejection handler, or be explicitly marked as ignored with the `void` operator.\",\"filename\": \"src/a.ts\",\"labels\": [{\"label\": \"This unhandled promise-like value has type `Promise<number>`.\",\"span\": {\"offset\": 432,\"length\": 18,\"line\": 12,\"column\": 44}},{\"span\": {\"offset\": 432,\"length\": 18,\"line\": 12,\"column\": 44}}]},\n{\"message\": \"Variable declaration expected.\",\"code\": \"typescript(TS1134)\",\"severity\": \"error\",\"filename\": \"src/broken.ts\",\"labels\": [{\"span\": {\"offset\": 13,\"length\": 1,\"line\": 1,\"column\": 14}}]},\n{\"message\": \"Cannot find module 'react' or its corresponding type declarations.\",\"code\": \"typescript(TS2307)\",\"severity\": \"error\",\"filename\": \"src/view.tsx\",\"labels\": [{\"span\": {\"offset\": 25,\"length\": 7,\"line\": 1,\"column\": 26}}]},\n{\"message\": \"This JSX tag requires the module path 'react/jsx-runtime' to exist, but none could be found. Make sure you have types for the appropriate package installed.\",\"code\": \"typescript(TS2875)\",\"severity\": \"error\",\"filename\": \"src/view.tsx\",\"labels\": [{\"span\": {\"offset\": 175,\"length\": 60,\"line\": 6,\"column\": 10}}]},\n{\"message\": \"JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.\",\"code\": \"typescript(TS7026)\",\"severity\": \"error\",\"filename\": \"src/view.tsx\",\"labels\": [{\"span\": {\"offset\": 175,\"length\": 60,\"line\": 6,\"column\": 10}}]},\n{\"message\": \"Unused eslint-disable directive (no problems were reported).\",\"severity\": \"error\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 148,\"length\": 68,\"line\": 6,\"column\": 1}}]},\n{\"message\": \"Unused eslint-disable directive (no problems were reported from no-debugger).\",\"severity\": \"error\",\"filename\": \"src/a.ts\",\"labels\": [{\"span\": {\"offset\": 277,\"length\": 11,\"line\": 8,\"column\": 41}}]}],\n              \"number_of_files\": 3,\n              \"number_of_rules\": 11,\n              \"threads_count\": 12,\n              \"start_time\": 0.289197125\n            }\n            "
+    },
+    "crash": {
+      "files": {
+        "src/generated.ts": "// eslint-disable-next-line no-console\nconsole.log(1);\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "src"
+      ],
+      "returncode": 1,
+      "stdout": "{ \"diagnostics\": [{\"message\": \"Error running JS plugin.\\nFile path: <root>/src/generated.ts\\nRangeError: Line/column pair translates to an out of range offset\\n    at getOffsetFromLineColumn (file://<typescript>/node_modules/oxlint/dist/lint.js:12202:54)\\n    at report (file://<typescript>/node_modules/oxlint/dist/lint.js:12073:16)\\n    at Object.value [as report] (file://<typescript>/node_modules/oxlint/dist/lint.js:12588:5)\\n    at Object.create (<typescript>/node_modules/@eslint-community/eslint-plugin-eslint-comments/lib/rules/require-description.js:78:25)\\n    at lintFileImpl (file://<typescript>/node_modules/oxlint/dist/lint.js:21961:72)\\n    at lintFile (file://<typescript>/node_modules/oxlint/dist/lint.js:21898:3)\\n    at lintFileWrapper (file://<typescript>/node_modules/oxlint/dist/cli.js:46:9)\",\"severity\": \"error\",\"filename\": \"src/generated.ts\",\"labels\": []}],\n              \"number_of_files\": 1,\n              \"number_of_rules\": 10,\n              \"threads_count\": 12,\n              \"start_time\": 0.243551875\n            }\n            "
+    },
+    "stale": {
+      "files": {
+        "src/clean.ts": "export const value = 1;\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "src"
+      ],
+      "returncode": 1,
+      "stdout": "{ \"diagnostics\": [{\"message\": \"There are suppressions that do not occur anymore.\",\"severity\": \"error\",\"help\": \"Run `oxlint --prune-suppressions` to remove unused suppressions.\",\"filename\": \"\",\"labels\": []}],\n              \"number_of_files\": 1,\n              \"number_of_rules\": 10,\n              \"threads_count\": 12,\n              \"start_time\": 0.235220125\n            }\n            "
+    },
+    "tsconfig": {
+      "files": {
+        "src/clean.ts": "export const value = 1;\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "--type-aware",
+        "--type-check",
+        "src"
+      ],
+      "returncode": 1,
+      "stdout": "{ \"diagnostics\": [{\"message\": \"Invalid tsconfig\",\"code\": \"typescript(tsconfig-error)\",\"severity\": \"error\",\"help\": \"Cannot find type definition file for 'missing-types-package'.\",\"filename\": \"tsconfig.json\",\"labels\": []}],\n              \"number_of_files\": 1,\n              \"number_of_rules\": 11,\n              \"threads_count\": 12,\n              \"start_time\": 0.278675292\n            }\n            "
+    },
+    "configuration": {
+      "files": {
+        "src/clean.ts": "export const value = 1;\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "src"
+      ],
+      "returncode": 1,
+      "stdout": "Failed to parse oxlint configuration file.\n\n  x Rule 'no-such-rule' not found in plugin 'eslint'\n\n"
+    },
+    "no-files": {
+      "files": {
+        "src/clean.ts": "export const value = 1;\n"
+      },
+      "argv": [
+        "-f",
+        "json",
+        "src/missing.ts"
+      ],
+      "returncode": 1,
+      "stdout": "No files found to lint. Please check your paths and ignore patterns.\n{ \"diagnostics\": [],\n              \"number_of_files\": 0,\n              \"number_of_rules\": 10,\n              \"threads_count\": 12,\n              \"start_time\": 0.235424292\n            }\n            "
+    }
+  }
+}

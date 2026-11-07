@@ -1,113 +1,67 @@
 /**
- * @fileoverview require-svg-accessible-name — statically proven UI policy violations receive actionable diagnostics.
+ * @fileoverview require-svg-accessible-name — inline SVGs need a name or explicit decorative semantics.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-svg-accessible-name.test.ts
+ * Port of the 18.x `require-svg-accessible-name` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
 import {
   attributeNameStatus,
   attributeText,
   childrenNameStatus,
+  hasHiddenAncestor,
   isHidden,
   isPassedAsProp,
-  hasHiddenAncestor,
-} from "./_jsx-accessibility.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+} from "../utils/jsx-accessibility.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
 
-export const REQUIRE_SVG_ACCESSIBLE_NAME_DOCUMENTATION = {
-  summary:
-    "Require a name or explicit decorative semantics on inline SVG elements.",
-  rationale:
-    "Meaningful graphics need a name; decorative graphics should not add unnamed content to the accessibility tree.",
-  remediation:
-    "Add aria-label, aria-labelledby, or a direct title child; mark decorative graphics aria-hidden or presentational.",
-  category: "correctness",
-  limitations: [
-    "Only intrinsic svg elements are checked. Dynamic labels, forwarded props, and dynamic title content remain runtime concerns. IDs, CSS visibility and graphic meaning are not inferred. Tests, stories, fixtures and generated files are excluded. No automatic title or decorative marker is invented.",
-    "A hidden prop with unshadowed undefined or exact void 0 does not hide the element. Shadowed undefined and dynamic hidden values remain unproven.",
-  ],
-  examples: [
-    {
-      id: "unnamed-svg",
-      title: "Name meaningful graphics",
-      outcome: "match",
-      files: [{ path: "src/chart.tsx", source: "<svg><path /></svg>" }],
-      focusPath: "src/chart.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "decorative-svg",
-      title: "Identify decorative graphics",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/chart.tsx",
-          source: '<svg aria-hidden="true"><path /></svg>',
-        },
-      ],
-      focusPath: "src/chart.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "require-svg-accessible-name";
+const DECORATIVE_ROLES: ReadonlySet<string> = new Set(["none", "presentation"]);
+const NAME_ATTRIBUTES: readonly string[] = ["aria-label", "aria-labelledby"];
+const NO_ICON_MODULES: readonly string[] = [];
 
-export default createRule<readonly [], "missingName">({
-  name: "require-svg-accessible-name",
-  documentation: REQUIRE_SVG_ACCESSIBLE_NAME_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
-    docs: { description: REQUIRE_SVG_ACCESSIBLE_NAME_DOCUMENTATION.summary },
+    docs: {
+      description: "Require a name or explicit decorative semantics on inline SVG elements.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       missingName:
         "Give this SVG an accessible name or explicitly mark it decorative with aria-hidden or a presentational role.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      isTestFile(context) ||
-      isStoryFile(context)
-    )
-      return {};
+  createOnce(context) {
     return {
-      JSXElement(node): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (
+          isGeneratedFile(file, context.sourceCode.text) ||
+          isTestFile(file) ||
+          isStoryFile(file)
+        ) return false;
+        return undefined;
+      },
+      JSXElement(node) {
         const opening = node.openingElement;
+        if (opening.name.type !== "JSXIdentifier" || opening.name.name !== "svg") return;
+        const sourceCode = context.sourceCode;
+        if (isPassedAsProp(node, sourceCode) || hasHiddenAncestor(node, sourceCode)) return;
         if (
-          opening.name.type !== AST_NODE_TYPES.JSXIdentifier ||
-          opening.name.name !== "svg"
-        )
-          return;
-        if (
-          isPassedAsProp(node, context.sourceCode) ||
-          hasHiddenAncestor(node, context.sourceCode)
-        )
-          return;
-        if (
-          isHidden(opening, context.sourceCode) ||
-          ["none", "presentation"].includes(
-            attributeText(opening, "role") ?? "",
-          )
-        )
-          return;
-        if (
-          attributeNameStatus(opening, ["aria-label", "aria-labelledby"]) !==
-          "empty"
-        )
-          return;
+          isHidden(opening, sourceCode) ||
+          DECORATIVE_ROLES.has(attributeText(opening, "role") ?? "")
+        ) return;
+        if (attributeNameStatus(opening, NAME_ATTRIBUTES) !== "empty") return;
         const namedTitle = node.children.some(
           (child) =>
-            child.type === AST_NODE_TYPES.JSXElement &&
-            child.openingElement.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            child.type === "JSXElement" &&
+            child.openingElement.name.type === "JSXIdentifier" &&
             child.openingElement.name.name === "title" &&
-            childrenNameStatus(child.children, context.sourceCode, []) !==
-              "empty",
+            childrenNameStatus(child.children, sourceCode, NO_ICON_MODULES) !== "empty",
         );
         if (namedTitle) return;
         context.report({ node: opening, messageId: "missingName" });

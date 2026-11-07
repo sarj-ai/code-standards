@@ -1,34 +1,21 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/no-numeric-search-param-coercion.js";
+import { FIXTURES, RuleTester, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const RULE_TESTER = ruleTester({ cwd: FIXTURES });
 
 const READONLY_PARAMS = "declare class ReadonlyURLSearchParams { get(name: string): string | null }\n";
 
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
+const SCHEMA_PARSED_PAGE_EXAMPLE =
+  "declare const z: { coerce: { number(): { parse(value: unknown): number } } };\n" +
+  "export function page(params: URLSearchParams): number {\n  return z.coerce.number().parse(params.get(\"page\") ?? undefined);\n}\n";
+const PARSE_INT_PAGE_EXAMPLE = "export function page(params: URLSearchParams): number {\n  return parseInt(params.get(\"page\") ?? \"1\", 10);\n}\n";
+
+new RuleTester({ eslintCompat: true, languageOptions: { parserOptions: { lang: "ts" } } }).run("no-numeric-search-param-coercion without type information", rule, {
+  valid: [{ name: "reports nothing without types, as the original does without a program", code: PARSE_INT_PAGE_EXAMPLE, settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });
 
-RULE_TESTER.run("no-numeric-search-param-coercion", rule, {
+RULE_TESTER.run("no-numeric-search-param-coercion", rule, typed({
   valid: [
     {
       code: "declare const params: URLSearchParams; const page = Number(params.get('page') ?? '1');",
@@ -40,6 +27,7 @@ RULE_TESTER.run("no-numeric-search-param-coercion", rule, {
     "declare const params: URLSearchParams; const page = parseInt(String(params.size), 10);",
     "declare const params: URLSearchParams; const raw = params.get('page'); const page = Number(raw);",
     "declare const params: URLSearchParams; const page = String(params.get('page'));",
+    { name: "schema-parsed-page", code: SCHEMA_PARSED_PAGE_EXAMPLE, filename: "src/page.ts" },
   ],
   invalid: [
     {
@@ -62,5 +50,6 @@ RULE_TESTER.run("no-numeric-search-param-coercion", rule, {
       code: "declare const url: URL; const page = parseInt(url.searchParams.get('page') ?? '1', 10);",
       errors: [{ messageId: "noNumericSearchParamCoercion", data: { parser: "parseInt" } }],
     },
+    { name: "parse-int-page", code: PARSE_INT_PAGE_EXAMPLE, filename: "src/page.ts", errors: [{ messageId: "noNumericSearchParamCoercion" }] },
   ],
-});
+}));

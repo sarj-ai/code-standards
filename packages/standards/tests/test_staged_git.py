@@ -408,7 +408,7 @@ def test_default_react_runner_receives_validated_index_without_changing_security
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
         react_doctor_staged=True,
-        eslint=False,
+        typescript=False,
     )
 
     assert [report.name for report in reports] == ["react-doctor"]

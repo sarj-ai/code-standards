@@ -24,12 +24,12 @@ if TYPE_CHECKING:
     ],
     ids=("large-typescript", "large-yaml", "undecodable-python", "unowned-python"),
 )
-def test_default_eslint_ownership_precedes_native_discovery(
+def test_default_typescript_ownership_precedes_native_discovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, contents: bytes
 ) -> None:
     (tmp_path / "owned.ts").write_text("export const owned = 1;\n")
     (tmp_path / "package.json").write_text('{"name":"example","private":true}\n')
-    _adopt(tmp_path, configs=("eslint",), python_dest=".")
+    _adopt(tmp_path, configs=("typescript",), python_dest=".")
     path = tmp_path / name
     path.write_bytes(contents)
     commands = _capture_commands(monkeypatch)
@@ -44,7 +44,7 @@ def test_default_owned_backend_preserves_all_native_engines(tmp_path: Path, monk
     backend.mkdir()
     (backend / "pyproject.toml").write_text('[project]\nname = "example"\nversion = "0.0.0"\n')
     (tmp_path / "package.json").write_text('{"name":"example","private":true}\n')
-    _adopt(tmp_path, configs=("ruff", "eslint"), python_dest="backend")
+    _adopt(tmp_path, configs=("ruff", "typescript"), python_dest="backend")
     sources = _write_native_sources(tmp_path, python_name="backend/source.py")
     unowned = tmp_path / "unowned.py"
     unowned.write_bytes(b"\xff\xfe")

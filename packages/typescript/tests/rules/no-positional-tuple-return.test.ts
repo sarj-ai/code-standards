@@ -1,25 +1,19 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-positional-tuple-return.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION,
-} from "../../src/rules/no-positional-tuple-return.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-positional-tuple-return", rule, {
   valid: [
+    {
+      name: "accepts a callable property on a class expression exported only from a namespace",
+      code: "namespace N { export const API = class { pair: () => [string, number]; }; }",
+    },
+    {
+      name: "accepts a callable property on a class expression bound inside a function",
+      code: "export function make() { const API = class { pair: () => [string, number]; }; return API; }",
+    },
     {
       name: "local object alias shadows outer tuple",
       code: "type Result = [string, number]; function outer() { type Result = { value: string }; function read(): Result { return {value: 'ok'}; } }",
@@ -30,8 +24,7 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
     },
     {
       name: "accepts the documented named object",
-      code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[0].files[0]
-        .source,
+      code: "export function download(): { body: string; status: number } { return impl(); }",
     },
     {
       name: "does not collide a nested interface name with an exported top-level interface",
@@ -69,12 +62,10 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
   invalid: [
     {
       name: "migrates the sole private labeled tuple consumer",
-      code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[4].files[0]
-        .source,
+      code: "function download(): [body: string, status: number] { return ['ok', 200]; }\nexport function run(): { body: string; status: number } { const [body, status] = download(); return { body, status }; }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
       output:
-        NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[4].fixedFiles[0]
-          .source,
+        "function download(): { body: string; status: number } { return { body: 'ok', status: 200 }; }\nexport function run(): { body: string; status: number } { const { body, status } = download(); return { body, status }; }",
     },
     {
       name: "unshadowed outer tuple alias remains checked inside a function",
@@ -83,8 +74,7 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
     },
     {
       name: "reports the documented tuple return",
-      code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[1].files[0]
-        .source,
+      code: "export function download(): [string, number] { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
     {
@@ -216,6 +206,11 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
         { messageId: "noPositionalTupleReturn" },
         { messageId: "noPositionalTupleReturn" },
       ],
+    },
+    {
+      name: "rejects a callable property on an inline-exported class expression",
+      code: "export const Base = 1, API = class { pair: () => [string, number]; };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
     },
     {
       name: "rejects a declaration-only callable class property",

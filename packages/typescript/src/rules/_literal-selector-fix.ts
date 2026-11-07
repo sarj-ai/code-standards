@@ -1,18 +1,19 @@
-/**
- * @fileoverview _literal-selector-fix — reuse authored operations for literal calls.
- */
+/** @fileoverview _literal-selector-fix — reuse authored operations for literal calls. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { Fix, Fixer } from "@oxlint/plugins";
 
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable } from "../utils/static-string.js";
+import { plainFunctionBody, soleConstDeclarator } from "./_closed-module.js";
 
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+type Identifier = Node & { readonly type: "Identifier"; readonly name: string };
 
 /** Reuse already authored operations instead of an exclusively literal-called adapter. */
 export function literalSelectorFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  parameter: TSESTree.Identifier,
-): NativeReportFix | null {
+  sourceCode: SourceCode,
+  parameter: Identifier,
+): ((fixer: Fixer) => Fix[]) | null {
   if (
     sourceCode.ast.body.length !== 4 ||
     sourceCode.getAllComments().length > 0
@@ -20,22 +21,19 @@ export function literalSelectorFix(
     return null;
   const [first, second, declaration, statement] = sourceCode.ast.body;
   if (
-    first?.type !== AST_NODE_TYPES.FunctionDeclaration || !isLiteralOperation(first) ||
-    second?.type !== AST_NODE_TYPES.FunctionDeclaration || !isLiteralOperation(second) ||
-    declaration?.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declaration.declare ||
-    declaration.kind !== "const" ||
-    declaration.declarations.length !== 1 ||
-    statement?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    statement.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration
+    first?.type !== "FunctionDeclaration" || !isLiteralOperation(first) ||
+    second?.type !== "FunctionDeclaration" || !isLiteralOperation(second) ||
+    declaration?.type !== "VariableDeclaration" ||
+    statement?.type !== "ExportNamedDeclaration" ||
+    statement.declaration?.type !== "FunctionDeclaration"
   )
     return null;
-  const binding = declaration.declarations[0];
+  const binding = soleConstDeclarator(declaration);
   if (
-    binding?.id.type !== AST_NODE_TYPES.Identifier ||
-    binding.id.typeAnnotation !== undefined ||
-    binding.init?.type !== AST_NODE_TYPES.ArrowFunctionExpression ||
-    binding.init.body.type !== AST_NODE_TYPES.ConditionalExpression ||
+    binding?.id.type !== "Identifier" ||
+    isPresent(binding.id.typeAnnotation) ||
+    binding.init?.type !== "ArrowFunctionExpression" ||
+    binding.init.body.type !== "ConditionalExpression" ||
     !isSelector(binding.init, parameter)
   )
     return null;
@@ -53,69 +51,58 @@ export function literalSelectorFix(
     ...calls.map((call) =>
       fixer.replaceText(
         call,
-        `${call.arguments[0]?.type === AST_NODE_TYPES.Literal && call.arguments[0].value === true ? whenTrue : whenFalse}()`,
+        `${call.arguments[0]?.type === "Literal" && call.arguments[0].value === true ? whenTrue : whenFalse}()`,
       ),
     ),
   ];
 }
 
-function isLiteralOperation(
-  node: TSESTree.FunctionDeclaration,
-): boolean {
-  if (
-    node.id === null ||
-    node.declare ||
-    node.async ||
-    node.generator ||
-    node.params.length !== 0 ||
-    node.typeParameters !== undefined ||
-    node.returnType !== undefined ||
-    node.body.body.length !== 1
-  )
-    return false;
-  const returned = node.body.body[0];
+function isLiteralOperation(node: ESTree.Function): boolean {
+  const body = plainFunctionBody(node);
+  if (node.id === null || node.params.length !== 0 || isPresent(node.returnType) || body?.length !== 1) return false;
+  const returned = body[0];
   return (
-    returned?.type === AST_NODE_TYPES.ReturnStatement &&
-    returned.argument?.type === AST_NODE_TYPES.Literal &&
+    returned?.type === "ReturnStatement" &&
+    returned.argument?.type === "Literal" &&
     typeof returned.argument.value === "string"
   );
 }
 
 function isSelector(
-  node: TSESTree.ArrowFunctionExpression,
-  parameter: TSESTree.Identifier,
+  node: ESTree.ArrowFunctionExpression,
+  parameter: Identifier,
 ): boolean {
   const actual = node.params[0];
   return (
-    actual?.type === AST_NODE_TYPES.Identifier &&
+    actual?.type === "Identifier" &&
     actual.name === parameter.name &&
     !node.async &&
-    node.typeParameters === undefined &&
-    node.returnType === undefined &&
+    !isPresent(node.typeParameters) &&
+    !isPresent(node.returnType) &&
     node.params.length === 1 &&
     !actual.optional &&
     actual.typeAnnotation?.typeAnnotation.type ===
-      AST_NODE_TYPES.TSBooleanKeyword &&
-    node.body.type === AST_NODE_TYPES.ConditionalExpression &&
+      "TSBooleanKeyword" &&
+    node.body.type === "ConditionalExpression" &&
     node.body.test === parameter
   );
 }
 
 function operation(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Expression,
-  first: TSESTree.FunctionDeclaration,
-  second: TSESTree.FunctionDeclaration,
+  sourceCode: SourceCode,
+  node: Node,
+  first: ESTree.Function,
+  second: ESTree.Function,
 ): string | null {
   if (
-    node.type !== AST_NODE_TYPES.CallExpression ||
+    node.type !== "CallExpression" ||
     node.optional ||
-    node.callee.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.type !== "Identifier" ||
     node.arguments.length !== 0 ||
-    node.typeArguments !== undefined
+    isPresent(node.typeArguments)
   )
     return null;
-  const variable = ASTUtils.findVariable(
+  const variable = findVariable(
     sourceCode.getScope(node),
     node.callee.name,
   );
@@ -126,49 +113,44 @@ function operation(
 }
 
 function literalCallers(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  owner: TSESTree.FunctionDeclaration,
-  binding: TSESTree.VariableDeclarator,
-): TSESTree.CallExpression[] | null {
+  sourceCode: SourceCode,
+  owner: ESTree.Function,
+  binding: ESTree.VariableDeclarator,
+): ESTree.CallExpression[] | null {
+  const body = plainFunctionBody(owner);
+  const returned = body?.length === 1 ? body[0] : undefined;
   if (
-    owner.declare ||
-    owner.async ||
-    owner.generator ||
     owner.params.length !== 0 ||
-    owner.typeParameters !== undefined ||
-    owner.body.body.length !== 1 ||
-    owner.returnType?.typeAnnotation.type !== AST_NODE_TYPES.TSArrayType ||
-    owner.returnType.typeAnnotation.elementType.type !==
-      AST_NODE_TYPES.TSStringKeyword
+    owner.returnType?.typeAnnotation.type !== "TSArrayType" ||
+    owner.returnType.typeAnnotation.elementType.type !== "TSStringKeyword" ||
+    returned?.type !== "ReturnStatement" ||
+    returned.argument?.type !== "ArrayExpression"
   )
     return null;
-  const returned = owner.body.body[0];
-  if (
-    returned?.type !== AST_NODE_TYPES.ReturnStatement ||
-    returned.argument?.type !== AST_NODE_TYPES.ArrayExpression
-  )
-    return null;
-  const calls: TSESTree.CallExpression[] = [];
+  const calls: ESTree.CallExpression[] = [];
   const choices = new Set<boolean>();
   for (const item of returned.argument.elements) {
-    if (
-      item?.type !== AST_NODE_TYPES.CallExpression ||
-      item.optional ||
-      item.callee.type !== AST_NODE_TYPES.Identifier ||
-      item.typeArguments !== undefined ||
-      item.arguments.length !== 1 ||
-      item.arguments[0]?.type !== AST_NODE_TYPES.Literal ||
-      typeof item.arguments[0].value !== "boolean"
-    )
-      return null;
-    const variable = ASTUtils.findVariable(
-      sourceCode.getScope(item),
-      item.callee.name,
-    );
-    if (variable?.defs.length !== 1 || variable.defs[0]?.node !== binding)
-      return null;
+    if (item?.type !== "CallExpression") return null;
+    const choice = selectorChoice(sourceCode, item, binding);
+    if (choice === null) return null;
     calls.push(item);
-    choices.add(item.arguments[0].value);
+    choices.add(choice);
   }
   return choices.size === 2 ? calls : null;
+}
+
+/** The boolean a direct `selector(true)` call passes, when `selector` is `binding`. */
+function selectorChoice(sourceCode: SourceCode, call: ESTree.CallExpression, binding: ESTree.VariableDeclarator): boolean | null {
+  const [argument] = call.arguments;
+  if (
+    call.optional ||
+    call.callee.type !== "Identifier" ||
+    isPresent(call.typeArguments) ||
+    call.arguments.length !== 1 ||
+    argument?.type !== "Literal" ||
+    typeof argument.value !== "boolean"
+  )
+    return null;
+  const variable = findVariable(sourceCode.getScope(call), call.callee.name);
+  return variable?.defs.length === 1 && variable.defs[0]?.node === binding ? argument.value : null;
 }

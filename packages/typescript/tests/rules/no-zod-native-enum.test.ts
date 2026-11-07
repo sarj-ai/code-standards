@@ -1,18 +1,8 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { z } from "zod";
 
-import rule, {
-  NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
-} from "../../src/rules/no-zod-native-enum.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+import rule from "../../src/rules/no-zod-native-enum.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
 it("preserves the public enum keys rather than rewriting them to values", () => {
   const original = z.nativeEnum({ Active: "active", Inactive: "inactive" });
@@ -22,20 +12,11 @@ it("preserves the public enum keys rather than rewriting them to values", () => 
   expect(rule.meta.fixable).toBeUndefined();
 });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const TESTER = ruleTester({ cwd: FIXTURES });
+
 const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
-RULE_TESTER.run("no-zod-native-enum", rule, {
+TESTER.run("no-zod-native-enum", rule, typed({
   valid: [
     {
       name: "respects native generated banners",
@@ -44,13 +25,13 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     {
       name: "respects generated MTS sources",
       filename: "schema.gen.mts",
-      languageOptions: { parserOptions: { projectService: false } },
+      settings: { sarj: { typeAware: false } },
       code: "import { z } from 'zod'; z.nativeEnum({ Active: 'active' });",
     },
     {
       name: "respects generated CTS sources",
       filename: "schema.generated.cts",
-      languageOptions: { parserOptions: { projectService: false } },
+      settings: { sarj: { typeAware: false } },
       code: "import { z } from 'zod'; z.nativeEnum({ Active: 'active' });",
     },
     {
@@ -60,7 +41,7 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "allows z.enum with inline string literals",
-      code: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[0].files[0].source,
+      code: 'import { z } from "zod"; const S = z.enum(["active", "inactive"]);',
     },
     {
       name: "allows z.enum with an as-const string array",
@@ -185,7 +166,7 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "reports without rewriting an inline string-valued object",
-      code: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[1].files[0].source,
+      code: 'import { z } from "zod"; const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });',
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
@@ -333,6 +314,25 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
       filename: "schema.ts",
       output: null,
       errors: [{ messageId: "enumOfTsEnum", data: { name: "ImportedStatus" } }],
+    },
+  ],
+}));
+
+TESTER.run("no-zod-native-enum without type information", rule, {
+  valid: [
+    {
+      name: "untyped: an imported TypeScript enum is not resolved",
+      code: "import { z } from 'zod';\nimport { ImportedStatus } from './zod-enum.js';\nconst S = z.enum(ImportedStatus);",
+      filename: "schema.ts",
+      settings: { sarj: { typeAware: false } },
+    },
+  ],
+  invalid: [
+    {
+      name: "untyped: a local TypeScript enum is still reported",
+      code: "import { z } from 'zod'; enum Status { Active = 'active' }\nconst S = z.enum(Status);",
+      settings: { sarj: { typeAware: false } },
+      errors: [{ messageId: "enumOfTsEnum", data: { name: "Status" } }],
     },
   ],
 });

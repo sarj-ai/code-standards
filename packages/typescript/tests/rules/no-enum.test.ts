@@ -1,27 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-enum.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_ENUM_DOCUMENTATION } from "../../src/rules/no-enum.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-enum", rule, {
   valid: [
     { name: "preserves implicit declaration-file exports", filename: "src/contracts.d.ts", code: "import type { Imported } from './other'; declare enum Status { Active = 'active' }" },
     {
       name: "accepts a string-literal union",
-      code: NO_ENUM_DOCUMENTATION.examples[0].files[0].source,
+      code: 'type Status = "active" | "inactive";',
     },
     {
       name: "accepts an as-const object",
@@ -81,7 +69,7 @@ RULE_TESTER.run("no-enum", rule, {
     { name: "preserves dynamic ambient references", code: "export {}; declare enum Status { Active = 'active' } eval('Status');", output: null, errors: [{ messageId: "noEnum" }] },
     {
       name: "reports a numeric enum",
-      code: NO_ENUM_DOCUMENTATION.examples[1].files[0].source,
+      code: "enum Status { Active, Inactive }",
       errors: [{ messageId: "noEnum" }],
     },
     {
@@ -110,7 +98,6 @@ RULE_TESTER.run("no-enum", rule, {
     },
   ],
 });
-
 
 RULE_TESTER.run("no-enum native header boundaries", rule, {
   valid: [

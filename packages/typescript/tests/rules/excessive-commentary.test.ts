@@ -1,24 +1,53 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { Linter } from "eslint";
 import ts from "typescript";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { EXCESSIVE_COMMENTARY_DOCUMENTATION } from "../../src/rules/excessive-commentary.js";
 import longRule from "../../src/rules/no-long-comment.js";
+import rule from "../../src/rules/excessive-commentary.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
-const DECORATED = EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[2].files[0].source;
-const FIXED_DECORATION = EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[2].fixedFiles[0].source;
+const ADAPTER_NARRATION = [
+  "/**",
+  " * This file is the seam between the draft and backend models.",
+  " * Everything above it uses the local application representation.",
+  " * Everything below it uses a separately mirrored wire representation.",
+  " * Field names use the API shape while the draft uses another shape.",
+  " * This module translates every field between those representations.",
+  " * The backend models changed several times during early development.",
+  " * Each historical change required another edit in this adapter file.",
+  " * The write half previously assembled several resources in one payload.",
+  " * It now saves those resources separately through their own routes.",
+  " * Clear contract types and generated clients should express this boundary.",
+  " */",
+  "import type { Draft } from './draft';",
+].join("\n");
+const PROTOCOL_CONSTRAINT = [
+  "// Legacy clients send `execution_phase` until API-812 is retired.",
+  "// Keep conversion in GeneratedClientAdapter.",
+  "export const phase = raw.execution_phase;",
+].join("\n");
+const DECORATED = [
+  "/**",
+  " * This file is the seam between the local draft and backend models.",
+  " * Everything above it uses the local application representation for each record.",
+  " * Everything below it uses the separate wire representation for each record.",
+  " * This module translates fields between those two representations during each request.",
+  " * ++++++++",
+  " * The backend models changed several times during early implementation work.",
+  " * Each historical change required another edit in this local adapter module.",
+  " * The write half previously assembled several records together in one operation.",
+  " * It now saves each record separately through the route that owns it.",
+  " * Clear contract types should express this boundary through the actual declarations.",
+  " */",
+  "const value = 1;",
+].join("\n");
+const FIXED_DECORATION = DECORATED.replace("++++++++", "");
 
-new RuleTester().run("excessive-commentary", rule, {
+RULE_TESTER.run("excessive-commentary", rule, {
   valid: [
-    EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[1].files[0].source,
+    PROTOCOL_CONSTRAINT,
     "// Short rationale remains local.\nconst value = 1;",
     [
       "// First constraint.",
@@ -133,7 +162,7 @@ new RuleTester().run("excessive-commentary", rule, {
       errors: [{ messageId: "excessive" }],
     },
     {
-      code: EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[0].files[0].source,
+      code: ADAPTER_NARRATION,
       errors: [{ messageId: "excessive" }],
     },
     {
@@ -157,37 +186,61 @@ new RuleTester().run("excessive-commentary", rule, {
   ],
 });
 
-function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
-  return new Linter().verifyAndFix(source, [{
-    files: ["**/*.ts"],
-    languageOptions: { parser },
-    plugins: { audit: { rules: { excessive: rule, long: longRule } } },
-    rules: { "audit/excessive": "error", "audit/long": "error" },
-  }], { filename: "src/adapter.ts" });
-}
-
-it.each(["\n", "\r\n"])("retains emitted JavaScript and converges with both comment rules and %j", (ending) => {
-  const source = DECORATED.replaceAll("\n", ending);
-  const first = apply(source);
-  expect(first.fixed).toBe(true);
-  expect(first.messages).toEqual([]);
-  expect(first.output).toBe(FIXED_DECORATION.replaceAll("\n", ending));
-  const second = apply(first.output);
-  expect(second.fixed).toBe(false);
-  expect(second.output).toBe(first.output);
-  expect(second.messages).toEqual([]);
-  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
-  expect(ts.transpileModule(first.output, options).outputText).toBe(ts.transpileModule(source, options).outputText);
-});
-
-it.each([
+const ENDINGS = ["\n", "\r\n"];
+const CONVERGED = ENDINGS.map((ending) => ({
+  name: `converges with both comment rules and ${JSON.stringify(ending)} (second Linter.verifyAndFix pass)`,
+  filename: "src/adapter.ts",
+  code: FIXED_DECORATION.replaceAll("\n", ending),
+}));
+const PROTECTED = [
   DECORATED.replace("local draft", "local draft @customTag"),
   DECORATED.replace("local draft", "local copyright draft"),
   DECORATED.replace("local draft", "local draft licensed under local terms"),
+];
+const PROTECTED_REPORTED = [
   DECORATED.replace(" * ++++++++", " *     ++++++++"),
   `// @ts-ignore\n${DECORATED}`,
-])("preserves protected documentation and next-line directive ownership", (source) => {
-  const result = apply(source);
-  expect(result.fixed).toBe(false);
-  expect(result.output).toBe(source);
+];
+
+RULE_TESTER.run("excessive-commentary (Linter passes)", rule, {
+  valid: [
+    ...CONVERGED,
+    ...PROTECTED.map((code, index) => ({ name: `preserves protected documentation ${index}`, filename: "src/adapter.ts", code })),
+  ],
+  invalid: [
+    ...ENDINGS.map((ending) => ({
+      name: `retains emitted JavaScript and converges with both comment rules and ${JSON.stringify(ending)}`,
+      filename: "src/adapter.ts",
+      code: DECORATED.replaceAll("\n", ending),
+      output: FIXED_DECORATION.replaceAll("\n", ending),
+      errors: [{ messageId: "excessive" }],
+    })),
+    ...PROTECTED_REPORTED.map((code, index) => ({
+      name: `preserves protected documentation and next-line directive ownership ${index}`,
+      filename: "src/adapter.ts",
+      code,
+      output: null,
+      errors: [{ messageId: "excessive" }],
+    })),
+  ],
+});
+
+RULE_TESTER.run("no-long-comment beside excessive-commentary (Linter passes)", longRule, {
+  valid: [
+    ...CONVERGED,
+    ...PROTECTED.map((code, index) => ({ name: `preserves protected documentation ${index}`, filename: "src/adapter.ts", code })),
+  ],
+  invalid: PROTECTED_REPORTED.map((code, index) => ({
+    name: `preserves protected documentation and next-line directive ownership ${index}`,
+    filename: "src/adapter.ts",
+    code,
+    output: null,
+    errors: [{ messageId: "tooLong" }],
+  })),
+});
+
+it.each(ENDINGS)("fix retains emitted JavaScript with %j", (ending) => {
+  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
+  expect(ts.transpileModule(FIXED_DECORATION.replaceAll("\n", ending), options).outputText)
+    .toBe(ts.transpileModule(DECORATED.replaceAll("\n", ending), options).outputText);
 });

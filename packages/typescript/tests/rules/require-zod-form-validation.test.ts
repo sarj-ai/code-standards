@@ -1,18 +1,24 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-zod-form-validation.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION } from "../../src/rules/require-zod-form-validation.js";
+const REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION = {
+  summary: "Require Zod validation (`Schema.parse(...)` / `Schema.safeParse(...)`) when reading values out of a `FormData` object.",
+  rationale: "FormData values are untrusted strings or files and need runtime validation before use.",
+  remediation: "Read the value inside a Zod schema's `parse` or `safeParse` input.",
+  category: "security",
+  limitations: [
+    "Tests are excluded; imported schema-shaped names are trusted when their implementation is outside the linted file.",
+    "Delayed raw-value use is accepted only after an unconditional successful parse in the same block; safeParse remains valid when the raw binding has no unvalidated consumer.",
+    "An enclosing parse does not validate an earlier call or deferred callback that consumes its input. Direct object/array construction, unshadowed Object.fromEntries and native Number/String/Boolean coercion remain supported; arbitrary preprocessing needs an explicitly reviewed boundary.",
+  ],
+  examples: [
+    { id: "validated-form-value", title: "Validate the form value", outcome: "no-match", files: [{ path: "src/action.ts", source: "const input = UserSchema.parse({ name: formData.get('name') });" }], focusPath: "src/action.ts", expectedCount: 0, public: true },
+    { id: "raw-form-value", title: "Do not use a raw form value", outcome: "match", files: [{ path: "src/action.ts", source: "const name = formData.get('name');" }], focusPath: "src/action.ts", expectedCount: 1, public: true },
+  ],
+} as const;
 
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("require-zod-form-validation", rule, {
   valid: [
@@ -109,7 +115,8 @@ RULE_TESTER.run("require-zod-form-validation", rule, {
       errors: [{ messageId: "missingZodValidation" }],
     },
     {
-      name: "reports a bare FormData read",
+      name: "reports a bare FormData read (own filename: the documented example repeats this code)",
+      filename: "src/bare.ts",
       code: "const name = formData.get('name');",
       errors: [{ messageId: "missingZodValidation" }],
     },
@@ -199,36 +206,11 @@ RULE_TESTER.run("require-zod-form-validation", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "raw-form-value-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/action.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/action.ts",
-        "source": "const name = formData[\"get\"]('name');"
-      }
-    ]
-  },
-  {
-    "id": "raw-form-value-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/action.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/action.ts",
-        "source": "const name = formData[auditDynamicMember]('name');"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("require-zod-form-validation documented examples", rule, {
+  valid: [
+    { name: "raw-form-value-dynamic-member: Unknown member access does not establish API identity", filename: "src/action.ts", code: "const name = formData[auditDynamicMember]('name');" },
+  ],
+  invalid: [
+    { name: "raw-form-value-static-member: Static member access preserves the rule outcome", filename: "src/action.ts", code: "const name = formData[\"get\"]('name');", errors: [{ messageId: "missingZodValidation" }] },
+  ],
 });

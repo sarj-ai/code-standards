@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class NativeInvocation:
-    tool: Literal["eslint", "biome", "prettier"]
+    tool: Literal["oxfmt"]
     node: Path
     entrypoint: Path
     cwd: Path

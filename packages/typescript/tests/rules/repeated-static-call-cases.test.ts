@@ -1,20 +1,10 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
 import duplicateTestBody from "../../src/rules/duplicate-test-body.js";
-import rule, { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "../../src/rules/repeated-static-call-cases.js";
+import rule from "../../src/rules/repeated-static-call-cases.js";
+import { ruleTester } from "./_tester.js";
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("repeated-static-call-cases", rule, {
@@ -22,7 +12,7 @@ RULE_TESTER.run("repeated-static-call-cases", rule, {
     { name: "preserves an ordered stateful closure scenario", filename: TEST_FILE, code: "test('sum', () => { let n = 0; const add = x => n += x; expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
     { name: "preserves a test-local function declaration", filename: TEST_FILE, code: "test('sum', () => { let n = 0; function add(x) { return n += x; } expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
     { name: "preserves a callback parameter fixture", filename: TEST_FILE, code: "test('sum', (add) => { expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
-    { name: "public no-match example", filename: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].focusPath, code: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/parser.test.ts", code: "test.each([['a', true], ['b', false], ['c', true]])('parses %s', (input, expected) => { expect(parse(input)).toBe(expected); });" },
     { name: "requires three cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); });" },
     { name: "requires varying cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); });" },
     { name: "excludes zero argument state sequences", filename: TEST_FILE, code: "test('x', () => { expect(next()).toBe(1); expect(next()).toBe(2); expect(next()).toBe(3); });" },
@@ -39,71 +29,27 @@ RULE_TESTER.run("repeated-static-call-cases", rule, {
     { name: "ignores imports from unsupported modules", filename: TEST_FILE, code: "import { test, expect } from './helpers'; test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); expect(parse('c')).toBe(3); });" },
     { name: "ignores production files", filename: "/repo/src/parser.ts", code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); expect(parse('c')).toBe(3); });" },
     { name: "ignores generated paths", filename: "/repo/src/generated/parser.test.ts", code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); expect(parse('c')).toBe(3); });" },
+    { name: "repeated-dynamic-member", filename: "src/parser.test.ts", code: "test('parses', () => { expect(parse('a'))[auditDynamicMember](true); expect(parse('b'))[auditDynamicMember](false); expect(parse('c'))[auditDynamicMember](true); });" },
     { name: "ignores generated headers", filename: TEST_FILE, code: "// @generated\ntest('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); expect(parse('c')).toBe(3); });" },
   ],
   invalid: [
-    { name: "public match example", filename: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[1].focusPath, code: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
+    { name: "public match example", filename: "src/parser.test.ts", code: "test('parses', () => { expect(parse('a')).toBe(true); expect(parse('b')).toBe(false); expect(parse('c')).toBe(true); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
     { name: "supports imported aliases and modifiers", filename: TEST_FILE, code: "import { test as check, expect as verify } from 'vitest'; check.only('x', () => { verify(parse('a')).not.toBe(1); verify(parse('b')).not.toBe(2); verify(parse('c')).not.toBe(3); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
     { name: "reports once for a longer run", filename: TEST_FILE, code: "it('x', () => { expect(parse('a', 1)).toEqual(true); expect(parse('b', 2)).toEqual(false); expect(parse('c', 3)).toEqual(true); expect(parse('d', 4)).toEqual(false); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "4" } }] },
+    { name: "repeated-static-member", filename: "src/parser.test.ts", code: "test('parses', () => { expect(parse('a'))[\"toBe\"](true); expect(parse('b'))[\"toBe\"](false); expect(parse('c'))[\"toBe\"](true); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
     { name: "allows static arrays and objects", filename: TEST_FILE, code: "test.concurrent('x', () => { expect(parse({ x: 1 })).toEqual(['a']); expect(parse({ x: 2 })).toEqual(['b']); expect(parse({ x: 3 })).toEqual(['c']); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
   ],
 });
 
-it("defers a duplicated callback to duplicate-test-body", () => {
-  const code = `test('first', () => { const family = 'numbers'; expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });
+const DUPLICATED_CALLBACKS = `test('first', () => { const family = 'numbers'; expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });
 test('second', () => { const family = 'numbers'; expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });`;
-  const linter = new Linter({ configType: "flat" });
-  const messages = linter.verify(code, [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: {
-        local: {
-          rules: {
-            "duplicate-test-body": duplicateTestBody,
-            "repeated-static-call-cases": rule,
-          },
-        },
-      },
-      rules: {
-        "local/duplicate-test-body": "error",
-        "local/repeated-static-call-cases": "warn",
-      },
-    },
-  ], "src/parser.test.ts");
-  expect(messages.map((message) => message.ruleId)).toEqual(["local/duplicate-test-body"]);
+
+RULE_TESTER.run("repeated-static-call-cases defers to duplicate-test-body", rule, {
+  valid: [{ name: "defers a duplicated callback to duplicate-test-body (the original's two-rule Linter check, split per rule)", filename: "src/parser.test.ts", code: DUPLICATED_CALLBACKS }],
+  invalid: [],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "repeated-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/parser.test.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/parser.test.ts",
-        "source": "test('parses', () => { expect(parse('a'))[\"toBe\"](true); expect(parse('b'))[\"toBe\"](false); expect(parse('c'))[\"toBe\"](true); });"
-      }
-    ]
-  },
-  {
-    "id": "repeated-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/parser.test.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/parser.test.ts",
-        "source": "test('parses', () => { expect(parse('a'))[auditDynamicMember](true); expect(parse('b'))[auditDynamicMember](false); expect(parse('c'))[auditDynamicMember](true); });"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("duplicate-test-body reports the duplicated callback", duplicateTestBody, {
+  valid: [],
+  invalid: [{ name: "defers a duplicated callback to duplicate-test-body (the original's two-rule Linter check, split per rule)", filename: "src/parser.test.ts", code: DUPLICATED_CALLBACKS, errors: [{ messageId: "duplicateTestBody" }] }],
 });

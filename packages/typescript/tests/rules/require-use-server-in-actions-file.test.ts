@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/require-use-server-in-actions-file.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
-
-RULE_TESTER.run("require-use-server-in-actions-file", rule, {
+ruleTester().run("require-use-server-in-actions-file", rule, {
   valid: [
     { filename: "/repo/app/orders/actions.ts", code: "export async function save() { 'use server'; await write(); }" },
     { filename: "/repo/app/orders/actions.ts", code: "export const save = async () => { 'use server'; await write(); };" },

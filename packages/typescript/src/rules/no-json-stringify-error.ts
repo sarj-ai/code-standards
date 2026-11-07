@@ -1,48 +1,20 @@
 /**
  * @fileoverview no-json-stringify-error — `JSON.stringify` on an Error yields `{}` — `message` and `stack` are non-enumerable.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-error.test.ts
+ * Port of the 18.x `no-json-stringify-error` rule. Same algorithm. The
+ * per-file write summary is keyed by `sourceCode.ast` (the original keys it by
+ * `sourceCode`, which Oxlint reuses for every file), and parents are read with
+ * `parentOf()` because Oxlint's `Program.parent` is `null`.
  */
 
-import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+import { defineRule, type ESTree, type Node, type Scope, type SourceCode, type TsVariable } from "../types.js";
+import { forEachAstChild, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { findVariable, scopedStaticString, staticPropertyName } from "../utils/static-string.js";
 
+const NAME = "no-json-stringify-error";
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { forEachAstChild } from "./_for-each-ast-child.js";
-import { scopedStaticString, staticPropertyName } from "./_static-string.js";
-import type { Scope } from "@typescript-eslint/utils/ts-eslint";
-
-type MessageIds = "noJsonStringifyError";
-type Options = readonly [];
-
-export const NO_JSON_STRINGIFY_ERROR_DOCUMENTATION = {
-  summary: "Avoid generic JSON serialization that can omit native Error details.",
-  rationale: "Native Error details are non-enumerable, so generic JSON serialization discards diagnostic information.",
-  remediation: "Serialize explicit error fields or use an error-aware serializer.",
-  category: "correctness",
-  limitations: ["The rule uses stable local catch bindings and unshadowed built-in constructors, not runtime type information. Native DOMException constructor coverage is validated in Node; browser serialization is not evaluated. Custom replacers and explicit toJSON hooks are left to their serializer contract; a catch value is not guaranteed to be an Error. Member values, including cause, do not inherit the base Error's provenance; even an Error-valued member requires explicit value/dataflow proof outside this rule. Known literal __proto__ initializer chains preserve native hook inheritance and own toJSON precedence; computed __proto__ keys remain data. Unknown prototype expressions, hook values/spreads and deferred hook writes conservatively lose default serializer proof. Explicit writes invalidate constructor provenance except a later, separate top-level statement; deferred functions, loops, and unknown property keys conservatively lose constructor proof. Statically owned global/property writes and native Reflect.set/Reflect.defineProperty/Object.defineProperty/Object.defineProperties calls are tracked. Mutator aliases, replaced Reflect/Object methods, external calls, and runtime-only property names are not resolved; uncertain ordering conservatively loses proof."],
-  examples: [
-    { id: "explicit-error-message", title: "Narrow an unknown catch value before selecting fields", outcome: "no-match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err instanceof Error ? err.message : String(err) }); }" }], focusPath: "src/report.ts", expectedCount: 0, public: true },
-    { id: "stringified-error", title: "Do not stringify an Error object", outcome: "match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err }); }" }], focusPath: "src/report.ts", expectedCount: 1, public: true },
-    { id: "shadowed-error-binding", scenarioId: "binding-provenance", title: "Keep native binding provenance", outcome: "match", files: [{ path: "src/error.ts", source: "function probe(){try{throw {id:1};}catch(err){if(err instanceof Error)return err.message;{const err=new Error(\"lost\");return JSON.stringify(err);}}}\nconsole.log(probe());" }], focusPath: "src/error.ts", expectedCount: 1, public: true },
-    { id: "escaped-fallback-binding", scenarioId: "binding-provenance", title: "Keep native binding provenance", outcome: "no-match", files: [{ path: "src/error.ts", source: "function probe(){try{throw {id:1};}catch(err){if(err instanceof Error)return err.message;return JSON.stringify(\\u0065rr);}}\nconsole.log(probe());" }], focusPath: "src/error.ts", expectedCount: 0, public: true },
-    { id: "constructor-before-write", scenarioId: "explicit-constructor-write", title: "A later write does not change an already constructed native Error", outcome: "match", files: [{ path: "src/error.js", source: "const value=new Error('lost');Error=class Other{message='kept'};JSON.stringify(value);" }], focusPath: "src/error.js", expectedCount: 1, public: true },
-    { id: "constructor-after-write", scenarioId: "explicit-constructor-write", title: "A replaced constructor does not prove a native Error", outcome: "no-match", files: [{ path: "src/error.js", source: "Error=class Other{message='kept'};const value=new Error();JSON.stringify(value);" }], focusPath: "src/error.js", expectedCount: 0, public: true },
-    {"id": "native-serializer-before-write", "scenarioId": "explicit-serializer-write", "title": "A later write does not change an earlier native serialization", "outcome": "match", "files": [{"path": "src/error.js", "source": "const result=JSON.stringify(new Error('lost'));JSON.stringify=value=>'kept:'+value.message;"}], "focusPath": "src/error.js", "expectedCount": 1, "public": true},
-    {"id": "native-serializer-after-write", "scenarioId": "explicit-serializer-write", "title": "A replaced serializer owns its error-field contract", "outcome": "no-match", "files": [{"path": "src/error.js", "source": "JSON.stringify=value=>'kept:'+value.message;JSON.stringify(new Error('lost'));"}], "focusPath": "src/error.js", "expectedCount": 0, "public": true},
-    {"id": "static-serializer-key", "scenarioId": "static-property-provenance", "title": "A constant computed serializer still loses native Error details", "outcome": "match", "files": [{"path": "src/error.js", "source": "const key='stringify';JSON[key](new Error('lost'));"}], "focusPath": "src/error.js", "expectedCount": 1, "public": true},
-    {"id": "static-error-field", "scenarioId": "static-property-provenance", "title": "A constant message field selects the explicit string escape hatch", "outcome": "no-match", "files": [{"path": "src/error.js", "source": "const key='message';const error=new Error('lost');JSON.stringify(error[key]);"}], "focusPath": "src/error.js", "expectedCount": 0, "public": true},
-    {"id": "scalar-cause", "scenarioId": "member-value-provenance", "title": "Native Error cause can be a string value", "outcome": "no-match", "files": [{"path": "src/error.js", "source": "const error=new Error('lost',{cause:'kept'});JSON.stringify(error.cause);"}], "focusPath": "src/error.js", "expectedCount": 0, "public": true},
-    {"id": "whole-error-with-cause", "scenarioId": "member-value-provenance", "title": "Serializing the whole Error still loses its native details", "outcome": "match", "files": [{"path": "src/error.js", "source": "const error=new Error('lost',{cause:'kept'});JSON.stringify(error);"}], "focusPath": "src/error.js", "expectedCount": 1, "public": true},
-    {"id": "explicit-to-json-hook", "scenarioId": "custom-serializer-contract", "title": "An explicit callable toJSON owns its serialization contract", "outcome": "no-match", "files": [{"path": "src/error.js", "source": "JSON.stringify({error:new Error('lost'),toJSON(){return {message:'kept'};}});"}], "focusPath": "src/error.js", "expectedCount": 0, "public": true},
-    {"id": "noncallable-to-json", "scenarioId": "custom-serializer-contract", "title": "A noncallable toJSON does not replace native serialization", "outcome": "match", "files": [{"path": "src/error.js", "source": "JSON.stringify({error:new Error('lost'),toJSON:42});"}], "focusPath": "src/error.js", "expectedCount": 1, "public": true},
-    {"id": "literal-prototype-hook", "scenarioId": "native-prototype-serializer", "title": "A literal prototype hook owns the payload serializer contract", "outcome": "no-match", "files": [{"path": "src/error.js", "source": "JSON.stringify({error:new Error('lost'),__proto__:{toJSON(){return {message:'kept'};}}});"}], "focusPath": "src/error.js", "expectedCount": 0, "public": true},
-    {"id": "computed-prototype-data", "scenarioId": "native-prototype-serializer", "title": "A computed prototype name remains ordinary serialized data", "outcome": "match", "files": [{"path": "src/error.js", "source": "JSON.stringify({error:new Error('lost'),['__proto__']:{toJSON(){return {message:'kept'};}}});"}], "focusPath": "src/error.js", "expectedCount": 1, "public": true},
-  ],
-} as const satisfies RuleDocumentation;
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "AggregateError",
@@ -58,18 +30,16 @@ const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
 
 const TRACKED_BUILTINS: ReadonlySet<string> = new Set([...BUILTIN_ERROR_CONSTRUCTORS, "JSON", "JSON.stringify"]);
 
-function nativeObjectName(expression: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): "globalThis" | "JSON" | null {
+function nativeObjectName(expression: Node, sourceCode: SourceCode): "globalThis" | "JSON" | null {
   const value = unwrapExpression(expression);
-  const scope = sourceCode.getScope(value);
-  if (value.type === "Identifier" && (value.name === "globalThis" || value.name === "JSON") && isGlobalIdentifier(value.name, scope)) return value.name;
+  if (value.type === "Identifier" && (value.name === "globalThis" || value.name === "JSON") && isGlobalIdentifier(value.name, sourceCode.getScope(value))) return value.name;
   if (value.type === "MemberExpression" && nativeObjectName(value.object, sourceCode) === "globalThis" && staticPropertyName(value, sourceCode) === "JSON") return "JSON";
   return null;
 }
 
-function globalBuiltinName(expression: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): string | null {
+function globalBuiltinName(expression: Node, sourceCode: SourceCode): string | null {
   const value = unwrapExpression(expression);
-  const scope = sourceCode.getScope(value);
-  if (value.type === "Identifier") return TRACKED_BUILTINS.has(value.name) && isGlobalIdentifier(value.name, scope) ? value.name : null;
+  if (value.type === "Identifier") return TRACKED_BUILTINS.has(value.name) && isGlobalIdentifier(value.name, sourceCode.getScope(value)) ? value.name : null;
   if (value.type !== "MemberExpression") return null;
   const receiver = nativeObjectName(value.object, sourceCode);
   const name = staticPropertyName(value, sourceCode);
@@ -78,8 +48,8 @@ function globalBuiltinName(expression: TSESTree.Expression, sourceCode: Readonly
 }
 
 /** Self-assignment and native truthy/non-null defaults do not replace the tracked built-in. */
-function writePreservesBuiltin(target: TSESTree.Identifier | TSESTree.MemberExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
-  const assignment = target.parent;
+function writePreservesBuiltin(target: Identifier | ESTree.MemberExpression, sourceCode: SourceCode): boolean {
+  const assignment = parentOf(target);
   if (assignment?.type !== "AssignmentExpression" || assignment.left !== target) return false;
   const name = globalBuiltinName(target, sourceCode);
   if (name === null) return false;
@@ -87,37 +57,50 @@ function writePreservesBuiltin(target: TSESTree.Identifier | TSESTree.MemberExpr
   return (assignment.operator === "=" || assignment.operator === "&&=") && globalBuiltinName(assignment.right, sourceCode) === name;
 }
 
-function mayBeCallable(value: TSESTree.Node): boolean {
-  return !["Literal", "TemplateLiteral", "ObjectExpression", "ArrayExpression"].includes(value.type);
+const PATTERN_VALUE_TYPES: ReadonlySet<string> = new Set(["AssignmentPattern", "ArrayPattern", "ObjectPattern", "TSEmptyBodyFunctionExpression"]);
+
+/** Property values that only occur in patterns or bodiless declarations, never as serialized data. */
+function isPatternValue(value: Node): boolean {
+  return PATTERN_VALUE_TYPES.has(value.type);
+}
+
+const NON_CALLABLE_VALUE_TYPES: ReadonlySet<string> = new Set(["Literal", "TemplateLiteral", "ObjectExpression", "ArrayExpression"]);
+const MUTATION_OWNERS: ReadonlySet<string> = new Set(["Reflect", "Object"]);
+
+function mayBeCallable(value: Node): boolean {
+  return !NON_CALLABLE_VALUE_TYPES.has(value.type);
 }
 
 interface WriteSummary { earliestStatementStart: number; unknownOrder: boolean }
-// Cache this immutable source object's explicit writes, with constant-cost queries per read.
-const BUILTIN_WRITES = new WeakMap<Readonly<TypeScriptSourceCode>, ReadonlyMap<string | Scope.Variable, WriteSummary>>();
+// Cache each file's explicit writes, with constant-cost queries per read. Oxlint
+// reuses one SourceCode object for every file, so key by the file's AST.
+const BUILTIN_WRITES = new WeakMap<object, ReadonlyMap<string | TsVariable, WriteSummary>>();
+
+const DEFERRED_OR_REPEATED: ReadonlySet<string> = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody", "StaticBlock", "ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"]);
 
 /** A top-level statement executes once; deferred functions and repeated loops do not prove ordering. */
-function directProgramStatement(node: TSESTree.Node): TSESTree.Node | null {
+function directProgramStatement(node: Node): Node | null {
   let current = node;
-  while (current.parent !== undefined) {
-    if (current.parent.type === "Program") return current;
-    if (["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody", "StaticBlock", "ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(current.parent.type)) return null;
-    current = current.parent;
+  for (let parent = parentOf(current); parent !== null; parent = parentOf(current)) {
+    if (parent.type === "Program") return current;
+    if (DEFERRED_OR_REPEATED.has(parent.type)) return null;
+    current = parent;
   }
   return null;
 }
 
-function hasUnchangedBuiltin(name: string | Scope.Variable, read: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function hasUnchangedBuiltin(name: string | TsVariable, read: Node, sourceCode: SourceCode): boolean {
   const summary = builtinWrites(sourceCode).get(name);
   if (summary === undefined) return true;
   const statement = directProgramStatement(read);
   return !summary.unknownOrder && statement !== null && statement.range[1] <= summary.earliestStatementStart;
 }
 
-function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<string | Scope.Variable, WriteSummary> {
-  const cached = BUILTIN_WRITES.get(sourceCode);
+function builtinWrites(sourceCode: SourceCode): ReadonlyMap<string | TsVariable, WriteSummary> {
+  const cached = BUILTIN_WRITES.get(sourceCode.ast);
   if (cached !== undefined) return cached;
-  const writes = new Map<string | Scope.Variable, WriteSummary>();
-  const record = (name: string | Scope.Variable, node: TSESTree.Node): void => {
+  const writes = new Map<string | TsVariable, WriteSummary>();
+  const record = (name: string | TsVariable, node: Node): void => {
     const statement = directProgramStatement(node);
     const existing = writes.get(name);
     writes.set(name, { earliestStatementStart: Math.min(existing?.earliestStatementStart ?? Infinity, statement?.range[0] ?? Infinity), unknownOrder: (existing?.unknownOrder ?? false) || statement === null });
@@ -128,23 +111,23 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
       if (reference.identifier.type === "Identifier" && reference.isWrite() && TRACKED_BUILTINS.has(name) && (reference.resolved === null || reference.resolved.defs.length === 0) && !writePreservesBuiltin(reference.identifier, sourceCode)) record(name, reference.identifier);
     }
   }
-  const propertyReceiver = (expression: TSESTree.Expression): string | Scope.Variable | null => {
+  const propertyReceiver = (expression: Node): string | TsVariable | null => {
     const native = nativeObjectName(expression, sourceCode);
     if (native !== null) return native;
     const value = unwrapExpression(expression);
-    if (value.type === "Identifier") return ASTUtils.findVariable(sourceCode.getScope(value), value.name);
+    if (value.type === "Identifier") return findVariable(sourceCode.getScope(value), value.name);
     if (value.type === "MemberExpression" && staticPropertyName(value, sourceCode) === "prototype") {
       const constructor = globalBuiltinName(value.object, sourceCode);
       if (constructor !== null && BUILTIN_ERROR_CONSTRUCTORS.has(constructor)) return constructor + ".prototype";
     }
     return null;
   };
-  const propertyWrite = (receiver: string | Scope.Variable, name: string | null, node: TSESTree.Node): void => {
+  const propertyWrite = (receiver: string | TsVariable, name: string | null, node: Node): void => {
     if (receiver === "JSON") { if (name === null || name === "stringify") record("JSON.stringify", node); }
     else if (receiver === "globalThis") { if (name === null) { for (const builtin of TRACKED_BUILTINS) record(builtin, node); } else if (name !== "JSON.stringify" && TRACKED_BUILTINS.has(name)) record(name, node); }
     else if (name === null || name === "toJSON") record(receiver, node);
   };
-  const visit = (node: TSESTree.Node): void => {
+  const visit = (node: Node): void => {
     if (node.type === "AssignmentExpression") propertyTarget(node.left);
     else if (node.type === "UpdateExpression") propertyTarget(node.argument);
     else if (node.type === "ForInStatement" || node.type === "ForOfStatement") propertyTarget(node.left);
@@ -152,7 +135,7 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
     else if (node.type === "CallExpression") mutationCall(node);
     forEachAstChild(node, sourceCode.visitorKeys, visit);
   };
-  function propertyTarget(target: TSESTree.Node): void {
+  function propertyTarget(target: Node): void {
     if (target.type === "MemberExpression") { memberPropertyWrite(target); return; }
     switch (target.type) {
       case "ObjectPattern":
@@ -170,23 +153,23 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
   }
 
   // Pattern traversal finds member lvalues; this boundary proves which native value or hook changes.
-  function memberPropertyWrite(target: TSESTree.MemberExpression): void {
+  function memberPropertyWrite(target: ESTree.MemberExpression): void {
     const receiver = propertyReceiver(target.object);
     if (receiver === null || writePreservesBuiltin(target, sourceCode)) return;
     const name = staticPropertyName(target, sourceCode);
     if (name === "toJSON") {
-      const assignment = target.parent;
+      const assignment = parentOf(target);
       if (assignment?.type === "UnaryExpression" && assignment.operator === "delete") return;
       if (assignment?.type === "AssignmentExpression" && assignment.operator === "=" && !mayBeCallable(assignment.right)) return;
     }
     propertyWrite(receiver, name, target);
   }
 
-  function mutationCall(node: TSESTree.CallExpression): void {
+  function mutationCall(node: ESTree.CallExpression): void {
     const callee = unwrapExpression(node.callee);
     if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return;
     const owner = callee.object.name;
-    if (!["Reflect", "Object"].includes(owner) || !isGlobalIdentifier(owner, sourceCode.getScope(callee))) return;
+    if (!MUTATION_OWNERS.has(owner) || !isGlobalIdentifier(owner, sourceCode.getScope(callee))) return;
     const method = staticPropertyName(callee, sourceCode);
     const [target, key, value, receiver] = node.arguments;
     if (target === undefined || target.type === "SpreadElement" || key === undefined) return;
@@ -205,7 +188,7 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
   }
 
   // Reflect.set can direct the write to a distinct receiver and preserve an existing native value.
-  function reflectSet(object: string | Scope.Variable, name: string | null, value: TSESTree.CallExpressionArgument | undefined, receiver: TSESTree.CallExpressionArgument | undefined, node: TSESTree.CallExpression): void {
+  function reflectSet(object: string | TsVariable, name: string | null, value: Node | undefined, receiver: Node | undefined, node: ESTree.CallExpression): void {
     if (receiver !== undefined && receiver.type !== "SpreadElement" && ["ObjectExpression", "ArrayExpression", "Literal"].includes(unwrapExpression(receiver).type)) return;
     const builtin = builtinPropertyName(object, name);
     if (value !== undefined && value.type !== "SpreadElement" && builtin !== null && globalBuiltinName(value, sourceCode) === builtin) return;
@@ -214,7 +197,7 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
   }
 
   // Object.defineProperties supplies a descriptor per key, unlike the single-descriptor API.
-  function descriptorBatch(object: string | Scope.Variable, descriptors: TSESTree.Node, node: TSESTree.CallExpression): void {
+  function descriptorBatch(object: string | TsVariable, descriptors: Node, node: ESTree.CallExpression): void {
     if (descriptors.type !== "ObjectExpression") { propertyWrite(object, null, node); return; }
     for (const property of descriptors.properties) {
       if (property.type !== "Property") { propertyWrite(object, null, node); continue; }
@@ -222,57 +205,57 @@ function builtinWrites(sourceCode: Readonly<TypeScriptSourceCode>): ReadonlyMap<
     }
   }
 
-  function descriptorWrite(object: string | Scope.Variable, name: string | null, descriptor: TSESTree.Node | undefined, node: TSESTree.CallExpression): void {
+  function descriptorWrite(object: string | TsVariable, name: string | null, descriptor: Node | undefined, node: ESTree.CallExpression): void {
     if (descriptor !== undefined && !descriptorChangesValue(descriptor, builtinPropertyName(object, name))) return;
     propertyWrite(object, name, node);
   }
 
-  function descriptorChangesValue(descriptor: TSESTree.Node, name: string | null): boolean {
+  function descriptorChangesValue(descriptor: Node, name: string | null): boolean {
     if (descriptor.type !== "ObjectExpression") return true;
     return descriptor.properties.some(property => {
       if (property.type !== "Property") return true;
       const key = staticPropertyName(property, sourceCode);
       if (key === "value" && name === "toJSON" && !mayBeCallable(property.value)) return false;
-      if (key === "value" && property.value.type !== "AssignmentPattern" && property.value.type !== "ArrayPattern" && property.value.type !== "ObjectPattern" && property.value.type !== "TSEmptyBodyFunctionExpression") return name === null || globalBuiltinName(property.value, sourceCode) !== name;
+      if (key === "value" && !isPatternValue(property.value)) return name === null || globalBuiltinName(property.value, sourceCode) !== name;
       return key === null || key === "get" || key === "set";
     });
   }
 
-  function builtinPropertyName(object: string | Scope.Variable, name: string | null): string | null {
+  function builtinPropertyName(object: string | TsVariable, name: string | null): string | null {
     return object === "JSON" && name === "stringify" ? "JSON.stringify" : name;
   }
   visit(sourceCode.ast);
-  BUILTIN_WRITES.set(sourceCode, writes);
+  BUILTIN_WRITES.set(sourceCode.ast, writes);
   return writes;
 }
 
 /** Explicit own/prototype hooks defer to their serializer contract, without evaluating hook bodies. */
-function hasDefaultErrorSerialization(expression: TSESTree.Expression, call: TSESTree.Node, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function hasDefaultErrorSerialization(expression: Node, call: Node, sourceCode: SourceCode): boolean {
   let constructor: string | null = null;
   if (expression.type === "Identifier") {
-    const variable = ASTUtils.findVariable(sourceCode.getScope(expression), expression.name);
+    const variable = findVariable(sourceCode.getScope(expression), expression.name);
     if (variable !== null && !hasUnchangedBuiltin(variable, call, sourceCode)) return false;
     const definition = variable?.defs[0];
-    const initializer = definition?.type === "Variable" ? definition.node.init : null;
+    const initializer = definition?.type === "Variable" ? (definition.node as ESTree.VariableDeclarator).init : null;
     if (initializer?.type === "NewExpression" && initializer.callee.type === "Identifier") constructor = initializer.callee.name;
   } else if (expression.type === "NewExpression" && expression.callee.type === "Identifier") constructor = expression.callee.name;
   const families = constructor === null ? BUILTIN_ERROR_CONSTRUCTORS : ["Error", constructor];
   return [...families].every(name => hasUnchangedBuiltin(name + ".prototype", call, sourceCode));
 }
 
-function isBuiltinErrorConstructor(identifier: TSESTree.Identifier, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function isBuiltinErrorConstructor(identifier: Identifier, sourceCode: SourceCode): boolean {
   return sourceCode.scopeManager !== null && BUILTIN_ERROR_CONSTRUCTORS.has(identifier.name) && isGlobalIdentifier(identifier.name, sourceCode.getScope(identifier)) && hasUnchangedBuiltin(identifier.name, identifier, sourceCode);
 }
 
-function isGlobalIdentifier(name: string, scope: Scope.Scope): boolean {
-  const binding = ASTUtils.findVariable(scope, name);
+function isGlobalIdentifier(name: string, scope: Scope): boolean {
+  const binding = findVariable(scope, name);
   return binding === null || binding.defs.length === 0;
 }
 
 function positiveErrorSubject(
-  test: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): TSESTree.Expression | null {
+  test: Node,
+  sourceCode: SourceCode,
+): Node | null {
   return instanceofErrorSubject(test, sourceCode) ?? typeGuardSubject(test);
 }
 
@@ -280,9 +263,9 @@ function positiveErrorSubject(
 const TYPE_GUARD_PATTERN = /^(is|has)[A-Z]/;
 
 function instanceofErrorSubject(
-  test: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): TSESTree.Expression | null {
+  test: Node,
+  sourceCode: SourceCode,
+): Node | null {
   if (
     test.type === "BinaryExpression" &&
     test.operator === "instanceof" &&
@@ -297,21 +280,13 @@ function instanceofErrorSubject(
 
 /** The narrowed subject `x` of a user-defined type-guard call `isFoo(x)`, or null. */
 function typeGuardSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
-  const unwrappedTestCallee = test.type === "CallExpression" || test.type === "NewExpression" ? unwrapExpression(test.callee) : null;
-  const arg = test.type === "CallExpression" ? test.arguments[0] : undefined;
-  if (
-    test.type === "CallExpression" &&
-    unwrappedTestCallee?.type === "Identifier" &&
-    TYPE_GUARD_PATTERN.test(unwrappedTestCallee.name) &&
-    test.arguments.length === 1 &&
-    arg !== undefined &&
-    arg.type !== "SpreadElement"
-  ) {
-    return arg;
-  }
-  return null;
+  test: Node,
+): Node | null {
+  if (test.type !== "CallExpression" || test.arguments.length !== 1) return null;
+  const callee = unwrapExpression(test.callee);
+  const arg = test.arguments[0] as Node;
+  return callee.type === "Identifier" && TYPE_GUARD_PATTERN.test(callee.name) && arg.type !== "SpreadElement"
+    ? arg : null;
 }
 
 /**
@@ -320,40 +295,31 @@ function typeGuardSubject(
  * so by the time `JSON.stringify(arg)` runs the value is the non-Error fallback.
  */
 function isNarrowedByEarlyReturn(
-  node: TSESTree.Node,
-  argExpr: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  node: Node,
+  argExpr: Node,
+  sourceCode: SourceCode,
 ): boolean {
-  let current: TSESTree.Node | undefined = node.parent;
+  let current: Node | null = parentOf(node);
   while (current) {
     if (current.type === "BlockStatement" || current.type === "Program") {
       if (hasEarlierErrorGuard(current.body, node, argExpr, sourceCode)) return true;
     }
-    current = current.parent;
+    current = parentOf(current);
   }
   return false;
 }
 
 function isGuardedByInstanceofError(
-  node: TSESTree.Node,
-  argExpr: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  node: Node,
+  argExpr: Node,
+  sourceCode: SourceCode,
 ): boolean {
-  const sameSubject = (subject: TSESTree.Expression): boolean =>
+  const sameSubject = (subject: Node): boolean =>
     sameSubjectBinding(subject, argExpr, sourceCode);
 
-  let current: TSESTree.Node | undefined = node.parent;
+  let current: Node | null = parentOf(node);
   while (current) {
-    if (current.type === "ConditionalExpression") {
-      const subject = positiveErrorSubject(current.test, sourceCode);
-      if (subject && sameSubject(subject) && nodeWithin(node, current.alternate)) {
-        return true;
-      }
-      const negated = negatedInstanceofErrorSubject(current.test, sourceCode);
-      if (negated && sameSubject(negated) && nodeWithin(node, current.consequent)) {
-        return true;
-      }
-    } else if (current.type === "IfStatement") {
+    if (current.type === "ConditionalExpression" || current.type === "IfStatement") {
       const subject = positiveErrorSubject(current.test, sourceCode);
       if (subject && sameSubject(subject) && nodeWithin(node, current.alternate)) {
         return true;
@@ -363,16 +329,16 @@ function isGuardedByInstanceofError(
         return true;
       }
     }
-    current = current.parent;
+    current = parentOf(current);
   }
   return false;
 }
 
 /** The subject `x` of a negated error-narrowing test — `!(x instanceof Error)` / `!isErrorLike(x)`. */
 function negatedInstanceofErrorSubject(
-  test: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): TSESTree.Expression | null {
+  test: Node,
+  sourceCode: SourceCode,
+): Node | null {
   if (test.type === "UnaryExpression" && test.operator === "!") {
     return positiveErrorSubject(test.argument, sourceCode);
   }
@@ -380,20 +346,20 @@ function negatedInstanceofErrorSubject(
 }
 
 function sameSubjectBinding(
-  subject: TSESTree.Expression,
-  value: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  subject: Node,
+  value: Node,
+  sourceCode: SourceCode,
 ): boolean {
   const left = unwrapExpression(subject);
   const right = unwrapExpression(value);
   if (left.type === "Identifier" && right.type === "Identifier") {
-    const binding = ASTUtils.findVariable(sourceCode.getScope(left), left.name);
-    return binding !== null && binding === ASTUtils.findVariable(sourceCode.getScope(right), right.name);
+    const binding = findVariable(sourceCode.getScope(left), left.name);
+    return binding !== null && binding === findVariable(sourceCode.getScope(right), right.name);
   }
   return sourceCode.getText(subject) === sourceCode.getText(value);
 }
 
-function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boolean {
+function nodeWithin(node: Node, container: Node | null): boolean {
   return (
     container !== null &&
     node.range[0] >= container.range[0] &&
@@ -401,11 +367,10 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
   );
 }
 
-function isJsonStringify(callee: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function isJsonStringify(callee: Node, sourceCode: SourceCode): boolean {
   if (callee.type !== "MemberExpression") return false;
   const receiver = unwrapExpression(callee.object);
   return (
-    callee.type === "MemberExpression" &&
     receiver.type === "Identifier" &&
     receiver.name === "JSON" &&
     staticPropertyName(callee, sourceCode) === "stringify"
@@ -414,21 +379,16 @@ function isJsonStringify(callee: TSESTree.Expression, sourceCode: Readonly<TypeS
 
 /** Direct values serialized by a one-level object or array literal. */
 function directLiteralValues(
-  argument: TSESTree.CallExpressionArgument,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): readonly TSESTree.Expression[] {
+  argument: Node,
+  sourceCode: SourceCode,
+): readonly Node[] {
   argument = unwrapExpression(argument);
   if (argument.type === "ObjectExpression") {
     if (literalHasSerializer(argument, sourceCode)) return [];
     return argument.properties.flatMap((property) => {
       if (property.type !== "Property" || staticPropertyName(property, sourceCode) === null) return [];
       const value = property.value;
-      if (
-        value.type === "AssignmentPattern" ||
-        value.type === "ArrayPattern" ||
-        value.type === "ObjectPattern" ||
-        value.type === "TSEmptyBodyFunctionExpression"
-      ) {
+      if (isPatternValue(value)) {
         return [];
       }
       return [value];
@@ -442,7 +402,7 @@ function directLiteralValues(
   return argument.type === "SpreadElement" ? [] : [argument];
 }
 
-function literalHasSerializer(argument: TSESTree.ObjectExpression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function literalHasSerializer(argument: ESTree.ObjectExpression, sourceCode: SourceCode): boolean {
   for (const property of argument.properties.toReversed()) {
     if (property.type !== "Property") return true;
     const key = staticPropertyName(property, sourceCode);
@@ -458,34 +418,29 @@ function literalHasSerializer(argument: TSESTree.ObjectExpression, sourceCode: R
 }
 
 function expressionSuggestsError(
-  expression: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  expression: Node,
+  sourceCode: SourceCode,
 ): boolean {
   expression = unwrapExpression(expression);
-  const unwrappedExpressionCallee = expression.type === "CallExpression" || expression.type === "NewExpression" ? unwrapExpression(expression.callee) : null;
   if (expression.type === "Identifier") {
     return identifierIsProvenError(expression, sourceCode);
   }
-  if (
-    expression.type === "NewExpression" &&
-    unwrappedExpressionCallee?.type === "Identifier"
-  ) {
-    return isBuiltinErrorConstructor(unwrappedExpressionCallee, sourceCode);
-  }
-  return false;
+  if (expression.type !== "NewExpression") return false;
+  const callee = unwrapExpression(expression.callee);
+  return callee.type === "Identifier" && isBuiltinErrorConstructor(callee, sourceCode);
 }
 
 /** Whether a stable local binding is constructively proven to hold an Error. */
 function identifierIsProvenError(
-  identifier: TSESTree.Identifier,
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  identifier: Identifier,
+  sourceCode: SourceCode,
 ): boolean {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+  const variable = findVariable(sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length !== 1 || variable.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
   const definition = variable.defs[0];
   if (definition?.type === "CatchClause") return true;
   if (definition?.type !== "Variable") return false;
-  const initializer = definition.node.init;
+  const initializer = (definition.node as ESTree.VariableDeclarator).init;
   return (
     initializer?.type === "NewExpression" &&
     initializer.callee.type === "Identifier" &&
@@ -493,60 +448,7 @@ function identifierIsProvenError(
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-json-stringify-error",
-  documentation: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION,
-  meta: {
-    type: "problem",
-    docs: {
-      description:
-        "Avoid generic JSON serialization that can omit native Error details.",
-    },
-    schema: [],
-    messages: {
-      noJsonStringifyError:
-        "Generic `JSON.stringify` can omit non-enumerable Error details such as message and stack. Serialize explicit fields or use an error-aware serializer.",
-    },
-  },
-  defaultOptions: [],
-  create(context) {
-    return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (!isJsonStringify(unwrappedNodeCallee, context.sourceCode)) {
-          return;
-        }
-
-        const firstArg = node.arguments[0];
-        if (!firstArg) {
-          return;
-        }
-
-        const scope = context.sourceCode.getScope(firstArg);
-        if (!isGlobalIdentifier("JSON", scope) || !hasUnchangedBuiltin("JSON", node, context.sourceCode) || !hasUnchangedBuiltin("JSON.stringify", node, context.sourceCode)) return;
-        const replacer = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
-        if (replacer !== undefined && !(replacer.type === "Literal" && replacer.value === null) && !(replacer.type === "Identifier" && replacer.name === "undefined" && isGlobalIdentifier("undefined", scope))) return;
-        const unsafeValue = directLiteralValues(firstArg, context.sourceCode).find(
-          (value) =>
-            expressionSuggestsError(value, context.sourceCode) &&
-            hasDefaultErrorSerialization(unwrapExpression(value), node, context.sourceCode) &&
-            !isGuardedByInstanceofError(node, value, context.sourceCode) &&
-            !isNarrowedByEarlyReturn(node, value, context.sourceCode),
-        );
-        if (unsafeValue === undefined) {
-          return;
-        }
-
-        context.report({
-          node,
-          messageId: "noJsonStringifyError",
-        });
-      },
-    };
-  },
-});
-
-function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: TSESTree.Node, argExpr: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
+function hasEarlierErrorGuard(statements: readonly ESTree.Statement[], node: Node, argExpr: Node, sourceCode: SourceCode): boolean {
   for (const stmt of statements) {
     if (stmt.range[0] >= node.range[0]) {
       break;
@@ -567,7 +469,7 @@ function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: T
 
 
 /** Whether a branch statement unconditionally exits (its last statement returns/throws). */
-function branchTerminates(branch: TSESTree.Statement): boolean {
+function branchTerminates(branch: ESTree.Statement): boolean {
   const body = branch.type === "BlockStatement" ? branch.body : [branch];
   const last = body[body.length - 1];
   return (
@@ -575,3 +477,58 @@ function branchTerminates(branch: TSESTree.Statement): boolean {
     (last.type === "ReturnStatement" || last.type === "ThrowStatement")
   );
 }
+
+export default defineRule({
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Avoid generic JSON serialization that can omit native Error details.",
+      url: docsUrl(NAME),
+    },
+    schema: [],
+    messages: {
+      noJsonStringifyError:
+        "Generic `JSON.stringify` can omit non-enumerable Error details such as message and stack. Serialize explicit fields or use an error-aware serializer.",
+    },
+  },
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    return {
+      before(): void {
+        sourceCode = context.sourceCode;
+      },
+      CallExpression(node: ESTree.CallExpression): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (!isJsonStringify(unwrappedNodeCallee, sourceCode)) {
+          return;
+        }
+
+        const firstArg = node.arguments[0];
+        if (!firstArg) {
+          return;
+        }
+
+        const scope = sourceCode.getScope(firstArg);
+        if (!isGlobalIdentifier("JSON", scope) || !hasUnchangedBuiltin("JSON", node, sourceCode) || !hasUnchangedBuiltin("JSON.stringify", node, sourceCode)) return;
+        const replacer = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
+        if (replacer !== undefined && !(replacer.type === "Literal" && replacer.value === null) && !(replacer.type === "Identifier" && replacer.name === "undefined" && isGlobalIdentifier("undefined", scope))) return;
+        const unsafeValue = directLiteralValues(firstArg, sourceCode).find(
+          (value) =>
+            expressionSuggestsError(value, sourceCode) &&
+            hasDefaultErrorSerialization(unwrapExpression(value), node, sourceCode) &&
+            !isGuardedByInstanceofError(node, value, sourceCode) &&
+            !isNarrowedByEarlyReturn(node, value, sourceCode),
+        );
+        if (unsafeValue === undefined) {
+          return;
+        }
+
+        context.report({
+          node,
+          messageId: "noJsonStringifyError",
+        });
+      },
+    };
+  },
+});

@@ -1,128 +1,84 @@
-/**
- * @fileoverview _literal-identity-reduce-fix — remove unobservable identity-reducer copies.
- */
+/** @fileoverview _literal-identity-reduce-fix — remove unobservable identity-reducer copies. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { Fixer, Fix } from "@oxlint/plugins";
 
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { soleExportedFunction } from "./_closed-module.js";
 
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+export type ReduceFix = (fixer: Fixer) => Fix;
 
 /** Returning a fresh primitive array needs none of an unobservable identity reducer's copies. */
-export function literalIdentityReduceFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.CallExpression,
-): NativeReportFix | null {
+export function literalIdentityReduceFix(sourceCode: Readonly<SourceCode>, node: ESTree.CallExpression): ReduceFix | null {
   if (
-    sourceCode.ast.body.length !== 1 ||
-    sourceCode.getAllComments().length > 0 ||
     node.optional ||
     node.arguments.length !== 2 ||
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.type !== "MemberExpression" ||
     node.callee.optional ||
-    ASTUtils.getPropertyName(node.callee) !== "reduce"
-  )
-    return null;
-  const values = node.callee.object;
-  if (
-    values.type !== AST_NODE_TYPES.ArrayExpression ||
-    values.elements.length === 0 ||
-    !values.elements.every(
-      (element) =>
-        element?.type === AST_NODE_TYPES.Literal &&
-        typeof element.value === "string",
-    )
-  )
-    return null;
-  const statement = sourceCode.ast.body[0];
-  if (
-    statement?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    statement.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration
-  )
-    return null;
-  const owner = statement.declaration;
-  if (
-    owner.async ||
-    owner.declare ||
-    owner.generator ||
-    owner.typeParameters !== undefined ||
-    owner.params.length !== 0 ||
-    owner.body.body.length !== 1 ||
-    !stringArray(owner.returnType?.typeAnnotation)
-  )
-    return null;
-  const returned = owner.body.body[0];
-  if (
-    returned?.type !== AST_NODE_TYPES.ReturnStatement ||
-    returned.argument !== node ||
+    getPropertyName(node.callee) !== "reduce" ||
     node.typeArguments?.params.length !== 1 ||
     !stringArray(node.typeArguments.params[0])
-  )
-    return null;
+  ) return null;
+  const values = node.callee.object;
+  if (
+    values.type !== "ArrayExpression" ||
+    values.elements.length === 0 ||
+    !values.elements.every((element) => element?.type === "Literal" && typeof element.value === "string")
+  ) return null;
+  const entry = soleExportedFunction(sourceCode);
+  if (
+    entry === null ||
+    entry.owner.params.length !== 0 ||
+    !stringArray(entry.owner.returnType?.typeAnnotation) ||
+    entry.body.length !== 1 ||
+    entry.body[0]?.type !== "ReturnStatement" ||
+    entry.body[0].argument !== node
+  ) return null;
   const [callback, seed] = node.arguments;
   if (
-    seed?.type !== AST_NODE_TYPES.ArrayExpression ||
+    seed?.type !== "ArrayExpression" ||
     seed.elements.length !== 0 ||
-    callback?.type !== AST_NODE_TYPES.ArrowFunctionExpression ||
+    callback?.type !== "ArrowFunctionExpression" ||
     callback.async ||
-    callback.typeParameters !== undefined ||
-    callback.returnType !== undefined ||
+    isPresent(callback.typeParameters) ||
+    isPresent(callback.returnType) ||
     callback.params.length !== 2 ||
-    callback.body.type !== AST_NODE_TYPES.ArrayExpression ||
-    callback.body.elements.length !== 2
-  )
-    return null;
-  if (!identitySpread(sourceCode, callback)) return null;
+    callback.body.type !== "ArrayExpression" ||
+    callback.body.elements.length !== 2 ||
+    !identitySpread(sourceCode, callback)
+  ) return null;
   return (fixer) => fixer.replaceText(node, sourceCode.getText(values));
 }
 
-function stringArray(node: TSESTree.TypeNode | undefined): boolean {
-  return (
-    node?.type === AST_NODE_TYPES.TSArrayType &&
-    node.elementType.type === AST_NODE_TYPES.TSStringKeyword
-  );
+function stringArray(node: Node | null | undefined): boolean {
+  return node?.type === "TSArrayType" && node.elementType.type === "TSStringKeyword";
 }
 
-function identitySpread(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  callback: TSESTree.ArrowFunctionExpression,
-): boolean {
+function identitySpread(sourceCode: Readonly<SourceCode>, callback: ESTree.ArrowFunctionExpression): boolean {
   const [accumulator, item] = callback.params;
   if (
-    accumulator?.type !== AST_NODE_TYPES.Identifier ||
-    item?.type !== AST_NODE_TYPES.Identifier ||
+    accumulator?.type !== "Identifier" ||
+    item?.type !== "Identifier" ||
     accumulator.name === item.name ||
     accumulator.optional ||
     item.optional ||
-    accumulator.typeAnnotation !== undefined ||
-    item.typeAnnotation !== undefined ||
-    callback.body.type !== AST_NODE_TYPES.ArrayExpression
-  )
-    return false;
+    isPresent(accumulator.typeAnnotation) ||
+    isPresent(item.typeAnnotation) ||
+    callback.body.type !== "ArrayExpression"
+  ) return false;
   const [spread, appended] = callback.body.elements;
   if (
-    spread?.type !== AST_NODE_TYPES.SpreadElement ||
-    spread.argument.type !== AST_NODE_TYPES.Identifier ||
-    appended?.type !== AST_NODE_TYPES.Identifier ||
+    spread?.type !== "SpreadElement" ||
+    spread.argument.type !== "Identifier" ||
+    appended?.type !== "Identifier" ||
     spread.argument.name !== accumulator.name ||
     appended.name !== item.name
-  )
-    return false;
+  ) return false;
   const bindings = sourceCode.getDeclaredVariables(callback);
-  const left = bindings.find((variable) =>
-    variable.identifiers.includes(accumulator),
-  );
-  const right = bindings.find((variable) =>
-    variable.identifiers.includes(item),
-  );
-  return (
-    left !== undefined &&
-    right !== undefined &&
-    ASTUtils.findVariable(
-      sourceCode.getScope(spread.argument),
-      spread.argument.name,
-    ) === left &&
-    ASTUtils.findVariable(sourceCode.getScope(appended), appended.name) ===
-      right
-  );
+  const left = bindings.find((variable) => variable.identifiers.includes(accumulator as never));
+  const right = bindings.find((variable) => variable.identifiers.includes(item as never));
+  return left !== undefined && right !== undefined &&
+    findVariable(sourceCode.getScope(spread.argument), spread.argument.name) === left &&
+    findVariable(sourceCode.getScope(appended), appended.name) === right;
 }

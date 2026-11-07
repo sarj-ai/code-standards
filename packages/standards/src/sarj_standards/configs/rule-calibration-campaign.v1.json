@@ -168,7 +168,7 @@
       "ruleId": "no-invalid-typed-mutation",
       "state": "complete",
       "evidence": "Expert type-safety calibration 2026-10-16. A native Object.assign, Reflect.set or value descriptor demonstrably writes a value outside an explicit local property contract. Require a stable unescaped own-data object; preserve opaque/proxy/accessor targets, ambiguous native namespaces, descriptor effects and unsupported optional/mapped/generic contracts. Native compiler/runtime checks cover exact optional writes, readonly value compatibility and inherited descriptor accessors. Focused and independent semantic reviews pass. Exact final source hashes, reused immutable local corpus coverage, labeled results, native proofs, performance observations and canonical verification are recorded in packages/standards/benchmarks/expert-type-safety.json. Finite zero-unseeded-hit calibration does not estimate empirical precision on unseen defects.",
-      "outcome": "Current 2026-10-27 decision: promote to ERROR for source-proven contract contradictions, as reviewed in packages/standards/benchmarks/comment-contract-reaudit-20261027.json. Canonical verification and exact-head CI remain required before administrative merge. Earlier warning admission retained as history: Stage eslint:no-invalid-typed-mutation at warning severity without autofix. Report only source-proven contradictions; abstain at ambiguous domain or runtime boundaries. Preserve external contracts and intentional refinements. Require exact-head CI before administrative merge."
+      "outcome": "Current 2026-10-27 decision: promote to ERROR for source-proven contract contradictions, as reviewed in packages/standards/benchmarks/comment-contract-reaudit-20261027.json. Canonical verification and exact-head CI remain required before administrative merge. Earlier warning admission retained as history: Stage oxlint:no-invalid-typed-mutation at warning severity without autofix. Report only source-proven contradictions; abstain at ambiguous domain or runtime boundaries. Preserve external contracts and intentional refinements. Require exact-head CI before administrative merge."
     },
     {
       "task": "rule-audit/typescript/no-contradictory-type-predicate",
@@ -1393,7 +1393,7 @@
       "outcome": "Keep SARJ310 at warning and refine its control-flow boundary: one if/else decision is workflow orchestration, while loops, case statements, functions, inline interpreter source, elif chains, and repeated or nested conditionals remain reportable. Preserve direct-workflow path scoping, YAML scalar parsing, quote/comment and heredoc handling, YAML-alias deduplication, one diagnostic per run scalar, and SARJ309 precedence. Workflow topology, ownership, redundancy, long linear command lists, wrapper-indirected behavior, and unrecognized interpreter languages remain explicit review boundaries rather than inferred findings."
     },
     {
-      "task": "rule-audit/eslint/duplicate-test-body",
+      "task": "rule-audit/typescript/duplicate-test-body",
       "family": "typescript",
       "ruleId": "duplicate-test-body",
       "state": "complete",
@@ -1401,13 +1401,13 @@
       "outcome": "Preserve named node:test subtests and runner-specific tables. Exclude describe aliases from test identity and do not equate normalized shape with independent runtime state. Preserve existing error severity at user request; case independence and readability remain manual decisions."
     },
     {
-      "task": "rule-audit/eslint/enforce-file-structure",
+      "task": "rule-audit/typescript/enforce-file-structure",
       "family": "typescript",
       "ruleId": "enforce-file-structure",
       "state": "complete"
     },
     {
-      "task": "rule-audit/eslint/iac-source-coupled-test",
+      "task": "rule-audit/typescript/iac-source-coupled-test",
       "family": "typescript",
       "ruleId": "iac-source-coupled-test",
       "state": "complete",
@@ -1415,7 +1415,7 @@
       "outcome": "Keep the existing severity. Reuse the binding-aware source-oracle detector for IaC, recognize only supported assertion bindings, and preserve explicit representation-contract exceptions. Do not infer unsupported assertion libraries, dynamic paths or iterator dataflow."
     },
     {
-      "task": "rule-audit/eslint/interface-contract-members-private",
+      "task": "rule-audit/typescript/interface-contract-members-private",
       "family": "typescript",
       "ruleId": "interface-contract-members-private",
       "state": "complete",
@@ -1423,7 +1423,7 @@
       "outcome": "Keep the existing severity. Exclude protected extension hooks and overrides, preserve generic decorated extra-member findings, and continue to abstain when inherited contract resolution is uncertain."
     },
     {
-      "task": "rule-audit/eslint/no-bare-return-from-test-catch",
+      "task": "rule-audit/typescript/no-bare-return-from-test-catch",
       "family": "typescript",
       "ruleId": "no-bare-return-from-test-catch",
       "state": "complete",
@@ -1431,7 +1431,7 @@
       "outcome": "Keep the existing severity. Exempt only a caught-error assertion or explicit skip that dominates the return in its nearest block; resolve supported assertion imports and preserve conditional-flow findings."
     },
     {
-      "task": "rule-audit/eslint/no-bespoke-api-case-conversion",
+      "task": "rule-audit/typescript/no-bespoke-api-case-conversion",
       "family": "typescript",
       "ruleId": "no-bespoke-api-case-conversion",
       "state": "complete",
@@ -1439,19 +1439,19 @@
       "outcome": "Retain warning. Require resolved imported API type provenance and preserve shadowed, unrelated and unknown type boundaries; do not infer API ownership from spelling."
     },
     {
-      "task": "rule-audit/eslint/no-client-side-data-fetching",
+      "task": "rule-audit/typescript/no-client-side-data-fetching",
       "family": "typescript",
       "ruleId": "no-client-side-data-fetching",
       "state": "complete"
     },
     {
-      "task": "rule-audit/eslint/no-comment-cruft",
+      "task": "rule-audit/typescript/no-comment-cruft",
       "family": "typescript",
       "ruleId": "no-comment-cruft",
       "state": "complete"
     },
     {
-      "task": "rule-audit/eslint/no-cors-wildcard-with-credentials",
+      "task": "rule-audit/typescript/no-cors-wildcard-with-credentials",
       "family": "typescript",
       "ruleId": "no-cors-wildcard-with-credentials",
       "state": "complete",
@@ -1459,7 +1459,7 @@
       "outcome": "Stage the existing rule as a correctness warning with no autofix: a wildcard prevents browser access to credentialed cross-origin responses, while credentialless wildcard callers remain valid. Require stable official cors/Hono imports for options and effective literal property/header values; combine native duplicate-case headers and abstain on uncertain writes, branches, aliases, value escapes and executable binding patterns."
     },
     {
-      "task": "rule-audit/eslint/no-dangerously-allow-svg",
+      "task": "rule-audit/typescript/no-dangerously-allow-svg",
       "family": "typescript",
       "ruleId": "no-dangerously-allow-svg",
       "state": "complete",
@@ -1467,13 +1467,13 @@
       "outcome": "Keep the existing severity. Accept only effective SVG enablement protected by attachment disposition, exactly one script-src 'none' directive, and a sandbox directive without script allowances; continue to abstain on unknown exported configuration."
     },
     {
-      "task": "rule-audit/eslint/no-declaration-comment-wall",
+      "task": "rule-audit/typescript/no-declaration-comment-wall",
       "family": "typescript",
       "ruleId": "no-declaration-comment-wall",
       "state": "complete"
     },
     {
-      "task": "rule-audit/eslint/no-duplicate-lifecycle-refresh-listeners",
+      "task": "rule-audit/typescript/no-duplicate-lifecycle-refresh-listeners",
       "family": "typescript",
       "ruleId": "no-duplicate-lifecycle-refresh-listeners",
       "state": "complete",
@@ -1481,7 +1481,7 @@
       "outcome": "Require stable callback bindings before recommending a shared handler."
     },
     {
-      "task": "rule-audit/eslint/no-dynamic-sql",
+      "task": "rule-audit/typescript/no-dynamic-sql",
       "family": "typescript",
       "ruleId": "no-dynamic-sql",
       "state": "complete",
@@ -1489,7 +1489,7 @@
       "outcome": "Inspect only single-quoted value fragments at recognized execution calls. Share the UTF-16-preserving bounded SQL lexer, excluding identifiers/comments/dollar strings. This is not a complete dialect parser or injection detector."
     },
     {
-      "task": "rule-audit/eslint/no-enum",
+      "task": "rule-audit/typescript/no-enum",
       "family": "typescript",
       "ruleId": "no-enum",
       "state": "complete",
@@ -1497,7 +1497,7 @@
       "outcome": "Retain explicit enum prohibition while documenting const-enum compiler behavior, wire contracts, reverse maps and exact compatibility-fixture exceptions; no universal runtime-cost claim. Preserve existing severity; no promotion or new autofix."
     },
     {
-      "task": "rule-audit/eslint/no-fat-try-blocks",
+      "task": "rule-audit/typescript/no-fat-try-blocks",
       "family": "typescript",
       "ruleId": "no-fat-try-blocks",
       "state": "complete",
@@ -1505,7 +1505,7 @@
       "outcome": "Describe selected failure-bearing operations and configurable threshold; preserve cohesive recovery boundaries during manual review. Preserve existing severity; no promotion or new autofix."
     },
     {
-      "task": "rule-audit/eslint/no-generic-single-export-module",
+      "task": "rule-audit/typescript/no-generic-single-export-module",
       "family": "typescript",
       "ruleId": "no-generic-single-export-module",
       "state": "complete",
@@ -1513,7 +1513,7 @@
       "outcome": "Abstain for exported destructuring rather than undercounting exports."
     },
     {
-      "task": "rule-audit/eslint/no-hand-rolled-sleep",
+      "task": "rule-audit/typescript/no-hand-rolled-sleep",
       "family": "typescript",
       "ruleId": "no-hand-rolled-sleep",
       "state": "complete",
@@ -1521,7 +1521,7 @@
       "outcome": "Require actual unshadowed timer/Promise bindings and recognized settlement shape. Preserve injected and value-returning timers; use runtime-compatible cancellation rather than mechanical Node-only replacement."
     },
     {
-      "task": "rule-audit/eslint/no-hand-rolled-spinner",
+      "task": "rule-audit/typescript/no-hand-rolled-spinner",
       "family": "typescript",
       "ruleId": "no-hand-rolled-spinner",
       "state": "complete",
@@ -1529,7 +1529,7 @@
       "outcome": "Keep the existing severity. Normalize Tailwind bases only within one effective variant context, honor last JSX property semantics, and abstain for later unknown spreads."
     },
     {
-      "task": "rule-audit/eslint/no-impossible-zod-literal-bounds",
+      "task": "rule-audit/typescript/no-impossible-zod-literal-bounds",
       "family": "typescript",
       "ruleId": "no-impossible-zod-literal-bounds",
       "state": "complete",
@@ -1537,7 +1537,7 @@
       "outcome": "Retain bounded contradiction detection without guessing a corrected endpoint. Discrete integer domains and transformed schemas are not a complete constraint solver; runtime schema validation remains complementary. Existing error scope now includes nonempty real intervals with no safe integer member; upstream zod/no-conflicting-checks owns real contradictions in integer chains. Skip integer options and unsafe numeric edges; no autofix."
     },
     {
-      "task": "rule-audit/eslint/no-in-operator-on-built-in-collections",
+      "task": "rule-audit/typescript/no-in-operator-on-built-in-collections",
       "family": "typescript",
       "ruleId": "no-in-operator-on-built-in-collections",
       "state": "complete",
@@ -1553,7 +1553,7 @@
       "outcome": "Ignore underscore bindings that are actually read in their scope. Preserve detection of genuine discarded values; do not introduce dummy reads. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Replace a bare unused marker with an informative retained name; preserve object/resource lifetime instead of deleting the assignment. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
     },
     {
-      "task": "rule-audit/eslint/no-insecure-random-id",
+      "task": "rule-audit/typescript/no-insecure-random-id",
       "family": "typescript",
       "ruleId": "no-insecure-random-id",
       "state": "complete",
@@ -1561,7 +1561,7 @@
       "outcome": "Retain existing severity. Resolve native Math before diagnosing Math.random, and stop enclosing-name inference at unrelated declarations, branch tests and function boundaries. Names remain a documented sensitivity heuristic, not interprocedural proof. No automatic replacement."
     },
     {
-      "task": "rule-audit/eslint/no-detached-global-fetch",
+      "task": "rule-audit/typescript/no-detached-global-fetch",
       "family": "typescript",
       "ruleId": "no-detached-global-fetch",
       "state": "complete",
@@ -1569,7 +1569,7 @@
       "outcome": "Retain warning without autofix. Follow stable ambient aliases and defaulted parameters into member storage and wrong explicit receivers; preserve bare calls, callbacks, returns, forwarding wrappers, and compatible global or undefined bind/call/apply receivers. Unknown interprocedural flows remain manual review."
     },
     {
-      "task": "rule-audit/eslint/no-json-stringify-error",
+      "task": "rule-audit/typescript/no-json-stringify-error",
       "family": "typescript",
       "ruleId": "no-json-stringify-error",
       "state": "complete",
@@ -1577,7 +1577,7 @@
       "outcome": "Retain the accurate selector and manual diagnostic. Respect shadowing and reassignment, preserve custom serializer contracts, and narrow unknown catch values in the public example. Catch bindings are not runtime proof of Error instances."
     },
     {
-      "task": "rule-audit/eslint/no-json-stringify-object-equality",
+      "task": "rule-audit/typescript/no-json-stringify-object-equality",
       "family": "typescript",
       "ruleId": "no-json-stringify-object-equality",
       "state": "complete",
@@ -1585,7 +1585,7 @@
       "outcome": "Retain the type-aware warning without autofix. Report direct equality comparisons between two native JSON serialization calls when either operand may contain objects or unknown values, including static computed access. Preserve proven primitive arrays and tuples, shadowed JSON, tests, generated source and one-sided comparisons; reviewed canonical domain equality remains an explicit comparator or narrow suppression. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.33.0 / TypeScript 16.8.0 / Standards 8.52.0. Object serialization equality can depend on property order or collapse distinct values; compare a domain projection or deliberately reviewed canonical serialization, preserving intentional JSON-text contracts explicitly. No unsafe autofix or universal semantic-precision claim; preserve required contracts with the documented alternative or reasoned exact-code exception."
     },
     {
-      "task": "rule-audit/eslint/no-log-only-catch",
+      "task": "rule-audit/typescript/no-log-only-catch",
       "family": "typescript",
       "ruleId": "no-log-only-catch",
       "state": "complete",
@@ -1593,7 +1593,7 @@
       "outcome": "Preserve existing error severity at user request. Treat recognized external fallback equally with and without logging; preserve a stable native coercion assignment followed by a matching type check, including one immediate const alias. No general validation or exception-flow proof is claimed."
     },
     {
-      "task": "rule-audit/eslint/no-long-comment",
+      "task": "rule-audit/typescript/no-long-comment",
       "family": "typescript",
       "ruleId": "no-long-comment",
       "state": "complete",
@@ -1601,7 +1601,7 @@
       "outcome": "Keep warning-only concision guidance and no deletion suggestion. Eight sentences or 120 words is not proof that rationale is useless; preserve substantive constraints and do not expand to arbitrary multiline prose."
     },
     {
-      "task": "rule-audit/eslint/no-offset-pagination",
+      "task": "rule-audit/typescript/no-offset-pagination",
       "family": "typescript",
       "ruleId": "no-offset-pagination",
       "state": "complete",
@@ -1609,7 +1609,7 @@
       "outcome": "Require query-shaped context, not arbitrary OFFSET prose. Preserve existing error severity and describe complete ordering, tie-breakers, filters, workload and dialect rather than prescribing an id-only cursor."
     },
     {
-      "task": "rule-audit/eslint/no-positional-tuple-return",
+      "task": "rule-audit/typescript/no-positional-tuple-return",
       "family": "typescript",
       "ruleId": "no-positional-tuple-return",
       "state": "complete",
@@ -1617,7 +1617,7 @@
       "outcome": "Resolve aliases by lexical identity. Preserve original error severity at user request and retain explicit framework tuple exceptions."
     },
     {
-      "task": "rule-audit/eslint/no-production-browser-source-maps",
+      "task": "rule-audit/typescript/no-production-browser-source-maps",
       "family": "typescript",
       "ruleId": "no-production-browser-source-maps",
       "state": "complete",
@@ -1625,7 +1625,7 @@
       "outcome": "Inspect only effective exported Next configuration rather than arbitrary object properties."
     },
     {
-      "task": "rule-audit/eslint/no-raw-env",
+      "task": "rule-audit/typescript/no-raw-env",
       "family": "typescript",
       "ruleId": "no-raw-env",
       "state": "complete",
@@ -1633,7 +1633,7 @@
       "outcome": "Retain the selector and existing policy severity. Exclude injected process objects; recognize actual validation calls rather than comments or string contents. Document boundary and write exemptions as policy, not proof that every export is validated."
     },
     {
-      "task": "rule-audit/eslint/no-raw-fetch-outside-clients",
+      "task": "rule-audit/typescript/no-raw-fetch-outside-clients",
       "family": "typescript",
       "ruleId": "no-raw-fetch-outside-clients",
       "state": "complete",
@@ -1641,7 +1641,7 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Filename placement is a manual architecture policy, not proof that a client boundary is absent. Preserve precise arbitration with proven internal mutations."
     },
     {
-      "task": "rule-audit/eslint/no-redundant-optional-array-default",
+      "task": "rule-audit/typescript/no-redundant-optional-array-default",
       "family": "typescript",
       "ruleId": "no-redundant-optional-array-default",
       "state": "complete",
@@ -1649,7 +1649,7 @@
       "outcome": "Stage as a warning and limit the rule to syntactically proven local Zod arrays whose optional wrapper is immediately inside default. Remove only that inner optional wrapper. Preserve strings and other scalars, aliases, comments, and the semantically distinct default().optional() order."
     },
     {
-      "task": "rule-audit/eslint/no-repeated-string-literal",
+      "task": "rule-audit/typescript/no-repeated-string-literal",
       "family": "typescript",
       "ruleId": "no-repeated-string-literal",
       "state": "complete",
@@ -1657,7 +1657,7 @@
       "outcome": "Newlines alone do not establish a structured value. Retain recognized SQL, identifier and route shapes, while keeping tagged templates and JSX attribute scaffolding outside this owner."
     },
     {
-      "task": "rule-audit/eslint/no-restated-comment",
+      "task": "rule-audit/typescript/no-restated-comment",
       "family": "typescript",
       "ruleId": "no-restated-comment",
       "state": "complete",
@@ -1665,7 +1665,7 @@
       "outcome": "Retained the accurate no-restated-comment selector and staged its calibrated behavior as a warning with optional whole-line deletion suggestions and no autofix. Identifier evidence is restricted to the attached statement; strings, template text, comments, and neighboring statements cannot manufacture a match. Conditions, restrictions, ordering, repetition, direction, one-word headings, sentence-ending prose, and value/type-query groups are preserved. The existing conservative enclosing-sibling exemption remains documented as a source of false negatives because removing it produced real grouping-label false positives. UI metadata states the heuristic limits and demonstrates preservation of a condition absent from the statement. Shared helper compatibility, trailing-comment deletion ranges, and nearby comment-rule interactions are regression-tested. No all-fleet precision or error-promotion claim is made."
     },
     {
-      "task": "rule-audit/eslint/no-restated-jsdoc",
+      "task": "rule-audit/typescript/no-restated-jsdoc",
       "family": "typescript",
       "ruleId": "no-restated-jsdoc",
       "state": "complete",
@@ -1673,7 +1673,7 @@
       "outcome": "Stage the existing canonical rule as warning with editor suggestions only. Preserve explicit contracts and clearly meaningful prose before comparing words, retain Unicode and single-letter evidence, and abstain when another comment intervenes in the deletion range. Keep type-section ownership with the existing typed-JSDoc rule. Use cautious diagnostic wording and paired negation examples. Conservative exclusions intentionally accept some redundant prose; promotion requires separate clean adoption evidence."
     },
     {
-      "task": "rule-audit/eslint/no-restricted-library-load",
+      "task": "rule-audit/typescript/no-restricted-library-load",
       "family": "typescript",
       "ruleId": "no-restricted-library-load",
       "state": "complete",
@@ -1681,7 +1681,7 @@
       "outcome": "Keep the existing severity. Apply runtime restrictions to statically known string and no-substitution template specifiers, including computed require.resolve, while preserving type-only loads, interpolated templates and shadowed require bindings."
     },
     {
-      "task": "rule-audit/eslint/no-router-refresh-polling",
+      "task": "rule-audit/typescript/no-router-refresh-polling",
       "family": "typescript",
       "ruleId": "no-router-refresh-polling",
       "state": "complete",
@@ -1689,7 +1689,7 @@
       "outcome": "Preserve function-declaration callback boundaries and abstain for reassigned router bindings; recommend manual data-query review rather than equivalent automatic replacement."
     },
     {
-      "task": "rule-audit/eslint/no-secret-in-log",
+      "task": "rule-audit/typescript/no-secret-in-log",
       "family": "typescript",
       "ruleId": "no-secret-in-log",
       "state": "complete",
@@ -1697,7 +1697,7 @@
       "outcome": "Retain the accurate selector without autofix. Inspect recognizable values as well as keys, apply existing redaction markers consistently, and recommend omission, allowlisted context, or approved redaction instead of arbitrary truncation. Name-based exemptions are not proof of secrecy."
     },
     {
-      "task": "rule-audit/eslint/no-select-star",
+      "task": "rule-audit/typescript/no-select-star",
       "family": "typescript",
       "ruleId": "no-select-star",
       "state": "complete",
@@ -1705,7 +1705,7 @@
       "outcome": "Keep explicit projection policy with bounded SQL masking; preserve source offsets and avoid claiming every wildcard necessarily breaks parsing."
     },
     {
-      "task": "rule-audit/eslint/no-sentinel-return-on-catch",
+      "task": "rule-audit/typescript/no-sentinel-return-on-catch",
       "family": "typescript",
       "ruleId": "no-sentinel-return-on-catch",
       "state": "complete",
@@ -1713,7 +1713,7 @@
       "outcome": "Preserve original error severity at user request; exclude shadowed undefined and review fallback contracts manually."
     },
     {
-      "task": "rule-audit/eslint/no-server-env-in-client-component",
+      "task": "rule-audit/typescript/no-server-env-in-client-component",
       "family": "typescript",
       "ruleId": "no-server-env-in-client-component",
       "state": "complete",
@@ -1721,7 +1721,7 @@
       "outcome": "Retain the conventional direct client/server boundary. Names do not prove secret contents or transitive import behavior; intentional ownership exceptions remain possible and framework server-only/build controls remain the stronger transitive owner."
     },
     {
-      "task": "rule-audit/eslint/no-silent-promise-catch",
+      "task": "rule-audit/typescript/no-silent-promise-catch",
       "family": "typescript",
       "ruleId": "no-silent-promise-catch",
       "state": "complete",
@@ -1729,7 +1729,7 @@
       "outcome": "Exclude recognized imported Zod construction chains and stable aliases without exempting Promise-returning parseAsync. Preserve existing error severity; other untyped catch APIs and downstream recovery are not fully inferred."
     },
     {
-      "task": "rule-audit/eslint/no-sleep-in-test-body",
+      "task": "rule-audit/typescript/no-sleep-in-test-body",
       "family": "typescript",
       "ruleId": "no-sleep-in-test-body",
       "state": "complete",
@@ -1737,7 +1737,7 @@
       "outcome": "Recognize bounded native timer sleeps, preserve local helper meanings and deadline/rejection behavior, and restore fake timers in the public example."
     },
     {
-      "task": "rule-audit/eslint/no-storage-in-stateless-modules",
+      "task": "rule-audit/typescript/no-storage-in-stateless-modules",
       "family": "typescript",
       "ruleId": "no-storage-in-stateless-modules",
       "state": "complete",
@@ -1745,7 +1745,7 @@
       "outcome": "Keep the explicit stateless-module policy. Require SQL-shaped literal text or conventional database receiver evidence for overloaded prepare calls; this does not prove storage provenance or the system of record."
     },
     {
-      "task": "rule-audit/eslint/no-string-concat-in-loop",
+      "task": "rule-audit/typescript/no-string-concat-in-loop",
       "family": "typescript",
       "ruleId": "no-string-concat-in-loop",
       "state": "complete",
@@ -1753,7 +1753,7 @@
       "outcome": "Preserve original error severity at user request; exclude deferred functions and immediate unconditional exits. Explain conditional copy costs, not universal quadratic behavior."
     },
     {
-      "task": "rule-audit/eslint/no-tautological-expect",
+      "task": "rule-audit/typescript/no-tautological-expect",
       "family": "typescript",
       "ruleId": "no-tautological-expect",
       "state": "complete",
@@ -1761,7 +1761,7 @@
       "outcome": "Retain error severity for supported always-passing assertions with recognized expect ownership. Resolve immutable scalar const bindings and aliases. Preserve runtime initialization, mutable and structural values, shadowing, failing assertions and unsupported forms. Equality retains conservative source-spelling comparison and can miss equivalent differently written values. Remove only the redundant assertion; no autofix or whole-test deletion."
     },
     {
-      "task": "rule-audit/eslint/no-trailing-value-narration",
+      "task": "rule-audit/typescript/no-trailing-value-narration",
       "family": "typescript",
       "ruleId": "no-trailing-value-narration",
       "state": "complete",
@@ -1769,7 +1769,7 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Remove narration only for a matching literal numeric initializer and same-unit aliases; preserve cross-unit explanations, computed targets, expressions, calls, operators, Unicode and meaningful prose. No numeric evaluation or unit conversion is inferred."
     },
     {
-      "task": "rule-audit/eslint/no-type-member-comment-wall",
+      "task": "rule-audit/typescript/no-type-member-comment-wall",
       "family": "typescript",
       "ruleId": "no-type-member-comment-wall",
       "state": "complete",
@@ -1777,7 +1777,7 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Without autofix, Retain the selector and configured density thresholds while describing apparent repetition as a review heuristic, not proof that comments carry no contract."
     },
     {
-      "task": "rule-audit/eslint/no-typed-doc-sections",
+      "task": "rule-audit/typescript/no-typed-doc-sections",
       "family": "typescript",
       "ruleId": "no-typed-doc-sections",
       "state": "complete",
@@ -1785,7 +1785,7 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Preserve narrative contracts. Require direct adjacent signature evidence, matching parameter names and genuinely repetitive payloads instead of treating meaningful punctuation or unfamiliar words as disposable."
     },
     {
-      "task": "rule-audit/eslint/no-union-in-comment",
+      "task": "rule-audit/typescript/no-union-in-comment",
       "family": "typescript",
       "ruleId": "no-union-in-comment",
       "state": "complete",
@@ -1793,7 +1793,7 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Remove whole-source substring exemptions and avoid inferring supported schemas from unknown builder names. Preserve broad string contracts and document only statically recognized finite alternatives."
     },
     {
-      "task": "rule-audit/eslint/no-unnecessary-use-client",
+      "task": "rule-audit/typescript/no-unnecessary-use-client",
       "family": "typescript",
       "ruleId": "no-unnecessary-use-client",
       "state": "complete",
@@ -1801,7 +1801,7 @@
       "outcome": "Recognize only actual directive prologues and preserve unknown side-effect imports; retain a manual warning for transitive client requirements."
     },
     {
-      "task": "rule-audit/eslint/no-unsafe-mock-casting",
+      "task": "rule-audit/typescript/no-unsafe-mock-casting",
       "family": "typescript",
       "ruleId": "no-unsafe-mock-casting",
       "state": "complete",
@@ -1809,7 +1809,7 @@
       "outcome": "Explain that vi.mocked provides typing rather than runtime mock creation or validation; demonstrate an actual spy before typed mock use. Preserve existing severity; no promotion or new autofix."
     },
     {
-      "task": "rule-audit/eslint/no-vague-suppression-description",
+      "task": "rule-audit/typescript/no-vague-suppression-description",
       "family": "typescript",
       "ruleId": "no-vague-suppression-description",
       "state": "complete",
@@ -1817,7 +1817,7 @@
       "outcome": "Keep the existing severity and bounded generic vocabulary. Normalize supported colon, dash and whitespace reason separators without claiming semantic proof; continue accepting concrete descriptions and excluding unrelated formatter or coverage pragmas."
     },
     {
-      "task": "rule-audit/eslint/no-zod-native-enum",
+      "task": "rule-audit/typescript/no-zod-native-enum",
       "family": "typescript",
       "ruleId": "no-zod-native-enum",
       "state": "complete",
@@ -1825,7 +1825,7 @@
       "outcome": "Retain the compatible name and existing explicit enum policy at error severity. Remove the automatic object-to-array migration and its fixedFiles UI example. Require manual review of schema.enum keys, duplicate-key behavior, comments and downstream references; preserve the detector and paired manual examples."
     },
     {
-      "task": "rule-audit/eslint/prefer-await-in-async-return",
+      "task": "rule-audit/typescript/prefer-await-in-async-return",
       "family": "typescript",
       "ruleId": "prefer-await-in-async-return",
       "state": "complete",
@@ -1833,7 +1833,7 @@
       "outcome": "Describe receiver-chain Promise evidence and manual catch/scheduling review, not universal await equivalence. Preserve existing severity; no promotion or new autofix."
     },
     {
-      "task": "rule-audit/eslint/prefer-constant-time-secret-compare",
+      "task": "rule-audit/typescript/prefer-constant-time-secret-compare",
       "family": "typescript",
       "ruleId": "prefer-constant-time-secret-compare",
       "state": "complete",
@@ -1841,7 +1841,7 @@
       "outcome": "Retain the accurate selector. Ambiguous bare, expected, first, and last token names no longer establish a credential; explicit authentication and secret names remain covered. Advice requires a runtime-supported timing-safe primitive and compatible operand lengths, not a nonexistent universal Web Crypto method."
     },
     {
-      "task": "rule-audit/eslint/prefer-discriminated-union",
+      "task": "rule-audit/typescript/prefer-discriminated-union",
       "family": "typescript",
       "ruleId": "prefer-discriminated-union",
       "state": "complete",
@@ -1849,7 +1849,7 @@
       "outcome": "Retain warning severity without autofix. Preserve every legitimate domain/public state and existing native ownership. Canonical verification and latest exact-head CI remain required before administrative merge; finite calibration does not guarantee universal precision."
     },
     {
-      "task": "rule-audit/eslint/prefer-ecmascript-private-members",
+      "task": "rule-audit/typescript/prefer-ecmascript-private-members",
       "family": "typescript",
       "ruleId": "prefer-ecmascript-private-members",
       "state": "complete",
@@ -1857,7 +1857,7 @@
       "outcome": "Remove automatic private-to-# conversion: reflection, serialization, proxies and escapes require manual migration review."
     },
     {
-      "task": "rule-audit/eslint/prefer-immutable-module-constant",
+      "task": "rule-audit/typescript/prefer-immutable-module-constant",
       "family": "typescript",
       "ruleId": "prefer-immutable-module-constant",
       "state": "complete",
@@ -1865,7 +1865,7 @@
       "outcome": "Preserve existing error severity. Preserve reassigned let/var aliases rather than transferring mutation evidence across changing bindings. Readonly conversion remains manual API policy; do not claim declaration inspection proves immutability or compatibility."
     },
     {
-      "task": "rule-audit/eslint/prefer-input-group-search",
+      "task": "rule-audit/typescript/prefer-input-group-search",
       "family": "typescript",
       "ruleId": "prefer-input-group-search",
       "state": "complete",
@@ -1873,7 +1873,7 @@
       "outcome": "Require actual imported Input/Search bindings and abstain when branches or interaction make grouping inappropriate."
     },
     {
-      "task": "rule-audit/eslint/prefer-millisecond-control-duration-schema",
+      "task": "rule-audit/typescript/prefer-millisecond-control-duration-schema",
       "family": "typescript",
       "ruleId": "prefer-millisecond-control-duration-schema",
       "state": "complete",
@@ -1881,7 +1881,7 @@
       "outcome": "Require a recognizable numeric Zod leaf; preserve boolean/string/custom contracts and unknown transformations. The public example scales bounds and defaults, and migration remains manual to preserve wire compatibility."
     },
     {
-      "task": "rule-audit/eslint/prefer-module-level-constant",
+      "task": "rule-audit/typescript/prefer-module-level-constant",
       "family": "typescript",
       "ruleId": "prefer-module-level-constant",
       "state": "complete",
@@ -1889,7 +1889,7 @@
       "outcome": "Preserve existing error severity. Exclude direct immediate invocation, nested mutations and aliases. Moving allocation changes identity and initialization timing; callback/getter effects and invocation frequency remain manual, not a purity proof."
     },
     {
-      "task": "rule-audit/eslint/prefer-module-level-schema",
+      "task": "rule-audit/typescript/prefer-module-level-schema",
       "family": "typescript",
       "ruleId": "prefer-module-level-schema",
       "state": "complete",
@@ -1897,7 +1897,7 @@
       "outcome": "Preserve existing error severity. Preserve per-call construction involving eager non-Zod calls, new expressions and tagged templates. Local schemas already support inference; module reuse requires review of initialization, identity and domain customization."
     },
     {
-      "task": "rule-audit/eslint/prefer-native-random-uuid",
+      "task": "rule-audit/typescript/prefer-native-random-uuid",
       "family": "typescript",
       "ruleId": "prefer-native-random-uuid",
       "state": "complete",
@@ -1905,7 +1905,7 @@
       "outcome": "Require native binding and withhold suggestions that discard comments."
     },
     {
-      "task": "rule-audit/eslint/prefer-non-nullable-collection",
+      "task": "rule-audit/typescript/prefer-non-nullable-collection",
       "family": "typescript",
       "ruleId": "prefer-non-nullable-collection",
       "state": "complete",
@@ -1913,7 +1913,7 @@
       "outcome": "Preserve existing error severity at user request. Recognized defaults and direct null-or-empty guards are modeling prompts, not equivalence proof. Preserve meaningful null states and compatibility; exclude unknown object escapes."
     },
     {
-      "task": "rule-audit/eslint/prefer-nullish-filter-predicate",
+      "task": "rule-audit/typescript/prefer-nullish-filter-predicate",
       "family": "typescript",
       "ruleId": "prefer-nullish-filter-predicate",
       "state": "complete",
@@ -1921,7 +1921,7 @@
       "outcome": "Staged at warning with an explicit editor suggestion using value !== null && value !== undefined. Broad primitives, falsy literals, custom filters, shadowed Boolean, any, unknown, generics, and untyped runs remain excluded; promotion requires a clean adoption window."
     },
     {
-      "task": "rule-audit/eslint/prefer-schema-for-api-payload",
+      "task": "rule-audit/typescript/prefer-schema-for-api-payload",
       "family": "typescript",
       "ruleId": "prefer-schema-for-api-payload",
       "state": "complete",
@@ -1929,7 +1929,7 @@
       "outcome": "Preserve existing error severity and conditional boundary advice. Limit JSON receiver inference to stable native fetch/Request/Response evidence, respect local dominating guards and native coercion/JSON roundtrips. Validator implementations and non-network reads require manual architecture review, not recursive validation."
     },
     {
-      "task": "rule-audit/eslint/prefer-semantic-colors",
+      "task": "rule-audit/typescript/prefer-semantic-colors",
       "family": "typescript",
       "ruleId": "prefer-semantic-colors",
       "state": "complete",
@@ -1937,7 +1937,7 @@
       "outcome": "Distinguish class-helper object keys from variant values and ignore URL payloads. Token ownership, visualization and brand choices remain manual policy."
     },
     {
-      "task": "rule-audit/eslint/prefer-server-actions",
+      "task": "rule-audit/typescript/prefer-server-actions",
       "family": "typescript",
       "ruleId": "prefer-server-actions",
       "state": "complete",
@@ -1945,7 +1945,7 @@
       "outcome": "Restrict transport evidence to stable unshadowed fetch or proven Axios bindings with known internal origin. Server Actions remain network boundaries needing authorization and validation."
     },
     {
-      "task": "rule-audit/eslint/prefer-shadcn-primitives",
+      "task": "rule-audit/typescript/prefer-shadcn-primitives",
       "family": "typescript",
       "ruleId": "prefer-shadcn-primitives",
       "state": "complete",
@@ -1953,7 +1953,7 @@
       "outcome": "Preserve native multiple selects, hidden controls, and unknown overriding props. Substitution must preserve behavior, accessibility and styling."
     },
     {
-      "task": "rule-audit/eslint/prefer-whole-object-assertion",
+      "task": "rule-audit/typescript/prefer-whole-object-assertion",
       "family": "typescript",
       "ruleId": "prefer-whole-object-assertion",
       "state": "complete",
@@ -1961,7 +1961,7 @@
       "outcome": "Retain the compatible rule name, stage this judgment-heavy rule as a warning, and remove automatic assertion merging. Recommend manual grouping only when property presence, identity, getter and proxy reads preserve intended semantics. Array recommendations remain manual. Remove the UI automatic-fix claim without treating shorter tests as proof of equivalent assertions. Follow-up matching resolves assertion helpers by their imported binding, not spelling alone."
     },
     {
-      "task": "rule-audit/eslint/prefer-zod-enum-validator",
+      "task": "rule-audit/typescript/prefer-zod-enum-validator",
       "family": "typescript",
       "ruleId": "prefer-zod-enum-validator",
       "state": "complete",
@@ -1969,7 +1969,7 @@
       "outcome": "Warning only, with manual migration to a named enum schema and an inferred type. Inspect complete synchronous single-parameter unknown/string validators built from strict equality branches or a closed switch. Exclude normalization, extra guards, transformed returns, collection membership and contextual, generic or method contracts. Preserve predicate versus parser behavior and intentional errors, initialization and constructor hooks."
     },
     {
-      "task": "rule-audit/eslint/prefer-zod-infer",
+      "task": "rule-audit/typescript/prefer-zod-infer",
       "family": "typescript",
       "ruleId": "prefer-zod-infer",
       "state": "complete",
@@ -1977,7 +1977,7 @@
       "outcome": "Require module-visible pairing and positive leaf agreement; unknown collections abstain. Input/output and domain identity remain manual. Same-named direct enum/union twins require exact literal-domain agreement and an unannotated const schema; enum alias migration remains manual."
     },
     {
-      "task": "rule-audit/eslint/prefer-zod-parse-output-type",
+      "task": "rule-audit/typescript/prefer-zod-parse-output-type",
       "family": "typescript",
       "ruleId": "prefer-zod-parse-output-type",
       "state": "complete",
@@ -1985,7 +1985,7 @@
       "outcome": "Keep the data-flow companion as a warning without autofix. Require an exact, bidirectionally assignable output type, one plain contract declaration, one unambiguous producing schema, and either a direct return or one immutable local result from parse or safeParse data. Defer only twins the established prefer-zod-infer predicate can prove, and abstain on mutable, multi-hop, helper-mediated, or uncertain ownership. Current decision: conditional schema-ownership advisory at WARNING without autofix; preserve independent public/domain contracts even when mutually assignable."
     },
     {
-      "task": "rule-audit/eslint/repeated-static-call-cases",
+      "task": "rule-audit/typescript/repeated-static-call-cases",
       "family": "typescript",
       "ruleId": "repeated-static-call-cases",
       "state": "complete",
@@ -1993,7 +1993,7 @@
       "outcome": "Exclude test-local captured values and preserve ordered scenarios. Runner-specific named subtests are alternatives to table helpers, not universal API requirements. Preserve existing error severity at user request; case independence and readability remain manual decisions."
     },
     {
-      "task": "rule-audit/eslint/require-assert-never",
+      "task": "rule-audit/typescript/require-assert-never",
       "family": "typescript",
       "ruleId": "require-assert-never",
       "state": "complete",
@@ -2001,7 +2001,7 @@
       "outcome": "Count only singleton case-value evidence for already covered domains; upstream missing-case exhaustiveness remains distinct."
     },
     {
-      "task": "rule-audit/eslint/require-fetch-timeout",
+      "task": "rule-audit/typescript/require-fetch-timeout",
       "family": "typescript",
       "ruleId": "require-fetch-timeout",
       "state": "complete",
@@ -2009,7 +2009,7 @@
       "outcome": "Retain the established selector while clarifying that an abort signal does not prove a deadline. Preserve signals carried by a proven native Request when an additional init object is passed; do not infer custom Request semantics."
     },
     {
-      "task": "rule-audit/eslint/require-port-for-service",
+      "task": "rule-audit/typescript/require-port-for-service",
       "family": "typescript",
       "ruleId": "require-port-for-service",
       "state": "complete",
@@ -2017,7 +2017,7 @@
       "outcome": "Resolve quoted literal method names. Retain intentional overlap with the advisory exported-interface rule, not a single-diagnostic ownership claim."
     },
     {
-      "task": "rule-audit/eslint/require-static-next-matcher",
+      "task": "rule-audit/typescript/require-static-next-matcher",
       "family": "typescript",
       "ruleId": "require-static-next-matcher",
       "state": "complete",
@@ -2025,7 +2025,7 @@
       "outcome": "Keep the existing severity. Resolve identifier, literal and static-computed matcher keys while leaving matcher syntax validity to Next.js; abstain on dynamic keys and unknown exported configuration."
     },
     {
-      "task": "rule-audit/eslint/require-use-form-default-values",
+      "task": "rule-audit/typescript/require-use-form-default-values",
       "family": "typescript",
       "ruleId": "require-use-form-default-values",
       "state": "complete",
@@ -2033,7 +2033,7 @@
       "outcome": "Keep the existing severity. Report only a proven Controller or useController binding to a stable useForm control that lacks non-undefined form-level defaultValues or values and lacks a field-level defaultValue. Abstain on dynamic spreads, computed options, provider-only context, wrappers and reassignment; this does not prove that a particular field path exists in form defaults."
     },
     {
-      "task": "rule-audit/eslint/require-use-server-in-actions-file",
+      "task": "rule-audit/typescript/require-use-server-in-actions-file",
       "family": "typescript",
       "ruleId": "require-use-server-in-actions-file",
       "state": "complete",
@@ -2041,7 +2041,7 @@
       "outcome": "Respect inline server directives and document direct named-export scope; inspect remaining mixed exports manually."
     },
     {
-      "task": "rule-audit/eslint/require-zod-form-validation",
+      "task": "rule-audit/typescript/require-zod-form-validation",
       "family": "typescript",
       "ruleId": "require-zod-form-validation",
       "state": "complete",
@@ -2049,7 +2049,7 @@
       "outcome": "Preserve existing error severity. Require resolved global/native FormData provenance and preserve shadowed constructors; existing manual normalization can remain an explicit reviewed boundary."
     },
     {
-      "task": "rule-audit/eslint/source-coupled-test",
+      "task": "rule-audit/typescript/source-coupled-test",
       "family": "typescript",
       "ruleId": "source-coupled-test",
       "state": "complete",
@@ -2057,7 +2057,7 @@
       "outcome": "Keep the existing severity. Use resolved lexical assertion bindings and static exact source paths, excluding unsupported lookalikes, reassigned aliases, unknown path wrappers and extraction without an assertion. Preserve exact justified raw-representation exceptions."
     },
     {
-      "task": "rule-audit/eslint/stepdown",
+      "task": "rule-audit/typescript/stepdown",
       "family": "typescript",
       "ruleId": "stepdown",
       "state": "complete",
@@ -2065,7 +2065,7 @@
       "outcome": "Remove class reordering autofixes; retain report-only same-scope caller guidance at the existing error severity. Review reflection, temporal dead zones, eager callers and module cycles manually."
     },
     {
-      "task": "rule-audit/eslint/store-insert-requires-on-conflict",
+      "task": "rule-audit/typescript/store-insert-requires-on-conflict",
       "family": "typescript",
       "ruleId": "store-insert-requires-on-conflict",
       "state": "complete",
@@ -2073,7 +2073,7 @@
       "outcome": "Restrict reports to the nearest statically replay-named callable. Describe manual conflict-policy review, not proven idempotence: WHERE NOT EXISTS can race and INSERT OR REPLACE can delete rows."
     },
     {
-      "task": "rule-audit/eslint/test-loops-over-literal-cases",
+      "task": "rule-audit/typescript/test-loops-over-literal-cases",
       "family": "typescript",
       "ruleId": "test-loops-over-literal-cases",
       "state": "complete",
@@ -2081,7 +2081,7 @@
       "outcome": "Preserve ordered and stateful scenarios; use named cases or subtests only where independent. Describe thrown assertions rather than claiming soft assertions always stop execution. Preserve existing error severity at user request and retain assertions following the loop in any enclosing test block."
     },
     {
-      "task": "rule-audit/eslint/test-phase-label-comment",
+      "task": "rule-audit/typescript/test-phase-label-comment",
       "family": "typescript",
       "ruleId": "test-phase-label-comment",
       "state": "complete",
@@ -2089,7 +2089,7 @@
       "outcome": "Retain the requested narrow style policy. Do not expand into behavioral prose or claim every heading is meaningless; neighboring comment owners retain distinct scopes."
     },
     {
-      "task": "rule-audit/eslint/prefer-named-complex-return-type",
+      "task": "rule-audit/typescript/prefer-named-complex-return-type",
       "family": "typescript",
       "ruleId": "prefer-named-complex-return-type",
       "state": "complete",
@@ -2097,7 +2097,7 @@
       "outcome": "Describe nested generic object return shapes and preserve function-local type parameters during manual type extraction. Preserve existing severity; no promotion or new autofix. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Name supported complex return shapes while preserving generic parameters. Polymorphic this and local typeof dependencies are excluded. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
     },
     {
-      "task": "rule-audit/eslint/prefer-module-level-refined-schema",
+      "task": "rule-audit/typescript/prefer-module-level-refined-schema",
       "family": "typescript",
       "ruleId": "prefer-module-level-refined-schema",
       "state": "complete",
@@ -2105,7 +2105,7 @@
       "outcome": "Retain warning. Abstain from eager external construction effects; callbacks, getters, local error customization and initialization order remain manual compatibility concerns."
     },
     {
-      "task": "rule-audit/eslint/prefer-multi-value-zod-literal",
+      "task": "rule-audit/typescript/prefer-multi-value-zod-literal",
       "family": "typescript",
       "ruleId": "prefer-multi-value-zod-literal",
       "state": "complete",
@@ -2113,7 +2113,7 @@
       "outcome": "Promote the default to ERROR under the explicitly requested strict policy. Explicit declared-Zod-4 modern literal policy. Preserve required union introspection and error-shape contracts with a reasoned local exception; no autofix. Preserve reasoned exact exceptions; no autofix."
     },
     {
-      "task": "rule-audit/eslint/prefer-named-callback-domain",
+      "task": "rule-audit/typescript/prefer-named-callback-domain",
       "family": "typescript",
       "ruleId": "prefer-named-callback-domain",
       "state": "complete",
@@ -2121,7 +2121,7 @@
       "outcome": "Restrict to directly exported type/interface declarations, excluding local descendants of exported implementations."
     },
     {
-      "task": "rule-audit/eslint/prefer-node-fs-promises",
+      "task": "rule-audit/typescript/prefer-node-fs-promises",
       "family": "typescript",
       "ruleId": "prefer-node-fs-promises",
       "state": "complete",
@@ -2129,7 +2129,7 @@
       "outcome": "Retain warning. Resolve actual node:fs bindings and preserve shadowed names. Async conversion requires a supported Node runtime and asynchronous caller contract; synchronous startup or required framework APIs may remain intentional."
     },
     {
-      "task": "rule-audit/eslint/prefer-node-crypto-hash",
+      "task": "rule-audit/typescript/prefer-node-crypto-hash",
       "family": "typescript",
       "ruleId": "prefer-node-crypto-hash",
       "state": "complete",
@@ -2137,7 +2137,7 @@
       "outcome": "Document supported runtime and encoding requirements, including Buffer versus hexadecimal output; retain the bounded one-shot policy. Preserve existing severity; no promotion or new autofix."
     },
     {
-      "task": "rule-audit/eslint/prefer-shared-zod-enum",
+      "task": "rule-audit/typescript/prefer-shared-zod-enum",
       "family": "typescript",
       "ruleId": "prefer-shared-zod-enum",
       "state": "complete",
@@ -2145,7 +2145,7 @@
       "outcome": "Retain warning. Report only exact repeated same-order finite domains without customization arguments and prefer an existing module-level named schema when available. Equal values still do not establish one business domain; customized errors and ownership remain manual review."
     },
     {
-      "task": "rule-audit/eslint/prefer-switch-for-repeated-equality",
+      "task": "rule-audit/typescript/prefer-switch-for-repeated-equality",
       "family": "typescript",
       "ruleId": "prefer-switch-for-repeated-equality",
       "state": "complete",
@@ -2153,7 +2153,7 @@
       "outcome": "Require a bare identifier selector. Case effects, mutation and control flow remain manual; no automatic rewrite. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Only lexically resolved local subjects and primitive literal equality cases qualify; getters, enum/named constants, RegExp values and unresolved globals are excluded. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
     },
     {
-      "task": "rule-audit/eslint/require-interface-for-exported-class",
+      "task": "rule-audit/typescript/require-interface-for-exported-class",
       "family": "typescript",
       "ruleId": "require-interface-for-exported-class",
       "state": "complete",
@@ -2161,7 +2161,7 @@
       "outcome": "Exclude JavaScript where implements syntax is unavailable. Retain explicit exported-contract policy and intentional overlap with injected-service enforcement; imported framework contracts need manual review. Preserve existing severity; no promotion or new autofix. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.33.0 / TypeScript 16.8.0 / Standards 8.52.0. Exported concrete public behavior needs an explicit substitutable contract; data-only values and static factories remain excluded, and framework contracts receive explicit local review. No unsafe autofix or universal semantic-precision claim; preserve required contracts with the documented alternative or reasoned exact-code exception."
     },
     {
-      "task": "rule-audit/eslint/require-sql-access-class",
+      "task": "rule-audit/typescript/require-sql-access-class",
       "family": "typescript",
       "ruleId": "require-sql-access-class",
       "state": "complete",
@@ -2169,7 +2169,7 @@
       "outcome": "Exclude stable native Map/WeakMap/URLSearchParams bindings. Retain warning-level class ownership preference and state conventional database names are heuristic; free functions can also inject dependencies."
     },
     {
-      "task": "rule-audit/eslint/sole-export-matches-filename",
+      "task": "rule-audit/typescript/sole-export-matches-filename",
       "family": "typescript",
       "ruleId": "sole-export-matches-filename",
       "state": "complete",
@@ -2217,7 +2217,7 @@
       "outcome": "Renamed the warning to match its narrow contract and retained the old selector as an alias. It now reports only long contiguous standalone or block-comment runs that explicitly narrate nearby DDL, while excluding generated/test SQL, dollar-quoted bodies, inline comments, directives, durable references, lists, and operational constraints."
     },
     {
-      "task": "rule-audit/eslint/excessive-commentary",
+      "task": "rule-audit/typescript/excessive-commentary",
       "family": "typescript",
       "ruleId": "excessive-commentary",
       "state": "complete",
@@ -2241,7 +2241,7 @@
       "outcome": "Promote the default to ERROR under the explicitly requested strict policy. Exact normalized active index duplicates block. Prefix and unique/nonunique access-path advice stays WARNING because query plans differ. Preserve reasoned exact exceptions; no autofix."
     },
     {
-      "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",
+      "task": "rule-audit/typescript/require-pascal-case-zod-schema-name",
       "family": "typescript",
       "ruleId": "require-pascal-case-zod-schema-name",
       "state": "complete",
@@ -2385,7 +2385,7 @@
       "outcome": "Promote the default to ERROR under the explicitly requested strict policy. Use camelCase for source-owned unquoted properties. Quote external snake_case keys and retain bracket access; no renaming of wire contracts. Preserve reasoned exact exceptions; no autofix."
     },
     {
-      "task": "rule-audit/eslint/prefer-nominal-id-types",
+      "task": "rule-audit/typescript/prefer-nominal-id-types",
       "family": "typescript",
       "ruleId": "prefer-nominal-id-types",
       "state": "complete",
@@ -2593,7 +2593,7 @@
       "outcome": "Promote the default to ERROR under the explicitly requested strict policy. Consume-or-explain the returned copy. Intentional copy-hook effects require an exact exception; no call deletion fix. Preserve reasoned exact exceptions; no autofix."
     },
     {
-      "task": "rule-audit/eslint/no-duplicate-test-case",
+      "task": "rule-audit/typescript/no-duplicate-test-case",
       "family": "typescript",
       "ruleId": "no-duplicate-test-case",
       "state": "complete",
@@ -2638,7 +2638,7 @@
       "ruleId": "named-child-schema-type",
       "state": "complete",
       "evidence": "131 focused semantic and native compiler cases cover exact complete child annotations, import provenance, comment/cycle exclusions, adjacent owner precedence and inherited boolean review. Native compiler probes preserve input/output/default/readonly contracts and isolated declaration emit. The strict/recommended preset registration is validated separately. A previously inspected positive file from an already-local immutable snapshot was reverified: one file, 126,232 bytes, three individually inspected findings, zero known predicate violations or duplicate locations, and 12 annotation lines / 111 bytes removable by the three manual replacements. This is a targeted positive sample, not unbiased fleet evidence. Private identity, source and pins remain owner-only. Fifteen alternating warm pairs after three warmups measured 37.67ms baseline and 38.50ms enabled medians with overlapping ranges; no speedup or fleet performance claim. The native compiler reports 6.0.3 while its declared package alias is 6.0.2; the actual locked tool was used. Follow-up 2026-10-12: Thirty substantive promotion passes plus one convergence admission; five independent judge rounds approve the final bounded source scope. 989 expanded Python cases and 35 nominal TypeScript cases pass, with strict types and native lint. The judge independently verified 459 Python cases and four fresh-source typed TypeScript projects. Across the campaign, 128 inspected corpus findings support their policy predicates and manual remedies; API compatibility intent remains unclassified and no semantic TP/FN estimate is claimed. Final corpus, performance, repository and exact-head CI gate state is recorded in packages/python/benchmarks/error-promotion-30-passes.json.",
-      "outcome": "Stage eslint:named-child-schema-type at warning severity without autofix. Replace only an exactly repeated full local child-schema generic argument with typeof ChildSchema, preserving outer annotations and runtime initializers. Imported/unknown children, broad contracts, type queries, cycles, mutable bindings, comments and generated source abstain. Independently pinned exported contracts require manual review. Inherited compiler boolean review remains guidance and native tests in the existing tsconfig-policy suite, with no additional configuration detector or runner. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Name the exact copied child schema type with typeof Child or a shared explicit alias. Preserve independently pinned public types and runtime schema identity. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
+      "outcome": "Stage oxlint:named-child-schema-type at warning severity without autofix. Replace only an exactly repeated full local child-schema generic argument with typeof ChildSchema, preserving outer annotations and runtime initializers. Imported/unknown children, broad contracts, type queries, cycles, mutable bindings, comments and generated source abstain. Independently pinned exported contracts require manual review. Inherited compiler boolean review remains guidance and native tests in the existing tsconfig-policy suite, with no additional configuration detector or runner. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Name the exact copied child schema type with typeof Child or a shared explicit alias. Preserve independently pinned public types and runtime schema identity. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
     },
     {
       "task": "rule-audit/python/no-impossible-pydantic-field-bounds",
@@ -3295,7 +3295,7 @@
       "outcome": "Retain SARJ130 WARNING without autofix. Require SQL proof only for explicit supported declarations; do not invent bounds from column names. Abstain on unknown constraints and inherited, computed or user-defined type contracts. Broader independent corpus calibration remains pending."
     },
     {
-      "task": "rule-audit/eslint/no-server-file-uploads",
+      "task": "rule-audit/typescript/no-server-file-uploads",
       "family": "typescript",
       "ruleId": "no-server-file-uploads",
       "state": "pending",
@@ -3421,6 +3421,54 @@
       "state": "pending",
       "evidence": "Native controls pair recognized cloud placement fields with configuration defaults, caller arguments, labels, DNS zones and global selectors. Immutable isolated calibration scans 613 public Terraform files and 18 private snapshot files. All 15 location findings were inspected: 13 repeated public example-provider literals and two private placements bypassing an existing region input. The private candidate removes both errors. Review reproduced DNS-zone false positives for Cloudflare and Hetzner; schema-scoped corrections and paired regression cases preserve real placement checks. Repeated examples are not independent precision observations, and finite inspected hits do not establish fleet recall. Private identities and source remain local.",
       "outcome": "Introduce SARJ219 at ERROR under the explicit user-requested placement-input policy and its exact error-first admission. Reuse existing inputs before adding variables; preserve defaults/tfvars/caller configuration boundaries and provide no state-changing autofix. This is a configuration-ownership policy, not Terraform validity. Unknown functions and cross-file/object aliases remain limits. Full native verification, exact-head CI and consumer qualification remain required; broader field calibration is pending."
+    },
+    {
+      "task": "rule-audit/typescript/no-oxlint-directive",
+      "family": "typescript",
+      "ruleId": "no-oxlint-directive",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-disable-enable-pair",
+      "family": "typescript",
+      "ruleId": "directive-disable-enable-pair",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-no-aggregating-enable",
+      "family": "typescript",
+      "ruleId": "directive-no-aggregating-enable",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-no-duplicate-disable",
+      "family": "typescript",
+      "ruleId": "directive-no-duplicate-disable",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-no-restricted-disable",
+      "family": "typescript",
+      "ruleId": "directive-no-restricted-disable",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-no-unused-enable",
+      "family": "typescript",
+      "ruleId": "directive-no-unused-enable",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-no-use",
+      "family": "typescript",
+      "ruleId": "directive-no-use",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/directive-require-description",
+      "family": "typescript",
+      "ruleId": "directive-require-description",
+      "state": "pending"
     }
   ]
 }

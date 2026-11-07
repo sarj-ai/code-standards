@@ -1,31 +1,47 @@
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import rule, {
-  NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION,
-} from "../../src/rules/no-growing-array-spread-in-loop.js";
+import rule from "../../src/rules/no-growing-array-spread-in-loop.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
+const COPY_PREFIX_EXAMPLE =
+  "export function collect(input: string[]) { let rows: string[] = []; for (const row of input) { rows = [...rows, row]; } return rows; }";
+const APPEND_ROWS_EXAMPLE =
+  "export function collect(input: string[]) { const rows: string[] = []; for (const row of input) { rows.push(row); } return rows; }";
+
 const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+  eslintCompat: true,
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
-TESTER.run("no-growing-array-spread-in-loop", rule, {
+TESTER.run("no-growing-array-spread-in-loop without types", rule, {
+  valid: [{ code: COPY_PREFIX_EXAMPLE, settings: { sarj: { typeAware: false } } }],
+  invalid: [],
+});
+
+const TYPED_TESTER = new RuleTester({
+  eslintCompat: true,
+  cwd: join(import.meta.dirname, "..", "fixtures"),
+  languageOptions: { parserOptions: { lang: "ts" } },
+});
+
+const TYPE_AWARE = { sarj: { typeAware: true } };
+function typed(cases: RuleTester.TestCases): RuleTester.TestCases {
+  return {
+    // eslint-disable-next-line @sarj/no-runtime-typeof -- Oxlint's RuleTester takes a valid case as a bare code string or an untagged case object.
+    valid: cases.valid.map((test) => ({ ...(typeof test === "string" ? { code: test } : test), settings: TYPE_AWARE })),
+    invalid: cases.invalid.map((test) => ({ ...test, settings: TYPE_AWARE })),
+  };
+}
+
+TYPED_TESTER.run("no-growing-array-spread-in-loop", rule, typed({
   valid: [
-    NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION.examples[1].files[0].source,
+    APPEND_ROWS_EXAMPLE,
     "function collect(input: string[]) { for (const row of input) { let rows: string[] = []; rows = [...rows, row]; } }",
     "function collect(input: string[]) { let rows: string[] = []; for (const row of input) { rows = []; rows = [...rows, row]; } return rows; }",
     "function collect(input: string[]) { let rows: string[] = []; const snapshots: string[][] = []; for (const row of input) { snapshots.push(rows); rows = [...rows, row]; } return rows; }",
@@ -44,8 +60,7 @@ TESTER.run("no-growing-array-spread-in-loop", rule, {
   ],
   invalid: [
     {
-      code: NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION.examples[0].files[0]
-        .source,
+      code: COPY_PREFIX_EXAMPLE,
       output: null,
       errors: [{ messageId: "copy" }],
     },
@@ -55,16 +70,9 @@ TESTER.run("no-growing-array-spread-in-loop", rule, {
       errors: [{ messageId: "copy" }],
     },
   ],
-});
+}));
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-growing-array-spread-in-loop without types", rule, {
-  valid: [
-    NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION.examples[0].files[0].source,
-  ],
-  invalid: [],
-});
-TESTER.run("no-growing-array-spread-in-loop audited boundaries", rule, {
+TYPED_TESTER.run("no-growing-array-spread-in-loop audited boundaries", rule, typed({
   valid: [
     {
       name: "preserves fixed literal loop costs",
@@ -72,8 +80,9 @@ TESTER.run("no-growing-array-spread-in-loop audited boundaries", rule, {
     },
   ],
   invalid: [],
-});
-TESTER.run("no-growing-array-spread-in-loop bounded sources", rule, {
+}));
+
+TYPED_TESTER.run("no-growing-array-spread-in-loop bounded sources", rule, typed({
   valid: [
     "function collect() { const input = ['a', 'b']; let rows: string[] = []; for (const row of input) { rows = [...rows, row]; } return rows; }",
     "function collect() { const fixed = ['a', 'b']; const input = fixed; let rows: string[] = []; for (const row of input) { rows = [...rows, row]; } return rows; }",
@@ -89,4 +98,4 @@ TESTER.run("no-growing-array-spread-in-loop bounded sources", rule, {
       errors: [{ messageId: "copy" }],
     },
   ],
-});
+}));

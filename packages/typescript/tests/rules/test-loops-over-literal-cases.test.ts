@@ -1,16 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/test-loops-over-literal-cases.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION } from "../../src/rules/test-loops-over-literal-cases.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("test-loops-over-literal-cases", rule, {
@@ -25,7 +17,7 @@ RULE_TESTER.run("test-loops-over-literal-cases", rule, {
     { name: "preserves cumulative object method mutations", filename: TEST_FILE, code: "test('queue', () => { const queue=makeQueue(); for (const n of [1,2]) {queue.push(n); expect(queue.size).toBe(n);} });" },
     { name: "preserves captured state inside local closure", filename: TEST_FILE, code: "test('sequence', () => { let count=0; const next=()=>++count; for (const n of [1,2]) {expect(next()).toBe(n);} });" },
     { name: "preserves injected shared fixture", filename: TEST_FILE, code: "test('queue', ({queue}) => {for (const n of [1,2]) {queue.push(n); expect(queue.size).toBe(n);} });" },
-    { name: "public no-match example", filename: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[0].focusPath, code: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/parser.test.ts", code: "test.each(['a', 'b'])('parses %s', (value) => { expect(parse(value)).toBe(value); });" },
     {
       name: "allows a single inline case",
       filename: TEST_FILE,
@@ -113,7 +105,7 @@ RULE_TESTER.run("test-loops-over-literal-cases", rule, {
     { name: "binding ownership: loop-assertion-alias", filename: TEST_FILE, code: "import {test,expect as verify} from 'vitest';test('case',()=>{for(const value of ['a','b']) {verify(parse(value)).toBe(value);} });", errors: [{ messageId: "literalCaseLoop" }] },
     { name: "binding ownership: node-default-loop-and-assert", filename: TEST_FILE, code: "import check from 'node:test';import verify from 'node:assert/strict';check('case',()=>{for(const value of [1,2]){verify.equal(parse(value),value)}})", errors: [{ messageId: "literalCaseLoop" }] },
 
-    { name: "public match example", filename: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[1].focusPath, code: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "literalCaseLoop" }] },
+    { name: "public match example", filename: "src/parser.test.ts", code: "test('parses', () => { for (const value of ['a', 'b']) { expect(parse(value)).toBe(value); } });", errors: [{ messageId: "literalCaseLoop" }] },
     {
       name: "reports scalar literal cases",
       filename: TEST_FILE,

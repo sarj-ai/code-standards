@@ -1,22 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/no-credential-in-browser-storage.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
-
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
-});
-
-RULE_TESTER.run("no-credential-in-browser-storage", rule, {
+ruleTester().run("no-credential-in-browser-storage", rule, {
   valid: [
     "localStorage.setItem('theme', 'dark');",
     "localStorage.setItem('nextPageToken', cursor);",
@@ -30,6 +16,7 @@ RULE_TESTER.run("no-credential-in-browser-storage", rule, {
     "const page = localStorage.getItem('authToken');",
     "localStorage.removeItem('authToken');",
     "localStorage.lastVisited = Date.now();",
+    { name: "server-cookie", filename: "src/theme.ts", code: "localStorage.setItem(\"sidebar-collapsed\", \"true\");\n" },
   ],
   invalid: [
     {
@@ -55,6 +42,12 @@ RULE_TESTER.run("no-credential-in-browser-storage", rule, {
     {
       code: "window.document.cookie = 'password=' + value;",
       errors: [{ messageId: "noCredentialInBrowserStorage", data: { key: "password" } }],
+    },
+    {
+      name: "token-in-local-storage",
+      filename: "src/session.ts",
+      code: "export function remember(token: string): void {\n  localStorage.setItem(\"accessToken\", token);\n}\n",
+      errors: [{ messageId: "noCredentialInBrowserStorage" }],
     },
   ],
 });

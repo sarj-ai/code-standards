@@ -8,8 +8,8 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { RULES } from "../src/index.js";
-import type { ExampleFile, RuleExample } from "../src/rules/_docs.js";
+import { RULES } from "../src/catalog.js";
+import type { ExampleFile, RuleExample } from "../src/documentation.js";
 import { verifyRuleExamples } from "../src/verify-rule-examples.js";
 
 interface DisplayExample {
@@ -30,15 +30,14 @@ const SETUP = { installedDependencyRoot: fileURLToPath(new URL("../", import.met
 
 describe("every shipped rule's authored examples", () => {
   it.each(DOCUMENTED_RULES)("%s executes its matching, nonmatching and private examples", async (_id, rule) => {
-    await expect(verifyRuleExamples(rule, SETUP)).resolves.toBe(rule.documentation?.examples.length);
+    await expect(verifyRuleExamples(rule, SETUP)).resolves.toBe(rule.documentation.examples.length);
   });
 });
 
 describe("every shipped rule's displayed examples", () => {
   it.each(DOCUMENTED_RULES)("%s preserves behavior after documentation formatting", async (id, rule) => {
     const spec = rule.documentation;
-    if (spec === undefined) throw new Error(`${id}: missing source-owned examples`);
-    const display = DISPLAY.rules[`eslint:${id}`];
+    const display = DISPLAY.rules[spec.key];
     if (display === undefined) throw new Error(`${id}: missing displayed examples`);
     const examples = spec.examples.filter((example) => example.public === true).map((example) => {
       const formatted = display.examples.find((item) => item.id === example.id);
@@ -72,7 +71,7 @@ async function formatDisplayedFixedSource(file: ExampleFile, example: RuleExampl
 }
 
 function focusSource(ruleId: keyof typeof RULES, exampleId: string): string {
-  const example = RULES[ruleId].documentation?.examples.find((item) => item.id === exampleId);
+  const example = RULES[ruleId].documentation.examples.find((item) => item.id === exampleId);
   const source = example?.files.find((file) => file.path === example.focusPath)?.source;
   if (source === undefined) throw new Error(`${ruleId}:${exampleId}: missing source`);
   return source;

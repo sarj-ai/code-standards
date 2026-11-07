@@ -21,13 +21,13 @@ if TYPE_CHECKING:
 )
 def test_doctor_accepts_actual_local_plugin_json_objects(tmp_path: Path, extra: dict[str, JsonValue]) -> None:
     name = "@sarj/eslint-plugin"
-    version = manifest.eslint_peers()[name]
+    version = manifest.typescript_peers()[name]
     (tmp_path / "package.json").write_text(json.dumps({"devDependencies": {name: "file:plugin"}}))
     plugin = tmp_path / "plugin/package.json"
     plugin.parent.mkdir()
     plugin.write_text(json.dumps({"name": name, "version": version, **extra}))
 
-    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.eslint.plugin"]
+    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.typescript.plugin"]
 
     assert len(findings) == 1
     assert findings[0].level is doctor.Level.OK
@@ -38,7 +38,7 @@ def test_doctor_does_not_attest_unproved_json_object_keys(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
     name = "@sarj/eslint-plugin"
-    version = manifest.eslint_peers()[name]
+    version = manifest.typescript_peers()[name]
     (tmp_path / "package.json").write_text(json.dumps({"devDependencies": {name: "file:plugin"}}))
     plugin = tmp_path / "plugin/package.json"
     plugin.parent.mkdir()
@@ -62,7 +62,7 @@ def test_doctor_does_not_attest_unproved_json_object_keys(
         doctor, "parse_json", decoder
     )
 
-    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.eslint.plugin-unverified"]
+    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.typescript.plugin-unverified"]
 
     assert len(findings) == 1
     assert findings[0].level is doctor.Level.WARN

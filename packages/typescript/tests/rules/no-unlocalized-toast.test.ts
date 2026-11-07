@@ -1,20 +1,8 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/no-unlocalized-toast.js";
+import { ruleTester } from "./_tester.js";
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true } } },
-  defaultFilenames: { ts: "/repo/src/action.ts", tsx: "/repo/src/action.tsx" },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 
 RULE_TESTER.run("no-unlocalized-toast", rule, {
   valid: [
@@ -32,6 +20,11 @@ RULE_TESTER.run("no-unlocalized-toast", rule, {
     },
     'import { toast } from "sonner"; toast.dismiss("request-id");',
     'import { toast } from "sonner"; toast.promise(operation, { loading: "Loading" });',
+    {
+      name: "literal-message-dynamic-member: Unknown member access does not establish API identity",
+      filename: "src/message.tsx",
+      code: 'import { toast } from "sonner"; toast[auditDynamicMember]("Saved");',
+    },
   ],
   invalid: [
     { name: "retains a literal toast message through satisfies", code: 'import { toast } from "sonner"; toast.success(("Saved" satisfies string));', errors: [{ messageId: "unlocalized" }] },
@@ -50,39 +43,11 @@ RULE_TESTER.run("no-unlocalized-toast", rule, {
       options: [{ functions: [{ module: "notifications", export: "show" }] }],
       errors: [{ messageId: "unlocalized" }],
     },
+    {
+      name: "literal-message-static-member: Static member access preserves the rule outcome",
+      filename: "src/message.tsx",
+      code: 'import { toast } from "sonner"; toast["success"]("Saved");',
+      errors: [{ messageId: "unlocalized" }],
+    },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "literal-message-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/message.tsx",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/message.tsx",
-        "source": "import { toast } from \"sonner\"; toast[\"success\"](\"Saved\");"
-      }
-    ]
-  },
-  {
-    "id": "literal-message-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/message.tsx",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/message.tsx",
-        "source": "import { toast } from \"sonner\"; toast[auditDynamicMember](\"Saved\");"
-      }
-    ]
-  }
-] } });
 });

@@ -195,7 +195,7 @@ def test_preservation_skips_directive_cleanup_before_repository_or_tool_access(t
     runner = FakeRolloutRunner()
 
     assert (
-        rollout.prepare_unused_eslint_directives(
+        rollout.prepare_unused_oxlint_directives(
             tmp_path / "not-cloned",
             runner,
             (),

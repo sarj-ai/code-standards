@@ -39,12 +39,20 @@ class RuleOrigin(StrEnum):
 
 class RuleEngine(StrEnum):
     CHECKOV = "checkov"
-    ESLINT = "eslint"
     IAC = "iac"
+    OXLINT = "oxlint"
     PYTHON = "python"
     SQL = "sql"
     TEXT = "text"
     ZIZMOR = "zizmor"
+
+    @classmethod
+    def _missing_(
+        cls,
+        value: object,  # sarj-noqa: SARJ528 -- Enum lookup hands every unmatched raw value to this hook.
+    ) -> RuleEngine | None:
+        # Selectors and baselines written for the ESLint engine stay valid input.
+        return cls.OXLINT if value == "eslint" else None
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -80,7 +88,7 @@ class RuleSelector:
 
     @property
     def native_rule_id(self) -> str:
-        if self.engine is RuleEngine.ESLINT:
+        if self.engine is RuleEngine.OXLINT:
             return f"@sarj/{self.rule_id}"
         return str(self.rule_id)
 

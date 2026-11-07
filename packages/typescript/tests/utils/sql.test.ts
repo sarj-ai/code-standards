@@ -1,0 +1,257 @@
+// vitest: shared-module-graph
+import { describe, expect, it } from "vitest";
+
+import type { Node } from "../../src/types.js";
+import { createSqlListener, sqlSingleQuotedRanges, sqlTextOf, stripSqlNoise } from "../../src/utils/sql.js";
+import { lintOnce } from "./_probe.js";
+
+function dispatched(code: string): string[] {
+  const seen: { readonly sql: string; readonly start: number }[] = [];
+  lintOnce(code, {
+    meta: { type: "problem", schema: [], messages: {} },
+    createOnce() {
+      return createSqlListener((sql, node) => {
+        seen.push({ sql, start: node.range[0] });
+      });
+    },
+  });
+  return seen.toSorted((left, right) => left.start - right.start).map((entry) => entry.sql);
+}
+
+describe("createSqlListener hands each whole statement over exactly once", () => {
+  it.each([
+    'void "SELECT * FROM users";',
+    'void ("SELECT " + "* FROM users");',
+    'void ("SELECT * FROM users" as string);',
+    'void (("SELECT * FROM users" as string) satisfies string);',
+    'void `SELECT * FROM users`;',
+  ])("ignores discarded SQL text: %s", code => {
+    expect(dispatched(code)).toEqual([]);
+  });
+
+  it.each([
+    'void db.query("SELECT * FROM users");',
+    'void `${db.query("SELECT * FROM users")}`;',
+  ])("still scans executed queries: %s", code => {
+    expect(dispatched(code)).toEqual(["SELECT * FROM users"]);
+  });
+
+  it("reports a two-operand concatenation once", () => {
+    expect(dispatched(`db.prepare("SELECT a " + "FROM t");`)).toEqual(["SELECT a FROM t"]);
+  });
+
+  it("reports a three-operand concatenation once, not once per fragment", () => {
+    expect(dispatched(`db.prepare("SELECT a " + "FROM t " + "WHERE id = ?");`)).toEqual([
+      "SELECT a FROM t WHERE id = ?",
+    ]);
+  });
+
+  it("reconstructs erased concatenation operands as one statement", () => {
+    expect(dispatched('db.query(("SEL" as string) + ("ECT * FROM users" satisfies string));')).toEqual(["SELECT * FROM users"]);
+  });
+
+  it("reconstructs wrapped fragment arrays and computed native joins", () => {
+    expect(dispatched('db.query((( (["SEL", ("ECT * FROM users" as string)] as string[]))["join"] as Function)(""));')).toEqual(["SELECT * FROM users"]);
+  });
+
+  it("does not infer custom or unknown join members", () => {
+    expect(dispatched('db.query(["SEL", "ECT * FROM users"][method](""));')).toEqual(["SEL", "ECT * FROM users", ""]);
+  });
+
+  it("keeps nested query calls visible in wrapped joined fragments", () => {
+    expect(dispatched('logger.info(([`value ${db.query("SELECT * FROM audit")}`] as string[]).join(" "));')).toEqual(["value ?", "SELECT * FROM audit"]);
+  });
+
+  it("reports a joined fragment array once, not once per element", () => {
+    expect(dispatched(`db.prepare(["INSERT INTO t", "VALUES (?)", "ON CONFLICT DO NOTHING"].join(" "));`)).toEqual([
+      "INSERT INTO t VALUES (?) ON CONFLICT DO NOTHING",
+    ]);
+  });
+
+  it("does not treat an unjoined array as one statement", () => {
+    expect(dispatched(`const names = ["a", "b"];`)).toEqual(["a", "b"]);
+  });
+
+  it("preserves an empty join separator instead of inserting spaces", () => {
+    expect(dispatched(`db.query(["SEL", "ECT id FROM users"].join(""));`)).toEqual(["SELECT id FROM users"]);
+  });
+
+  it("preserves a newline join separator after a line comment", () => {
+    expect(dispatched(`db.query(["SELECT id FROM users -- note", "LIMIT 1 OFFSET 1"].join("\\n"));`)).toEqual([
+      "SELECT id FROM users        \nLIMIT 1 OFFSET 1",
+    ]);
+  });
+
+  it("uses the native comma separator when join has no arguments", () => {
+    expect(dispatched(`db.query(["SELECT id", "name FROM users"].join());`)).toEqual(["SELECT id,name FROM users"]);
+  });
+
+  it("does not scan an unused single-element join separator as SQL", () => {
+    expect(dispatched(`const note = ["ready"].join("SELECT * FROM users");`)).toEqual(["ready"]);
+  });
+
+  it("abstains from reconstructed fragments when the separator is unknown", () => {
+    expect(dispatched(`db.query(["SELECT * FROM users", "WHERE id = 1"].join(separator));`)).toEqual([]);
+  });
+
+  it("keeps a query executed while evaluating an unknown separator", () => {
+    expect(dispatched(`db.query(["SELECT id FROM users"].join(db.query("SELECT * FROM audit")));`)).toEqual(["SELECT * FROM audit"]);
+  });
+
+  it("does not infer native nested-array coercion from the standalone fragment-builder contract", () => {
+    expect(dispatched(`db.query([["SELECT * FROM users"], ["WHERE id = 1"]].join(" "));`)).toEqual([]);
+  });
+
+  it("does not infer native nested-array coercion through erased wrappers", () => {
+    expect(dispatched('db.query([(["SELECT * FROM users"] as string[])].join(" "));')).toEqual([]);
+  });
+
+  it("does not consume executed queries inside a template substitution", () => {
+    expect(dispatched('logger.info(`value ${db.query("SELECT * FROM users")}`);')).toEqual([
+      "value ?", "SELECT * FROM users",
+    ]);
+  });
+
+  it("does not consume executed queries inside a joined template substitution", () => {
+    expect(dispatched('logger.info([`value ${db.query("SELECT * FROM users")}`].join(" "));')).toEqual([
+      "value ?", "SELECT * FROM users",
+    ]);
+  });
+
+  it("dispatches distinct outer and inner SQL statements once each", () => {
+    expect(dispatched('db.query(`SELECT * FROM users WHERE id = ${db.query("SELECT * FROM audit")}`);')).toEqual([
+      "SELECT * FROM users WHERE id = ?", "SELECT * FROM audit",
+    ]);
+  });
+});
+
+describe("sqlTextOf reconstructs the shapes TypeScript SQL actually takes", () => {
+  it.each([
+    ['db.prepare("SELECT 1");', ["SELECT 1"]],
+    ["db.prepare(`SELECT ${col} FROM t`);", ["SELECT ? FROM t"]],
+    ["sql`SELECT 1`;", ["SELECT 1"]],
+  ])("reads %s", (code, expected) => {
+    expect(dispatched(code)).toEqual(expected);
+  });
+
+  it("substitutes the parameter marker rather than dropping the expression", () => {
+    expect(dispatched("db.prepare(`LIMIT ? OFFSET ${n}`);")).toEqual(["LIMIT ? OFFSET ?"]);
+  });
+
+  it("preserves an interpolated VALUES payload as a parameter marker", () => {
+    expect(dispatched("db.prepare(`INSERT INTO t VALUES ${rows}`);")).toEqual(["INSERT INTO t VALUES ?"]);
+  });
+
+  it("refuses a concatenation with a non-string operand", () => {
+    expect(sqlTextOf({ type: "Identifier" } as unknown as Node)).toBeNull();
+  });
+});
+
+describe("stripSqlNoise masks values and comments, in one left-to-right pass", () => {
+  it.each(["SELECT 'one\rtwo', live FROM entries", "SELECT /* comment\rcontinuation */ live FROM entries", "-- commentary\rSELECT live FROM entries"])("preserves all newline offsets in %j", (sql) => {
+    const masked = stripSqlNoise(sql);
+    expect(masked.length).toBe(sql.length);
+    expect(masked).toContain("live");
+    expect([...masked].flatMap((character, index) => /[\r\n]/u.test(character) ? [index] : [])).toEqual([...sql].flatMap((character, index) => /[\r\n]/u.test(character) ? [index] : []));
+  });
+  it("can retain opaque values as projection tokens", () => {
+    const sql = 'SELECT"units" * "price" FROM entries';
+    const masked = stripSqlNoise(sql, { preserveQuotedTokens: true });
+    expect(masked).toBe('SELECT?       * ?       FROM entries');
+    expect(masked.length).toBe(sql.length);
+  });
+  it.each(["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])("continues E-string escaping across %j", (gap) => {
+    const literal = String.raw`'it\'s SELECT * FROM hidden'`;
+    const sql = `SELECT E'seed'${gap}${literal}, * FROM visible`;
+    const masked = stripSqlNoise(sql);
+    expect(masked).not.toContain("hidden");
+    expect(masked).toContain(", * FROM visible");
+    expect(masked.length).toBe(sql.length);
+    expect(masked.split("\n").map((line) => line.length)).toEqual(sql.split("\n").map((line) => line.length));
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'seed'", literal]);
+  });
+
+  it("keeps separate expressions in separate quoted ranges", () => {
+    const sql = "SELECT E'seed' ||\n'plain' AS label, * FROM visible";
+    expect(stripSqlNoise(sql)).toContain("AS label, * FROM visible");
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'seed'", "'plain'"]);
+  });
+
+  it.each(["E", "e"])("keeps escaped apostrophes inside PostgreSQL %s strings", (prefix) => {
+    const literal = String.raw`'it\'s SELECT *\nFROM hidden'`;
+    const sql = `SELECT ${prefix}${literal}, id FROM visible`;
+    expect(stripSqlNoise(sql)).toBe(`SELECT ${prefix}${" ".repeat(literal.length)}, id FROM visible`);
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual([literal]);
+  });
+
+  it.each(["текст", "😀"])("masks Unicode dollar tag %s without swallowing following SQL", (tag) => {
+    const literal = `$${tag}$SELECT *\nFROM hidden$${tag}$`;
+    const sql = `SELECT ${literal}, * FROM visible`;
+    const masked = literal.split("\n").map((line) => " ".repeat(line.length)).join("\n");
+    expect(stripSqlNoise(sql)).toBe(`SELECT ${masked}, * FROM visible`);
+  });
+
+  it("keeps Unicode dollar-containing identifiers and numbered parameters visible", () => {
+    const sql = "SELECT α$tag$ FROM visible WHERE id=$1";
+    expect(stripSqlNoise(sql)).toBe(sql);
+  });
+
+  it.each([String.raw`'it\'s SELECT * FROM hidden'`, String.raw`"it\"s SELECT * FROM hidden"`])(
+    "keeps escaped ordinary quotes inside their literal: %s",
+    (literal) => {
+      const sql = `SELECT ${literal}, id FROM visible`;
+      expect(stripSqlNoise(sql)).not.toContain("hidden");
+      expect(stripSqlNoise(sql)).toContain(", id FROM visible");
+    },
+  );
+
+  it("masks nested block comments without swallowing subsequent SQL", () => {
+    const sql = "SELECT /* outer /* inner */ hidden */ id FROM users";
+    expect(stripSqlNoise(sql)).toBe("SELECT " + " ".repeat("/* outer /* inner */ hidden */".length) + " id FROM users");
+  });
+  it("preserves UTF-16 offsets and newlines across dollar-quoted Unicode", () => {
+    const sql = "SELECT $body$😀\n* FROM$body$, id FROM users";
+    const masked = stripSqlNoise(sql);
+    expect(masked.length).toBe(sql.length);
+    expect(masked.indexOf("\n")).toBe(sql.indexOf("\n"));
+    expect(masked.indexOf(", id")).toBe(sql.indexOf(", id"));
+    expect(masked).not.toContain("*");
+  });
+
+  it("does not mask numbered parameters or dollar-containing identifiers", () => {
+    const sql = "SELECT price$tag$ FROM users WHERE id = $1";
+    expect(stripSqlNoise(sql)).toBe(sql);
+  });
+
+  it("identifies only single-quoted values outside other SQL noise", () => {
+    const sql = `SELECT "'identifier'", $$'dollar'$$, 'value' -- 'comment'`;
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'value'"]);
+  });
+  it.each([
+    ["WHERE p = 'on conflict'", "WHERE p =              "],
+    ["SELECT '*' FROM t", "SELECT     FROM t"],
+    ["SELECT 1 -- FROM t", "SELECT 1          "],
+    ["SELECT 'a--b' FROM t", "SELECT        FROM t"],
+    ["SELECT /* FROM x */ 1", "SELECT              1"],
+  ])("masks %s", (input, expected) => {
+    expect(stripSqlNoise(input)).toBe(expected);
+  });
+
+  it("does not let a quote inside a comment swallow following SQL", () => {
+    expect(stripSqlNoise("-- don't scan this\nSELECT COUNT(*) FROM t")).toBe(
+      "                  \nSELECT COUNT(*) FROM t",
+    );
+  });
+
+  it("stays inside a literal across a doubled quote", () => {
+    expect(stripSqlNoise("WHERE p = 'it''s' AND q = 1")).toBe("WHERE p =         AND q = 1");
+  });
+
+  it("stays inside a double-quoted literal across a doubled double quote", () => {
+    expect(stripSqlNoise('WHERE p = "a "" JOIN b" AND q = 1')).toBe("WHERE p =               AND q = 1");
+  });
+
+  it("preserves newlines inside a masked region", () => {
+    expect(stripSqlNoise("SELECT 'a\nb'")).toBe("SELECT   \n  ");
+  });
+});

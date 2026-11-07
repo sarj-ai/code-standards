@@ -1,25 +1,20 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import ts from "typescript";
-import { afterAll, describe, it } from "vitest";
+import { afterAll } from "vitest";
 
-import rule, { NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION } from "../../src/rules/no-contradictory-overload-return.js";
+import rule from "../../src/rules/no-contradictory-overload-return.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
-const GOOD = NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION.examples[0].files[0].source;
-const BAD = NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION.examples[1].files[0].source;
+const TESTER = ruleTester({ cwd: FIXTURES });
+
+const GOOD = 'function load(kind: "text"): {kind: "text"};\nfunction load(kind: "count"): {kind: "count"};\nfunction load(kind: "text" | "count"): {kind: "text" | "count"} { return kind === "text" ? {kind: "text"} : {kind: "count"}; }';
+const BAD = 'function load(kind: "text"): {kind: "text"};\nfunction load(kind: "count"): {kind: "count"};\nfunction load(kind: "text" | "count"): {kind: "text" | "count"} { return kind === "text" ? {kind: "count"} : {kind: "text"}; }';
 const SCALAR = 'function choose(kind:"a"):1;function choose(kind:"b"):2;function choose(kind:"a"|"b"):number{return kind==="a"?2:1;}';
-const ERRORS = [{ messageId: "contradictoryReturn" }, { messageId: "contradictoryReturn" }] as const;
+const ERRORS = [{ messageId: "contradictoryReturn" }, { messageId: "contradictoryReturn" }];
 
-TESTER.run("no-contradictory-overload-return", rule, {
+TESTER.run("no-contradictory-overload-return", rule, typed({
   valid: [
     { name: "public correct case map", code: GOOD },
     ...[
@@ -57,7 +52,6 @@ TESTER.run("no-contradictory-overload-return", rule, {
       ["generated contracts preserve their owner", '// @generated\n'+BAD],
     ].map(([name,code])=>({name,code})),
     { name: "generated path", filename: "overloads.generated.ts", code: BAD },
-    { name: "exact suppression", code: BAD.replace('return kind', '// eslint-disable-next-line @rule-tester/no-contradictory-overload-return -- compatibility contract separately reviewed\nreturn kind') },
   ],
   invalid: [
     { name: "aligns an unused private scalar overload group", code: "export {};" + SCALAR, output: "export {};" + SCALAR.replace('kind:"a"):1', 'kind:"a"):2').replace('kind:"b"):2', 'kind:"b"):1'), errors: ERRORS },
@@ -82,14 +76,24 @@ TESTER.run("no-contradictory-overload-return", rule, {
     { name: "numeric record key uses its canonical property", code: 'function f(v:0):{1:1};function f(v:1):{"1":2};function f(v:number):{1:number}{return v===0?{"1":2}:{1:1};}', errors: ERRORS },
     { name: "extra domain fields do not hide explicit contradicting values", code: BAD.replace('{kind: "text" | "count"}', '{kind: "text" | "count",other?:number}').replace('{kind: "count"} : {kind: "text"}', '{kind:"count",other:1} : {kind:"text",other:2}'), errors: ERRORS },
   ],
+}));
+
+TESTER.run("no-contradictory-overload-return without a program", rule, {
+  valid: [{ code: BAD, settings: { sarj: { typeAware: false } } }], invalid: [],
 });
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-contradictory-overload-return without a program", rule, { valid: [BAD], invalid: [] });
+const POLICY_ROOT = mkdtempSync(join(tmpdir(), "no-contradictory-overload-return-"));
+afterAll(() => rmSync(POLICY_ROOT, { recursive: true, force: true }));
+function policyDirectory(strictNullChecks: boolean): string {
+  const directory = join(POLICY_ROOT, strictNullChecks ? "strict" : "loose");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, strictNullChecks, noEmit: true, types: [] } }));
+  return directory;
+}
+const POLICY_DIRECTORIES = { strict: policyDirectory(true), loose: policyDirectory(false) };
 
-const POLICY_TESTER = new RuleTester({ languageOptions: { parser } });
 const NULL_OVERLOAD = 'function f(v:"a"):1;function f(v:null):2;function f(v:"a"|null):number{return v==="a"?1:1;}';
-POLICY_TESTER.run("no-contradictory-overload-return null overload reachability", rule, {
+TESTER.run("no-contradictory-overload-return null overload reachability", rule, {
   valid: [policyCase("loose null allows an earlier overload to mask the null signature", NULL_OVERLOAD, false)],
   invalid: [
     { ...policyCase("strict null exposes the actual null case promise", NULL_OVERLOAD, true), errors: [{ messageId: "contradictoryReturn" }] },
@@ -98,10 +102,6 @@ POLICY_TESTER.run("no-contradictory-overload-return null overload reachability",
 });
 
 function policyCase(name: string, code: string, strictNullChecks: boolean) {
-  const filename = join(import.meta.dirname, "..", "fixtures", "overload-null-policy.ts");
-  const options: ts.CompilerOptions = { strict: true, strictNullChecks, noEmit: true, types: [] };
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (path, version, onError, create) => path === filename ? ts.createSourceFile(path, code, version, true) : original(path, version, onError, create);
-  return { name, code, filename, languageOptions: { parserOptions: { programs: [ts.createProgram([filename], options, host)] } } };
+  const directory = strictNullChecks ? POLICY_DIRECTORIES.strict : POLICY_DIRECTORIES.loose;
+  return { name, code, filename: join(directory, "overload-null-policy.ts"), cwd: directory, settings: { sarj: { typeAware: true } } };
 }

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _TYPESCRIPT_PACKAGE: Final = Path("packages/typescript")
 _NODE_PROJECTION: Final = (
-    "import {publicDocumentation,rules} from './dist/index.js';"
+    "import {publicDocumentation,rules} from './dist/catalog.js';"
     "process.stdout.write(JSON.stringify(publicDocumentation(rules)));"
 )
 _TYPESCRIPT_FIELDS: Final = frozenset(
@@ -173,7 +173,7 @@ def _historical_selectors(key: str, engine: str, raw_aliases: tuple[str, ...]) -
         for alias in raw_aliases
         for selector in (
             f"{engine}:{alias}",
-            *((f"eslint:@sarj/{alias}",) if engine == "eslint" and not alias.startswith("@") else ()),
+            *((f"oxlint:@sarj/{alias}",) if engine == RuleEngine.OXLINT.value and not alias.startswith("@") else ()),
         )
     )
     if len(historical) != len(set(historical)):
@@ -340,7 +340,7 @@ def _typescript_spec(value: object) -> RuleSpec:
     if not _TYPESCRIPT_FIELDS.issubset(value) or frozenset(value) - _TYPESCRIPT_FIELDS - _TYPESCRIPT_CAPABILITY_FIELDS:
         msg = "TypeScript public metadata entry has unexpected or missing fields"
         raise ValueError(msg)
-    if value["engine"] != RuleEngine.ESLINT.value or value["code"] is not None:
+    if value["engine"] != RuleEngine.OXLINT.value or value["code"] is not None:
         msg = "TypeScript public metadata has invalid engine or code"
         raise ValueError(msg)
     examples = value.get("examples")
@@ -360,7 +360,7 @@ def _typescript_spec(value: object) -> RuleSpec:
         msg = "TypeScript type-information requirement must be a bool or null"
         raise TypeError(msg)
     return TypeScriptRuleSpec(
-        engine=RuleEngine.ESLINT,
+        engine=RuleEngine.OXLINT,
         rule_id=RuleId(_value_from_dict(value, "ruleId")),
         code=None,
         summary=_value_from_dict(value, "summary"),
@@ -494,7 +494,7 @@ def build(
         *(_typescript_specs(resolved) if typescript is None else typescript),
     )
     engine_family = {
-        RuleEngine.ESLINT: "typescript",
+        RuleEngine.OXLINT: "typescript",
         RuleEngine.IAC: "iac",
         RuleEngine.PYTHON: "python",
         RuleEngine.SQL: "sql",

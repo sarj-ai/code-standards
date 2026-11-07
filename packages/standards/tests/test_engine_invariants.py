@@ -24,7 +24,7 @@ class _EngineCase:
 
 
 _CASES = (
-    _EngineCase(RuleEngine.ESLINT, "typescript", "typescript", frozenset(("eslint",))),
+    _EngineCase(RuleEngine.OXLINT, "typescript", "typescript", frozenset(("oxlint", "eslint"))),
     _EngineCase(RuleEngine.IAC, "iac", "iac", frozenset(("iac", "sarj-iac-lint"))),
     _EngineCase(RuleEngine.PYTHON, "python", "python", frozenset(("python", "sarj-python-lint"))),
     _EngineCase(RuleEngine.SQL, "sql", "sql", frozenset(("sql", "sarj-sql-lint"))),

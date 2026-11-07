@@ -1,18 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-unsafe-test-double-cast.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION } from "../../src/rules/no-unsafe-test-double-cast.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
   valid: [
@@ -22,7 +12,7 @@ RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
     { name: "ignores a shadowed Vitest import", filename: "service.test.ts", code: "import { vi } from 'vitest'; function build(vi: LocalBuilder) { return { read: vi.fn() } as unknown as Client; }" },
     { name: "ignores type-only namespaces", filename: "service.test.ts", code: "import type { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;" },
     { name: "ignores unsupported framework exports", filename: "service.test.ts", code: "import { jest } from 'vitest'; const client = { read: jest.fn() } as unknown as Client;" },
-    { name: "accepts the public typed-fake example", filename: "service.test.ts", code: NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the public typed-fake example", filename: "service.test.ts", code: "const client = { read: async () => ({ id: '1' }) } satisfies Pick<Client, 'read'>;" },
     { name: "ignores ordinary payload casts", filename: "schema.test.ts", code: "const payload = {} as unknown as Payload;" },
     { name: "ignores a directly typed mock", filename: "service.test.ts", code: "import { vi } from 'vitest'; const read = vi.fn<Client['read']>();" },
     { name: "ignores production files", filename: "service.ts", code: "import { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;" },
@@ -52,43 +42,21 @@ RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
     { name: "resolves the vitest export", filename: "service.test.ts", code: "import { vitest as mocks } from 'vitest'; const client = { read: mocks.fn() } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports mixed assertion syntax", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = <Client>({ read: vi.fn() } as unknown);", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports reverse mixed assertion syntax", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = (<unknown>{ read: vi.fn() }) as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
-    { name: "reports the public example", filename: "service.test.ts", code: NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION.examples[1].files[0].source, output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+    { name: "reports the public example", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports nested mock members", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = { nested: { read: vi.fn() } } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports Jest mock factories", filename: "service.spec.ts", code: "const client = { read: jest.fn() } as unknown as Client;", errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports angle-bracket double assertions", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = <Client><unknown>{ read: vi.fn() };", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "mock-backed-double-cast-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "service.test.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "service.test.ts",
-        "source": "import { vi } from 'vitest'; const client = { read: vi[\"fn\"]() } as unknown as Client;"
-      }
-    ]
-  },
-  {
-    "id": "mock-backed-double-cast-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "service.test.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "service.test.ts",
-        "source": "import { vi } from 'vitest'; const client = { read: vi[auditDynamicMember]() } as unknown as Client;"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("no-unsafe-test-double-cast documented examples", rule, {
+  valid: [
+    { name: "documented example typed-recording-fake", filename: "./service.test.ts", code: "const client = { read: async () => ({ id: '1' }) } satisfies Pick<Client, 'read'>;" },
+    { name: "documented example mock-backed-double-cast-dynamic-member", filename: "./service.test.ts", code: "import { vi } from 'vitest'; const client = { read: vi[auditDynamicMember]() } as unknown as Client;" },
+  ],
+  invalid: [
+    { name: "documented example mock-backed-double-cast", filename: "./service.test.ts", code: "import { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+    { name: "documented example safe-autofix", filename: "./service.test.ts", code: "import { vi } from 'vitest'; interface Client { read(): string } export type RetainedClient = Client; const client = { read: vi.fn() } as unknown as Client;", output: "import { vi } from 'vitest'; interface Client { read(): string } export type RetainedClient = Client; const client = { read: vi.fn() };", errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+    { name: "documented example mock-backed-double-cast-static-member", filename: "./service.test.ts", code: "import { vi } from 'vitest'; const client = { read: vi[\"fn\"]() } as unknown as Client;", errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+  ],
 });

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field as dataclass_field
 from enum import StrEnum
+from functools import cache
 from importlib.metadata import PackageNotFoundError, version
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from packaging.version import InvalidVersion, Version
 
-from sarj_standards._meta import CONFIGS_DIR, __version__
+from sarj_standards._meta import CONFIGS_DIR, TYPESCRIPT_PEERS, __version__
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
@@ -32,9 +33,9 @@ HOOK_MANAGERS: Final[tuple[HookManager, ...]] = ("pre-commit", "lefthook", "none
 CommitPolicyCi = Literal["workflow", "embedded"]
 COMMIT_POLICY_CI_MODES: Final[tuple[CommitPolicyCi, ...]] = ("workflow", "embedded")
 
-PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
-_ESLINT_RULE_KEY: Final = re.compile(
-    r'^\s+"(?P<rule>[^"]+)":\s*(?:"(?:off|warn|error)"|\[)',
+PEERS_JSON: Final = TYPESCRIPT_PEERS
+_OXLINT_RULE_KEY: Final = re.compile(
+    r'^\s+"(?P<rule>[^"@][^"]*)":\s*(?:"(?:off|warn|error)"|\[)',
     re.MULTILINE,
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
@@ -44,11 +45,11 @@ _TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config doe
 
 class _UpstreamRuleEngine(StrEnum):
     CHECKOV = "checkov"
-    ESLINT = "eslint"
     KNIP = "knip"
     SHELLCHECK = "shellcheck"
     SHFMT = "shfmt"
     SQLFLUFF = "sqlfluff"
+    OXLINT = "oxlint"
     ZIZMOR = "zizmor"
 
 
@@ -76,20 +77,10 @@ def adopted_version() -> str:
     return __version__ if declared is None else declared
 
 
-def eslint_age_gate_preapprovals() -> dict[str, str]:
-    return _eslint_exact_versions("ageGatePreapprovals")
-
-
-def eslint_yarn_identity_pins() -> dict[str, str]:
-    return _eslint_exact_versions("yarnIdentityPins")
-
-
-def _eslint_exact_versions(key: str) -> dict[str, str]:
-    raw: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
-    table = as_table(raw)
-    versions = as_table(table.get(key))
+def typescript_age_gate_preapprovals() -> dict[str, str]:
+    versions = table_field(_peers_document(), "ageGatePreapprovals")
     if not versions or any(not isinstance(value, str) or not value for value in versions.values()):
-        msg = f"eslint.peers.json {key} must map package names to exact versions"
+        msg = f"{PEERS_JSON.name} ageGatePreapprovals must map package names to exact versions"
         raise ValueError(msg)
     return {name: value for name, value in versions.items() if isinstance(value, str)}
 
@@ -97,7 +88,10 @@ def _eslint_exact_versions(key: str) -> dict[str, str]:
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 PYTHON_ANALYZERS: Final = ("deptry",)
-TYPESCRIPT_CONFIGS: Final = ("eslint",)
+TYPESCRIPT_CONFIGS: Final = ("typescript",)
+#: Bundles before this one named the TypeScript capability `eslint`; their manifests still say so.
+_TYPESCRIPT_CAPABILITY_SINCE: Final = Version("9.0.0")
+_LEGACY_TYPESCRIPT_CAPABILITY: Final = "eslint"
 SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
 KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
 MOBILE_CONFIGS: Final = ("mobile-security",)
@@ -333,7 +327,9 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         raise ValueError(msg)
     raw_profile = data.get("profile", "standard")
     capabilities_table = _manifest_table(data, "capabilities")
-    disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
+    disabled = _renamed_capabilities(
+        _string_list(capabilities_table, "disable", label="manifest [capabilities].disable"), declared
+    )
     supported_capabilities = ALL_CAPABILITIES if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
     unknown_capabilities = sorted(set(disabled) - set(supported_capabilities))
     if unknown_capabilities:
@@ -486,6 +482,34 @@ def _bundle_configs(declared: str, path: Path, schema: int) -> tuple[str, ...]:
     return ALL_CONFIGS
 
 
+def _renamed_capabilities(names: tuple[str, ...], declared: str | None) -> tuple[str, ...]:
+    # A manifest written before the rename keeps meaning what it said: `eslint` was the TypeScript capability.
+    try:
+        renamed = declared is not None and Version(declared) < _TYPESCRIPT_CAPABILITY_SINCE
+    except InvalidVersion:
+        renamed = False
+    if not renamed:
+        return names
+    return tuple(dict.fromkeys(_current_capability(name) for name in names))
+
+
+def _current_capability[T](name: T) -> T | str:
+    return TYPESCRIPT_CONFIGS[0] if name == _LEGACY_TYPESCRIPT_CAPABILITY else name
+
+
+def uses_legacy_typescript_names(text: str) -> bool:
+    # `update` rewrites these spellings so the manifest stays valid once its bundle passes the rename.
+    data = as_table(tomllib.loads(text))
+    exclude = table_field(data, "exclude")
+    selectors = [
+        *list_field(exclude, "rules"),
+        *(rule for override in list_field(exclude, "overrides") for rule in list_field(as_table(override), "rules")),
+    ]
+    return _LEGACY_TYPESCRIPT_CAPABILITY in list_field(table_field(data, "capabilities"), "disable") or any(
+        isinstance(selector, str) and selector.startswith(f"{_LEGACY_TYPESCRIPT_CAPABILITY}:") for selector in selectors
+    )
+
+
 def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_schema: int) -> None:
     raw_schema = data.get("schema")
     if type(raw_schema) is not int or raw_schema != expected_schema:
@@ -543,7 +567,7 @@ def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the
     if "schema" in data or "version" not in data or "configs" not in data:
         return None
     declared = text_field(data, "version")
-    raw_configs = list_field(data, "configs")
+    raw_configs = [_current_capability(item) for item in list_field(data, "configs")]
     if declared is None or not all(isinstance(item, str) and item in ALL_CONFIGS for item in raw_configs):
         return None
     try:
@@ -678,11 +702,19 @@ def _rule_selectors(
     *,
     discard_removed: bool = False,
 ) -> tuple[str, ...]:
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/rules import cycle.
+        oxlint_ids,
+    )
+
     selectors = _string_list(table, key, label=f"manifest [exclude].{key}")
+    # `eslint:` selectors written before Oxlint keep excluding the same findings under their Oxlint IDs.
     return tuple(
-        validate_excluded_rule(selector)
-        for selector in selectors
-        if not discard_removed or not _removed_rule_selector(selector)
+        dict.fromkeys(
+            _validate_canonical_rule(canonical)
+            for selector in selectors
+            for canonical in oxlint_ids.canonical_selectors(selector)
+            if not discard_removed or not _removed_rule_selector(canonical)
+        )
     )
 
 
@@ -704,6 +736,19 @@ def validate_excluded_path(
 
 
 def validate_excluded_rule(selector: str) -> str:
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/rules import cycle.
+        oxlint_ids,
+    )
+
+    canonical = oxlint_ids.canonical_selectors(selector)
+    if len(canonical) != 1:
+        targets = ", ".join(canonical) or "no Oxlint rule"
+        msg = f"{selector} now reports as {targets}; exclude the oxlint: selector instead"
+        raise ValueError(msg)
+    return _validate_canonical_rule(canonical[0])
+
+
+def _validate_canonical_rule(selector: str) -> str:
     engine, separator, rule = selector.partition(":")
     if (
         not separator
@@ -723,7 +768,7 @@ def _removed_rule_selector(selector: str) -> bool:
     )
 
     engine, separator, rule = selector.partition(":")
-    if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.ESLINT}:
+    if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.OXLINT}:
         return False
     kind = ledger.CODE if engine in _SARJ_RULE_ENGINES and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
     return any(
@@ -753,19 +798,28 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
         upstream = _UpstreamRuleEngine(engine)
     except ValueError:
         return
-    if upstream is not _UpstreamRuleEngine.ESLINT:
+    if upstream is not _UpstreamRuleEngine.OXLINT:
         _validate_source_tool_rule(upstream, rule, selector)
         return
     if rule.startswith("@sarj/"):
-        known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))
-    elif "/" not in rule:
-        config = (CONFIGS_DIR / "eslint.strict.ts").read_text(encoding="utf-8")
-        known = frozenset(match.group("rule") for match in _ESLINT_RULE_KEY.finditer(config))
+        known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.OXLINT, ()))
     else:
-        return
+        known = managed_oxlint_rules()
     if rule not in known:
         msg = f"unknown Standards rule exclusion: {selector}"
         raise ValueError(msg)
+
+
+@cache
+def managed_oxlint_rules() -> frozenset[str]:
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/rules import cycle.
+        oxlint_ids,
+    )
+
+    # The rule map names where every ESLint-era rule went; the preset adds rules Oxlint brought with it.
+    mapped = {target for targets in oxlint_ids.bundled().oxlint_ids.values() for target in targets}
+    preset = (CONFIGS_DIR / "oxlint.strict.mts").read_text(encoding="utf-8")
+    return frozenset({*mapped, *(match.group("rule") for match in _OXLINT_RULE_KEY.finditer(preset))})
 
 
 def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector: str) -> None:
@@ -880,20 +934,40 @@ def installed_versions() -> dict[str, str]:
     return found
 
 
-def eslint_peers() -> dict[str, str]:
-    parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
-    table = table_field(as_table(parsed), "peers")
+def _peers_document() -> dict[str, JsonValue]:
+    parsed = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def typescript_peers() -> dict[str, str]:
+    return _pinned_peers(_peers_document())
+
+
+def _pinned_peers(document: Mapping[str, object]) -> dict[str, str]:
+    table = table_field(document, "peers")
     if not table:
         msg = f"{PEERS_JSON} must contain a `peers` object"
         raise TypeError(msg)
     return {name: pin for name, pin in table.items() if isinstance(pin, str)}
 
 
-def eslint_overrides() -> dict[str, JsonValue]:
-    parsed = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
-    if not isinstance(parsed, dict):
-        return {}
-    overrides = parsed.get("npmOverrides")
+# Every exact `name@version` installing the peers resolves: each peer and its platform binaries.
+def typescript_installed_versions() -> tuple[str, ...]:
+    document = _peers_document()
+    platform = table_field(document, "platformPackages")
+    installed: list[str] = []
+    for name, pin in _pinned_peers(document).items():
+        package, exact = name, pin
+        if pin.startswith("npm:"):
+            # An `npm:` alias installs the aliased package under the peer's name.
+            package, _, exact = pin.removeprefix("npm:").rpartition("@")
+        binaries = [entry for entry in list_field(platform, name) if isinstance(entry, str)]
+        installed.extend(f"{entry}@{exact}" for entry in (package, *binaries))
+    return tuple(installed)
+
+
+def typescript_overrides() -> dict[str, JsonValue]:
+    overrides = _peers_document().get("npmOverrides")
     return dict(overrides) if isinstance(overrides, dict) else {}
 
 

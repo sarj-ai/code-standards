@@ -16,6 +16,7 @@ from sarj_rule_contracts import (
     RuleEngine,
     RuleExample,
     RuleId,
+    RuleSelector,
     RuleSpec,
 )
 
@@ -111,3 +112,13 @@ def test_example_setup_keeps_empty_options_distinct_from_default_options() -> No
     dependency = ExampleDependency("zod", "4.6.5")
     with pytest.raises(ValueError, match="dependencies must have unique modules"):
         replace(example, installed_dependencies=(dependency, dependency))
+
+
+def test_eslint_engine_is_an_input_alias_for_oxlint() -> None:
+    legacy = RuleSelector.parse("eslint:no-enum")
+
+    assert RuleEngine("eslint") is RuleEngine.OXLINT
+    assert legacy == RuleSelector.parse("oxlint:no-enum")
+    assert str(legacy) == "oxlint:no-enum"
+    assert legacy.native_rule_id == "@sarj/no-enum"
+    assert "eslint" not in {engine.value for engine in RuleEngine}

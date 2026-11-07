@@ -1,15 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-server-actions.js";
+import { RuleTester } from "./_tester.js";
 
-import rule, { PREFER_SERVER_ACTIONS_DOCUMENTATION } from "../../src/rules/prefer-server-actions.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ eslintCompat: true, cwd: process.cwd() });
 const NEXT_CLIENT_MODULE = "/repo/app/ui/actions.tsx";
 const USE_CLIENT = '"use client"; ';
 const GATEWAY_BASE_PATH = [{ basePath: "/gateway" }] as const;
@@ -34,7 +27,7 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     {name: "mutated config does not retain initializer provenance", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}const init={method:'POST'}; init.method='GET'; fetch('/api/items',init);`},
     {name: "later method property determines request", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}fetch('/api/items',{method:'POST',method:'GET'});`},
     {name: "spread configuration may override mutation", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}fetch('/api/items',{method:'POST',...options});`},
-    { name: "public no-match example", filename: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[0].focusPath, code: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "app/tasks/page.tsx", code: "import { createTask } from './actions'; await createTask(input);" },
     {
       name: "ignores Angular modules because they cannot use Server Actions",
       code: [
@@ -213,7 +206,7 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[1].focusPath, code: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferServerAction" }] },
+    { name: "public match example", filename: "app/tasks/page.tsx", code: "'use client'; await fetch('/api/tasks', { method: 'POST', body });", errors: [{ messageId: "preferServerAction" }] },
 
     {
       code: `${USE_CLIENT}const r = await fetch('/api/data', { method: 'POST', body });`,

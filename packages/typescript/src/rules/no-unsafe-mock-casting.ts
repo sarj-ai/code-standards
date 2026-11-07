@@ -1,25 +1,25 @@
 /**
  * @fileoverview no-unsafe-mock-casting — use framework type helpers for already mocked values, not broad mock casts.
  *
+ * Port of the 18.x `no-unsafe-mock-casting` rule. Same algorithm; the
+ * generated-file gate and per-file binding reset run in `before()`. Oxlint
+ * sets a missing `typeAnnotation` to `null` (TS-ESTree: `undefined`), so the
+ * fix accepts both.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
  */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { retainsNamedTypeUses, typeBinding } from "../utils/type-binding.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
-import {
-  type TSESLint,
-  type TSESTree,
-  AST_NODE_TYPES,
-} from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-import { retainsNamedTypeUses, typeBinding } from "./_type-binding.js";
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-
-type MessageIds = "unsafeMockCast";
-
+const NAME = "no-unsafe-mock-casting";
 const MOCK_TYPE_NAMES: ReadonlySet<string> = new Set([
   "Mock",
   "Mocked",
@@ -37,55 +37,32 @@ const MOCK_MODULES: ReadonlySet<string> = new Set([
   "@jest/globals",
 ]);
 
-export const NO_UNSAFE_MOCK_CASTING_DOCUMENTATION = {
-  summary: "Disallow casting to mock types like `jest.Mock` or `vi.Mock`. Use `vi.mocked()` or `jest.mocked()` instead.",
-  rationale: "A type assertion can claim an unmocked value is a mock and bypass checking between the original callable and the mock API.",
-  remediation: "Create the mock or spy first, then use the framework's mocked helper to preserve the original value's type. The helper does not create or verify a runtime mock.",
-  category: "testing",
-  autofix: "safe",
-  limitations: ["Only mock types imported from Vitest or Jest modules are inspected. mocked is a type helper, not runtime validation or a replacement for mock setup.",
-    "Automatic fixes remove only an erased mock assertion from an unused private unannotated const initialized by an identifier, optionally through unknown assertions. Every erased named type/generic/namespace binding must retain an independent exported type use; potentially erased annotations and self references cannot witness each other. Evaluation is unchanged; referenced/exported bindings, contextual expressions, scripts, declaration files, eval and comments remain manual."],
-  references: ["https://vitest.dev/api/vi.html#vi-mocked"],
-  examples: [
-    {
-      id: "typed-mock-helper",
-      title: "Use the framework helper",
-      outcome: "no-match",
-      files: [{ path: "src/client.test.ts", source: "import { vi } from 'vitest'; const client = { read: () => 'value' }; vi.spyOn(client, 'read'); const m = vi.mocked(client.read);" }],
-      focusPath: "src/client.test.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "mock-type-assertion",
-      title: "Do not assert that a value is a mock",
-      outcome: "match",
-      files: [{ path: "src/client.test.ts", source: "import type * as vi from \"vitest\"; const m = myFn as vi.Mock;" }],
-      focusPath: "src/client.test.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Retain an unused private value's actual inferred type",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "import type { Mock } from 'vitest'; export type RetainedMock = Mock; declare const value: unknown; const fake = value as Mock;" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "import type { Mock } from 'vitest'; export type RetainedMock = Mock; declare const value: unknown; const fake = value;" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Assertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+type Identifier = Node & { type: "Identifier"; name: string };
 
-export default createRule<[], MessageIds>({
-  name: "no-unsafe-mock-casting",
-  documentation: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION,
+function privateIdentifierAssertionFix(sourceCode: SourceCode, node: Assertion, filename: string): FixFn | null {
+  const declaration = parentOf(node);
+  if (declaration?.type !== "VariableDeclarator" || declaration.init !== node ||
+    declaration.id.type !== "Identifier" || declaration.id.typeAnnotation != null ||
+    (parentOf(declaration) as ESTree.VariableDeclaration | null)?.kind !== "const" ||
+    !isUnusedPrivateBinding(sourceCode, declaration, declaration.id, filename) ||
+    sourceCode.getCommentsInside(node).length > 0 || !retainsNamedTypeUses(sourceCode, node.typeAnnotation)) return null;
+  let value: Node = node.expression;
+  while ((value.type === "TSAsExpression" || value.type === "TSTypeAssertion") &&
+    value.typeAnnotation.type === "TSUnknownKeyword") value = value.expression;
+  if (value.type !== "Identifier") return null;
+  const replacement = sourceCode.getText(value) + sourceCode.getText(node).replace(/[^\r\n]/gu, "");
+  return (fixer) => fixer.replaceText(node, replacement);
+}
+
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
     docs: {
       description:
         "Disallow casting to mock types like `jest.Mock` or `vi.Mock`. Use `vi.mocked()` or `jest.mocked()` instead.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -93,47 +70,36 @@ export default createRule<[], MessageIds>({
         "Avoid a broad Mock cast. After creating the mock or spy, use `vi.mocked(fn)` or `jest.mocked(fn)` to retain its original type; the helper does not create a runtime mock.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
+  createOnce(context) {
+    const directBindings = new Set<TsVariable>();
+    const namespaceBindings = new Set<TsVariable>();
 
-    const directBindings = new Set<TSESLint.Scope.Variable>();
-    const namespaceBindings = new Set<TSESLint.Scope.Variable>();
-
-    function resolve(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+    function resolve(identifier: Identifier): TsVariable | null {
       return typeBinding(context.sourceCode, identifier);
     }
 
-    function record(
-      identifier: TSESTree.Identifier,
-      destination: Set<TSESLint.Scope.Variable>,
-    ): void {
+    function record(identifier: Identifier, destination: Set<TsVariable>): void {
       const binding = resolve(identifier);
       if (binding !== null) destination.add(binding);
     }
 
-    function checkAssertion(
-      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
-    ): void {
+    function checkAssertion(node: Assertion): void {
+      // A mock type only resolves through a recorded import binding.
+      if (directBindings.size === 0 && namespaceBindings.size === 0) return;
       if (isMockTypeReference(node.typeAnnotation)) {
-        context.report({ node, messageId: "unsafeMockCast", fix: privateIdentifierAssertionFix(context.sourceCode, node, context.filename) });
+        const fix = privateIdentifierAssertionFix(context.sourceCode, node, context.filename);
+        context.report({ node, messageId: "unsafeMockCast", ...(fix !== null && { fix }) });
       }
     }
 
-    function isMockTypeReference(node: TSESTree.TypeNode): boolean {
-      if (node.type !== AST_NODE_TYPES.TSTypeReference) return false;
+    function isMockTypeReference(node: ESTree.TSType): boolean {
+      if (node.type !== "TSTypeReference") return false;
       const typeName = node.typeName;
-      if (typeName.type === AST_NODE_TYPES.Identifier) {
+      if (typeName.type === "Identifier") {
         const binding = resolve(typeName);
         return binding !== null && directBindings.has(binding);
       }
-      if (
-        typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-        typeName.left.type === AST_NODE_TYPES.Identifier &&
-        MOCK_TYPE_NAMES.has(typeName.right.name)
-      ) {
+      if (typeName.type === "TSQualifiedName" && typeName.left.type === "Identifier" && MOCK_TYPE_NAMES.has(typeName.right.name)) {
         const binding = resolve(typeName.left);
         return binding !== null && namespaceBindings.has(binding);
       }
@@ -141,18 +107,20 @@ export default createRule<[], MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      before() {
+        directBindings.clear();
+        namespaceBindings.clear();
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        return undefined;
+      },
+      ImportDeclaration(node) {
         if (!MOCK_MODULES.has(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+          if (specifier.type === "ImportNamespaceSpecifier") {
             record(specifier.local, namespaceBindings);
           } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            MOCK_TYPE_NAMES.has(
-              specifier.imported.type === AST_NODE_TYPES.Identifier
-                ? specifier.imported.name
-                : specifier.imported.value,
-            )
+            specifier.type === "ImportSpecifier" &&
+            MOCK_TYPE_NAMES.has(importSpecifierName(specifier))
           ) {
             record(specifier.local, directBindings);
           }
@@ -163,21 +131,3 @@ export default createRule<[], MessageIds>({
     };
   },
 });
-
-function privateIdentifierAssertionFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
-  filename: string,
-): NativeReportFix | null {
-  const declaration = node.parent;
-  if (declaration.type !== AST_NODE_TYPES.VariableDeclarator || declaration.init !== node ||
-    declaration.id.type !== AST_NODE_TYPES.Identifier || declaration.id.typeAnnotation !== undefined ||
-    declaration.parent.kind !== "const" || !isUnusedPrivateBinding(sourceCode, declaration, declaration.id, filename) ||
-    sourceCode.getCommentsInside(node).length > 0 || !retainsNamedTypeUses(sourceCode, node.typeAnnotation)) return null;
-  let value = node.expression;
-  while ((value.type === AST_NODE_TYPES.TSAsExpression || value.type === AST_NODE_TYPES.TSTypeAssertion) &&
-    value.typeAnnotation.type === AST_NODE_TYPES.TSUnknownKeyword) value = value.expression;
-  if (value.type !== AST_NODE_TYPES.Identifier) return null;
-  const replacement = sourceCode.getText(value) + sourceCode.getText(node).replace(/[^\r\n]/gu, "");
-  return (fixer) => fixer.replaceText(node, replacement);
-}

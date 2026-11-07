@@ -1,33 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import rule from "../../src/rules/no-silent-promise-catch.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "../../src/rules/no-silent-promise-catch.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-it("keeps native Zod URL and primitive coercion catch factories as schema fallbacks", () => {
-  expect(z.url().catch(() => "https://example.com").parse("invalid")).toBe("https://example.com");
-  expect(z.coerce.string().catch(() => "").parse(undefined)).toBe("undefined");
-  expect(z.coerce.number().catch(() => 0).parse("invalid")).toBe(0);
-  expect(z.coerce.boolean().catch(() => false).parse(null)).toBe(false);
-  expect(z.coerce.bigint().catch(() => 0n).parse("invalid")).toBe(0n);
-});
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
-
-RULE_TESTER.run("no-silent-promise-catch", rule, {
+ruleTester().run("no-silent-promise-catch", rule, {
   valid: [
     { name: "keeps an erased computed rejection handler with observable recovery", code: "const key = 'catch'; load()[key!](error => { logger.error(error); return null; });" },
     { name: "keeps error reporting surrounded by empty statements", code: "load().catch(error => { ; logger.error(error); ; return null; ; });" },
@@ -85,7 +60,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     { name: "preserves default and namespace Zod URL construction", code: "import schema from 'zod'; import * as namespace from 'zod'; schema.url().catch(() => ''); namespace.url().catch(() => '');" },
     { name: "preserves primitive Zod coercion fallbacks", code: "import { z } from 'zod'; z.coerce.string().catch(() => ''); z.coerce.number().catch(() => 0); z.coerce.boolean().catch(() => false); z.coerce.bigint().catch(() => 0n);" },
     { name: "preserves stable computed Zod coercion and schema aliases", code: "import { z } from 'zod'; const coerce = 'coerce'; const number = 'number'; const schema = z[coerce][number](); const alias = schema; alias.catch(() => 0);" },
-    { name: "accepts the documented reported rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented reported rejection", code: "load().catch((error) => logger.error({ error }, 'load failed'));" },
     {
       name: "allows a cancelled optional web-share action",
       code: "await navigator.share(data).catch(() => false);",
@@ -216,18 +191,19 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "p.catch(() => ({ ok: false }));",
     },
 
-
-
+    { name: "silent-rejection-dynamic-member", filename: "src/load.ts", code: "load()[auditDynamicMember](() => null);" },
+  ],
+  invalid: [
     {
+      name: "deliberate suppression still reports (valid under ESLint; Oxlint's RuleTester does not apply disable directives)",
       code: [
         "// eslint-disable-next-line @rule-tester/no-silent-promise-catch -- deliberate",
         "p.catch(",
         "  () => null,",
         ");",
       ].join("\n"),
+      errors: [{ messageId: "silentCatch" }],
     },
-  ],
-  invalid: [
     { name: "reports a sentinel fallback forwarded by a pure identity arrow", code: "load().catch(() => null).then(value => value);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports a sentinel fallback forwarded through multiple identities", code: "load().catch(() => null).then(value => value).then(next => next);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports an identity block containing only a return", code: "load().catch(() => null).then(value => { return value; });", errors: [{ messageId: "silentCatch" }] },
@@ -269,7 +245,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     { name: "does not exempt a local Promise factory with Zod-like names", code: "const z = { coerce: { number: () => Promise.reject(new Error('lost')) } }; z.coerce.number().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "does not exempt reassigned coercion schemas", code: "import { z } from 'zod'; let schema = z.coerce.number(); schema = load(); schema.catch(() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "does not exempt unknown coercion factories or async parsing", code: "import { z } from 'zod'; z.coerce.custom().catch(() => null); z.url().parseAsync(input).catch(() => null);", errors: [{ messageId: "silentCatch" }, { messageId: "silentCatch" }] },
-    { name: "reports the documented silent rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
+    { name: "reports the documented silent rejection", code: "load().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
     {
       name: "reports a silent catch followed only by finally",
       code: "load().catch(() => null).finally(cleanup);",
@@ -383,39 +359,6 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "client[method]().catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
     },
+    { name: "silent-rejection-static-member", filename: "src/load.ts", code: "load()[\"catch\"](() => null);", errors: [{ messageId: "silentCatch" }] },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "silent-rejection-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/load.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/load.ts",
-        "source": "load()[\"catch\"](() => null);"
-      }
-    ]
-  },
-  {
-    "id": "silent-rejection-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/load.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/load.ts",
-        "source": "load()[auditDynamicMember](() => null);"
-      }
-    ]
-  }
-] } });
 });

@@ -7,7 +7,7 @@ from sarj_python_lint._secret_names import SECRET_WORDS
 from sarj_python_lint.rules._logging import LOG_METHODS
 
 
-_TS_ROOT = Path(__file__).resolve().parents[3] / "packages" / "typescript" / "src" / "rules"
+_TS_SECRET_NAMES = Path(__file__).resolve().parents[3] / "packages" / "typescript" / "src" / "utils" / "secret-names.ts"
 
 
 def _ts_string_set(source: str, name: str) -> set[str]:
@@ -31,7 +31,7 @@ def test_log_methods_are_one_set_in_python() -> None:
 
 
 def test_python_secret_words_cover_the_typescript_set() -> None:
-    ts = _ts_string_set((_TS_ROOT / "_secret-names.ts").read_text(encoding="utf-8"), "SECRET_WORDS")
+    ts = _ts_string_set(_TS_SECRET_NAMES.read_text(encoding="utf-8"), "SECRET_WORDS")
     missing = sorted(ts - SECRET_WORDS)
     assert missing == [], (
         f"TypeScript treats {missing} as secret-like and Python does not, so the "

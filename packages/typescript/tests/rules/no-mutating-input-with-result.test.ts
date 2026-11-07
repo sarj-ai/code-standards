@@ -1,19 +1,12 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-mutating-input-with-result.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION } from "../../src/rules/no-mutating-input-with-result.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser } });
-
-TESTER.run("no-mutating-input-with-result", rule, {
+RULE_TESTER.run("no-mutating-input-with-result", rule, {
   valid: [
-    NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION.examples[1].files[0].source,
+    { name: "documented example returns-replacement", filename: "src/config.ts", code: "interface Config { enabled: boolean; } function enable(config: Config): Config { return { ...config, enabled: true }; }" },
     { name: "void command", code: "function enable(config: { enabled: boolean }): void { config.enabled = true; }" },
     { name: "async void command", code: "async function enable(config: { enabled: boolean }): Promise<void> { config.enabled = true; }" },
     { name: "receiver state belongs to its owner", code: "class Counter { value = 0; increment(): number { this.value++; return this.value; } }" },
@@ -28,11 +21,10 @@ TESTER.run("no-mutating-input-with-result", rule, {
     { name: "return makes later write unreachable", code: "function enable(config: { enabled: boolean }): boolean { return true; config.enabled = true; }" },
     { name: "literal false never writes", code: "function enable(config: { enabled: boolean }): boolean { if (false) config.enabled = true; return true; }" },
     { name: "short circuit never writes", code: "function enable(config: { enabled: boolean }): boolean { false && (config.enabled = true); return true; }" },
-    { name: "generated artifact", filename: "src/generated/config.ts", code: NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION.examples[0].files[0].source },
-    { name: "local suppression", code: "function enable(config: { enabled: boolean }): boolean {\n// eslint-disable-next-line @rule-tester/no-mutating-input-with-result -- callback contract intentionally reports its mutation\nconfig.enabled = true; return true; }" },
+    { name: "generated artifact", filename: "src/generated/config.ts", code: "interface Config { enabled: boolean; } function enable(config: Config): Config { config.enabled = true; return config; }" },
   ],
   invalid: [
-    { code: NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION.examples[0].files[0].source, errors: [{ messageId: "inputWrite" }] },
+    { code: "interface Config { enabled: boolean; } function enable(config: Config): Config { config.enabled = true; return config; }", errors: [{ messageId: "inputWrite" }] },
     ...[
       ["inline object contract", "function enable(config: { enabled: boolean }): boolean { config.enabled = true; return true; }"],
       ["named model class", "class Config { enabled = false; } function enable(config: Config): Config { config.enabled = true; return config; }"],

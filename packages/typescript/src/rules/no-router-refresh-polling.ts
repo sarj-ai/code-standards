@@ -1,50 +1,26 @@
 /**
  * @fileoverview no-router-refresh-polling — polling should fetch named data instead of refreshing the whole route.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-router-refresh-polling.test.ts
+ * Port of the 18.x `no-router-refresh-polling` rule. Untyped.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { directArgumentCall, outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { stableValueBinding } from "../utils/stable-value-binding.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { stableValueBinding } from "./_stable-value-binding.js";
-import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
+const NAME = "no-router-refresh-polling";
 
-type MessageIds = "routerRefreshPolling";
-type Options = readonly [];
+type Identifier = Extract<Node, { type: "Identifier" }>;
+type Callback = ESTree.ArrowFunctionExpression | ESTree.Function;
 
-export const NO_ROUTER_REFRESH_POLLING_DOCUMENTATION = {
-  summary: "Do not poll by calling a Next.js router's refresh method from a timer.",
-  rationale: "A route refresh refetches and rerenders the whole route on every tick instead of loading the named resource that changed.",
-  remediation: "Call the dedicated fetch or server action from the timer and keep the polling interval in a named constant.",
-  category: "performance",
-  limitations: ["Only router bindings created from next/navigation useRouter and direct setInterval or window.setInterval callbacks are inspected; generated and test files are excluded."],
-  examples: [
-    { id: "poll-named-action", title: "Poll a named resource", outcome: "no-match", files: [{ path: "src/status.tsx", source: '"use client"; import { useEffect } from "react"; function Status() { useEffect(() => { const timer = setInterval(() => fetchStatus(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, []); return null; }' }], focusPath: "src/status.tsx", expectedCount: 0, public: true },
-    { id: "poll-router-refresh", title: "Do not poll the whole route", outcome: "match", files: [{ path: "src/status.tsx", source: '"use client"; import { useEffect } from "react"; import { useRouter } from "next/navigation"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router.refresh(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }' }], focusPath: "src/status.tsx", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-function importedName(node: TSESTree.ImportSpecifier): string | null {
-  return node.imported.type === AST_NODE_TYPES.Identifier ? node.imported.name : String(node.imported.value);
-}
-
-function enclosingIntervalCallback(
-  sourceCode: Readonly<{
-    getAncestors(node: TSESTree.Node): readonly TSESTree.Node[];
-    getScope(node: TSESTree.Node): TSESLint.Scope.Scope;
-  }>,
-  node: TSESTree.Node,
-): TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
-  const ancestors = sourceCode.getAncestors(node);
-  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
-    const ancestor = ancestors[index];
-    if (ancestor?.type === AST_NODE_TYPES.FunctionDeclaration) return null;
-    if (
-      ancestor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      ancestor?.type !== AST_NODE_TYPES.FunctionExpression
-    ) continue;
+function enclosingIntervalCallback(sourceCode: SourceCode, node: Node): Callback | null {
+  for (let ancestor = parentOf(node); ancestor !== null; ancestor = parentOf(ancestor)) {
+    if (ancestor.type === "FunctionDeclaration") return null;
+    if (ancestor.type !== "ArrowFunctionExpression" && ancestor.type !== "FunctionExpression") continue;
     const parent = directArgumentCall(ancestor);
     return parent !== null && parent.arguments[0] === outerExpression(ancestor) &&
       isIntervalCallee(sourceCode, parent.callee) ? ancestor : null;
@@ -52,80 +28,76 @@ function enclosingIntervalCallback(
   return null;
 }
 
-function isIntervalCallee(
-  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
-  node: TSESTree.Expression,
-): boolean {
-  node = unwrapExpression(node);
-  return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
+function isIntervalCallee(sourceCode: SourceCode, callee: Node): boolean {
+  const node = unwrapExpression(callee);
+  return node.type === "Identifier" && node.name === "setInterval" &&
       isUnshadowedGlobal(sourceCode, node) ||
-    node.type === AST_NODE_TYPES.MemberExpression &&
-      node.object.type === AST_NODE_TYPES.Identifier &&
+    node.type === "MemberExpression" &&
+      node.object.type === "Identifier" &&
       (node.object.name === "window" || node.object.name === "globalThis") &&
       isUnshadowedGlobal(sourceCode, node.object) &&
-      ASTUtils.getPropertyName(node) === "setInterval";
+      getPropertyName(node) === "setInterval";
 }
 
-function isUnshadowedGlobal(
-  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
-  node: TSESTree.Identifier,
-): boolean {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+function isUnshadowedGlobal(sourceCode: SourceCode, node: Identifier): boolean {
+  const variable = findVariable(sourceCode.getScope(node), node.name);
   return variable === null || variable.defs.length === 0;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-router-refresh-polling",
-  documentation: NO_ROUTER_REFRESH_POLLING_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Do not poll by calling a Next.js router's refresh method from a timer." },
+    docs: {
+      description: "Do not poll by calling a Next.js router's refresh method from a timer.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: { routerRefreshPolling: "Poll the named fetch or server action instead of calling router.refresh() from a timer." },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
-    const routerHooks = new Set<TSESLint.Scope.Variable>();
-    const routers = new Set<TSESLint.Scope.Variable>();
-    const reportedCallbacks = new WeakSet<TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression>();
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let routerHooks = new Set<TsVariable>();
+    let routers = new Set<TsVariable>();
+    let reportedCallbacks = new WeakSet<Callback>();
 
     return {
-      ImportDeclaration(node): void {
+      before() {
+        sourceCode = context.sourceCode;
+        routerHooks = new Set();
+        routers = new Set();
+        reportedCallbacks = new WeakSet();
+        const file = { filename: context.filename, cwd: context.cwd };
+        return !(isTestFile(file) || isGeneratedFile(file, sourceCode.text));
+      },
+      ImportDeclaration(node) {
         if (node.source.value !== "next/navigation") return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && importedName(specifier) === "useRouter") {
-            const variable = ASTUtils.findVariable(context.sourceCode.getScope(specifier.local), specifier.local.name);
+          if (specifier.type === "ImportSpecifier" && importSpecifierName(specifier) === "useRouter") {
+            const variable = findVariable(sourceCode.getScope(specifier.local), specifier.local.name);
             if (variable !== null) routerHooks.add(variable);
           }
         }
       },
-      VariableDeclarator(node): void {
+      VariableDeclarator(node) {
+        // A router only counts once its hook import has been seen.
+        if (routerHooks.size === 0) return;
         const initializer = node.init === null ? null : unwrapExpression(node.init);
-        if (
-          node.id.type === AST_NODE_TYPES.Identifier &&
-          initializer?.type === AST_NODE_TYPES.CallExpression
-        ) {
+        if (node.id.type === "Identifier" && initializer?.type === "CallExpression") {
           const hookCallee = unwrapExpression(initializer.callee);
-          if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
-          const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
-          const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
+          if (hookCallee.type !== "Identifier") return;
+          const hook = findVariable(sourceCode.getScope(hookCallee), hookCallee.name);
+          const router = findVariable(sourceCode.getScope(node.id), node.id.name);
           if (hook !== null && router !== null && routerHooks.has(hook) && stableValueBinding(router)) routers.add(router);
         }
       },
-      CallExpression(node): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
-        if (
-          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(unwrappedNodeCallee) !== "refresh"
-        ) return;
-        const router = ASTUtils.findVariable(
-          context.sourceCode.getScope(receiver),
-          receiver.name,
-        );
+      CallExpression(node) {
+        if (routers.size === 0) return;
+        const callee = unwrapExpression(node.callee);
+        const receiver = callee.type === "MemberExpression" ? unwrapExpression(callee.object) : callee;
+        if (callee.type !== "MemberExpression" || receiver.type !== "Identifier" || getPropertyName(callee) !== "refresh") return;
+        const router = findVariable(sourceCode.getScope(receiver), receiver.name);
         if (router === null || !routers.has(router)) return;
-        const callback = enclosingIntervalCallback(context.sourceCode, node);
+        const callback = enclosingIntervalCallback(sourceCode, node);
         if (callback !== null && !reportedCallbacks.has(callback)) {
           reportedCallbacks.add(callback);
           context.report({ node: callback, messageId: "routerRefreshPolling" });

@@ -1,122 +1,111 @@
 /**
- * @fileoverview prefer-node-fs-promises — synchronous filesystem calls block the Node.js event loop.
+ * @fileoverview prefer-node-fs-promises — prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-node-fs-promises.test.ts
+ * Port of the 18.x `prefer-node-fs-promises` rule. Same algorithm;
+ * excluded files are skipped and recorded namespaces are reset in `before()`.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { stableValueBinding } from "../utils/stable-value-binding.js";
+import { findVariable } from "../utils/static-string.js";
 
-import { importSpecifierName } from "./_import-specifier-name.js";
+const NAME = "prefer-node-fs-promises";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { stableValueBinding } from "./_stable-value-binding.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
-type MessageIds = "preferAsyncFs";
-type Options = [];
-
-export const PREFER_NODE_FS_PROMISES_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.",
-  rationale: "Synchronous filesystem work blocks the event loop and can stall unrelated daemon, server, and worker tasks.",
-  remediation: "Import the promise API from node:fs/promises and await it; use FileHandle.sync only where a documented durability boundary requires it.",
-  category: "performance",
-  limitations: [
-    "Tests and generated files are excluded.",
-    "This recommendation applies to Node-compatible runtimes. Changing a synchronous API to a promise changes its caller contract; review startup-only work and APIs that require synchronous execution rather than mechanically adding await.",
-    "ESLint rule implementations under src/rules are excluded because visitor creation and execution are synchronous by contract.",
-    "Only statically identifiable node:fs loads are inspected; filesystem objects passed through arbitrary functions or assignments require type-aware analysis.",
-  ],
-  examples: [
-    { id: "async-read", title: "Use the promise API", outcome: "no-match", files: [{ path: "src/store.ts", source: "import { readFile } from 'node:fs/promises'; export async function load(path: string) { return readFile(path, 'utf8'); }" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
-    { id: "sync-read", title: "Do not block on a synchronous read", outcome: "match", files: [{ path: "src/store.ts", source: "import { readFileSync } from 'node:fs'; export function load(path: string) { return readFileSync(path, 'utf8'); }" }], focusPath: "src/store.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") {
+function memberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") return node.property.name;
+  if (node.computed && node.property.type === "Literal" && typeof node.property.value === "string") {
     return node.property.value;
   }
   return null;
 }
 
-function unwrapAwait(node: TSESTree.Expression): TSESTree.Expression {
-  return node.type === AST_NODE_TYPES.AwaitExpression ? node.argument : node;
+function unwrapAwait(node: Node): Node {
+  return node.type === "AwaitExpression" ? node.argument : node;
 }
 
-function isFsLoader(node: TSESTree.Expression, isGlobal: (node: TSESTree.Identifier) => boolean): boolean {
+function isFsLoader(node: Node, isGlobal: (node: Identifier) => boolean): boolean {
   const expression = unwrapAwait(node);
-  if (expression.type === AST_NODE_TYPES.ImportExpression) return isFsSpecifier(expression.source);
-  if (expression.type !== AST_NODE_TYPES.CallExpression || expression.arguments.length !== 1) return false;
+  if (expression.type === "ImportExpression") return isFsSpecifier(expression.source);
+  if (expression.type !== "CallExpression" || expression.arguments.length !== 1) return false;
   const [argument] = expression.arguments;
-  if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement || !isFsSpecifier(argument)) return false;
-  if (expression.callee.type === AST_NODE_TYPES.Identifier) return expression.callee.name === "require" && isGlobal(expression.callee);
+  if (argument === undefined || argument.type === "SpreadElement" || !isFsSpecifier(argument)) return false;
+  if (expression.callee.type === "Identifier") return expression.callee.name === "require" && isGlobal(expression.callee);
   return (
-    expression.callee.type === AST_NODE_TYPES.MemberExpression &&
-    expression.callee.object.type === AST_NODE_TYPES.Identifier &&
+    expression.callee.type === "MemberExpression" &&
+    expression.callee.object.type === "Identifier" &&
     expression.callee.object.name === "process" &&
     isGlobal(expression.callee.object) &&
     memberName(expression.callee) === "getBuiltinModule"
   );
 }
 
-function isFsSpecifier(node: TSESTree.Expression): boolean {
-  return node.type === AST_NODE_TYPES.Literal && (node.value === "node:fs" || node.value === "fs");
+function isFsSpecifier(node: Node): boolean {
+  return node.type === "Literal" && (node.value === "node:fs" || node.value === "fs");
 }
 
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) return node.key.name;
-  if (node.key.type === AST_NODE_TYPES.Literal && typeof node.key.value === "string") return node.key.value;
+function propertyName(node: ESTree.ObjectProperty | ESTree.BindingProperty): string | null {
+  if (!node.computed && node.key.type === "Identifier") return node.key.name;
+  if (node.key.type === "Literal" && typeof node.key.value === "string") return node.key.value;
   return null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-node-fs-promises",
-  documentation: PREFER_NODE_FS_PROMISES_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules." },
+    docs: {
+      description: "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       preferAsyncFs: "Node filesystem API `{{name}}` is synchronous; use the promise API and await it.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const normalizedFilename = context.filename.replaceAll("\\", "/");
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text) ||
-      normalizedFilename.includes("src/rules/")
-    )
-      return {};
-    const namespaces = new Set<TSESLint.Scope.Variable>();
-    const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
-      ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-    const isGlobal = (node: TSESTree.Identifier): boolean => {
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    const namespaces = new Set<TsVariable>();
+    const bindingOf = (node: Identifier): TsVariable | null =>
+      findVariable(sourceCode.getScope(node), node.name);
+    const isGlobal = (node: Identifier): boolean => {
       const binding = bindingOf(node);
       return binding === null || binding.defs.length === 0;
     };
-    const isNamespace = (node: TSESTree.Identifier): boolean => {
+    const isNamespace = (node: Identifier): boolean => {
       const binding = bindingOf(node);
       return binding !== null && namespaces.has(binding);
     };
-    const recordNamespace = (node: TSESTree.Identifier): void => {
+    const recordNamespace = (node: Identifier): void => {
       const binding = bindingOf(node);
       if (binding !== null && stableValueBinding(binding)) namespaces.add(binding);
     };
     return {
-      ImportDeclaration(node): void {
+      before(): boolean | void {
+        const file = { filename: context.filename, cwd: context.cwd };
+        const normalizedFilename = context.filename.replaceAll("\\", "/");
+        if (
+          isTestFile(file) ||
+          isGeneratedFile(file, context.sourceCode.text) ||
+          normalizedFilename.includes("src/rules/")
+        )
+          return false;
+        sourceCode = context.sourceCode;
+        namespaces.clear();
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (node.source.value !== "node:fs" && node.source.value !== "fs") return;
         const synchronousImports: string[] = [];
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier || specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier) {
+          if (specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier") {
             recordNamespace(specifier.local);
             continue;
           }
           if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+            specifier.type === "ImportSpecifier" &&
             importSpecifierName(specifier).endsWith("Sync")
           ) synchronousImports.push(importSpecifierName(specifier));
         }
@@ -128,20 +117,20 @@ export default createRule<Options, MessageIds>({
           });
         }
       },
-      VariableDeclarator(node): void {
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
         if (
           node.init === null ||
           (!isFsLoader(node.init, isGlobal) &&
-            (node.init.type !== AST_NODE_TYPES.Identifier || !isNamespace(node.init)))
+            (node.init.type !== "Identifier" || !isNamespace(node.init)))
         )
           return;
-        if (node.id.type === AST_NODE_TYPES.Identifier) {
+        if (node.id.type === "Identifier") {
           recordNamespace(node.id);
           return;
         }
-        if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
+        if (node.id.type !== "ObjectPattern") return;
         const synchronousImports = node.id.properties.flatMap((property) => {
-          if (property.type !== AST_NODE_TYPES.Property) return [];
+          if (property.type !== "Property") return [];
           const name = propertyName(property);
           return name?.endsWith("Sync") === true ? [name] : [];
         });
@@ -153,12 +142,12 @@ export default createRule<Options, MessageIds>({
           });
         }
       },
-      MemberExpression(node): void {
+      MemberExpression(node: ESTree.MemberExpression): void {
         const name = memberName(node);
         if (name?.endsWith("Sync") !== true) return;
         const object = unwrapAwait(node.object);
         if (
-          (object.type === AST_NODE_TYPES.Identifier && isNamespace(object)) ||
+          (object.type === "Identifier" && isNamespace(object)) ||
           isFsLoader(object, isGlobal)
         ) {
           context.report({ node, messageId: "preferAsyncFs", data: { name } });

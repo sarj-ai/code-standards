@@ -27,8 +27,8 @@ if TYPE_CHECKING:
             "npmMinimalAgeGate: 20160\nenableScripts: false\n",
             'npmPreapprovedPackages:\n  - "unrelated@1.2.3" # retained\n  - "@typescript-eslint/parser@8.67.0"\n',
             (
-                'npmPreapprovedPackages:\n  - "unrelated@1.2.3" # retained\n'
-                f'  - "@sarj/eslint-plugin@{manifest.eslint_peers()["@sarj/eslint-plugin"]}"\n'
+                'npmPreapprovedPackages:\n  - "unrelated@1.2.3" # retained\n  - "@typescript-eslint/parser@8.67.0"\n'
+                f'  - "@sarj/eslint-plugin@{manifest.typescript_peers()["@sarj/eslint-plugin"]}"\n'
             ),
         ),
     ],

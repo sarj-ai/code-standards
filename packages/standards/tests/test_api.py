@@ -61,7 +61,7 @@ def test_package_import_does_not_eagerly_load_release_automation() -> None:
         (
             "eslint",
             "@sarj/no-alert",
-            RuleSelector(RuleEngine.ESLINT, RuleId("no-alert")),
+            RuleSelector(RuleEngine.OXLINT, RuleId("no-alert")),
         ),
         ("unregistered-tool", "no-alert", None),
         ("eslint", "@upstream/no-alert", None),
@@ -328,7 +328,7 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             version=api.__version__,
-            configs=("eslint",),
+            configs=("typescript",),
             python_dest=".",
             typescript_dest="apps/web",
         ).render(),
@@ -347,7 +347,7 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
     result = api.Standards(tmp_path).fix()
 
     assert result.status is api.Status.OK
-    assert [command.cwd for command in planned] == [web]
+    assert [command.cwd for command in planned if command.label.startswith("Oxlint (")] == [web]
 
 
 def test_standards_facade_reports_actual_native_changes_and_the_fixed_point(tmp_path: Path) -> None:
@@ -419,13 +419,13 @@ def test_standards_facade_enforces_selected_application_dependency_policy(
     assert [finding.id for finding in result.findings] == ["LIB102"]
 
 
-def test_standards_facade_runs_eslint_for_selected_typescript(
+def test_standards_facade_runs_oxlint_for_selected_typescript(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "component.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    command = Command("ESLint", ("true",), tmp_path)
+    command = Command("Oxlint", ("true",), tmp_path)
 
     def clean_check(_paths: Sequence[str], **_kwargs: Unpack[CheckOptions]) -> int:
         return 0
@@ -437,7 +437,7 @@ def test_standards_facade_runs_eslint_for_selected_typescript(
         return 1 if list(commands) == [command] else 0
 
     monkeypatch.setattr(api, "check", clean_check)  # sarj-noqa: SARJ445 -- intercepts API orchestration
-    monkeypatch.setattr(api, "selected_eslint_commands", selected)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "selected_typescript_commands", selected)  # sarj-noqa: SARJ445 -- intercepts orchestration
     monkeypatch.setattr(api, "execute", execute)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).check(["component.ts"])

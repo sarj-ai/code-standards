@@ -89,7 +89,7 @@ def _payload(root: Path, base: str, names: Sequence[str], *, staged: bool) -> di
     changed = _git(root, "diff", "--cached" if staged else base, "--name-only", "--diff-filter=ACMR").splitlines()
     return {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "reactDetected": True,
         "diff": None if staged else {"baseBranch": base, "changedFileCount": len(changed), "isCurrentChanges": False},
@@ -494,7 +494,7 @@ def test_empty_changed_scope_checks_type_changes(
     assert _git(root, "diff", "--name-status", base, "HEAD", "--", relative) == f"T\t{relative}"
     payload: dict[str, object] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "baselineDegraded": degraded,
         "diff": {"baseBranch": base, "changedFileCount": reported_count, "isCurrentChanges": False},
@@ -541,7 +541,7 @@ def test_empty_degraded_scope_cannot_substitute_selected_base(workspace: _Worksp
     assert head != base
     payload: dict[str, object] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "baselineDegraded": True,
         "diff": {"baseBranch": head, "changedFileCount": 0, "isCurrentChanges": False},
@@ -600,7 +600,7 @@ def test_empty_changed_scope_proves_the_native_tracked_worktree(
     assert not _git(root, "diff", f"{base}...HEAD", "--name-only")
     payload: dict[str, object] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "baselineDegraded": degraded,
         "diff": {
@@ -653,7 +653,7 @@ def test_empty_changed_scope_keeps_native_untracked_exclusions(workspace: _Works
     assert not _git(root, "diff", base, "--name-only", "--diff-filter=ACMRT")
     payload: dict[str, object] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "diff": {"baseBranch": base, "changedFileCount": 0, "isCurrentChanges": False},
         "projects": [],
@@ -712,7 +712,7 @@ def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
         assert _git(root, "merge-base", requested, "HEAD") == common
     payload: dict[str, object] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "diff": {
             "baseBranch": common if failure == "wrong-base" else requested,
@@ -1015,3 +1015,34 @@ def test_staged_empty_parent_uses_validated_pending_index(
         assert tuple(item.code for item in report.diagnostics) == ("react-doctor/example",)
     assert {path: _react_scope_file_image(path) for path in index_before} == index_before
     assert {name: _react_scope_file_image(root / name) for name in source_before} == source_before
+
+
+def test_react_doctor_runs_without_the_projects_oxlint_suppressions(tmp_path: Path) -> None:
+    # React Doctor's own Oxlint would apply the file and drop its lint check.
+    suppressions = tmp_path / "oxlint-suppressions.json"
+    suppressions.write_text('{"a.ts": {"no-console": {"count": 1}}}\n', encoding="utf-8")
+    parked = tmp_path / ".oxlint-suppressions.json.react-doctor"
+
+    def failing_scan() -> None:
+        with external._without_oxlint_suppressions((tmp_path,)):  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- the hiding contract is internal to React Doctor execution.
+            assert not suppressions.exists()
+            assert parked.is_file()
+            msg = "scan failed"
+            raise RuntimeError(msg)
+
+    with pytest.raises(RuntimeError, match="scan failed"):
+        failing_scan()
+
+    assert suppressions.read_text(encoding="utf-8") == '{"a.ts": {"no-console": {"count": 1}}}\n'
+    assert not parked.exists()
+
+
+def test_a_suppressions_file_an_interrupted_run_parked_is_restored(tmp_path: Path) -> None:
+    parked = tmp_path / ".oxlint-suppressions.json.react-doctor"
+    parked.write_text("{}\n", encoding="utf-8")
+
+    with external._without_oxlint_suppressions((tmp_path,)):  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- the hiding contract is internal to React Doctor execution.
+        assert not (tmp_path / "oxlint-suppressions.json").exists()
+
+    assert (tmp_path / "oxlint-suppressions.json").read_text(encoding="utf-8") == "{}\n"
+    assert not parked.exists()

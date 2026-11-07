@@ -1,80 +1,115 @@
 /**
- * @fileoverview prefer-dependency-interface — Annotate retained collaborators with their existing interface when the consumer uses only that contract.
+ * @fileoverview prefer-dependency-interface — annotate retained collaborators with their existing interface.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-dependency-interface.test.ts
+ * Port of the 18.x `prefer-dependency-interface` rule. The rule is untyped, so the port
+ * covers all of it.
+ *
+ * The original requires `typeParameters === undefined` on the owner class, the concrete class and
+ * the interface; Oxlint passes `null` for absent fields, so under Oxlint the original never
+ * reports. The port accepts both, which matches the original under ESLint.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { forEachOwnAstChild, parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { isGeneratedFile } from "./_paths.js";
+const NAME = "prefer-dependency-interface";
 
-export const PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Annotate retained collaborators with their existing interface when the consumer uses only that contract.",
-  rationale: "A concrete annotation can require private implementation identity even when a declared interface covers every consumed operation.",
-  remediation: "Use the existing interface on the injected parameter. Keep concrete annotations for implementation-specific capabilities.",
-  category: "architecture",
-  limitations: [
-    "Checks private readonly constructor parameter properties, an empty constructor body, and a local concrete class declaring exactly one local interface. Every direct this-property consumer must access an interface member.",
-    "Interface/class inheritance, imports, dynamic members, escapes, implementation-specific reads, decorators, generics, mutable dependencies and protected properties remain unresolved. The compiler owns signature compatibility. No contract or automatic rewrite is invented.",
-  ],
-  examples: [
-    { id: "concrete-store", title: "The consumer uses only the interface", outcome: "match", files: [{ path: "service.ts", source: "interface Store { read(): string } class SqlStore implements Store { private value = 'ok'; read() { return this.value; } } class Service { constructor(private readonly store: SqlStore) {} run() { return this.store.read(); } }" }], focusPath: "service.ts", expectedCount: 1, public: true },
-    { id: "interface-store", title: "Accept another implementation", outcome: "no-match", files: [{ path: "service.ts", source: "interface Store { read(): string } class Service { constructor(private readonly store: Store) {} run() { return this.store.read(); } }" }], focusPath: "service.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+type Identifier = Node & { readonly type: "Identifier"; readonly name: string };
 
-export default createRule<[], "interface">({
-  name: "prefer-dependency-interface",
-  documentation: PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION,
-  meta: { type: "suggestion", docs: { description: PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION.summary }, schema: [], messages: { interface: "Use the existing `{{contract}}` interface for this dependency; its consumer uses only that contract." } },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    function contract(node: TSESTree.Identifier): TSESTree.TSInterfaceDeclaration | null {
+/** `this.dependency.member`, read but not written, where `member` is on the interface. */
+function readsInterfaceMember(use: ESTree.MemberExpression, members: ReadonlySet<string>): boolean {
+  const parent = parentOf(use);
+  if (parent?.type !== "MemberExpression" || parent.object !== use || !members.has(getPropertyName(parent) ?? "")) return false;
+  const grandparent = parentOf(parent);
+  return !(grandparent?.type === "AssignmentExpression" && grandparent.left === parent) && grandparent?.type !== "UpdateExpression";
+}
+
+interface RetainedDependency {
+  readonly owner: ESTree.Class;
+  readonly name: string;
+  readonly annotation: ESTree.TSTypeAnnotation;
+  readonly typeName: Identifier;
+}
+
+/** `constructor(private readonly name: Type) {}` in an undecorated, non-generic class. */
+function retainedDependency(node: ESTree.TSParameterProperty): RetainedDependency | null {
+  const parameter = node.parameter as Node;
+  if (!node.readonly || node.accessibility !== "private" || node.decorators.length !== 0 || parameter.type !== "Identifier") return null;
+  const annotation = parameter.typeAnnotation;
+  const reference = annotation?.typeAnnotation;
+  if (annotation === null || annotation === undefined || reference?.type !== "TSTypeReference" || reference.typeName.type !== "Identifier") return null;
+  const owner = emptyConstructorOwner(node);
+  return owner === null ? null : { owner, name: parameter.name, annotation, typeName: reference.typeName };
+}
+
+/** The undecorated, non-generic class whose empty constructor declares `node`. */
+function emptyConstructorOwner(node: ESTree.TSParameterProperty): ESTree.Class | null {
+  const fn = parentOf(node);
+  const constructor = fn === null ? null : parentOf(fn);
+  if (constructor?.type !== "MethodDefinition" || constructor.kind !== "constructor" || constructor.value.body?.body.length !== 0) return null;
+  const body = parentOf(constructor);
+  const owner = body === null ? null : parentOf(body);
+  if (owner?.type !== "ClassDeclaration" && owner?.type !== "ClassExpression") return null;
+  return owner.decorators.length === 0 && !isPresent(owner.typeParameters) ? owner : null;
+}
+
+export default defineRule({
+  meta: {
+    type: "suggestion",
+    docs: {
+      description: "Annotate retained collaborators with their existing interface when the consumer uses only that contract.",
+      url: docsUrl(NAME),
+    },
+    schema: [],
+    messages: { interface: "Use the existing `{{contract}}` interface for this dependency; its consumer uses only that contract." },
+  },
+  createOnce(context) {
+    function contract(node: Identifier): ESTree.TSInterfaceDeclaration | null {
       const concrete = definition(node);
-      if (concrete?.type !== AST_NODE_TYPES.ClassDeclaration || concrete.abstract || concrete.superClass !== null || concrete.decorators.length !== 0 || concrete.typeParameters !== undefined || concrete.implements.length !== 1) return null;
-      const heritage = concrete.implements[0];
-      if (heritage?.expression.type !== AST_NODE_TYPES.Identifier) return null;
+      if (concrete?.type !== "ClassDeclaration" || concrete.abstract || concrete.superClass !== null || concrete.decorators.length !== 0 || isPresent(concrete.typeParameters)) return null;
+      const heritage = concrete.implements?.length === 1 ? concrete.implements[0] : undefined;
+      if (heritage?.expression.type !== "Identifier") return null;
       const port = definition(heritage.expression);
-      return port?.type === AST_NODE_TYPES.TSInterfaceDeclaration && port.extends.length === 0 && port.typeParameters === undefined ? port : null;
+      return port?.type === "TSInterfaceDeclaration" && port.extends.length === 0 && port.typeParameters === null ? port : null;
     }
-    function definition(node: TSESTree.Identifier): TSESTree.Node | null {
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+    function definition(node: Identifier): Node | null {
+      const variable = findVariable(context.sourceCode.getScope(node), node.name);
       return variable?.defs.length === 1 ? variable.defs[0]?.node ?? null : null;
     }
-    function usesOnlyInterface(owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression, name: string, port: TSESTree.TSInterfaceDeclaration): boolean {
+    function usesOnlyInterface(owner: ESTree.Class, name: string, port: ESTree.TSInterfaceDeclaration): boolean {
       const members = new Set<string>();
       for (const member of port.body.body) {
-        if ((member.type !== AST_NODE_TYPES.TSMethodSignature && member.type !== AST_NODE_TYPES.TSPropertySignature) || member.computed || member.key.type !== AST_NODE_TYPES.Identifier) return false;
+        if ((member.type !== "TSMethodSignature" && member.type !== "TSPropertySignature") || member.computed || member.key.type !== "Identifier") return false;
         members.add(member.key.name);
       }
       let uses = 0;
       let compatible = true;
-      function visit(node: TSESTree.Node): void {
-        if (node.type === AST_NODE_TYPES.MemberExpression && node.object.type === AST_NODE_TYPES.ThisExpression && ASTUtils.getPropertyName(node) === name) {
+      function visit(node: Node): void {
+        if (node.type === "MemberExpression" && node.object.type === "ThisExpression" && getPropertyName(node) === name) {
           uses += 1;
-          const parent = node.parent;
-          if (parent.type !== AST_NODE_TYPES.MemberExpression || parent.object !== node || !members.has(ASTUtils.getPropertyName(parent) ?? "") || parent.parent.type === AST_NODE_TYPES.AssignmentExpression && parent.parent.left === parent || parent.parent.type === AST_NODE_TYPES.UpdateExpression) compatible = false;
+          if (!readsInterfaceMember(node, members)) compatible = false;
         }
-        if (node !== owner && (node.type === AST_NODE_TYPES.ClassDeclaration || node.type === AST_NODE_TYPES.ClassExpression)) return;
+        if (node !== owner && (node.type === "ClassDeclaration" || node.type === "ClassExpression")) return;
         forEachOwnAstChild(node, visit);
       }
       visit(owner);
       return compatible && uses > 0;
     }
     return {
-      TSParameterProperty(node) {
-        const parameter = node.parameter;
-        const constructor = node.parent.parent;
-        if (!node.readonly || node.accessibility !== "private" || node.decorators.length !== 0 || parameter.type !== AST_NODE_TYPES.Identifier || parameter.typeAnnotation?.typeAnnotation.type !== AST_NODE_TYPES.TSTypeReference || parameter.typeAnnotation.typeAnnotation.typeName.type !== AST_NODE_TYPES.Identifier || constructor.type !== AST_NODE_TYPES.MethodDefinition || constructor.kind !== "constructor" || constructor.value.body?.body.length !== 0 || constructor.parent.type !== AST_NODE_TYPES.ClassBody) return;
-        const owner = constructor.parent.parent;
-        if (owner.type !== AST_NODE_TYPES.ClassDeclaration && owner.type !== AST_NODE_TYPES.ClassExpression) return;
-        if (owner.decorators.length !== 0 || owner.typeParameters !== undefined) return;
-        const port = contract(parameter.typeAnnotation.typeAnnotation.typeName);
-        if (port !== null && usesOnlyInterface(owner, parameter.name, port)) context.report({ node: parameter.typeAnnotation, messageId: "interface", data: { contract: port.id.name } });
+      before() {
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        return undefined;
+      },
+      TSParameterProperty(node: ESTree.TSParameterProperty): void {
+        const dependency = retainedDependency(node);
+        if (dependency === null) return;
+        const { owner, name, annotation, typeName } = dependency;
+        const port = contract(typeName);
+        if (port !== null && usesOnlyInterface(owner, name, port)) context.report({ node: annotation, messageId: "interface", data: { contract: port.id.name } });
       },
     };
   },

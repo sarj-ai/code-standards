@@ -1,17 +1,13 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "18.3.1",
+  "version": "19.0.0",
   "packageManager": "npm@12.2.1",
-  "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
+  "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.js"
     }
   },
   "files": [
@@ -28,24 +24,21 @@
     "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/typescript"
   },
-  "homepage": "https://code-standards.sarj.ai/rules/eslint/",
+  "homepage": "https://code-standards.sarj.ai/rules/oxlint/",
   "bugs": {
     "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "scripts": {
     "build": "tsup",
-    "dogfood": "npm run build && npm run dogfood:built",
-    "lint": "node ../standards/src/sarj_standards/configs/eslint-selected-rules.mts \"{\\\"full\\\":true,\\\"config\\\":null,\\\"rules\\\":[],\\\"consoleOutput\\\":true,\\\"failOnWarnings\\\":true}\" -- . ../../.github/scripts ../standards/src ../standards/eslint.config.mts",
+    "lint": "(test -f dist/index.js || tsup) && export OXLINT_TSGOLINT_PATH=\"$PWD/node_modules/.bin/tsrs-lint\" && oxlint && cd ../standards && oxlint && cd ../../.github/scripts && oxlint",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc --project tsconfig.tools.json",
-    "verify-package": "node -e \"const fs=require('node:fs'),p=require('./package.json'),walk=x=>typeof x==='string'?[x]:x&&typeof x==='object'?Object.values(x).flatMap(walk):[];for(const file of new Set([p.main,p.module,p.types,...walk(p.exports)].filter(Boolean).map(x=>x.startsWith('./')?x.slice(2):x))){if(!file.startsWith('dist/'))throw new Error('export must live under dist: '+file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size===0)throw new Error('missing or empty export: '+file)}\"",
-    "dogfood:built": "eslint --config eslint.dogfood.config.ts src tests scripts eslint-rule-setting.ts eslint.config.ts eslint.dogfood.config.ts module-constant-naming-options.ts tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\""
+    "typecheck": "tsrs --noEmit && tsrs --project tsconfig.tools.json",
+    "verify-package": "node -e \"const fs=require('node:fs'),p=require('./package.json'),walk=x=>typeof x==='string'?[x]:x&&typeof x==='object'?Object.values(x).flatMap(walk):[];for(const file of new Set([p.main,p.module,p.types,...walk(p.exports)].filter(Boolean).map(x=>x.startsWith('./')?x.slice(2):x))){if(!file.startsWith('dist/'))throw new Error('export must live under dist: '+file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size===0)throw new Error('missing or empty export: '+file)}\""
   },
   "keywords": [
-    "eslint",
-    "eslintplugin",
-    "eslint-plugin",
+    "oxlint",
+    "oxlint-plugin",
     "sarj",
     "react",
     "nextjs",
@@ -54,57 +47,39 @@
   "author": "sarj-ai",
   "license": "MIT",
   "dependencies": {
-    "@eslint/core": "1.2.1",
-    "@typescript-eslint/typescript-estree": "^8.72.1",
-    "@typescript-eslint/utils": "^8.72.1",
-    "jsonc-parser": "^3.3.1",
-    "ts-api-utils": "2.5.0"
+    "oxc-parser": "0.148.0"
   },
   "devDependencies": {
-    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
-    "@eslint/compat": "^2.1.1",
-    "@eslint/js": "10.0.1",
-    "@shadcn/lint": "0.2.5",
-    "@types/eslint-plugin-no-unsanitized": "4.1.0",
+    "@eslint-react/eslint-plugin": "5.28.8",
+    "@oxlint/plugins": "1.91.0",
+    "@tanstack/eslint-plugin-query": "5.106.1",
     "@types/node": "26.6.5",
-    "@typescript-eslint/parser": "8.72.1",
-    "@typescript-eslint/rule-tester": "8.72.1",
-    "@typescript-eslint/utils": "8.72.1",
-    "@typescript/native": "npm:typescript@7.0.2",
-    "@vitest/eslint-plugin": "1.6.28",
     "eslint": "10.14.0",
     "eslint-node-test": "1.0.1",
-    "eslint-plugin-eslint-plugin": "7.6.2",
-    "eslint-plugin-better-tailwindcss": "^4.10.0",
-    "eslint-plugin-jest": "29.17.0",
     "eslint-plugin-jsdoc": "65.4.4",
-    "eslint-plugin-n": "^18.5.0",
-    "eslint-plugin-perfectionist": "5.13.0",
     "eslint-plugin-playwright": "2.12.2",
-    "eslint-plugin-promise": "^7.3.0",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
     "eslint-plugin-regexp": "3.3.3",
     "eslint-plugin-security": "4.2.1",
-    "eslint-plugin-no-unsanitized": "4.1.5",
-    "eslint-plugin-simple-import-sort": "^14.0.0",
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "^79.0.0",
     "eslint-plugin-zod": "^5.2.2",
-    "globals": "17.13.0",
-    "jiti": "2.7.0",
+    "jsonc-parser": "3.3.1",
+    "oxfmt": "0.76.0",
+    "oxlint": "1.91.0",
+    "oxlint-plugin-eslint": "1.91.0",
     "prettier": "3.9.10",
-    "tsup": "9.0.0",
     "syncpack": "15.3.3",
+    "tsrs": "0.23.0-ts7.1.0-beta",
+    "tsup": "9.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "typescript-eslint": "^8.72.1",
     "uuid": "13.0.0",
     "vitest": "5.0.5",
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "eslint": ">=10.13.0",
-    "typescript": ">=5.0.0"
+    "tsrs": ">=0.23.0-ts7.1.0-beta"
   },
   "engines": {
     "node": "^22.22.2 || >=24.15.0"
@@ -112,11 +87,6 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true
-  },
-  "peerDependenciesMeta": {
-    "typescript": {
-      "optional": true
-    }
   },
   "overrides": {
     "brace-expansion@^5.0.0": "5.0.12",

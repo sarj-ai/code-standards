@@ -1,107 +1,126 @@
-/** @fileoverview _uuid-predicate-witness — a closed official UUID schema rejects members of broad string. */
+/**
+ * @fileoverview _uuid-predicate-witness — a closed official UUID schema rejects members of broad string.
+ *
+ * Port of the 18.x `_uuid-predicate-witness.ts` helper. The installed-zod
+ * check asks tsrs for the namespace import's aliased symbol.
+ */
 
-import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+import type { ESTree, Node, SourceCode, TsVariable } from "../types.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import type { NativeTypes } from "../utils/checked-native-source.js";
+import { nativeRuntimeUnchanged } from "../utils/native-runtime-unchanged.js";
+import { findVariable } from "../utils/static-string.js";
 
+type Identifier = Node & { readonly type: "Identifier"; readonly name: string };
 
-
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
-
-import { nativeRuntimeUnchanged } from "./_native-runtime-unchanged.js";
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-
-type Variable = TSESLint.Scope.Variable;
+const DECLARATION_FILE = /\.d\.[cm]?ts$/u;
 
 /** Only this exact parse-success shape supplies a witness; opaque schema behavior is not inferred. */
 export function uuidPredicateWitness(
-  expression: TSESTree.Expression,
-  parameter: TSESTree.Identifier,
-  sourceCode: TypeScriptSourceCode,
-  services: TypeServices,
+  expression: Node,
+  parameter: Identifier,
+  sourceCode: SourceCode,
+  native: NativeTypes,
 ): string | undefined {
-  const success = unwrapExpression(expression);
-  if (success.type !== AST_NODE_TYPES.MemberExpression || !member(success, "success")) return undefined;
-  const parse = unwrapExpression(success.object);
-  if (parse.type !== AST_NODE_TYPES.CallExpression || parse.optional || parse.arguments.length !== 1 || parse.callee.type !== AST_NODE_TYPES.MemberExpression || !member(parse.callee, "safeParse")) return undefined;
-  const argument = parse.arguments[0];
-  if (argument === undefined || unwrapExpression(argument).type !== AST_NODE_TYPES.Identifier) return undefined;
-  const value = unwrapExpression(argument);
-  if (value.type !== AST_NODE_TYPES.Identifier || binding(value, sourceCode) !== binding(parameter, sourceCode)) return undefined;
-  const receiver = unwrapExpression(parse.callee.object);
-  if (receiver.type !== AST_NODE_TYPES.Identifier) return undefined;
-  const schema = binding(receiver, sourceCode);
-  const declaration = schema?.defs.length === 1 ? schema.defs[0] : undefined;
-  if (schema === null || declaration?.type !== "Variable" || declaration.node.type !== AST_NODE_TYPES.VariableDeclarator ||
-    declaration.node.parent.kind !== "const" || declaration.node.init === null) return undefined;
-  const initializer = unwrapExpression(declaration.node.init);
-  const namespace = uuidNamespace(initializer, sourceCode, services);
+  const receiver = safeParseReceiver(expression, parameter, sourceCode);
+  const schema = receiver === null ? null : binding(receiver, sourceCode);
+  const initializer = schema === null ? null : constInitializer(schema);
+  if (schema === null || initializer === null) return undefined;
+  const namespace = uuidNamespace(initializer, sourceCode, native);
   if (namespace === null || !closedSchema(schema) || !closedNamespace(namespace, initializer) || !nativeRuntimeUnchanged(sourceCode, "RegExp")) return undefined;
   return "not-a-uuid";
 }
 
-function binding(node: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): Variable | null {
-  return ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+/** The schema identifier of `schema.safeParse(parameter).success`. */
+function safeParseReceiver(expression: Node, parameter: Identifier, sourceCode: SourceCode): Identifier | null {
+  const success = unwrapExpression(expression);
+  if (success.type !== "MemberExpression" || !member(success, "success")) return null;
+  const parse = unwrapExpression(success.object);
+  if (parse.type !== "CallExpression" || parse.optional || parse.arguments.length !== 1 || parse.callee.type !== "MemberExpression" || !member(parse.callee, "safeParse")) return null;
+  const argument = parse.arguments[0];
+  const value = argument === undefined ? undefined : unwrapExpression(argument);
+  if (value?.type !== "Identifier" || binding(value, sourceCode) !== binding(parameter, sourceCode)) return null;
+  const receiver = unwrapExpression(parse.callee.object);
+  return receiver.type === "Identifier" ? receiver : null;
 }
 
-function member(node: TSESTree.MemberExpression, name: string): boolean {
+/** The unwrapped initializer of a variable's only `const` declarator. */
+function constInitializer(variable: TsVariable): Node | null {
+  const declaration = variable.defs.length === 1 ? variable.defs[0] : undefined;
+  if (declaration?.type !== "Variable" || declaration.node.type !== "VariableDeclarator") return null;
+  const declarator = declaration.node;
+  if ((parentOf(declarator) as ESTree.VariableDeclaration | null)?.kind !== "const" || declarator.init === null) return null;
+  return unwrapExpression(declarator.init);
+}
+
+function binding(node: Identifier, sourceCode: SourceCode): TsVariable | null {
+  return findVariable(sourceCode.getScope(node), node.name);
+}
+
+function member(node: ESTree.MemberExpression, name: string): boolean {
   return !node.optional && !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier && node.property.name === name;
+    node.property.type === "Identifier" && node.property.name === name;
 }
 
-function uuidNamespace(initializer: TSESTree.Node, sourceCode: TypeScriptSourceCode, services: TypeServices): Variable | null {
-  if (initializer.type !== AST_NODE_TYPES.CallExpression || !noArguments(initializer) || initializer.callee.type !== AST_NODE_TYPES.MemberExpression || !member(initializer.callee, "uuid")) return null;
+/** The installed zod namespace of `z.uuid()`, or of `z.string().uuid()` which zod 3 also accepts. */
+function uuidNamespace(initializer: Node, sourceCode: SourceCode, native: NativeTypes): TsVariable | null {
+  if (initializer.type !== "CallExpression" || !noArguments(initializer) || initializer.callee.type !== "MemberExpression" || !member(initializer.callee, "uuid")) return null;
   let receiver = unwrapExpression(initializer.callee.object);
   let legacy = false;
-  if (receiver.type === AST_NODE_TYPES.CallExpression && noArguments(receiver) && receiver.callee.type === AST_NODE_TYPES.MemberExpression && member(receiver.callee, "string")) {
+  if (receiver.type === "CallExpression" && noArguments(receiver) && receiver.callee.type === "MemberExpression" && member(receiver.callee, "string")) {
     receiver = unwrapExpression(receiver.callee.object);
     legacy = true;
   }
-  if (receiver.type !== AST_NODE_TYPES.Identifier) return null;
+  if (receiver.type !== "Identifier") return null;
   const namespace = binding(receiver, sourceCode);
   const definition = namespace?.defs.length === 1 ? namespace.defs[0] : undefined;
-  if (definition?.type !== "ImportBinding" || definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
-    definition.parent.importKind === "type") return null;
-  const module = definition.parent.source.value;
-  if (module !== "zod" && module !== "zod/v4" && !(legacy && module === "zod/v3")) return null;
-  const specifier = definition.node;
-  if (specifier.type !== AST_NODE_TYPES.ImportNamespaceSpecifier &&
-    (specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind === "type" ||
-      specifier.imported.type !== AST_NODE_TYPES.Identifier || specifier.imported.name !== "z")) return null;
-  if (!installedZod(receiver, services)) return null;
-  return namespace ?? null;
+  if (namespace === null || definition === undefined || !isZodNamespaceImport(definition, legacy) || !installedZod(receiver, native))
+    return null;
+  return namespace;
 }
 
-function noArguments(node: TSESTree.CallExpression): boolean {
+/** `import * as z` or `import { z }` from zod (or zod/v3 for the legacy form), not type-only. */
+function isZodNamespaceImport(definition: TsVariable["defs"][number], legacy: boolean): boolean {
+  const importDeclaration = definition.parent as ESTree.ImportDeclaration | null | undefined;
+  if (definition.type !== "ImportBinding" || importDeclaration?.type !== "ImportDeclaration" ||
+    importDeclaration.importKind === "type") return false;
+  const module = importDeclaration.source.value;
+  if (module !== "zod" && module !== "zod/v4" && !(legacy && module === "zod/v3")) return false;
+  const specifier = definition.node;
+  return specifier.type === "ImportNamespaceSpecifier" ||
+    (specifier.type === "ImportSpecifier" && specifier.importKind !== "type" &&
+      specifier.imported.type === "Identifier" && specifier.imported.name === "z");
+}
+
+function noArguments(node: ESTree.CallExpression): boolean {
   return !node.optional && node.arguments.length === 0;
 }
 
-function installedZod(node: TSESTree.Identifier, services: TypeServices): boolean {
-  const checker = services.program.getTypeChecker();
-  const symbol = checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(node));
-  if (symbol === undefined || (symbol.flags & ts.SymbolFlags.Alias) === 0) return false;
-  const target = checker.getAliasedSymbol(symbol);
-  const declarations = target.getDeclarations();
-  return declarations !== undefined && declarations.length > 0 && declarations.every((declaration) => {
-    const source = declaration.getSourceFile();
-    return source.isDeclarationFile && source.fileName.replaceAll("\\", "/").includes("/node_modules/zod/");
-  });
+function installedZod(node: Identifier, native: NativeTypes): boolean {
+  const location = native.node(node);
+  const symbol = location === undefined ? undefined : native.checker.getSymbolAtLocation(location);
+  if (symbol === undefined || (symbol.flags & native.sync.SymbolFlags.Alias) === 0) return false;
+  const target = native.checker.getAliasedSymbol(symbol);
+  const declarations = target.declarations;
+  return declarations.length > 0 && declarations.every(({ path }) =>
+    DECLARATION_FILE.test(path) && path.replaceAll("\\", "/").includes("/node_modules/zod/"));
 }
 
-function closedSchema(schema: Variable): boolean {
+function closedSchema(schema: TsVariable): boolean {
   return schema.references.every((reference) => {
     if (reference.isWrite()) return reference.init === true;
     if (reference.isValueReference === false) return true;
     const receiver = outerExpression(reference.identifier);
-    const property = receiver.parent;
-    if (property?.type === AST_NODE_TYPES.ExportSpecifier && property.local === receiver) return true;
-    if (property?.type !== AST_NODE_TYPES.MemberExpression || !member(property, "safeParse") || property.object !== receiver) return false;
-    const call = property.parent;
-    return call?.type === AST_NODE_TYPES.CallExpression && call.callee === property && !call.optional &&
-      call.arguments.length === 1 && call.arguments[0]?.type !== AST_NODE_TYPES.SpreadElement;
+    const property = parentOf(receiver);
+    if (property?.type === "ExportSpecifier" && property.local === receiver) return true;
+    if (property?.type !== "MemberExpression" || !member(property, "safeParse") || property.object !== receiver) return false;
+    const call = parentOf(property);
+    return call?.type === "CallExpression" && call.callee === property && !call.optional &&
+      call.arguments.length === 1 && call.arguments[0]?.type !== "SpreadElement";
   });
 }
 
-function closedNamespace(namespace: Variable, initializer: TSESTree.Node): boolean {
+function closedNamespace(namespace: TsVariable, initializer: Node): boolean {
   // Other value uses may replace a factory or obtain a mutable schema prototype.
   // Type-only references cannot mutate the imported runtime namespace.
   return namespace.references.every((reference) => reference.isValueReference === false ||

@@ -57,17 +57,25 @@ class BaselineRunner:
         return subprocess.CompletedProcess(rendered, 0, "", "")
 
 
-def _prepare(repo: Path, runner: BaselineRunner, *, preserve_baselines: bool = False) -> rollout._RolloutBaseline:  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression.
+def _prepare(
+    repo: Path,
+    runner: BaselineRunner,
+    *,
+    preserve_baselines: bool = False,
+    rules: tuple[str, ...] = ("oxlint:@sarj/no-test-comments",),
+    regenerate: bool = False,
+) -> rollout._RolloutBaseline:  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression.
     (repo / rollout.MANIFEST).write_text(_MANIFEST_SOURCE)
     return rollout._prepare_rollout_baseline(  # pyright: ignore[reportPrivateUsage] -- transaction-boundary regression. # ruff: ignore[private-member-access]
         rollout.Consumer("Example", "example/consumer", "main", ("make", "check")),
         repo,
         runner,
-        ("eslint:@typescript-eslint/naming-convention",),
+        rules,
         ("mise", "exec", "--"),
         tool=("code-standards",),
         environment={"PATH": "/declared-tools"},
         preserve_baselines=preserve_baselines,
+        regenerate=regenerate,
     )
 
 
@@ -84,6 +92,18 @@ def test_declared_inputs_exist_before_scoped_baseline_analysis(tmp_path: Path, *
     assert len(runner.commands) == 2
     assert runner.commands[0][-1] == "generate-analysis-inputs"
     assert "baseline" in runner.commands[1]
+
+
+@pytest.mark.parametrize("rules", [(), ("oxlint:@sarj/no-test-comments",)], ids=["unscoped", "promoted"])
+def test_switch_to_oxlint_regenerates_the_whole_baseline(tmp_path: Path, rules: tuple[str, ...]) -> None:
+    (tmp_path / "diagnostic-baseline.json").write_bytes(b"eslint-era fingerprints\n")
+    runner = BaselineRunner(tmp_path)
+
+    result = _prepare(tmp_path, runner, rules=rules, regenerate=True)
+
+    assert result.expected == b"refreshed baseline\n"
+    assert "--rule" not in runner.commands[1]
+    assert runner.commands[1][4:6] == ("baseline", "update")
 
 
 def test_failed_bootstrap_cannot_refresh_scoped_baseline(tmp_path: Path) -> None:

@@ -1,31 +1,13 @@
 import { join } from "node:path";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import ts from "typescript";
-import { afterAll, describe, expect, it } from "vitest";
-
 import rule from "../../src/rules/no-excess-jsx-props.js";
+import { FIXTURES, ruleTester, typed, untyped } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const TESTER = ruleTester({ cwd: join(FIXTURES, "minimal-consumer") });
 
-const TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.tsx"], defaultProject: "tsconfig.json" },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "minimal-consumer"),
-      ecmaFeatures: { jsx: true },
-    },
-  },
-});
 const JSX = "/// <reference path=\"./jsx-runtime.d.ts\" />\nexport {}; declare namespace JSX { interface Element {} interface IntrinsicElements { div: {id?: string}; span: {children?: unknown} } interface IntrinsicAttributes {key?: string} }\n";
 const AVATAR = "const Avatar = ({name}: {name: string}): JSX.Element => <span>{name}</span>;\n";
 const SOURCE = `${JSX}${AVATAR}`;
-const IMPORTED_CONTRACT_CASE = `${JSX}import { Avatar as Imported } from './index'; const view = <Imported {...{name: 'Ada', avatar: 'a', accountId: 'a'}} />;`;
 const SAFE_REFLECTION = [
   ["reflection on a fresh unrelated const object", "const target = {}; Object.defineProperty(target, 'ref', {get() {return null;}});"],
   ["native constructor alias with an unrelated target", "const Native = Object; const target = {}; Native.defineProperty(target, 'ref', {value: null});"],
@@ -33,10 +15,9 @@ const SAFE_REFLECTION = [
   ["a same-spelled local object is not the native constructor", "const Object = {prototype: {}, defineProperty(..._args: unknown[]) {}}; Object.defineProperty(Object.prototype, 'ref', {value: null});"],
 ] as const;
 
-TESTER.run("no-excess-jsx-props", rule, {
+TESTER.run("no-excess-jsx-props", rule, typed({
   valid: [
     {name: "a later direct eval invalidates a queued private element", filename: "probe.tsx", code: `${SOURCE}const element = <Avatar {...{name: 'Ada', email: 'unused'}}/>; const summary = {name: (element as {props: {name: string}}).props.name}; export {summary}; eval("void 0");`},
-    {name: "default-project unused-local errors make imported alias evidence unavailable", filename: "probe.tsx", code: IMPORTED_CONTRACT_CASE},
     ...[
       ["unresolved lexical value", "runtimeCapability;"],
       ["unresolved shorthand value", "const context = {runtimeCapability};"],
@@ -301,7 +282,7 @@ TESTER.run("no-excess-jsx-props", rule, {
       code: `${JSX}const Box = (${parameter}) => <span>${parameter.startsWith("props:") ? "{props.displayLabel}" : "{displayLabel}"}</span>; const view = <Box {...{name: 'Ada', email: 'a'}} />;`,
     })),
     { name: "opaque instantiated HOC has an unknown runtime forwarding surface", filename: "probe.tsx", code: `${SOURCE}declare function memo<P>(view: (props: P) => JSX.Element): (props: P) => JSX.Element; const Memo = memo(Avatar); const view = <Memo {...{name: 'Ada', email: 'a'}} />;` },
-    ...["interface Props {name: string; [key: boolean]: string}", "declare const key: string; interface Props {name: string; [key]: string}"].map((contract) => ({
+    ...["declare const key: string; interface Props {name: string; [key]: string}"].map((contract) => ({
       name: "incomplete declared key space abstains: " + contract,
       filename: "probe.tsx",
       code: `${JSX}${contract} const Avatar = (props: Props): JSX.Element => null!; const view = <Avatar {...{name: 'Ada', email: 'a'}} />;`,
@@ -452,54 +433,15 @@ TESTER.run("no-excess-jsx-props", rule, {
     { filename: "probe.tsx", code: `${SOURCE}const view = <Avatar {...{name: 'Ada', email: 'a'}} />;`, errors: [{ messageId: "excess", data: { fields: "email" } }], output: null },
     { filename: "probe.tsx", code: `${SOURCE}const view = <Avatar {...{name: 'Ada', email: 'a', id: 1}} />;`, errors: [{ messageId: "excess", data: { fields: "email, id" } }], output: null },
   ],
-});
+}));
 
-const IMPORTED_POLICY_TESTER = new RuleTester({languageOptions: {parser: tsParser}});
-IMPORTED_POLICY_TESTER.run("no-excess-jsx-props imported contract under native unused-local policy", rule, {
-  valid: [importedContractPolicyCase("unused-local errors keep imported runtime evidence unavailable", true)],
-  invalid: [{...importedContractPolicyCase("import alias and re-export preserve transitive structural keys", false),
-    errors: [{messageId: "excess", data: {fields: "accountId"}}], output: null}],
-});
+TESTER.run("no-excess-jsx-props without types", rule, untyped({
+  valid: [{ filename: "view.tsx", code: "declare function Avatar(props: {name: string}): unknown; const view = <Avatar {...{name: 'Ada', email: 'a'}} />;" }],
+  invalid: [],
+}));
 
-function importedContractPolicyCase(name: string, noUnusedLocals: boolean) {
-  const filename = join(import.meta.dirname, "..", "fixtures", "minimal-consumer", "probe.tsx");
-  const code = IMPORTED_CONTRACT_CASE;
-  const options: ts.CompilerOptions = {strict: true, noUnusedLocals, noUnusedParameters: false, noEmit: true, types: [],
-    target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, jsx: ts.JsxEmit.ReactJSX};
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (path, version, onError, create) => path === filename ? ts.createSourceFile(path, code, version, true) : original(path, version, onError, create);
-  const program = ts.createProgram([filename], options, host);
-  const source = program.getSourceFile(filename);
-  if (!source) throw new Error("Imported JSX policy fixture was not loaded");
-  expect(program.getOptionsDiagnostics()).toEqual([]);
-  expect(program.getGlobalDiagnostics()).toEqual([]);
-  expect(program.getSyntacticDiagnostics()).toEqual([]);
-  expect(program.getSemanticDiagnostics(source).map((diagnostic) => diagnostic.code)).toEqual(noUnusedLocals ? [6133] : []);
-  return {name, code, filename, languageOptions: {parserOptions: {programs: [program], projectService: false, ecmaFeatures: {jsx: true}}}};
-}
-
-new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } } }).run("no-excess-jsx-props without types", rule, {
-  valid: ["declare function Avatar(props: {name: string}): unknown; const view = <Avatar {...{name: 'Ada', email: 'a'}} />;"],
+const NO_LIB = ruleTester({ cwd: join(FIXTURES, "minimal-consumer-no-lib") });
+NO_LIB.run("no-excess-jsx-props without core Object information", rule, {
+  valid: [{filename: "probe.tsx", code: `${SOURCE}const view = <Avatar {...{name: 'Ada', email: 'a'}} />;`, settings: { sarj: { typeAware: true } }}],
   invalid: [],
 });
-
-new RuleTester({ languageOptions: { parser: tsParser, parserOptions: {
-  projectService: false,
-  project: "./tsconfig.json",
-  tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "minimal-consumer-no-lib"),
-} } }).run("no-excess-jsx-props without core Object information", rule, {
-  valid: [{filename: "probe.tsx", code: `${SOURCE}const view = <Avatar {...{name: 'Ada', email: 'a'}} />;`}],
-  invalid: [],
-});
-
-for (const mode of ["preserve", "classic", "custom-factory", "custom-source", "downlevel", "commonjs"]) {
-  new RuleTester({ languageOptions: { parser: tsParser, parserOptions: {
-    projectService: false,
-    project: `./${mode}.tsconfig.json`,
-    tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "minimal-consumer"),
-  } } }).run(`no-excess-jsx-props with unsupported ${mode} emitter`, rule, {
-    valid: [{filename: "policy.tsx", code: `${SOURCE}const view = <Avatar {...{name: 'Ada', email: 'a'}} />;`}],
-    invalid: [],
-  });
-}

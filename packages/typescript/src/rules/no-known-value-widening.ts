@@ -1,120 +1,116 @@
 /**
  * @fileoverview no-known-value-widening — retain evidence in local values.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-known-value-widening.test.ts
+ * Port of the 18.x `no-known-value-widening` rule. Typed: the original
+ * returns no visitors without a program, so without tsrs (or when tsrs cannot
+ * hold the file) this port reports nothing. The walk applies the original's
+ * syntactic checks and collects candidates; `Program:exit` runs its type
+ * checks over tsrs's checker, then reports.
+ *
+ * Under Oxlint the original crashes on a readonly `#field` without a type
+ * annotation: it tests `node.typeAnnotation === undefined`, Oxlint gives
+ * `null`, and it then reads `null.typeAnnotation`. This port treats both as
+ * absent. Symbol identity (`seen`, field references) is by tsrs symbol id.
  */
 
-import { getTypeServices, type TypeServices, type TypeScriptSourceCode } from "./_eslint-rule.js";
+import type * as TsrsAst from "tsrs/ast";
+import type { Symbol as TsSymbol, Type } from "tsrs/sync";
 
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { tsVariable } from "../types.js";
+import { outerExpression, parentOf } from "../utils/ast.js";
+import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { stableValueBinding, typeOnlyReference, writtenMember } from "../utils/stable-value-binding.js";
+import { getPropertyName } from "../utils/static-string.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
+import { retainsNamedTypeUses } from "../utils/type-binding.js";
+import { hasIdentifierNamed, isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
+const NAME = "no-known-value-widening";
+// Annotations whose type has properties (primitives, literals and arrays through their apparent types)
+// or no index signature (any, never, null, undefined, void) never erase a contract, and a registry
+// needs an object literal, so declarators with them and another initializer need no types.
+const PROPERTIED_ANNOTATIONS: ReadonlySet<string> = new Set([
+  "TSAnyKeyword", "TSArrayType", "TSBigIntKeyword", "TSBooleanKeyword", "TSLiteralType", "TSNeverKeyword", "TSNullKeyword",
+  "TSNumberKeyword", "TSStringKeyword", "TSSymbolKeyword", "TSTemplateLiteralType", "TSTupleType", "TSUndefinedKeyword", "TSVoidKeyword",
+]);
 
-import { retainsNamedTypeUses } from "./_type-binding.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { hasIdentifierNamed, isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { outerExpression } from "./_unwrap-expression.js";
-import { stableValueBinding, typeOnlyReference, writtenMember } from "./_stable-value-binding.js";
-import { isGeneratedFile } from "./_paths.js";
+type TsNode = TsrsAst.Node;
 
-export const NO_KNOWN_VALUE_WIDENING_DOCUMENTATION = {
-  summary: "Preserve a known value's contract instead of widening a local binding to unknown, object, or an unknown-valued dictionary.",
-  rationale: "Erasing a typed value's fields forces downstream code to rediscover the same contract through casts, reflection, or representation checks.",
-  remediation: "Keep the inferred type, select the required domain fields, or use satisfies to check compatibility without erasing evidence.",
-  category: "maintainability",
-  requiresTypeInformation: true,
-  references: ["https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-known-value-widening.ts"],
-  autofix: "safe",
-  limitations: [
-    "Requires TypeScript type information. Checks annotated local const bindings with independently known identifier, nonempty literal or monomorphic-call initializers; complete readonly private field writes and proven closed literal registries are also inspected. Parameters, direct exports, computed SDK/schema contracts, uncertain contextual inference and assertions are excluded.",
-    "Known-value erasure checks target unknown, object, and index-only dictionaries with unknown values. Separate finite-key guidance applies to proven closed registries with concrete values. Typed dynamic registries, finite-key records, empty accumulators, unknown external input and incomplete private-field write sets are preserved. Finite-key guidance requires a closed local literal with no mutations, escapes or unknown invocation receivers.",
-    "Intentional type erasure at a real abstraction boundary needs a local suppression explaining that boundary. New initializer, field and registry cases remain manual. Automatic fixes remove the annotation only from an unused private identifier-initialized binding in a module or block; referenced bindings retain their declared contract for manual review.",
-  ],
-  examples: [
-    { id: "erased-tool", title: "A dictionary erases a known tool contract", outcome: "match", files: [{ path: "src/tool.ts", source: "type Tool = { name: string; enabled: boolean };\ndeclare const tool: Tool;\nconst fields: Record<string, unknown> = tool;" }], focusPath: "src/tool.ts", expectedCount: 1, public: true },
-    { id: "retained-tool", title: "Retain the tool's fields", outcome: "no-match", files: [{ path: "src/tool.ts", source: "type Tool = { name: string; enabled: boolean };\ndeclare const tool: Tool;\nconst fields = tool;" }], focusPath: "src/tool.ts", expectedCount: 0, public: true },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; declare const tool: { name: string }; const fields: unknown = tool;" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; declare const tool: { name: string }; const fields = tool;" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-    {"id": "finite-registry-before", "scenarioId": "finite-registry", "title": "Preserve a closed registry key set — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "const handlers: Record<string, () => void> = { start() {} }; handlers.start();"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
-    {"id": "finite-registry-after", "scenarioId": "finite-registry", "title": "Preserve a closed registry key set — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "type Command = 'start'; const handlers = { start() {} } satisfies Record<Command, () => void>; handlers.start();"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
-    {"id": "private-storage-before", "scenarioId": "private-storage", "title": "Retain a completely owned storage contract — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "class Store { readonly #value: unknown = { id: 'u1' }; read() { return this.#value; } }"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
-    {"id": "private-storage-after", "scenarioId": "private-storage", "title": "Retain a completely owned storage contract — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "class Store { readonly #value = { id: 'u1' }; read() { return this.#value; } }"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
-    {"id": "factory-initializer-before", "scenarioId": "factory-initializer", "title": "Retain the monomorphic factory contract — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "declare function load(): { id: string }; const value: unknown = load();"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
-    {"id": "factory-initializer-after", "scenarioId": "factory-initializer", "title": "Retain the monomorphic factory contract — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "declare function load(): { id: string }; const value = load();"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
-    {"id": "literal-initializer-before", "scenarioId": "literal-initializer", "title": "Retain the independently known literal contract — before", "outcome": "match", "files": [{"path": "src/example.ts", "source": "const value: unknown = { id: 'u1' };"}], "focusPath": "src/example.ts", "expectedCount": 1, "public": true},
-    {"id": "literal-initializer-after", "scenarioId": "literal-initializer", "title": "Retain the independently known literal contract — after", "outcome": "no-match", "files": [{"path": "src/example.ts", "source": "const value = { id: 'u1' };"}], "focusPath": "src/example.ts", "expectedCount": 0, "public": true},
-  ],
-} as const satisfies RuleDocumentation;
-
-function erasesContract(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if ((type.flags & (ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive)) !== 0) return true;
-  const indexes = checker.getIndexInfosOfType(type);
-  return indexes.length > 0 && checker.getPropertiesOfType(type).length === 0 &&
-    indexes.every((index) => (index.type.flags & ts.TypeFlags.Unknown) !== 0);
+function erasesContract(type: Type, native: NativeTypes): boolean {
+  const flags = native.sync.TypeFlags;
+  if ((type.flags & (flags.Unknown | flags.NonPrimitive)) !== 0) return true;
+  const indexes = native.checker.getIndexInfosOfType(type);
+  return indexes.length > 0 && native.checker.getPropertiesOfType(type).length === 0 &&
+    indexes.every((index) => (index.valueType.flags & flags.Unknown) !== 0);
 }
 
-function hasUnknownContract(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if (type.isUnionOrIntersection()) return type.types.some((part) => hasUnknownContract(part, checker));
-  return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Conditional | ts.TypeFlags.IndexedAccess | ts.TypeFlags.Substitution)) !== 0 || erasesContract(type, checker);
+function hasUnknownContract(type: Type, native: NativeTypes): boolean {
+  const flags = native.sync.TypeFlags;
+  if (type.isUnionType() || type.isIntersectionType()) return type.getTypes().some((part) => hasUnknownContract(part, native));
+  return (type.flags & (flags.Any | flags.Unknown | flags.Never | flags.TypeParameter | flags.Conditional | flags.IndexedAccess | flags.Substitution)) !== 0 ||
+    erasesContract(type, native);
 }
 
-
-function independentInitializer(node: TSESTree.Expression, services: TypeServices, checker: ts.TypeChecker): boolean {
-  if (node.type === AST_NODE_TYPES.Identifier) return true;
-  if (node.type === AST_NODE_TYPES.AwaitExpression) return independentInitializer(node.argument, services, checker);
-  if (node.type === AST_NODE_TYPES.CallExpression) {
-    const signature = checker.getResolvedSignature(services.esTreeNodeToTSNodeMap.get(node));
-    const declaration = signature?.declaration;
-    return declaration !== undefined && declaration.typeParameters === undefined &&
-      signature !== undefined && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Void) === 0;
+function independentInitializer(node: Node, native: NativeTypes): boolean {
+  if (node.type === "Identifier") return true;
+  if (node.type === "AwaitExpression") return independentInitializer(node.argument, native);
+  if (node.type === "CallExpression") {
+    const call = native.node(node);
+    if (call === undefined) return false;
+    const signature = native.checker.getResolvedSignature(call);
+    const handle = signature?.declaration;
+    const declaration = handle?.resolve() as (TsNode & { readonly typeParameters?: unknown }) | undefined;
+    return declaration !== undefined && !isPresent(declaration.typeParameters) &&
+      (native.checker.getReturnTypeOfSignature(signature).flags & native.sync.TypeFlags.Void) === 0;
   }
-  if (node.type === AST_NODE_TYPES.ObjectExpression) return node.properties.length > 0 &&
-    node.properties.every(property => property.type === AST_NODE_TYPES.Property && !property.computed &&
+  if (node.type === "ObjectExpression") return node.properties.length > 0 &&
+    node.properties.every((property) => property.type === "Property" && !property.computed &&
       property.kind === "init" && !property.method &&
-      property.value.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      property.value.type !== AST_NODE_TYPES.FunctionExpression);
-  if (node.type === AST_NODE_TYPES.ArrayExpression) return node.elements.length > 0 &&
-    node.elements.every(element => element !== null && element.type !== AST_NODE_TYPES.SpreadElement &&
-      element.type !== AST_NODE_TYPES.ArrowFunctionExpression && element.type !== AST_NODE_TYPES.FunctionExpression);
-  return node.type === AST_NODE_TYPES.Literal && node.value !== null;
+      property.value.type !== "ArrowFunctionExpression" &&
+      property.value.type !== "FunctionExpression");
+  if (node.type === "ArrayExpression") return node.elements.length > 0 &&
+    node.elements.every((element) => element !== null && element.type !== "SpreadElement" &&
+      element.type !== "ArrowFunctionExpression" && element.type !== "FunctionExpression");
+  return node.type === "Literal" && node.value !== null;
 }
 
-function computedContract(node: ts.Node, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): boolean {
-  if (ts.isIndexedAccessTypeNode(node) || ts.isConditionalTypeNode(node) || ts.isTypeQueryNode(node)) return true;
-  if (ts.isParenthesizedTypeNode(node)) return computedContract(node.type, checker, seen);
-  if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node))
-    return node.types.some(part => computedContract(part, checker, seen));
-  if (!ts.isTypeReferenceNode(node)) return false;
+function computedContract(node: TsNode, native: NativeTypes, seen = new Set<number>()): boolean {
+  const { ast, checker, sync } = native;
+  if (ast.isIndexedAccessTypeNode(node) || ast.isConditionalTypeNode(node) || ast.isTypeQueryNode(node)) return true;
+  if (ast.isParenthesizedTypeNode(node)) return computedContract(node.type, native, seen);
+  if (ast.isUnionTypeNode(node) || ast.isIntersectionTypeNode(node)) return node.types.some((part) => computedContract(part, native, seen));
+  if (!ast.isTypeReferenceNode(node)) return false;
   const reference = checker.getSymbolAtLocation(node.typeName);
   if (reference === undefined) return true;
-  const symbol = (reference.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(reference) : reference;
-  if (seen.has(symbol)) return true;
-  seen.add(symbol);
-  return symbol.getDeclarations()?.some(declaration => ts.isTypeAliasDeclaration(declaration) &&
-    computedContract(declaration.type, checker, seen)) ?? false;
+  const symbol = (reference.flags & sync.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(reference) : reference;
+  if (seen.has(symbol.id)) return true;
+  seen.add(symbol.id);
+  return symbol.declarations.some((handle) => {
+    if (handle.kind !== ast.SyntaxKind.TypeAliasDeclaration) return false;
+    const declaration = handle.resolve();
+    return declaration !== undefined && ast.isTypeAliasDeclaration(declaration) && computedContract(declaration.type, native, seen);
+  });
 }
 
-function receiverIsUnobserved(symbol: ts.Symbol, checker: ts.TypeChecker): boolean {
-  const seen = new Set<ts.Symbol>();
-  function inspect(current: ts.Symbol): boolean {
-    if (seen.has(current)) return false;
-    seen.add(current);
-    if ((current.flags & ts.SymbolFlags.Alias) !== 0) return inspect(checker.getAliasedSymbol(current));
-    const declarations = current.getDeclarations();
-    if (declarations === undefined || declarations.length !== 1) return false;
-    const declaration = declarations[0];
+function receiverIsUnobserved(symbol: TsSymbol, native: NativeTypes): boolean {
+  const { ast, checker, sync } = native;
+  const seen = new Set<number>();
+  function inspect(current: TsSymbol): boolean {
+    if (seen.has(current.id)) return false;
+    seen.add(current.id);
+    if ((current.flags & sync.SymbolFlags.Alias) !== 0) return inspect(checker.getAliasedSymbol(current));
+    const declarations = current.declarations;
+    if (declarations.length !== 1) return false;
+    const declaration = declarations[0]?.resolve();
     if (declaration === undefined) return false;
-    if (ts.isPropertyAssignment(declaration) || ts.isVariableDeclaration(declaration)) {
+    if (ast.isPropertyAssignment(declaration) || ast.isVariableDeclaration(declaration)) {
       const value = declaration.initializer;
       if (value === undefined) return false;
-      if (ts.isIdentifier(value)) {
+      if (ast.isIdentifier(value)) {
         const owner = checker.getSymbolAtLocation(value);
         return owner !== undefined && inspect(owner);
       }
@@ -122,19 +118,19 @@ function receiverIsUnobserved(symbol: ts.Symbol, checker: ts.TypeChecker): boole
     }
     return functionDoesNotUseReceiver(declaration);
   }
-  function functionDoesNotUseReceiver(node: ts.Node): boolean {
-    if (!ts.isFunctionDeclaration(node) && !ts.isFunctionExpression(node) &&
-      !ts.isArrowFunction(node) && !ts.isMethodDeclaration(node)) return false;
+  function functionDoesNotUseReceiver(node: TsNode): boolean {
+    if (!ast.isFunctionDeclaration(node) && !ast.isFunctionExpression(node) &&
+      !ast.isArrowFunction(node) && !ast.isMethodDeclaration(node)) return false;
     if (node.body === undefined) return false;
     let unobserved = true;
-    function visit(current: ts.Node): void {
-      if (!unobserved) return;
-      if (current.kind === ts.SyntaxKind.ThisKeyword ||
-        ts.isIdentifier(current) && current.text === "eval") {
+    function visit(current: TsNode): undefined {
+      if (!unobserved) return undefined;
+      if (current.kind === ast.SyntaxKind.ThisKeyword || ast.isIdentifier(current) && current.text === "eval") {
         unobserved = false;
-        return;
+        return undefined;
       }
-      ts.forEachChild(current, visit);
+      current.forEachChild(visit);
+      return undefined;
     }
     visit(node.body);
     return unobserved;
@@ -142,130 +138,217 @@ function receiverIsUnobserved(symbol: ts.Symbol, checker: ts.TypeChecker): boole
   return inspect(symbol);
 }
 
-function closedRegistry(
-  node: TSESTree.VariableDeclarator,
-  source: Readonly<TypeScriptSourceCode>,
-  sourceType: ts.Type,
-  targetType: ts.Type,
-  checker: ts.TypeChecker,
-): boolean {
-  if (node.id.type !== AST_NODE_TYPES.Identifier || node.init?.type !== AST_NODE_TYPES.ObjectExpression ||
-    node.init.properties.length === 0 || node.init.properties.some(property =>
-      property.type !== AST_NODE_TYPES.Property || property.computed || property.kind !== "init")) return false;
+function closedRegistry(node: ESTree.VariableDeclarator, source: SourceCode, sourceType: Type, targetType: Type, native: NativeTypes): boolean {
+  const { checker } = native;
+  if (node.id.type !== "Identifier" || node.init?.type !== "ObjectExpression" ||
+    node.init.properties.length === 0 || node.init.properties.some((property) =>
+      property.type !== "Property" || property.computed || property.kind !== "init")) return false;
   const indexes = checker.getIndexInfosOfType(targetType);
   if (targetType.getProperties().length > 0 || indexes.length === 0 ||
-    indexes.some(index => hasUnknownContract(index.type, checker))) return false;
+    indexes.some((index) => hasUnknownContract(index.valueType, native))) return false;
   const identifier = node.id;
-  const variable = source.getDeclaredVariables(node).find(candidate => candidate.identifiers.includes(identifier));
+  const found = source.getDeclaredVariables(node).find((candidate) => candidate.identifiers.includes(identifier));
+  const variable = found === undefined ? undefined : tsVariable(found);
   if (variable === undefined || variable.scope.type === "global" || !stableValueBinding(variable) ||
-    !variable.references.some(reference => reference.isRead() || typeOnlyReference(reference))) return false;
-  return variable.references.every(reference => {
+    !variable.references.some((reference) => reference.isRead() || typeOnlyReference(reference))) return false;
+  return variable.references.every((reference) => {
     if (reference.init === true || typeOnlyReference(reference)) return true;
     const value = outerExpression(reference.identifier);
-    const member = value.parent;
-    if (member === undefined) return false;
-    if (member.type !== AST_NODE_TYPES.MemberExpression || member.object !== value ||
-      writtenMember(member)) return false;
-    const key = ASTUtils.getPropertyName(member);
+    const member = parentOf(value);
+    if (member === null) return false;
+    if (member.type !== "MemberExpression" || member.object !== value || writtenMember(member)) return false;
+    const key = getPropertyName(member);
     if (key === null) return false;
     const outer = outerExpression(member);
-    if (outer.parent?.type !== AST_NODE_TYPES.CallExpression || outer.parent.callee !== outer) return true;
+    const call = parentOf(outer);
+    if (call?.type !== "CallExpression" || call.callee !== outer) return true;
     const property = checker.getPropertyOfType(sourceType, key);
-    return property === undefined || receiverIsUnobserved(property, checker);
+    return property === undefined || receiverIsUnobserved(property, native);
   });
 }
 
-export default createRule<[], "widening" | "registry">({
-  name: "no-known-value-widening",
-  documentation: NO_KNOWN_VALUE_WIDENING_DOCUMENTATION,
+/** Every write to the field inside its class assigns a value of exactly the initializer's type. */
+function fieldWritesKeepType(classNode: TsNode, fieldAccesses: ReadonlySet<TsNode>, source: Type, native: NativeTypes): boolean {
+  const { ast, checker } = native;
+  const kinds = ast.SyntaxKind;
+  function hasChangingWrite(current: TsNode): boolean {
+    return !keepsType(current) || current.forEachChild(hasChangingWrite) === true;
+  }
+  function keepsType(current: TsNode): boolean {
+    if (ast.isBinaryExpression(current) &&
+      current.operatorToken.kind >= kinds.FirstAssignment && current.operatorToken.kind <= kinds.LastAssignment) {
+      if (!isField(current.left)) return !containsField(current.left);
+      const value = checker.getTypeAtLocation(current.right);
+      return current.operatorToken.kind === kinds.EqualsToken && !hasUnknownContract(value, native) &&
+        checker.isTypeAssignableTo(source, value) && checker.isTypeAssignableTo(value, source);
+    }
+    if ((ast.isPrefixUnaryExpression(current) || ast.isPostfixUnaryExpression(current)) &&
+      (current.operator === kinds.PlusPlusToken || current.operator === kinds.MinusMinusToken)) return !containsField(current.operand);
+    if (ast.isForOfStatement(current) || ast.isForInStatement(current)) return !containsField(current.initializer);
+    return true;
+  }
+  function containsField(current: TsNode): boolean {
+    return isField(current) || current.forEachChild(containsField) === true;
+  }
+  function isField(value: TsNode): boolean {
+    while (ast.isParenthesizedExpression(value) || ast.isAsExpression(value) ||
+      ast.isTypeAssertion(value) || ast.isNonNullExpression(value) || ast.isSatisfiesExpression(value)) value = value.expression;
+    return ast.isPropertyAccessExpression(value) && fieldAccesses.has(value);
+  }
+  return !hasChangingWrite(classNode);
+}
+
+interface DeclaratorCandidate {
+  readonly kind: "declarator";
+  readonly node: ESTree.VariableDeclarator & { readonly id: ESTree.BindingIdentifier; readonly init: ESTree.Expression };
+  readonly annotation: ESTree.TSTypeAnnotation;
+}
+
+interface FieldCandidate {
+  readonly kind: "field";
+  readonly node: ESTree.PropertyDefinition & { readonly value: ESTree.Expression };
+  readonly annotation: ESTree.TSTypeAnnotation;
+  readonly owner: ESTree.Class;
+}
+
+interface DeclaratorTypes {
+  readonly source: Type;
+  readonly target: Type;
+  readonly targetNode: TsNode;
+}
+
+/**
+ * The initializer and annotation types of every declarator, in one request. The original asks
+ * for them a declarator at a time, and for the annotation only after the initializer passes.
+ */
+function declaratorTypes(candidates: readonly (DeclaratorCandidate | FieldCandidate)[], native: NativeTypes): Map<DeclaratorCandidate, DeclaratorTypes> {
+  const found: { candidate: DeclaratorCandidate; init: TsNode; targetNode: TsNode }[] = [];
+  for (const candidate of candidates) {
+    if (candidate.kind !== "declarator") continue;
+    const init = native.node(candidate.node.init);
+    const targetNode = native.outerNode(candidate.annotation.typeAnnotation);
+    if (init !== undefined && targetNode !== undefined) found.push({ candidate, init, targetNode });
+  }
+  const types = found.length === 0 ? [] : native.checker.getTypeAtLocation(found.flatMap(({ init, targetNode }) => [init, targetNode]));
+  const byCandidate = new Map<DeclaratorCandidate, DeclaratorTypes>();
+  found.forEach(({ candidate, targetNode }, i) => {
+    const source = types[2 * i];
+    const target = types[2 * i + 1];
+    if (source !== undefined && target !== undefined) byCandidate.set(candidate, { source, target, targetNode });
+  });
+  return byCandidate;
+}
+
+interface Finding {
+  readonly annotation: ESTree.TSTypeAnnotation;
+  readonly messageId: "widening" | "registry";
+  readonly canFix: boolean;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: NO_KNOWN_VALUE_WIDENING_DOCUMENTATION.summary },
+    docs: {
+      description: "Preserve a known value's contract instead of widening a local binding to unknown, object, or an unknown-valued dictionary.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       widening: "This annotation erases a known value's contract. Retain inference or use a domain contract instead of rediscovering fields through casts or runtime checks.",
       registry: "This closed registry loses its finite keys behind a string index. Preserve its keys with satisfies and an owned finite key union where available.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    const services = getTypeServices(context);
-    if (services.program === null) return {};
-    const checker = services.program.getTypeChecker();
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: (DeclaratorCandidate | FieldCandidate)[] = [];
+
+    function declaratorFinding({ node, annotation }: DeclaratorCandidate, native: NativeTypes, types: DeclaratorTypes | undefined): Finding | undefined {
+      const sourceCode = context.sourceCode;
+      if (types === undefined) return undefined;
+      const { source, target, targetNode } = types;
+      if (hasUnknownContract(source, native)) return undefined;
+      const erased = erasesContract(target, native) && !computedContract(targetNode, native) && independentInitializer(node.init, native);
+      const registry = !erased && !hasIdentifierNamed(sourceCode, "eval") && closedRegistry(node, sourceCode, source, target, native);
+      if (!erased && !registry) return undefined;
+      const canFix = erased && node.init.type === "Identifier" &&
+        isUnusedPrivateBinding(sourceCode, node, node.id, context.filename) &&
+        sourceCode.getCommentsInside(annotation).length === 0 &&
+        retainsNamedTypeUses(sourceCode, annotation);
+      return { annotation, messageId: registry ? "registry" : "widening", canFix };
+    }
+
+    function fieldFinding({ node, annotation, owner }: FieldCandidate, native: NativeTypes): Finding | undefined {
+      const { ast, checker } = native;
+      if (!independentInitializer(node.value, native)) return undefined;
+      const declaration = native.node(node);
+      const classNode = native.node(owner);
+      if (declaration === undefined || classNode === undefined || !ast.isPropertyDeclaration(declaration) ||
+        !ast.isClassDeclaration(classNode) && !ast.isClassExpression(classNode)) return undefined;
+      const field = checker.getSymbolAtLocation(declaration.name);
+      const valueNode = native.node(node.value);
+      const targetNode = native.outerNode(annotation.typeAnnotation);
+      if (valueNode === undefined || targetNode === undefined) return undefined;
+      const source = checker.getTypeAtLocation(valueNode);
+      const target = checker.getTypeAtLocation(targetNode);
+      if (field === undefined || hasUnknownContract(source, native) || !erasesContract(target, native) ||
+        computedContract(targetNode, native)) return undefined;
+      // The original asks for each property access's symbol as it walks; ask once for every access in the class.
+      const accesses: TsrsAst.PropertyAccessExpression[] = [];
+      const collect = (current: TsNode): undefined => {
+        if (ast.isPropertyAccessExpression(current)) accesses.push(current);
+        current.forEachChild(collect);
+        return undefined;
+      };
+      collect(classNode);
+      const symbols = accesses.length === 0 ? [] : checker.getSymbolAtLocation(accesses.map((access) => access.name));
+      const fieldAccesses = new Set(accesses.filter((_, i) => symbols[i]?.id === field.id));
+      return fieldWritesKeepType(classNode, fieldAccesses, source, native) ? { annotation, messageId: "widening", canFix: false } : undefined;
+    }
+
     return {
-      VariableDeclarator(node: TSESTree.VariableDeclarator): void {
-        if (node.id.type !== AST_NODE_TYPES.Identifier || !node.id.typeAnnotation || node.init === null ||
-          node.parent.kind !== "const" || node.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) return;
-        const source = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.init));
-        if (hasUnknownContract(source, checker)) return;
-        const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.id.typeAnnotation.typeAnnotation));
-        const erased = erasesContract(target, checker) &&
-          !computedContract(services.esTreeNodeToTSNodeMap.get(node.id.typeAnnotation.typeAnnotation), checker) &&
-          independentInitializer(node.init, services, checker);
-        const registry = !erased && !hasIdentifierNamed(context.sourceCode.ast, "eval") &&
-          closedRegistry(node, context.sourceCode, source, target, checker);
-        if (!erased && !registry) return;
-        const annotation = node.id.typeAnnotation;
-        const canFix = erased && node.init.type === AST_NODE_TYPES.Identifier &&
-          isUnusedPrivateBinding(context.sourceCode, node, node.id, context.filename) &&
-          context.sourceCode.getCommentsInside(annotation).length === 0 &&
-          retainsNamedTypeUses(context.sourceCode, annotation);
-        context.report({
-          node: annotation,
-          messageId: registry ? "registry" : "widening",
-          fix: canFix ? (fixer) => fixer.replaceText(annotation,
-            context.sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) : null,
-        });
+      before() {
+        tsrs = null;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
       },
-      PropertyDefinition(node: TSESTree.PropertyDefinition): void {
-        if (node.key.type !== AST_NODE_TYPES.PrivateIdentifier || !node.readonly || node.static ||
-          node.value === null || node.typeAnnotation === undefined || node.decorators.length > 0 ||
-          hasIdentifierNamed(context.sourceCode.ast, "eval") ||
-          !independentInitializer(node.value, services, checker)) return;
-        const owner = node.parent.parent;
-        if ((owner.type !== AST_NODE_TYPES.ClassDeclaration && owner.type !== AST_NODE_TYPES.ClassExpression) ||
-          owner.decorators.length > 0 || owner.superClass !== null) return;
-        const declaration = services.esTreeNodeToTSNodeMap.get(node);
-        const classNode = services.esTreeNodeToTSNodeMap.get(owner);
-        if (!ts.isPropertyDeclaration(declaration) ||
-          !ts.isClassDeclaration(classNode) && !ts.isClassExpression(classNode)) return;
-        const field = checker.getSymbolAtLocation(declaration.name);
-        const source = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.value));
-        const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.typeAnnotation.typeAnnotation));
-        if (field === undefined || hasUnknownContract(source, checker) || !erasesContract(target, checker) ||
-          computedContract(services.esTreeNodeToTSNodeMap.get(node.typeAnnotation.typeAnnotation), checker)) return;
-        let compatible = true;
-        function isField(value: ts.Node): boolean {
-          while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) ||
-            ts.isTypeAssertionExpression(value) || ts.isNonNullExpression(value) || ts.isSatisfiesExpression(value))
-            value = value.expression;
-          return ts.isPropertyAccessExpression(value) && checker.getSymbolAtLocation(value.name) === field;
+      VariableDeclarator(node) {
+        const declaration = parentOf(node) as ESTree.VariableDeclaration;
+        if (node.id.type !== "Identifier" || !isPresent(node.id.typeAnnotation) || node.init === null ||
+          declaration.kind !== "const" || parentOf(declaration)?.type === "ExportNamedDeclaration") return;
+        if (node.init.type !== "ObjectExpression" && PROPERTIED_ANNOTATIONS.has(node.id.typeAnnotation.typeAnnotation.type)) return;
+        candidates.push({ kind: "declarator", node: node as DeclaratorCandidate["node"], annotation: node.id.typeAnnotation });
+      },
+      PropertyDefinition(node) {
+        if (node.key.type !== "PrivateIdentifier" || node.readonly !== true || node.static ||
+          node.value === null || !isPresent(node.typeAnnotation) || node.decorators.length > 0 ||
+          hasIdentifierNamed(context.sourceCode, "eval")) return;
+        const owner = parentOf(parentOf(node) as Node) as Node;
+        if ((owner.type !== "ClassDeclaration" && owner.type !== "ClassExpression") ||
+          owner.decorators.length > 0 || (owner.superClass ?? null) !== null) return;
+        candidates.push({ kind: "field", node: node as FieldCandidate["node"], annotation: node.typeAnnotation, owner: owner });
+      },
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const findings = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          const types = declaratorTypes(candidates, native);
+          return candidates.map((candidate) => candidate.kind === "declarator"
+            ? declaratorFinding(candidate, native, types.get(candidate)) : fieldFinding(candidate, native));
+        });
+        if (findings === null) return;
+        const sourceCode = context.sourceCode;
+        for (const finding of findings) {
+          if (finding === undefined) continue;
+          const { annotation } = finding;
+          context.report({
+            node: annotation,
+            messageId: finding.messageId,
+            ...(finding.canFix && { fix: (fixer) => fixer.replaceText(annotation, sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) }),
+          });
         }
-        function containsField(current: ts.Node): boolean {
-          return isField(current) || ts.forEachChild(current, containsField) === true;
-        }
-        function inspect(current: ts.Node): void {
-          if (!compatible) return;
-          if (ts.isBinaryExpression(current) && current.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-            current.operatorToken.kind <= ts.SyntaxKind.LastAssignment && isField(current.left)) {
-            const value = checker.getTypeAtLocation(current.right);
-            compatible = current.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-              !hasUnknownContract(value, checker) &&
-              checker.isTypeAssignableTo(source, value) && checker.isTypeAssignableTo(value, source);
-          } else if (ts.isBinaryExpression(current) && current.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-            current.operatorToken.kind <= ts.SyntaxKind.LastAssignment && containsField(current.left)) compatible = false;
-          else if ((ts.isPrefixUnaryExpression(current) || ts.isPostfixUnaryExpression(current)) &&
-            (current.operator === ts.SyntaxKind.PlusPlusToken || current.operator === ts.SyntaxKind.MinusMinusToken) &&
-            containsField(current.operand)) compatible = false;
-          else if ((ts.isForOfStatement(current) || ts.isForInStatement(current)) &&
-            containsField(current.initializer)) compatible = false;
-          ts.forEachChild(current, inspect);
-        }
-        inspect(classNode);
-        if (compatible) context.report({ node: node.typeAnnotation, messageId: "widening" });
       },
     };
   },

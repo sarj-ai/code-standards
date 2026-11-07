@@ -378,14 +378,14 @@ def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     assert _is_object_table(raw)
     dependencies = raw.get("devDependencies")
     assert _is_string_table(dependencies)
-    for name in ("@eslint/js", "eslint", "eslint-plugin-astro", "typescript-eslint"):
+    for name in ("oxlint", "tsrs"):
         assert dependencies[name][0].isdigit(), f"{name} must use an exact version"
     plugin_specifier = dependencies["@sarj/eslint-plugin"]
     assert plugin_specifier.startswith("file:")
     plugin_raw = _load_json(REPO_ROOT / "apps/docs" / plugin_specifier.removeprefix("file:") / "package.json")
     assert _is_object_table(plugin_raw)
     assert plugin_raw.get("name") == "@sarj/eslint-plugin"
-    assert plugin_raw.get("version") == manifest.eslint_peers()["@sarj/eslint-plugin"]
-    # Astro uses the supported API bridge; command-line checks retain the native compiler.
+    assert plugin_raw.get("version") == manifest.typescript_peers()["@sarj/eslint-plugin"]
+    # astro check needs the TypeScript API; command-line checks run tsrs.
     assert dependencies["typescript"] == "npm:@typescript/typescript6@6.0.2"
-    assert dependencies["@typescript/native"] == "npm:typescript@7.0.2"
+    assert "@typescript/native" not in dependencies

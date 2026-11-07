@@ -1,45 +1,31 @@
 /**
  * @fileoverview no-offset-pagination — `OFFSET m` scans and discards m rows per page and shifts under concurrent writes, so rows repeat or vanish.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-offset-pagination.test.ts
+ * Port of the 18.x `no-offset-pagination` rule. The rule is untyped, so
+ * the port covers all of it.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import type { VisitorWithHooks } from "@oxlint/plugins";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
-import { createSqlListener } from "./_sql.js";
+import { defineRule, type Node } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isTestFile } from "../utils/paths.js";
+import { createSqlListener } from "../utils/sql.js";
 
-type MessageIds = "noOffsetPagination";
-type Options = readonly [];
-
-export const NO_OFFSET_PAGINATION_DOCUMENTATION = {
-  summary: "Prefer keyset pagination for embedded SQL queries using OFFSET.",
-  rationale: "Offset pagination scans skipped rows and shifts page boundaries under concurrent writes.",
-  remediation: "Consider a keyset cursor that preserves the query's complete ordering, tie-breakers, and filters.",
-  category: "performance",
-  limitations: ["A SELECT/FROM query shape or adjacent LIMIT/OFFSET fragment is required. Isolated OFFSET fragments and test files are excluded; this lexical context does not prove a database execution sink. Performance and concurrent-write behavior depend on indexes, ordering, isolation, and dialect; bounded pages and random page access can justify OFFSET."],
-  examples: [
-    { id: "keyset-pagination", title: "Page from a stable cursor", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id FROM runs WHERE id > ? ORDER BY id LIMIT ?`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
-    { id: "offset-pagination", title: "Do not page by offset", outcome: "match", files: [{ path: "src/runs.ts", source: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
-    { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\u0053ET 1\");" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
-    { id: "decoded-comment-data", scenarioId: "native-decoded-sql", title: "Ignore native-decoded comment data", outcome: "no-match", files: [{ path: "src/page.ts", source: "db.query(\"SELECT id FROM runs /* OFF\\x53ET 1 */\");" }], focusPath: "src/page.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-offset-pagination";
 
 /** Match pagination across the parameter styles supported by the TS, Python, and SQL rules. */
 const OFFSET_PAGINATION = /\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)/i;
 
 const PAGINATION_CONTEXT = /\bSELECT\b[\s\S]*\bFROM\b[\s\S]*\bOFFSET\b|\bLIMIT\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)\s+OFFSET\b/i;
 
-export default createRule<Options, MessageIds>({
-  name: "no-offset-pagination",
-  documentation: NO_OFFSET_PAGINATION_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Prefer keyset pagination for embedded SQL queries using OFFSET.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -47,16 +33,20 @@ export default createRule<Options, MessageIds>({
         "Review OFFSET pagination for large or changing result sets. If a keyset cursor fits the access pattern, preserve the query's complete ordering, tie-breakers, and filters; bounded pages or random page access may justify OFFSET.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context)) {
-      return {};
-    }
-    return createSqlListener((sql: string, node: TSESTree.Node): void => {
+  createOnce(context): VisitorWithHooks {
+    const listener = createSqlListener((sql: string, node: Node): void => {
       if (!PAGINATION_CONTEXT.test(sql) || !OFFSET_PAGINATION.test(sql)) {
         return;
       }
       context.report({ node, messageId: "noOffsetPagination" });
     });
+    return {
+      ...listener,
+      before() {
+        listener.before();
+        if (isTestFile({ filename: context.filename, cwd: context.cwd })) return false;
+        return undefined;
+      },
+    };
   },
 });

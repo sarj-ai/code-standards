@@ -76,7 +76,7 @@ def verify(root: Path, selector: RuleSelector, *, run_tests: bool = False) -> Ve
         return VerificationResult(1, f"incomplete: {selector}: {exc}")
     typescript = (
         rule_catalog_artifact.typescript_specs(root.resolve(), already_built=True)
-        if selector.engine is RuleEngine.ESLINT
+        if selector.engine is RuleEngine.OXLINT
         else None
     )
     detail = " and focused tests" if run_tests else ""
@@ -90,12 +90,13 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
     slug = str(selector.rule_id)
     snake = slug.replace("-", "_")
     class_name = "".join(part.capitalize() for part in slug.split("-"))
-    if selector.engine is RuleEngine.ESLINT:
-        implementation = root / "packages/typescript/src/rules" / f"{slug}.ts"
-        test = root / "packages/typescript/tests/rules" / f"{slug}.test.ts"
+    if selector.engine is RuleEngine.OXLINT:
+        package = root / "packages/typescript"
+        message = class_name[0].lower() + class_name[1:]
         files = (
-            (implementation, _eslint_implementation(slug, class_name, category, summary)),
-            (test, _eslint_test(slug)),
+            (package / "src/rules" / f"{slug}.ts", _oxlint_implementation(slug, message, summary)),
+            (package / "src/docs" / f"{slug}.ts", _oxlint_documentation(slug, category, summary)),
+            (package / "tests/rules" / f"{slug}.test.ts", _oxlint_test(slug, message)),
         )
     elif selector.engine is RuleEngine.TEXT:
         base = root / "packages/standards"
@@ -254,13 +255,36 @@ def test_documented_examples() -> None:
 """
 
 
-def _eslint_implementation(slug: str, name: str, category: str, summary: str) -> str:
-    message = name[0].lower() + name[1:]
-    documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
-    return f"""import {{ createRule, type RuleDocumentation }} from "./_docs.js";
+def _oxlint_implementation(slug: str, message: str, summary: str) -> str:
+    return f"""/**
+ * @fileoverview {slug} — {summary}
+ */
 
-type MessageIds = "{message}";
-type Options = readonly [];
+import {{ defineRule }} from "../types.js";
+import {{ docsUrl }} from "../utils/docs-url.js";
+
+const NAME = "{slug}";
+
+export default defineRule({{
+  meta: {{
+    type: "problem",
+    docs: {{ description: {summary!r}, url: docsUrl(NAME) }},
+    schema: [],
+    messages: {{ {message}: {summary!r} }},
+  }},
+  createOnce() {{
+    // Set up once per lint run; reset per-file state in `before` and return the visitors.
+    throw new Error("TODO: implement conservative detection");
+  }},
+}});
+"""
+
+
+def _oxlint_documentation(slug: str, category: str, summary: str) -> str:
+    documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
+    return f"""/** @fileoverview {slug} — the documentation and executable examples of `@sarj/{slug}`. */
+
+import type {{ RuleDocumentation }} from "../documentation.js";
 
 export const {documentation} = {{
   defaultLevel: "warning",
@@ -274,24 +298,24 @@ export const {documentation} = {{
     {{ id: "rejects-antipattern", title: "Reject the anti-pattern", outcome: "match", files: [{{ path: "case.ts", source: "// TODO invalid example" }}], focusPath: "case.ts", expectedCount: 1, public: true }},
   ],
 }} as const satisfies RuleDocumentation;
-
-export default createRule<Options, MessageIds>({{
-  name: "{slug}",
-  documentation: {documentation},
-  meta: {{ type: "problem", docs: {{ description: {documentation}.summary }}, schema: [], messages: {{ {message}: {summary!r} }} }},
-  defaultOptions: [],
-  create() {{ throw new Error("TODO: implement conservative detection"); }},
-}});
 """
 
 
-def _eslint_test(slug: str) -> str:
-    return f"""import {{ it }} from "vitest";
-import {{ verifyRuleExamples }} from "../../src/verify-rule-examples.js";
+def _oxlint_test(slug: str, message: str) -> str:
+    return f"""import {{ expect, it }} from "vitest";
+
+import {{ RULES }} from "../../src/catalog.js";
 import rule from "../../src/rules/{slug}.js";
+import {{ verifyRuleExamples }} from "../../src/verify-rule-examples.js";
+import {{ ruleTester }} from "./_tester.js";
+
+ruleTester().run("{slug}", rule, {{
+  valid: [{{ name: "TODO: accepts the preferred alternative", code: "// TODO valid case" }}],
+  invalid: [{{ name: "TODO: rejects the anti-pattern", code: "// TODO invalid case", errors: [{{ messageId: "{message}" }}] }}],
+}});
 
 it("executes the documented examples", async () => {{
-  await verifyRuleExamples(rule);
+  await expect(verifyRuleExamples(RULES["{slug}"])).resolves.toBeGreaterThan(0);
 }});
 """
 

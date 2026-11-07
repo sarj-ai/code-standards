@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-type-member-comment-wall.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
-} from "../../src/rules/no-type-member-comment-wall.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-type-member-comment-wall", rule, {
   valid: [
@@ -32,7 +23,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       code: "interface Flags {\n// Enabled if active.\nenabled: boolean;\n// Active when ready.\nactive: boolean;\n// Ready unless enabled.\nready: boolean;\n}",
     },
 
-    { code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
+    { code: "interface Credentials { host?: string; port?: number; username?: string; password?: string; }" },
     {
       name: "preserves rationale in consecutive line-comment blocks",
       code: [
@@ -50,9 +41,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
     {
       code: [
         "interface Credentials {",
@@ -66,9 +54,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
     {
       code: [
         "interface Filters {",
@@ -81,7 +66,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
 
     {
       code: [
@@ -109,9 +93,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
     {
       code: [
         "interface AppState {",
@@ -130,12 +111,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
         ].join("\n"),
     },
-
-
-
-
-
-
 
     {
       code: [
@@ -156,9 +131,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "};",
       ].join("\n"),
     },
-
-
-
 
     {
       code: [
@@ -202,7 +174,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       options: [{ minCommentedRatio: 0.8 }],
     },
 
-
     {
       code: [
         "interface Position {",
@@ -215,7 +186,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
 
     {
       code: [
@@ -243,11 +213,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
-
-
     {
       code: [
         "interface Surface {",
@@ -260,7 +225,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
 
     {
       code: [
@@ -288,7 +252,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: [
         "interface Section {",
@@ -301,8 +264,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -317,10 +278,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
-
-
     {
       code: [
         "interface TransactionEntityMetadataArgs {",
@@ -333,7 +290,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
 
     {
       code: [
@@ -364,7 +320,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: [
         "interface Voice {",
@@ -392,9 +347,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/api/schema.ts",
     },
-
-
-
 
     {
       code: [
@@ -424,10 +376,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       filename: "src/table.test.ts",
     },
 
-
-
-
-
     {
       code: [
         "interface TextInputProps {",
@@ -441,8 +389,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/componentManifest/__testfixtures__/ForwardRef.tsx",
     },
-
-
 
     {
       code: [
@@ -458,7 +404,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       filename: "src/stories/other/card/Card.tsx",
     },
 
-
     {
       code: [
         "interface Mixed {",
@@ -470,8 +415,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
-
     {
       code: [
         "interface Doc {",
@@ -482,13 +425,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
     },
 
-
     {
       code: "type Row = { id: string; label: string; href: string }; // the record",
     },
-
-
-
 
     {
       code: [
@@ -498,8 +437,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-
-
 
     {
       code: [
@@ -512,7 +449,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "};",
       ].join("\n"),
     },
-
 
     {
       code: [
@@ -528,16 +464,12 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}".replaceAll("\n", ending),
       errors: [{ messageId: "commentWall" as const }],
     })),
-    { name: "automatically removes only exact multiword member names", code: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}", output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}", errors: [{ messageId: "commentWall" }] },
-
+    { name: "automatically removes only exact multiword member names (own filename: Oxlint rejects the duplicate code of the LF case)", filename: "src/client.ts", code: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}", output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}", errors: [{ messageId: "commentWall" }] },
 
     {
-      code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
+      code: "interface Credentials {\n  // Database host.\n  host?: string;\n  // Database host port.\n  port?: number;\n  // Database username.\n  username?: string;\n  // Database password.\n  password?: string;\n}",
       errors: [{ messageId: "commentWall" }],
     },
-
-
-
 
     {
       code: [
@@ -559,7 +491,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
 
-
     {
       code: [
         "interface Cart {",
@@ -573,9 +504,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-
-
-
 
     {
       code: [
@@ -595,7 +523,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-
 
     {
       code: [
@@ -638,8 +565,6 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-
-
 
     {
       name: "honours a higher novel-word allowance",

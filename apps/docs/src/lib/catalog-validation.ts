@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ENGINES = ["python", "eslint", "iac", "sql", "text"] as const;
+export const ENGINES = ["python", "oxlint", "iac", "sql", "text"] as const;
 
 const TextSchema = z.string().min(1);
 const FileSchema = z.object({ path: TextSchema, source: TextSchema });

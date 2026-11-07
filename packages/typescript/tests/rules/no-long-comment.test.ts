@@ -1,22 +1,47 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { Linter } from "eslint";
 import ts from "typescript";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { NO_LONG_COMMENT_DOCUMENTATION } from "../../src/rules/no-long-comment.js";
+import rule from "../../src/rules/no-long-comment.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
+const STRUCTURED_JSDOC = [
+  "/**",
+  " * Shared composer.",
+  " *",
+  " * It serves the room. It serves task comments. It stays visually calm. It accepts attachments.",
+  " *",
+  " * The `tone` prop supplies task styling. The `leadingTools` prop supplies controls.",
+  " * The parent owns uploads. The component owns focus.",
+  " */",
+  "",
+  "export const Composer = forwardRef(function Composer() { return null; });",
+].join("\n");
+const PROSE_WALL = `/**
+ * The ports chart shows arrivals and departures across the network.
+ * It was originally a line chart, but the lines crossed too often.
+ * Bars make adjacent ports easier to compare at a glance.
+ * The axis starts at zero so visual differences stay proportional.
+ * A single series uses the site navy for brand consistency.
+ * Empty ports use a neutral ink so missing traffic remains visible.
+ * Tooltip values repeat the units shown on the vertical axis.
+ * The chart intentionally keeps labels horizontal on wide screens.
+ */
+export function PortBars() { return null; }`;
+const DECORATED = [
+  "/**",
+  " * The reader accepts data. The reader checks format. The reader preserves ordering. The reader buffers records. The reader closes cleanly.",
+  " * ++++++++",
+  " * The writer accepts batches. The writer records progress. The writer flushes changes. The writer closes cleanly.",
+  " */",
+  "const value = 1;",
+].join("\n");
+const FIXED_DECORATION = DECORATED.replace("++++++++", "");
 const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "context").join(" ")} */\nconst value = 1;`;
-const DECORATED = NO_LONG_COMMENT_DOCUMENTATION.examples[2].files[0].source;
-const FIXED_DECORATION = NO_LONG_COMMENT_DOCUMENTATION.examples[2].fixedFiles[0].source;
 
-new RuleTester().run("no-long-comment", rule, {
+RULE_TESTER.run("no-long-comment", rule, {
   valid: [
     "// The cache is process local.\nconst cache = new Map();",
     "// First fact. Second fact.\nconst value = 1;",
@@ -68,7 +93,7 @@ new RuleTester().run("no-long-comment", rule, {
     "// The cache is process local. Parallel clients need separate keys. This avoids a cross-request race.\nconst key = path;",
     "// First fact.\n// - One supported mode.\n// - Another supported mode.\nconst modes = [];",
     "/* One. Two. Three. Four. Five. Six. Seven. Eight. */\nrun();",
-    NO_LONG_COMMENT_DOCUMENTATION.examples[0].files[0].source,
+    STRUCTURED_JSDOC,
     "/** One. Two. Three. Four. Five. Six. Seven. The `traceparent` value is forwarded. */\nconst value = 1;",
     "/** One. Two. Three. Four. Five. Six. Seven. The deadline is 10 ms. */\nconst value = 1;",
     [
@@ -142,7 +167,7 @@ new RuleTester().run("no-long-comment", rule, {
       errors: [{ messageId: "tooLong" }],
     },
     {
-      code: NO_LONG_COMMENT_DOCUMENTATION.examples[1].files[0].source,
+      code: PROSE_WALL,
       errors: [{ messageId: "tooLong" }],
     },
     {
@@ -160,37 +185,46 @@ const value = 1;`,
   ],
 });
 
-function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
-  return new Linter().verifyAndFix(source, [{
-    files: ["**/*.ts"],
-    languageOptions: { parser },
-    plugins: { audit: { rules: { comment: rule } } },
-    rules: { "audit/comment": "error" },
-  }], { filename: "src/reader.ts" });
-}
-
-it.each(["\n", "\r\n"])("retains emitted JavaScript and converges with %j line endings", (ending) => {
-  const source = DECORATED.replaceAll("\n", ending);
-  const first = apply(source);
-  expect(first.fixed).toBe(true);
-  expect(first.messages).toEqual([]);
-  expect(first.output).toBe(FIXED_DECORATION.replaceAll("\n", ending));
-  const second = apply(first.output);
-  expect(second.fixed).toBe(false);
-  expect(second.output).toBe(first.output);
-  expect(second.messages).toEqual([]);
-  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
-  expect(ts.transpileModule(first.output, options).outputText).toBe(ts.transpileModule(source, options).outputText);
-});
-
-it.each([
+const ENDINGS = ["\n", "\r\n"];
+const PROTECTED = [
   DECORATED.replace("accepts data", "accepts data @customTag"),
   DECORATED.replace("accepts data", "retains copyright data"),
   DECORATED.replace("accepts data", "retains data licensed under local terms"),
+];
+const PROTECTED_REPORTED = [
   DECORATED.replace(" * ++++++++", " *     ++++++++"),
   `// @ts-ignore\n${DECORATED}`,
-])("preserves protected documentation and next-line directive ownership", (source) => {
-  const result = apply(source);
-  expect(result.fixed).toBe(false);
-  expect(result.output).toBe(source);
+];
+
+RULE_TESTER.run("no-long-comment (Linter passes)", rule, {
+  valid: [
+    ...ENDINGS.map((ending) => ({
+      name: `converges with ${JSON.stringify(ending)} line endings (second Linter.verifyAndFix pass)`,
+      filename: "src/reader.ts",
+      code: FIXED_DECORATION.replaceAll("\n", ending),
+    })),
+    ...PROTECTED.map((code, index) => ({ name: `preserves protected documentation ${index}`, filename: "src/reader.ts", code })),
+  ],
+  invalid: [
+    ...ENDINGS.map((ending) => ({
+      name: `retains emitted JavaScript and converges with ${JSON.stringify(ending)} line endings`,
+      filename: "src/reader.ts",
+      code: DECORATED.replaceAll("\n", ending),
+      output: FIXED_DECORATION.replaceAll("\n", ending),
+      errors: [{ messageId: "tooLong" }],
+    })),
+    ...PROTECTED_REPORTED.map((code, index) => ({
+      name: `preserves protected documentation and next-line directive ownership ${index}`,
+      filename: "src/reader.ts",
+      code,
+      output: null,
+      errors: [{ messageId: "tooLong" }],
+    })),
+  ],
+});
+
+it.each(ENDINGS)("fix retains emitted JavaScript with %j", (ending) => {
+  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
+  expect(ts.transpileModule(FIXED_DECORATION.replaceAll("\n", ending), options).outputText)
+    .toBe(ts.transpileModule(DECORATED.replaceAll("\n", ending), options).outputText);
 });

@@ -12,6 +12,7 @@ from pathspec.pattern import Pattern
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
 from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.rules import oxlint_ids
 
 
 if TYPE_CHECKING:
@@ -30,7 +31,9 @@ _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
         "sarj-library-policy": "python",
         "ruff": "ruff",
         "basedpyright": "basedpyright",
-        "eslint": "eslint",
+        # Baselines and suppressions written for ESLint name the same Oxlint findings.
+        oxlint_ids.LEGACY_SOURCE: oxlint_ids.SOURCE,
+        oxlint_ids.SOURCE: oxlint_ids.SOURCE,
     }
 )
 

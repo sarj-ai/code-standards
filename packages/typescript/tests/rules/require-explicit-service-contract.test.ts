@@ -1,32 +1,92 @@
 // vitest: shared-module-graph
-import { it } from "vitest";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-import rule, {
-  REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION,
-} from "../../src/rules/require-explicit-service-contract.js";
+import rule from "../../src/rules/require-explicit-service-contract.js";
+import { ruleTester } from "./_tester.js";
 
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
-});
+const RULE_TESTER = ruleTester();
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe } from "vitest";
+const REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION = {
+  examples: [
+    {
+      id: "single-operation-service-without-contract",
+      title: "A single service operation still needs its contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "class OrchestratorService { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "explicit-single-operation-contract",
+      title: "The service declares its operation",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "interface Runner { run(): void } class OrchestratorService implements Runner { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "The existing factory already names the service contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nclass Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nclass Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+    },
+  ],
+} as const;
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
+const DOCUMENTED_EXAMPLES: readonly {
+  readonly id: string;
+  readonly outcome: string;
+  readonly focusPath: string;
+  readonly expectedCount: number;
+  readonly files: readonly { readonly path: string; readonly source: string }[];
+  readonly fixedFiles?: readonly { readonly path: string; readonly source: string }[];
+}[] = REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION.examples;
+const EXAMPLE_VALID = DOCUMENTED_EXAMPLES.filter((example) => example.outcome === "no-match").map((example) => ({
+  name: `documented example ${example.id} (./ path prefix avoids a duplicate of an explicit case)`,
+  filename: `./${example.focusPath}`,
+  code: example.files.find((file) => file.path === example.focusPath)?.source ?? "",
+}));
+const EXAMPLE_INVALID = DOCUMENTED_EXAMPLES.filter((example) => example.outcome === "match").map((example) => {
+  const fixed = example.fixedFiles?.find((file) => file.path === example.focusPath)?.source;
+  const testCase = {
+    name: `documented example ${example.id} (./ path prefix avoids a duplicate of an explicit case)`,
+    filename: `./${example.focusPath}`,
+    code: example.files.find((file) => file.path === example.focusPath)?.source ?? "",
+  };
+  const errors = Array.from({ length: example.expectedCount }, () => ({ messageId: "requireExplicitServiceContract" }));
+  return fixed === undefined ? { ...testCase, errors } : { ...testCase, output: fixed, errors };
 });
 
 RULE_TESTER.run("require-explicit-service-contract", rule, {
   valid: [
+    ...EXAMPLE_VALID,
     {
       name: "a literal false loop does not invoke its collaborator",
       code: "class Service { constructor(private readonly worker: Worker) {} run() { while (false) { this.worker.run(); } } }",
@@ -213,6 +273,7 @@ RULE_TESTER.run("require-explicit-service-contract", rule, {
     },
   ],
   invalid: [
+    ...EXAMPLE_INVALID,
     {
       name: "reuses the existing direct factory return contract",
       filename: "src/service.ts",

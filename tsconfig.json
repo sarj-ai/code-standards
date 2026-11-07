@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Oxlint's type-aware rules (tsrs-lint) type each file with the nearest
+  // tsconfig.json that includes it or one of its references. This solution
+  // reaches the tooling project (tool configs, scripts, .github/scripts and the
+  // Standards config helpers), which has no tsconfig.json of its own.
+  "files": [],
+  "references": [{ "path": "./packages/typescript/tsconfig.tools.json" }]
+}

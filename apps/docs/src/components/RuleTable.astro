@@ -70,7 +70,7 @@ const rows = rules.map((rule) => ({
     const sort = directory.querySelector('[data-rule-sort]');
     const clear = directory.querySelector('[data-filter-clear]');
     const body = directory.querySelector('tbody');
-    const rows = [...directory.querySelectorAll('tbody tr')].filter((row): row is HTMLTableRowElement => row instanceof HTMLTableRowElement);
+    const rows = [...directory.querySelectorAll('tbody tr')].filter((row) => row instanceof HTMLTableRowElement);
     const count = directory.querySelector('[data-rule-count]');
     const noun = directory.querySelector('[data-rule-noun]');
     const params = new URLSearchParams(location.search);
@@ -97,9 +97,12 @@ const rows = rules.map((rule) => ({
       if (noun) noun.textContent = visible === 1 ? 'rule' : 'rules';
       if (clear instanceof HTMLButtonElement) clear.hidden = !(selectedCategory || selectedLanguage);
       const next = new URL(location.href);
-      selectedCategory ? next.searchParams.set('category', selectedCategory) : next.searchParams.delete('category');
-      selectedLanguage ? next.searchParams.set('language', selectedLanguage) : next.searchParams.delete('language');
-      selectedSort !== 'name' ? next.searchParams.set('sort', selectedSort) : next.searchParams.delete('sort');
+      if (selectedCategory) next.searchParams.set('category', selectedCategory);
+      else next.searchParams.delete('category');
+      if (selectedLanguage) next.searchParams.set('language', selectedLanguage);
+      else next.searchParams.delete('language');
+      if (selectedSort !== 'name') next.searchParams.set('sort', selectedSort);
+      else next.searchParams.delete('sort');
       history.replaceState(null, '', next);
     };
     category?.addEventListener('change', apply);

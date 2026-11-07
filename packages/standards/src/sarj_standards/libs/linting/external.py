@@ -30,7 +30,8 @@ from sarj_rule_contracts import RuleEngine, RuleSelection
 import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
-from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection, select_eslint_commands
+from sarj_standards.libs.adoption.configs import OXLINT_CONFIG_NAMES, OXLINT_SUPPRESSIONS
+from sarj_standards.libs.adoption.lifecycle import TYPESCRIPT_CAPABILITY, Command
 from sarj_standards.libs.diagnostics import (
     AnalyzerId,
     Completion,
@@ -52,7 +53,7 @@ from sarj_standards.libs.staged_git import staged_environment
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import mobile_tools, security_tools
+from . import mobile_tools, oxlint, security_tools
 from .execution_plan import RuffProjectPlan, ShellCheckFamilyPlan
 from .process import (
     OutputLimitError as OutputLimitError,
@@ -70,7 +71,7 @@ from .shell_policy import SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Generator, Mapping, Sequence
     from typing import BinaryIO
 
     from pydantic import JsonValue
@@ -98,28 +99,31 @@ class _PreparedInputs(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
-class UpstreamESLintRules:
+class UpstreamRules:
     ids: frozenset[str] = frozenset()
     warning_only: bool = False
 
 
-_NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
+_NO_UPSTREAM_RULES = UpstreamRules()
 
 
 _TIMEOUT = timedelta(minutes=15)
+# Where `oxlint-suppressions.json` waits while React Doctor runs in its directory.
+_PARKED_SUPPRESSIONS = ".oxlint-suppressions.json.react-doctor"
+# Baseline commands run Oxlint and React Doctor in parallel threads; Oxlint must never run while
+# the suppressions file is parked. Oxlint has no flag or variable for another suppressions path,
+# and React Doctor always runs it in the project directory, so the file has to move.
+_SUPPRESSIONS_LOCK = threading.Lock()
 # Eighth-second steps convert exactly to integer milliseconds in Node.
 _REACT_DOCTOR_TICKS_PER_SECOND = 8
-_ESLINT_ERROR = 2
 _DETEKT_FINDINGS = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_BYTES = 64 * 1024
 _MAX_MOBILE_CONFIG_BYTES = 1024 * 1024
 _PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
-_MAX_ESLINT_PROJECTS = 32
-_ESLINT_BATCH_SIZE = 250
-_ESLINT_ANALYSIS_BATCH_SIZE = 1_000
-_ESLINT_ARGV_BUDGET = 24 * 1024 if sys.platform == "win32" else 64 * 1024
+_SECURITY_BATCH_SIZE = 250
+_MAX_OXLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
@@ -140,9 +144,9 @@ _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_SOURCE_RE: Final = re.compile(r"\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])\Z")
 _REACT_DOCTOR_GENERATED_BUNDLE_RE: Final = re.compile(r"\.(?:iife|umd|global|min)\.m?js\Z", re.IGNORECASE | re.ASCII)
 _REACT_DOCTOR_GENERATED_DIRECTORY_RE: Final = re.compile(r"(?:^|/)__generated__/")
-_ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
-_ESLINT_LARGE_NODE_OPTIONS: Final = "--max-old-space-size=8192"
-_ESLINT_LARGE_HOST_MEMORY: Final = 12 * 1024**3
+_NODE_OPTIONS: Final = "--max-old-space-size=4096"
+_LARGE_NODE_OPTIONS: Final = "--max-old-space-size=8192"
+_LARGE_HOST_MEMORY: Final = 12 * 1024**3
 _CGROUP_ROOT: Final = Path("/sys/fs/cgroup")
 _PROCESS_CGROUPS: Final = Path("/proc/self/cgroup")
 _CGROUP_RECORD_FIELDS: Final = 3
@@ -150,8 +154,6 @@ _CGROUP_MEMORY_LIMIT_FILES: Final = (
     Path("/sys/fs/cgroup/memory.max"),
     Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
 )
-_ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mts"
-_ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mts"
 _PYTHON_TEST_PATHS: Final = PathSpec.from_lines(
     "gitignore", ("**/test/**", "**/tests/**", "**/test_*.py", "**/*_test.py", "**/conftest.py")
 )
@@ -174,24 +176,19 @@ _REACT_RUNTIME_PACKAGES = frozenset(
         "react-native",
     }
 )
+# Files whose change can move React Doctor's findings; `is_react_doctor_metadata` adds the
+# config prefixes. PR scoping and analysis share this one list.
 _REACT_DOCTOR_METADATA_NAMES = frozenset(
     {
-        "doctor.config.json",
+        *OXLINT_CONFIG_NAMES,
+        OXLINT_SUPPRESSIONS,
         "bun.lock",
         "bun.lockb",
-        "eslint.config.js",
-        "eslint.config.cjs",
-        "eslint.config.cts",
-        "eslint.config.mjs",
-        "eslint.config.mts",
-        "eslint.config.ts",
-        "jsconfig.json",
         "npm-shrinkwrap.json",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
-        "tsconfig.json",
         "yarn.lock",
         "yarn.lock.yml",
     }
@@ -380,12 +377,12 @@ def analyze_external(
     react_doctor_staged: bool = False,
     force_react_doctor: bool = False,
     react_doctor_full_scan: bool = False,
-    pass_on_unpruned_eslint_suppressions: bool = False,
+    pass_on_unpruned_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
-    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
+    upstream_rules: UpstreamRules = _NO_UPSTREAM_RULES,
     security_selection: RuleSelection | None = None,
     python_type_check: bool = True,
-    eslint: bool = True,
+    typescript: bool = True,
 ) -> tuple[ToolReport, ...]:
     try:
         execute = DEFAULT_EXECUTOR if runner is None else runner
@@ -477,114 +474,25 @@ def analyze_external(
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
         reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
-    try:
-        eslint_commands, unowned_eslint = _analysis_eslint_selection(
-            root, routed.typescript, enabled=eslint, capabilities=capabilities
+    reports.extend(
+        _typescript_reports(
+            routed.typescript,
+            contained,
+            root=root,
+            runner=execute,
+            local_tools=local_tools,
+            trust=normalized_trust,
+            enabled=typescript and (capabilities is None or TYPESCRIPT_CAPABILITY in capabilities),
+            request=_oxlint_request(rule_ids, upstream_rules),
+            pass_on_unpruned_suppressions=pass_on_unpruned_suppressions,
         )
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        message = redact_message(f"{type(exc).__name__}: {exc}", root)
-        issue = ExecutionIssue("eslint", "configuration-failure", message)
-        reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-        return tuple(reports)
-    if unowned_eslint:
-        issue = ExecutionIssue(
-            "eslint",
-            "coverage-missing",
-            f"no TypeScript project accepts {unowned_eslint} selected JavaScript/TypeScript path(s)",
-        )
-        reports.append(
-            ToolReport(
-                "eslint",
-                Completion.FAILED,
-                issues=(issue,),
-                analyzer_id=AnalyzerId("eslint"),
-                invocation_id=InvocationId("eslint:unowned"),
-                file_count=unowned_eslint,
-            )
-        )
-    if len(eslint_commands) > _MAX_ESLINT_PROJECTS:
-        issue = ExecutionIssue(
-            "eslint",
-            "project-limit",
-            f"selected {len(eslint_commands)} ESLint projects; maximum is {_MAX_ESLINT_PROJECTS}",
-        )
-        reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-        eslint_commands = ()
-
-    def collect_eslint_reports() -> None:
-        analysis_started = time.monotonic()
-        for command, invocation_id in _eslint_batches(eslint_commands, root=root):
-            if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
-                issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
-                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-                break
-            if normalized_trust is TrustMode.SAFE:
-                issue = ExecutionIssue(
-                    "eslint",
-                    "trust-required",
-                    "ESLint config is executable repository code; retry with TrustMode.TRUSTED",
-                )
-                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-                continue
-            if local_tools and (issue := _missing_eslint_issue(command.cwd, root)) is not None:
-                reports.append(
-                    ToolReport(
-                        "eslint",
-                        Completion.FAILED,
-                        issues=(issue,),
-                        analyzer_id=AnalyzerId("eslint"),
-                        invocation_id=InvocationId(f"eslint:{invocation_id}"),
-                        file_count=_argv_file_count(command.argv),
-                    )
-                )
-                continue
-            execute_eslint = RequestExecutor(
-                partial(_execute_eslint, execute, deadline=analysis_started + _ANALYSIS_DEADLINE.total_seconds()),
-                executor_capabilities(execute),
-            )
-            reports.append(
-                _invoke(
-                    "eslint",
-                    _selected_eslint_argv(
-                        command,
-                        rule_ids or frozenset(),
-                        upstream_rules=upstream_rules,
-                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
-                    )
-                    if rule_ids is not None or upstream_rules.ids
-                    else _selected_eslint_argv(
-                        command,
-                        frozenset(),
-                        full=True,
-                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
-                    )
-                    if local_tools
-                    else _eslint_json_argv(
-                        command.argv,
-                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
-                    ),
-                    cwd=command.cwd,
-                    root=root,
-                    runner=execute_eslint,
-                    parser=parse_eslint,
-                    execution_parser=parse_eslint_executions,
-                    validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
-                    invocation_id=InvocationId(invocation_id),
-                    file_count=_argv_file_count(command.argv),
-                )
-            )
-            if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
-                issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
-                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-                break
-
-    collect_eslint_reports()
+    )
     react_selection = _selected_react_doctor_projects(
         root,
         enabled=include_react_doctor,
         has_typescript=force_react_doctor
         or bool(routed.typescript)
-        or any(_is_react_doctor_metadata(Path(item)) for item in contained),
+        or any(is_react_doctor_metadata(Path(item)) for item in contained),
         capabilities=capabilities,
     )
     if react_selection is not None:
@@ -630,12 +538,138 @@ def _staged_react_runner(root: Path, *, runner: ProcessExecutor | None) -> Proce
     return DEFAULT_EXECUTOR
 
 
-def _analysis_eslint_selection(
-    root: Path, files: Sequence[str], *, enabled: bool, capabilities: frozenset[str] | None
-) -> EslintSelection:
-    if not enabled or (capabilities is not None and "eslint" not in capabilities):
-        return EslintSelection((), 0)
-    return select_eslint_commands(root, files, label="analysis", expand_directories=True)
+def _oxlint_request(rule_ids: frozenset[str] | None, upstream: UpstreamRules) -> oxlint.OxlintRequest:
+    if rule_ids is None and not upstream.ids:
+        return oxlint.OxlintRequest()
+    # Advisories run at error so bulk suppressions still apply; the report downgrades them to warnings.
+    advisories = dict.fromkeys(upstream.ids, "error") if upstream.warning_only else {}
+    return oxlint.OxlintRequest(
+        rules=frozenset({*(f"@sarj/{rule}" for rule in rule_ids or ()), *upstream.ids}),
+        forced={**oxlint.REQUIRED_RULES, **advisories},
+    )
+
+
+def _typescript_reports(
+    files: Sequence[str],
+    inputs: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    local_tools: bool,
+    trust: TrustMode,
+    enabled: bool,
+    request: oxlint.OxlintRequest,
+    pass_on_unpruned_suppressions: bool,
+) -> list[ToolReport]:
+    if not enabled:
+        return []
+    try:
+        commands, unowned = oxlint.select_oxlint_commands(root, files, label="analysis")
+    except (OSError, TypeError, ValueError) as exc:
+        message = redact_message(f"{type(exc).__name__}: {exc}", root)
+        return [
+            ToolReport(
+                "oxlint", Completion.FAILED, issues=(ExecutionIssue("oxlint", "configuration-failure", message),)
+            )
+        ]
+    reports: list[ToolReport] = []
+    if unowned:
+        issue = ExecutionIssue(
+            "oxlint",
+            "coverage-missing",
+            f"no TypeScript project accepts {unowned} selected JavaScript/TypeScript path(s)",
+        )
+        reports.append(_oxlint_failure(issue, InvocationId("oxlint:unowned"), unowned))
+    if len(commands) > _MAX_OXLINT_PROJECTS:
+        message = f"selected {len(commands)} Oxlint projects; maximum is {_MAX_OXLINT_PROJECTS}"
+        reports.append(
+            ToolReport("oxlint", Completion.FAILED, issues=(ExecutionIssue("oxlint", "project-limit", message),))
+        )
+        commands = ()
+    deadline = time.monotonic() + _ANALYSIS_DEADLINE.total_seconds()
+    environment = {**_analysis_environment(), "NODE_OPTIONS": _node_options()}
+    for command in commands:
+        with _SUPPRESSIONS_LOCK:
+            report = _invoke_oxlint(
+                command,
+                root=root,
+                runner=runner,
+                local_tools=local_tools,
+                trust=trust,
+                request=request,
+                environment=environment,
+                deadline=deadline,
+            )
+        if pass_on_unpruned_suppressions:
+            report = replace(
+                report,
+                diagnostics=tuple(item for item in report.diagnostics if item.rule_id != oxlint.UNUSED_SUPPRESSION),
+            )
+        reports.append(report)
+    if request.rules is None:
+        from . import oxfmt  # ruff: ignore[import-outside-top-level] -- oxfmt imports this module's process helpers.
+
+        projects = tuple(oxlint.config_directory(command) for command in commands)
+        reports.extend(oxfmt.reports(inputs, projects, root=root, runner=runner, trust=trust))
+    return reports
+
+
+def _invoke_oxlint(
+    command: Command,
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    local_tools: bool,
+    trust: TrustMode,
+    request: oxlint.OxlintRequest,
+    environment: Mapping[str, str],
+    deadline: float,
+) -> ToolReport:
+    invocation = InvocationId(f"oxlint:{command.cwd.relative_to(root).as_posix() or '.'}")
+    file_count = len(oxlint.command_files(command))
+    if trust is TrustMode.SAFE:
+        message = "Oxlint configs and JS plugins are executable repository code; retry with TrustMode.TRUSTED"
+        return _oxlint_failure(ExecutionIssue("oxlint", "trust-required", message), invocation, file_count)
+    if local_tools and (issue := _missing_local_binary_issue("oxlint", command.cwd, root)) is not None:
+        return _oxlint_failure(issue, invocation, file_count)
+    started = time.monotonic()
+    if started >= deadline:
+        message = f"Oxlint aggregate analysis exceeded {_ANALYSIS_DEADLINE.total_seconds():g} seconds"
+        return _oxlint_failure(ExecutionIssue("oxlint", "aggregate-timeout", message), invocation, file_count)
+    try:
+        if local_tools:
+            command = Command(
+                command.label, _local_node_binary_argv("oxlint", command.argv, command.cwd, root), command.cwd
+            )
+        report = oxlint.run_oxlint(
+            command,
+            root=root,
+            runner=runner,
+            environment=environment,
+            request=request,
+            timeout_seconds=deadline - started,
+        )
+    except (OSError, TypeError, ValueError, RecursionError, subprocess.SubprocessError) as exc:
+        message = redact_message(f"{type(exc).__name__}: {exc}", root)
+        report = ToolReport("oxlint", Completion.FAILED, issues=(ExecutionIssue("oxlint", "tool-failure", message),))
+    return replace(
+        report,
+        analyzer_id=AnalyzerId("oxlint"),
+        invocation_id=invocation,
+        duration_ms=round((time.monotonic() - started) * 1_000),
+        file_count=report.file_count or file_count,
+    )
+
+
+def _oxlint_failure(issue: ExecutionIssue, invocation: InvocationId, file_count: int) -> ToolReport:
+    return ToolReport(
+        "oxlint",
+        Completion.FAILED,
+        issues=(issue,),
+        analyzer_id=AnalyzerId("oxlint"),
+        invocation_id=invocation,
+        file_count=file_count,
+    )
 
 
 def _quality_reports(
@@ -685,8 +719,8 @@ def _security_reports(
         return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
     if selected.workflows and (capabilities is None or "zizmor" in capabilities):
-        for start in range(0, len(selected.workflows), _ESLINT_BATCH_SIZE):
-            batch = selected.workflows[start : start + _ESLINT_BATCH_SIZE]
+        for start in range(0, len(selected.workflows), _SECURITY_BATCH_SIZE):
+            batch = selected.workflows[start : start + _SECURITY_BATCH_SIZE]
             reports.append(
                 _invoke(
                     "zizmor",
@@ -711,7 +745,7 @@ def _security_reports(
                     ),
                     parser=security_tools.parse_zizmor,
                     version=security_tools.VERSIONS["zizmor"],
-                    invocation_id=InvocationId(f"batch-{start // _ESLINT_BATCH_SIZE + 1}"),
+                    invocation_id=InvocationId(f"batch-{start // _SECURITY_BATCH_SIZE + 1}"),
                     file_count=len(batch),
                 )
             )
@@ -734,8 +768,8 @@ def _checkov_reports(
             checks = checks.intersection(security_tools.KUBERNETES_CHECKS)
         if not checks:
             continue
-        for start in range(0, len(paths), _ESLINT_BATCH_SIZE):
-            batch = paths[start : start + _ESLINT_BATCH_SIZE]
+        for start in range(0, len(paths), _SECURITY_BATCH_SIZE):
+            batch = paths[start : start + _SECURITY_BATCH_SIZE]
             reports.append(
                 _invoke(
                     "checkov",
@@ -760,7 +794,7 @@ def _checkov_reports(
                     ),
                     parser=security_tools.parse_checkov,
                     version=security_tools.VERSIONS["checkov"],
-                    invocation_id=InvocationId(f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}"),
+                    invocation_id=InvocationId(f"{framework}:batch-{start // _SECURITY_BATCH_SIZE + 1}"),
                     file_count=len(batch),
                 )
             )
@@ -1157,50 +1191,6 @@ def read_bounded_report(path: Path, *, tool: str, format_name: str = "JSON") -> 
     return payload.decode("utf-8")
 
 
-def _missing_eslint_issue(project: Path, root: Path) -> ExecutionIssue | None:
-    current = project.resolve()
-    repository = root.resolve()
-    while True:
-        if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
-            return None
-        binaries = current / "node_modules" / ".bin"
-        if (binaries / "eslint").is_file() or (binaries / "eslint.cmd").is_file():
-            return None
-        if current.parent == current:
-            break
-        current = current.parent
-    relative = project.resolve().relative_to(repository).as_posix() or "."
-    message = (
-        f"ESLint is not installed locally for {relative}; node_modules/.bin/eslint is missing. "
-        "Run the repository's locked package install or rerun `code-standards setup`, then retry."
-    )
-    return ExecutionIssue("eslint", "missing-dependency", message)
-
-
-def _local_eslint_argv(argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
-    current = project.resolve()
-    while True:
-        if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
-            return tuple(argv)
-        binaries = current / "node_modules" / ".bin"
-        binary = binaries / ("eslint.cmd" if os.name == "nt" else "eslint")
-        if binary.is_file():
-            try:
-                tail = tuple(argv[argv.index("eslint") + 1 :])
-            except ValueError as exc:
-                msg = "ESLint command does not contain an eslint executable"
-                raise ValueError(msg) from exc
-            if os.name == "nt":
-                return ("cmd.exe", "/d", "/s", "/c", str(binary), *tail)
-            return (str(binary), *tail)
-        if current.parent == current:
-            break
-        current = current.parent
-    relative = project.resolve().relative_to(root.resolve()).as_posix() or "."
-    msg = f"local ESLint disappeared before execution for {relative}"
-    raise OSError(msg)
-
-
 def _selected_react_doctor_projects(
     root: Path,
     *,
@@ -1211,7 +1201,7 @@ def _selected_react_doctor_projects(
     if (
         not enabled
         or not has_typescript
-        or (capabilities is not None and not capabilities.intersection({"eslint", "react-doctor"}))
+        or (capabilities is not None and not capabilities.intersection({TYPESCRIPT_CAPABILITY, "react-doctor"}))
     ):
         return None
     adopted = manifest.load(root)
@@ -1261,7 +1251,7 @@ def _react_project_roots(
     return tuple(projects)
 
 
-def _is_react_doctor_metadata(path: Path) -> bool:
+def is_react_doctor_metadata(path: Path) -> bool:
     name = path.name.casefold()
     if name in _REACT_DOCTOR_METADATA_NAMES:
         return True
@@ -1272,6 +1262,7 @@ def _is_react_doctor_metadata(path: Path) -> bool:
             "eslint.config.",
             "jsconfig.",
             "next.config.",
+            "oxlint.config.",
             "tsconfig.",
             "vite.config.",
         )
@@ -1384,16 +1375,43 @@ def _invoke_react_doctor(
             runner=doctor_runner,
             explicit_base=scope_base,
         )
-    return _invoke(
-        name,
-        argv,
-        cwd=project,
-        root=root,
-        runner=execution_runner,
-        parser=parser,
-        invocation_id=InvocationId(project.relative_to(root).as_posix()) or None,
-        file_count=file_count,
-    )
+    with _without_oxlint_suppressions(projects):
+        return _invoke(
+            name,
+            argv,
+            cwd=project,
+            root=root,
+            runner=execution_runner,
+            parser=parser,
+            invocation_id=InvocationId(project.relative_to(root).as_posix()) or None,
+            file_count=file_count,
+        )
+
+
+@contextlib.contextmanager
+def _without_oxlint_suppressions(projects: Sequence[Path]) -> Generator[None]:
+    # React Doctor runs its own Oxlint in each project directory, and Oxlint applies the
+    # suppressions file it finds there; no flag or variable turns that off. The repository's
+    # entries then read as stale and every React Doctor finding as unsuppressed, so React
+    # Doctor drops its whole lint check for that project. The file waits aside meanwhile.
+    hidden: list[tuple[Path, Path]] = []
+    with _SUPPRESSIONS_LOCK:
+        try:
+            for project in projects:
+                path = project / OXLINT_SUPPRESSIONS
+                parked = path.with_name(_PARKED_SUPPRESSIONS)
+                if parked.is_file() and not path.exists():
+                    # An interrupted run left the file parked.
+                    parked.replace(path)
+                if path.is_file():
+                    path.replace(parked)
+                    hidden.append((parked, path))
+            yield
+        finally:
+            for parked, path in hidden:
+                # Another process may have restored the file, or written a new one, meanwhile.
+                if parked.is_file() and not path.exists():
+                    parked.replace(path)
 
 
 def _react_doctor_budget_runner(runner: ProcessExecutor) -> ProcessExecutor:
@@ -1461,7 +1479,7 @@ def _retryable_react_doctor_baseline(output: ProcessOutput, *, explicit_base: st
         return False
     return (
         report.baseline_degraded
-        and report.version == manifest.eslint_peers()["react-doctor"]
+        and report.version == manifest.typescript_peers()["react-doctor"]
         and report.error is None
         and report.diff is not None
         and report.diff.base_branch == explicit_base
@@ -1934,23 +1952,21 @@ def is_non_default_github_push() -> bool:
 
 
 def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:
-    current = project.resolve()
+    if oxlint.local_binary(name, project, root) is not None or _uses_plug_n_play(project, root):
+        return None
+    return ExecutionIssue(name, "missing-dependency", oxlint.missing_binary_message(name, project, root))
+
+
+def _uses_plug_n_play(project: Path, root: Path) -> bool:
     repository = root.resolve()
+    current = project.resolve()
     while current.is_relative_to(repository):
         if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
-            return None
-        binaries = current / "node_modules" / ".bin"
-        if (binaries / name).is_file() or (binaries / f"{name}.cmd").is_file():
-            return None
+            return True
         if current == repository:
             break
         current = current.parent
-    relative = project.relative_to(repository).as_posix() or "."
-    message = (
-        f"{name} is not installed locally for {relative}; node_modules/.bin/{name} is missing. "
-        "Run the repository's locked package install or rerun `code-standards setup`, then retry."
-    )
-    return ExecutionIssue(name, "missing-dependency", message)
+    return False
 
 
 def local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...] | None:
@@ -1961,26 +1977,21 @@ def local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: 
 
 
 def _local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
-    current = project.resolve()
-    repository = root.resolve()
-    while current.is_relative_to(repository):
-        if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
+    binary = oxlint.local_binary(name, project, root)
+    if binary is None:
+        if _uses_plug_n_play(project, root):
             return tuple(argv)
-        binary = current / "node_modules" / ".bin" / (f"{name}.cmd" if os.name == "nt" else name)
-        if binary.is_file():
-            try:
-                tail = tuple(argv[argv.index(name) + 1 :])
-            except ValueError as exc:
-                msg = f"analyzer command does not contain {name!r}"
-                raise ValueError(msg) from exc
-            if os.name == "nt":
-                return ("cmd.exe", "/d", "/s", "/c", str(binary), *tail)
-            return (str(binary), *tail)
-        if current == repository:
-            break
-        current = current.parent
-    msg = f"local {name} disappeared before execution"
-    raise OSError(msg)
+        msg = f"local {name} disappeared before execution"
+        raise OSError(msg)
+    # A command for a project without its own install already names the binary by path.
+    position = next((index for index, part in enumerate(argv) if part in {name, str(binary)}), None)
+    if position is None:
+        msg = f"analyzer command does not contain {name!r}"
+        raise ValueError(msg)
+    tail = tuple(argv[position + 1 :])
+    if os.name == "nt":
+        return ("cmd.exe", "/d", "/s", "/c", str(binary), *tail)
+    return (str(binary), *tail)
 
 
 def _invoke_python_projects(
@@ -2688,31 +2699,13 @@ def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_se
     )
 
 
-def _run_eslint_process(
-    argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()
-) -> ProcessOutput:
-    environment = _analysis_environment()
-    environment["NODE_OPTIONS"] = _eslint_node_options()
-    return DEFAULT_EXECUTOR.run(
-        process_request(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
-    )
-
-
-def _execute_eslint(runner: ProcessExecutor, request: ProcessRequest, *, deadline: float) -> ProcessOutput:
-    environment = dict(request.environment)
-    environment["NODE_OPTIONS"] = _eslint_node_options()
-    if request.deadline is not None:
-        deadline = min(deadline, request.deadline)
-    return runner.run(replace(request, environment=environment, deadline=deadline))
-
-
-def _eslint_node_options() -> str:
+def _node_options() -> str:
     memory = _physical_memory_bytes()
     if memory is None:
-        return _ESLINT_NODE_OPTIONS
+        return _NODE_OPTIONS
     paths = _cgroup_memory_limit_files()
     if paths is None:
-        return _ESLINT_NODE_OPTIONS
+        return _NODE_OPTIONS
     found_limit = False
     for path in paths:
         try:
@@ -2720,20 +2713,20 @@ def _eslint_node_options() -> str:
         except FileNotFoundError:
             continue
         except OSError:
-            return _ESLINT_NODE_OPTIONS
+            return _NODE_OPTIONS
         found_limit = True
         if text == "max":
             continue
         try:
             limit = int(text)
         except ValueError:
-            return _ESLINT_NODE_OPTIONS
+            return _NODE_OPTIONS
         if limit <= 0:
-            return _ESLINT_NODE_OPTIONS
+            return _NODE_OPTIONS
         memory = min(memory, limit)
     if sys.platform == "linux" and not found_limit:
-        return _ESLINT_NODE_OPTIONS
-    return _ESLINT_LARGE_NODE_OPTIONS if memory >= _ESLINT_LARGE_HOST_MEMORY else _ESLINT_NODE_OPTIONS
+        return _NODE_OPTIONS
+    return _LARGE_NODE_OPTIONS if memory >= _LARGE_HOST_MEMORY else _NODE_OPTIONS
 
 
 def _cgroup_memory_limit_files() -> list[Path] | None:
@@ -3517,76 +3510,6 @@ def _shellcheck_reported_path(value: str, root: Path, virtual: Path | None) -> P
     return virtual
 
 
-def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    values = _eslint_results(payload)
-    documents: dict[Path, SourceDocument | None] = {}
-    diagnostics: list[Diagnostic] = []
-    for value in values:
-        result = _table(value, "ESLint file result")
-        path = _path(result, "filePath", root)
-        diagnostics.extend(
-            _parse_eslint_message(raw_message, path, root, documents)
-            for raw_message in _array(result.get("messages"), "ESLint messages")
-        )
-    return tuple(diagnostics)
-
-
-def _eslint_results(
-    payload: str,
-) -> list[  # sarj-noqa: SARJ528 -- Decode raw ESLint wire results before validating each file/message record.
-    object
-]:
-    value = _loads(payload)
-    if is_object_list(value):
-        return value
-    return _array(_table(value, "ESLint output").get("results"), "ESLint results")
-
-
-def parse_eslint_executions(payload: str, *, file_count: int | None = None) -> tuple[RuleExecution, ...]:
-    value = _loads(payload)
-    if is_object_list(value):
-        return ()
-    envelope = _table(value, "ESLint output")
-    rows = _array(envelope.get("ruleExecutions", []), "ESLint rule executions")
-    result: list[RuleExecution] = []
-    files = {_text(_table(row, "ESLint file result"), "filePath") for row in _eslint_results(payload)}
-    counts: dict[str, int] = {}
-    identities: set[tuple[str, RuleExecutionState, bool | None, str | None]] = set()
-    for row in rows:
-        item = _table(row, "ESLint rule execution")
-        count = item.get("fileCount")
-        if type(count) is not int or count < 1:
-            msg = "ESLint rule execution fileCount must be a positive integer"
-            raise ValueError(msg)
-        if "requiresTypeInformation" not in item:
-            msg = "ESLint rule execution must declare its type-information requirement"
-            raise ValueError(msg)
-        required = item.get("requiresTypeInformation")
-        if required is not None and not isinstance(required, bool):
-            msg = "ESLint type-information requirement must be a bool or null"
-            raise TypeError(msg)
-        result.append(
-            RuleExecution(
-                rule_id=_text(item, "ruleId"),
-                execution=RuleExecutionState(_text(item, "execution")),
-                file_count=count,
-                requires_type_information=required,
-                reason=_text(item, "reason") if "reason" in item else None,
-            )
-        )
-    for execution in result:
-        identity = (execution.rule_id, execution.execution, execution.requires_type_information, execution.reason)
-        if identity in identities:
-            msg = "ESLint rule execution summaries must not contain duplicate groups"
-            raise ValueError(msg)
-        identities.add(identity)
-        counts[execution.rule_id] = counts.get(execution.rule_id, 0) + execution.file_count
-        if counts[execution.rule_id] > (len(files) if file_count is None else file_count):
-            msg = "ESLint rule execution fileCount exceeds reported file coverage"
-            raise ValueError(msg)
-    return tuple(result)
-
-
 def parse_react_doctor(
     payload: str,
     *,
@@ -3855,130 +3778,6 @@ def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[Command, str], ...]:
-    batches: list[tuple[Command, str]] = []
-    for command in commands:
-        boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
-        prefix = tuple(command.argv[:boundary])
-        paths = command.argv[boundary:]
-        chunks = _eslint_path_batches(prefix, paths)
-        identifier = command.cwd.relative_to(root).as_posix() or "."
-        for index, paths in enumerate(chunks, start=1):
-            invocation_id = identifier if len(chunks) == 1 else f"{identifier}:batch-{index}"
-            batches.append((Command(command.label, (*prefix, *paths), command.cwd), invocation_id))
-    return tuple(batches)
-
-
-def _eslint_path_batches(prefix: Sequence[str], paths: Sequence[str]) -> list[tuple[str, ...]]:
-    def size(value: str) -> int:
-        # Windows limits command-line UTF-16; POSIX counts encoded argv bytes.
-        return len(value.encode("utf-16-le" if sys.platform == "win32" else "utf-8")) + 2
-
-    # Leave room for the selected-rule request and formatter arguments.
-    fixed = sum(size(value) for value in prefix) + 8 * 1024
-    current: list[str] = []
-    used = fixed
-    batches: list[tuple[str, ...]] = []
-    for path in paths:
-        length = size(path)
-        if fixed + length > _ESLINT_ARGV_BUDGET:
-            msg = "ESLint path exceeds the bounded command-line budget"
-            raise ValueError(msg)
-        if current and (len(current) >= _ESLINT_ANALYSIS_BATCH_SIZE or used + length > _ESLINT_ARGV_BUDGET):
-            batches.append(tuple(current))
-            current, used = [], fixed
-        current.append(path)
-        used += length
-    if current:
-        batches.append(tuple(current))
-    return batches
-
-
-def _eslint_selected_files(command: Command) -> frozenset[Path]:
-    boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
-    return frozenset((command.cwd / value).resolve() for value in command.argv[boundary:])
-
-
-def _selected_eslint_argv(
-    command: Command,
-    rule_ids: frozenset[str],
-    *,
-    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
-    pass_on_unpruned_suppressions: bool = False,
-    full: bool = False,
-) -> tuple[str, ...]:
-    boundary = max(index for index, value in enumerate(command.argv) if value == "--")
-    config = command.argv[command.argv.index("--config") + 1] if "--config" in command.argv else None
-    request = json.dumps(
-        {
-            "rules": sorted(rule_ids),
-            "upstreamRules": sorted(upstream_rules.ids),
-            "upstreamAdvisories": sorted(upstream_rules.ids) if upstream_rules.warning_only else [],
-            "config": config,
-            "passOnUnpruned": pass_on_unpruned_suppressions,
-            "suppressionsLocation": (
-                command.argv[command.argv.index("--suppressions-location") + 1]
-                if "--suppressions-location" in command.argv
-                else None
-            ),
-            **({"full": True} if full else {}),
-        },
-        separators=(",", ":"),
-    )
-    tail = (str(_ESLINT_SELECTED_RUNNER), request, "--", *command.argv[boundary + 1 :])
-    if any(
-        (parent / marker).is_file()
-        for parent in (command.cwd, *command.cwd.parents)
-        for marker in (".pnp.cjs", ".pnp.loader.mjs")
-    ):
-        return (*command.argv[: command.argv.index("eslint")], "node", *tail)
-    node = shutil.which("node")
-    if node is None:
-        msg = "selected ESLint analysis requires the repository's Node runtime"
-        raise OSError(msg)
-    return (node, *tail)
-
-
-def _validate_eslint_coverage(payload: str, *, root: Path, selected_files: frozenset[Path]) -> ExecutionIssue | None:
-    analyzed_files = frozenset(
-        _path(_table(value, "ESLint file result"), "filePath", root) for value in _eslint_results(payload)
-    )
-    missing_count = len(selected_files - analyzed_files)
-    if missing_count == 0:
-        return None
-    return ExecutionIssue(
-        "eslint",
-        "coverage-missing",
-        f"ESLint did not analyze {missing_count} of {len(selected_files)} selected maintained file(s); "
-        "review the repository ignore configuration",
-    )
-
-
-def _eslint_json_argv(argv: Sequence[str], *, pass_on_unpruned_suppressions: bool = False) -> tuple[str, ...]:
-    values = list(argv)
-    try:
-        index = values.index("eslint") + 1
-    except ValueError as exc:
-        msg = "ESLint command does not contain an eslint executable"
-        raise ValueError(msg) from exc
-    suppression_args = ("--pass-on-unpruned-suppressions",) if pass_on_unpruned_suppressions else ()
-    values[index:index] = [
-        "--format",
-        str(_ESLINT_FORMATTER),
-        "--no-warn-ignored",
-        "--no-cache",
-        *suppression_args,
-    ]
-    return tuple(values)
-
-
-def _argv_file_count(argv: Sequence[str]) -> int:
-    if "--" not in argv:
-        return 0
-    index = max(position for position, value in enumerate(argv) if value == "--")
-    return len(argv) - index - 1
-
-
 def _loads(payload: str) -> JsonValue:
     if not payload.strip():
         msg = "analyzer returned empty structured output"
@@ -4104,73 +3903,6 @@ def _basedpyright_position(
     return position
 
 
-def _eslint_position(
-    value: dict[str, object],
-    path: Path,
-    cache: dict[Path, SourceDocument | None],
-    *,
-    line_key: str,
-    column_key: str,
-) -> Position | None:
-    line = value.get(line_key)
-    column = value.get(column_key)
-    if type(line) is not int or type(column) is not int:
-        return None
-    try:
-        return _zero_based_position({"line": line - 1, "character": column - 1}, path, cache)
-    except ValueError:
-        return None
-
-
-def _parse_eslint_message(
-    raw_message: object, path: Path, root: Path, documents: dict[Path, SourceDocument | None]
-) -> Diagnostic:
-    item = _table(raw_message, "ESLint diagnostic")
-    if item.get("fatal") is True:
-        detail = _text(item, "message")
-        msg = f"ESLint fatal parser/configuration failure: {detail}"
-        raise ValueError(msg)
-    start = _eslint_start_position(item, path, documents)
-    end = None if start is None else _eslint_position(item, path, documents, line_key="endLine", column_key="endColumn")
-    rule_value = item.get("ruleId")
-    rule = rule_value if isinstance(rule_value, str) else "eslint/file"
-    relative_path = _relative(path, root)
-    if start is None:
-        location = Location(relative_path)
-    elif end is not None:
-        location = Location(relative_path, region=Region(start, end))
-    else:
-        location = Location(relative_path, position=start)
-    severity_value = item.get("severity")
-    if type(severity_value) is int and severity_value == _ESLINT_ERROR:
-        severity = Severity.ERROR
-    elif type(severity_value) is int and severity_value == 1:
-        severity = Severity.WARNING
-    else:
-        msg = f"unsupported ESLint severity: {severity_value!r}"
-        raise ValueError(msg)
-    return Diagnostic(
-        rule,
-        redact_message(_text(item, "message"), root),
-        severity,
-        "eslint",
-        location,
-        rule_id=rule,
-        tags=("non-baselineable", "required-source-policy") if item.get("sarjRequiredSourcePolicy") is True else (),
-    )
-
-
-def _eslint_start_position(
-    value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]
-) -> Position | None:
-    if isinstance(value.get("line"), bool) or isinstance(value.get("column"), bool):
-        msg = "ESLint diagnostic has invalid boolean coordinates"
-        raise TypeError(msg)
-    if value.get("line") == 0:
-        return None
-    return _eslint_position(value, path, cache, line_key="line", column_key="column")
-
-
 def _zero_based_position(value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]) -> Position:
     position = _document(path, cache).utf16_point(line=_integer(value, "line"), character=_integer(value, "character"))
     if position is None:
@@ -4224,7 +3956,7 @@ def _changed_paths_are_disjoint(changed_paths: str, resolved_root: Path, resolve
         candidate = resolved_root / relative_path
         if any(candidate.is_relative_to(project) for project in resolved_projects):
             return False
-        if _is_react_doctor_metadata(candidate) and any(
+        if is_react_doctor_metadata(candidate) and any(
             project.is_relative_to(candidate.parent) for project in resolved_projects
         ):
             return False
@@ -4297,7 +4029,7 @@ def _react_project_incompleteness(project: _ReactDoctorProject, message: str, *,
 
 
 def _validate_react_report_status(report: _ReactDoctorReport, *, require_react_detection: bool) -> None:
-    expected_version = manifest.eslint_peers()["react-doctor"]
+    expected_version = manifest.typescript_peers()["react-doctor"]
     if report.version != expected_version:
         msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
         raise ValueError(msg)

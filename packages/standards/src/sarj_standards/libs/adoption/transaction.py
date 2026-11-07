@@ -11,6 +11,16 @@ from sarj_rule_contracts import SourceChangedError, fix_file
 
 from sarj_standards.libs.filesystem import is_link_like
 
+from .configs import (
+    LEGACY_ESLINT_CONFIG_NAMES,
+    LEGACY_ESLINT_PRESET_NAMES,
+    LEGACY_ESLINT_SUPPRESSIONS,
+    OXFMT_ENTRYPOINT,
+    OXLINT_ENTRYPOINT,
+    OXLINT_PRESET,
+    OXLINT_SUPPRESSIONS,
+)
+
 
 _OWNED_NAMES: Final = frozenset(
     {
@@ -25,15 +35,14 @@ _OWNED_NAMES: Final = frozenset(
         ".markdownlint.yaml",
         ".taplo.toml",
         ".yamllint.yaml",
-        "eslint.config.js",
-        "eslint.config.mjs",
-        "eslint.config.cjs",
-        "eslint.config.ts",
-        "eslint.config.mts",
-        "eslint.config.cts",
-        "eslint.strict.mjs",
-        "eslint.strict.d.mts",
-        "eslint.strict.ts",
+        *LEGACY_ESLINT_CONFIG_NAMES,
+        *LEGACY_ESLINT_PRESET_NAMES,
+        LEGACY_ESLINT_SUPPRESSIONS,
+        OXFMT_ENTRYPOINT,
+        "oxfmt.strict.mts",
+        OXLINT_ENTRYPOINT,
+        OXLINT_PRESET,
+        OXLINT_SUPPRESSIONS,
         "package.json",
         "package-lock.json",
         "pnpm-lock.yaml",

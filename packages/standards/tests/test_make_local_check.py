@@ -155,7 +155,7 @@ def verification(tmp_path: Path) -> _Verification:
             "docs-check",
             "format-check",
             "lint",
-            "dogfood",
+            "dogfood-python",
             "typecheck",
             "repo-check",
             "check-no-private-refs",
@@ -168,7 +168,7 @@ def verification(tmp_path: Path) -> _Verification:
     leaves.write_text(
         f".PHONY: {targets} test verify-test-typescript verify-test-python verify-test-standards\n"
         f"TEST_TYPESCRIPT :={groups}\n"
-        "docs-check dogfood typecheck test-standards: typescript-build\n"
+        "docs-check typecheck test-standards: typescript-build\n"
         f"{targets}:\n"
         f"\t@exec {shlex.quote(sys.executable)} {shlex.quote(str(action))} $@\n",
         encoding="utf-8",
@@ -246,7 +246,7 @@ def test_verify_yields_between_test_groups_and_shares_the_final_tail_lease(verif
         "docs-check",
         "format-check",
         "lint",
-        "dogfood",
+        "dogfood-python",
         "typecheck",
         *_TEST_LEAVES,
         "repo-check",

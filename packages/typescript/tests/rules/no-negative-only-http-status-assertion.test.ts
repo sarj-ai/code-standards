@@ -1,21 +1,14 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+// vitest: shared-module-graph
+import rule from "../../src/rules/no-negative-only-http-status-assertion.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_NEGATIVE_ONLY_HTTP_STATUS_ASSERTION_DOCUMENTATION } from "../../src/rules/no-negative-only-http-status-assertion.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const TESTER = ruleTester();
 const HEADER = "import {test, expect} from 'vitest'; ";
 const FILE = "/repo/src/api.test.ts";
 
 TESTER.run("no-negative-only-http-status-assertion", rule, {
   valid: [
-    { name: "documented intended status", filename: FILE, code: NO_NEGATIVE_ONLY_HTTP_STATUS_ASSERTION_DOCUMENTATION.examples[1].files[0].source },
+    { name: "documented intended status", filename: FILE, code: "import {test,expect} from 'vitest'; test('reads', async () => { const response = await fetch('/versions'); expect(response.status).toBe(200); });" },
     { name: "negative status supplements exact same response", filename: FILE, code: HEADER + "test('reads', async () => { const response = await fetch('/'); expect(response.status).not.toBe(500); expect(response.status).toBe(200); });" },
     { name: "positive status follows stable response alias", filename: FILE, code: HEADER + "test('reads', async () => { const response = await fetch('/'); const alias = response; expect(alias.status).not.toBe(500); expect(response.status).toBe(200); });" },
     { name: "custom Response is not native HTTP", filename: FILE, code: HEADER + "import { Response } from './model.js'; test('reads', () => { const response = new Response(); expect(response.status).not.toBe(500); });" },
@@ -27,7 +20,7 @@ TESTER.run("no-negative-only-http-status-assertion", rule, {
     { name: "production code retains separate policy", filename: "/repo/src/api.ts", code: HEADER + "test('reads', async () => { const response = await fetch('/'); expect(response.status).not.toBe(500); });" },
   ],
   invalid: [
-    { name: "documented missing expected status", filename: FILE, code: NO_NEGATIVE_ONLY_HTTP_STATUS_ASSERTION_DOCUMENTATION.examples[0].files[0].source, errors: [{ messageId: "expectedStatus" }] },
+    { name: "documented missing expected status", filename: FILE, code: "import {test,expect} from 'vitest'; test('reads', async () => { const response = await fetch('/versions'); expect(response.status).not.toBe(500); });", errors: [{ messageId: "expectedStatus" }] },
     { name: "server error family boundary", filename: FILE, code: HEADER + "test('reads', async () => { const response = await fetch('/'); expect(response.status).toBeLessThan(500); });", errors: [{ messageId: "expectedStatus" }] },
     { name: "other response positive does not cover this response", filename: FILE, code: HEADER + "test('reads', async () => { const response = await fetch('/'); const other = await fetch('/other'); expect(response.status).not.toBe(503); expect(other.status).toBe(200); });", errors: [{ messageId: "expectedStatus" }] },
     { name: "conditional exact assertion cannot cover all paths", filename: FILE, code: HEADER + "test('reads', async () => { const response = await fetch('/'); expect(response.status).not.toBe(500); if (ready) expect(response.status).toBe(200); });", errors: [{ messageId: "expectedStatus" }] },

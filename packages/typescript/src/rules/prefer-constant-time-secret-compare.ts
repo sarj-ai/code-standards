@@ -1,31 +1,20 @@
 /**
- * @fileoverview prefer-constant-time-secret-compare — ordinary equality is not guaranteed constant-time for secret comparisons.
+ * @fileoverview prefer-constant-time-secret-compare — secret-like values are compared with a constant-time primitive.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts
+ * Port of the 18.x `prefer-constant-time-secret-compare` rule. Same
+ * algorithm; test files are skipped in `before()`.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsDefinition } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isTestFile } from "../utils/paths.js";
+import { isAuthSecretName, SECRET_WORDS, tokenize } from "../utils/secret-names.js";
+import { findVariable, getPropertyName, staticString } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isAuthSecretName, SECRET_WORDS, tokenize } from "./_secret-names.js";
-import { isTestFile } from "./_paths.js";
-import { staticString } from "./_static-string.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+const NAME = "prefer-constant-time-secret-compare";
 
-type MessageIds = "preferConstantTimeSecretCompare";
-type Options = readonly [];
-
-export const PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION = {
-  summary: "Prefer a supported constant-time comparison primitive for secret-like values.",
-  rationale: "Ordinary equality offers no constant-time guarantee for comparing secrets.",
-  remediation: "Compare equal-length cryptographic digests with a constant-time comparison primitive.",
-  category: "security",
-  limitations: ["This uses secret-name heuristics and bounded stable local aliases of credential headers from an unshadowed native Request or imported NextRequest. Literal header names include no-substitution templates and erased TypeScript wrappers; unknown receivers and mutated aliases are excluded. This is not proof of runtime sensitivity. Ambiguous token names require an authentication or cryptographic qualifier; test files and public sentinel comparisons are excluded."],
-  examples: [
-    { id: "constant-time-compare", title: "Use a constant-time comparison", outcome: "no-match", files: [{ path: "src/auth.ts", source: "if (await constantTimeEqual(presentedAccessToken, expectedAccessToken)) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
-    { id: "secret-equality", title: "Do not compare authentication tokens with equality", outcome: "match", files: [{ path: "src/auth.ts", source: "if (presentedAccessToken === expectedAccessToken) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "!==", "==", "!="]);
 const AUTH_TOKEN_QUALIFIERS: ReadonlySet<string> = new Set(["access", "refresh", "session", "admin", "csrf", "xsrf", "auth", "authentication", "signing", "api"]);
@@ -43,22 +32,22 @@ const AST_NODE_TYPE_RE = /^(?:TS|JSX)?[A-Z][A-Za-z]*(?:Signature|Keyword|Express
  * any literal (string / number / boolean / null / regex), a template literal
  * with no substitutions, `undefined`/`NaN`, or an ALL-CAPS constant reference.
  */
-function isExcludedOperand(node: TSESTree.Node): boolean {
+function isExcludedOperand(node: Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return true;
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0;
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return (
         SENTINEL_IDENTIFIERS.has(node.name) ||
         SENTINEL_PREFIX_RE.test(node.name) ||
         isConstantReference(node.name)
       );
-    case AST_NODE_TYPES.MemberExpression:
+    case "MemberExpression":
       return (
         !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier &&
+        node.property.type === "Identifier" &&
         (SENTINEL_PREFIX_RE.test(node.property.name) ||
           isConstantReference(node.property.name))
       );
@@ -74,33 +63,38 @@ function isConstantReference(identifier: string): boolean {
 }
 
 /** The identifier a plain operand denotes, or null for anything else. */
-function operandName(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) {
+function operandName(node: Node): string | null {
+  if (node.type === "Identifier") {
     return node.name;
   }
   if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
     !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier
+    node.property.type === "Identifier"
   ) {
     return node.property.name;
   }
   return null;
 }
 
-function isSecretOperand(node: TSESTree.Node): boolean {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+function isSecretOperand(node: Node): boolean {
+  if (node.type === "TemplateLiteral") {
     return node.expressions.some((expression) => isSecretOperand(expression));
   }
   const name = operandName(node);
-  if (name === null || !isAuthSecretName(name)) return false;
+  return name !== null && isCredentialName(name);
+}
+
+/** A secret name; a bare `token` needs an auth qualifier (`accessToken`) or another secret word. */
+function isCredentialName(name: string): boolean {
+  if (!isAuthSecretName(name)) return false;
   const words = tokenize(name);
   return !words.includes("token") || words.some((word) => AUTH_TOKEN_QUALIFIERS.has(word) || (word !== "token" && SECRET_WORDS.has(word)));
 }
 
 /** The secret identifier this comparison exposes, for the diagnostic message. */
-function secretNameOf(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+function secretNameOf(node: Node): string | null {
+  if (node.type === "TemplateLiteral") {
     for (const expression of node.expressions) {
       const nested = secretNameOf(expression);
       if (nested !== null) {
@@ -112,14 +106,13 @@ function secretNameOf(node: TSESTree.Node): string | null {
   return operandName(node);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-constant-time-secret-compare",
-  documentation: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Prefer a supported constant-time comparison primitive for secret-like values.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -127,64 +120,71 @@ export default createRule<Options, MessageIds>({
         "`{{operator}}` on secret-like `{{name}}` is not guaranteed constant-time. Use a constant-time comparison primitive supported by the target runtime and handle its input-length requirements.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context)) {
-      return {};
-    }
-    const sourceCode = context.sourceCode;
-    const variableOf = (node: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    const variableOf = (node: Identifier) => findVariable(sourceCode.getScope(node), node.name);
 
-    function credentialSource(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+    /** The one definition of a binding that is never reassigned, or null. */
+    function soleDefinition(node: Identifier): TsDefinition | null {
+      const binding = variableOf(node);
+      if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return null;
+      return binding.defs[0] ?? null;
+    }
+
+    function credentialSource(node: Node, seen = new Set<Node>()): boolean {
       if (seen.has(node) || seen.size >= 8) return false;
       seen.add(node);
       if (isSecretOperand(node) && !isExcludedOperand(node)) return true;
       const expression = unwrapExpression(node);
       if (expression !== node) return credentialSource(expression, seen);
-      if (node.type === AST_NODE_TYPES.LogicalExpression && node.operator === "??") return credentialSource(node.left, new Set(seen)) || credentialSource(node.right, new Set(seen));
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const binding = variableOf(node);
-        if (binding?.defs.length !== 1 || binding.references.some(reference => reference.isWrite() && reference.init !== true)) return false;
-        const definition = binding.defs[0];
-        return definition?.type === "Variable" && definition.parent.kind === "const" && definition.node.init !== null && credentialSource(definition.node.init, seen);
+      if (node.type === "LogicalExpression" && node.operator === "??") return credentialSource(node.left, new Set(seen)) || credentialSource(node.right, new Set(seen));
+      if (node.type === "Identifier") {
+        const init = constInitializer(soleDefinition(node));
+        return init !== null && credentialSource(init, seen);
       }
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.optional || node.arguments.length !== 1 ||
-        node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.optional ||
-        ASTUtils.getPropertyName(node.callee) !== "get") return false;
+      return isCredentialHeaderRead(node);
+    }
+
+    /** `request.headers.get("authorization")` on a native or Next.js request. */
+    function isCredentialHeaderRead(node: Node): boolean {
+      if (node.type !== "CallExpression" || node.optional || node.arguments.length !== 1 ||
+        node.callee.type !== "MemberExpression" || node.callee.optional ||
+        getPropertyName(node.callee) !== "get") return false;
       const receiver = node.callee.object;
       const key = staticString(node.arguments[0]);
-      if (receiver.type !== AST_NODE_TYPES.MemberExpression || receiver.optional ||
-        ASTUtils.getPropertyName(receiver) !== "headers" || key === null ||
-        !isAuthSecretName(key) || !isNativeRequest(receiver.object)) return false;
-      const words = tokenize(key);
-      return !words.includes("token") || words.some(word => AUTH_TOKEN_QUALIFIERS.has(word) || (word !== "token" && SECRET_WORDS.has(word)));
+      return receiver.type === "MemberExpression" && !receiver.optional && getPropertyName(receiver) === "headers" &&
+        key !== null && isCredentialName(key) && isNativeRequest(receiver.object);
     }
 
-
-    function isNativeRequest(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+    function isNativeRequest(node: Node, seen = new Set<Node>()): boolean {
       if (seen.has(node) || seen.size >= 8) return false;
       seen.add(node);
-      if (node.type === AST_NODE_TYPES.NewExpression) return node.callee.type === AST_NODE_TYPES.Identifier && node.callee.name === "Request" && isGlobal(node.callee);
-      if (node.type !== AST_NODE_TYPES.Identifier) return false;
-      const binding = variableOf(node);
-      if (binding?.defs.length !== 1 || binding.references.some(reference => reference.isWrite() && reference.init !== true)) return false;
-      const definition = binding.defs[0];
-      const annotation = definition?.name.type === AST_NODE_TYPES.Identifier ? definition.name.typeAnnotation?.typeAnnotation : undefined;
-      if (annotation?.type === AST_NODE_TYPES.TSTypeReference && annotation.typeName.type === AST_NODE_TYPES.Identifier) {
-        const name = annotation.typeName;
-        if (name.name === "Request" && isGlobal(name)) return true;
-        const imported = variableOf(name)?.defs[0];
-        if (imported?.type === "ImportBinding" && imported.parent.type === AST_NODE_TYPES.ImportDeclaration && imported.parent.source.value === "next/server" &&
-          imported.node.type === AST_NODE_TYPES.ImportSpecifier && imported.node.imported.type === AST_NODE_TYPES.Identifier && imported.node.imported.name === "NextRequest") return true;
-      }
-      return definition?.type === "Variable" && definition.parent.kind === "const" && definition.node.init !== null && isNativeRequest(definition.node.init, seen);
+      if (node.type === "NewExpression") return node.callee.type === "Identifier" && node.callee.name === "Request" && isGlobal(node.callee);
+      if (node.type !== "Identifier") return false;
+      const definition = soleDefinition(node);
+      if (definition === null) return false;
+      if (isRequestAnnotated(definition)) return true;
+      const init = constInitializer(definition);
+      return init !== null && isNativeRequest(init, seen);
     }
 
-    const isGlobal = (node: TSESTree.Identifier): boolean => (variableOf(node)?.defs.length ?? 0) === 0;
+    /** `request: Request` (the global) or `request: NextRequest` imported from `next/server`. */
+    function isRequestAnnotated(definition: TsDefinition): boolean {
+      const annotation = definition.name.type === "Identifier" ? definition.name.typeAnnotation?.typeAnnotation : undefined;
+      if (annotation?.type !== "TSTypeReference" || annotation.typeName.type !== "Identifier") return false;
+      const name = annotation.typeName;
+      if (name.name === "Request" && isGlobal(name)) return true;
+      return isNextRequestImport(variableOf(name)?.defs[0]);
+    }
 
+    const isGlobal = (node: Identifier): boolean => (variableOf(node)?.defs.length ?? 0) === 0;
 
     return {
-      BinaryExpression(node: TSESTree.BinaryExpression): void {
+      before(): boolean | void {
+        if (isTestFile({ filename: context.filename, cwd: context.cwd })) return false;
+        sourceCode = context.sourceCode;
+      },
+      BinaryExpression(node: ESTree.BinaryExpression): void {
         if (!EQUALITY_OPERATORS.has(node.operator)) {
           return;
         }
@@ -205,3 +205,16 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+
+/** `import { NextRequest } from "next/server"`. */
+function isNextRequestImport(imported: TsDefinition | undefined): boolean {
+  return imported?.type === "ImportBinding" && imported.parent?.type === "ImportDeclaration" && imported.parent.source.value === "next/server" &&
+    imported.node.type === "ImportSpecifier" && imported.node.imported.type === "Identifier" && imported.node.imported.name === "NextRequest";
+}
+
+/** The initializer of a `const` variable definition, or null when it is not one. */
+function constInitializer(definition: TsDefinition | null): Node | null {
+  if (definition?.type !== "Variable" || (definition.parent as ESTree.VariableDeclaration).kind !== "const") return null;
+  return (definition.node as ESTree.VariableDeclarator).init;
+}

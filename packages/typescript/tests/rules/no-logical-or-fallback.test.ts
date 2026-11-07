@@ -1,25 +1,29 @@
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import rule, { NO_LOGICAL_OR_FALLBACK_DOCUMENTATION } from "../../src/rules/no-logical-or-fallback.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import rule from "../../src/rules/no-logical-or-fallback.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
+
+const TESTER = new RuleTester({
+  eslintCompat: true,
+  cwd: join(import.meta.dirname, "..", "fixtures"),
+  languageOptions: { parserOptions: { lang: "ts" } },
+});
 const ERROR = { messageId: "logicalOrFallback" } as const;
 
+function typed<Case extends object>(cases: readonly Case[]): Case[] {
+  return cases.map((testCase) => ({ settings: { sarj: { typeAware: true } }, ...testCase }));
+}
+
 TESTER.run("no-logical-or-fallback", rule, {
-  valid: [
-    { name: "explicit empty-string fallback", code: NO_LOGICAL_OR_FALLBACK_DOCUMENTATION.examples[1].files[0].source },
-    { name: "boolean aggregation", code: NO_LOGICAL_OR_FALLBACK_DOCUMENTATION.examples[2].files[0].source },
+  valid: typed([
+    { name: "explicit empty-string fallback", code: 'export function title(value: string) { const trimmed = value.trim(); return trimmed === "" ? "Untitled" : trimmed; }' },
+    { name: "boolean aggregation", code: 'export function allowed(isAdmin: boolean, isOwner: boolean) { return isAdmin || isOwner; }' },
     { name: "nullish fallback", code: 'declare const title: string | undefined; const result = title ?? "Untitled";' },
     { name: "nullable string remains owned upstream", code: 'declare const title: string | undefined; const result = title || "Untitled";' },
     { name: "nullable number remains owned upstream", code: 'declare const value: number | null; const result = value || 10;' },
@@ -47,12 +51,16 @@ TESTER.run("no-logical-or-fallback", rule, {
     { name: "generic value", code: 'function fallback<T>(value: T) { return value || "default"; }' },
     { name: "object-only input stays with unnecessary-condition", code: 'declare const value: { id: string }; const result = value || { id: "default" };' },
     { name: "always truthy stays with unnecessary-condition", code: 'declare const value: "ready" | "done"; const result = value || "default";' },
+    { name: "always truthy with a boolean literal stays with unnecessary-condition", code: 'declare const value: "ready" | true; const result = value || "default";' },
+    { name: "always falsy with a boolean literal stays with unnecessary-condition", code: 'declare const value: "" | false; const result = value || "default";' },
     { name: "always falsy stays with unnecessary-condition", code: 'declare const value: "" | 0; const result = value || "default";' },
     { name: "comments and strings are not expressions", code: '// title || "default"\nconst source = "value || fallback";' },
     { name: "generated code is excluded", code: '// @generated\ndeclare const value: string; const result = value || "default";' },
-  ],
-  invalid: [
-    { name: "trimmed title fallback", code: NO_LOGICAL_OR_FALLBACK_DOCUMENTATION.examples[0].files[0].source, output: null, errors: [ERROR] },
+
+    { name: "untyped: non-nullable string fallback is not reported without type information", code: 'function count(value: number) { return value || 10; }', settings: { sarj: { typeAware: false } } },
+  ]),
+  invalid: typed([
+    { name: "trimmed title fallback", code: 'export function title(value: string) { return value.trim() || "Untitled"; }', output: null, errors: [ERROR] },
     { name: "zero fallback", code: 'function count(value: number) { return value || 10; }', output: null, errors: [ERROR] },
     { name: "bigint zero fallback", code: 'function count(value: bigint) { return value || 10n; }', output: null, errors: [ERROR] },
     { name: "mixed primitive union", code: 'function fallback(value: string | number) { return value || "default"; }', output: null, errors: [ERROR] },
@@ -67,9 +75,5 @@ TESTER.run("no-logical-or-fallback", rule, {
     { name: "branded bigint fallback", code: 'type Count = bigint & { readonly tag: unique symbol }; declare const value: Count; const result = value || 10n;', output: null, errors: [ERROR] },
     { name: "mixed branded primitive fallback", code: 'type Name = string & { readonly tag: unique symbol }; declare const value: Name | number; const result = value || "default";', output: null, errors: [ERROR] },
     { name: "nonboolean call argument in a condition", code: 'function check(value: string) { if (consume(value || "default")) work(); }', output: null, errors: [ERROR] },
-  ],
-});
-
-it("executes documented examples", async () => {
-  await expect(verifyRuleExamples(rule)).resolves.toBe(3);
+  ]),
 });

@@ -1,38 +1,25 @@
 /**
- * @fileoverview no-silent-promise-catch — a silent `.catch` or second `.then` handler deletes the rejection and returns a sentinel.
+ * @fileoverview no-silent-promise-catch — rejection handlers must not silently swallow the error.
+ *
+ * Port of the 18.x `no-silent-promise-catch` rule. Same algorithm; the
+ * test/script file gate runs in `before()`.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+import type { Comment } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isScriptFile, isTestFile } from "../utils/paths.js";
+import { findVariable, staticPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 
+const NAME = "no-silent-promise-catch";
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { staticPropertyName } from "./_static-string.js";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isScriptFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
-
-type MessageIds = "silentCatch";
-type Options = readonly [];
-
-export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
-  summary: "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
-  rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
-  remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
-  category: "correctness",
-  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded. Empty statements are ignored when proving a whole handler is silent.", "Recognized imported Zod construction chains and their stable local aliases are excluded, including URL schemas and primitive bigint, boolean, number and string coercion. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven.", "A following then link is accepted as recovery except for directly invoked, nonoptional, one-argument nonasync arrow identities returning the same binding without effects. A later meaningful then handler preserves the recovery exclusion."],
-  examples: [
-    { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
-    { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
-    { id: "stable-computed-catch", scenarioId: "computed-method-scope", title: "Report a rejection through a stable computed method", outcome: "match", files: [{ path: "src/load.ts", source: "const method = 'catch'; Promise.reject(new Error('lost'))[method](() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
-    { id: "stable-computed-body-parser", scenarioId: "computed-method-scope", title: "Preserve a recognized optional body parse fallback", outcome: "no-match", files: [{ path: "src/load.ts", source: "const method = 'json'; new Response('')[method]().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+type Handler = ESTree.ArrowFunctionExpression | ESTree.Function;
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const BODY_PARSE_METHODS: ReadonlySet<string> = new Set([
   "arrayBuffer",
@@ -53,14 +40,7 @@ const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
   "optional", "readonly", "refine", "superRefine", "transform",
 ]);
 
-/** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
-function isBodyParseCall(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 0 ||
-    unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const method = staticPropertyName(unwrappedNodeCallee, sourceCode);
-  return method !== null && BODY_PARSE_METHODS.has(method);
-}
+const ZOD_COERCIONS: ReadonlySet<string> = new Set(["bigint", "boolean", "number", "string"]);
 
 const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
   "cancel",
@@ -76,78 +56,57 @@ const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
 const DIRECTIVE_COMMENT_RE =
   /^\s*(eslint-|@ts-|prettier-ignore|biome-ignore|c8 |v8 |istanbul )/;
 
-const isExplanatory = (comment: { value: string }): boolean =>
-  !DIRECTIVE_COMMENT_RE.test(comment.value);
+const isExplanatory = (comment: Comment): boolean => !DIRECTIVE_COMMENT_RE.test(comment.value);
 
-/** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
-function isTeardownCall(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const method = staticPropertyName(unwrappedNodeCallee, sourceCode);
-  return method !== null && TEARDOWN_METHODS.has(method);
+function memberCallee(node: Node): ESTree.MemberExpression | null {
+  if (node.type !== "CallExpression") return null;
+  const callee = unwrapExpression(node.callee);
+  return callee.type === "MemberExpression" ? callee : null;
 }
 
-/** Web Share rejects on ordinary user cancellation, which callers may ignore. */
-function isCancelledWebShare(node: TSESTree.Expression, sourceCode: Readonly<TypeScriptSourceCode>): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
-    unwrappedNodeCallee.object.name === "navigator" &&
-    staticPropertyName(unwrappedNodeCallee, sourceCode) === "share"
-  );
+function nonEmptyStatements(block: ESTree.BlockStatement): readonly Node[] {
+  return (block.body as readonly Node[]).filter((statement) => statement.type !== "EmptyStatement");
 }
 
 /** True when the handler's whole body provably does nothing with the error. */
-function isSilentHandler(
-  handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-): boolean {
+function isSilentHandler(handler: Handler): boolean {
   const body = handler.body;
-
-  if (body.type !== AST_NODE_TYPES.BlockStatement) {
+  if (body === null) return false;
+  if (body.type !== "BlockStatement") {
     // Arrow expression body: `.catch(() => null)`
     return isSilentExpression(body);
   }
-
-  const statements = body.body.filter(statement => statement.type !== AST_NODE_TYPES.EmptyStatement);
-  if (statements.length === 0) {
-    // `.catch(() => {})` / `.catch(function () {})`
-    return true;
-  }
-
+  const statements = nonEmptyStatements(body);
+  // `.catch(() => {})` / `.catch(function () {})`
+  if (statements.length === 0) return true;
   if (statements.length === 1) {
     const only = statements[0];
-    if (only !== undefined && only.type === AST_NODE_TYPES.ReturnStatement) {
+    if (only !== undefined && only.type === "ReturnStatement") {
       // `.catch(() => { return null; })`
       return only.argument === null || isSilentExpression(only.argument);
     }
   }
-
   return false;
 }
 
 /** True for expressions that provably discard the error: bare literals,
  * `undefined`, empty object/array literals. */
-function isSilentExpression(node: TSESTree.Expression): boolean {
+function isSilentExpression(node: Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       // null / number / string / boolean literals (regex literals excluded —
       // nobody writes `.catch(() => /x/)` and they are not sentinel values).
       return !("regex" in node);
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return node.name === "undefined";
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       // `void 0` — the other spelling of undefined.
-      return (
-        node.operator === "void" &&
-        node.argument.type === AST_NODE_TYPES.Literal
-      );
-    case AST_NODE_TYPES.ObjectExpression:
+      return node.operator === "void" && node.argument.type === "Literal";
+    case "ObjectExpression":
       return node.properties.length === 0;
-    case AST_NODE_TYPES.ArrayExpression:
+    case "ArrayExpression":
       return node.elements.length === 0;
-    case AST_NODE_TYPES.TSAsExpression:
+    case "TSAsExpression":
       // `.catch(() => null as Foo | null)` is still silent.
       return isSilentExpression(node.expression);
     default:
@@ -155,54 +114,129 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
   }
 }
 
-function hasRecoveryContinuation(
-  call: TSESTree.CallExpression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): boolean {
-  let current = call;
-  while (current.parent.type === AST_NODE_TYPES.MemberExpression &&
-    current.parent.object === current && staticPropertyName(current.parent, sourceCode) === "then") {
-    const member = current.parent;
-    const next = member.parent;
-    if (member.optional || next.type !== AST_NODE_TYPES.CallExpression || next.callee !== member ||
+function hasRecoveryContinuation(call: ESTree.CallExpression, sourceCode: SourceCode): boolean {
+  let current: Node = call;
+  for (;;) {
+    const member = parentOf(current);
+    if (member?.type !== "MemberExpression" || member.object !== current || staticPropertyName(member, sourceCode) !== "then") return false;
+    const next = parentOf(member);
+    if (member.optional || next?.type !== "CallExpression" || next.callee !== member ||
       !isIdentityContinuation(next, sourceCode)) return true;
     current = next;
   }
-  return false;
 }
 
-function isIdentityContinuation(
-  call: TSESTree.CallExpression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): boolean {
-  if (call.optional || call.arguments.length !== 1) return false;
+function isIdentityContinuation(call: ESTree.CallExpression, sourceCode: SourceCode): boolean {
   const argument = call.arguments[0];
-  if (argument === undefined) return false;
+  if (call.optional || call.arguments.length !== 1 || argument === undefined) return false;
   const handler = unwrapExpression(argument);
-  if (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression || handler.async || handler.params.length !== 1) return false;
-  const parameter = handler.params[0];
-  if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
-  let returned: TSESTree.Node | null = handler.body;
-  if (handler.body.type === AST_NODE_TYPES.BlockStatement) {
-    const statements = handler.body.body.filter(statement => statement.type !== AST_NODE_TYPES.EmptyStatement);
-    returned = statements.length === 1 && statements[0]?.type === AST_NODE_TYPES.ReturnStatement
-      ? statements[0].argument : null;
-  }
-  if (returned === null) return false;
-  const value = unwrapExpression(returned);
-  if (value.type !== AST_NODE_TYPES.Identifier) return false;
-  const binding = ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name);
-  return binding !== null && ASTUtils.findVariable(sourceCode.getScope(value), value.name) === binding;
+  if (handler.type !== "ArrowFunctionExpression" || handler.async || handler.params.length !== 1) return false;
+  const parameter = handler.params[0] as Node | undefined;
+  const value = returnedIdentifier(handler.body);
+  if (parameter?.type !== "Identifier" || value?.type !== "Identifier") return false;
+  const binding = findVariable(sourceCode.getScope(parameter), parameter.name);
+  return binding !== null && findVariable(sourceCode.getScope(value), value.name) === binding;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-silent-promise-catch",
-  documentation: NO_SILENT_PROMISE_CATCH_DOCUMENTATION,
+/** The identifier an arrow returns, from a concise body or a lone `return`. */
+function returnedIdentifier(body: Node): Node | null {
+  let returned: Node | null = body;
+  if (body.type === "BlockStatement") {
+    const statements = nonEmptyStatements(body);
+    const only = statements[0];
+    returned = statements.length === 1 && only?.type === "ReturnStatement" ? only.argument : null;
+  }
+  const value = returned === null ? null : unwrapExpression(returned);
+  return value?.type === "Identifier" ? value : null;
+}
+
+/** A single-declaration, never-reassigned `const`-like binding's initializer is a Zod schema. */
+function isZodBinding(node: Identifier, sourceCode: SourceCode, seen: Set<Node>): boolean {
+  const binding = findVariable(sourceCode.getScope(node), node.name);
+  if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+  const [definition] = binding.defs;
+  const declarator = definition?.node;
+  return binding.defs.length === 1 && declarator?.type === "VariableDeclarator" &&
+    declarator.init !== null && isZodSchema(declarator.init, sourceCode, seen);
+}
+
+function isZodSchema(node: Node, sourceCode: SourceCode, seen = new Set<Node>()): boolean {
+  if (seen.has(node)) return false;
+  seen.add(node);
+  if (node.type === "Identifier") return isZodBinding(node, sourceCode, seen);
+  const callee = memberCallee(node);
+  const method = callee === null ? null : staticPropertyName(callee, sourceCode);
+  if (callee === null || method === null) return false;
+  let object: Node = callee.object;
+  if (object.type === "MemberExpression" && staticPropertyName(object, sourceCode) === "coerce" && ZOD_COERCIONS.has(method)) {
+    object = object.object;
+  }
+  if (object.type === "Identifier" && ZOD_CONSTRUCTORS.has(method) && isZodImport(object, sourceCode)) return true;
+  return ZOD_CHAIN_METHODS.has(method) && isZodSchema(object, sourceCode, seen);
+}
+
+/** `identifier` is bound by a namespace, default or `{ z }` import from a Zod module. */
+function isZodImport(identifier: Identifier, sourceCode: SourceCode): boolean {
+  const binding = findVariable(sourceCode.getScope(identifier), identifier.name);
+  return binding?.defs.some((definition) => {
+    const specifier = definition.node;
+    const declaration = parentOf(specifier);
+    return (specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier" ||
+      (specifier.type === "ImportSpecifier" && specifier.imported.type === "Identifier" && specifier.imported.name === "z")) &&
+      declaration?.type === "ImportDeclaration" && isZodModule(String(declaration.source.value));
+  }) ?? false;
+}
+
+/** The inline function handling rejection in `.catch(fn)` / `.then(onFulfilled, fn)`. */
+function rejectionHandler(node: ESTree.CallExpression, method: string | null): Handler | null {
+  const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
+  const argument = handlerIndex === null || node.arguments.length !== handlerIndex + 1 ? undefined : node.arguments[handlerIndex];
+  const handler = argument === undefined ? null : unwrapExpression(argument);
+  return handler?.type === "ArrowFunctionExpression" || handler?.type === "FunctionExpression" ? handler : null;
+}
+
+/** Receivers whose rejection is an expected, ignorable outcome. */
+function isIgnorableReceiver(receiver: Node, method: string | null, sourceCode: SourceCode): boolean {
+  return (method === "catch" && isZodSchema(receiver, sourceCode)) ||
+    isBodyParseCall(receiver, sourceCode) ||
+    isTeardownCall(receiver, sourceCode) ||
+    isCancelledWebShare(receiver, sourceCode);
+}
+
+/** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
+function isBodyParseCall(node: Node, sourceCode: SourceCode): boolean {
+  const callee = memberCallee(node);
+  if (callee === null || (node as ESTree.CallExpression).arguments.length !== 0) return false;
+  const method = staticPropertyName(callee, sourceCode);
+  return method !== null && BODY_PARSE_METHODS.has(method);
+}
+
+/** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
+function isTeardownCall(node: Node, sourceCode: SourceCode): boolean {
+  const callee = memberCallee(node);
+  if (callee === null) return false;
+  const method = staticPropertyName(callee, sourceCode);
+  return method !== null && TEARDOWN_METHODS.has(method);
+}
+
+/** Web Share rejects on ordinary user cancellation, which callers may ignore. */
+function isCancelledWebShare(node: Node, sourceCode: SourceCode): boolean {
+  const callee = memberCallee(node);
+  return (
+    callee !== null &&
+    callee.object.type === "Identifier" &&
+    callee.object.name === "navigator" &&
+    staticPropertyName(callee, sourceCode) === "share"
+  );
+}
+
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -210,118 +244,45 @@ export default createRule<Options, MessageIds>({
         "This rejection handler swallows the error without logging, rethrowing, or handling it — failures become invisible and callers get an indistinguishable sentinel. Log the error (and only then map to a fallback), or let it propagate.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context) || isScriptFile(context)) {
-      return {};
-    }
-
-    function isZodSchema(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
-      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-      if (seen.has(node)) return false;
-      seen.add(node);
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-        if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
-        const [definition] = binding.defs;
-        return binding.defs.length === 1 && definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
-          definition.node.init !== null && isZodSchema(definition.node.init, seen);
-      }
-      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
-      let { object } = unwrappedNodeCallee;
-      const method = staticPropertyName(unwrappedNodeCallee, context.sourceCode);
-      if (object.type === AST_NODE_TYPES.MemberExpression && staticPropertyName(object, context.sourceCode) === "coerce" &&
-        method !== null && ["bigint", "boolean", "number", "string"].includes(method)) object = object.object;
-      if (object.type === AST_NODE_TYPES.Identifier && method !== null && ZOD_CONSTRUCTORS.has(method)) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
-        if (binding?.defs.some((definition) => {
-          const specifier = definition.node;
-          return (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier || specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "z")) &&
-            specifier.parent.type === AST_NODE_TYPES.ImportDeclaration && isZodModule(String(specifier.parent.source.value));
-        })) return true;
-      }
-      return method !== null && ZOD_CHAIN_METHODS.has(method) && isZodSchema(object, seen);
-    }
-
-    const hasExplanatoryComment = (
-      call: TSESTree.CallExpression,
-      handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-    ): boolean => {
+  createOnce(context) {
+    const hasExplanatoryComment = (call: ESTree.CallExpression, handler: Handler): boolean => {
       const sourceCode = context.sourceCode;
-      if (sourceCode.getCommentsInside(handler).some(isExplanatory)) {
-        return true;
-      }
+      if (sourceCode.getCommentsInside(handler).some(isExplanatory)) return true;
       // Walk out to the enclosing statement so a comment above or beside
       // `lazyRoutePromise.catch(() => {});` is found rather than one sitting
       // between the receiver and `.catch`.
-      let statement: TSESTree.Node = call;
-      while (
-        statement.parent !== undefined &&
-        statement.parent !== null &&
-        !statement.type.endsWith("Statement") &&
-        statement.type !== AST_NODE_TYPES.VariableDeclaration
-      ) {
-        statement = statement.parent;
+      let statement: Node = call;
+      for (let parent = parentOf(statement);
+        parent !== null && !statement.type.endsWith("Statement") && statement.type !== "VariableDeclaration";
+        parent = parentOf(statement)) {
+        statement = parent;
       }
-      if (sourceCode.getCommentsBefore(statement).some(isExplanatory)) {
-        return true;
-      }
-      return sourceCode
-        .getCommentsAfter(statement)
-        .some(
-          (c) => isExplanatory(c) && c.loc.start.line === statement.loc.end.line,
-        );
+      if (sourceCode.getCommentsBefore(statement).some(isExplanatory)) return true;
+      const endLine = statement.loc.end.line;
+      return sourceCode.getCommentsAfter(statement).some((c) => isExplanatory(c) && c.loc.start.line === endLine);
     };
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) {
-          return;
-        }
-
-        const method = staticPropertyName(unwrappedNodeCallee, context.sourceCode);
-        const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
-        if (handlerIndex === null) return;
-        if (method === "catch" && isZodSchema(unwrappedNodeCallee.object)) return;
-
-        if (isBodyParseCall(unwrappedNodeCallee.object, context.sourceCode)) {
-          return;
-        }
-
-        if (isTeardownCall(unwrappedNodeCallee.object, context.sourceCode)) {
-          return;
-        }
-
-        if (isCancelledWebShare(unwrappedNodeCallee.object, context.sourceCode)) {
-          return;
-        }
-
-        const expectedArguments = method === "catch" ? 1 : 2;
-        if (node.arguments.length !== expectedArguments) return;
-        if (hasRecoveryContinuation(node, context.sourceCode)) return;
-        const argument = node.arguments[handlerIndex];
-        if (argument === undefined) return;
-        const handler = unwrapExpression(argument);
-        if (
-          handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-          handler.type !== AST_NODE_TYPES.FunctionExpression
-        ) {
-          return;
-        }
-
-        if (hasExplanatoryComment(node, handler)) {
-          return;
-        }
-
-        if (isSilentHandler(handler)) {
-          // Anchor on the CallExpression, not the handler: when the handler
-          // sits on a later line than the call (multi-line `.catch(`), a
-          // handler-anchored report escapes an `eslint-disable-next-line`
-          // above the call AND marks that directive as unused.
-          context.report({ node, messageId: "silentCatch" });
-        }
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isScriptFile(file)) return false;
+        return undefined;
+      },
+      CallExpression(node) {
+        const sourceCode = context.sourceCode;
+        const callee = unwrapExpression(node.callee);
+        if (callee.type !== "MemberExpression") return;
+        const method = staticPropertyName(callee, sourceCode);
+        const handler = rejectionHandler(node, method);
+        // Cheap structural checks run first; every exemption below is a pure predicate.
+        if (handler === null || !isSilentHandler(handler)) return;
+        if (isIgnorableReceiver(callee.object, method, sourceCode)) return;
+        if (hasRecoveryContinuation(node, sourceCode) || hasExplanatoryComment(node, handler)) return;
+        // Anchor on the CallExpression, not the handler: when the handler
+        // sits on a later line than the call (multi-line `.catch(`), a
+        // handler-anchored report escapes an `eslint-disable-next-line`
+        // above the call AND marks that directive as unused.
+        context.report({ node, messageId: "silentCatch" });
       },
     };
   },

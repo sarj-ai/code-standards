@@ -1,25 +1,46 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-fat-try-blocks.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "../../src/rules/no-fat-try-blocks.js";
+const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
+  summary: "Review try blocks exceeding the configured count of syntactically selected operations.",
+  rationale:
+    "A broad `try` block obscures which operation failed and encourages one catch clause to recover from unrelated errors.",
+  remediation:
+    "Keep only the operations that share one recovery policy inside the `try` block and move other work outside it.",
+  category: "correctness",
+  limitations: [
+    "The default threshold is three selected top-level operations, not a proof of every possible throw. A shared recovery policy may legitimately cover several operations; generated files, catchless finally blocks, rethrows, and terminal error boundaries are excluded.",
+  ],
+  examples: [
+    {
+      id: "focused-try-block",
+      title: "Keep only operations with the same recovery policy in the try block",
+      outcome: "no-match",
+      files: [{
+        path: "src/load.ts",
+        source: "function f() { try { const a = one(); const b = two(); const c = three(); } catch (error) { handle(error); } const d = four(); finish(); }",
+      }],
+      focusPath: "src/load.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "broad-try-block",
+      title: "Review whether four selected operations share one recovery policy",
+      outcome: "match",
+      files: [{
+        path: "src/load.ts",
+        source: "function f() { try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); } finish(); }",
+      }],
+      focusPath: "src/load.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const;
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
-
-
-
-
-
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-fat-try-blocks", rule, {
   valid: [
@@ -28,7 +49,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       options: [{ max: 5 }],
       code: `try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); }`,
     },
-
 
     {
       code: `
@@ -60,7 +80,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       name: "allows simple catch-finally orchestration",
@@ -94,7 +113,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -140,7 +158,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -242,7 +259,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
     {
       code: `
         async function f() {
@@ -258,7 +274,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -322,8 +337,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
-
     {
       code: `
         async function GET() {
@@ -339,8 +352,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
-
 
     {
       code: `
@@ -373,10 +384,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
-
-
-
     {
       code: `
         export async function POST(req) {
@@ -395,7 +402,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
     {
       code: `
         async function getMaintenance(req, ctx) {
@@ -411,7 +417,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -429,7 +434,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -464,7 +468,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
     {
       code: `
         function h(xs) {
@@ -480,7 +483,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-
     {
       code: `
         function j(a, b, c, d) {
@@ -495,8 +497,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-
-
 
     {
       code: `
@@ -795,7 +795,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-
     {
       code: `
         function f(a, b, c, d) {
@@ -812,7 +811,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-
     {
       code: `
         function g(client, redis, repo, api) {
@@ -828,7 +826,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-
 
     {
       code: `
@@ -945,7 +942,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-
     {
       code: `
         function f() {
@@ -961,7 +957,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-
 
     {
       code: `
@@ -979,13 +974,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-
-
-
-
-
-
-
 
     {
       code: `
@@ -1007,8 +995,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-
-
     {
       code: `
         async function fetchTransactions(accountId) {
@@ -1028,8 +1014,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-
-
 
     {
       code: `
@@ -1068,7 +1052,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-
     {
       code: `
         export async function GET(req) {
@@ -1085,7 +1068,6 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-
 
     {
       code: `

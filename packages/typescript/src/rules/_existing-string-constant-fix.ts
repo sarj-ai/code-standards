@@ -1,145 +1,124 @@
 /**
  * @fileoverview _existing-string-constant-fix — reuse an authored primitive string constant.
+ *
+ * The plan cache is keyed by `sourceCode.ast`: Oxlint reuses one `SourceCode` object for every file.
  */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { ESTree, Node, SourceCode, TsVariable } from "../types.js";
+import { tsVariable } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable } from "../utils/static-string.js";
+import { plainFunctionBody, soleConstDeclarator } from "./_closed-module.js";
 
 interface StringConstantPlan {
   readonly value: string;
   readonly name: string;
-  readonly binding: TSESLint.Scope.Variable;
-  readonly literals: ReadonlySet<TSESTree.Node>;
+  readonly binding: TsVariable;
+  readonly literals: ReadonlySet<Node>;
 }
 
-const PLANS = new WeakMap<
-  Readonly<TypeScriptSourceCode>,
-  StringConstantPlan | null
->();
+const PLANS = new WeakMap<object, StringConstantPlan | null>();
 
 /** Reuse an existing primitive constant in a complete declaration-only module. */
 export function existingStringConstantFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Node,
+  sourceCode: Readonly<SourceCode>,
+  node: Node,
   value: string,
-): NativeReportFix | null {
-  if (node.type !== AST_NODE_TYPES.Literal || node.value !== value) return null;
+): FixFn | null {
+  if (node.type !== "Literal" || node.value !== value) return null;
   const plan = stringConstantPlan(sourceCode);
   if (
     plan === null ||
     plan.value !== value ||
     !plan.literals.has(node) ||
-    ASTUtils.findVariable(sourceCode.getScope(node), plan.binding.name) !==
-      plan.binding
+    findVariable(sourceCode.getScope(node), plan.binding.name) !== plan.binding
   )
     return null;
   return (fixer) => fixer.replaceText(node, plan.name);
 }
 
-function stringConstantPlan(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): StringConstantPlan | null {
-  const cached = PLANS.get(sourceCode);
+function stringConstantPlan(sourceCode: Readonly<SourceCode>): StringConstantPlan | null {
+  const key = sourceCode.ast;
+  const cached = PLANS.get(key);
   if (cached !== undefined) return cached;
   const plan = ownedPrimitiveReturns(sourceCode);
-  PLANS.set(sourceCode, plan);
+  PLANS.set(key, plan);
   return plan;
 }
 
-function ownedPrimitiveReturns(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): StringConstantPlan | null {
+function ownedPrimitiveReturns(sourceCode: Readonly<SourceCode>): StringConstantPlan | null {
   if (sourceCode.getAllComments().length > 0) return null;
   const [statement, ...statements] = sourceCode.ast.body;
-  if (
-    statement?.type !== AST_NODE_TYPES.VariableDeclaration ||
-    statement.kind !== "const" ||
-    statement.declare ||
-    statement.declarations.length !== 1 ||
-    !statements.some(
-      (entry) => entry.type === AST_NODE_TYPES.ExportNamedDeclaration,
-    )
-  )
+  if (statement?.type !== "VariableDeclaration" || !statements.some((entry) => entry.type === "ExportNamedDeclaration"))
     return null;
-  const declaration = statement.declarations[0];
+  const declaration = soleConstDeclarator(statement);
   if (
-    declaration?.id.type !== AST_NODE_TYPES.Identifier ||
-    declaration.id.typeAnnotation !== undefined ||
-    declaration.init?.type !== AST_NODE_TYPES.Literal ||
+    declaration?.id.type !== "Identifier" ||
+    isPresent(declaration.id.typeAnnotation) ||
+    declaration.init?.type !== "Literal" ||
     typeof declaration.init.value !== "string"
   )
     return null;
   const value = declaration.init.value;
   const identifier = declaration.id;
-  const binding = sourceCode
-    .getDeclaredVariables(statement)
-    .find((variable) => variable.name === identifier.name);
-  if (
-    binding === undefined ||
-    binding.defs.length !== 1 ||
-    binding.defs[0]?.node !== declaration
-  )
-    return null;
-  const reads = new Set<TSESTree.Node>();
-  const literals = new Set<TSESTree.Node>();
+  const binding = declaredBinding(sourceCode, statement, declaration, identifier.name);
+  if (binding === null) return null;
+  const reads = new Set<Node>();
+  const literals = new Set<Node>();
   for (const entry of statements) {
     const argument = ownedStringReturn(sourceCode, entry, binding, value);
     if (argument === null) return null;
-    if (argument.type === AST_NODE_TYPES.Literal) literals.add(argument);
+    if (argument.type === "Literal") literals.add(argument);
     else reads.add(argument);
   }
   if (
     reads.size === 0 ||
     binding.references.some(
-      (reference) =>
-        reference.identifier !== identifier && !reads.has(reference.identifier),
+      (reference) => reference.identifier !== identifier && !reads.has(reference.identifier),
     )
   )
     return null;
   return { value, name: sourceCode.getText(identifier), binding, literals };
 }
 
+/** The variable `name` that `declaration` alone declares. */
+function declaredBinding(
+  sourceCode: Readonly<SourceCode>,
+  statement: ESTree.VariableDeclaration,
+  declaration: ESTree.VariableDeclarator,
+  name: string,
+): TsVariable | null {
+  const found = sourceCode.getDeclaredVariables(statement).find((variable) => variable.name === name);
+  return found !== undefined && found.defs.length === 1 && found.defs[0]?.node === declaration ? tsVariable(found) : null;
+}
+
 function ownedStringReturn(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  entry: TSESTree.Node,
-  binding: TSESLint.Scope.Variable,
+  sourceCode: Readonly<SourceCode>,
+  entry: Node,
+  binding: TsVariable,
   value: string,
-): TSESTree.Identifier | TSESTree.Literal | null {
-  const owner =
-    entry.type === AST_NODE_TYPES.ExportNamedDeclaration
-      ? entry.declaration
-      : entry;
+): ESTree.IdentifierReference | ESTree.StringLiteral | null {
+  const owner = entry.type === "ExportNamedDeclaration" ? entry.declaration : entry;
+  if (owner?.type !== "FunctionDeclaration") return null;
+  const body = plainFunctionBody(owner);
   if (
-    owner?.type !== AST_NODE_TYPES.FunctionDeclaration ||
     owner.id === null ||
     owner.id.name === binding.name ||
-    owner.async ||
-    owner.generator ||
-    owner.declare ||
-    owner.typeParameters !== undefined ||
     owner.params.length !== 0 ||
-    owner.body.body.length !== 1 ||
-    (owner.returnType !== undefined &&
-      owner.returnType.typeAnnotation.type !== AST_NODE_TYPES.TSStringKeyword)
+    body?.length !== 1 ||
+    (isPresent(owner.returnType) && owner.returnType.typeAnnotation.type !== "TSStringKeyword")
   )
     return null;
-  const returned = owner.body.body[0];
-  if (returned?.type !== AST_NODE_TYPES.ReturnStatement) return null;
+  const returned = body[0];
+  if (returned?.type !== "ReturnStatement") return null;
   const argument = returned.argument;
-  if (argument?.type === AST_NODE_TYPES.Literal && argument.value === value)
-    return argument;
+  if (argument?.type === "Literal" && argument.value === value) return argument;
   if (
-    argument?.type === AST_NODE_TYPES.Identifier &&
+    argument?.type === "Identifier" &&
     argument.name === binding.name &&
-    ASTUtils.findVariable(sourceCode.getScope(argument), argument.name) ===
-      binding
+    findVariable(sourceCode.getScope(argument), argument.name) === binding
   )
     return argument;
   return null;

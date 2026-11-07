@@ -1,22 +1,62 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-static-next-matcher.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION,
-} from "../../src/rules/require-static-next-matcher.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION = {
+  examples: [
+    {
+      id: "literal-matcher",
+      title: "Use a literal matcher",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/middleware.ts",
+          source: 'export const config = { matcher: "/api/:path*" };',
+        },
+      ],
+      focusPath: "src/middleware.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "computed-matcher",
+      title: "Do not compute the matcher",
+      outcome: "match",
+      files: [
+        {
+          path: "src/middleware.ts",
+          source:
+            'const matcher = "/api/:path*"; export const config = { matcher };',
+        },
+      ],
+      focusPath: "src/middleware.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Inline the existing private literal route",
+      outcome: "match",
+      files: [
+        {
+          path: "src/middleware.ts",
+          source:
+            'const matcher = "/api/:path*"; export const config = { matcher };',
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/middleware.ts",
+          source: 'export const config = { matcher: "/api/:path*" };',
+        },
+      ],
+      focusPath: "src/middleware.ts",
+      expectedCount: 1,
+    },
+  ],
+} as const;
 
 const MIDDLEWARE = "/repo/src/middleware.ts";
 const PROXY = "/repo/src/proxy.ts";

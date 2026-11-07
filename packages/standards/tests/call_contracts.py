@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import BinaryIO, Required, TextIO, TypedDict
 
 from sarj_standards.api import AnalysisMode, TrustMode
-from sarj_standards.libs.linting.external import ProcessRunner, UpstreamESLintRules
+from sarj_standards.libs.linting.external import ProcessRunner, UpstreamRules
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.linting.runner import GroupedPaths
 from sarj_standards.libs.release.process import ProcessRunner as ReleaseProcessRunner
@@ -42,13 +42,13 @@ class StandardsAnalyzeOptions(TypedDict, total=False):
     staged: bool
     react_doctor_triggered: bool
     include_react_doctor: bool
-    pass_on_unpruned_eslint_suppressions: bool
+    pass_on_unpruned_suppressions: bool
     jobs: int
     prepared_devops: Sequence[Path]
     prepared_targets: Sequence[str]
     prepared_only: bool
     python_type_check: bool
-    eslint: bool
+    typescript: bool
 
 
 class NativeAnalyzeOptions(TypedDict, total=False):
@@ -70,12 +70,12 @@ class ExternalAnalyzeOptions(TypedDict, total=False):
     react_doctor_staged: bool
     force_react_doctor: bool
     react_doctor_full_scan: bool
-    pass_on_unpruned_eslint_suppressions: bool
+    pass_on_unpruned_suppressions: bool
     rule_ids: frozenset[str] | None
-    upstream_rules: UpstreamESLintRules
+    upstream_rules: UpstreamRules
     security_selection: RuleSelection | None
     python_type_check: bool
-    eslint: bool
+    typescript: bool
 
 
 class CorpusProcessOptions(TypedDict):
@@ -99,13 +99,13 @@ class CanonicalCheckOptions(TypedDict, total=False):
     react_doctor_triggered: bool
     jobs: int
     python_type_check: bool
-    eslint: bool
+    typescript: bool
 
 
-class EslintSelectionOptions(TypedDict, total=False):
+class OxlintSelectionOptions(TypedDict, total=False):
     label: str
     fix: bool
-    expand_directories: bool
+    include_config_sources: bool
 
 
 class TemporaryDirectoryOptions(TypedDict, total=False):

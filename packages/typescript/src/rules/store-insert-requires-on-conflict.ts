@@ -1,31 +1,16 @@
 /**
  * @fileoverview store-insert-requires-on-conflict — a bare `INSERT` duplicates rows or throws under cron re-runs and queue redelivery.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/store-insert-requires-on-conflict.test.ts
+ * Port of the 18.x `store-insert-requires-on-conflict` rule. Untyped.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isTestFile } from "../utils/paths.js";
+import { createSqlListener } from "../utils/sql.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
-import { createSqlListener } from "./_sql.js";
-
-type MessageIds = "storeInsertRequiresOnConflict";
-type Options = readonly [];
-
-export const STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION = {
-  summary: "Review conflict handling for embedded inserts in replay-named callables.",
-  rationale: "Names such as seed, enqueue, or upsert suggest that repeated execution deserves a conflict-policy review, but do not prove a replay contract.",
-  remediation: "Choose conflict handling appropriate to the schema and SQL dialect, or document why this insertion must fail on a duplicate.",
-  category: "correctness",
-  limitations: ["Only the nearest statically named callable is considered; top-level inserts and anonymous callbacks are excluded. Recognized conflict syntax does not prove idempotence or concurrency safety: WHERE NOT EXISTS can race, and INSERT OR REPLACE can delete an existing row. Review unique constraints and dialect semantics manually."],
-  examples: [
-    { id: "conflict-safe-insert", title: "Review the conflict policy for a replayed insert", outcome: "no-match", files: [{ path: "src/store.ts", source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run(); }" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
-    { id: "bare-insert", title: "Review a bare insert in a replay-named callable", outcome: "match", files: [{ path: "src/store.ts", source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?)`).run(); }" }], focusPath: "src/store.ts", expectedCount: 1, public: true },
-    { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "function seed(){db.query(\"INS\\u0045RT INTO runs(id,note) VALUES(4,'new')\");}" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
-    { id: "decoded-comment-data", scenarioId: "native-decoded-sql", title: "Ignore native-decoded comment data", outcome: "no-match", files: [{ path: "src/page.ts", source: "function seed(){db.query(\"SELECT id FROM runs /* INS\\x45RT INTO runs(id,note) VALUES(4,'new') */\");}" }], focusPath: "src/page.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "store-insert-requires-on-conflict";
 
 /** Matches INSERT writes only when their SQL keywords are adjacent. */
 const INSERT_WRITE =
@@ -36,12 +21,8 @@ const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+
 
 const REPLAY_CONTRACT_NAME = /(?:enqueue|ensure|migrate|recordOnce|schedule|seed|upsert|getOrCreate|createIfAbsent|insertIfAbsent)/i;
 
-function owningCallableName(node: TSESTree.Node): string | null {
-  for (
-    let current: TSESTree.Node | null | undefined = node.parent;
-    current !== null && current !== undefined;
-    current = current.parent
-  ) {
+function owningCallableName(node: Node): string | null {
+  for (let current = parentOf(node); current !== null; current = parentOf(current)) {
     if (current.type === "FunctionDeclaration") {
       return current.id?.name ?? null;
     }
@@ -55,15 +36,19 @@ function owningCallableName(node: TSESTree.Node): string | null {
   return null;
 }
 
+function expressionCallableName(current: ESTree.ArrowFunctionExpression | ESTree.Function): string | null {
+  const parent = parentOf(current);
+  if (parent?.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
+  if (parent?.type === "Property" && !parent.computed && parent.key.type === "Identifier") return parent.key.name;
+  return parent?.type === "MethodDefinition" && !parent.computed && parent.key.type === "Identifier" ? parent.key.name : null;
+}
 
-export default createRule<Options, MessageIds>({
-  name: "store-insert-requires-on-conflict",
-  documentation: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Review conflict handling for embedded inserts in replay-named callables.",
+      description: "Review conflict handling for embedded inserts in replay-named callables.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -71,27 +56,19 @@ export default createRule<Options, MessageIds>({
         "This INSERT is inside a replay-named callable without recognized conflict handling. Review duplicate execution, unique constraints, and the appropriate conflict policy for your SQL dialect.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context)) {
-      return {};
-    }
-    return createSqlListener((sql: string, node: TSESTree.Node): void => {
-      if (!INSERT_WRITE.test(sql) || CONFLICT_HANDLED.test(sql)) {
-        return;
-      }
+  createOnce(context) {
+    const listener = createSqlListener((sql: string, node: Node): void => {
+      if (!INSERT_WRITE.test(sql) || CONFLICT_HANDLED.test(sql)) return;
       const owner = owningCallableName(node);
-      if (owner === null || !REPLAY_CONTRACT_NAME.test(owner)) {
-        return;
-      }
+      if (owner === null || !REPLAY_CONTRACT_NAME.test(owner)) return;
       context.report({ node, messageId: "storeInsertRequiresOnConflict" });
     });
+    return {
+      ...listener,
+      before() {
+        listener.before();
+        return !isTestFile({ filename: context.filename, cwd: context.cwd });
+      },
+    };
   },
 });
-
-function expressionCallableName(current: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression): string | null {
-  const parent = current.parent;
-  if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
-  if (parent.type === "Property" && !parent.computed && parent.key.type === "Identifier") return parent.key.name;
-  return parent.type === "MethodDefinition" && !parent.computed && parent.key.type === "Identifier" ? parent.key.name : null;
-}

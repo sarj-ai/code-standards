@@ -1,38 +1,23 @@
-import { join } from "node:path";
+import { expect, it } from "vitest";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-
-import rule, {
-  PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
-} from "../../src/rules/prefer-ecmascript-private-members.js";
+import rule from "../../src/rules/prefer-ecmascript-private-members.js";
 import { ErasedPrivate, RuntimePrivate } from "../fixtures/private-member-reflection.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RUNTIME_PRIVATE_EXAMPLE = "class Vault { #read() { return 1; } open() { return this.#read(); } }";
+const TYPESCRIPT_PRIVATE_EXAMPLE = "class Vault { private read() { return 1; } open() { return this.read(); } }";
 
 it("keeps runtime reflection changes behind manual review", () => {
   expect(Object.getOwnPropertyNames(ErasedPrivate.prototype)).toContain("load");
   expect(Object.getOwnPropertyNames(RuntimePrivate.prototype)).not.toContain("load");
-  expect(rule.meta.fixable).toBe("code");
+  expect(rule.meta?.fixable).toBe("code");
 });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
+TESTER.run("prefer-ecmascript-private-members", rule, typed({
   valid: [
-    PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[0].files[0].source,
+    RUNTIME_PRIVATE_EXAMPLE,
     "class Service { public run() {} protected extend() {} }",
     "class Service { private constructor() {} static create() { return new Service(); } }",
     "abstract class Service { abstract privateMethod(): void }",
@@ -50,7 +35,7 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
     { name: "does not rewrite a class escaping through static this", code: "declare function register(value: unknown): void; class Service { static { register(this); } private load() { return 1; } run() { return this.load(); } }", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
     {
       name: "reports the documented method without an automatic runtime change",
-      code: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[1].files[0].source,
+      code: TYPESCRIPT_PRIVATE_EXAMPLE,
       output: null,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "read" } }],
     },
@@ -115,4 +100,9 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "load" } }],
     },
   ],
+}));
+
+TESTER.run("prefer-ecmascript-private-members without types", rule, {
+  valid: [{ code: TYPESCRIPT_PRIVATE_EXAMPLE, settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });

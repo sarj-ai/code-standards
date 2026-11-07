@@ -1,65 +1,26 @@
 /**
  * @fileoverview no-unlocalized-jsx-attributes — statically proven UI policy violations receive actionable diagnostics.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unlocalized-jsx-attributes.test.ts
+ * Port of the 18.x `no-unlocalized-jsx-attributes` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { attributeText } from "./_jsx-accessibility.js";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { attributeText } from "../utils/jsx-accessibility.js";
 import {
   LOCALIZATION_PROPERTIES,
   localizationExcluded,
   type LocalizationOptions,
   needsTranslation,
   withinTranslation,
-} from "./_localization.js";
+} from "../utils/localization.js";
 
-type Options = readonly [
-  (LocalizationOptions & { readonly attributes?: readonly string[] })?,
-];
+const NAME = "no-unlocalized-jsx-attributes";
 
-export const NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION = {
-  summary:
-    "Require translation for literal user-visible JSX attributes in opted-in localized interfaces.",
-  rationale:
-    "Accessible labels and placeholders must follow the interface language along with visible copy.",
-  remediation:
-    "Pass the user-facing message through the configured translation API, or explicitly exempt text that must remain literal.",
-  category: "correctness",
-  limitations: [
-    "Shared presets set enabled:false. Standalone rule activation opts into localization for the selected files. No particular locale or translation function name is required. Generated files, tests, fixtures and stories are excluded.",
-    "Default attributes are title, placeholder, alt, aria-label and aria-description. Custom attribute names are configurable. ID-reference attributes are always excluded. Later spreads make values unknown; dynamic expressions are not proven translated.",
-  ],
-  examples: [
-    {
-      id: "literal-message",
-      title: "Translate a user-facing message",
-      outcome: "match",
-      files: [
-        { path: "src/message.tsx", source: '<input placeholder="Search" />' },
-      ],
-      focusPath: "src/message.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "translated-message",
-      title: "Resolve the message through translation",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/message.tsx",
-          source: '<input placeholder={t("search")} />',
-        },
-      ],
-      focusPath: "src/message.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Options = LocalizationOptions & { readonly attributes?: readonly string[] };
+
+const DEFAULT_ATTRIBUTES: readonly string[] = ["title", "placeholder", "alt", "aria-label", "aria-description"];
 
 const ID_REFERENCES: ReadonlySet<string> = new Set([
   "aria-labelledby",
@@ -74,19 +35,21 @@ const ID_REFERENCES: ReadonlySet<string> = new Set([
   "id",
 ]);
 
-export default createRule<Options, "unlocalized">({
-  name: "no-unlocalized-jsx-attributes",
-  documentation: NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{ enabled: true }],
     type: "suggestion",
-    docs: { description: NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION.summary },
+    docs: {
+      description: "Require translation for literal user-visible JSX attributes in opted-in localized interfaces.",
+      url: docsUrl(NAME),
+    },
     schema: [
       {
         type: "object",
         properties: {
           ...LOCALIZATION_PROPERTIES,
-          attributes: { description: "JSX attributes whose user-visible text requires localization.",
+          attributes: {
+            description: "JSX attributes whose user-visible text requires localization.",
             type: "array",
             items: { type: "string", minLength: 1 },
             uniqueItems: true,
@@ -96,39 +59,35 @@ export default createRule<Options, "unlocalized">({
       },
     ],
     messages: {
-      unlocalized:
-        "Translate this user-facing literal or add an explicit localization exception.",
+      unlocalized: "Translate this user-facing literal or add an explicit localization exception.",
     },
   },
-  create(context, [options]) {
-    if (
-      localizationExcluded(context, context.sourceCode.text, options)
-    )
-      return {};
-    const attributes = options?.attributes ?? [
-      "title",
-      "placeholder",
-      "alt",
-      "aria-label",
-      "aria-description",
-    ];
-
+  createOnce(context) {
+    let options: Options | undefined;
+    let attributes: readonly string[] = DEFAULT_ATTRIBUTES;
     return {
-      JSXOpeningElement(node): void {
-        if (withinTranslation(node.parent, context.sourceCode, options)) return;
-        for (const name of attributes) {
-          if (ID_REFERENCES.has(name)) continue;
+      before() {
+        options = context.options[0] as Options | undefined;
+        if (localizationExcluded({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text, options))
+          return false;
+        attributes = (options?.attributes ?? DEFAULT_ATTRIBUTES).filter((name) => !ID_REFERENCES.has(name));
+        return undefined;
+      },
+      JSXOpeningElement(node: ESTree.JSXOpeningElement): void {
+        const unlocalized = attributes.flatMap((name) => {
           const text = attributeText(node, name);
-          if (text === null || !needsTranslation(text, options)) continue;
+          if (text === null || !needsTranslation(text, options)) return [];
           const attribute = node.attributes.findLast(
             (entry) =>
-              entry.type === AST_NODE_TYPES.JSXAttribute &&
-              entry.name.type === AST_NODE_TYPES.JSXIdentifier &&
+              entry.type === "JSXAttribute" &&
+              entry.name.type === "JSXIdentifier" &&
               entry.name.name === name,
           );
-          if (attribute !== undefined)
-            context.report({ node: attribute, messageId: "unlocalized" });
-        }
+          return attribute === undefined ? [] : [attribute];
+        });
+        // The ancestor walk runs only for an element that has a literal to report.
+        if (unlocalized.length === 0 || withinTranslation(node.parent, context.sourceCode, options)) return;
+        for (const attribute of unlocalized) context.report({ node: attribute, messageId: "unlocalized" });
       },
     };
   },

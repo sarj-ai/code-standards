@@ -1,15 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-comment-cruft.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_COMMENT_CRUFT_DOCUMENTATION } from "../../src/rules/no-comment-cruft.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-comment-cruft", rule, {
   valid: [
@@ -35,7 +28,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "// Stripe returns a stale timestamp, so the sink writes a field to advance it.\n// EN-only for now (PROJ-249).\nconst config = load();",
     },
 
-
     { code: "export const names = [\n  'a',\n  // config\n  'b',\n];" },
 
     { code: "const city = 1;\n// Riyadh\nconst y = 2;" },
@@ -49,7 +41,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
 
     { code: "const x = 1;\n// sarj-noqa: SARJ016 — deliberate\nconst y = 2;" },
-
 
     {
       code: "const el = <div>\n  {/* Step 1: Select Patient */}\n  <Picker />\n</div>;",
@@ -75,10 +66,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
 
     { code: "// TODO@example-owner(JIRA-1234): return cachedValue();\nconst x = 1;" },
     { code: "// prettier-ignore\nconst x = 1;" },
-    {
-      name: "preserves tool directives",
-      code: "// eslint-disable-next-line\n// =====\n// @ts-expect-error -- fixture\n// biome-ignore lint: fixture\n// c8 ignore next\nconst x = 1;",
-    },
 
     { code: "// the entrypoint\nimport x from 'y';" },
 
@@ -141,14 +128,12 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "// Idempotency substrate: every write derives a deterministic key.\n// The key is a UUIDv5 over (tenant, resource, epoch).\n// See RFC 9562 section 5.7 for the namespace derivation.\n// No state is kept here; a replay recomputes the same key.\nexport const x = 1;",
     },
 
-
     {
       code: "// generated with @7nohe/openapi-react-query-codegen\n// ---- Queries ----\nexport const x = 1;",
       filename: "/repo/src/openapi-gen/queries.ts",
     },
 
-
-    { code: NO_COMMENT_CRUFT_DOCUMENTATION.examples[0].files[0].source },
+    { code: "// increment the counter for PLT-812\ncounter += 1;" },
     { code: "// guard the race described in PLT-812\nlocked = true;" },
 
     {
@@ -156,7 +141,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
 
     { code: "// counter tracks retries\ncounter += 1;" },
-
 
     {
       code: "// validate coordinates\nconst points = extractPoints(feature.geometry.coordinates);",
@@ -196,7 +180,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "// Example:\n//\n// <Routes>\n//   <Route path=\"blog\" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;",
     },
 
-
     {
       code: "function useBreakpoint() {\n  const handleChange = () => {};\n  // Set initial value\n  handleChange();\n}",
     },
@@ -216,14 +199,11 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
     { code: "type Router = {\n  // app.use(middleware)\n  use(m: M): void;\n};" },
 
-
-
     {
       code: "class C {\n  /**\n   * HANDLERS\n   * Kept in one table so the router stays readable.\n   */\n  a() { return 1; }\n}",
     },
 
     { code: "class C {\n  /** DOES NOT RETRY */\n  a() { return 1; }\n}" },
-
 
     { code: "interface T {\n  /** UTC */\n  at: string;\n}" },
     {
@@ -243,11 +223,9 @@ RULE_TESTER.run("no-comment-cruft", rule, {
 
     { code: "const a = 1; /** HELPERS */" },
 
-
     { code: "interface T {\n  /** the retry budget */\n  retries: number;\n}" },
 
     { code: "/**\n *\n */\nconst x = 1;" },
-
 
     {
       code: "// our svg icons break if we use data urls, so disable inline assets for now\nconst assetsInlineLimit = 0;",
@@ -286,13 +264,19 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
   ],
   invalid: [
+    {
+      name: "preserves tool directives (Oxlint's RuleTester ignores disable directives, so the suppressed banner on line 2 is reported, unfixed)",
+      code: "// eslint-disable-next-line\n// =====\n// @ts-expect-error -- fixture\n// biome-ignore lint: fixture\n// c8 ignore next\nconst x = 1;",
+      output: null,
+      errors: [{ messageId: "sectionBanner", line: 2, column: 1, endLine: 2, endColumn: 9 }],
+    },
     ...["\n", "\r\n"].map(ending => ({
       name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
       code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;".replaceAll("\n", ending),
       output: "const value = 1;\n\n\nconst next = 2;".replaceAll("\n", ending),
       errors: [{ messageId: "sectionBanner" as const }],
     })),
-    { name: "removes a punctuation-only banner run in one pass", code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;", output: "const value = 1;\n\n\nconst next = 2;", errors: [{ messageId: "sectionBanner" }] },
+    { name: "removes a punctuation-only banner run in one pass (explicit default filename: Oxlint dedupes by code)", filename: "file.ts", code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;", output: "const value = 1;\n\n\nconst next = 2;", errors: [{ messageId: "sectionBanner" }] },
 
     {
       code: "class C {\n  /**\n   * REMOVE METHODS\n   */\n  remove() { return 1; }\n}",
@@ -377,18 +361,15 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       errors: [{ messageId: "sectionBanner" }],
     },
 
-
     {
       code: "const x = 1;\n// ---------- Checks ----------\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
 
-
     {
       code: "// 1.\n// 2.\n// 3.\n// 4.\nimport x from 'y';",
       errors: [{ messageId: "fileHeaderPreamble" }],
     },
-
 
     {
       code: "const a = 1;\n\n// quick fix for now\nconst limit = 10;",
@@ -414,7 +395,6 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "/**\n * Charge the account.\n * @fixme Replace this later.\n */\nfunction charge() {}",
       errors: [{ messageId: "untrackedTodo" }],
     },
-
 
     {
       code: "// why we do this\n// increment the counter\ncounter += 1;",
@@ -542,7 +522,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
 
     {
-      code: NO_COMMENT_CRUFT_DOCUMENTATION.examples[1].files[0].source,
+      code: "// increment the counter\ncounter += 1;",
       errors: [{ messageId: "redundantNarration" }],
     },
     {
@@ -620,24 +600,20 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       errors: [{ messageId: "redundantNarration" }],
     },
 
-
     {
       code: "// First, verify the key exists\nverifyKey(keyId);",
       errors: [{ messageId: "redundantNarration" }],
     },
-
 
     {
       code: "export interface Routes {\n  // const a = 1;\n  get(path: string): void;\n}",
       errors: [{ messageId: "commentedOutCode" }],
     },
 
-
     {
       code: "namespace N {\n  // drop(table);\n  export const x = 1;\n}",
       errors: [{ messageId: "commentedOutCode" }],
     },
-
 
     {
       code: "function build() {\n  // Fetch users\n  const users = fetchUsers();\n  // Validate users\n  const validUsers = validateUsers(users);\n  // Sort valid users\n  const sortedUsers = sortUsers(validUsers);\n  // Return sorted users\n  return sortedUsers;\n}",

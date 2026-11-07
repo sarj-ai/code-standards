@@ -1,17 +1,17 @@
 /**
  * @fileoverview no-repeated-string-literal — the same structured literal in two functions drifts the moment one copy is edited.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-repeated-string-literal.test.ts
+ * Port of the 18.x `no-repeated-string-literal` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { enclosingFunction } from "../utils/stable-value-binding.js";
 import { existingStringConstantFix } from "./_existing-string-constant-fix.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
 
-type MessageIds = "noRepeatedStringLiteral";
-type Options = readonly [];
+const NAME = "no-repeated-string-literal";
 
 const MIN_LENGTH = 40;
 const MIN_DISTINCT_SCOPES = 2;
@@ -23,80 +23,6 @@ const SQL_KEYWORD_RE =
 const IDENTIFIER_RE = /^[a-z_][a-z0-9_.]*$/;
 const URL_PATH_RE =
   /^\/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\u005B\u005D-]+$/;
-
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
-]);
-
-export const NO_REPEATED_STRING_LITERAL_DOCUMENTATION = {
-  summary:
-    "Disallow a long structured string literal repeated across functions; the copies drift when one is edited. Extract a module-level constant.",
-  rationale:
-    "Independent copies of a query, route template, or identifier can diverge and silently change behavior.",
-  remediation:
-    "Extract the repeated value to one module-level constant and reference it from each function.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Test files, short strings, prose, substitutions, module sources, JSX attributes, and repetition within one function are excluded.",
-    "Automatic edits only reuse an already authored and already read private const primitive string declared first in an otherwise declaration-only explicit module. All ordinary zero-argument functions must directly return that constant or the identical literal. Imports, comments, annotations on the constant, other statements or uses, callbacks, shadowing, generics and initialization effects remain manual; no domain name is invented.",
-  ],
-  examples: [
-    {
-      id: "shared-constant",
-      title: "Share one structured value",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/queries.ts",
-          source:
-            "const QUERY = 'SELECT id, status, created_at FROM candidates';\nfunction one() { return QUERY; }\nfunction two() { return QUERY; }",
-        },
-      ],
-      focusPath: "src/queries.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "repeated-query",
-      title: "Do not copy a structured value across functions",
-      outcome: "match",
-      files: [
-        {
-          path: "src/queries.ts",
-          source:
-            "function one() { return 'SELECT id, status, created_at FROM candidates'; }\nfunction two() { return 'SELECT id, status, created_at FROM candidates'; }",
-        },
-      ],
-      focusPath: "src/queries.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing primitive constant",
-      outcome: "match",
-      files: [
-        {
-          path: "src/queries.ts",
-          source:
-            "const QUERY = 'SELECT id, status, created_at FROM candidates';\nexport function current() { return QUERY; }\nexport function one() { return 'SELECT id, status, created_at FROM candidates'; }\nexport function two() { return 'SELECT id, status, created_at FROM candidates'; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/queries.ts",
-          source:
-            "const QUERY = 'SELECT id, status, created_at FROM candidates';\nexport function current() { return QUERY; }\nexport function one() { return QUERY; }\nexport function two() { return QUERY; }",
-        },
-      ],
-      focusPath: "src/queries.ts",
-      expectedCount: 2,
-    },
-  ],
-} as const satisfies RuleDocumentation;
 
 /** Recognized query, identifier, or route shapes; equality alone is not intent. */
 function isStructured(value: string): boolean {
@@ -114,61 +40,33 @@ function preview(value: string): string {
     : `${oneLine.slice(0, PREVIEW_LENGTH)}...`;
 }
 
-/** The enclosing function node, or null when the literal sits at module/class scope. */
-function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
-  for (let current = node.parent; current != null; current = current.parent) {
-    if (FUNCTION_TYPES.has(current.type)) {
-      return current;
-    }
-  }
-  return null;
-}
+const SCAFFOLDING_PARENTS: ReadonlySet<string> = new Set([
+  "ImportDeclaration", "ImportExpression", "ExportNamedDeclaration", "ExportAllDeclaration",
+  "TSImportType", "JSXAttribute", "TSLiteralType",
+]);
 
 /**
  * True when the literal is scaffolding rather than a reusable value: an
  * import/`require` source (repeating a module path is the point) or a JSX
  * attribute value (styling strings, handled by the styling rules).
  */
-function isScaffolding(node: TSESTree.Node): boolean {
+function isScaffolding(node: Node): boolean {
   const parent = node.parent;
-  if (parent === undefined) {
-    return true;
-  }
-  const isNonComputedPropertyKey =
-    (parent.type === AST_NODE_TYPES.Property ||
-      parent.type === AST_NODE_TYPES.PropertyDefinition ||
-      parent.type === AST_NODE_TYPES.MethodDefinition ||
-      parent.type === AST_NODE_TYPES.AccessorProperty) &&
-    parent.key === node &&
-    !parent.computed;
-  const isRequireSource =
-    parent.type === AST_NODE_TYPES.CallExpression &&
-    parent.callee.type === AST_NODE_TYPES.Identifier &&
-    parent.callee.name === "require";
-  return (
-    parent.type === AST_NODE_TYPES.ImportDeclaration ||
-    parent.type === AST_NODE_TYPES.ImportExpression ||
-    parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    parent.type === AST_NODE_TYPES.ExportAllDeclaration ||
-    parent.type === AST_NODE_TYPES.TSImportType ||
-    parent.type === AST_NODE_TYPES.JSXAttribute ||
-    (parent.type === AST_NODE_TYPES.JSXExpressionContainer &&
-      parent.parent.type === AST_NODE_TYPES.JSXAttribute) ||
-    parent.type === AST_NODE_TYPES.TSLiteralType ||
-    isNonComputedPropertyKey ||
-    isRequireSource
-  );
+  if (parent == null || SCAFFOLDING_PARENTS.has(parent.type)) return true;
+  if (parent.type === "Property" || parent.type === "PropertyDefinition" ||
+    parent.type === "MethodDefinition" || parent.type === "AccessorProperty") return parent.key === node && !parent.computed;
+  if (parent.type === "JSXExpressionContainer") return parent.parent.type === "JSXAttribute";
+  return parent.type === "CallExpression" && parent.callee.type === "Identifier" && parent.callee.name === "require";
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-repeated-string-literal",
-  documentation: NO_REPEATED_STRING_LITERAL_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Disallow a long structured string literal repeated across functions; the copies drift when one is edited. Extract a module-level constant.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -176,18 +74,11 @@ export default createRule<Options, MessageIds>({
         'Structured string literal "{{preview}}" is repeated across functions (first use on line {{line}}) — extract a module-level constant so the copies cannot drift.',
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    ) {
-      return {};
-    }
-    const occurrences = new Map<string, TSESTree.Node[]>();
-    const scopes = new WeakMap<TSESTree.Node, TSESTree.Node | null>();
+  createOnce(context) {
+    // Each occurrence keeps its enclosing function, or null at module/class scope.
+    let occurrences = new Map<string, { readonly node: Node; readonly scope: Node | null }[]>();
 
-    const record = (value: string, node: TSESTree.Node): void => {
+    const record = (value: string, node: Node): void => {
       if (
         value.length < MIN_LENGTH ||
         !isStructured(value) ||
@@ -195,25 +86,31 @@ export default createRule<Options, MessageIds>({
       ) {
         return;
       }
+      const occurrence = { node, scope: enclosingFunction(node) };
       const existing = occurrences.get(value);
       if (existing === undefined) {
-        occurrences.set(value, [node]);
+        occurrences.set(value, [occurrence]);
       } else {
-        existing.push(node);
+        existing.push(occurrence);
       }
-      scopes.set(node, enclosingFunction(node));
     };
 
     return {
-      Literal(node: TSESTree.Literal): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        occurrences = new Map();
+        return undefined;
+      },
+      Literal(node): void {
         if (typeof node.value === "string") {
           record(node.value, node);
         }
       },
-      TemplateLiteral(node: TSESTree.TemplateLiteral): void {
+      TemplateLiteral(node: ESTree.TemplateLiteral): void {
         // A tagged template (`js`…``, `css`…``, `sql`…``) is a call, not a
         // string value — the tag, not this rule, decides what the text means.
-        if (node.parent.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+        if (node.parent?.type === "TaggedTemplateExpression") {
           return;
         }
         const [only] = node.quasis;
@@ -222,34 +119,25 @@ export default createRule<Options, MessageIds>({
         }
       },
       "Program:exit": (): void => {
-        for (const [value, nodes] of occurrences) {
+        for (const [value, entries] of occurrences) {
           const distinctScopes = new Set(
-            nodes
-              .map((node) => scopes.get(node))
-              .filter((scope) => scope != null),
+            entries.map((entry) => entry.scope).filter((scope) => scope !== null),
           );
           if (distinctScopes.size < MIN_DISTINCT_SCOPES) {
             continue;
           }
-          const [first, ...repeats] = nodes;
-          if (first === undefined) {
-            continue;
-          }
+          const [first, ...repeats] = entries.map((entry) => entry.node) as [Node, ...Node[]];
           for (const node of repeats) {
-            const fix = existingStringConstantFix(
-              context.sourceCode,
-              node,
-              value,
-            );
-            context.report({
+            const fix = existingStringConstantFix(context.sourceCode, node, value);
+            const report = {
               node,
               messageId: "noRepeatedStringLiteral",
               data: {
                 preview: preview(value),
                 line: String(first.loc.start.line),
               },
-              fix,
-            });
+            };
+            context.report(fix === null ? report : { ...report, fix });
           }
         }
       },

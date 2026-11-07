@@ -1,24 +1,19 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-import ts from "typescript";
+import { afterAll } from "vitest";
 
-import rule, { NO_INVALID_TYPED_MUTATION_DOCUMENTATION } from "../../src/rules/no-invalid-typed-mutation.js";
+import rule from "../../src/rules/no-invalid-typed-mutation.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
+const TESTER = ruleTester({ cwd: FIXTURES });
+
 const COUNTER = 'const counter: { count: number } = { count: 1 };';
 
-TESTER.run("no-invalid-typed-mutation", rule, {
+TESTER.run("no-invalid-typed-mutation", rule, typed({
   valid: [
-    { name: "public compatible write", code: NO_INVALID_TYPED_MUTATION_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public compatible write", code: 'const counter: { count: number } = { count: 1 }; Object.assign(counter, { count: 2 });' },
     ...[
       ["compatible Reflect.set", 'Reflect.set(counter, "count", 2);'],
       ["compatible Object descriptor", 'Object.defineProperty(counter, "count", { value: 2, writable: true });'],
@@ -112,11 +107,10 @@ TESTER.run("no-invalid-typed-mutation", rule, {
       ["canonical global method replacement loses native identity", 'globalThis.Object.assign = adapter; const counter: { count: number } = { count: 1 }; Object.assign(counter, { count: "2" });'],
       ["canonical global reflective replacement loses native identity", 'Reflect.set(globalThis.Object, "assign", adapter); const counter: { count: number } = { count: 1 }; Object.assign(counter, { count: "2" });'],
     ].map(([name, code]) => ({ name, code })),
-    { name: "exact-code suppression", code: `${COUNTER}\n// eslint-disable-next-line @rule-tester/no-invalid-typed-mutation -- external adapter owns conversion\nObject.assign(counter, { count: "external" });` },
     { name: "generated ownership", filename: 'counter.generated.ts', code: `${COUNTER} Object.assign(counter, { count: "bad" });` },
   ],
   invalid: [
-    { name: "public incompatible write", code: NO_INVALID_TYPED_MUTATION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "incompatibleWrite" }] },
+    { name: "public incompatible write", code: 'const counter: { count: number } = { count: 1 }; Object.assign(counter, { count: "invalid" }); counter.count.toFixed();', errors: [{ messageId: "incompatibleWrite" }] },
     ...[
       ["plain compatible descriptors retain writable storage", `${COUNTER} Object.defineProperty(counter, "count", { value: 2, writable: true, configurable: true }); Reflect.set(counter, "count", "bad");`],
       ["typeof namespace does not escape API ownership", `${COUNTER} if (typeof Object === "function") Object.assign(counter, { count: "bad" });`],
@@ -139,19 +133,28 @@ TESTER.run("no-invalid-typed-mutation", rule, {
     ].map(([name, code]) => ({ name, code, errors: [{ messageId: "incompatibleWrite" as const }] })),
     { name: "real contracts in tests remain checked", filename: 'counter.test.ts', code: `${COUNTER} Object.assign(counter, { count: "bad" });`, errors: [{ messageId: "incompatibleWrite" }] },
   ],
+}));
+
+TESTER.run("no-invalid-typed-mutation without type information", rule, {
+  valid: [{ name: "reports nothing without a program, like the original's empty visitors", code: `${COUNTER} Object.assign(counter, { count: "bad" });`, settings: { sarj: { typeAware: false } } }], invalid: [],
 });
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-invalid-typed-mutation without type information", rule, {
-  valid: [`${COUNTER} Object.assign(counter, { count: "bad" });`], invalid: [],
-});
+const POLICY_ROOT = mkdtempSync(join(tmpdir(), "no-invalid-typed-mutation-"));
+afterAll(() => rmSync(POLICY_ROOT, { recursive: true, force: true }));
+function policyDirectory(exactOptionalPropertyTypes: boolean): string {
+  const directory = join(POLICY_ROOT, exactOptionalPropertyTypes ? "exact" : "loose");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { noEmit: true, strict: true, exactOptionalPropertyTypes, target: "ES2022", types: [] },
+  }));
+  return directory;
+}
+const POLICY_DIRECTORIES = { exact: policyDirectory(true), loose: policyDirectory(false) };
 
-
-const POLICY_TESTER = new RuleTester({ languageOptions: { parser } });
 const OMITTED_UNDEFINED = 'const counter: { count?: number } = { count: 1 }; Object.assign(counter, { count: undefined });';
 const EXPLICIT_UNDEFINED = 'const counter: { count?: number | undefined } = { count: 1 }; Object.assign(counter, { count: undefined });';
 
-POLICY_TESTER.run("no-invalid-typed-mutation exact optional policy", rule, {
+TESTER.run("no-invalid-typed-mutation exact optional policy", rule, {
   valid: [
     optionalCase("non-exact policy permits explicit undefined", OMITTED_UNDEFINED, false),
     optionalCase("authored undefined remains a valid exact write", EXPLICIT_UNDEFINED, true),
@@ -162,11 +165,6 @@ POLICY_TESTER.run("no-invalid-typed-mutation exact optional policy", rule, {
 });
 
 function optionalCase(name: string, code: string, exactOptionalPropertyTypes: boolean) {
-  const filename = join(import.meta.dirname, "..", "fixtures", "optional-policy.ts");
-  const options: ts.CompilerOptions = { noEmit: true, strict: true, exactOptionalPropertyTypes, target: ts.ScriptTarget.ES2022, types: [] };
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (path, version, onError, create) => path === filename ? ts.createSourceFile(path, code, version, true) : original(path, version, onError, create);
-  const program = ts.createProgram([filename], options, host);
-  return { name, code, filename, languageOptions: { parserOptions: { programs: [program] } } };
+  const directory = exactOptionalPropertyTypes ? POLICY_DIRECTORIES.exact : POLICY_DIRECTORIES.loose;
+  return { name, code, filename: join(directory, "optional-policy.ts"), cwd: directory, settings: { sarj: { typeAware: true } } };
 }

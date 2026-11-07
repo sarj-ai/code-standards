@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import manifest
 
@@ -43,6 +44,11 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 AGE_GATE_POLICY_NAMES: Final = frozenset({".npmrc", ".yarnrc.yml", ".yarnrc.yaml", "pnpm-workspace.yaml"})
 
 _ESLINT: Final = "eslint"
+#: pnpm policy lists that take exact `name@version` exemptions.
+_PNPM_EXEMPTION_SETTINGS: Final = ("minimumReleaseAgeExclude", "trustPolicyExclude")
+#: Yarn Berry's exact-version exemptions from `npmMinimalAgeGate`, and the variable that sets them inline.
+_YARN_PREAPPROVALS: Final = "npmPreapprovedPackages"
+_YARN_PREAPPROVALS_VARIABLE: Final = "YARN_NPM_PREAPPROVED_PACKAGES"
 _YARN_BERRY_MINIMUM_MAJOR: Final = 2
 _YAML_ENTRY = re.compile(r'^\s*(?P<key>"[^"]+"|\'[^\']+\'|[^:#]+):\s*(?P<value>[^#\n]+?)\s*(?:#.*)?$')
 _EXACT_VERSION = re.compile(
@@ -149,28 +155,17 @@ class Overrides:
 
 
 def overrides_for(client: PackageManager) -> Overrides:
-    npm_entries = manifest.eslint_overrides()
+    npm_entries = manifest.typescript_overrides()
     match client:
         case PackageManager.NPM:
             return Overrides(("overrides",), {name: _resolved_tree(value) for name, value in npm_entries.items()})
         case PackageManager.PNPM:
             return Overrides(("overrides",), dict(_flatten(npm_entries, ">")))
         case PackageManager.YARN:
-            # Yarn preserves a workspace package's older compatible lockfile
-            # resolution when the install-root pin advances. A nested ESLint
-            # config can then load a second `typescript-eslint` plugin object,
-            # which flat config rejects even though both declared ranges are
-            # individually valid. Keep the complete tested family on one
-            # identity across every workspace. These resolution pins are not
-            # age-gate exceptions: they remain after the releases mature.
-            identity_pins = manifest.eslint_yarn_identity_pins()
-            return Overrides(
-                ("resolutions",),
-                {**dict(_flatten(npm_entries, "/")), **identity_pins},
-            )
+            return Overrides(("resolutions",), dict(_flatten(npm_entries, "/")))
         case PackageManager.BUN:
-            # Bun ignores nested npm overrides, so pin ESLint at the root.
-            return Overrides(("overrides",), {_ESLINT: manifest.eslint_peers()[_ESLINT]})
+            # Bun ignores nested npm overrides, so pin the JS plugins' ESLint peer at the root.
+            return Overrides(("overrides",), {_ESLINT: manifest.typescript_peers()[_ESLINT]})
 
 
 def pnpm_workspace_values(text: str) -> dict[str, str]:
@@ -191,7 +186,7 @@ def pnpm_workspace_values(text: str) -> dict[str, str]:
 
 
 def _flatten(entries: Mapping[str, JsonValue], separator: str) -> Iterator[tuple[str, str]]:
-    peers = manifest.eslint_peers()
+    peers = manifest.typescript_peers()
     for parent, value in entries.items():
         nested = value if isinstance(value, dict) else {}
         if not nested:
@@ -212,7 +207,7 @@ def _resolved(value: JsonValue, peers: Mapping[str, str]) -> str:
 def _resolved_tree(value: JsonValue) -> OverrideValue:
     if isinstance(value, dict) and value:
         return {name: _resolved_tree(pin) for name, pin in value.items()}
-    return _resolved(value, manifest.eslint_peers())
+    return _resolved(value, manifest.typescript_peers())
 
 
 def install_command(
@@ -242,6 +237,43 @@ def install_argv(
     yarn: YarnVariant = YarnVariant.CLASSIC,
 ) -> Sequence[str]:
     return tuple(install_command(client, workspace=workspace, yarn=yarn).split())
+
+
+# Install-time settings that exempt exactly the managed versions from release-age and trust policies.
+@dataclass(frozen=True)
+class PolicyExemption:
+    arguments: tuple[str, ...] = ()
+    environment: tuple[tuple[str, str], ...] = ()
+
+
+# Exempts the managed versions for one install at `root` and leaves the repository's policy files
+# unchanged. An inline list replaces the configured one instead of extending it, so the
+# repository's own entries are repeated.
+def policy_exemption(client: PackageManager, root: Path, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> PolicyExemption:
+    managed = manifest.typescript_installed_versions()
+    if client is PackageManager.PNPM:
+        return PolicyExemption(
+            tuple(
+                f"--config.{setting}={entry}"
+                for setting in _PNPM_EXEMPTION_SETTINGS
+                for entry in _merged(_yaml_list(root / "pnpm-workspace.yaml", setting), managed)
+            )
+        )
+    if client is PackageManager.YARN and yarn is YarnVariant.BERRY:
+        approved = _merged(_yaml_list(root / ".yarnrc.yml", _YARN_PREAPPROVALS), managed)
+        return PolicyExemption(environment=((_YARN_PREAPPROVALS_VARIABLE, ",".join(approved)),))
+    return PolicyExemption()
+
+
+def _yaml_list(path: Path, key: str) -> tuple[str, ...]:
+    if not path.is_file():
+        return ()
+    entries = manifest.list_field(manifest.as_table(parse_yaml(path.read_text(encoding="utf-8"))), key)
+    return tuple(entry for entry in entries if isinstance(entry, str))
+
+
+def _merged(authored: Sequence[str], managed: Sequence[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*authored, *managed)))
 
 
 def frozen_install_argv(
@@ -282,7 +314,7 @@ def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLAS
         note = (
             "Yarn resolves `resolutions` at install time, so re-run `yarn install`"
             f" after the block is written -- and note Yarn pins {_ESLINT} for"
-            " eslint-plugin-react to an exact version rather than tracking your own."
+            " eslint-plugin-react (an Oxlint JS plugin) to an exact version rather than tracking your own."
         )
         if yarn is YarnVariant.BERRY:
             note += (

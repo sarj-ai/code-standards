@@ -1,23 +1,35 @@
 /**
  * @fileoverview require-button-accessible-name — statically proven UI policy violations receive actionable diagnostics.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-button-accessible-name.test.ts
+ * Port of the 18.x `require-button-accessible-name` rule. Untyped.
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
 import {
   attributeNameStatus,
   childrenNameStatus,
   COMPONENT_IMPORT_SCHEMA,
   type ComponentImport,
+  hasHiddenAncestor,
   importedComponent,
   isHidden,
   isPassedAsProp,
-  hasHiddenAncestor,
-} from "./_jsx-accessibility.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+} from "../utils/jsx-accessibility.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
+
+const NAME = "require-button-accessible-name";
+const DELEGATING_PROPS: ReadonlySet<string> = new Set(["render", "asChild"]);
+
+/** The button renders through another element, which owns its name. */
+function delegatesRendering(opening: ESTree.JSXOpeningElement): boolean {
+  return opening.attributes.some(
+    (attribute) =>
+      attribute.type === "JSXAttribute" &&
+      attribute.name.type === "JSXIdentifier" &&
+      DELEGATING_PROPS.has(attribute.name.name),
+  );
+}
 
 type Options = readonly [
   {
@@ -26,65 +38,21 @@ type Options = readonly [
   }?,
 ];
 
-export const REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION = {
-  summary:
-    "Require an accessible name on statically unnamed native or configured JSX buttons.",
-  rationale:
-    "An icon-only action without an accessible name cannot communicate its purpose to assistive technology.",
-  remediation:
-    "Provide meaningful visible or visually hidden text, aria-label, or aria-labelledby for the action.",
-  category: "correctness",
-  limitations: [
-    "Native button and conventional Button elements are checked by default. Other custom buttons require exact module/export configuration; aliases and namespace imports are resolved by scope. Lucide icons are recognized by default; other icon modules are configurable.",
-    "Composed JSX passed as props, render/asChild adapters, dynamic labels, children, unknown components, and prop spreads are left to runtime accessibility testing. Referenced IDs, CSS visibility, and meaningful wording are not verified. Generated files, tests, fixtures, and stories are excluded. No automatic labels are invented.",
-    "A hidden prop with unshadowed undefined or exact void 0 does not hide the element or its children. Shadowed undefined and dynamic hidden values remain unproven.",
-  ],
-  examples: [
-    {
-      id: "unnamed-button",
-      title: "Name an icon action",
-      outcome: "match",
-      files: [
-        {
-          path: "src/action.tsx",
-          source: '<button><svg aria-hidden="true" /></button>',
-        },
-      ],
-      focusPath: "src/action.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "named-button",
-      title: "Provide the action name",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/action.tsx",
-          source:
-            '<button aria-label="Close"><svg aria-hidden="true" /></button>',
-        },
-      ],
-      focusPath: "src/action.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-export default createRule<Options, "missingName">({
-  name: "require-button-accessible-name",
-  documentation: REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
-    docs: { description: REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION.summary },
+    docs: {
+      description: "Require an accessible name on statically unnamed native or configured JSX buttons.",
+      url: docsUrl(NAME),
+    },
     schema: [
       {
         type: "object",
         properties: {
           components: COMPONENT_IMPORT_SCHEMA,
-          iconModules: { description: "Module names whose imported components count as icons.",
+          iconModules: {
+            description: "Module names whose imported components count as icons.",
             type: "array",
             items: { type: "string", minLength: 1 },
             uniqueItems: true,
@@ -98,59 +66,37 @@ export default createRule<Options, "missingName">({
         "This button has no statically identifiable accessible name. Add action text, aria-label, or aria-labelledby.",
     },
   },
-  create(context, [options]) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      isTestFile(context) ||
-      isStoryFile(context)
-    )
-      return {};
-    const iconModules = options?.iconModules ?? ["lucide-react"];
+  createOnce(context) {
+    let options: Options[0];
+    let iconModules: readonly string[] = [];
+
+    /** `Button`, or a configured component import. */
+    function isButtonComponent(name: ESTree.JSXElementName): boolean {
+      if (name.type === "JSXIdentifier" && name.name === "Button") return true;
+      // Most files configure no components: skip the scope lookup for them.
+      const components = options?.components ?? [];
+      if (components.length === 0) return false;
+      const imported = importedComponent(name, context.sourceCode);
+      return imported !== null &&
+        components.some((component) => component.module === imported.module && component.export === imported.export);
+    }
+
     return {
-      JSXElement(node): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isGeneratedFile(file, context.sourceCode.text) || isTestFile(file) || isStoryFile(file)) return false;
+        options = context.options[0] as Options[0];
+        iconModules = options?.iconModules ?? ["lucide-react"];
+        return true;
+      },
+      JSXElement(node) {
+        const sourceCode = context.sourceCode;
         const opening = node.openingElement;
-        const native =
-          opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
-          opening.name.name === "button";
-        const conventional =
-          opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
-          opening.name.name === "Button";
-        const imported =
-          native || conventional
-            ? null
-            : importedComponent(opening.name, context.sourceCode);
-        if (
-          !native &&
-          !conventional &&
-          !options?.components?.some(
-            (component) =>
-              component.module === imported?.module &&
-              component.export === imported.export,
-          )
-        )
-          return;
-        if (
-          !native &&
-          opening.attributes.some(
-            (attribute) =>
-              attribute.type === AST_NODE_TYPES.JSXAttribute &&
-              attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
-              ["render", "asChild"].includes(attribute.name.name),
-          )
-        )
-          return;
-        if (
-          isPassedAsProp(node, context.sourceCode) ||
-          hasHiddenAncestor(node, context.sourceCode)
-        )
-          return;
-        if (isHidden(opening, context.sourceCode) || attributeNameStatus(opening) !== "empty")
-          return;
-        if (
-          childrenNameStatus(node.children, context.sourceCode, iconModules) !==
-          "empty"
-        )
-          return;
+        const native = opening.name.type === "JSXIdentifier" && opening.name.name === "button";
+        if (!native && (!isButtonComponent(opening.name) || delegatesRendering(opening))) return;
+        if (isPassedAsProp(node, sourceCode) || hasHiddenAncestor(node, sourceCode)) return;
+        if (isHidden(opening, sourceCode) || attributeNameStatus(opening) !== "empty") return;
+        if (childrenNameStatus(node.children, sourceCode, iconModules) !== "empty") return;
         context.report({ node: opening, messageId: "missingName" });
       },
     };

@@ -1,25 +1,33 @@
 /**
  * @fileoverview prefer-module-level-refined-schema — hoist closed Zod scalar, format, and wrapper schemas.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-refined-schema.test.ts
+ * Port of the 18.x `prefer-module-level-refined-schema` rule. Same
+ * algorithm; test, benchmark and generated files are skipped in `before()`,
+ * which also resets the per-file Zod bindings. The closure checks shared with
+ * prefer-module-level-schema come from that rule.
  */
 
-import type { NativeRuleListener } from "./_eslint-rule.js";
+import type { Variable } from "@oxlint/plugins";
 
+import { defineRule, tsVariable, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { isErasedExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+  buildsLocalizedText,
+  closesOverNothing,
+  FUNCTION_TYPES,
+  outermostEnclosingFunction,
+  readsReceiver,
+  subtreeSome,
+} from "./prefer-module-level-schema.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
+const NAME = "prefer-module-level-refined-schema";
 
-type MessageIds = "hoistRefinedSchema";
-type Options = [];
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
 const BENCHMARK_PATH_RE = /(^|[/\\])(?:benchmarks?|bench)[/\\]/;
 
@@ -39,6 +47,7 @@ const COMPOSITE_FACTORIES: ReadonlySet<string> = new Set([
   "discriminatedUnion", "intersection", "looseObject", "object", "record",
   "strictObject", "tuple", "union",
 ]);
+const SCHEMA_FACTORIES: ReadonlySet<string> = new Set([...FACTORIES, ...COMPOSITE_FACTORIES]);
 const FACTORY_NAMESPACES: ReadonlySet<string> = new Set(["coerce", "iso"]);
 const NON_SCHEMA_TERMINALS: ReadonlySet<string> = new Set([
   "decode", "decodeAsync", "encode", "encodeAsync", "flattenError",
@@ -50,145 +59,17 @@ const NON_SCHEMA_TERMINALS: ReadonlySet<string> = new Set([
 const MEMO_CALLEES: ReadonlySet<string> = new Set([
   "lazy", "memo", "once", "useMemo",
 ]);
-const I18N_CALLEE_NAMES: ReadonlySet<string> = new Set([
-  "$t", "defineMessage", "gettext", "msg", "ngettext", "t", "translate",
-]);
-const I18N_RECEIVER_NAMES: ReadonlySet<string> = new Set([
-  "$i18n", "i18n", "intl",
-]);
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.ArrowFunctionExpression,
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-]);
 
-export const PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary:
-    "Declare closed Zod scalar, format, and wrapper schemas at module scope.",
-  rationale:
-    "A closed validation pipeline created inside a function is rebuilt on every invocation and obscures a reusable constraint.",
-  remediation:
-    "Move the validation schema to module scope, name it with a PascalCase Schema suffix, and call parse on the shared schema.",
-  category: "performance",
-  limitations: [
-    "Composite object/record/tuple/union schemas are owned by prefer-module-level-schema.",
-    "Schemas that depend on function-local or mutable state, localized text, receiver state, lazy construction, or recognized memoization are excluded.",
-    "Literal string z.enum domains are owned by prefer-shared-zod-enum.",
-    "Eager calls outside recognized Zod construction chains and new expressions are excluded. This is manual guidance, not a purity proof: review getters, callback effects, error customization, schema identity, and module initialization order before moving construction.",
-  ],
-  examples: [
-    {
-      id: "module-refinement",
-      title: "Share the validation schema",
-      outcome: "no-match",
-      files: [{
-        path: "src/options.ts",
-        source: "import { z } from 'zod'; const NameSchema = z.string().trim().min(1).max(128); export function parse(value: unknown) { return NameSchema.parse(value); }",
-      }],
-      focusPath: "src/options.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "local-refinement",
-      title: "Do not rebuild a closed validation chain",
-      outcome: "match",
-      files: [{
-        path: "src/options.ts",
-        source: "import { z } from 'zod'; export function parse(value: unknown) { return z.string().trim().min(1).max(128).parse(value); }",
-      }],
-      focusPath: "src/options.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function outermostEnclosingFunction(
-  node: TSESTree.Node,
-): TSESTree.Node | undefined {
-  let outermost: TSESTree.Node | undefined;
-  let current = node.parent ?? undefined;
-  while (current !== undefined) {
-    if (FUNCTION_TYPES.has(current.type)) outermost = current;
-    current = current.parent ?? undefined;
-  }
-  return outermost;
-}
-
-function collectReferences(
-  scope: TSESLint.Scope.Scope,
-  output: TSESLint.Scope.Reference[],
-): void {
-  output.push(...scope.references);
-  for (const child of scope.childScopes) collectReferences(child, output);
-}
-
-function subtreeSome(
-  root: TSESTree.Node,
-  predicate: (node: TSESTree.Node) => boolean,
-  skipDeferredFunctions = false,
-): boolean {
-  let found = false;
-  const visit = (value: unknown): void => {
-    if (found || value === null || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const candidate = value as Partial<TSESTree.Node> & Record<string, unknown>;
-    if (typeof candidate.type !== "string") return;
-    if (skipDeferredFunctions && FUNCTION_TYPES.has(candidate.type)) return;
-    if (predicate(candidate as TSESTree.Node)) {
-      found = true;
-      return;
-    }
-    for (const key of Object.keys(candidate)) {
-      if (key === "parent" || key === "loc" || key === "range") continue;
-      visit(candidate[key]);
-    }
-  };
-  visit(root);
-  return found;
-}
-
-function readsReceiver(node: TSESTree.Node): boolean {
-  return subtreeSome(
-    node,
-    (inner) =>
-      inner.type === AST_NODE_TYPES.ThisExpression ||
-      inner.type === AST_NODE_TYPES.Super ||
-      (inner.type === AST_NODE_TYPES.Identifier && inner.name === "arguments"),
-  );
-}
-
-function buildsLocalizedText(node: TSESTree.Node): boolean {
-  return subtreeSome(node, (inner) => {
-    if (inner.type === AST_NODE_TYPES.TaggedTemplateExpression) return true;
-    if (inner.type !== AST_NODE_TYPES.CallExpression) return false;
-    const callee = unwrapExpression(inner.callee);
-    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-    if (callee.type === AST_NODE_TYPES.Identifier)
-      return I18N_CALLEE_NAMES.has(callee.name);
-    return (
-      callee.type === AST_NODE_TYPES.MemberExpression &&
-      calleeReceiver.type === AST_NODE_TYPES.Identifier &&
-      I18N_RECEIVER_NAMES.has(calleeReceiver.name)
-    );
-  });
-}
-
-function calleeChainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
+function calleeChainRoot(node: Node): Identifier | null {
   let current = node;
   for (;;) {
     current = unwrapExpression(current);
-    if (current.type === AST_NODE_TYPES.Identifier) return current;
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
+    if (current.type === "Identifier") return current;
+    if (current.type === "MemberExpression") {
       current = current.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
+    if (current.type === "CallExpression") {
       current = current.callee;
       continue;
     }
@@ -196,19 +77,19 @@ function calleeChainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
   }
 }
 
-function chainMemberNames(node: TSESTree.Node): readonly string[] {
+function chainMemberNames(node: Node): readonly string[] {
   const names: string[] = [];
   let current = node;
   for (;;) {
     current = unwrapExpression(current);
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (ASTUtils.getPropertyName(current) === null)
-        return [];
-      names.push((ASTUtils.getPropertyName(current) ?? ""));
+    if (current.type === "MemberExpression") {
+      const name = getPropertyName(current);
+      if (name === null) return [];
+      names.push(name);
       current = current.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
+    if (current.type === "CallExpression") {
       current = current.callee;
       continue;
     }
@@ -218,42 +99,29 @@ function chainMemberNames(node: TSESTree.Node): readonly string[] {
   return names;
 }
 
-function schemaExpression(node: TSESTree.CallExpression): TSESTree.Node {
-  let current: TSESTree.Node = node;
-  for (;;) {
-    const parent: TSESTree.Node | undefined = current.parent ?? undefined;
-    if (
-      parent?.type === AST_NODE_TYPES.MemberExpression &&
-      parent.object === current &&
-      ASTUtils.getPropertyName(parent) !== null &&
-      parent.parent?.type === AST_NODE_TYPES.CallExpression &&
-      parent.parent.callee === parent
-    ) {
-      if (NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(parent) ?? ""))) return current;
-      current = parent.parent;
-      continue;
-    }
-    if (
-      parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      parent?.type === AST_NODE_TYPES.TSNonNullExpression ||
-      parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      parent?.type === AST_NODE_TYPES.TSTypeAssertion
-    ) {
+/** The schema expression around a factory call: its builder-method chain and erased type wrappers. */
+function schemaExpression(node: ESTree.CallExpression): Node {
+  let current: Node = node;
+  for (let parent = parentOf(current); parent !== null; parent = parentOf(current)) {
+    if (isErasedExpression(parent)) {
       current = parent;
       continue;
     }
-    return current;
+    const call = parentOf(parent);
+    const method = parent.type === "MemberExpression" && parent.object === current ? getPropertyName(parent) : null;
+    if (method === null || call?.type !== "CallExpression" || call.callee !== parent || NON_SCHEMA_TERMINALS.has(method)) break;
+    current = call;
   }
+  return current;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-module-level-refined-schema",
-  documentation: PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Declare closed Zod scalar, format, and wrapper schemas at module scope.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -261,176 +129,114 @@ export default createRule<Options, MessageIds>({
         "Move this closed Zod schema to module scope, give it a PascalCase Schema name, and reuse it for parsing.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      BENCHMARK_PATH_RE.test(context.filename) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    )
-      return {};
-
-    const zodBindings = new Set<TSESLint.Scope.Variable>();
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let zodBindings = new Set<TsVariable>();
 
     function resolvedBinding(
-      identifier: TSESTree.Identifier,
-    ): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
-        context.sourceCode.getScope(identifier),
+      identifier: Identifier,
+    ): TsVariable | null {
+      return findVariable(
+        sourceCode.getScope(identifier),
         identifier.name,
       );
     }
 
-    function recordZodBinding(identifier: TSESTree.Identifier): void {
+    function recordZodBinding(identifier: Identifier): void {
       const binding = resolvedBinding(identifier);
       if (binding !== null) zodBindings.add(binding);
     }
 
+    /** The factory a `z.<factory>(…)` or `z.coerce.<factory>(…)` call names, when `allowed` has it. */
     function factoryName(
-      node: TSESTree.CallExpression,
+      node: ESTree.CallExpression,
       allowed: ReadonlySet<string>,
     ): string | null {
-      const unwrappedNodeCallee = unwrapExpression(node.callee);
-      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return null;
-      const root = calleeChainRoot(unwrappedNodeCallee);
-      if (root === null) return null;
-      const binding = resolvedBinding(root);
-      if (binding === null || !zodBindings.has(binding)) return null;
-      const names = chainMemberNames(unwrappedNodeCallee);
-      if (names.length === 1 && allowed.has(names[0] ?? ""))
-        return names[0] ?? null;
-      if (
-        names.length === 2 &&
-        FACTORY_NAMESPACES.has(names[0] ?? "") &&
-        allowed.has(names[1] ?? "")
-      )
-        return names[1] ?? null;
-      return null;
-    }
-
-    function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
+      if (zodBindings.size === 0) return null;
       const callee = unwrapExpression(node.callee);
-
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
-      if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);
-      return factoryName(node, FACTORIES) !== null || factoryName(node, COMPOSITE_FACTORIES) !== null;
+      if (callee.type !== "MemberExpression") return null;
+      const names = chainMemberNames(callee);
+      const [first = "", second = ""] = names;
+      const factory = names.length === 1 ? first : names.length === 2 && FACTORY_NAMESPACES.has(first) ? second : null;
+      if (factory === null || !allowed.has(factory)) return null;
+      const root = calleeChainRoot(callee);
+      const binding = root === null ? null : resolvedBinding(root);
+      return binding !== null && zodBindings.has(binding) ? factory : null;
     }
 
-    function hasEagerComputation(node: TSESTree.Node): boolean {
+    function isSchemaConstruction(node: ESTree.CallExpression): boolean {
+      const callee = unwrapExpression(node.callee);
+      if (callee.type !== "MemberExpression") return false;
+      const name = getPropertyName(callee);
+      if (name === null || NON_SCHEMA_TERMINALS.has(name)) return false;
+      const calleeReceiver = unwrapExpression(callee.object);
+      if (calleeReceiver.type === "CallExpression") return isSchemaConstruction(calleeReceiver);
+      return factoryName(node, SCHEMA_FACTORIES) !== null;
+    }
+
+    function hasEagerComputation(node: Node): boolean {
       return subtreeSome(node, (inner) =>
-        inner.type === AST_NODE_TYPES.NewExpression ||
-        inner.type === AST_NODE_TYPES.TaggedTemplateExpression ||
-        (inner.type === AST_NODE_TYPES.CallExpression && !isSchemaConstruction(inner)), true);
+        inner.type === "NewExpression" ||
+        inner.type === "TaggedTemplateExpression" ||
+        (inner.type === "CallExpression" && !isSchemaConstruction(inner)), true);
     }
 
     function isSharedEnumDomain(
-      node: TSESTree.CallExpression,
+      node: ESTree.CallExpression,
       factory: string,
     ): boolean {
       if (factory !== "enum") return false;
       const [argument] = node.arguments;
       return (
-        argument?.type === AST_NODE_TYPES.ArrayExpression &&
+        argument?.type === "ArrayExpression" &&
         argument.elements.length >= 2 &&
         argument.elements.every(
           (element) =>
-            element?.type === AST_NODE_TYPES.Literal &&
+            element?.type === "Literal" &&
             typeof element.value === "string",
         )
       );
     }
 
-    function isNestedInOwnedFactory(node: TSESTree.CallExpression): boolean {
-      let current: TSESTree.Node = node;
-      while (current.parent != null) {
-        current = current.parent;
+    function isNestedInOwnedFactory(node: ESTree.CallExpression): boolean {
+      for (let current = parentOf(node); current !== null; current = parentOf(current)) {
         if (FUNCTION_TYPES.has(current.type)) return false;
-        if (
-          current.type === AST_NODE_TYPES.CallExpression &&
-          (factoryName(current, FACTORIES) !== null ||
-            factoryName(current, COMPOSITE_FACTORIES) !== null)
-        )
-          return true;
+        if (current.type === "CallExpression" && factoryName(current, SCHEMA_FACTORIES) !== null) return true;
       }
       return false;
     }
 
-    function isMemoized(node: TSESTree.Node): boolean {
-      let current = node.parent ?? undefined;
-      while (current !== undefined) {
-        if (
-          current.type === AST_NODE_TYPES.CallExpression &&
-          ((current.callee.type === AST_NODE_TYPES.Identifier &&
-            MEMO_CALLEES.has(current.callee.name)) ||
-            (current.callee.type === AST_NODE_TYPES.MemberExpression &&
-              ASTUtils.getPropertyName(current.callee) !== null &&
-              MEMO_CALLEES.has((ASTUtils.getPropertyName(current.callee) ?? ""))))
-        )
-          return true;
-        current = current.parent ?? undefined;
+    function isMemoized(node: Node): boolean {
+      for (let current = parentOf(node); current !== null; current = parentOf(current)) {
+        if (current.type !== "CallExpression") continue;
+        const { callee } = current;
+        if (callee.type === "Identifier" && MEMO_CALLEES.has(callee.name)) return true;
+        if (callee.type === "MemberExpression" && MEMO_CALLEES.has(getPropertyName(callee) ?? "")) return true;
       }
       return false;
     }
 
-    function closesOverNothing(
-      node: TSESTree.Node,
-      enclosing: TSESTree.Node,
-    ): boolean {
-      const references: TSESLint.Scope.Reference[] = [];
-      collectReferences(context.sourceCode.getScope(node), references);
-      const [start, end] = node.range;
-      const [functionStart, functionEnd] = enclosing.range;
-      function hasSafeDefinitions(reference: TSESLint.Scope.Reference, resolved: TSESLint.Scope.Variable): boolean {
-        for (const definition of resolved.defs) {
-          if (definition.type === "ImportBinding") {
-            const parent = reference.identifier.parent;
-            if (
-              parent?.type === AST_NODE_TYPES.CallExpression &&
-              parent.callee === reference.identifier &&
-              !zodBindings.has(resolved)
-            )
-              return false;
-            continue;
-          }
-          if (
-            definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
-            definition.node.parent.type === AST_NODE_TYPES.VariableDeclaration &&
-            definition.node.parent.kind !== "const"
-          )
-            return false;
-          const [definitionStart, definitionEnd] = definition.node.range;
-          if (definitionStart >= start && definitionEnd <= end) continue;
-          if (
-            definitionStart >= functionStart &&
-            definitionEnd <= functionEnd
-          )
-            return false;
-        }
-        return true;
-      }
-
-      for (const reference of references) {
-        const [referenceStart] = reference.identifier.range;
-        if (referenceStart < start || referenceStart >= end) continue;
-        const resolved = reference.resolved;
-        if (resolved === null) continue;
-        if (!hasSafeDefinitions(reference, resolved)) return false;
-      }
-      return true;
-    }
+    const isZodBinding = (_identifier: Node, resolved: Variable): boolean => zodBindings.has(tsVariable(resolved));
 
     return {
+      before(): boolean | void {
+        sourceCode = context.sourceCode;
+        if (
+          isTestFile({ filename: context.filename, cwd: context.cwd }) ||
+          BENCHMARK_PATH_RE.test(context.filename) ||
+          isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)
+        )
+          return false;
+        zodBindings = new Set<TsVariable>();
+      },
       ImportDeclaration(node): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              (specifier.imported.type === AST_NODE_TYPES.Identifier
-                ? specifier.imported.name === "z"
-                : specifier.imported.value === "z"))
+            specifier.type === "ImportDefaultSpecifier" ||
+            specifier.type === "ImportNamespaceSpecifier" ||
+            (specifier.type === "ImportSpecifier" &&
+              importSpecifierName(specifier) === "z")
           )
             recordZodBinding(specifier.local);
         }
@@ -451,11 +257,11 @@ export default createRule<Options, MessageIds>({
           hasEagerComputation(expression) ||
           readsReceiver(expression) ||
           buildsLocalizedText(expression) ||
-          !closesOverNothing(expression, enclosing)
+          !closesOverNothing(sourceCode, expression, enclosing, isZodBinding)
         )
           return;
         context.report({ node, messageId: "hoistRefinedSchema" });
       },
-    } satisfies NativeRuleListener;
+    };
   },
 });

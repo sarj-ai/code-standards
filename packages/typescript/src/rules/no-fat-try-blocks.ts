@@ -1,65 +1,29 @@
 /**
  * @fileoverview no-fat-try-blocks — review broad recovery scopes using a bounded operation-count heuristic.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-fat-try-blocks.test.ts
+ * Port of the 18.x `no-fat-try-blocks` rule. The rule is untyped, so
+ * the port covers all of it.
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { forEachOwnAstChild } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
 
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+const NAME = "no-fat-try-blocks";
 
-type MessageIds = "fatTryBlock";
-export interface RuleOptions {
+type Identifier = Extract<Node, { type: "Identifier" }>;
+
+interface RuleOptions {
   readonly max?: number;
 }
-type Options = readonly [RuleOptions?];
-
-export const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
-  summary: "Review try blocks exceeding the configured count of syntactically selected operations.",
-  rationale:
-    "A broad `try` block obscures which operation failed and encourages one catch clause to recover from unrelated errors.",
-  remediation:
-    "Keep only the operations that share one recovery policy inside the `try` block and move other work outside it.",
-  category: "correctness",
-  limitations: [
-    "The default threshold is three selected top-level operations, not a proof of every possible throw. A shared recovery policy may legitimately cover several operations; generated files, catchless finally blocks, rethrows, and terminal error boundaries are excluded.",
-  ],
-  examples: [
-    {
-      id: "focused-try-block",
-      title: "Keep only operations with the same recovery policy in the try block",
-      outcome: "no-match",
-      files: [{
-        path: "src/load.ts",
-        source: "function f() { try { const a = one(); const b = two(); const c = three(); } catch (error) { handle(error); } const d = four(); finish(); }",
-      }],
-      focusPath: "src/load.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "broad-try-block",
-      title: "Review whether four selected operations share one recovery policy",
-      outcome: "match",
-      files: [{
-        path: "src/load.ts",
-        source: "function f() { try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); } finish(); }",
-      }],
-      focusPath: "src/load.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
 
 const MAX_TRY_BODY_STATEMENTS = 3;
 
-const NESTED_FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const NESTED_FUNCTION_TYPES: ReadonlySet<string> = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 
 /** Pure method names must not overlap common I/O-client methods such as `get`, `set`, or `find`. */
@@ -96,17 +60,17 @@ const PURE_CONSTRUCTORS: ReadonlySet<string> = new Set([
 ]);
 
 /** A call whose value is a known pure, non-throwing helper. */
-function isPureCall(node: TSESTree.CallExpression): boolean {
+function isPureCall(node: ESTree.CallExpression): boolean {
   const callee = node.callee;
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+  if (callee.type !== "MemberExpression") {
     return false;
   }
   const property = callee.property;
-  if (property.type !== AST_NODE_TYPES.Identifier) {
+  if (property.type !== "Identifier") {
     return false;
   }
   if (
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     PURE_NAMESPACES.has(callee.object.name)
   ) {
     return !IMPURE_NAMESPACE_METHODS.has(`${callee.object.name}.${property.name}`);
@@ -117,43 +81,43 @@ function isPureCall(node: TSESTree.CallExpression): boolean {
   );
 }
 
-function synchronousCallbackCanThrow(node: TSESTree.CallExpression): boolean {
+function synchronousCallbackCanThrow(node: ESTree.CallExpression): boolean {
   return node.arguments.some((argument) => {
     if (
-      argument.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      argument.type !== AST_NODE_TYPES.FunctionExpression
+      argument.type !== "ArrowFunctionExpression" &&
+      argument.type !== "FunctionExpression"
     ) return false;
-    if (argument.async) return false;
+    if (argument.async || argument.body === null) return false;
     return subtreeMatches(
       argument.body,
       (current) =>
-        current.type === AST_NODE_TYPES.ThrowStatement ||
-        (current.type === AST_NODE_TYPES.CallExpression &&
-          current.callee.type === AST_NODE_TYPES.MemberExpression &&
+        current.type === "ThrowStatement" ||
+        (current.type === "CallExpression" &&
+          current.callee.type === "MemberExpression" &&
           !current.callee.computed &&
-          current.callee.object.type === AST_NODE_TYPES.Identifier &&
+          current.callee.object.type === "Identifier" &&
           current.callee.object.name === "JSON" &&
-          current.callee.property.type === AST_NODE_TYPES.Identifier &&
+          current.callee.property.type === "Identifier" &&
           current.callee.property.name === "parse"),
     );
   });
 }
 
-function isPureNew(node: TSESTree.NewExpression): boolean {
+function isPureNew(node: ESTree.NewExpression): boolean {
   return (
-    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node.callee.type === "Identifier" &&
     PURE_CONSTRUCTORS.has(node.callee.name)
   );
 }
 
 function subtreeMatches(
-  stmt: TSESTree.Node,
-  predicate: (node: TSESTree.Node) => boolean,
+  stmt: Node,
+  predicate: (node: Node) => boolean,
   descendIntoFunctions = false,
 ): boolean {
   let found = false;
 
-  const visit = (current: TSESTree.Node): void => {
+  const visit = (current: Node): void => {
     if (found) {
       return;
     }
@@ -170,11 +134,11 @@ function subtreeMatches(
 }
 
 /** Unwrap `await` / optional-chain / non-null wrappers to the core expression. */
-function unwrap(expr: TSESTree.Expression): TSESTree.Expression {
+function unwrap(expr: ESTree.Expression): ESTree.Expression {
   let current = expr;
   while (
-    current.type === AST_NODE_TYPES.ChainExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression
+    current.type === "ChainExpression" ||
+    current.type === "TSNonNullExpression"
   ) {
     current = current.expression;
   }
@@ -182,47 +146,49 @@ function unwrap(expr: TSESTree.Expression): TSESTree.Expression {
 }
 
 /** `await` and used calls count; bare calls do not, including inside blocks and branches. */
-function canThrow(stmt: TSESTree.Statement): boolean {
-  if (hasAwait(stmt)) {
-    return true;
-  }
+function canThrow(stmt: ESTree.Statement): boolean {
+  return hasAwait(stmt) || canThrowWithoutAwait(stmt);
+}
+
+/** Nested statements of an await-free statement are await-free too, so they are not rescanned. */
+function canThrowWithoutAwait(stmt: ESTree.Statement): boolean {
   if (isBareCallStatement(stmt)) {
     return false;
   }
-  if (stmt.type === AST_NODE_TYPES.BlockStatement) {
-    return stmt.body.some(canThrow);
+  if (stmt.type === "BlockStatement") {
+    return stmt.body.some(canThrowWithoutAwait);
   }
-  if (stmt.type === AST_NODE_TYPES.IfStatement) {
+  if (stmt.type === "IfStatement") {
     return (
       hasThrowingCallOrNew(stmt.test) ||
-      canThrow(stmt.consequent) ||
-      (stmt.alternate !== null && canThrow(stmt.alternate))
+      canThrowWithoutAwait(stmt.consequent) ||
+      (stmt.alternate !== null && canThrowWithoutAwait(stmt.alternate))
     );
   }
   return hasThrowingCallOrNew(stmt);
 }
 
-const hasAwait = (node: TSESTree.Node): boolean =>
-  subtreeMatches(node, (n) => n.type === AST_NODE_TYPES.AwaitExpression);
+const hasAwait = (node: Node): boolean =>
+  subtreeMatches(node, (n) => n.type === "AwaitExpression");
 
-const hasThrowingCallOrNew = (node: TSESTree.Node): boolean =>
+const hasThrowingCallOrNew = (node: Node): boolean =>
   subtreeMatches(
     node,
     (n) =>
-      (n.type === AST_NODE_TYPES.CallExpression && !isPureCall(n)) ||
-      (n.type === AST_NODE_TYPES.NewExpression && !isPureNew(n)),
+      (n.type === "CallExpression" && !isPureCall(n)) ||
+      (n.type === "NewExpression" && !isPureNew(n)),
   );
 
 /** A bare fire-and-forget call statement — `toast("done");`, `logEvent(...);`. */
-function isBareCallStatement(stmt: TSESTree.Statement): boolean {
+function isBareCallStatement(stmt: ESTree.Statement): boolean {
   return (
-    stmt.type === AST_NODE_TYPES.ExpressionStatement &&
-    unwrap(stmt.expression).type === AST_NODE_TYPES.CallExpression
+    stmt.type === "ExpressionStatement" &&
+    unwrap(stmt.expression).type === "CallExpression"
   );
 }
 
 /** UI-style failure/final-state signaling applies one uniform policy to the whole operation. */
-function isSimpleCatchFinallyOrchestration(node: TSESTree.TryStatement): boolean {
+function isSimpleCatchFinallyOrchestration(node: ESTree.TryStatement): boolean {
   const handler = node.handler;
   const finalizer = node.finalizer;
   return (
@@ -234,86 +200,86 @@ function isSimpleCatchFinallyOrchestration(node: TSESTree.TryStatement): boolean
   );
 }
 
-function isSingleSimpleCall(body: readonly TSESTree.Statement[]): boolean {
+function isSingleSimpleCall(body: readonly ESTree.Statement[]): boolean {
   const statement = body[0];
   return body.length === 1 && statement !== undefined && isSimpleBareCallStatement(statement);
 }
 
 /** A single call with no hidden control flow or mutation inside its arguments. */
-function isSimpleBareCallStatement(stmt: TSESTree.Statement): boolean {
+function isSimpleBareCallStatement(stmt: ESTree.Statement): boolean {
   if (!isBareCallStatement(stmt)) {
     return false;
   }
   return !subtreeMatches(
     stmt,
     (node) =>
-      node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      node.type === AST_NODE_TYPES.FunctionExpression ||
-      node.type === AST_NODE_TYPES.AssignmentExpression ||
-      node.type === AST_NODE_TYPES.UpdateExpression ||
-      node.type === AST_NODE_TYPES.AwaitExpression,
+      node.type === "ArrowFunctionExpression" ||
+      node.type === "FunctionExpression" ||
+      node.type === "AssignmentExpression" ||
+      node.type === "UpdateExpression" ||
+      node.type === "AwaitExpression",
     true,
   );
 }
 
-function handlerRethrows(handler: TSESTree.CatchClause | null): boolean {
+function handlerRethrows(handler: ESTree.CatchClause | null): boolean {
   if (handler === null) {
     return false;
   }
   const body = handler.body.body;
   const last = body[body.length - 1];
-  return last !== undefined && last.type === AST_NODE_TYPES.ThrowStatement;
+  return last !== undefined && last.type === "ThrowStatement";
 }
 
 /** Statements that hand control straight through to their own parent. */
-const PASS_THROUGH_PARENTS: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.IfStatement,
-  AST_NODE_TYPES.TryStatement,
-  AST_NODE_TYPES.CatchClause,
-  AST_NODE_TYPES.LabeledStatement,
+const PASS_THROUGH_PARENTS: ReadonlySet<string> = new Set([
+  "IfStatement",
+  "TryStatement",
+  "CatchClause",
+  "LabeledStatement",
 ]);
 
 /** A member property / object key spelled `x` is not a reference to `x`. */
-function isPropertyName(node: TSESTree.Identifier): boolean {
+function isPropertyName(node: Identifier): boolean {
   const parent = node.parent;
-  if (parent.type === AST_NODE_TYPES.MemberExpression) {
+  if (parent.type === "MemberExpression") {
     return parent.property === node && !parent.computed;
   }
-  if (parent.type === AST_NODE_TYPES.Property) {
+  if (parent.type === "Property") {
     return parent.key === node && !parent.computed;
   }
   return false;
 }
 
 /** `null`, `undefined`, `false`, `void 0`, `[]`, `{}` — a success-shaped value. */
-function isSuccessShapedValue(expr: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = expr;
+function isSuccessShapedValue(expr: ESTree.Expression): boolean {
+  let current: ESTree.Expression = expr;
   while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression
+    current.type === "TSAsExpression" ||
+    current.type === "TSNonNullExpression"
   ) {
     current = current.expression;
   }
-  if (current.type === AST_NODE_TYPES.Literal) {
+  if (current.type === "Literal") {
     return current.value === null || current.value === false;
   }
-  if (current.type === AST_NODE_TYPES.Identifier) {
+  if (current.type === "Identifier") {
     return current.name === "undefined";
   }
-  if (current.type === AST_NODE_TYPES.UnaryExpression) {
+  if (current.type === "UnaryExpression") {
     return current.operator === "void";
   }
-  if (current.type === AST_NODE_TYPES.ArrayExpression) {
+  if (current.type === "ArrayExpression") {
     return current.elements.length === 0;
   }
-  if (current.type === AST_NODE_TYPES.ObjectExpression) {
+  if (current.type === "ObjectExpression") {
     return current.properties.length === 0;
   }
   return false;
 }
 
 /** Exempt terminal boundaries that propagate the caught error without fabricating success. */
-function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
+function isTerminalErrorBoundary(node: ESTree.TryStatement): boolean {
   const handler = node.handler;
   return (
     handler !== null &&
@@ -325,16 +291,16 @@ function isTerminalErrorBoundary(node: TSESTree.TryStatement): boolean {
 }
 
 /** A terminal node is last through every enclosing block up to its function, without a loop or switch. */
-function isTerminalInFunction(node: TSESTree.Node): boolean {
-  let current: TSESTree.Node = node;
-  let parent: TSESTree.Node | undefined = current.parent;
+function isTerminalInFunction(node: Node): boolean {
+  let current: Node = node;
+  let parent: Node | null | undefined = current.parent;
 
-  while (parent !== undefined) {
-    if (parent.type === AST_NODE_TYPES.BlockStatement) {
+  while (parent != null) {
+    if (parent.type === "BlockStatement") {
       if (parent.body[parent.body.length - 1] !== current) {
         return false;
       }
-    } else if (parent.type === AST_NODE_TYPES.Program) {
+    } else if (parent.type === "Program") {
       return parent.body[parent.body.length - 1] === current;
     } else if (NESTED_FUNCTION_TYPES.has(parent.type)) {
       return true;
@@ -348,34 +314,34 @@ function isTerminalInFunction(node: TSESTree.Node): boolean {
 }
 
 /** A propagating handler ends with `return`, `throw`, or a bare call. */
-function handlerEndsByHandingOff(handler: TSESTree.CatchClause): boolean {
+function handlerEndsByHandingOff(handler: ESTree.CatchClause): boolean {
   const body = handler.body.body;
   const last = body[body.length - 1];
   if (last === undefined) {
     return false;
   }
   if (
-    last.type === AST_NODE_TYPES.ReturnStatement ||
-    last.type === AST_NODE_TYPES.ThrowStatement
+    last.type === "ReturnStatement" ||
+    last.type === "ThrowStatement"
   ) {
     return true;
   }
   return (
-    last.type === AST_NODE_TYPES.ExpressionStatement &&
-    unwrapAwait(last.expression).type === AST_NODE_TYPES.CallExpression
+    last.type === "ExpressionStatement" &&
+    unwrapAwait(last.expression).type === "CallExpression"
   );
 }
 
 /** `await f()` unwrapped to `f()`; everything else unwrapped as usual. */
-function unwrapAwait(expr: TSESTree.Expression): TSESTree.Expression {
+function unwrapAwait(expr: ESTree.Expression): ESTree.Expression {
   const inner = unwrap(expr);
-  return inner.type === AST_NODE_TYPES.AwaitExpression
+  return inner.type === "AwaitExpression"
     ? unwrap(inner.argument)
     : inner;
 }
 
 /** A boundary must reference its caught error, including through nested callbacks. */
-function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
+function handlerMentionsCaughtBinding(handler: ESTree.CatchClause): boolean {
   const names = caughtBindingNames(handler);
   if (names.size === 0) {
     return false;
@@ -383,14 +349,14 @@ function handlerMentionsCaughtBinding(handler: TSESTree.CatchClause): boolean {
   return subtreeMatches(
     handler.body,
     (n) =>
-      n.type === AST_NODE_TYPES.Identifier &&
+      n.type === "Identifier" &&
       names.has(n.name) &&
       !isPropertyName(n),
     true,
   );
 }
 
-function caughtBindingNames(handler: TSESTree.CatchClause): ReadonlySet<string> {
+function caughtBindingNames(handler: ESTree.CatchClause): ReadonlySet<string> {
   const names = new Set<string>();
   if (handler.param !== null) {
     collectBindingNames(handler.param, names);
@@ -400,17 +366,17 @@ function caughtBindingNames(handler: TSESTree.CatchClause): ReadonlySet<string> 
 
 /** Collect identifiers bound by a catch pattern, excluding type annotations. */
 function collectBindingNames(
-  pattern: TSESTree.Node,
+  pattern: Node,
   names: Set<string>,
 ): void {
-  if (pattern.type === AST_NODE_TYPES.Identifier) {
+  if (pattern.type === "Identifier") {
     names.add(pattern.name);
     return;
   }
-  if (pattern.type === AST_NODE_TYPES.ObjectPattern) {
+  if (pattern.type === "ObjectPattern") {
     for (const property of pattern.properties) {
       collectBindingNames(
-        property.type === AST_NODE_TYPES.RestElement
+        property.type === "RestElement"
           ? property.argument
           : property.value,
         names,
@@ -418,7 +384,7 @@ function collectBindingNames(
     }
     return;
   }
-  if (pattern.type === AST_NODE_TYPES.ArrayPattern) {
+  if (pattern.type === "ArrayPattern") {
     for (const element of pattern.elements) {
       if (element !== null) {
         collectBindingNames(element, names);
@@ -427,11 +393,11 @@ function collectBindingNames(
     return;
   }
   if (
-    pattern.type === AST_NODE_TYPES.AssignmentPattern ||
-    pattern.type === AST_NODE_TYPES.RestElement
+    pattern.type === "AssignmentPattern" ||
+    pattern.type === "RestElement"
   ) {
     collectBindingNames(
-      pattern.type === AST_NODE_TYPES.AssignmentPattern
+      pattern.type === "AssignmentPattern"
         ? pattern.left
         : pattern.argument,
       names,
@@ -440,23 +406,22 @@ function collectBindingNames(
 }
 
 /** Empty or false results hide which operation failed and are not error propagation. */
-const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
+const handlerReturnsSuccessShaped = (handler: ESTree.CatchClause): boolean =>
   subtreeMatches(
     handler.body,
     (n) =>
-      n.type === AST_NODE_TYPES.ReturnStatement &&
+      n.type === "ReturnStatement" &&
       n.argument !== null &&
       isSuccessShapedValue(n.argument),
   );
 
-export default createRule<Options, MessageIds>({
-  name: "no-fat-try-blocks",
-  documentation: NO_FAT_TRY_BLOCKS_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],
     type: "problem",
     docs: {
       description: "Review try blocks exceeding the configured count of syntactically selected operations.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -472,15 +437,18 @@ export default createRule<Options, MessageIds>({
         "This `try` block has {{count}} syntactically selected operations (max {{max}}). Review whether they share one recovery policy; move unrelated work outside the boundary.",
     },
   },
-  create(context, [options]) {
-    if (isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
-
-    const sourceCode = context.sourceCode;
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let options: RuleOptions | undefined;
 
     return {
-      TryStatement(node: TSESTree.TryStatement): void {
+      before() {
+        sourceCode = context.sourceCode;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)) return false;
+        options = context.options[0] as RuleOptions | undefined;
+        return undefined;
+      },
+      TryStatement(node: ESTree.TryStatement): void {
         // A catchless try/finally is normally resource cleanup. A catch plus a
         // finally is still an error boundary and must not evade this rule.
         if (node.finalizer !== null && node.handler === null) {

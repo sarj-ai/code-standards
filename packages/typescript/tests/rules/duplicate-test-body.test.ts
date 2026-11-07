@@ -1,19 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/duplicate-test-body.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { DUPLICATE_TEST_BODY_DOCUMENTATION } from "../../src/rules/duplicate-test-body.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const TEST_FILE = "/repo/src/user.test.ts";
+const PARAMETERIZED_CASES_SOURCE =
+  "test.each(['a', 'b'])('accepts %s', (value) => { const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });";
+const COPIED_SIBLING_TESTS_SOURCE =
+  "test('accepts a', () => { const value = 'a'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest('accepts b', () => { const value = 'b'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });";
 
-RULE_TESTER.run("duplicate-test-body", rule, {
+ruleTester().run("duplicate-test-body", rule, {
   valid: [
     { name: "preserves readonly tuple assertions as type contracts", filename: TEST_FILE, code: 'test("one", () => { const value = ["a"] as const; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest("two", () => { const value = ["b"]; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });' },
     { name: "preserves distinct explicit type assertions", filename: TEST_FILE, code: 'test("one", () => { const value = "a" as FirstInput; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest("two", () => { const value = "b" as SecondInput; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });' },
@@ -65,7 +60,7 @@ describe('two', () => { test('b', () => { const x = parse('b'); expect(x.ok).toB
     {
       name: "allows existing parameterization",
       filename: TEST_FILE,
-      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[0].files[0].source,
+      code: PARAMETERIZED_CASES_SOURCE,
     },
     {
       name: "does not treat suites or hooks as tests",
@@ -137,12 +132,12 @@ run('two', () => { const x = parse('b'); save(x); return x; });`,
     {
       name: "ignores generated test paths",
       filename: "/repo/src/generated/user.test.ts",
-      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source,
+      code: COPIED_SIBLING_TESTS_SOURCE,
     },
     {
       name: "ignores generated test headers",
       filename: TEST_FILE,
-      code: `// @generated\n${DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source}`,
+      code: `// @generated\n${COPIED_SIBLING_TESTS_SOURCE}`,
     },
     {
       name: "ignores a locally defined function named test",
@@ -167,30 +162,31 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     },
   ],
   invalid: [
+    { name: "port regression: an inline-snapshot test does not change the next test's fingerprint", filename: TEST_FILE, code: "test('snap', () => { const x = parse('s'); expect(x.ok).toBe(true); expect(x).toMatchInlineSnapshot('s'); });\ntest('a', () => { const result = run('a'); expect(result.ok).toBe(true); expect(result.value).toBe(result); });\ntest('b', () => { const result = run('b'); expect(result.ok).toBe(true); expect(result.value).toBe(result); });", errors: [{ messageId: "duplicateTestBody", line: 3 }] },
     { name: "normalizes const assertions without hiding input-only copied tests", filename: TEST_FILE, code: 'test(("accepts a" as const), () => { const value = ("a" as const); const result = parse(value); expect(result.ok).toBe((true as const)); expect(result.value).toBe(value); });\ntest(("accepts b" as const), () => { const value = ("b" as const); const result = parse(value); expect(result.ok).toBe((true as const)); expect(result.value).toBe(value); });', errors: [{ messageId: "duplicateTestBody" }] },
     { name: "normalizes no-substitution templates like short string inputs", filename: TEST_FILE, code: 'test(`accepts a`, () => { const value = `a`; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest(`accepts b`, () => { const value = `b`; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });', errors: [{ messageId: "duplicateTestBody" }] },
     { name: "normalizes equivalent quoted and template input forms", filename: TEST_FILE, code: 'test("accepts a", () => { const value = "a"; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest(`accepts b`, () => { const value = `b`; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });', errors: [{ messageId: "duplicateTestBody" }] },
 
-    { name: "native named node:assert equal: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {equal as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert strictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strictEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert deepEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert deepStrictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepStrictEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert ok: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {ok as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code === \"same\"); verify(result.size === 1);});test('b',()=>{const result=read('b');verify(result.code === \"same\"); verify(result.size === 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert/strict equal: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {equal as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert/strict strictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strictEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert/strict deepEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert/strict deepStrictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepStrictEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "native named node:assert/strict ok: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {ok as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code === \"same\"); verify(result.size === 1);});test('b',()=>{const result=read('b');verify(result.code === \"same\"); verify(result.size === 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: named-expect-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test,expect as verify} from 'vitest';test('a',()=>{const value=parse('a');verify(value).toBe('same');cleanup();});test('b',()=>{const value=parse('b');verify(value).toBe('same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: named-vitest-assert-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test,assert as verify} from 'vitest';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: node-strict-alias-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strict as verify} from 'node:assert';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: node-default-assert-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test} from 'node:test';import verify from 'node:assert/strict';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: local-expect-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';const expect=(value)=>consume(value);test('a',()=>{expect('a');run('a');cleanup('a');});test('b',()=>{expect('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: local-expect-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';const expect=(value)=>consume(value);test('a',()=>{expect('a');expect('a');expect('a');});test('b',()=>{expect('b');expect('b');expect('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: unrelated-expect-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';import {expect} from './application.js';test('a',()=>{expect('a');run('a');cleanup('a');});test('b',()=>{expect('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: unrelated-expect-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';import {expect} from './application.js';test('a',()=>{expect('a');expect('a');expect('a');});test('b',()=>{expect('b');expect('b');expect('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: local-assert-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';const assert=(value)=>consume(value);test('a',()=>{assert('a');run('a');cleanup('a');});test('b',()=>{assert('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
-    { name: "assertion provenance: local-assert-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';const assert=(value)=>consume(value);test('a',()=>{assert('a');assert('a');assert('a');});test('b',()=>{assert('b');assert('b');assert('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: 0 }] },
+    { name: "native named node:assert equal: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {equal as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert strictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strictEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert deepEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert deepStrictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepStrictEqual as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert ok: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {ok as verify} from 'node:assert';test('a',()=>{const result=read('a');verify(result.code === \"same\"); verify(result.size === 1);});test('b',()=>{const result=read('b');verify(result.code === \"same\"); verify(result.size === 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert/strict equal: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {equal as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert/strict strictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strictEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert/strict deepEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert/strict deepStrictEqual: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {deepStrictEqual as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code, \"same\"); verify(result.size, 1);});test('b',()=>{const result=read('b');verify(result.code, \"same\"); verify(result.size, 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "native named node:assert/strict ok: copied setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {ok as verify} from 'node:assert/strict';test('a',()=>{const result=read('a');verify(result.code === \"same\"); verify(result.size === 1);});test('b',()=>{const result=read('b');verify(result.code === \"same\"); verify(result.size === 1);});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: named-expect-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test,expect as verify} from 'vitest';test('a',()=>{const value=parse('a');verify(value).toBe('same');cleanup();});test('b',()=>{const value=parse('b');verify(value).toBe('same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: named-vitest-assert-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test,assert as verify} from 'vitest';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: node-strict-alias-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test} from 'node:test';import {strict as verify} from 'node:assert';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: node-default-assert-same-assertion-with-copied-setup", filename: TEST_FILE, code: "import {test} from 'node:test';import verify from 'node:assert/strict';test('a',()=>{const value=parse('a');verify.equal(value,'same');cleanup();});test('b',()=>{const value=parse('b');verify.equal(value,'same');cleanup();});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: local-expect-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';const expect=(value)=>consume(value);test('a',()=>{expect('a');run('a');cleanup('a');});test('b',()=>{expect('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: local-expect-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';const expect=(value)=>consume(value);test('a',()=>{expect('a');expect('a');expect('a');});test('b',()=>{expect('b');expect('b');expect('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: unrelated-expect-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';import {expect} from './application.js';test('a',()=>{expect('a');run('a');cleanup('a');});test('b',()=>{expect('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: unrelated-expect-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';import {expect} from './application.js';test('a',()=>{expect('a');expect('a');expect('a');});test('b',()=>{expect('b');expect('b');expect('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: local-assert-copied-setup", filename: TEST_FILE, code: "import {test} from 'vitest';const assert=(value)=>consume(value);test('a',()=>{assert('a');run('a');cleanup('a');});test('b',()=>{assert('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
+    { name: "assertion provenance: local-assert-substantial-copied-local-calls", filename: TEST_FILE, code: "import {test} from 'vitest';const assert=(value)=>consume(value);test('a',()=>{assert('a');assert('a');assert('a');});test('b',()=>{assert('b');assert('b');assert('b');});", errors: [{ messageId: "duplicateTestBody", suggestions: [] }] },
 
     { name: "binding ownership: duplicate-original", filename: TEST_FILE, code: "import {test} from 'vitest';test('a',()=>{seed('a');run('a');cleanup('a');});test('b',()=>{seed('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody" }] },
     { name: "binding ownership: duplicate-renamed", filename: TEST_FILE, code: "import {test as check} from 'vitest';check('a',()=>{seed('a');run('a');cleanup('a');});check('b',()=>{seed('b');run('b');cleanup('b');});", errors: [{ messageId: "duplicateTestBody" }] },
@@ -200,7 +196,7 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     {
       name: "reports the later sibling whose body differs only by case literals",
       filename: TEST_FILE,
-      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source,
+      code: COPIED_SIBLING_TESTS_SOURCE,
       errors: [{ messageId: "duplicateTestBody", line: 2 }],
     },
     {

@@ -9,7 +9,7 @@ const TEST_DIRECTORY = new URL("./tests/", import.meta.url);
 const TEST_FILE_PATTERN = "tests/**/*.test.ts";
 const SHARED_MODULE_GRAPH_MARKER = /^\/\/ vitest: shared-module-graph$/m;
 const SHARED_MODULE_GRAPH_FORBIDDEN =
-  /vi\.(?:mock|doMock|spyOn|stubGlobal|stubEnv|useFakeTimers|setSystemTime)|process\.env\b[^=\n]*=[^=]|process\.chdir|projectService|tsconfigRootDir/;
+  /vi\.(?:mock|doMock|spyOn|stubGlobal|stubEnv|useFakeTimers|setSystemTime)|process\.env\b[^=\n]*=[^=]|process\.chdir|projectService|tsconfigRootDir|\btyped\(|typeAware: true/;
 
 // Opted-in files reuse one module graph per worker instead of re-importing the
 // plugin and parser for every file. Only mark untyped RuleTester suites that use
@@ -48,9 +48,9 @@ const SHARED_MODULE_GRAPH_TESTS = await sharedModuleGraphTests();
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@sarj/eslint-plugin": new URL("./src/index.ts", import.meta.url).pathname,
-    },
+    alias: [
+      { find: /^@sarj\/eslint-plugin$/u, replacement: new URL("./src/index.ts", import.meta.url).pathname },
+    ],
   },
   test: {
     ...LOCAL_CHECK_WORKER_OPTIONS,

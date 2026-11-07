@@ -138,7 +138,7 @@ def test_unanalyzed_python_cannot_be_reported_as_clean(tmp_path: Path, source: s
     ("filename", "source", "missing"),
     [
         ("service.py", "def label() -> str:\n    return 42\n", {"ruff", "basedpyright"}),
-        ("service.ts", "// @ts-nocheck\nexport const label: string = 42;\n", {"eslint"}),
+        ("service.ts", "// @ts-nocheck\nexport const label: string = 42;\n", {"oxlint"}),
     ],
 )
 def test_disabled_source_analyzers_remain_explicit_scope_boundaries(

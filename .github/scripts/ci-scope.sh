@@ -77,7 +77,7 @@ else
       pyproject.toml | uv.lock)
         select_scopes python standards docs
         ;;
-      packages/standards/src/sarj_standards/configs/eslint*)
+      packages/standards/src/sarj_standards/configs/oxlint* | packages/standards/src/sarj_standards/configs/oxfmt* | packages/standards/src/sarj_standards/configs/typescript.peers.json)
         select_scopes typescript standards docs
         ;;
       packages/standards/src/sarj_standards/configs/rule-* | packages/standards/src/sarj_standards/configs/cli-reference.v1.json)
@@ -106,6 +106,10 @@ else
         ;;
       packages/tsconfig/*)
         select_scopes tsconfig standards docs
+        ;;
+      packages/standards/*.mts)
+        # The TypeScript job lints the Standards TypeScript helpers.
+        select_scopes typescript standards docs mobile
         ;;
       packages/standards/src/sarj_standards/libs/release/*)
         select_scopes standards docs

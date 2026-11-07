@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-union-in-comment.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_UNION_IN_COMMENT_DOCUMENTATION,
-} from "../../src/rules/no-union-in-comment.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-union-in-comment", rule, {
   valid: [
@@ -32,19 +23,16 @@ RULE_TESTER.run("no-union-in-comment", rule, {
       code: "interface R { confidence: number; // 0..1\n}",
     },
 
-    { code: NO_UNION_IN_COMMENT_DOCUMENTATION.examples[0].files[0].source },
-
+    { code: "interface R { kind: 'aa' | 'bb'; }" },
 
     { code: "interface R { kind: 'aa' | 'bb'; // 'aa' | 'bb'\n}" },
 
     { code: "interface R { kind: string; // 'aa'\n}" },
 
-
     {
       code: "interface R { kind: string; // set to 'aa' unless the caller passed 'bb' already\n}",
     },
     { code: "interface R { kind: string; // 'aa' and 'bb' are legacy spellings we still accept\n}" },
-
 
     {
       code: "interface R { kind: string; // prefer 'aa', 'bb' is what the legacy importer still writes\n}",
@@ -61,7 +49,6 @@ RULE_TESTER.run("no-union-in-comment", rule, {
 
     { code: "const t = { kind: integer('kind'), // 'aa' | 'bb'\n};" },
 
-
     { code: "interface R { kind: string; // biome-ignore lint: 'aa' | 'bb'\n}" },
     { code: "interface R { kind: string; // PLT-812: 'aa' | 'bb'\n}" },
 
@@ -70,7 +57,6 @@ RULE_TESTER.run("no-union-in-comment", rule, {
     },
 
     { code: "interface R {\n  // 'aa' | 'bb'\n\n  kind: string;\n}" },
-
 
     { code: "interface R {\n  /* 'aa' | 'bb' */ kind: string;\n}" },
 
@@ -98,7 +84,7 @@ RULE_TESTER.run("no-union-in-comment", rule, {
     { name: "preserves escaped literal spellings", code: "export {}; interface Choice { kind: string | 'a\\tb' | 'cc'; // 'a\\tb' | 'cc'\n}", output: null, errors: [{ messageId: "unionInComment" }] },
 
     {
-      code: NO_UNION_IN_COMMENT_DOCUMENTATION.examples[1].files[0].source,
+      code: "interface R {\n  kind: string; // 'aa' | 'bb'\n}",
       errors: [{ messageId: "unionInComment" }],
     },
 

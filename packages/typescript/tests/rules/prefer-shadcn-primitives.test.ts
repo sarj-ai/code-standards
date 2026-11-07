@@ -1,25 +1,14 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { Linter } from "eslint";
 
-import rule, { PREFER_SHADCN_PRIMITIVES_DOCUMENTATION } from "../../src/rules/prefer-shadcn-primitives.js";
+import rule from "../../src/rules/prefer-shadcn-primitives.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaFeatures: { jsx: true } },
-  },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 const ASSUME_AVAILABLE = [{ assumeAvailable: true }] as const;
+const SHARED_BUTTON_EXAMPLE = "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;";
+const RAW_BUTTON_EXAMPLE = "import { Card } from '@/components/ui/card'; const action = <button>Save</button>;";
 
 RULE_TESTER.run("prefer-shadcn-primitives", rule, {
   valid: [
@@ -27,7 +16,7 @@ RULE_TESTER.run("prefer-shadcn-primitives", rule, {
     { name: "dynamic multiple cannot prove single selection", code: "<select multiple={isMultiple} />", options: ASSUME_AVAILABLE },
     { name: "hidden controls do not need visual primitives", code: "<><button hidden>Save</button><select hidden={true} /><textarea hidden={hidden} /></>", options: ASSUME_AVAILABLE },
     { name: "a hidden ancestor hides its raw control", code: "<div hidden><button>Save</button></div>", options: ASSUME_AVAILABLE },
-    { name: "public no-match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/form.tsx", code: SHARED_BUTTON_EXAMPLE },
     {
       name: "accepts shared primitives",
       code: `
@@ -115,7 +104,7 @@ RULE_TESTER.run("prefer-shadcn-primitives", rule, {
   ],
   invalid: [
     { name: "explicit false preserves single select and visibility", code: "<select multiple={false} hidden={false} />", options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
-    { name: "public match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].files[0].source, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
+    { name: "public match example", filename: "src/form.tsx", code: RAW_BUTTON_EXAMPLE, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
     {
       name: "rejects a raw button",
       code: `<button>Save</button>`,
@@ -285,8 +274,8 @@ RULE_TESTER.run("prefer-shadcn-primitives", rule, {
   ],
 });
 
-const RULE_ID = "sarj/prefer-shadcn-primitives";
 const RAW_BUTTON = `export const Action = () => <button type="button">Save</button>;`;
+const DETECT = [{ detectProjectPrimitives: true }] as const;
 
 function project(files: Readonly<Record<string, string>>): string {
   const root = mkdtempSync(join(tmpdir(), "sarj-shadcn-"));
@@ -296,32 +285,6 @@ function project(files: Readonly<Record<string, string>>): string {
     writeFileSync(absolute, contents, "utf8");
   }
   return root;
-}
-
-function projectAwareMessages(
-  root: string,
-  relative: string,
-  source: string = RAW_BUTTON,
-): readonly string[] {
-  const linter = new Linter({ cwd: root });
-  const messages = linter.verify(
-    source,
-    {
-      files: ["**/*.tsx"],
-      plugins: { sarj: { rules: { "prefer-shadcn-primitives": rule as never } } },
-      languageOptions: {
-        parser: tsParser as never,
-        parserOptions: { ecmaFeatures: { jsx: true } },
-      },
-      rules: {
-        [RULE_ID]: ["error", { detectProjectPrimitives: true }],
-      },
-    } as never,
-    join(root, relative),
-  );
-  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
-  expect(noise).toEqual([]);
-  return messages.map((message) => message.messageId ?? "?");
 }
 
 const SHADCN_MANIFEST = `{
@@ -335,92 +298,69 @@ const TSCONFIG = `{
   }
 }`;
 
-describe("prefer-shadcn-primitives project detection", () => {
-  it("reports a raw button when the exact project Button primitive exists", () => {
-    const root = project({
-      "package.json": '{"name":"app"}',
-      "components.json": SHADCN_MANIFEST,
-      "tsconfig.json": TSCONFIG,
-      "src/components/ui/button.tsx": "const Button = () => null; export { Button };",
-      "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([
-      "preferShadcnPrimitive",
-    ]);
-  });
+function projectCase(name: string, files: Readonly<Record<string, string>>, relative = "src/features/action.tsx", code = RAW_BUTTON) {
+  const root = project(files);
+  return { name, code, cwd: root, filename: join(root, relative), options: DETECT };
+}
 
-  it("fails closed when the Button module is missing", () => {
-    const root = project({
+const projectWith = (button: string) => ({
+  "package.json": '{"name":"app"}',
+  "components.json": SHADCN_MANIFEST,
+  "tsconfig.json": TSCONFIG,
+  "src/components/ui/button.tsx": button,
+  "src/features/action.tsx": RAW_BUTTON,
+});
+
+RULE_TESTER.run("prefer-shadcn-primitives project detection", rule, {
+  valid: [
+    projectCase("fails closed when the Button module is missing", {
       "package.json": '{"name":"app"}',
       "components.json": SHADCN_MANIFEST,
       "tsconfig.json": TSCONFIG,
       "src/components/ui/card.tsx": "export const Card = () => null;",
       "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
-  });
-
-  it("fails closed when the exact module does not export Button", () => {
-    const root = project({
-      "package.json": '{"name":"app"}',
-      "components.json": SHADCN_MANIFEST,
-      "tsconfig.json": TSCONFIG,
-      "src/components/ui/button.tsx": "export const buttonVariants = {};",
-      "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
-  });
-
-  it.each([
-    ["a comment", "// export const Button = fake;\nexport const buttonVariants = {};"],
-    ["a type-only export", "type Button = unknown; export type { Button };"],
-    ["a renamed export", "const Control = () => null; export { Control as Buttonish };"],
-  ])("does not mistake %s for a runtime Button export", (_name, moduleSource) => {
-    const root = project({
-      "package.json": '{"name":"app"}',
-      "components.json": SHADCN_MANIFEST,
-      "tsconfig.json": TSCONFIG,
-      "src/components/ui/button.tsx": moduleSource,
-      "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
-  });
-
-  it("requires the exact specialized input primitive", () => {
-    const root = project({
+    }),
+    projectCase("fails closed when the exact module does not export Button", projectWith("export const buttonVariants = {};")),
+    ...([
+      ["a comment", "// export const Button = fake;\nexport const buttonVariants = {};"],
+      ["a type-only export", "type Button = unknown; export type { Button };"],
+      ["a renamed export", "const Control = () => null; export { Control as Buttonish };"],
+    ] as const).map(([name, moduleSource]) =>
+      projectCase(`does not mistake ${name} for a runtime Button export`, projectWith(moduleSource))),
+    projectCase("requires the exact specialized input primitive", {
       "package.json": '{"name":"app"}',
       "components.json": SHADCN_MANIFEST,
       "tsconfig.json": TSCONFIG,
       "src/components/ui/input.tsx": "export const Input = () => null;",
       "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(
-      projectAwareMessages(
-        root,
-        "src/features/action.tsx",
-        '<input type="checkbox" />',
-      ),
-    ).toEqual([]);
-  });
-
-  it("fails closed for a malformed manifest", () => {
-    const root = project({
+    }, "src/features/action.tsx", '<input type="checkbox" />'),
+    projectCase("fails closed for a malformed manifest", {
       "package.json": '{"name":"app"}',
       "components.json": "{ aliases:",
       "tsconfig.json": TSCONFIG,
       "src/components/ui/button.tsx": "export const Button = () => null;",
       "src/features/action.tsx": RAW_BUTTON,
-    });
-    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
-  });
-
-  it("excludes the resolved primitive implementation", () => {
-    const root = project({
+    }),
+    projectCase("excludes the resolved primitive implementation", {
       "package.json": '{"name":"app"}',
       "components.json": SHADCN_MANIFEST,
       "tsconfig.json": TSCONFIG,
       "src/components/ui/button.tsx": "export const Button = () => <button />;",
-    });
-    expect(projectAwareMessages(root, "src/components/ui/button.tsx")).toEqual([]);
-  });
+    }, "src/components/ui/button.tsx", "export const Button = () => <button />;"),
+    projectCase("fails closed when the Button module does not parse", projectWith("export const Button = (;")),
+  ],
+  invalid: [
+    {
+      ...projectCase("reports a raw button when the exact project Button primitive exists", projectWith("const Button = () => null; export { Button };")),
+      errors: [{ messageId: "preferShadcnPrimitive" }],
+    },
+    {
+      ...projectCase("preserves literal replacement tokens in a path alias", {
+        ...projectWith("export const Button = () => null;"),
+        "components.json": '{"aliases":{"ui":"@/$&/ui"}}',
+        "src/$&/ui/button.tsx": "export const Button = () => null;",
+      }),
+      errors: [{ messageId: "preferShadcnPrimitive" }],
+    },
+  ],
 });

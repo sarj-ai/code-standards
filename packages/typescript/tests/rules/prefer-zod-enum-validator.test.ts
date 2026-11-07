@@ -1,18 +1,30 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-import { Linter } from "eslint";
+import { expect, it } from "vitest";
 
-import rule, { PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION } from "../../src/rules/prefer-zod-enum-validator.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import rule from "../../src/rules/prefer-zod-enum-validator.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION = {
+  defaultLevel: "warning",
+  summary: "Express closed string validators with a reusable Zod enum schema.",
+  rationale: "Handwritten membership branches and parallel literal types repeat the accepted values and can drift. A named enum schema supplies validation and its inferred TypeScript union.",
+  remediation: "Declare a module-level Schema = z.enum([…]), derive its type with z.infer<typeof Schema>, and use Schema.parse(value) or Schema.safeParse(value).success. Preserve any intentional error, fallback, or protocol behavior when migrating.",
+  category: "maintainability",
+  autofix: "none",
+  requiresTypeInformation: false,
+  references: ["https://zod.dev/api#enums", "https://zod.dev/basics#inferring-types"],
+  limitations: [
+    "Inspects synchronous single-parameter functions explicitly accepting unknown or string, whose complete body is a strict string-equality disjunction, an equivalent reject conjunction, or a closed switch that returns the input and throws otherwise. Boolean membership functions are also inspected.",
+    "At least two distinct static string values are required. Membership collections, additional guards, coercion, normalization, transformed returns, methods, contextual parameter types, and multi-parameter functions are outside this bounded detector.",
+    "Migration is manual because Zod errors, initialization and constructor hooks are observable; retain intentional failure behavior. A predicate must not be replaced with a throwing parse call. Test and generated files are excluded.",
+  ],
+  examples: [
+    { id: "schema-validator", title: "Define validation and the type from one enum", outcome: "no-match", files: [{ path: "src/status.ts", source: "import { z } from 'zod'; const StatusSchema = z.enum(['ran', 'failed']); type Status = z.infer<typeof StatusSchema>; function status(value: unknown): Status { return StatusSchema.parse(value); }" }], focusPath: "src/status.ts", expectedCount: 0, public: true },
+    { id: "manual-validator", title: "Replace a closed handwritten string parser", outcome: "match", files: [{ path: "src/status.ts", source: "type Status = 'ran' | 'failed'; function status(value: unknown): Status { if (value === 'ran' || value === 'failed') return value; throw new Error('Invalid status'); }" }], focusPath: "src/status.ts", expectedCount: 1, public: true },
+  ],
+} as const;
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-zod-enum-validator", rule, {
   valid: [
@@ -398,29 +410,16 @@ RULE_TESTER.run("prefer-zod-enum-validator", rule, {
 ],
 });
 
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
+RULE_TESTER.run("executes the documented examples", rule, {
+  valid: [
+    { name: "schema-validator", filename: "src/status.ts", code: PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION.examples[0].files[0].source },
+  ],
+  invalid: [
+    { name: "manual-validator (output: null covers the original verifyAndFix no-fix check)", filename: "src/status.ts", code: PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION.examples[1].files[0].source, output: null, errors: [{ messageId: "useEnumSchema" }] },
+  ],
 });
 
 it("requires review rather than changing observable failure behavior automatically", () => {
-  expect(rule.meta.fixable).toBeUndefined();
-  expect(rule.meta.hasSuggestions).not.toBe(true);
-});
-
-it("preserves warning severity, explicit off, local suppressions and native parse failures", () => {
-  const linter = new Linter();
-  const source = PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION.examples[1].files[0].source;
-  const config = {
-    languageOptions: { parser: tsParser },
-    plugins: { "@sarj": { rules: { "prefer-zod-enum-validator": rule } } },
-    rules: { "@sarj/prefer-zod-enum-validator": "warn" as const },
-  };
-  const [message] = linter.verify(source, config);
-  expect(message).toMatchObject({ ruleId: "@sarj/prefer-zod-enum-validator", severity: 1 });
-  expect(linter.verify(source, { ...config, rules: { "@sarj/prefer-zod-enum-validator": "off" } })).toEqual([]);
-  expect(linter.verify("// eslint-disable-next-line @sarj/prefer-zod-enum-validator -- Preserve the caller's exact error contract.\n" + source, config)).toEqual([]);
-  expect(linter.verify("function state(", config)[0]).toMatchObject({ fatal: true, ruleId: null });
-  const result = linter.verifyAndFix(source, config);
-  expect(result.fixed).toBe(false);
-  expect(result.output).toBe(source);
+  expect(rule.meta?.fixable).toBeUndefined();
+  expect(rule.meta?.hasSuggestions).not.toBe(true);
 });

@@ -1,74 +1,22 @@
 /**
  * @fileoverview no-impossible-zod-literal-bounds — literal Zod bounds must admit at least one value.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
+ * Port of the 18.x `no-impossible-zod-literal-bounds` rule. Untyped.
  */
 
-import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
+const NAME = "no-impossible-zod-literal-bounds";
 
-type MessageIds = "impossibleBounds";
+type Identifier = Extract<Node, { type: "Identifier" }>;
 type Options = readonly [{ readonly delegateRealContradictions?: boolean }?];
-type SchemaKind =
-  "array" | "number" | "string" | "integer" | "int32" | "uint32";
-
-export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
-  summary:
-    "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
-  rationale:
-    "A schema with contradictory literal bounds rejects every input, turning validation into an unreachable contract that usually reflects a typo.",
-  remediation:
-    "Choose compatible lower and upper bounds, or remove the constraint that does not express the intended domain.",
-  category: "correctness",
-  limitations: [
-    "Only finite numeric literals, including unary signs and erased TypeScript wrappers, in a single schema chain are compared; number().int(), int(), int32(), uint32(), strings and arrays require an admitted integer value or length.",
-    "int32() and uint32() include their intrinsic ranges. The managed preset delegates explicit real-bound conflicts to upstream zod/no-conflicting-checks to avoid duplicate findings.",
-    "Integer-domain comparisons abstain near the JavaScript safe-integer boundary.",
-    "Chains with dynamic bounds, non-bound validators, transforms, pipes, or preprocessors are skipped.",
-    "Test and generated files are excluded.",
-  ],
-  examples: [
-    {
-      id: "compatible-number-bounds",
-      title: "Allow a number admitted by both bounds",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/schema.ts",
-          source:
-            'import { z } from "zod"; const S = z.number().gte(3).lte(3);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "contradictory-number-bounds",
-      title: "Reject an empty numeric interval",
-      outcome: "match",
-      files: [
-        {
-          path: "src/schema.ts",
-          source:
-            'import { z } from "zod"; const S = z.number().min(5).max(4);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type SchemaKind = "array" | "number" | "string" | "integer" | "int32" | "uint32";
 
 type Bound = {
   readonly exclusive: boolean;
@@ -84,7 +32,7 @@ type ChainBounds = {
 };
 
 type Chain = {
-  readonly calls: readonly { method: string; node: TSESTree.CallExpression }[];
+  readonly calls: readonly { method: string; node: ESTree.CallExpression }[];
   readonly kind: SchemaKind;
 };
 
@@ -110,39 +58,29 @@ const NUMBER_METHODS: ReadonlySet<string> = new Set([
   "positive",
 ]);
 const LENGTH_METHODS: ReadonlySet<string> = new Set(["length", "max", "min"]);
+type ZeroBound = { readonly exclusive: boolean; readonly lower: boolean; readonly value: number };
+
+/** The sign methods, each a bound at zero. */
+const ZERO_BOUNDS: ReadonlyMap<string, ZeroBound> = new Map([
+  ["positive", { exclusive: true, lower: true, value: 0 }],
+  ["nonnegative", { exclusive: false, lower: true, value: 0 }],
+  ["negative", { exclusive: true, lower: false, value: 0 }],
+  ["nonpositive", { exclusive: false, lower: false, value: 0 }],
+]);
 const RESHAPING_METHODS: ReadonlySet<string> = new Set([
   "pipe",
   "preprocess",
   "transform",
 ]);
 
-function importedName(specifier: TSESTree.ImportSpecifier): string | null {
-  return specifier.imported.type === AST_NODE_TYPES.Identifier
-    ? specifier.imported.name
-    : typeof specifier.imported.value === "string"
-      ? specifier.imported.value
-      : null;
-}
-
-function finiteNumber(
-  node: TSESTree.CallExpressionArgument | undefined,
-): number | null {
-  node = node === undefined ? undefined : unwrapExpression(node);
-  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number") {
-    return Number.isFinite(node.value) ? node.value : null;
-  }
-  if (
-    node?.type === AST_NODE_TYPES.UnaryExpression &&
-    (node.operator === "-" || node.operator === "+") &&
-    unwrapExpression(node.argument).type === AST_NODE_TYPES.Literal
-  ) {
-    const argument = unwrapExpression(node.argument);
-    if (argument.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "number") return null;
-    const value =
-      node.operator === "-" ? -argument.value : argument.value;
-    return Number.isFinite(value) ? value : null;
-  }
-  return null;
+function finiteNumber(argument: ESTree.Argument | undefined): number | null {
+  if (argument === undefined) return null;
+  const node = unwrapExpression(argument);
+  const signed = node.type === "UnaryExpression" && (node.operator === "-" || node.operator === "+");
+  const literal = signed ? unwrapExpression(node.argument) : node;
+  if (literal.type !== "Literal" || typeof literal.value !== "number") return null;
+  const value = signed && node.operator === "-" ? -literal.value : literal.value;
+  return Number.isFinite(value) ? value : null;
 }
 
 function strongerLower(current: Bound | null, candidate: Bound): Bound {
@@ -205,26 +143,22 @@ function isEmpty(
   return false;
 }
 
-function isOutermostCall(node: TSESTree.CallExpression): boolean {
+function isOutermostCall(node: ESTree.CallExpression): boolean {
   const expression = outerExpression(node);
-  const parent = expression.parent;
-  return !(
-    parent?.type === AST_NODE_TYPES.MemberExpression &&
-    parent.object === expression &&
-    parent.parent?.type === AST_NODE_TYPES.CallExpression &&
-    parent.parent.callee === parent
-  );
+  const parent = parentOf(expression);
+  if (parent?.type !== "MemberExpression" || parent.object !== expression) return true;
+  const grandparent = parentOf(parent);
+  return !(grandparent?.type === "CallExpression" && grandparent.callee === parent);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-impossible-zod-literal-bounds",
-  documentation: NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
         "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -244,118 +178,65 @@ export default createRule<Options, MessageIds>({
         "This Zod {{kind}} schema accepts no values: {{lower}} conflicts with {{upper}}.",
     },
   },
-  create(context, [options]) {
-    const sourceCode = context.sourceCode;
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, sourceCode.getText())
-    ) {
-      return {};
-    }
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let options: Options[0];
+    let namespaces = new Set<string>();
+    let constructors = new Map<string, SchemaKind>();
+    let preprocessors = new Set<string>();
+    let importBindings = new Map<string, Identifier>();
 
-    const namespaces = new Set<string>();
-    const constructors = new Map<string, SchemaKind>();
-    const preprocessors = new Set<string>();
-    const importBindings = new Map<string, TSESTree.Identifier>();
-
-    function resolvesToTrackedImport(node: TSESTree.Identifier): boolean {
+    function resolvesToTrackedImport(node: Identifier): boolean {
       const binding = importBindings.get(node.name);
-      if (binding === undefined) return false;
-      let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find(
-          (candidate) => candidate.name === node.name,
-        );
-        if (variable !== undefined) {
-          return variable.defs.some(
-            (definition) => definition.name === binding,
-          );
-        }
-        scope = scope.upper;
-      }
-      return false;
+      return binding !== undefined &&
+        (findVariable(sourceCode.getScope(node), node.name)?.defs.some((definition) => definition.name === binding) ?? false);
     }
 
-    function readChain(node: TSESTree.CallExpression): Chain | null {
-      const calls: { method: string; node: TSESTree.CallExpression }[] = [];
+    function isTrackedNamespace(node: Node): boolean {
+      return node.type === "Identifier" && namespaces.has(node.name) && resolvesToTrackedImport(node);
+    }
+
+    function readChain(node: ESTree.CallExpression): Chain | null {
+      const calls: { method: string; node: ESTree.CallExpression }[] = [];
       let current = node;
       while (true) {
         const kind = baseKind(current);
         if (kind !== null) return { calls, kind };
         const callee = unwrapExpression(current.callee);
-        const calleeReceiver =
-          callee.type === AST_NODE_TYPES.MemberExpression
-            ? unwrapExpression(callee.object)
-            : callee;
-        if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          calleeReceiver.type !== AST_NODE_TYPES.CallExpression
-        ) {
-          return null;
-        }
-        const method = ASTUtils.getPropertyName(callee);
-        if (method === null) return null;
+        if (callee.type !== "MemberExpression") return null;
+        const receiver = unwrapExpression(callee.object);
+        const method = getPropertyName(callee);
+        if (receiver.type !== "CallExpression" || method === null) return null;
         calls.push({ method, node: current });
-        current = calleeReceiver;
+        current = receiver;
       }
     }
 
-    function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
+    function baseKind(node: ESTree.CallExpression): SchemaKind | null {
       const callee = unwrapExpression(node.callee);
-
-      const calleeReceiver =
-        callee.type === AST_NODE_TYPES.MemberExpression
-          ? unwrapExpression(callee.object)
-          : callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        return resolvesToTrackedImport(callee)
-          ? (constructors.get(callee.name) ?? null)
-          : null;
+      if (callee.type === "Identifier") {
+        const kind = constructors.get(callee.name);
+        return kind !== undefined && resolvesToTrackedImport(callee) ? kind : null;
       }
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
-        !namespaces.has(calleeReceiver.name) ||
-        !resolvesToTrackedImport(calleeReceiver)
-      ) {
-        return null;
-      }
-      const name = ASTUtils.getPropertyName(callee);
+      if (callee.type !== "MemberExpression" || !isTrackedNamespace(unwrapExpression(callee.object))) return null;
+      const name = getPropertyName(callee);
       return name === null ? null : (KINDS.get(name) ?? null);
     }
 
-    function isInsideReshapingCall(node: TSESTree.CallExpression): boolean {
-      let child: TSESTree.Node = node;
-      let parent = child.parent;
-      while (parent !== undefined && parent.type !== AST_NODE_TYPES.Program) {
-        if (parent.type === AST_NODE_TYPES.CallExpression) {
-          const callee = unwrapExpression(parent.callee);
-          const calleeReceiver =
-            callee.type === AST_NODE_TYPES.MemberExpression
-              ? unwrapExpression(callee.object)
-              : callee;
-          if (
-            callee.type === AST_NODE_TYPES.MemberExpression &&
-            RESHAPING_METHODS.has(ASTUtils.getPropertyName(callee) ?? "") &&
-            (calleeReceiver.type === AST_NODE_TYPES.CallExpression ||
-              (calleeReceiver.type === AST_NODE_TYPES.Identifier &&
-                namespaces.has(calleeReceiver.name) &&
-                resolvesToTrackedImport(calleeReceiver)))
-          ) {
-            return true;
-          }
-          if (
-            callee.type === AST_NODE_TYPES.Identifier &&
-            preprocessors.has(callee.name) &&
-            resolvesToTrackedImport(callee)
-          ) {
-            return true;
-          }
-        }
-        child = parent;
-        parent = child.parent;
+    function isInsideReshapingCall(node: ESTree.CallExpression): boolean {
+      for (let parent = parentOf(node); parent !== null && parent.type !== "Program"; parent = parentOf(parent)) {
+        if (parent.type === "CallExpression" && isReshapingCall(parent)) return true;
       }
       return false;
+    }
+
+    /** `.pipe()`, `.transform()` or `.preprocess()` on a schema or namespace, or an imported `preprocess()`. */
+    function isReshapingCall(call: ESTree.CallExpression): boolean {
+      const callee = unwrapExpression(call.callee);
+      if (callee.type === "Identifier") return preprocessors.has(callee.name) && resolvesToTrackedImport(callee);
+      if (callee.type !== "MemberExpression" || !RESHAPING_METHODS.has(getPropertyName(callee) ?? "")) return false;
+      const receiver = unwrapExpression(callee.object);
+      return receiver.type === "CallExpression" || isTrackedNamespace(receiver);
     }
 
     function contradiction(
@@ -397,7 +278,7 @@ export default createRule<Options, MessageIds>({
 
       function addBound(
         method: string,
-        semantic: ReturnType<typeof zeroBoundSemantic>,
+        semantic: ZeroBound | null,
         value: number,
       ): void {
         const label = `${method}(${String(value)})`;
@@ -440,7 +321,7 @@ export default createRule<Options, MessageIds>({
           integer = true;
           continue;
         }
-        const semantic = zeroBoundSemantic(method);
+        const semantic = ZERO_BOUNDS.get(method) ?? null;
         const value = semantic?.value ?? finiteNumber(node.arguments[0]);
         if (value === null) return null;
         if (!numeric && value < 0) {
@@ -453,36 +334,35 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      before() {
+        sourceCode = context.sourceCode;
+        options = context.options[0] as Options[0];
+        namespaces = new Set();
+        constructors = new Map();
+        preprocessors = new Set();
+        importBindings = new Map();
+        const file = { filename: context.filename, cwd: context.cwd };
+        return !(isTestFile(file) || isGeneratedFile(file, sourceCode.text));
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
-          ) {
-            namespaces.add(specifier.local.name);
-            importBindings.set(specifier.local.name, specifier.local);
-            continue;
-          }
-          const imported = importedName(specifier);
-          if (imported === "z") {
-            namespaces.add(specifier.local.name);
-            importBindings.set(specifier.local.name, specifier.local);
-          } else if (imported !== null && KINDS.has(imported)) {
-            const kind = KINDS.get(imported);
-            if (kind !== undefined)
-              constructors.set(specifier.local.name, kind);
-            importBindings.set(specifier.local.name, specifier.local);
-          } else if (imported === "preprocess") {
-            preprocessors.add(specifier.local.name);
-            importBindings.set(specifier.local.name, specifier.local);
-          }
+          const local = specifier.local;
+          const imported = specifier.type === "ImportSpecifier" ? importSpecifierName(specifier) : null;
+          const kind = imported === null ? undefined : KINDS.get(imported);
+          // A namespace or default import is the `z` namespace.
+          if (imported === null || imported === "z") namespaces.add(local.name);
+          else if (kind !== undefined) constructors.set(local.name, kind);
+          else if (imported === "preprocess") preprocessors.add(local.name);
+          else continue;
+          importBindings.set(local.name, local);
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (!isOutermostCall(node) || isInsideReshapingCall(node)) return;
+      CallExpression(node: ESTree.CallExpression): void {
+        // Every chain base resolves through a tracked Zod import; the ancestor walk runs last.
+        if (importBindings.size === 0 || !isOutermostCall(node)) return;
         const chain = readChain(node);
-        if (chain === null) return;
+        if (chain === null || isInsideReshapingCall(node)) return;
         const conflict = contradiction(chain);
         if (conflict === null) return;
         context.report({
@@ -498,17 +378,3 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
-
-function zeroBoundSemantic(
-  method: string,
-): { exclusive: boolean; lower: boolean; value: number } | null {
-  return method === "positive"
-    ? { exclusive: true, lower: true, value: 0 }
-    : method === "nonnegative"
-      ? { exclusive: false, lower: true, value: 0 }
-      : method === "negative"
-        ? { exclusive: true, lower: false, value: 0 }
-        : method === "nonpositive"
-          ? { exclusive: false, lower: false, value: 0 }
-          : null;
-}

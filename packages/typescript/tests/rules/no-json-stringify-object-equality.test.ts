@@ -1,35 +1,23 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-json-stringify-object-equality.js";
+import { FIXTURES, RuleTester, ruleTester, typed, untyped } from "./_tester.js";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const DOMAIN_COMPARATOR_EXAMPLE =
+  "type RecordState = { id: string; state: string };\nfunction sameRecord(actual: RecordState, expected: RecordState): boolean { return actual.id === expected.id && actual.state === expected.state; }\nconst same = sameRecord({ id: '1', state: 'ready' }, { state: 'ready', id: '1' });";
+const SERIALIZED_EQUALITY =
+  "const same = JSON.stringify({ id: '1', state: 'ready' }) === JSON.stringify({ state: 'ready', id: '1' });";
+const DOMAIN_COMPARATOR =
+  "function sameShape(a: { id: string; state: string; toJSON: string }, b: { id: string; state: string; toJSON: string }): boolean { return a.id === b.id && a.state === b.state && a.toJSON === b.toJSON; }\nexport function choices(): boolean[] { return [sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '1', state: 'ready', toJSON: 'data' }), JSON.stringify({ id: '1', state: 'ready', toJSON: 'data' }) === JSON.stringify({ id: '2', state: 'ready', toJSON: 'data' })]; }";
+const DOMAIN_COMPARATOR_FIXED =
+  "function sameShape(a: { id: string; state: string; toJSON: string }, b: { id: string; state: string; toJSON: string }): boolean { return a.id === b.id && a.state === b.state && a.toJSON === b.toJSON; }\nexport function choices(): boolean[] { return [sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '1', state: 'ready', toJSON: 'data' }), sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '2', state: 'ready', toJSON: 'data' })]; }";
 
-import rule, {
-  NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION,
-} from "../../src/rules/no-json-stringify-object-equality.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const RULE_TESTER = ruleTester({ cwd: FIXTURES });
+const UNTYPED_TESTER = new RuleTester({ eslintCompat: true, languageOptions: { parserOptions: { lang: "ts" } } });
 const PRODUCTION = "json-object-equality.ts";
 
-new RuleTester({ languageOptions: { parser: tsParser } }).run(
+UNTYPED_TESTER.run(
   "no-json-stringify-object-equality without type services",
   rule,
-  {
+  untyped({
     valid: [
       {
         name: "excludes syntactically primitive array values",
@@ -48,17 +36,15 @@ new RuleTester({ languageOptions: { parser: tsParser } }).run(
       {
         name: "reuses an existing comparator for the exact closed string record domain",
         filename: "src/domain.ts",
-        code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[2]
-          .files[0].source,
+        code: DOMAIN_COMPARATOR,
         output:
-          NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[2]
-            .fixedFiles[0].source,
+          DOMAIN_COMPARATOR_FIXED,
         errors: [{ messageId: "serializedObjectEquality" }],
       },
       {
         name: "retains inherited toJSON ambiguity without an authored own data field",
         filename: "src/domain.ts",
-        code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[2].files[0].source
+        code: DOMAIN_COMPARATOR
           .replaceAll("; toJSON: string", "")
           .replaceAll(" && a.toJSON === b.toJSON", "")
           .replaceAll(", toJSON: 'data'", ""),
@@ -76,10 +62,10 @@ new RuleTester({ languageOptions: { parser: tsParser } }).run(
         errors: [{ messageId: "serializedObjectEquality" }],
       },
     ],
-  },
+  }),
 );
 
-RULE_TESTER.run("no-json-stringify-object-equality", rule, {
+RULE_TESTER.run("no-json-stringify-object-equality", rule, typed({
   valid: [
     {
       name: "excludes typed primitive array spreads",
@@ -154,8 +140,7 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     {
       name: "accepts the documented domain comparator",
       filename: PRODUCTION,
-      code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[0].files[0]
-        .source,
+      code: DOMAIN_COMPARATOR_EXAMPLE,
     },
     {
       name: "allows serialization for persistence",
@@ -272,8 +257,7 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     {
       name: "reports the documented object comparison",
       filename: PRODUCTION,
-      code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[1].files[0]
-        .source,
+      code: SERIALIZED_EQUALITY,
       errors: [{ messageId: "serializedObjectEquality" }],
     },
     {
@@ -307,10 +291,16 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
       errors: [{ messageId: "serializedObjectEquality" }],
     },
     {
+      name: "reports values of a recursive JSON type (port-only: the original overflows the stack on it)",
+      filename: PRODUCTION,
+      code: "type Json = null | boolean | number | string | Json[] | { [key: string]: Json }; declare const a: Json; declare const b: Json; const same = JSON.stringify(a) === JSON.stringify(b);",
+      errors: [{ messageId: "serializedObjectEquality" }],
+    },
+    {
       name: "reports computed native stringify access",
       filename: PRODUCTION,
       code: "declare const actual: { id: string }; declare const expected: { id: string }; const same = JSON['stringify'](actual) === JSON['stringify'](expected);",
       errors: [{ messageId: "serializedObjectEquality" }],
     },
   ],
-});
+}));

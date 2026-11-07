@@ -1,21 +1,21 @@
 /**
- * @fileoverview test-phase-label-comment — bare phase labels narrate test structure without adding behavior.
+ * @fileoverview test-phase-label-comment — bare Arrange/Act/Assert labels restate structure the test should express.
+ *
+ * Port of the 18.x `test-phase-label-comment` rule. The rule is
+ * untyped, so the port covers all of it.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-phase-label-comment.test.ts
  */
 
-import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+import type { Comment } from "@oxlint/plugins";
 
+import { defineRule, type SourceCode } from "../types.js";
+import { commentLineEndings, wholeLineRemovalRange } from "../utils/comment-edits.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
 
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { commentLineEndings, wholeLineRemovalRange } from "./_comment-edits.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "removeLabel";
-type Options = readonly [];
+const NAME = "test-phase-label-comment";
 
 const PHASE_WORD = String.raw`arrange|act|assert(?:ion)?s?|given|when|then|exercise|execute|verif(?:y|ication)|cleanup|prepare|sanity(?:\s+check)?`;
 const PHASE_RE = new RegExp(
@@ -23,57 +23,22 @@ const PHASE_RE = new RegExp(
   "iu",
 );
 
-export const TEST_PHASE_LABEL_COMMENT_DOCUMENTATION = {
-  summary: "Tests must not use bare Arrange, Act, Assert, Given, When, or Then phase comments.",
-  rationale: "Phase labels narrate test structure without explaining behavior and often hide unclear names or oversized tests.",
-  remediation: "Delete the label; if the phases remain hard to follow, extract a named helper or split the test.",
-  category: "testing",
-  autofix: "safe",
-  limitations: [
-    "Only standalone line comments in recognized test files are checked.",
-    "Comments inside bracketed expressions or containing words outside the bounded phase grammar are preserved.",
-  ],
-  examples: [
-    {
-      id: "behavioral-comment",
-      title: "Behavioral consequence is retained",
-      outcome: "no-match",
-      files: [{ path: "widget.test.ts", source: "// Then the retry loop would spin forever.\nexpect(run()).toBe(true);" }],
-      focusPath: "widget.test.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "bare-phase-label",
-      title: "Bare phase label is removed",
-      outcome: "match",
-      files: [{ path: "widget.test.ts", source: "const seed = 1;\n// Arrange\nconst widget = makeWidget();" }],
-      focusPath: "widget.test.ts",
-      expectedCount: 1,
-      fixedFiles: [{ path: "widget.test.ts", source: "const seed = 1;\n\nconst widget = makeWidget();" }],
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function insideExpression(sourceCode: Readonly<TypeScriptSourceCode>, comment: TSESTree.Comment): boolean {
+function insideExpression(sourceCode: Readonly<SourceCode>, comment: Comment): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null) return false;
-  let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  for (let node = sourceCode.getNodeByRangeIndex(token.range[0]); node !== null && node.type !== "Program"; node = parentOf(node)) {
     if (
-      node.type === AST_NODE_TYPES.ArrayExpression ||
-      node.type === AST_NODE_TYPES.ObjectExpression ||
-      node.type === AST_NODE_TYPES.CallExpression ||
-      node.type === AST_NODE_TYPES.NewExpression
+      node.type === "ArrayExpression" ||
+      node.type === "ObjectExpression" ||
+      node.type === "CallExpression" ||
+      node.type === "NewExpression"
     ) return node.loc.start.line < comment.loc.start.line;
     if (/Statement$/u.test(node.type) || /Declaration$/u.test(node.type)) return false;
-    node = node.parent;
   }
   return false;
 }
 
-function continuesProseRun(comments: readonly TSESTree.Comment[], index: number): boolean {
+function continuesProseRun(comments: readonly Comment[], index: number): boolean {
   const comment = comments[index];
   if (comment?.type !== "Line") return false;
   return [comments[index - 1], comments[index + 1]].some(
@@ -84,33 +49,39 @@ function continuesProseRun(comments: readonly TSESTree.Comment[], index: number)
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "test-phase-label-comment",
-  documentation: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.summary },
+    docs: {
+      description: "Tests must not use bare Arrange, Act, Assert, Given, When, or Then phase comments.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: { removeLabel: "Bare test phase label — delete it and let the test names and helpers carry the structure." },
   },
-  defaultOptions: [],
-  create(context) {
-    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
+  createOnce(context) {
     return {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (!isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        return undefined;
+      },
       Program(): void {
-        const comments = context.sourceCode.getAllComments();
+        const sourceCode = context.sourceCode;
+        const comments = sourceCode.getAllComments();
         for (const [index, comment] of comments.entries()) {
           if (comment.type !== "Line" || !PHASE_RE.test(comment.value.trim())) continue;
-          const removal = wholeLineRemovalRange(context.sourceCode.text, comment);
-          if (removal === null || insideExpression(context.sourceCode, comment) || continuesProseRun(comments, index)) {
+          const removal = wholeLineRemovalRange(sourceCode.text, comment);
+          if (removal === null || insideExpression(sourceCode, comment) || continuesProseRun(comments, index)) {
             continue;
           }
+          const text = sourceCode.text;
           context.report({
             node: comment,
             messageId: "removeLabel",
             fix: (fixer) => {
-              const endings = commentLineEndings(context.sourceCode.text, removal);
+              const endings = commentLineEndings(text, removal);
               return endings === null ? null : fixer.replaceTextRange([...(removal.range)], endings);
             },
           });

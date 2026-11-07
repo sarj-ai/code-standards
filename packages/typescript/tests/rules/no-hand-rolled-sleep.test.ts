@@ -1,20 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-hand-rolled-sleep.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_HAND_ROLLED_SLEEP_DOCUMENTATION } from "../../src/rules/no-hand-rolled-sleep.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 const SERVER = "/repo/src/lib/queue.ts";
 
@@ -27,7 +15,7 @@ RULE_TESTER.run("no-hand-rolled-sleep", rule, {
     { name: "does not confuse nested callback parameter with resolve", code: "new Promise(resolve => setTimeout(resolve => resolve(), 100));", filename: SERVER },
     {
       name: "accepts the cancellable Node timer",
-      code: NO_HAND_ROLLED_SLEEP_DOCUMENTATION.examples[0].files[0].source,
+      code: "import { setTimeout as sleep } from \"node:timers/promises\";\nawait sleep(500, undefined, { signal });",
       filename: SERVER,
     },
     {
@@ -210,7 +198,7 @@ RULE_TESTER.run("no-hand-rolled-sleep", rule, {
     },
     {
       name: "reports a concise sleep",
-      code: NO_HAND_ROLLED_SLEEP_DOCUMENTATION.examples[1].files[0].source,
+      code: "await new Promise((resolve) => setTimeout(resolve, 500));",
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },

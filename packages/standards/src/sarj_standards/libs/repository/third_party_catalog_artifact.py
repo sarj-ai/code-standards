@@ -20,7 +20,7 @@ from sarj_standards.libs.linting.sqlfluff_protocol import SQLFLUFF_VERSION
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
-_NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.ts")
+_NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-oxlint-rules.ts")
 _REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.ts")
 _MOBILE_CONFIG_ROOT: Final = Path("packages/standards/src/sarj_standards/configs")
 _RUFF_CONFIGS: Final = MappingProxyType(
@@ -60,11 +60,11 @@ type ProviderEngine = Literal[
     "deptry",
     "detekt",
     "devops",
-    "eslint",
     "jscpd",
     "knip",
     "ktlint",
     "mobsfscan",
+    "oxlint",
     "react-doctor",
     "ruff",
     "sqlfluff",
@@ -135,7 +135,7 @@ class _Rule(_FrozenModel):
     profiles: tuple[_Profile, ...]
 
 
-class _EslintProjection(_FrozenModel):
+class _OxlintProjection(_FrozenModel):
     providers: tuple[_Provider, ...]
     rules: tuple[_Rule, ...]
 
@@ -226,7 +226,7 @@ def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _Cat
     if typescript_build == "required":
         npm = _required_tool("npm")
         _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
-    eslint = _eslint_projection(resolved, node)
+    oxlint = _oxlint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
@@ -238,14 +238,14 @@ def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _Cat
         _embedded_sql_projection(),
     )
     rules = (
-        *eslint.rules,
+        *oxlint.rules,
         *react_doctor.rules,
         *ruff_projection.rules,
         *deptry_projection.rules,
         *(rule for projection in supplemental for rule in projection.rules),
     )
     providers = (
-        *eslint.providers,
+        *oxlint.providers,
         _react_doctor_provider(resolved),
         ruff_projection.provider,
         deptry_projection.provider,
@@ -356,9 +356,9 @@ def _run(argv: tuple[str, ...], *, cwd: Path) -> str:
     return completed.stdout
 
 
-def _eslint_projection(root: Path, node: str) -> _EslintProjection:
+def _oxlint_projection(root: Path, node: str) -> _OxlintProjection:
     output = _run((node, str(root / _NODE_PROJECTION)), cwd=root)
-    return _EslintProjection.model_validate_json(output)
+    return _OxlintProjection.model_validate_json(output)
 
 
 def _react_doctor_projection(root: Path, node: str) -> _ReactDoctorProjection:
@@ -411,7 +411,7 @@ def _deptry_projection(root: Path, executable: str) -> _RuffProjection:
 
 def _react_doctor_provider(root: Path) -> _Provider:
     peers = _Peers.model_validate_json(
-        (root / "packages/standards/src/sarj_standards/configs/eslint.peers.json").read_text(encoding="utf-8")
+        (root / "packages/standards/src/sarj_standards/configs/typescript.peers.json").read_text(encoding="utf-8")
     ).peers
     return _Provider(
         id="react-doctor",

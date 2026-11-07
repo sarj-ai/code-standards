@@ -1,33 +1,17 @@
 /**
  * @fileoverview no-raw-env — a raw `process.env` read is untyped and unvalidated, so a missing variable surfaces as `undefined` in business logic.
  *
+ * Port of the 18.x `no-raw-env` rule. File gates and per-file state
+ * move to `before()`; the matching is unchanged.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import type { NativeRuleContext } from "./_eslint-rule.js";
-
-
-
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isScriptFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "noRawEnv";
-type Options = readonly [];
-
-export const NO_RAW_ENV_DOCUMENTATION = {
-  summary: "Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries.",
-  rationale: "Raw environment reads are untyped and defer invalid configuration failures until use.",
-  remediation: "Validate environment values at startup and import the typed configuration object.",
-  category: "correctness",
-  limitations: ["Host markers, assignment targets, tests, scripts, build config, and recognized validation-boundary files are policy exemptions. A validation call does not prove every export is validated; assignment-target exemptions also include compound writes that read the previous value."],
-  examples: [
-    { id: "validated-environment", title: "Read validated configuration", outcome: "no-match", files: [{ path: "src/database.ts", source: "import { env } from './env.js'; const url = env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 0, public: true },
-    { id: "raw-environment-read", title: "Do not read raw configuration", outcome: "match", files: [{ path: "src/database.ts", source: "const url = process.env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+import { defineRule, type ESTree, type SourceCode } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isScriptFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
 /** Build / test / tooling config: `vite.config.ts`, `vitest.config.mts`, `playwright.config.ts`. */
 const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
@@ -36,86 +20,75 @@ const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
+const PROCESS_MODULES: readonly string[] = ["node:process", "process"];
+const PROCESS_IMPORT_SPECIFIERS: readonly string[] = ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"];
+
+// Build-time constants that bundlers (webpack/Vite) statically replace — exempt.
+const BUILD_TIME_CONSTANTS: ReadonlySet<string> = new Set(["NODE_ENV", "MODE", "DEV", "PROD", "SSR"]);
+
+const PLATFORM_MARKERS: ReadonlySet<string> = new Set(["NEXT_RUNTIME", "VERCEL", "VERCEL_ENV", "CI"]);
+
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
-function isProcessEnv(
-  node: TSESTree.MemberExpression,
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-): boolean {
+function isProcessEnv(node: ESTree.MemberExpression, sourceCode: SourceCode): boolean {
   const receiver = unwrapExpression(node.object);
-  if (receiver.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
-  const binding = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
+  if (receiver.type !== "Identifier" || getPropertyName(node) !== "env") return false;
+  const binding = findVariable(sourceCode.getScope(receiver), receiver.name);
   if (binding === null || binding.defs.length === 0) return receiver.name === "process";
-  return binding.defs.every((definition) =>
-    definition.type === "ImportBinding" &&
-    definition.parent.type === "ImportDeclaration" &&
-    definition.parent.importKind !== "type" &&
-    ["node:process", "process"].includes(definition.parent.source.value) &&
-    ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type),
-  );
+  return binding.defs.every((definition) => {
+    const parent = definition.parent;
+    return definition.type === "ImportBinding" &&
+      parent?.type === "ImportDeclaration" &&
+      parent.importKind !== "type" &&
+      PROCESS_MODULES.includes(parent.source.value) &&
+      PROCESS_IMPORT_SPECIFIERS.includes(definition.node.type);
+  });
 }
 
 /** True for the `import.meta.env` member node (dotted or as the base of `import.meta.env[key]`). */
-function isImportMetaEnv(node: TSESTree.MemberExpression): boolean {
+function isImportMetaEnv(node: ESTree.MemberExpression): boolean {
   return (
-    ASTUtils.getPropertyName(node) === "env" &&
+    getPropertyName(node) === "env" &&
     node.object.type === "MetaProperty" &&
     node.object.meta.name === "import" &&
     node.object.property.name === "meta"
   );
 }
 
-// Build-time constants that bundlers (webpack/Vite) statically replace — there is
-// no runtime env value to route through the validated layer, so they are exempt.
-const BUILD_TIME_CONSTANTS: ReadonlySet<string> = new Set([
-  "NODE_ENV",
-  "MODE",
-  "DEV",
-  "PROD",
-  "SSR",
-]);
-
-const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
-  "NEXT_RUNTIME",
-  "VERCEL",
-  "VERCEL_ENV",
-  "CI",
-]);
-
 /** Match named bundler constants and host-owned platform markers. */
-function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
-  const parent = node.parent;
-  if (parent.type !== "MemberExpression" || parent.object !== node) return false;
-  const name = ASTUtils.getPropertyName(parent);
+function isExemptVariableAccess(node: ESTree.MemberExpression): boolean {
+  const parent = parentOf(node);
+  if (parent?.type !== "MemberExpression" || parent.object !== node) return false;
+  const name = getPropertyName(parent);
   return name !== null && (BUILD_TIME_CONSTANTS.has(name) || PLATFORM_MARKERS.has(name));
 }
 
 /** Match assignment and deletion targets, which do not read configuration. */
-function isWriteTarget(node: TSESTree.MemberExpression): boolean {
-  const access = node.parent.type === "MemberExpression" && node.parent.object === node ? node.parent : node;
-  const parent = access.parent;
-  if (parent.type === "AssignmentExpression") {
+function isWriteTarget(node: ESTree.MemberExpression): boolean {
+  const direct = parentOf(node);
+  const access = direct?.type === "MemberExpression" && direct.object === node ? direct : node;
+  const parent = parentOf(access);
+  if (parent?.type === "AssignmentExpression") {
     return parent.left === access;
   }
-  if (parent.type === "UnaryExpression") {
+  if (parent?.type === "UnaryExpression") {
     return parent.operator === "delete";
   }
   return false;
 }
 
 /** Match whole-environment pass-through such as `{ ...process.env }`. */
-function isWholeEnvSpread(node: TSESTree.MemberExpression): boolean {
-  const parent = node.parent;
-  return parent.type === "SpreadElement" && parent.argument === node;
+function isWholeEnvSpread(node: ESTree.MemberExpression): boolean {
+  const parent = parentOf(node);
+  return parent?.type === "SpreadElement" && parent.argument === node;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-raw-env",
-  documentation: NO_RAW_ENV_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries.",
+      url: docsUrl("no-raw-env"),
     },
     schema: [],
     messages: {
@@ -123,37 +96,41 @@ export default createRule<Options, MessageIds>({
         "Do not read raw environment values directly. Import the validated env module so values are typed and checked at startup.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const filename = context.filename;
-    if (
-      isTestFile(context) ||
-      isScriptFile(context) ||
-      CONFIG_FILE_RE.test(filename.replaceAll("\\", "/"))
-    ) {
-      return {};
-    }
-    const reads: TSESTree.MemberExpression[] = [];
-    const boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/"));
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let reads: ESTree.MemberExpression[] = [];
+    let boundaryFile = false;
     let hasValidationCall = false;
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      before() {
+        const filename = context.filename;
+        const file = { filename, cwd: context.cwd };
+        if (isTestFile(file) || isScriptFile(file) || CONFIG_FILE_RE.test(filename)) {
+          return false;
+        }
+        sourceCode = context.sourceCode;
+        reads = [];
+        boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename);
+        hasValidationCall = false;
+        return undefined;
+      },
+      CallExpression(node: ESTree.CallExpression): void {
         if (!boundaryFile) return;
         const callee = node.callee;
-        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
         if (callee.type === "Identifier" && callee.name === "createEnv") {
           hasValidationCall = true;
         } else if (callee.type === "MemberExpression") {
-          const name = ASTUtils.getPropertyName(callee);
+          const calleeReceiver = unwrapExpression(callee.object);
+          const name = getPropertyName(callee);
           if (name === "parse" || name === "safeParse" ||
             (name === "object" && calleeReceiver.type === "Identifier" && calleeReceiver.name === "z")) {
             hasValidationCall = true;
           }
         }
       },
-      MemberExpression(node: TSESTree.MemberExpression): void {
+      MemberExpression(node: ESTree.MemberExpression): void {
         if (
-          (isProcessEnv(node, context) || isImportMetaEnv(node)) &&
+          (isProcessEnv(node, sourceCode) || isImportMetaEnv(node)) &&
           !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
           !isWholeEnvSpread(node)

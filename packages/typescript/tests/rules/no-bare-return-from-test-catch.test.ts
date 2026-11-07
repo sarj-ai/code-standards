@@ -1,16 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-bare-return-from-test-catch.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION } from "../../src/rules/no-bare-return-from-test-catch.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 const TEST_FILE = "/repo/src/codec.test.ts";
 
 RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
@@ -30,7 +22,6 @@ RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
     { name: "global table runner supports context skip", filename: TEST_FILE, code: "test.for([1])('optional', (value, context) => { try { run(value); } catch { context.skip();return; } expect(done).toBe(true); });" },
     { name: "configured global runner supports destructured skip", filename: TEST_FILE, languageOptions: {globals: {test: 'readonly'}}, code: "test('optional', ({skip}) => { try { run(); } catch { skip();return; } expect(done).toBe(true); });" },
     { name: "renamed Vitest test preserves context ownership", filename: TEST_FILE, code: "import {test as check, expect} from 'vitest'; check.for([1])('optional', (value, {skip: skipCase}) => { try { run(value); } catch { skipCase();return; } expect(done).toBe(true); });" },
-    { name: "preserves exact-code explained suppression for an optional table case", filename: TEST_FILE, code: "test.each([1])('optional', () => { try { run(); } catch {\n// eslint-disable-next-line @rule-tester/no-bare-return-from-test-catch -- capability probe intentionally abandons the optional case\nreturn; } expect(done).toBe(true); });" },
     { name: "parameterized expected error remains observed", filename: TEST_FILE, code: "test.each([1, 2])('rejects %s', (value) => { try { run(value); } catch (error) { expect(error).toBeInstanceOf(Error); return; } expect.fail('must reject'); });" },
     { name: "parameterized explicit skip remains valid", filename: TEST_FILE, code: "test.each([1, 2])('optional %s', (value) => { try { run(value); } catch { test.skip(); return; } expect(done).toBe(true); });" },
     { name: "parameterized rethrow preserves failure", filename: TEST_FILE, code: "test.for([1, 2])('runs %s', (value) => { try { run(value); } catch (error) { throw error; } expect(done).toBe(true); });" },
@@ -50,7 +41,7 @@ RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
     { name: "preserves default node assert on the caught error", filename: TEST_FILE, code: "import verify from 'node:assert/strict'; test('rejects', () => { try { run(); } catch (error) { verify(error); return; } verify.fail('must reject'); });" },
     { name: "preserves namespace node assert on the caught error", filename: TEST_FILE, code: "import * as verify from 'node:assert/strict'; test('rejects', () => { try { run(); } catch (error) { verify.ok(error); return; } verify.fail('must reject'); });" },
     { name: "preserves a caught-error assertion in the return's nested block", filename: TEST_FILE, code: "test('rejects', () => { try { run(); } catch (error) { if (optional) { expect(error).toBeDefined(); return; } } expect.fail('must reject'); });" },
-    { name: "public no-match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/codec.test.ts", code: "test('decodes', () => { try { decode(); } catch (error) { throw error; } expect(result()).toBe('ok'); });" },
     { name: "requires a later assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return; } cleanup(); });" },
     { name: "allows returned values", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return fallback; } expect(done).toBe(true); });" },
     { name: "allows explicit runner skip", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { test.skip(); return; } expect(done).toBe(true); });" },
@@ -98,7 +89,7 @@ RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
     { name: "conditional throw does not protect the return path", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { if (fatal) throw error; return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
     { name: "conditional skip does not dominate the return", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { if (optional) test.skip(); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
     { name: "finally cleanup does not protect a skipped assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return; } finally { cleanup(); } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
-    { name: "public match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "bareReturnFromTestCatch", type: "ReturnStatement" }] },
+    { name: "public match example", filename: "src/codec.test.ts", code: "test('decodes', () => { try { decode(); } catch { return; } expect(result()).toBe('ok'); });", errors: [{ messageId: "bareReturnFromTestCatch", type: "ReturnStatement" }] },
     { name: "supports imported aliases and modifiers", filename: TEST_FILE, code: "import { test as check, expect as verify } from 'vitest'; check.only('x', () => { try { run(); } catch { return; } verify(done).toBe(true); });", errors: [{ messageId: "bareReturnFromTestCatch" }] },
     { name: "supports assertions nested in later control flow", filename: TEST_FILE, code: "it('x', () => { try { run(); } catch { if (optional) return; } if (ready) { expect(done).toBe(true); } });", errors: [{ messageId: "bareReturnFromTestCatch" }] },
     { name: "supports node assert", filename: TEST_FILE, code: "import { test } from 'node:test'; import { strict as verify } from 'node:assert'; test('x', () => { try { run(); } catch { return; } verify.equal(done, true); });", errors: [{ messageId: "bareReturnFromTestCatch" }] },

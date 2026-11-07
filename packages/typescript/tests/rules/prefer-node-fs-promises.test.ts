@@ -1,15 +1,8 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+// vitest: shared-module-graph
+import rule from "../../src/rules/prefer-node-fs-promises.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_NODE_FS_PROMISES_DOCUMENTATION } from "../../src/rules/prefer-node-fs-promises.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, sourceType: "module" } });
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-node-fs-promises", rule, {
   valid: [
@@ -21,7 +14,7 @@ RULE_TESTER.run("prefer-node-fs-promises", rule, {
     { name: "does not inherit a loaded namespace through shadowing", code: "const fs = require('node:fs'); function run(fs) { return fs.readFileSync(); }" },
     { name: "does not treat injected require as a Node loader", code: "function run(require) { const fs = require('node:fs'); return fs.readFileSync(); }" },
     { name: "does not treat injected process as a Node loader", code: "function run(process) { const fs = process.getBuiltinModule('node:fs'); return fs.readFileSync(); }" },
-    PREFER_NODE_FS_PROMISES_DOCUMENTATION.examples[0].files[0].source,
+    "import { readFile } from 'node:fs/promises'; export async function load(path: string) { return readFile(path, 'utf8'); }",
     "import { createReadStream } from 'node:fs'; createReadStream('x');",
     "import * as fs from 'node:fs'; fs.createReadStream('x');",
     "const fs = require('node:fs'); fs.createReadStream('x');",
@@ -33,12 +26,12 @@ RULE_TESTER.run("prefer-node-fs-promises", rule, {
     { filename: "src/generated/store.ts", code: "import { readFileSync } from 'node:fs'; readFileSync('x');" },
     { filename: "src/generated/store.ts", code: "(await import('node:fs')).readFileSync('x');" },
     { filename: "src/rules/check-files.ts", code: "import { readFileSync } from 'node:fs'; readFileSync('x');" },
-    "// eslint-disable-next-line @rule-tester/prefer-node-fs-promises -- synchronous transaction boundary\nimport { readFileSync, writeFileSync } from 'node:fs';",
   ],
   invalid: [
+    { name: "reports a sync import under eslint-disable-next-line (valid under ESLint; Oxlint's RuleTester ignores disable directives)", code: "// eslint-disable-next-line @rule-tester/prefer-node-fs-promises -- synchronous transaction boundary\nimport { readFileSync, writeFileSync } from 'node:fs';", errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync, writeFileSync" } }] },
     { name: "retains a native fs binding through a bare var redeclaration", code: "var fs = require('node:fs'); var fs; fs.readFileSync('x');", errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync" } }] },
     {
-      code: PREFER_NODE_FS_PROMISES_DOCUMENTATION.examples[1].files[0].source,
+      code: "import { readFileSync } from 'node:fs'; export function load(path: string) { return readFileSync(path, 'utf8'); }",
       errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync" } }],
     },
     {

@@ -1,27 +1,9 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/no-reduce-accumulator-copy.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-
-RULE_TESTER.run("no-reduce-accumulator-copy", rule, {
+TESTER.run("no-reduce-accumulator-copy", rule, typed({
   valid: [
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { for (const item of page) { consume(acc.slice()); } return page; }, []);",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { { const acc: string[] = []; acc.slice(); } return page; }, []);",
@@ -174,16 +156,14 @@ RULE_TESTER.run("no-reduce-accumulator-copy", rule, {
       errors: [{ messageId: "copy" }],
     },
   ],
-});
+}));
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
-
-SYNTAX_TESTER.run("no-reduce-accumulator-copy without a type project", rule, {
-  valid: ["items.reduce((acc, item) => acc.concat(item), []);"],
+TESTER.run("no-reduce-accumulator-copy without a type project", rule, {
+  valid: [{ code: "items.reduce((acc, item) => acc.concat(item), []);", settings: { sarj: { typeAware: false } } }],
   invalid: [],
 });
 
-RULE_TESTER.run("no-reduce-accumulator-copy retained extensions", rule, {
+TESTER.run("no-reduce-accumulator-copy retained extensions", rule, typed({
   valid: [
     { name: "preserves a mutated alias", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { let previous = acc; previous = page; return previous.concat(page); }, []);" },
     { name: "preserves an escaped seed", code: "declare const pages: string[][]; const seed: string[] = []; observe(seed); pages.reduce((acc, page) => acc.concat(page), seed);" },
@@ -198,4 +178,4 @@ RULE_TESTER.run("no-reduce-accumulator-copy retained extensions", rule, {
     { name: "keeps reverse reduction manual", code: "declare const pages: string[][]; pages.reduceRight<string[]>((acc, page) => { const previous = acc; return previous.concat(page); }, []);", output: null, errors: [{ messageId: "copy" }] },
     { name: "keeps retained accumulator snapshots manual", code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { observe(acc); const previous = acc; return previous.concat(page); }, []);", output: null, errors: [{ messageId: "copy" }] },
   ],
-});
+}));

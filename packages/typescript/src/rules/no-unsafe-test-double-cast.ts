@@ -1,105 +1,98 @@
 /**
- * @fileoverview no-unsafe-test-double-cast — prevent mock-backed partial objects from escaping through double assertions.
+ * @fileoverview no-unsafe-test-double-cast — keep mock-backed test doubles inside collaborator contracts.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-test-double-cast.test.ts
+ * Port of the 18.x `no-unsafe-test-double-cast` rule. The rule is untyped, so the port
+ * covers all of it.
+ *
+ * Under Oxlint the original never offers its fix: it requires `declaration.id.typeAnnotation ===
+ * undefined`, and Oxlint passes `null` for an absent field. The port accepts both, so the fix
+ * matches ESLint.
  */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn as ReportFix } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { getPropertyName } from "../utils/static-string.js";
+import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "../utils/test-mock-provenance.js";
+import { retainsNamedTypeUses } from "../utils/type-binding.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
+const NAME = "no-unsafe-test-double-cast";
 
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+const MOCK_FACTORIES: ReadonlySet<string> = new Set(["fn", "spyOn"]);
+const SIMPLE_LITERAL_TYPES: ReadonlySet<string> = new Set(["string", "number", "boolean", "bigint"]);
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "./_test-mock-provenance.js";
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { retainsNamedTypeUses } from "./_type-binding.js";
-
-type MessageIds = "noUnsafeTestDoubleCast";
-
-export const NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION = {
-  summary: "Disallow mock-backed test doubles that bypass collaborator contracts through double assertions.",
-  rationale: "Casting a partial object through unknown hides missing or stale collaborator members, so production interface changes can compile while the test double silently drifts.",
-  remediation: "Define the smallest injected port and implement a typed recording fake, or make the fixture satisfy the real contract without passing through unknown.",
-  category: "testing",
-  autofix: "safe",
-  limitations: ["Only generated-free test files and direct double assertions containing a fn or spyOn call from a resolved Vitest/Jest import or an unshadowed vi/jest global are checked. Import aliases and mixed assertion syntax are supported; local shadowing, type-only imports, indirect value aliases, arbitrary payload casts and dynamic API replacement are not inferred.",
-    "Automatic fixes remove only erased double assertions on an unused private unannotated const initialized by a plain object containing primitive literals, nested plain objects and zero-argument canonical mock fn calls. Every erased named/generic/namespace binding must retain an independent exported type use outside self references and other erasable annotations. They retain the original runtime expression; exports, reads, contextual functions, generic mock factories, spreads, accessors, comments, scripts, declaration files and eval remain manual."],
-  examples: [
-    { id: "typed-recording-fake", title: "Use a typed recording fake", outcome: "no-match", files: [{ path: "service.test.ts", source: "const client = { read: async () => ({ id: '1' }) } satisfies Pick<Client, 'read'>;" }], focusPath: "service.test.ts", expectedCount: 0, public: true },
-    { id: "mock-backed-double-cast", title: "Do not hide a partial mock behind unknown", outcome: "match", files: [{ path: "service.test.ts", source: "import { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;" }], focusPath: "service.test.ts", expectedCount: 1, public: true },
-    { id: "safe-autofix", title: "Retain an unused private mock object's actual inferred shape", outcome: "match", files: [{ path: "service.test.ts", source: "import { vi } from 'vitest'; interface Client { read(): string } export type RetainedClient = Client; const client = { read: vi.fn() } as unknown as Client;" }], fixedFiles: [{ path: "service.test.ts", source: "import { vi } from 'vitest'; interface Client { read(): string } export type RetainedClient = Client; const client = { read: vi.fn() };" }], focusPath: "service.test.ts", expectedCount: 1 },
-  ],
-} as const satisfies RuleDocumentation;
-
-function isUnknown(node: TSESTree.TypeNode): boolean {
-  return node.type === AST_NODE_TYPES.TSUnknownKeyword;
-}
-
-function containsMockFactory(node: TSESTree.Node, source: TypeScriptSourceCode): boolean {
+function containsMockFactory(node: Node, source: SourceCode): boolean {
   node = unwrapExpression(node);
   if (isMockFactory(node, source)) return true;
-  if (node.type === AST_NODE_TYPES.ObjectExpression) {
+  if (node.type === "ObjectExpression") {
     return node.properties.some((property) =>
-      property.type === AST_NODE_TYPES.Property
+      property.type === "Property"
         ? containsMockFactory(property.value, source)
         : containsMockFactory(property.argument, source));
   }
-  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+  if (node.type === "ArrayExpression") {
     return node.elements.some((element) => element !== null && containsMockFactory(element, source));
   }
   return false;
 }
 
-function isMockFactory(node: TSESTree.Node, source: TypeScriptSourceCode): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const receiver = unwrapExpression(unwrappedNodeCallee.object);
-  return node.type === AST_NODE_TYPES.CallExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    receiver.type === AST_NODE_TYPES.Identifier &&
+function isMockFactory(node: Node, source: SourceCode): boolean {
+  if (node.type !== "CallExpression") return false;
+  const callee = unwrapExpression(node.callee);
+  if (callee.type !== "MemberExpression") return false;
+  const receiver = unwrapExpression(callee.object);
+  return receiver.type === "Identifier" &&
     (importedTestMockNamespace(source, receiver) !== null || isUnshadowedTestMockGlobal(source, receiver)) &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
-    ["fn", "spyOn"].includes((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""));
+    MOCK_FACTORIES.has(getPropertyName(callee) ?? "");
 }
 
-export default createRule<[], MessageIds>({
-  name: "no-unsafe-test-double-cast",
-  documentation: NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
-    docs: { description: NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION.summary },
+    docs: {
+      description: "Disallow mock-backed test doubles that bypass collaborator contracts through double assertions.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: { noUnsafeTestDoubleCast: "This mock-backed partial object bypasses the collaborator contract through `unknown`. Use a narrow injected port and typed recording fake, or make the fixture satisfy the real contract." },
   },
-  defaultOptions: [],
-  create(context) {
-    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
+  createOnce(context) {
+    function check(node: ESTree.TSAsExpression | ESTree.TSTypeAssertion): void {
+      const sourceCode = context.sourceCode;
+      if ((node.expression.type === "TSAsExpression" || node.expression.type === "TSTypeAssertion") && node.expression.typeAnnotation.type === "TSUnknownKeyword" && containsMockFactory(node.expression.expression, sourceCode)) {
+        const fix = privateMockObjectFix(sourceCode, node, context.filename);
+        context.report({ node, messageId: "noUnsafeTestDoubleCast", ...(fix !== null && { fix }) });
+      }
+    }
     return {
-      TSAsExpression(node: TSESTree.TSAsExpression): void {
-        if ((node.expression.type === AST_NODE_TYPES.TSAsExpression || node.expression.type === AST_NODE_TYPES.TSTypeAssertion) && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast", fix: privateMockObjectFix(context.sourceCode, node, context.filename) });
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (!isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        return undefined;
       },
-      TSTypeAssertion(node: TSESTree.TSTypeAssertion): void {
-        if ((node.expression.type === AST_NODE_TYPES.TSAsExpression || node.expression.type === AST_NODE_TYPES.TSTypeAssertion) && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast", fix: privateMockObjectFix(context.sourceCode, node, context.filename) });
-      },
+      TSAsExpression: check,
+      TSTypeAssertion: check,
     };
   },
 });
 
 function privateMockObjectFix(
-  sourceCode: TypeScriptSourceCode,
-  node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
+  sourceCode: SourceCode,
+  node: ESTree.TSAsExpression | ESTree.TSTypeAssertion,
   filename: string,
-): NativeReportFix | null {
-  const declaration = node.parent;
+): ReportFix | null {
+  const declaration = parentOf(node);
   const inner = node.expression;
-  if ((inner.type !== AST_NODE_TYPES.TSAsExpression && inner.type !== AST_NODE_TYPES.TSTypeAssertion) ||
-    declaration.type !== AST_NODE_TYPES.VariableDeclarator || declaration.init !== node ||
-    declaration.id.type !== AST_NODE_TYPES.Identifier || declaration.id.typeAnnotation !== undefined ||
-    declaration.parent.kind !== "const" || !isUnusedPrivateBinding(sourceCode, declaration, declaration.id, filename) ||
+  if ((inner.type !== "TSAsExpression" && inner.type !== "TSTypeAssertion") ||
+    declaration?.type !== "VariableDeclarator" || declaration.init !== node ||
+    declaration.id.type !== "Identifier" || isPresent(declaration.id.typeAnnotation) ||
+    (parentOf(declaration) as ESTree.VariableDeclaration | null)?.kind !== "const" || !isUnusedPrivateBinding(sourceCode, declaration, declaration.id, filename) ||
     sourceCode.getCommentsInside(node).length > 0 || !simpleMockObject(inner.expression, sourceCode) ||
     !retainsNamedTypeUses(sourceCode, node.typeAnnotation)) return null;
   const expression = sourceCode.getText(inner.expression);
@@ -109,16 +102,16 @@ function privateMockObjectFix(
   return (fixer) => fixer.replaceText(node, replacement);
 }
 
-function simpleMockObject(node: TSESTree.Node, sourceCode: TypeScriptSourceCode): boolean {
-  if (node.type !== AST_NODE_TYPES.ObjectExpression) return false;
+function simpleMockObject(node: Node, sourceCode: SourceCode): boolean {
+  if (node.type !== "ObjectExpression") return false;
   return node.properties.every((property) => {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed || property.method || property.kind !== "init") return false;
+    if (property.type !== "Property" || property.computed || property.method || property.kind !== "init") return false;
     const value = property.value;
-    if (value.type === AST_NODE_TYPES.Literal) return value.value === null ||
-      ["string", "number", "boolean", "bigint"].includes(typeof value.value);
-    if (value.type === AST_NODE_TYPES.ObjectExpression) return simpleMockObject(value, sourceCode);
-    return value.type === AST_NODE_TYPES.CallExpression && !value.optional && value.arguments.length === 0 &&
-      value.typeArguments === undefined && value.callee.type === AST_NODE_TYPES.MemberExpression && !value.callee.optional &&
-      ASTUtils.getPropertyName(value.callee) === "fn" && isMockFactory(value, sourceCode);
+    if (value.type === "Literal") return value.value === null ||
+      SIMPLE_LITERAL_TYPES.has(typeof value.value);
+    if (value.type === "ObjectExpression") return simpleMockObject(value, sourceCode);
+    return value.type === "CallExpression" && !value.optional && value.arguments.length === 0 &&
+      !isPresent(value.typeArguments) && value.callee.type === "MemberExpression" && !value.callee.optional &&
+      getPropertyName(value.callee) === "fn" && isMockFactory(value, sourceCode);
   });
 }

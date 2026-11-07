@@ -1,17 +1,16 @@
 /**
  * @fileoverview no-comment-cruft — commented-out code, section banners and file-header preambles are volume the reader pays for and nothing maintains.
  *
+ * Port of the 18.x `no-comment-cruft` rule. The comment analysis is
+ * unchanged; per-file state is reset in `before()`.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
  */
 
-import type { NativeReportFix, NativeRuleFix } from "./_eslint-rule.js";
+import type { Comment, Fix, FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { commentLineEndings, ownLineCommentRemovalRange } from "./_comment-edits.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type Node, type SourceCode } from "../types.js";
+import { commentLineEndings, ownLineCommentRemovalRange } from "../utils/comment-edits.js";
 import {
   codeTokens,
   contentTokens,
@@ -20,60 +19,9 @@ import {
   restates,
   restatableStatementBelow,
   restatesStatementHead,
-} from "./_comments.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds =
-  | "commentedOutCode"
-  | "sectionBanner"
-  | "fileHeaderPreamble"
-  | "commentWall"
-  | "redundantNarration"
-  | "placeholderImplementation"
-  | "untrackedTodo";
-type Options = readonly [];
-
-export const NO_COMMENT_CRUFT_DOCUMENTATION = {
-  summary: "Flag commented-out code, section-banner comments, and leading file-header comment preambles.",
-  rationale:
-    "Decorative, narrated, or dead-code comments obscure the constraints and rationale that comments should preserve.",
-  remediation:
-    "Delete dead code and narration; express boundaries with named code and retain only comments that explain constraints or intent.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "The rule skips generated files and conservatively preserves prose, issue references, licenses, examples, and tool directives. Automatic fixes remove only whole-line punctuation-only banners while preserving line endings; narrated prose, unfinished work and contextual labels remain manual.",
-  ],
-  examples: [
-    {
-      id: "owned-context",
-      title: "A reference records why the counter changes",
-      outcome: "no-match",
-      files: [{ path: "src/counter.ts", source: "// increment the counter for PLT-812\ncounter += 1;" }],
-      focusPath: "src/counter.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "redundant-narration",
-      title: "A comment repeats the statement below",
-      outcome: "match",
-      files: [{ path: "src/counter.ts", source: "// increment the counter\ncounter += 1;" }],
-      focusPath: "src/counter.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "const first = 1;\n// =================\nconst second = 2;" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "const first = 1;\n\nconst second = 2;" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+} from "../utils/comments.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
 
 const LEADING_PREAMBLE_MIN = 4;
 const WALL_MIN_STATEMENTS = 4;
@@ -236,7 +184,7 @@ function hasPseudocode(text: string): boolean {
   return PSEUDOCODE_RE.test(text);
 }
 
-function testCallMatrixStems(comments: readonly TSESTree.Comment[]): ReadonlySet<string> {
+function testCallMatrixStems(comments: readonly Comment[]): ReadonlySet<string> {
   const stems = new Set<string>();
   for (const comment of comments) {
     const body = stripCommentMarker(comment.value);
@@ -281,23 +229,24 @@ function isRedundantNarration(
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
   if (!standalone) return restatesStatementHead(t, statementBelow);
-  const justified = JUSTIFICATION_RE.test(t);
-  if (STEP_NARRATION_RE.test(t) && !justified) return true;
-  if (META_COMMENTARY_RE.test(t) && !justified) return true;
-  if (isBareDeferral(t) && !justified) return true;
-  if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
-
-  const words = t.split(/\s+/);
-  if (words.length > 1 && words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
-    const lowerT = t.toLowerCase();
-    if (!RATIONALE_WORDS.some((word) => lowerT.includes(word)) && restatesWholeStatement(t, statementBelow)) {
-      return true;
-    }
-  }
-
+  if (isNarrationPhrase(t) || isDummyTranslation(t, statementBelow)) return true;
   if (!nested && isSectionLabel(t)) return true;
   if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   return restatesStatementHead(t, statementBelow);
+}
+
+/** Wording that narrates by itself: unjustified step adverbs, debt meta-commentary or bare deferrals, helper openers, `let's`. */
+function isNarrationPhrase(text: string): boolean {
+  if ((STEP_NARRATION_RE.test(text) || META_COMMENTARY_RE.test(text) || isBareDeferral(text)) && !JUSTIFICATION_RE.test(text)) return true;
+  return HELPER_OPENER_RE.test(text) || LETS_RE.test(text);
+}
+
+/** A two-to-four word `returns x` / `set y` gloss, with no rationale, that restates the whole statement below. */
+function isDummyTranslation(text: string, statementBelow: string | null): boolean {
+  const words = text.split(/\s+/);
+  if (words.length <= 1 || words.length > 4 || !DUMMY_TRANSLATION_RE.test(text) || /[():=]/.test(text)) return false;
+  const lower = text.toLowerCase();
+  return !RATIONALE_WORDS.some((word) => lower.includes(word)) && restatesWholeStatement(text, statementBelow);
 }
 
 const JUSTIFICATION_RE =
@@ -320,36 +269,68 @@ function restatesWholeStatement(body: string, statement: string | null): boolean
 
 // Outside these containers, a short label groups expression elements.
 const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.Program,
-  AST_NODE_TYPES.BlockStatement,
-  AST_NODE_TYPES.ClassBody,
-  AST_NODE_TYPES.StaticBlock,
-  AST_NODE_TYPES.SwitchCase,
-  AST_NODE_TYPES.TSModuleBlock,
-  AST_NODE_TYPES.TSInterfaceBody,
+  "Program",
+  "BlockStatement",
+  "ClassBody",
+  "StaticBlock",
+  "SwitchCase",
+  "TSModuleBlock",
+  "TSInterfaceBody",
 ]);
 
 interface CommentWall {
-  readonly leader: TSESTree.Comment;
-  readonly members: ReadonlySet<TSESTree.Comment>;
+  readonly leader: Comment;
+  readonly members: ReadonlySet<Comment>;
+}
+
+interface WallEntry {
+  readonly comment: Comment;
+  /** The commented statement's index among its container's statements. */
+  readonly index: number;
+  readonly weak: boolean;
+}
+
+/** Group a container's commented statements into runs at most two statements apart. */
+function statementClusters(entries: readonly WallEntry[]): WallEntry[][] {
+  const clusters: WallEntry[][] = [];
+  for (const entry of entries.toSorted((left, right) => left.index - right.index)) {
+    const cluster = clusters.at(-1);
+    const previous = cluster?.at(-1);
+    if (cluster !== undefined && previous !== undefined && entry.index <= previous.index + 2) cluster.push(entry);
+    else clusters.push([entry]);
+  }
+  return clusters;
+}
+
+/** The wall a cluster forms when it spans enough statements and most of its comments are weak walkthrough. */
+function clusterWall(cluster: readonly WallEntry[]): CommentWall | null {
+  const first = cluster[0];
+  const last = cluster.at(-1);
+  if (first === undefined || last === undefined) return null;
+  const span = last.index - first.index + 1;
+  const weak = cluster.filter((entry) => entry.weak).map((entry) => entry.comment);
+  const leader = weak[0];
+  if (
+    leader === undefined ||
+    span < WALL_MIN_STATEMENTS ||
+    weak.length < WALL_MIN_COMMENTS ||
+    cluster.length / span < WALL_MIN_COMMENTED_RATIO ||
+    weak.length / cluster.length < WALL_MIN_WEAK_RATIO
+  ) {
+    return null;
+  }
+  return { leader, members: new Set(weak) };
 }
 
 interface WallAttachment {
-  readonly container: TSESTree.Node;
+  readonly container: Node;
   readonly index: number;
   readonly statement: string;
 }
 
 function statementAttachmentBelow(
-  comment: TSESTree.Comment,
-  sourceCode: Readonly<{
-    getNodeByRangeIndex(index: number): TSESTree.Node | null;
-    getTokenAfter(
-      node: TSESTree.Comment,
-      options: { includeComments: boolean },
-    ): TSESTree.Token | null;
-    getText(node: TSESTree.Node): string;
-  }>,
+  comment: Comment,
+  sourceCode: Pick<SourceCode, "getNodeByRangeIndex" | "getTokenAfter" | "getText">,
 ): WallAttachment | null {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (
@@ -360,7 +341,7 @@ function statementAttachmentBelow(
     return null;
   }
   for (
-    let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+    let node: Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
     node?.parent != null;
     node = node.parent
   ) {
@@ -377,32 +358,31 @@ function statementAttachmentBelow(
 }
 
 const WALL_STATEMENTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ExpressionStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
-  AST_NODE_TYPES.VariableDeclaration,
-  AST_NODE_TYPES.IfStatement,
-  AST_NODE_TYPES.ForStatement,
-  AST_NODE_TYPES.ForOfStatement,
-  AST_NODE_TYPES.ForInStatement,
-  AST_NODE_TYPES.WhileStatement,
-  AST_NODE_TYPES.DoWhileStatement,
-  AST_NODE_TYPES.SwitchStatement,
-  AST_NODE_TYPES.TryStatement,
+  "ExpressionStatement",
+  "ReturnStatement",
+  "ThrowStatement",
+  "VariableDeclaration",
+  "IfStatement",
+  "ForStatement",
+  "ForOfStatement",
+  "ForInStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "SwitchStatement",
+  "TryStatement",
 ]);
 
-function directStatements(container: TSESTree.Node): readonly TSESTree.Node[] {
+function directStatements(container: Node): readonly Node[] {
   switch (container.type) {
-    case AST_NODE_TYPES.Program:
-    case AST_NODE_TYPES.BlockStatement:
-    case AST_NODE_TYPES.ClassBody:
-    case AST_NODE_TYPES.StaticBlock:
-    case AST_NODE_TYPES.TSModuleBlock:
+    case "Program":
+    case "BlockStatement":
+    case "ClassBody":
+    case "StaticBlock":
+    case "TSModuleBlock":
+    case "TSInterfaceBody":
       return container.body;
-    case AST_NODE_TYPES.SwitchCase:
+    case "SwitchCase":
       return container.consequent;
-    case AST_NODE_TYPES.TSInterfaceBody:
-      return container.body;
     default:
       return [];
   }
@@ -433,12 +413,12 @@ function isWeakWalkthroughComment(body: string, statement: string): boolean {
 
 /** Type-member containers cannot contain bare call statements. */
 const TYPE_MEMBER_CONTAINERS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.TSInterfaceBody,
-  AST_NODE_TYPES.TSTypeLiteral,
+  "TSInterfaceBody",
+  "TSTypeLiteral",
 ]);
 
 /** Preserve an entire contiguous comment run when any line cites a reference. */
-function runCitesAReference(comments: readonly TSESTree.Comment[], index: number): boolean {
+function runCitesAReference(comments: readonly Comment[], index: number): boolean {
   for (let i = index;i >= 0;i--) {
     if (i < index && !areAdjacentLineComments(comments[i], comments[i + 1])) break;
     if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
@@ -452,8 +432,8 @@ function runCitesAReference(comments: readonly TSESTree.Comment[], index: number
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
 function areAdjacentLineComments(
-  a: TSESTree.Comment | undefined,
-  b: TSESTree.Comment | undefined,
+  a: Comment | undefined,
+  b: Comment | undefined,
 ): boolean {
   return (
     a !== undefined &&
@@ -465,7 +445,7 @@ function areAdjacentLineComments(
 }
 
 /** Index of the first comment in the current contiguous `//` run. */
-function lineRunStart(comments: readonly TSESTree.Comment[], index: number): number {
+function lineRunStart(comments: readonly Comment[], index: number): number {
   let start = index;
   while (start > 0 && areAdjacentLineComments(comments[start - 1], comments[start])) {
     start -= 1;
@@ -475,7 +455,7 @@ function lineRunStart(comments: readonly TSESTree.Comment[], index: number): num
 
 /** Preserve request/response examples as a unit, including their arrow lines. */
 function runDocumentsHttpContract(
-  comments: readonly TSESTree.Comment[],
+  comments: readonly Comment[],
   index: number,
 ): boolean {
   const start = lineRunStart(comments, index);
@@ -490,7 +470,7 @@ function runDocumentsHttpContract(
  * True when the comment at `index` is one line of a contiguous `//` block rather
  * than a lone annotation.
  */
-function isInsideCommentRun(comments: readonly TSESTree.Comment[], index: number): boolean {
+function isInsideCommentRun(comments: readonly Comment[], index: number): boolean {
   const comment = comments[index];
   return (
     areAdjacentLineComments(comments[index - 1], comment) ||
@@ -502,7 +482,7 @@ function isInsideCommentRun(comments: readonly TSESTree.Comment[], index: number
 const LEAD_IN_SCAN_LIMIT = 24;
 
 function hasIllustrationLeadInAbove(
-  comments: readonly TSESTree.Comment[],
+  comments: readonly Comment[],
   index: number,
 ): boolean {
   for (let i = index - 1;i >= 0 && index - i <= LEAD_IN_SCAN_LIMIT;i--) {
@@ -511,6 +491,23 @@ function hasIllustrationLeadInAbove(
     if (body.length > 0 && body.endsWith(":")) return true;
   }
   return false;
+}
+
+/** Whether the `//` line right above `comment` is prose that introduces it. */
+function followsProseLine(comments: readonly Comment[], index: number, comment: Comment): boolean {
+  const prev = comments[index - 1];
+  return (
+    prev !== undefined &&
+    prev.type === "Line" &&
+    prev.loc.end.line === comment.loc.start.line - 1 &&
+    isProse(stripCommentMarker(prev.value))
+  );
+}
+
+/** A comment whose every content line is a banner. */
+function isPureBannerComment(comment: Comment): boolean {
+  const lines = comment.value.split("\n").map(stripCommentMarker).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => BANNER_FULL_RE.test(line));
 }
 
 function hasCommentedOutCode(
@@ -529,16 +526,14 @@ function hasCommentedOutCode(
   }
   return false;
 }
-
-export default createRule<Options, MessageIds>({
-  name: "no-comment-cruft",
-  documentation: NO_COMMENT_CRUFT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Flag commented-out code, section-banner comments, and leading file-header comment preambles.",
+      url: docsUrl("no-comment-cruft"),
     },
     schema: [],
     messages: {
@@ -558,47 +553,41 @@ export default createRule<Options, MessageIds>({
         "Untracked TODO/FIXME marker — add an issue ticket or context link.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
+  createOnce(context) {
+    // Per-file; set in `before()`.
+    let sourceCode: SourceCode;
+    let testFile = false;
 
-    const sourceCode = context.sourceCode;
-
-    function isStandalone(comment: TSESTree.Comment): boolean {
+    function isStandalone(comment: Comment): boolean {
       const before = sourceCode.getTokenBefore(comment, {
         includeComments: false,
       });
       return !before || before.loc.end.line < comment.loc.start.line;
     }
 
-    function isJsDoc(comment: TSESTree.Comment): boolean {
-      return comment.type === "Block" && /^\*/.test(comment.value);
+    function isJsDoc(comment: Comment): boolean {
+      return comment.type === "Block" && comment.value.startsWith("*");
     }
 
     /** True for a block comment that is the sole JSX expression content. */
-    function isJsxOnlyComment(comment: TSESTree.Comment): boolean {
+    function isJsxOnlyComment(comment: Comment): boolean {
       for (
-        let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(
+        let node: Node | null | undefined = sourceCode.getNodeByRangeIndex(
           comment.range[0],
         );
         node != null;
         node = node.parent
       ) {
-        if (node.type === AST_NODE_TYPES.JSXExpressionContainer) {
-          return node.expression.type === AST_NODE_TYPES.JSXEmptyExpression;
+        if (node.type === "JSXExpressionContainer") {
+          return node.expression.type === "JSXEmptyExpression";
         }
-        if (node.type === AST_NODE_TYPES.Program) return false;
+        if (node.type === "Program") return false;
       }
       return false;
     }
 
-    function findCommentWalls(comments: readonly TSESTree.Comment[]): CommentWall[] {
-      const attached = new Map<
-        TSESTree.Node,
-        Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>
-      >();
+    function findCommentWalls(comments: readonly Comment[]): CommentWall[] {
+      const attached = new Map<Node, WallEntry[]>();
       for (const comment of comments) {
         if (comment.type !== "Line" || !isStandalone(comment)) continue;
         const attachment = statementAttachmentBelow(comment, sourceCode);
@@ -613,69 +602,31 @@ export default createRule<Options, MessageIds>({
         attached.set(attachment.container, entries);
       }
 
-      const walls: CommentWall[] = [];
-      for (const entries of attached.values()) collectWalls(entries);
-      function collectWalls(entries: Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>): void {
-        const sorted = entries.toSorted((left, right) => left.index - right.index);
-        const clusters: Array<typeof sorted> = [];
-        for (const entry of sorted) {
-          const cluster = clusters.at(-1);
-          if (cluster !== undefined && entry.index <= (cluster.at(-1)?.index ?? 0) + 2) {
-            cluster.push(entry);
-          } else {
-            clusters.push([entry]);
-          }
-        }
-        for (const cluster of clusters) {
-          const firstIndex = cluster[0]?.index;
-          const lastIndex = cluster.at(-1)?.index;
-          if (firstIndex === undefined || lastIndex === undefined) continue;
-          const span = lastIndex - firstIndex + 1;
-          const weak = cluster.filter((entry) => entry.weak).map((entry) => entry.comment);
-          if (
-            span < WALL_MIN_STATEMENTS ||
-            weak.length < WALL_MIN_COMMENTS ||
-            cluster.length / span < WALL_MIN_COMMENTED_RATIO ||
-            weak.length / cluster.length < WALL_MIN_WEAK_RATIO
-          ) {
-            continue;
-          }
-          const leader = weak[0];
-          if (leader !== undefined) walls.push({ leader, members: new Set(weak) });
-        }
-
-      }
-      return walls;
+      return [...attached.values()].flatMap(statementClusters).map(clusterWall).filter((wall) => wall !== null);
     }
 
-    /** True when every content line of a JSDoc block is a banner or a section title. */
-    function bannerFix(comment: TSESTree.Comment): NativeReportFix | null {
-      const pure = (candidate: TSESTree.Comment): boolean => {
-        const lines = candidate.value.split("\n").map(stripCommentMarker).filter(Boolean);
-        return lines.length > 0 && lines.every((line) => BANNER_FULL_RE.test(line));
-      };
-      if (!pure(comment)) return null;
-      const comments = sourceCode.getAllComments();
-      const index = comments.indexOf(comment);
-      let start = index;
+    /** Remove a pure banner comment, with the pure banners in its `//` run. */
+    function bannerFix(comments: readonly Comment[], index: number): FixFn | undefined {
+      const comment = comments[index];
+      if (comment === undefined || !isPureBannerComment(comment)) return undefined;
+      const start = lineRunStart(comments, index);
       let end = index;
-      while (start > 0 && areAdjacentLineComments(comments[start - 1], comments[start])) start -= 1;
       while (end + 1 < comments.length && areAdjacentLineComments(comments[end], comments[end + 1])) end += 1;
-      const removals = comments.slice(start, end + 1).filter(pure).map((candidate) => ownLineCommentRemovalRange(sourceCode.text, candidate));
-      if (removals.some((removal) => removal === null)) return null;
+      const text = sourceCode.text;
+      const removals = comments.slice(start, end + 1).filter(isPureBannerComment).map((candidate) => ownLineCommentRemovalRange(text, candidate));
+      if (!removals.every((removal) => removal !== null)) return undefined;
       return (fixer) => {
-        const fixes: NativeRuleFix[] = [];
+        const fixes: Fix[] = [];
         for (const removal of removals) {
-          if (removal === null) return null;
-          const endings = commentLineEndings(sourceCode.text, removal);
+          const endings = commentLineEndings(text, removal);
           if (endings === null) return null;
-          fixes.push(fixer.replaceTextRange([...(removal.range)], endings));
+          fixes.push(fixer.replaceTextRange([removal.range[0], removal.range[1]], endings));
         }
         return fixes;
       };
     }
 
-    function isSectionJsDoc(comment: TSESTree.Comment): boolean {
+    function isSectionJsDoc(comment: Comment): boolean {
       const texts = comment.value
         .split("\n")
         .map(stripCommentMarker)
@@ -693,10 +644,10 @@ export default createRule<Options, MessageIds>({
     }
 
     function reportLeadingPreamble(
-      comments: readonly TSESTree.Comment[],
+      comments: readonly Comment[],
       firstCodeLine: number,
     ): void {
-      const leading: TSESTree.Comment[] = [];
+      const leading: Comment[] = [];
       let prevLine: number | null = null;
       for (const comment of comments) {
         if (comment.type !== "Line") break;
@@ -722,9 +673,15 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
+      before(): boolean | void {
+        sourceCode = context.sourceCode;
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isGeneratedFile(file, sourceCode.text)) return false;
+        testFile = isTestFile(file);
+      },
       Program(): void {
         const comments = sourceCode.getAllComments();
-        const callMatrixStems = isTestFile(context)
+        const callMatrixStems = testFile
           ? testCallMatrixStems(comments)
           : new Set<string>();
         const walls = findCommentWalls(comments);
@@ -737,6 +694,13 @@ export default createRule<Options, MessageIds>({
         );
         const reportedBannerRuns = new Set<number>();
         const reportedCodeRuns = new Set<number>();
+
+        function reportBanner(comment: Comment, i: number): void {
+          const fix = bannerFix(comments, i);
+          context.report(fix === undefined
+            ? { node: comment, messageId: "sectionBanner" }
+            : { node: comment, messageId: "sectionBanner", fix });
+        }
 
         function checkComment(i: number): void {
           const comment = comments[i];
@@ -762,7 +726,7 @@ export default createRule<Options, MessageIds>({
             }
             // JSDoc is preserved unless its entire body is a section signpost.
             if (isStandalone(comment) && isSectionJsDoc(comment)) {
-              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
+              reportBanner(comment, i);
             }
             return;
           }
@@ -776,7 +740,7 @@ export default createRule<Options, MessageIds>({
           // banner shapes are the one unambiguous exception.
           if (!isStandalone(comment)) {
             if (isJsxOnlyComment(comment) && texts.some(isBanner)) {
-              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
+              reportBanner(comment, i);
             }
             return;
           }
@@ -784,32 +748,16 @@ export default createRule<Options, MessageIds>({
           checkStandaloneComment(comment, texts, i);
         }
 
-        function checkStandaloneComment(comment: TSESTree.Comment, texts: string[], i: number): void {
-          const firstText = texts[0];
-          const firstTextStem = firstText === undefined
-            ? undefined
-            : CALL_LABEL_RE.exec(firstText)?.[1];
-          if (
-            firstTextStem !== undefined &&
-            texts.length === 1 &&
-            callMatrixStems.has(firstTextStem)
-          ) return;
-          if (firstText !== undefined && /^(?:todo|fixme)\b/i.test(firstText)) {
-            if (!runCitesAReference(comments, i)) {
-              context.report({
-                node: comment,
-                messageId: "untrackedTodo",
-              });
-            }
+        function checkStandaloneComment(comment: Comment, texts: string[], i: number): void {
+          const [firstText] = texts;
+          if (firstText === undefined) return;
+          const firstTextStem = CALL_LABEL_RE.exec(firstText)?.[1];
+          if (firstTextStem !== undefined && texts.length === 1 && callMatrixStems.has(firstTextStem)) return;
+          if (/^(?:todo|fixme)\b/i.test(firstText)) {
+            if (!runCitesAReference(comments, i)) context.report({ node: comment, messageId: "untrackedTodo" });
             return;
           }
-
-          if (
-            texts.length === 1 &&
-            firstText !== undefined &&
-            EDITORIAL_PLACEHOLDER_RE.test(firstText) &&
-            !runCitesAReference(comments, i)
-          ) {
+          if (texts.length === 1 && EDITORIAL_PLACEHOLDER_RE.test(firstText) && !runCitesAReference(comments, i)) {
             context.report({ node: comment, messageId: "placeholderImplementation" });
             return;
           }
@@ -817,24 +765,13 @@ export default createRule<Options, MessageIds>({
           const runStart = lineRunStart(comments, i);
           if (texts.some(isBanner)) {
             if (!reportedBannerRuns.has(runStart)) {
-              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
+              reportBanner(comment, i);
               reportedBannerRuns.add(runStart);
             }
             return;
           }
-          const prev = comments[i - 1];
-          const precedingProse =
-            prev !== undefined &&
-            prev.type === "Line" &&
-            prev.loc.end.line === comment.loc.start.line - 1 &&
-            isProse(stripCommentMarker(prev.value));
           const container = sourceCode.getNodeByRangeIndex(comment.range[0]);
-          const inTypeMembers = container !== null && TYPE_MEMBER_CONTAINERS.has(container.type);
-          if (
-            hasCommentedOutCode(texts, precedingProse, !inTypeMembers) &&
-            !hasIllustrationLeadInAbove(comments, i) &&
-            !runDocumentsHttpContract(comments, i)
-          ) {
+          if (isCommentedOutCode(comment, texts, i, container)) {
             if (!reportedCodeRuns.has(runStart)) {
               context.report({ node: comment, messageId: "commentedOutCode" });
               reportedCodeRuns.add(runStart);
@@ -844,7 +781,15 @@ export default createRule<Options, MessageIds>({
           checkNarration(comment, texts, i, container);
         }
 
-        function checkNarration(comment: TSESTree.Comment, texts: string[], i: number, container: TSESTree.Node | null): void {
+        /** Code-shaped lines that no prose lead-in or HTTP contract example introduces. */
+        function isCommentedOutCode(comment: Comment, texts: readonly string[], i: number, container: Node | null): boolean {
+          const inTypeMembers = container !== null && TYPE_MEMBER_CONTAINERS.has(container.type);
+          return hasCommentedOutCode(texts, followsProseLine(comments, i, comment), !inTypeMembers) &&
+            !hasIllustrationLeadInAbove(comments, i) &&
+            !runDocumentsHttpContract(comments, i);
+        }
+
+        function checkNarration(comment: Comment, texts: string[], i: number, container: Node | null): void {
           // Narration only for single-line comments (a multi-line block is
           // usually a real doc).
           if (comment.type === "Line" && texts.length === 1) {

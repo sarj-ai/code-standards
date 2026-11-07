@@ -273,7 +273,7 @@ def test_displayed_python_syntax_rejects_malformed_focus_companions_and_fixes(co
         _compile_displayed_python(malformed)
 
 
-@pytest.mark.parametrize("key", tuple(key for key in _DISPLAY.rules if not key.startswith("eslint:")))
+@pytest.mark.parametrize("key", tuple(key for key in _DISPLAY.rules if not key.startswith("oxlint:")))
 def test_displayed_examples_preserve_the_live_rule_outcome(key: str) -> None:
     rule = selected(RuleSelector.parse(key))
     displayed = _DISPLAY.rules[key].examples

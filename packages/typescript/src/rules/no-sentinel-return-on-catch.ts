@@ -1,50 +1,39 @@
 /**
  * @fileoverview no-sentinel-return-on-catch — a `catch` returning `null` / `[]` / `{}` discards the error, so callers cannot tell empty from failed.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts
+ * Port of the 18.x `no-sentinel-return-on-catch` rule. Same algorithm;
+ * generated files are skipped and options are read in `before()`, and parents
+ * are read with `parentOf()` because Oxlint's `Program.parent` is `null`.
  */
 
-import { type TSESTree, AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
-
-import { unwrapExpression } from "./_unwrap-expression.js";
-
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { forEachOwnAstChild, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
 import {
-  createLogMatcher,
   calleeName,
+  createLogMatcher,
   LOGGING_OPTION_PROPERTIES,
   type LoggingOptions,
+  type LogMatcher,
   REPORT_NAME_RE,
-} from "./_logging.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+} from "../utils/logging.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { enclosingFunction } from "../utils/stable-value-binding.js";
 
-type MessageIds = "noSentinelReturn";
-type Options = readonly [LoggingOptions?];
-
-export const NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION = {
-  summary: "Disallow swallowing a caught error by returning an empty sentinel unless the error is handled or the sentinel is part of the function contract.",
-  rationale: "An unreported fallback makes operational failure indistinguishable from a legitimate empty result.",
-  remediation: "Rethrow, report the error before returning, or model expected absence with an explicit predicate, safe-parse, or result contract.",
-  category: "correctness",
-  limitations: ["Recognized predicate, safe-parse, normal-path sentinel, deliberate parse, generated-client, and configured logging patterns are excluded. Locally shadowed undefined bindings are not treated as sentinels; recognized handling patterns are not a proof that every control-flow path handles the error."],
-  examples: [
-    { id: "reported-fallback", title: "Report an error before returning a fallback", outcome: "no-match", files: [{ path: "src/load.ts", source: "function load() { try { return read(); } catch (error) { logger.warn('load failed', error); return null; } }" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
-    { id: "silent-fallback", title: "Do not turn an unreported error into absence", outcome: "match", files: [{ path: "src/load.ts", source: "function load() { try { return read(); } catch { return null; } }" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-sentinel-return-on-catch";
 
 type SentinelKind = "nullish" | "boolean" | "array" | "object" | "string";
 
 /** Peel type-only wrappers while preserving runtime expressions such as `value!`. */
 function unwrapSentinelExpression(
-  arg: TSESTree.Expression | null,
-): TSESTree.Expression | null {
+  arg: Node | null,
+): Node | null {
   let current = arg;
   while (
-    current?.type === AST_NODE_TYPES.TSAsExpression ||
-    current?.type === AST_NODE_TYPES.TSTypeAssertion ||
-    current?.type === AST_NODE_TYPES.TSSatisfiesExpression
+    current?.type === "TSAsExpression" ||
+    current?.type === "TSTypeAssertion" ||
+    current?.type === "TSSatisfiesExpression"
   ) {
     current = current.expression;
   }
@@ -52,12 +41,12 @@ function unwrapSentinelExpression(
 }
 
 /** The sentinel "kind" of a returned expression, or null if not a sentinel. */
-function sentinelKind(arg: TSESTree.Expression | null): SentinelKind | null {
+function sentinelKind(arg: Node | null): SentinelKind | null {
   const value = unwrapSentinelExpression(arg);
   if (value === null) {
     return null;
   }
-  if (value.type === AST_NODE_TYPES.Literal) {
+  if (value.type === "Literal") {
     if (value.value === null) {
       return "nullish";
     }
@@ -69,107 +58,67 @@ function sentinelKind(arg: TSESTree.Expression | null): SentinelKind | null {
     }
     return null;
   }
-  if (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined") {
+  if (value.type === "Identifier" && value.name === "undefined") {
     return "nullish";
   }
-  if (value.type === AST_NODE_TYPES.ArrayExpression) {
+  if (value.type === "ArrayExpression") {
     return "array";
   }
-  if (value.type === AST_NODE_TYPES.ObjectExpression) {
+  if (value.type === "ObjectExpression") {
     return "object";
   }
   return null;
 }
 
-/** Whether a returned expression is one of the swallowing sentinels we flag. */
-function isSentinelArgument(arg: TSESTree.Expression | null): boolean {
-  const value = unwrapSentinelExpression(arg);
-  if (value === null) {
-    return false;
-  }
-  if (value.type === AST_NODE_TYPES.Literal && value.value === null) {
-    return true;
-  }
-  if (value.type === AST_NODE_TYPES.Literal && value.value === false) {
-    return true;
-  }
-  if (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined") {
-    return true;
-  }
-  if (value.type === AST_NODE_TYPES.ArrayExpression && value.elements.length === 0) {
-    return true;
-  }
-  if (
-    value.type === AST_NODE_TYPES.ObjectExpression &&
-    value.properties.length === 0
-  ) {
-    return true;
-  }
-  return false;
+/** `null`, `false`, `undefined`, `[]` and `{}`: the empty values a swallowing catch returns. */
+function isEmptySentinel(value: Node): boolean {
+  if (value.type === "Literal") return value.value === null || value.value === false;
+  if (value.type === "ArrayExpression") return value.elements.length === 0;
+  if (value.type === "ObjectExpression") return value.properties.length === 0;
+  return value.type === "Identifier" && value.name === "undefined";
 }
 
-function isFunctionNode(
-  node: TSESTree.Node,
-) {
+function functionNode(node: Node): ESTree.Function | ESTree.ArrowFunctionExpression | null {
   return (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression
-  );
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression"
+  ) ? node : null;
 }
 
 /** Walk a subtree without entering nested functions, stopping on a match. */
 function walkWithinScope(
-  node: TSESTree.Node,
-  visit: (current: TSESTree.Node) => boolean,
+  node: Node,
+  visit: (current: Node) => boolean,
 ): boolean {
-  let found = false;
-
-  const recurse = (current: TSESTree.Node): void => {
-    if (found) {
-      return;
-    }
-    if (visit(current)) {
-      found = true;
-      return;
-    }
-    if (isFunctionNode(current)) {
-      return;
-    }
-    forEachOwnAstChild(current, child => {
-      recurse(child);
-      return found;
-    });
-  };
-
-  recurse(node);
-  return found;
+  if (visit(node)) return true;
+  return functionNode(node) === null && forEachOwnAstChild(node, (child) => walkWithinScope(child, visit));
 }
 
 /** Does this subtree throw (ignoring nested function scopes)? */
-function containsThrow(node: TSESTree.Node): boolean {
+function containsThrow(node: Node): boolean {
   return walkWithinScope(
     node,
-    (current) => current.type === AST_NODE_TYPES.ThrowStatement,
+    (current) => current.type === "ThrowStatement",
   );
 }
 
 /** True when a parameter pattern binds `name` (plain, default, rest, or destructured). */
-function bindsName(param: TSESTree.Node, name: string): boolean {
+function bindsName(param: Node, name: string): boolean {
   switch (param.type) {
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return param.name === name;
-    case AST_NODE_TYPES.AssignmentPattern:
+    case "AssignmentPattern":
       return bindsName(param.left, name);
-    case AST_NODE_TYPES.RestElement:
+    case "RestElement":
       return bindsName(param.argument, name);
-    case AST_NODE_TYPES.ArrayPattern:
+    case "ArrayPattern":
       return param.elements.some(
         (element) => element !== null && bindsName(element, name),
       );
-    case AST_NODE_TYPES.ObjectPattern:
+    case "ObjectPattern":
       return param.properties.some((property) =>
-        property.type === AST_NODE_TYPES.RestElement
+        property.type === "RestElement"
           ? bindsName(property.argument, name)
           : bindsName(property.value, name),
       );
@@ -179,65 +128,20 @@ function bindsName(param: TSESTree.Node, name: string): boolean {
 }
 
 /** Whether a subtree reads a binding in a value position without shadowing it. */
-function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
-  let found = false;
-
-  const recurse = (current: TSESTree.Node): void => {
-    if (found) {
-      return;
-    }
-    if (current.type === AST_NODE_TYPES.Identifier && current.name === name) {
-      found = true;
-      return;
-    }
-    if (shadowsName(current)) {
-      return;
-    }
-    forEachOwnAstChild(current, child => {
-      recurse(child);
-      return found;
-    }, key => !isNonReadingProperty(current, key));
-  };
-
-  /** Whether this function rebinds `name`. */
-  const shadowsName = (fn: TSESTree.Node): boolean =>
-    isFunctionNode(fn) &&
-    fn.params.some((param) =>
-      bindsName(param, name),
-    );
-
-  recurse(node);
-  return found;
-}
-
-/** Whether any call argument reads the caught-error binding. */
-function argsIncludeBinding(
-  args: readonly TSESTree.CallExpressionArgument[],
-  caughtName: string | null,
-): boolean {
-  if (caughtName === null) {
-    return false;
-  }
-  return args.some((arg) => subtreeReadsName(arg, caughtName));
+function subtreeReadsName(node: Node, name: string): boolean {
+  if (node.type === "Identifier" && node.name === name) return true;
+  // A function that rebinds `name` hides the caught error from its body.
+  if (functionNode(node)?.params.some((param) => bindsName(param, name)) === true) return false;
+  return forEachOwnAstChild(node, (child) => subtreeReadsName(child, name), (key) => !isNonReadingProperty(node, key));
 }
 
 /** Whether a node is a parse-style call or constructor that throws on bad input. */
-function isParseShapedNode(node: TSESTree.Node): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  if (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null
-  ) {
-    return (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "parse";
+function isParseShapedNode(node: ESTree.CallExpression | ESTree.NewExpression): boolean {
+  const callee = unwrapExpression(node.callee);
+  if (node.type === "CallExpression") {
+    return callee.type === "MemberExpression" && getPropertyName(callee) === "parse";
   }
-  if (
-    node.type === AST_NODE_TYPES.NewExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier
-  ) {
-    return SAFE_PARSE_CONSTRUCTORS.has(unwrappedNodeCallee.name);
-  }
-  return false;
+  return callee.type === "Identifier" && SAFE_PARSE_CONSTRUCTORS.has(callee.name);
 }
 
 /** Constructors that throw on malformed input. */
@@ -247,51 +151,42 @@ const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "URLPattern",
 ]);
 
-function isBodyDecodeNode(node: TSESTree.Node): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
-    BODY_DECODE_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
-  );
+function isBodyDecodeNode(node: ESTree.CallExpression | ESTree.NewExpression): boolean {
+  if (node.type !== "CallExpression") return false;
+  const callee = unwrapExpression(node.callee);
+  return callee.type === "MemberExpression" && BODY_DECODE_METHODS.has(getPropertyName(callee) ?? "");
 }
 
 /** Pure validation and optional browser-storage reads around JSON parsing. */
-function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
+function isSafeParseSupportCall(node: ESTree.CallExpression): boolean {
   const callee = unwrapExpression(node.callee);
-
+  if (callee.type !== "MemberExpression") return false;
+  const method = getPropertyName(callee);
   if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    ASTUtils.getPropertyName(callee) === null
-  ) {
-    return false;
-  }
-  if (
-    (ASTUtils.getPropertyName(callee) ?? "") === "isArray" &&
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    method === "isArray" &&
+    callee.object.type === "Identifier" &&
     callee.object.name === "Array"
   ) {
     return true;
   }
-  if ((ASTUtils.getPropertyName(callee) ?? "") !== "getItem") return false;
+  if (method !== "getItem") return false;
   if (
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     (callee.object.name === "localStorage" ||
       callee.object.name === "sessionStorage")
   ) {
     return true;
   }
   return (
-    callee.object.type === AST_NODE_TYPES.MemberExpression &&
-    callee.object.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "MemberExpression" &&
+    callee.object.object.type === "Identifier" &&
     (callee.object.object.name === "window" ||
       callee.object.object.name === "globalThis") &&
-    ASTUtils.getPropertyName(callee.object) !== null &&
-    ((ASTUtils.getPropertyName(callee.object) ?? "") === "localStorage" ||
-      (ASTUtils.getPropertyName(callee.object) ?? "") === "sessionStorage")
+    STORAGE_OBJECTS.has(getPropertyName(callee.object) ?? "")
   );
 }
+
+const STORAGE_OBJECTS: ReadonlySet<string> = new Set(["localStorage", "sessionStorage"]);
 
 /** Body-decoding methods of a `Request` / `Response` — they throw on bad input. */
 const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
@@ -300,104 +195,33 @@ const BODY_DECODE_METHODS: ReadonlySet<string> = new Set([
   "arrayBuffer",
 ]);
 
-/** Whether an enclosing predicate-named function returns `false` from its catch. */
-function isNamedBooleanPredicate(
-  catchNode: TSESTree.CatchClause,
-  kind: SentinelKind,
-): boolean {
-  if (kind !== "boolean") {
-    return false;
-  }
-  const name = enclosingFunctionName(catchNode);
-  return (
-    name !== null &&
-    (PREDICATE_NAME_RE.test(name) || PREDICATE_SUFFIX_RE.test(name))
-  );
-}
-
-/** The name of the nearest enclosing function, or null for an anonymous one. */
-function enclosingFunctionName(node: TSESTree.Node): string | null {
-  let current: TSESTree.Node | undefined | null = node.parent;
-  while (current !== undefined && current !== null) {
-    if (isFunctionNode(current)) {
-      if (
-        "id" in current &&
-        current.id !== null &&
-        current.id.type === AST_NODE_TYPES.Identifier
-      ) {
-        return current.id.name;
-      }
-      const parent = current.parent;
-      if (
-        parent?.type === AST_NODE_TYPES.VariableDeclarator &&
-        parent.id.type === AST_NODE_TYPES.Identifier
-      ) {
-        return parent.id.name;
-      }
-      return null;
-    }
-    current = current.parent;
-  }
-  return null;
-}
+type FunctionNode = ESTree.Function | ESTree.ArrowFunctionExpression;
 
 /** Names that conventionally declare a boolean-returning function. */
 const PREDICATE_NAME_RE = /^(is|has|can|should|must|does|did|was|were|are)[A-Z]/;
 const PREDICATE_SUFFIX_RE = /(Exists?|Available|Enabled|Disabled)$/;
 
-function isDeclaredBooleanPredicate(
-  catchNode: TSESTree.CatchClause,
-  kind: SentinelKind,
-): boolean {
-  if (kind !== "boolean") {
-    return false;
-  }
-  let declared = enclosingReturnTypeNode(catchNode);
-  if (
-    declared?.type === AST_NODE_TYPES.TSTypeReference &&
-    declared.typeName.type === AST_NODE_TYPES.Identifier &&
-    declared.typeName.name === "Promise"
-  ) {
-    declared = declared.typeArguments?.params[0] ?? null;
-  }
-  return declared?.type === AST_NODE_TYPES.TSBooleanKeyword;
-}
-
-/** The declared return type annotation of the nearest enclosing function, or null. */
-function enclosingReturnTypeNode(
-  node: TSESTree.Node,
-): TSESTree.TypeNode | null {
-  let current: TSESTree.Node | undefined | null = node.parent;
-  while (current !== undefined && current !== null) {
-    if (isFunctionNode(current) && "returnType" in current) {
-      return current.returnType?.typeAnnotation ?? null;
-    }
-    current = current.parent;
-  }
-  return null;
-}
-
 /** Does the try body contain only deliberate parse/decode operations that may throw? */
-function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
+function tryReturnsSafeParse(catchNode: ESTree.CatchClause): boolean {
   const tryBlock = tryBlockOf(catchNode);
   let sawSafeParse = false;
   let sawUnsafeOperation = false;
 
-  const recurse = (current: TSESTree.Node): void => {
-    if (sawUnsafeOperation || (current !== tryBlock && isFunctionNode(current))) return;
-    if (current.type === AST_NODE_TYPES.AwaitExpression) {
-      if (current.argument.type === AST_NODE_TYPES.CallExpression && isBodyDecodeNode(current.argument)) {
+  const recurse = (current: Node): void => {
+    if (sawUnsafeOperation || (current !== tryBlock && functionNode(current) !== null)) return;
+    if (current.type === "AwaitExpression") {
+      if (current.argument.type === "CallExpression" && isBodyDecodeNode(current.argument)) {
         recurse(current.argument);
       } else {
         sawUnsafeOperation = true;
       }
       return;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
+    if (current.type === "CallExpression" || current.type === "NewExpression") {
       if (isParseShapedNode(current) || isBodyDecodeNode(current)) {
         sawSafeParse = true;
       } else if (
-        current.type === AST_NODE_TYPES.CallExpression &&
+        current.type === "CallExpression" &&
         isSafeParseSupportCall(current)
       ) {
         // Pure support work does not broaden the failure boundary.
@@ -409,7 +233,7 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
     visitChildren(current);
   };
 
-  function visitChildren(current: TSESTree.Node): void {
+  function visitChildren(current: Node): void {
     forEachOwnAstChild(current, child => {
       recurse(child);
       return sawUnsafeOperation;
@@ -427,18 +251,18 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
  * remain visible.
  */
 function isIntentionalStackCapture(
-  catchNode: TSESTree.CatchClause,
+  catchNode: ESTree.CatchClause,
   caughtName: string | null,
 ): boolean {
   if (caughtName === null) return false;
   const tryBody = tryBlockOf(catchNode).body;
   const only = tryBody.length === 1 ? tryBody[0] : undefined;
-  if (only?.type !== AST_NODE_TYPES.ThrowStatement) return false;
+  if (only?.type !== "ThrowStatement") return false;
   const thrown = unwrapSentinelExpression(only.argument);
   const constructsError =
-    (thrown?.type === AST_NODE_TYPES.CallExpression ||
-      thrown?.type === AST_NODE_TYPES.NewExpression) &&
-    thrown.callee.type === AST_NODE_TYPES.Identifier &&
+    (thrown?.type === "CallExpression" ||
+      thrown?.type === "NewExpression") &&
+    thrown.callee.type === "Identifier" &&
     thrown.callee.name === "Error";
   if (!constructsError) return false;
   return catchNode.body.body
@@ -447,53 +271,63 @@ function isIntentionalStackCapture(
 }
 
 /** The try block guarded by this catch. */
-function tryBlockOf(catchNode: TSESTree.CatchClause): TSESTree.BlockStatement {
-  return catchNode.parent.block;
+function tryBlockOf(catchNode: ESTree.CatchClause): ESTree.BlockStatement {
+  return (parentOf(catchNode) as ESTree.TryStatement).block;
+}
+
+/** The catch's own contract: a boolean predicate or a function that also returns this sentinel normally. */
+function isSentinelContract(catchNode: ESTree.CatchClause, kind: SentinelKind): boolean {
+  const fn = enclosingFunction(catchNode);
+  if (fn === null) return false;
+  return (kind === "boolean" && (isNamedBooleanPredicate(fn) || isDeclaredBooleanPredicate(fn))) ||
+    functionReturnsSameSentinelKindElsewhere(catchNode, fn, kind);
+}
+
+/** A predicate-named function may answer `false` from its catch. */
+function isNamedBooleanPredicate(fn: FunctionNode): boolean {
+  const name = functionName(fn);
+  return name !== null && (PREDICATE_NAME_RE.test(name) || PREDICATE_SUFFIX_RE.test(name));
+}
+
+/** The function's own name, or the variable it initializes; null for an anonymous one. */
+function functionName(fn: FunctionNode): string | null {
+  if ("id" in fn && fn.id !== null && fn.id.type === "Identifier") return fn.id.name;
+  const parent = parentOf(fn);
+  return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" ? parent.id.name : null;
+}
+
+/** A function declared to return `boolean` or `Promise<boolean>` may answer `false` from its catch. */
+function isDeclaredBooleanPredicate(fn: FunctionNode): boolean {
+  let declared: ESTree.TSType | null = fn.returnType?.typeAnnotation ?? null;
+  if (
+    declared?.type === "TSTypeReference" &&
+    declared.typeName.type === "Identifier" &&
+    declared.typeName.name === "Promise"
+  ) {
+    declared = declared.typeArguments?.params[0] ?? null;
+  }
+  return declared?.type === "TSBooleanKeyword";
 }
 
 /** Whether a normal path returns the same sentinel kind as the catch. */
 function functionReturnsSameSentinelKindElsewhere(
-  catchNode: TSESTree.CatchClause,
+  catchNode: ESTree.CatchClause,
+  fn: FunctionNode,
   kind: SentinelKind,
 ): boolean {
   // Empty collections and objects are common successful results but say
   // nothing about whether operational failure may be converted into one.
-  if (kind !== "nullish" && kind !== "boolean") return false;
-  const functionBody = enclosingFunctionBody(catchNode);
-  if (functionBody === null) {
-    return false;
-  }
-  return walkWithinScope(functionBody, (current) => {
-    if (current.type !== AST_NODE_TYPES.ReturnStatement) {
-      return false;
-    }
-    if (isWithin(current, catchNode.body)) {
-      return false;
-    }
-    return returnedSentinelKinds(current.argument).has(kind);
-  });
-}
-
-/** The nearest enclosing function body, or null. */
-function enclosingFunctionBody(
-  node: TSESTree.Node,
-): TSESTree.BlockStatement | null {
-  let current: TSESTree.Node | undefined | null = node.parent;
-  while (current !== undefined && current !== null) {
-    if (
-      isFunctionNode(current) &&
-      current.body?.type === AST_NODE_TYPES.BlockStatement
-    ) {
-      return current.body;
-    }
-    current = current.parent;
-  }
-  return null;
+  if ((kind !== "nullish" && kind !== "boolean") || fn.body?.type !== "BlockStatement") return false;
+  return walkWithinScope(fn.body, (current) =>
+    current.type === "ReturnStatement" &&
+    !isWithin(current, catchNode.body) &&
+    returnedSentinelKinds(current.argument).has(kind),
+  );
 }
 
 /** Sentinel kinds reachable through a direct, ternary, or fallback return. */
 function returnedSentinelKinds(
-  arg: TSESTree.Expression | null,
+  arg: Node | null,
 ): ReadonlySet<SentinelKind> {
   const kinds = new Set<SentinelKind>();
   if (arg === null) {
@@ -504,20 +338,20 @@ function returnedSentinelKinds(
     kinds.add(direct);
     return kinds;
   }
-  if (arg.type === AST_NODE_TYPES.ConditionalExpression) {
+  if (arg.type === "ConditionalExpression") {
     for (const branch of [arg.consequent, arg.alternate]) {
       for (const nested of returnedSentinelKinds(branch)) {
         kinds.add(nested);
       }
     }
   } else if (
-    arg.type === AST_NODE_TYPES.LogicalExpression &&
+    arg.type === "LogicalExpression" &&
     (arg.operator === "??" || arg.operator === "||")
   ) {
     for (const nested of returnedSentinelKinds(arg.right)) {
       kinds.add(nested);
     }
-  } else if (arg.type === AST_NODE_TYPES.ChainExpression) {
+  } else if (arg.type === "ChainExpression") {
     // Optional chaining explicitly models ordinary-path absence as undefined.
     kinds.add("nullish");
   }
@@ -525,26 +359,25 @@ function returnedSentinelKinds(
 }
 
 /** Is `node` inside `ancestor`'s subtree? */
-function isWithin(node: TSESTree.Node, ancestor: TSESTree.Node): boolean {
-  let current: TSESTree.Node | undefined | null = node;
-  while (current !== undefined && current !== null) {
+function isWithin(node: Node, ancestor: Node): boolean {
+  let current: Node | null = node;
+  while (current !== null) {
     if (current === ancestor) {
       return true;
     }
-    current = current.parent;
+    current = parentOf(current);
   }
   return false;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-sentinel-return-on-catch",
-  documentation: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
         "Disallow swallowing a caught error by returning an empty sentinel unless the error is handled or the sentinel is part of the function contract.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -558,91 +391,57 @@ export default createRule<Options, MessageIds>({
         "This `catch` block swallows the error by returning an empty sentinel without logging it. Rethrow it, log/report it, or return a typed Result.",
     },
   },
-  create(context, [loggingOptions]) {
-    if (isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
-
-    const matcher = createLogMatcher(loggingOptions);
+  createOnce(context) {
+    let matcher: LogMatcher;
+    // Options arrive per file; rebuild the matcher only when they change.
+    let matcherOptions: unknown;
 
     function logsOrReportsError(
-      catchBody: TSESTree.BlockStatement,
+      catchBody: ESTree.BlockStatement,
       caughtName: string | null,
     ): boolean {
-      return walkWithinScope(catchBody, (current) => {
-        if (current.type !== AST_NODE_TYPES.CallExpression) {
-          return false;
-        }
-        if (matcher.isLoggingCall(current)) {
-          return caughtName === null || argsIncludeBinding(current.arguments, caughtName);
-        }
-        const name = calleeName(current.callee);
-        return (
-          name !== null &&
-          REPORT_NAME_RE.test(name) &&
-          (caughtName === null || argsIncludeBinding(current.arguments, caughtName))
-        );
-      });
+      return walkWithinScope(catchBody, (current) =>
+        current.type === "CallExpression" &&
+        (matcher.isLoggingCall(current) || isReportCall(current)) &&
+        (caughtName === null || current.arguments.some((arg) => subtreeReadsName(arg, caughtName))),
+      );
+    }
+
+    /** The returned sentinel when the catch ends by returning one, or null. */
+    function swallowedSentinel(node: ESTree.CatchClause): { last: ESTree.ReturnStatement; kind: SentinelKind } | null {
+      const last = node.body.body.at(-1);
+      const returned = last?.type === "ReturnStatement" ? unwrapSentinelExpression(last.argument) : null;
+      if (last?.type !== "ReturnStatement" || returned === null || !isEmptySentinel(returned)) return null;
+      // A locally declared `undefined` is not the undefined value.
+      if (returned.type === "Identifier" &&
+        (findVariable(context.sourceCode.getScope(returned), returned.name)?.defs.length ?? 0) > 0) return null;
+      const kind = sentinelKind(returned);
+      return kind === null ? null : { last, kind };
     }
 
     return {
-      CatchClause(node: TSESTree.CatchClause): void {
-        const body = node.body.body;
-        if (body.length === 0) {
-          return;
+      before(): boolean | void {
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        const [loggingOptions] = context.options as unknown as readonly [LoggingOptions?];
+        if (matcher === undefined || loggingOptions !== matcherOptions) {
+          matcher = createLogMatcher(loggingOptions);
+          matcherOptions = loggingOptions;
         }
-
-        const last = body[body.length - 1];
-        if (last === undefined || last.type !== AST_NODE_TYPES.ReturnStatement) {
-          return;
-        }
-
-        if (!isSentinelArgument(last.argument)) {
-          return;
-        }
-        const returned = unwrapSentinelExpression(last.argument);
-        if (returned?.type === AST_NODE_TYPES.Identifier && returned.name === "undefined" &&
-          (ASTUtils.findVariable(context.sourceCode.getScope(returned), returned.name)?.defs.length ?? 0) > 0) return;
-
-        if (containsThrow(node.body)) {
-          return;
-        }
-
-        const caughtName =
-          node.param?.type === AST_NODE_TYPES.Identifier
-            ? node.param.name
-            : null;
-
-        if (logsOrReportsError(node.body, caughtName)) {
-          return;
-        }
-
-        if (tryReturnsSafeParse(node)) {
-          return;
-        }
-
-        if (isIntentionalStackCapture(node, caughtName)) {
-          return;
-        }
-
-        const kind = sentinelKind(last.argument);
-        if (kind !== null && isNamedBooleanPredicate(node, kind)) {
-          return;
-        }
-
-        if (kind !== null && isDeclaredBooleanPredicate(node, kind)) {
-          return;
-        }
-
+      },
+      CatchClause(node: ESTree.CatchClause): void {
+        const sentinel = swallowedSentinel(node);
+        if (sentinel === null || containsThrow(node.body)) return;
+        const caughtName = node.param?.type === "Identifier" ? node.param.name : null;
         if (
-          kind !== null &&
-          functionReturnsSameSentinelKindElsewhere(node, kind)
+          logsOrReportsError(node.body, caughtName) ||
+          tryReturnsSafeParse(node) ||
+          isIntentionalStackCapture(node, caughtName) ||
+          isSentinelContract(node, sentinel.kind)
         ) {
           return;
         }
-
         context.report({
-          node: last,
+          node: sentinel.last,
           messageId: "noSentinelReturn",
         });
       },
@@ -650,11 +449,17 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function isNonReadingProperty(current: TSESTree.Node, key: string): boolean {
+/** A call to an error-reporting function such as `reportError(...)` or `Sentry.captureException(...)`. */
+function isReportCall(node: ESTree.CallExpression): boolean {
+  const name = calleeName(node.callee);
+  return name !== null && REPORT_NAME_RE.test(name);
+}
+
+function isNonReadingProperty(current: Node, key: string): boolean {
   // `{ error: 1 }` — the key names a field; it does not read the binding.
   if (
     key === "key" &&
-    current.type === AST_NODE_TYPES.Property &&
+    current.type === "Property" &&
     !current.computed
   ) {
     return true;
@@ -662,7 +467,7 @@ function isNonReadingProperty(current: TSESTree.Node, key: string): boolean {
   // `response.err` — the property names a field on some other object.
   if (
     key === "property" &&
-    current.type === AST_NODE_TYPES.MemberExpression &&
+    current.type === "MemberExpression" &&
     !current.computed
   ) {
     return true;

@@ -1,25 +1,13 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-dynamic-sql.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_DYNAMIC_SQL_DOCUMENTATION } from "../../src/rules/no-dynamic-sql.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
+    { name: "interpolated-sql-value-dynamic-member", filename: "src/users.ts", code: "db[auditDynamicMember](`select * from users where id = '${userId}'`);" },
+    { name: "unquoted-runtime-fragment-dynamic-member", filename: "src/users.ts", code: "db[auditDynamicMember](`select id from users where id = ${userId}`);" },
     { name: "preserves wrapped static concatenations", code: 'db.query(("SELECT " as string) + (("id FROM users" as string) + " WHERE id = ?"));' },
     { name: "preserves wrapped runtime text inside a SQL comment", code: 'db.query(("SELECT id FROM users /* " as string) + ((note as string) + " */"));' },
     { name: "preserves a type-erased literal inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${'fixed' as const}%'`);" },
@@ -37,7 +25,7 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     { name: "does not prescribe value bindings for concatenated identifiers", code: 'db.query(\'SELECT "\' + column + \'" FROM users\');' },
     {
       name: "accepts a question-mark placeholder bound separately",
-      code: NO_DYNAMIC_SQL_DOCUMENTATION.examples[0].files[0].source,
+      code: "db.prepare('select * from users where id = ?').bind(userId);",
     },
     {
       name: "accepts a positional placeholder bound separately",
@@ -135,6 +123,8 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    { name: "interpolated-sql-value-static-member", filename: "src/users.ts", code: "db[\"prepare\"](`select * from users where id = '${userId}'`);", errors: 1 },
+    { name: "unquoted-runtime-fragment-static-member", filename: "src/users.ts", code: "db[\"prepare\"](`select id from users where id = ${userId}`);", errors: 1 },
     { name: "reports a runtime operand inside a nested erased concatenation", code: 'db.query(("SELECT id FROM users WHERE id = " as string) + ((userId as string) + " "));', errors: [{ messageId: "dynamicFragment" }] },
     { name: "preserves quote context across wrapped static operands", code: 'db.query(("SELECT id FROM users WHERE id = \'" as string) + ((userId as string) + "\'"));', errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a type-erased runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term as string}%'`);", errors: [{ messageId: "dynamicSql" }] },
@@ -190,7 +180,7 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
     {
       name: "reports runtime template interpolation",
-      code: NO_DYNAMIC_SQL_DOCUMENTATION.examples[1].files[0].source,
+      code: "db.prepare(`select * from users where id = '${userId}'`);",
       errors: [{ messageId: "dynamicSql" }],
     },
     {
@@ -250,64 +240,4 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
       errors: [{ messageId: "dynamicSql" }],
     },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "interpolated-sql-value-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/users.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/users.ts",
-        "source": "db[\"prepare\"](`select * from users where id = '${userId}'`);"
-      }
-    ]
-  },
-  {
-    "id": "interpolated-sql-value-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/users.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/users.ts",
-        "source": "db[auditDynamicMember](`select * from users where id = '${userId}'`);"
-      }
-    ]
-  },
-  {
-    "id": "unquoted-runtime-fragment-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/users.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/users.ts",
-        "source": "db[\"prepare\"](`select id from users where id = ${userId}`);"
-      }
-    ]
-  },
-  {
-    "id": "unquoted-runtime-fragment-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/users.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/users.ts",
-        "source": "db[auditDynamicMember](`select id from users where id = ${userId}`);"
-      }
-    ]
-  }
-] } });
 });

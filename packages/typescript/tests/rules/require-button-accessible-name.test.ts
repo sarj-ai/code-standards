@@ -1,18 +1,9 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/require-button-accessible-name.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true } } },
-  defaultFilenames: { ts: "/repo/src/action.ts", tsx: "/repo/src/action.tsx" },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
+
 const OPTIONS = [
   {
     components: [{ module: "@design/actions", export: "Button" }],
@@ -64,11 +55,13 @@ RULE_TESTER.run("require-button-accessible-name", rule, {
       filename: "/repo/src/fixtures/action.tsx",
     },
     { code: "// @generated\n<button><svg /></button>" },
-    {
-      code: "// eslint-disable-next-line @rule-tester/require-button-accessible-name -- demonstrated external labeling\n<button><svg /></button>",
-    },
   ],
   invalid: [
+    {
+      name: "reports a button suppressed by a disable comment (Oxlint's RuleTester ignores disable directives)",
+      code: "// eslint-disable-next-line @rule-tester/require-button-accessible-name -- demonstrated external labeling\n<button><svg /></button>",
+      errors: [{ messageId: "missingName" }],
+    },
     { name: "reports an unnamed button with global undefined or void zero hidden props", code: "<><button hidden={undefined} /><button hidden={void 0} /></>", errors: [{ messageId: "missingName" }, { messageId: "missingName" }] },
     { name: "global undefined and void zero do not hide unnamed descendants", code: "<><div hidden={undefined}><button /></div><div hidden={void 0}><button /></div></>", errors: [{ messageId: "missingName" }, { messageId: "missingName" }] },
     { name: "local undefined keeps child and ancestor hidden behavior", code: "function render() { const undefined = true; return <><div hidden={undefined}><button /></div><button><span hidden={undefined}>Save</span></button></>; }", errors: [{ messageId: "missingName" }] },

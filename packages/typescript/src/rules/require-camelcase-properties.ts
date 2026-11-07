@@ -1,122 +1,98 @@
 /**
  * @fileoverview require-camelcase-properties — application property syntax is camelCase unless a wire key is explicitly quoted.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-camelcase-properties.test.ts
+ * Port of the 18.x `require-camelcase-properties` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { Fixer } from "@oxlint/plugins";
 
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
-type MessageIds = "requireCamelcaseProperty";
-type Options = readonly [];
-
-export const REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary: "Require unquoted lower snake_case TypeScript properties and dot access to use camelCase.",
-  rationale: "Unquoted snake_case property syntax makes external wire naming indistinguishable from application-domain naming and lets inconsistent contracts spread through typed code.",
-  remediation: "Rename application properties to camelCase. At an external wire boundary, make the exception explicit with a quoted key and bracket access.",
-  category: "style",
-  autofix: "safe",
-  limitations: [
-    "Quoted string keys and bracket access are treated as explicit external-wire boundaries.",
-    "Computed, numeric, symbol, private, generated, and PascalCase property names are excluded. External-library ownership is not inferred: preserve its spelling using quoted keys and bracket access, or an exact local suppression.",
-    "Automatic renaming is limited to an unused private interface or object type alias without heritage, exports, collisions, polymorphic this, computed/indexed keys, merged declarations, or eval. Runtime objects, referenced types and protocol boundaries remain manual.",
-  ],
-  examples: [
-    {
-      id: "camelcase-application-shape",
-      title: "Use camelCase for an application-facing return shape",
-      outcome: "no-match",
-      files: [{ path: "src/calls-date-range.ts", source: "export function range(): { dateFrom: string; dateTo: string } { return { dateFrom: '', dateTo: '' }; }" }],
-      focusPath: "src/calls-date-range.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "snake-case-application-shape",
-      title: "Do not use unquoted wire casing as application property syntax",
-      outcome: "match",
-      files: [{ path: "src/calls-date-range.ts", source: "export function range(): { date_from: string; date_to: string } { return { dateFrom: '', dateTo: '' }; }" }],
-      focusPath: "src/calls-date-range.ts",
-      expectedCount: 2,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; interface Local { user_id: string }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; interface Local { userId: string }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "require-camelcase-properties";
 
 const SNAKE_CASE_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/u;
 
 interface PropertyNode {
   readonly computed?: boolean;
-  readonly key: TSESTree.Node;
+  readonly key: Node;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "require-camelcase-properties",
-  documentation: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
+/** A member that is computed, an index signature, or already named `name`. */
+function blocksRename(member: Node, name: string): boolean {
+  if (member.type === "TSIndexSignature" || ("computed" in member && member.computed)) return true;
+  if (!("key" in member)) return false;
+  const { key } = member;
+  return (key.type === "Identifier" && key.name === name) || (key.type === "Literal" && key.value === name);
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.summary },
+    docs: {
+      description: "Require unquoted lower snake_case TypeScript properties and dot access to use camelCase.",
+      url: docsUrl(NAME),
+    },
     schema: [],
+    defaultOptions: [],
     messages: {
       requireCamelcaseProperty:
         "Unquoted property `{{name}}` must use camelCase. Quote wire-format keys and use bracket access at external boundaries.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-
-
-    const checkProperty = (node: PropertyNode): void => {
-      if (node.computed === true || node.key.type !== AST_NODE_TYPES.Identifier) return;
-      if (!SNAKE_CASE_RE.test(node.key.name)) return;
-      const replacement = privateTypePropertyName(node.key);
+  createOnce(context) {
+    function checkPropertyNode(node: PropertyNode): void {
+      if (node.computed === true || node.key.type !== "Identifier") return;
+      const key = node.key;
+      if (!SNAKE_CASE_RE.test(key.name)) return;
+      const replacement = privateTypePropertyName(key);
       context.report({
-        node: node.key,
+        node: key,
         messageId: "requireCamelcaseProperty",
-        data: { name: node.key.name },
-        fix: replacement === null ? null : (fixer) => fixer.replaceText(node.key, replacement),
+        data: { name: key.name },
+        ...(replacement !== null && { fix: (fixer: Fixer) => fixer.replaceText(key, replacement) }),
       });
-    };
+    }
+    // Every visited node type below has `key` (and optionally `computed`).
+    const checkProperty = (node: Node): void => checkPropertyNode(node as unknown as PropertyNode);
 
-    function privateTypePropertyName(key: TSESTree.Identifier): string | null {
-      if (key.parent.type !== AST_NODE_TYPES.TSPropertySignature && key.parent.type !== AST_NODE_TYPES.TSMethodSignature) return null;
-      const container = key.parent.parent;
-      const owner = container.parent;
-      if (owner.type !== AST_NODE_TYPES.TSInterfaceDeclaration && owner.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) return null;
-      if ((owner.type === AST_NODE_TYPES.TSInterfaceDeclaration && owner.extends.length > 0) ||
-        !isUnusedPrivateBinding(context.sourceCode, owner, owner.id, context.filename)) return null;
+    function privateTypePropertyName(key: Node & { readonly name: string }): string | null {
+      const declared = privateTypeOwner(key);
+      if (declared === null) return null;
+      const { container, owner } = declared;
       const name = key.name.replaceAll(/_([a-z0-9])/gu, (_match, letter: string) => letter.toUpperCase());
-      if (context.sourceCode.getTokens(owner).some((token) => token.value === "this")) return null;
-      const members = container.type === AST_NODE_TYPES.TSInterfaceBody ? container.body :
-        container.type === AST_NODE_TYPES.TSTypeLiteral ? container.members : [];
-      if (members.some((member) => member.type === AST_NODE_TYPES.TSIndexSignature ||
-        ("computed" in member && member.computed) ||
-        ("key" in member && ((member.key.type === AST_NODE_TYPES.Identifier && member.key.name === name) ||
-          (member.key.type === AST_NODE_TYPES.Literal && member.key.value === name))))) return null;
-      return context.sourceCode.getTokens(owner).some((token) => token.value === name) ? null : name;
+      // A `this` in the declaration or an existing token spelled like the new name blocks the rename.
+      if (context.sourceCode.getTokens(owner).some((token) => token.value === "this" || token.value === name)) return null;
+      const members: readonly Node[] = container.type === "TSInterfaceBody" ? container.body :
+        container.type === "TSTypeLiteral" ? container.members : [];
+      return members.some((member) => blocksRename(member, name)) ? null : name;
     }
 
+    /** The member container and its unused, private interface or type alias, for a signature key. */
+    function privateTypeOwner(key: Node): { readonly container: Node; readonly owner: Node } | null {
+      const signature = key.parent;
+      if (signature?.type !== "TSPropertySignature" && signature?.type !== "TSMethodSignature") return null;
+      const container = signature.parent;
+      const owner = container.parent;
+      if (owner?.type !== "TSInterfaceDeclaration" && owner?.type !== "TSTypeAliasDeclaration") return null;
+      if ((owner.type === "TSInterfaceDeclaration" && owner.extends.length > 0) ||
+        !isUnusedPrivateBinding(context.sourceCode, owner, owner.id, context.filename)) return null;
+      return { container, owner };
+    }
 
     return {
+      before() {
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        return undefined;
+      },
       AccessorProperty: checkProperty,
-      MemberExpression(node: TSESTree.MemberExpression): void {
-        if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-          checkProperty({ key: node.property });
+      MemberExpression(node: ESTree.MemberExpression): void {
+        if (!node.computed && node.property.type === "Identifier") {
+          checkPropertyNode({ key: node.property });
         }
       },
       MethodDefinition: checkProperty,

@@ -24,4 +24,4 @@ A `private` probe is anonymous and must return an authentication challenge, an e
 
 ## Source analysis
 
-The shared ESLint preset checks dynamic shell execution, bidirectional source controls, and unsafe HTML insertion. DOMPurify sanitization and literal HTML remain supported. Review hotspot warnings before promotion; do not add broad suppressions. Python retains Ruff's security rules. CodeQL, dependency review and source secret scanning remain independent controls. Cloudflare zone response-header rules can set a shared baseline; application responses and direct platform URLs require verification too.
+The shared Oxlint preset checks dynamic shell execution and bidirectional source controls, and bans `dangerouslySetInnerHTML` through `react/no-danger`. Review hotspot warnings before promotion; do not add broad suppressions. Python retains Ruff's security rules. CodeQL, dependency review and source secret scanning remain independent controls. Cloudflare zone response-header rules can set a shared baseline; application responses and direct platform URLs require verification too.

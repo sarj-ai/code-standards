@@ -1,20 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/require-use-form-default-values.js";
+import { ruleTester } from "./_tester.js";
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, sourceType: "module" } } });
-
-RULE_TESTER.run("require-use-form-default-values", rule, {
+ruleTester({ lang: "tsx" }).run("require-use-form-default-values", rule, {
   valid: [
     { name: "keeps a replaced control's initialized contract", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const initialized = useForm({ defaultValues: { name: '' } }); form.control = initialized.control; <Controller control={form.control} name='name' />;" },
     { name: "keeps a control replaced through an alias", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const alias = form; alias.control = initialized; <Controller control={form.control} />;" },
@@ -48,6 +36,7 @@ RULE_TESTER.run("require-use-form-default-values", rule, {
     "import { useController, useForm } from 'react-hook-form'; const form = useForm(); useController({ ...field, control: form.control });",
     "import { useController, useForm } from 'react-hook-form'; const form = useForm(); useController(fieldOptions);",
     "import { Controller, useForm } from 'react-hook-form'; let form = useForm(); form = replacement; <Controller control={form.control} />;",
+    { name: "controlled-field-without-default-dynamic-member", filename: "profile-form.tsx", code: "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form[auditDynamicMember]} name='name' render={() => null} />; }" },
   ],
   invalid: [
     { name: "retains form type queries and read-only member uses", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); type Form = typeof form; type Control = typeof form.control; form.getValues(); <Controller control={form.control} />;", errors: [{ messageId: "requireUseFormDefaultValues" }] },
@@ -114,39 +103,6 @@ RULE_TESTER.run("require-use-form-default-values", rule, {
       code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const { control: fieldControl } = form; <Controller control={fieldControl} name='name' />;",
       errors: [{ messageId: "requireUseFormDefaultValues" }],
     },
+    { name: "controlled-field-without-default-static-member", filename: "profile-form.tsx", code: "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form[\"control\"]} name='name' render={() => null} />; }", errors: [{ messageId: "requireUseFormDefaultValues" }] },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "controlled-field-without-default-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "profile-form.tsx",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "profile-form.tsx",
-        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form[\"control\"]} name='name' render={() => null} />; }"
-      }
-    ]
-  },
-  {
-    "id": "controlled-field-without-default-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "profile-form.tsx",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "profile-form.tsx",
-        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form[auditDynamicMember]} name='name' render={() => null} />; }"
-      }
-    ]
-  }
-] } });
 });

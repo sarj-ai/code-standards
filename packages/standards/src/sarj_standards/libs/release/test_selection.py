@@ -32,7 +32,7 @@ _RULE_INTEGRATION = frozenset(
         "test_runner.py",
         "test_engine_invariants.py",
         "test_external_diagnostics.py",
-        "test_selected_eslint_execution.py",
+        "test_selected_oxlint_execution.py",
     }
 )
 

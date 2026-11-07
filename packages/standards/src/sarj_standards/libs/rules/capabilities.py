@@ -12,8 +12,8 @@ class TypeScriptRuleSpec(RuleSpec):
 
     def __post_init__(self) -> None:
         RuleSpec.__post_init__(self)
-        if self.engine is not RuleEngine.ESLINT:
-            msg = "TypeScript execution capabilities require the ESLint engine"
+        if self.engine is not RuleEngine.OXLINT:
+            msg = "TypeScript execution capabilities require the Oxlint engine"
             raise ValueError(msg)
         if self.requires_type_information is not None and type(self.requires_type_information) is not bool:
             msg = "rule type-information requirement must be a bool or None"

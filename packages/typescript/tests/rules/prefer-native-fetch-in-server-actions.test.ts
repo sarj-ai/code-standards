@@ -1,23 +1,19 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/prefer-native-fetch-in-server-actions.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
-
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-native-fetch-in-server-actions", rule, {
   valid: [
+    {
+      name: "documented example native-fetch-action",
+      filename: "src/app/actions.ts",
+      code:
+        "\"use server\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n" +
+        "  const response = await fetch(url, { method: \"PUT\", body, signal: AbortSignal.timeout(30_000) });\n" +
+        "  if (!response.ok) throw new Error(`upload failed: ${response.status}`);\n}\n",
+    },
     "import ky from 'ky'; export const client = ky.create({});",
     "'use client'; import ky from 'ky';",
     "import ky from 'ky'; 'use server';",
@@ -27,6 +23,14 @@ RULE_TESTER.run("prefer-native-fetch-in-server-actions", rule, {
     "'use server'; export async function load(): Promise<Response> { return fetch('https://example.com'); }",
   ],
   invalid: [
+    {
+      name: "documented example ky-in-action",
+      filename: "src/app/actions.ts",
+      code:
+        "\"use server\";\n\nimport ky from \"ky\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n" +
+        "  await ky.put(url, { body });\n}\n",
+      errors: 1,
+    },
     {
       code: "'use server'; import ky from 'ky';",
       errors: [{ messageId: "preferNativeFetchInServerActions" }],

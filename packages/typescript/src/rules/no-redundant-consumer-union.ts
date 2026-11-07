@@ -1,130 +1,129 @@
 /**
- * @fileoverview no-redundant-consumer-union — retain proven covering private object contracts.
+ * @fileoverview no-redundant-consumer-union — keep the covering object contract in a private scalar consumer union.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-consumer-union.test.ts
+ * Port of the 18.x `no-redundant-consumer-union` rule. Typed: without
+ * tsrs types it reports nothing, as the original returns no visitors without
+ * a program. The walk collects consumers annotated with a two-member union;
+ * their proofs run against tsrs in `Program:exit`, as the original's do.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeScriptSourceCode, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
+import type { ParameterDeclaration, TypeNode } from "tsrs/ast";
+import type { Type } from "tsrs/sync";
 
+import { defineRule, type Node, type SourceCode } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { declarationNode, nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { closedObjectContract } from "../utils/closed-object-contract.js";
+import { coveringConsumerFix, retainedConsumerTypeUses, validConsumerFixCalls } from "../utils/private-consumer-fix.js";
+import {
+  consumerAnnotation,
+  directEval,
+  exportedSymbols,
+  nullishPrimitiveUnion,
+  primitiveKeyword,
+  privateScalarConsumer,
+  type ScalarConsumerNode,
+} from "../utils/private-scalar-consumer.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
+import { typeBinding } from "../utils/type-binding.js";
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
+const NAME = "no-redundant-consumer-union";
 
-import { currentNativeSource } from "./_checked-native-source.js";
-import { closedObjectContract } from "./_closed-object-contract.js";
-import { coveringConsumerFix, retainedConsumerTypeUses, validConsumerFixCalls } from "./_private-consumer-fix.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-import { consumerAnnotation, directEval, exportedSymbols, nullishPrimitiveUnion, primitiveKeyword, privateScalarConsumer, type ScalarConsumerNode } from "./_private-scalar-consumer.js";
-import { typeBinding } from "./_type-binding.js";
-
-const CONFIG = { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler"}}' } as const;
-const EXAMPLE = 'export {}; interface Animal {readonly name: string} interface Dog extends Animal {readonly breed: string} export type KeptDog = Dog; const dog: Dog = {name: "Ada", breed: "Collie"}; function label(value: Dog | Animal): string {return value.name;} label(dog);';
-const NULLABLE_EXAMPLE = EXAMPLE.replace("readonly name: string", "readonly name: string | null").replace("return value.name;", "return value.name ?? '';");
-const OPTIONAL_EXAMPLE = EXAMPLE.replace("readonly breed: string", "readonly breed?: string");
-const SCALAR_HELPER_EXAMPLE = EXAMPLE.replace("return value.name;", "return formatName(value.name);").replace("function label", "function formatName(value: string): string {return '[' + value + ']';} function label");
-const WHOLE_OBJECT_HELPER_EXAMPLE = EXAMPLE.replace("return value.name;", "return formatAnimal(value);").replace("function label", "function formatAnimal(value: Animal): string {return value.name;} function label");
-
-export const NO_REDUNDANT_CONSUMER_UNION_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Keep the covering object contract in a private scalar consumer union.",
-  rationale: "A private consumer can advertise a redundant object alternative even though native assignability proves that the other alternative accepts every covered value. Dog | Animal keeps Animal; requiring Dog would unnecessarily restrict callers.",
-  remediation: "Review retaining the covering alternative, or revise the alternatives if distinct cases were intended. Preserve producer types and runtime objects. The safe fix edits only a proven private parameter annotation; public APIs, producer types and runtime objects remain unchanged.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes additionally require every existing identifier caller to be natively assignable to the original contract, without Any, unknown, error or unresolved types on the relevant surface. Comments inside the annotation and TypeScript suppression directives keep the finding manual. Removed named types/imports must retain an independent top-level exported type-alias or direct type-export read. Other removable annotations/assertions, the covering annotation and own-definition/self references cannot keep one another live; otherwise simultaneous fixes can introduce unused-type errors. The exact authored covering type and terminator token sequence are retained; edits that would merge distinct CR and LF terminators remain manual; no producer, call or function body is rewritten.",
-    "Only an inline binary parameter union in a strict module's top-level private scalar consumer is supported. Exactly one parameter, an explicit broad primitive return annotation, a single supported returned scalar expression and direct identifier-argument callers are required. Type queries or type-only exports of the callable, public APIs, callbacks, contextual signatures, overloads, generics, decorators, async functions, direct eval and fresh-object callers prevent findings.",
-    "Scalar values may pass through one implemented same-file top-level function or raw const-arrow helper with an explicit scalar return annotation and the exact native resolved signature. Every argument must already satisfy the scalar read view; the containing source must pass the existing native checked-source proof. Imported, ambient, aliased, overloaded, generic or contextually typed helpers, member calls, optional calls, spread arguments and whole-object arguments remain unsupported. Helper permission does not add auxiliary consumer parameters or replace the required object-field read anchor. Helper bodies need not be pure because no call or body is rewritten.",
-    "Both alternatives must have complete ordinary finite structural surfaces consisting only of explicitly readonly broad string, number, boolean or bigint properties, optionally paired directly with null or undefined in an exact two-part union. Required and optional nullable fields may be read under the same native coverage proof. Every field must have one actual declaration origin throughout each alternative's inheritance/intersection graph. Shared ancestors retain that origin; repeated merged fields, explicit overrides and independently declared overlapping fields abstain, including valid compatible declarations. This excludes recovered conflicting properties without claiming whole-source health. Aliases, imports, re-exports and ordinary inheritance are resolved by the parser-owned TypeScript checker. Any, unknown, missing imports, open/generic/mapped/indexed types, classes, brands, literal discriminants, methods, properties with scalar type aliases, parenthesized or more complex property unions, callbacks and recursive or nested object fields are unsupported.",
-    "Reports proper native assignability, where covered is assignable to covering and the reverse is false, or mutual native assignability with a strict smaller declared covering surface and only optional covered-only members. Every covering member, including optional members, must exist in the covered type's enumerated declared surface. Otherwise an existing identifier may carry an incompatible extra field and be rejected after simplification; implicit Object members containing Any cannot replace explicit declared coverage or the native Optional requirement. The covering type must declare every read field and a read required field; an all-optional reduced contract can reject existing callers. Identical alternatives and primitive/top/bottom redundancy remain upstream-owned; equal-key and incomparable mutually assignable structures are excluded. The mutual case additionally requires inline contracts or locally bound interfaces/type aliases whose alias and heritage references can be traced through the parser-owned type scope. Merged interface fragments must all resolve to the reference's same native symbol; mixed exported/local recovery abstains. Imported, global and qualified-namespace references in that path abstain; proper one-way coverage retains its existing alias/import support.",
-    "General union simplification can change Extract, conditional types, in-narrowing, fresh-literal checking and public presentation. Those contexts are excluded even when ordinary assignment succeeds. Flat destructuring counts every bound field as read; whole-object escape, mutation, unproved helper calls, closures, reflection, serialization, dynamic reads, implicit Object capabilities and JSX prevent findings. Imported Python protocol assignability is not approximated by this rule.",
-  ],
-  examples: [
-    { id: "local-scalar-helper", scenarioId: "local-scalar-helper", title: "A local helper receives only the required name", outcome: "match", files: [{ path: "src/case.ts", source: SCALAR_HELPER_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: SCALAR_HELPER_EXAMPLE.replace("Dog | Animal", "Animal") }] },
-    { id: "whole-object-helper", scenarioId: "local-scalar-helper", title: "Passing the whole object remains outside the scalar helper proof", outcome: "no-match", files: [{ path: "src/case.ts", source: WHOLE_OBJECT_HELPER_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
-    { id: "covered-alternative", title: "The private consumer needs the covering Animal contract", outcome: "match", files: [{ path: "src/case.ts", source: EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: EXAMPLE.replace("Dog | Animal", "Animal") }] },
-    { id: "public-contract", title: "A public union retains its observable alternatives", outcome: "no-match", files: [{ path: "src/case.ts", source: EXAMPLE.replace("function label", "export function label") }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
-    { id: "optional-covered-alternative", scenarioId: "optional-readonly-contract", title: "An unread optional breed retains the smaller Animal surface", outcome: "match", files: [{ path: "src/case.ts", source: OPTIONAL_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: OPTIONAL_EXAMPLE.replace("Dog | Animal", "Animal") }] },
-    { id: "optional-public-contract", scenarioId: "optional-readonly-contract", title: "A public optional union retains its observable alternatives", outcome: "no-match", files: [{ path: "src/case.ts", source: OPTIONAL_EXAMPLE.replace("function label", "export function label") }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
-    { id: "nullable-covered-alternative", scenarioId: "nullable-readonly-contract", title: "A nullable name retains the covering Animal contract", outcome: "match", files: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE.replace("Dog | Animal", "Animal") }] },
-    { id: "nullable-domain-contract", scenarioId: "nullable-readonly-contract", title: "A literal breed keeps the authored domain contract", outcome: "no-match", files: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE.replace("readonly breed: string", "readonly breed: 'Collie'") }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-function scalarFields(type: ts.Type, checker: ts.TypeChecker): ReadonlyMap<string, boolean> | null {
-  if (!closedObjectContract(type, checker, true)) return null;
+function scalarFields(native: NativeTypes, type: Type): ReadonlyMap<string, boolean> | null {
+  const { ast, sync } = native;
+  if (!closedObjectContract(native, type, true)) return null;
   const fields = new Map<string, boolean>();
   for (const property of type.getProperties()) {
-    const declarations = property.getDeclarations();
-    if (!declarations?.length || !declarations.every((member) => ts.isPropertySignature(member) && member.name &&
-      (ts.isIdentifier(member.name) || ts.isStringLiteralLike(member.name)) && member.modifiers?.length === 1 &&
-      member.modifiers[0]?.kind === ts.SyntaxKind.ReadonlyKeyword && (primitiveKeyword(member.type) || nullishPrimitiveUnion(member.type)))) return null;
-    fields.set(property.name, (property.flags & ts.SymbolFlags.Optional) === 0);
+    const declarations = property.declarations;
+    if (!declarations.length || !declarations.every((handle) => {
+      const member = declarationNode(native, handle);
+      return member !== undefined && ast.isPropertySignatureDeclaration(member) && member.name &&
+        (ast.isIdentifier(member.name) || ast.isStringLiteralLikeNode(member.name)) && member.modifiers?.length === 1 &&
+        member.modifiers[0]?.kind === ast.SyntaxKind.ReadonlyKeyword && (primitiveKeyword(ast, member.type) || nullishPrimitiveUnion(ast, member.type));
+    })) return null;
+    fields.set(property.name, (property.flags & sync.SymbolFlags.Optional) === 0);
   }
   return fields.size ? fields : null;
 }
 
-type LocalContractNode = TSESTree.TypeNode | TSESTree.Identifier;
-
-/** Follow only the local declarations whose unambiguous type bindings are available. */
-function localContractBindings(roots: readonly TSESTree.TypeNode[], source: Readonly<TypeScriptSourceCode>, services: TypeServices): boolean {
-  const pending: LocalContractNode[] = [...roots];
-  const visited = new Set<LocalContractNode>();
-  for (let index = 0; index < pending.length; index++) {
-    const node = pending[index];
-    if (!node || visited.has(node)) continue;
-    visited.add(node);
-    const references = localContractReferences(node, source, services);
-    if (references === null) return false;
-    pending.push(...references);
-  }
-  return true;
-}
-
-function localContractReferences(node: LocalContractNode, source: Readonly<TypeScriptSourceCode>, services: TypeServices): readonly LocalContractNode[] | null {
-  switch (node.type) {
-    case AST_NODE_TYPES.TSTypeLiteral: return [];
-    case AST_NODE_TYPES.TSIntersectionType: return node.types;
-    case AST_NODE_TYPES.TSTypeReference:
-      return !node.typeArguments && node.typeName.type === AST_NODE_TYPES.Identifier ? [node.typeName] : null;
-    case AST_NODE_TYPES.Identifier: return localBindingReferences(node, source, services);
-    default: return null;
-  }
-}
-
-function localBindingReferences(identifier: TSESTree.Identifier, source: Readonly<TypeScriptSourceCode>, services: TypeServices): readonly LocalContractNode[] | null {
-  const definitions = typeBinding(source, identifier)?.defs.filter((definition) => definition.isTypeDefinition).map((definition) => definition.node);
-  if (!definitions?.length || !definitions.every(moduleTypeDeclaration)) return null;
-  const first = definitions[0];
-  if (definitions.length === 1 && first?.type === AST_NODE_TYPES.TSTypeAliasDeclaration && !first.typeParameters) return [first.typeAnnotation];
-  const interfaces = definitions.filter((definition) => definition.type === AST_NODE_TYPES.TSInterfaceDeclaration);
-  if (interfaces.length !== definitions.length || interfaces.some((declaration) => declaration.typeParameters)) return null;
-  if (interfaces.length > 1) {
-    const checker = services.program.getTypeChecker();
-    const symbol = checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(identifier));
-    if (!symbol || interfaces.some((declaration) => checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(declaration.id)) !== symbol)) return null;
-  }
-  const bases = interfaces.flatMap((declaration) => declaration.extends.map((base) => base.expression));
-  return bases.every((base) => base.type === AST_NODE_TYPES.Identifier) ? bases : null;
-}
-
 /** Local proof excludes declarations introduced by namespaces or global augmentation. */
-function moduleTypeDeclaration(node: TSESTree.Node): boolean {
-  const parent = node.parent;
-  if (parent?.type === AST_NODE_TYPES.Program) return true;
-  if (parent?.type !== AST_NODE_TYPES.ExportNamedDeclaration && parent?.type !== AST_NODE_TYPES.ExportDefaultDeclaration) return false;
-  return parent.parent.type === AST_NODE_TYPES.Program;
+function moduleTypeDeclaration(node: Node): boolean {
+  const parent = parentOf(node);
+  if (parent?.type === "Program") return true;
+  if (parent?.type !== "ExportNamedDeclaration" && parent?.type !== "ExportDefaultDeclaration") return false;
+  return parentOf(parent)?.type === "Program";
+}
+
+interface Finding {
+  readonly node: Node;
+  readonly covered: string;
+  readonly covering: string;
+  readonly fix: FixFn | null;
+}
+
+/** What every candidate of one file shares. */
+interface FileFacts {
+  readonly native: NativeTypes;
+  readonly sourceCode: SourceCode;
+  readonly exports: ReturnType<typeof exportedSymbols>;
+  readonly candidateAnnotations: readonly Node[];
+  readonly fieldsOf: (type: Type) => ReadonlyMap<string, boolean> | null;
+}
+
+/** The candidate's covered union alternative, when its private consumer reads only what the other one covers. */
+function redundantAlternative(facts: FileFacts, candidate: ScalarConsumerNode): Finding | null {
+  const { native, sourceCode } = facts;
+  const consumer = privateScalarConsumer(native, candidate, sourceCode, facts.exports, { scalarCalls: true });
+  const alternatives = consumer ? binaryUnion(native, consumer.parameter.type) : null;
+  if (!consumer || !alternatives) return null;
+  const { left: leftNode, right: rightNode } = alternatives;
+  const coverage = coveringAlternative(native, leftNode, rightNode, facts.fieldsOf, consumer.reads);
+  if (!coverage) return null;
+  // The selected parameter's annotation is the candidate's union annotation, member for member.
+  const reportNode = consumerAnnotation(candidate);
+  if (reportNode?.type !== "TSUnionType") return null;
+  if (coverage.mutual && !localContractBindings(native, reportNode.types, sourceCode)) return null;
+  const [first, second] = reportNode.types;
+  if (!first || !second) return null;
+  const [covered, covering] = coverage.covered === leftNode ? [first, second] : [second, first];
+  const fix = privateUnionFix(native, sourceCode, {
+    candidate, parameter: consumer.parameter, annotation: reportNode, covered, covering, candidateAnnotations: facts.candidateAnnotations,
+  });
+  return { node: reportNode, covered: coverage.covered.getText(native.source), covering: coverage.covering.getText(native.source), fix };
+}
+
+/** The two member type nodes of a two-member union annotation. */
+function binaryUnion(native: NativeTypes, annotation: TypeNode | undefined): { readonly left: TypeNode; readonly right: TypeNode } | null {
+  if (!annotation || !native.ast.isUnionTypeNode(annotation) || annotation.types.length !== 2) return null;
+  const [left, right] = annotation.types;
+  return left && right ? { left, right } : null;
+}
+
+/** Build a union edit after checking callers and retained type references. */
+function privateUnionFix(native: NativeTypes, sourceCode: SourceCode, proof: {
+  readonly candidate: ScalarConsumerNode;
+  readonly parameter: ParameterDeclaration;
+  readonly annotation: Node;
+  readonly covered: Node;
+  readonly covering: Node;
+  readonly candidateAnnotations: readonly Node[];
+}): FixFn | null {
+  if (!validConsumerFixCalls(native, proof.candidate, proof.parameter, sourceCode)) return null;
+  if (!retainedConsumerTypeUses(sourceCode, proof.covered, proof.covering, proof.candidateAnnotations)) return null;
+  return coveringConsumerFix(sourceCode, proof.annotation, proof.covering);
 }
 
 /** Select the native covering contract after proving its complete declared/read surface. */
-function coveringAlternative(leftNode: ts.TypeNode, rightNode: ts.TypeNode, checker: ts.TypeChecker,
-  fieldsOf: (type: ts.Type) => ReadonlyMap<string, boolean> | null, reads: ReadonlySet<string>): {
-  readonly covered: ts.TypeNode;
-  readonly covering: ts.TypeNode;
+function coveringAlternative(native: NativeTypes, leftNode: TypeNode, rightNode: TypeNode,
+  fieldsOf: (type: Type) => ReadonlyMap<string, boolean> | null, reads: ReadonlySet<string>): {
+  readonly covered: TypeNode;
+  readonly covering: TypeNode;
   readonly mutual: boolean;
 } | null {
+  const { checker } = native;
   const left = checker.getTypeFromTypeNode(leftNode);
   const right = checker.getTypeFromTypeNode(rightNode);
   const leftFields = fieldsOf(left);
@@ -136,74 +135,116 @@ function coveringAlternative(leftNode: ts.TypeNode, rightNode: ts.TypeNode, chec
   if ((!forward && !reverse) || (mutual && leftFields.size === rightFields.size)) return null;
   const [covered, covering, coveredFields, coveringFields] = forward && (!reverse || leftFields.size > rightFields.size)
     ? [leftNode, rightNode, leftFields, rightFields] as const : [rightNode, leftNode, rightFields, leftFields] as const;
-  if ([...coveringFields.keys()].some((key) => !coveredFields.has(key)) ||
-    (mutual && [...coveredFields].some(([key, required]) => required && !coveringFields.has(key))) ||
-    [...reads].some((key) => !coveringFields.has(key)) || ![...reads].some((key) => coveringFields.get(key))) return null;
-  return { covered, covering, mutual };
+  return coversSurface(coveredFields, coveringFields, mutual, reads) ? { covered, covering, mutual } : null;
 }
 
-/** Build a union edit after checking callers and retained type references. */
-function privateUnionFix(sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices, proof: {
-  readonly candidate: ScalarConsumerNode;
-  readonly parameter: ts.ParameterDeclaration;
-  readonly annotation: TSESTree.Node;
-  readonly covered: ts.TypeNode;
-  readonly covering: ts.TypeNode;
-  readonly candidateAnnotations: readonly TSESTree.Node[];
-}): NativeReportFix | null {
-  const covering = services.tsNodeToESTreeNodeMap.get(proof.covering);
-  if (!validConsumerFixCalls(proof.candidate, proof.parameter, sourceCode, services)) return null;
-  if (!retainedConsumerTypeUses(sourceCode, services.tsNodeToESTreeNodeMap.get(proof.covered), covering, proof.candidateAnnotations)) return null;
-  return coveringConsumerFix(sourceCode, proof.annotation, covering);
+/** The covering fields are a subset of the covered ones that holds every read, at least one of them required. */
+function coversSurface(coveredFields: ReadonlyMap<string, boolean>, coveringFields: ReadonlyMap<string, boolean>,
+  mutual: boolean, reads: ReadonlySet<string>): boolean {
+  return [...coveringFields.keys()].every((key) => coveredFields.has(key)) &&
+    !(mutual && [...coveredFields].some(([key, required]) => required && !coveringFields.has(key))) &&
+    [...reads].every((key) => coveringFields.has(key)) && [...reads].some((key) => coveringFields.get(key));
 }
 
-export default createRule<[], "redundant">({
-  name: "no-redundant-consumer-union",
-  documentation: NO_REDUNDANT_CONSUMER_UNION_DOCUMENTATION,
-  meta: { type: "suggestion", fixable: "code", docs: { description: NO_REDUNDANT_CONSUMER_UNION_DOCUMENTATION.summary }, schema: [], messages: {
-    redundant: "{{covered}} is already accepted by {{covering}} in this private scalar consumer. Review keeping the covering {{covering}} contract; preserve producer information and runtime objects.",
-  } },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    const candidates: ScalarConsumerNode[] = [];
+/** Follow only the local declarations whose unambiguous type bindings are available. */
+function localContractBindings(native: NativeTypes, roots: readonly Node[], source: SourceCode): boolean {
+  const pending: Node[] = [...roots];
+  const visited = new Set<Node>();
+  for (let index = 0; index < pending.length; index++) {
+    const node = pending[index];
+    if (!node || visited.has(node)) continue;
+    visited.add(node);
+    const references = localContractReferences(native, node, source);
+    if (references === null) return false;
+    pending.push(...references);
+  }
+  return true;
+}
+
+function localContractReferences(native: NativeTypes, node: Node, source: SourceCode): readonly Node[] | null {
+  switch (node.type) {
+    case "TSTypeLiteral": return [];
+    case "TSIntersectionType": return node.types;
+    case "TSTypeReference":
+      return !node.typeArguments && node.typeName.type === "Identifier" ? [node.typeName] : null;
+    case "Identifier": return localBindingReferences(native, node, source);
+    default: return null;
+  }
+}
+
+function localBindingReferences(native: NativeTypes, identifier: Node & { readonly name: string }, source: SourceCode): readonly Node[] | null {
+  const definitions = typeBinding(source, identifier)?.defs.filter((definition) => definition.isTypeDefinition).map((definition) => definition.node);
+  if (!definitions?.length || !definitions.every(moduleTypeDeclaration)) return null;
+  const first = definitions[0];
+  if (definitions.length === 1 && first?.type === "TSTypeAliasDeclaration" && !first.typeParameters) return [first.typeAnnotation];
+  const interfaces = definitions.filter((definition) => definition.type === "TSInterfaceDeclaration");
+  if (interfaces.length !== definitions.length || interfaces.some((declaration) => declaration.typeParameters)) return null;
+  if (interfaces.length > 1) {
+    const symbolOf = (node: Node) => {
+      const tsNode = native.node(node);
+      return tsNode === undefined ? undefined : native.checker.getSymbolAtLocation(tsNode);
+    };
+    const symbol = symbolOf(identifier);
+    if (!symbol || interfaces.some((declaration) => symbolOf(declaration.id)?.id !== symbol.id)) return null;
+  }
+  const bases = interfaces.flatMap((declaration) => declaration.extends.map((base) => base.expression as Node));
+  return bases.every((base) => base.type === "Identifier") ? bases : null;
+}
+
+export default defineRule({
+  meta: {
+    type: "suggestion",
+    fixable: "code",
+    docs: { description: "Keep the covering object contract in a private scalar consumer union.", url: docsUrl(NAME) },
+    schema: [],
+    messages: {
+      redundant: "{{covered}} is already accepted by {{covering}} in this private scalar consumer. Review keeping the covering {{covering}} contract; preserve producer information and runtime objects.",
+    },
+  },
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: ScalarConsumerNode[] = [];
     let dynamic = false;
     const remember = (node: ScalarConsumerNode): void => {
       const annotation = consumerAnnotation(node);
-      if (annotation?.type === AST_NODE_TYPES.TSUnionType && annotation.types.length === 2) candidates.push(node);
+      if (annotation?.type === "TSUnionType" && annotation.types.length === 2) candidates.push(node);
     };
     return {
+      before() {
+        tsrs = null;
+        candidates = [];
+        dynamic = false;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
       FunctionDeclaration: remember,
       ArrowFunctionExpression: remember,
-      CallExpression(node): void { if (directEval(node)) dynamic = true; },
-      "Program:exit"(): void {
-        if (dynamic || !candidates.length) return;
-        const services = getTypeServices(context);
-        const source = currentNativeSource(context.sourceCode, services);
-        if (!source) return;
-        const checker = services.program.getTypeChecker();
-        const exports = exportedSymbols(source, checker);
-        const candidateAnnotations = candidates.flatMap((node) => { const annotation = consumerAnnotation(node); return annotation ? [annotation] : []; });
-        const surfaces = new WeakMap<ts.Type, ReadonlyMap<string, boolean> | null>();
-        const fieldsOf = (type: ts.Type): ReadonlyMap<string, boolean> | null => {
-          if (!surfaces.has(type)) surfaces.set(type, scalarFields(type, checker));
-          return surfaces.get(type) ?? null;
-        };
-        for (const candidate of candidates) {
-          const consumer = privateScalarConsumer(candidate, context.sourceCode, services, exports, { scalarCalls: true });
-          const annotation = consumer?.parameter.type;
-          if (!consumer || !annotation || !ts.isUnionTypeNode(annotation) || annotation.types.length !== 2) continue;
-          const leftNode = annotation.types[0];
-          const rightNode = annotation.types[1];
-          if (!leftNode || !rightNode) continue;
-          const coverage = coveringAlternative(leftNode, rightNode, checker, fieldsOf, consumer.reads);
-          if (!coverage) continue;
-          const reportNode = services.tsNodeToESTreeNodeMap.get(annotation);
-          if (coverage.mutual && (reportNode.type !== AST_NODE_TYPES.TSUnionType || !localContractBindings(reportNode.types, context.sourceCode, services))) continue;
-          const {covered: coveredNode, covering: coveringNode} = coverage;
-          const fix = privateUnionFix(context.sourceCode, services, {candidate, parameter: consumer.parameter,
-            annotation: reportNode, covered: coveredNode, covering: coveringNode, candidateAnnotations});
-          context.report({ node: reportNode, messageId: "redundant", data: { covered: coveredNode.getText(), covering: coveringNode.getText() }, fix });
+      CallExpression(node) {
+        if (directEval(node)) dynamic = true;
+      },
+      "Program:exit"() {
+        if (dynamic || !candidates.length || tsrs === null) return;
+        const sourceCode = context.sourceCode;
+        const findings = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          const surfaces = new Map<Type, ReadonlyMap<string, boolean> | null>();
+          const facts: FileFacts = {
+            native,
+            sourceCode,
+            exports: exportedSymbols(native, native.source),
+            candidateAnnotations: candidates.flatMap((node) => consumerAnnotation(node) ?? []),
+            fieldsOf(type) {
+              if (!surfaces.has(type)) surfaces.set(type, scalarFields(native, type));
+              return surfaces.get(type) ?? null;
+            },
+          };
+          return candidates.flatMap((candidate) => redundantAlternative(facts, candidate) ?? []);
+        });
+        if (findings === null) return;
+        for (const { node, covered, covering, fix } of findings) {
+          const report = { node: node, messageId: "redundant", data: { covered, covering } };
+          context.report(fix === null ? report : { ...report, fix });
         }
       },
     };

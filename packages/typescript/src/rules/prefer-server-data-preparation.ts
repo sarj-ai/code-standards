@@ -1,429 +1,242 @@
 /**
  * @fileoverview prefer-server-data-preparation — prepare data projections before interactive client views.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-data-preparation.test.ts
+ * Port of the 18.x `prefer-server-data-preparation` rule. Typed: without
+ * tsrs types it reports nothing, as the original returns no visitors without
+ * a program. The walk keeps prop projections that pass the syntactic checks;
+ * `Program:exit` runs the typed interaction and native-array proofs on them.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import ts from "typescript";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { forEachOwnAstChild, outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { nativeTypes, type NativeTypes, type TsNode } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { firstParameterBindings, parameterPath, reactHook, type RenderFunction, renderFunction } from "../utils/react-prop-bindings.js";
+import { typeOnlyReference } from "../utils/stable-value-binding.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { getTypeServices, type TypeScriptSourceCode } from "./_eslint-rule.js";
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import {
-  firstParameterBindings,
-  parameterPath,
-  reactHook,
-  renderFunction,
-} from "./_react-prop-bindings.js";
-import { typeOnlyReference } from "./_stable-value-binding.js";
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-
-type Options = readonly [];
-type MessageIds = "prepareData";
-
-const BEFORE =
-  "'use client'; import { useState } from 'react'; export function Options({ rows }: { rows: readonly { language: string }[] }) { const [selected, setSelected] = useState(''); const languages = rows.map(row => row.language); return <select value={selected} onChange={event => setSelected(event.target.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }";
-const AFTER =
-  "'use client'; import { useState } from 'react'; export function Options({ languages }: { languages: readonly string[] }) { const [selected, setSelected] = useState(''); return <select value={selected} onChange={event => setSelected(event.target.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }";
-const CONFIG = {
-  path: "tsconfig.json",
-  source:
-    '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler","jsx":"preserve"},"include":["src/**/*"]}',
-} as const;
+const NAME = "prefer-server-data-preparation";
 const METHODS: ReadonlySet<string> = new Set(["map", "filter", "flatMap"]);
-const DOM_EVENTS: ReadonlySet<string> = new Set([
-  "onClick",
-  "onChange",
-  "onInput",
-  "onSubmit",
-]);
-const BINARY: ReadonlySet<string> = new Set([
-  "===",
-  "!==",
-  "==",
-  "!=",
-  ">",
-  ">=",
-  "<",
-  "<=",
-  "+",
-  "-",
-  "*",
-  "/",
-  "%",
-]);
+const DOM_EVENTS: ReadonlySet<string> = new Set(["onClick", "onChange", "onInput", "onSubmit"]);
+const BINARY: ReadonlySet<string> = new Set(["===", "!==", "==", "!=", ">", ">=", "<", "<=", "+", "-", "*", "/", "%"]);
+const UNARY: ReadonlySet<string> = new Set(["!", "+", "-", "~", "typeof"]);
 
-export const PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary:
-    "Prepare data-only input collections before an interactive client view when possible.",
-  rationale:
-    "Preparing display data where its inputs are loaded can reduce browser work, payloads and knowledge of server data shapes. A small client component can receive the values its interaction actually needs.",
-  remediation:
-    "When these inputs are available on the server, prepare the collection in its loader or Server Component and pass the prepared values. Otherwise lift the projection to the owning producer when useful. Keep unsaved edits, browser-dependent values and interactive filtering reactive in the client; review callers before moving anything.",
-  category: "architecture",
-  limitations: [
-    "Advisory only. Local syntax cannot establish whether a caller is a Server Component, whether props change interactively or whether server preparation reduces the total cost. This rule is a review lead, never proof that code can be moved to the server. No automatic fix is provided.",
-    "Requires an explicit use client directive and parser-owned TypeScript services resolving map/filter/flatMap to the standard Array or ReadonlyArray library signature. The receiver beneath erased wrappers must itself have an Array, ReadonlyArray or tuple type after nullish narrowing; casts from opaque or custom collections do not establish this. Subclass and structural collection types outside those native array types are excluded. The containing view must have an independent React useState/useReducer call or a native callable type on an intrinsic DOM onClick/onChange/onInput/onSubmit handler. Nullish, noncallable and opaque handler types do not establish interaction. Noninteractive boundaries remain owned by no-unnecessary-use-client; custom hooks and indirect client requirements are unsupported.",
-    "Every runtime reference to the source parameter binding must be a supported native data projection or a field-only JSX display loop. Inputs also needed for editing, whole-record forwarding, lookup, mutation, other fields or opaque helpers are excluded. Files containing direct eval are excluded because it can observe or change lexical bindings; indirect eval and properties named eval do not establish lexical access. Only direct first-parameter paths and synchronous single-expression callbacks are supported. Whole-row identity maps and constant maps are excluded; supported projections must read a fixed input field.",
-    "Field-only object and dense array literals can form nested data shapes, including readonly tuples and flatMap outputs. Array holes, spreads, captured values and JSX outputs remain unsupported. Hook recognition follows erased namespace wrappers and excludes direct writes to the requested imported member; reflective or external API patches are not modeled.",
-    "JSX-rendering callbacks are never reported as preparation findings. Callback calls, captured values, destructuring defaults/rest/nesting, async callbacks, event handlers, effects, memo callbacks, opaque helpers, dynamic/optional paths, custom collection signatures, missing type services, generated source and tests are excluded. First-parameter provenance is syntactic; annotations cannot prove absence of runtime getters or patched array methods. Analysis does not claim callback purity or preserve semantics of a hypothetical move.",
-    "Reports the direct source projection once; chained operations with a call receiver are not independently reported. A static subprojection may still be prepared by its producer while a union with pending local edits remains in the client.",
-  ],
-  references: [
-    "https://nextjs.org/docs/app/getting-started/server-and-client-components",
-    "https://react.dev/learn/you-might-not-need-an-effect",
-  ],
-  examples: [
-    {
-      id: "client-projection",
-      title: "Prepare data before the client view when possible",
-      outcome: "match",
-      files: [{ path: "src/options.tsx", source: BEFORE }, CONFIG],
-      focusPath: "src/options.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "prepared-values",
-      title: "The client receives prepared language values",
-      outcome: "no-match",
-      files: [{ path: "src/options.tsx", source: AFTER }, CONFIG],
-      focusPath: "src/options.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Callback = ESTree.ArrowFunctionExpression | ESTree.Function;
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-server-data-preparation",
-  documentation: PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION,
+function clientDirective(program: ESTree.Program): boolean {
+  for (const statement of program.body) {
+    // Oxlint sets `directive` to null on ordinary expression statements.
+    if (statement.type !== "ExpressionStatement" || statement.directive == null) return false;
+    if (statement.directive === "use client") return true;
+  }
+  return false;
+}
+
+function projection(source: SourceCode, callback: Callback, mode: "data" | "view" = "data"): boolean {
+  if (callback.async || callback.generator || callback.params.length !== 1) return false;
+  const parameter = callback.params[0];
+  const destructured = parameter?.type === "ObjectPattern";
+  if (destructured && parameter.properties.some((property) =>
+    property.type !== "Property" || property.computed || property.value.type !== "Identifier")) return false;
+  const parameters = firstParameterBindings(source, callback);
+  const body = parameters.size === 0 ? null : returnedExpression(callback);
+  if (body === null) return false;
+  let fieldRead = false;
+  const inspect = (input: Node, depth: number): boolean => {
+    if (depth > 64) return false;
+    const node = unwrapExpression(input);
+    if (parameterPath(source, node, parameters)) {
+      if (node.type !== "MemberExpression" && !destructured) return false;
+      fieldRead = true;
+      return true;
+    }
+    const inspectChild = (child: Node): boolean => inspect(child, depth + 1);
+    return valueProjection(node, inspectChild) || (mode === "view" && displayProjection(node, inspectChild));
+  };
+  return inspect(body, 0) && fieldRead;
+}
+
+/** The one expression a callback returns: an expression body, or a block holding a single `return <expression>`. */
+function returnedExpression(callback: Callback): Node | null {
+  const body = callback.body as Node | null;
+  if (body?.type !== "BlockStatement") return body;
+  const [statement] = body.body;
+  return body.body.length === 1 && statement?.type === "ReturnStatement" ? statement.argument : null;
+}
+
+/** Literals and operator, array and object expressions built only from projected children. */
+function valueProjection(node: Node, inspectChild: (child: Node) => boolean): boolean {
+  switch (node.type) {
+    case "Literal":
+      return !("regex" in node);
+    case "UnaryExpression":
+      return UNARY.has(node.operator) && inspectChild(node.argument);
+    case "BinaryExpression":
+      return BINARY.has(node.operator) && inspectChild(node.left) && inspectChild(node.right);
+    case "LogicalExpression":
+      return inspectChild(node.left) && inspectChild(node.right);
+    case "ConditionalExpression":
+      return inspectChild(node.test) && inspectChild(node.consequent) && inspectChild(node.alternate);
+    case "ArrayExpression":
+      return node.elements.every((element) => element !== null && element.type !== "SpreadElement" && inspectChild(element));
+    case "ObjectExpression":
+      return node.properties.every((property) => property.type === "Property" && property.kind === "init" &&
+        !property.method && !property.computed && inspectChild(property.value));
+    default:
+      return false;
+  }
+}
+
+function displayProjection(node: Node, inspectChild: (child: Node) => boolean): boolean {
+  if (node.type === "JSXElement") {
+    return node.openingElement.attributes.every((attribute) =>
+      attribute.type === "JSXAttribute" && (attribute.value === null || inspectChild(attribute.value))) &&
+      node.children.every(inspectChild);
+  }
+  if (node.type === "JSXFragment") return node.children.every(inspectChild);
+  if (node.type === "JSXText") return true;
+  if (node.type === "JSXExpressionContainer") return node.expression.type === "JSXEmptyExpression" || inspectChild(node.expression);
+  return false;
+}
+
+function onlyProjectedInput(source: SourceCode, receiver: Node, nativeArray: (node: ESTree.CallExpression) => boolean,
+  cache: Map<TsVariable, boolean>): boolean {
+  let root = unwrapExpression(receiver);
+  while (root.type === "MemberExpression") root = unwrapExpression(root.object);
+  if (root.type !== "Identifier") return false;
+  const variable = findVariable(source.getScope(root), root.name);
+  if (variable === null) return false;
+  const cached = cache.get(variable);
+  if (cached !== undefined) return cached;
+  const projected = variable.references.every((reference) =>
+    typeOnlyReference(reference) || (reference.isRead() && isProjectedRead(source, reference.identifier, nativeArray)));
+  cache.set(variable, projected);
+  return projected;
+}
+
+/** `input.items.map(callback)` on a native array, where `callback` only projects fields. */
+function isProjectedRead(source: SourceCode, identifier: Node, nativeArray: (node: ESTree.CallExpression) => boolean): boolean {
+  const call = projectionMethodCall(identifier);
+  const callback = call?.arguments[0];
+  return call !== null && (callback?.type === "ArrowFunctionExpression" || callback?.type === "FunctionExpression") &&
+    (projection(source, callback) || projection(source, callback, "view")) && nativeArray(call);
+}
+
+/** The non-optional one-argument `.map`/`.filter`/`.flatMap` call at the end of a member chain from `identifier`. */
+function projectionMethodCall(identifier: Node): ESTree.CallExpression | null {
+  let access = outerExpression(identifier);
+  let call = parentOf(access);
+  while (call?.type === "MemberExpression" && call.object === access) {
+    access = outerExpression(call);
+    call = parentOf(access);
+  }
+  const member = unwrapExpression(access);
+  if (call?.type !== "CallExpression" || call.callee !== access || call.optional || call.arguments.length !== 1) return null;
+  return member.type === "MemberExpression" && !member.optional && METHODS.has(getPropertyName(member) ?? "") ? call : null;
+}
+
+function clientInteraction(source: SourceCode, node: Node, callable: (node: Node) => boolean): boolean {
+  if (node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression" || node.type === "FunctionDeclaration") return false;
+  if (node.type === "CallExpression" && (reactHook(source, node.callee, "useState") || reactHook(source, node.callee, "useReducer"))) return true;
+  if (node.type === "JSXOpeningElement" && node.name.type === "JSXIdentifier" && /^[a-z]/u.test(node.name.name) &&
+    node.attributes.some((attribute) =>
+      attribute.type === "JSXAttribute" && attribute.name.type === "JSXIdentifier" && DOM_EVENTS.has(attribute.name.name) &&
+      attribute.value?.type === "JSXExpressionContainer" && attribute.value.expression.type !== "JSXEmptyExpression" &&
+      callable(attribute.value.expression))) return true;
+  return forEachOwnAstChild(node, (child) => clientInteraction(source, child, callable), (key) => key !== "tokens" && key !== "comments");
+}
+
+interface Candidate {
+  readonly node: ESTree.CallExpression;
+  readonly component: RenderFunction;
+  readonly receiver: Node;
+}
+
+/** The original's typed checks, against tsrs. */
+function typedProofs(native: NativeTypes) {
+  const { checker, program, ast } = native;
+  const callable = (node: Node): boolean => {
+    const tsNode = native.node(unwrapExpression(node));
+    if (tsNode === undefined) return false;
+    const type = checker.getTypeAtLocation(tsNode);
+    const members = type.isUnionType() ? type.getTypes() : [type];
+    return members.some((member) => member.getCallSignatures().length > 0);
+  };
+  const nativeArray = (node: ESTree.CallExpression): boolean => {
+    const callee = unwrapExpression(node.callee);
+    if (callee.type !== "MemberExpression") return false;
+    const object = native.node(unwrapExpression(callee.object));
+    const call = native.node(node);
+    if (object === undefined || call === undefined) return false;
+    const receiver = checker.getNonNullableType(checker.getTypeAtLocation(object));
+    const members = receiver.isUnionType() ? receiver.getTypes() : [receiver];
+    if (!members.every((type) => checker.isArrayType(type) || checker.isTupleType(type))) return false;
+    const handle = checker.getResolvedSignature(call).declaration;
+    if (handle === undefined || program.getSourceFileMetadataByPath(handle.path)?.isDefaultLibrary !== true) return false;
+    const declaration = handle.resolve(program.getProject()) as TsNode | undefined;
+    const parent = declaration?.parent;
+    return parent !== undefined && ast.isInterfaceDeclaration(parent) && ["Array", "ReadonlyArray"].includes(parent.name.text);
+  };
+  return { callable, nativeArray };
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION.summary },
+    docs: { description: "Prepare data-only input collections before an interactive client view when possible.", url: docsUrl(NAME) },
     schema: [],
     messages: {
       prepareData:
         "Review preparing this prop-only collection in its producer or Server Component when the inputs are available there. Keep operations depending on unsaved edits or browser interaction reactive in the client.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      isTestFile(context) ||
-      !clientDirective(context.sourceCode.ast) ||
-      !context.sourceCode.parserServices?.program ||
-      !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
-    )
-      return {};
-    const services = getTypeServices(context);
-    const checker = services.program.getTypeChecker();
-    const interactions = new WeakMap<TSESTree.Node, boolean>();
-    const projectedInputs = new WeakMap<TSESLint.Scope.Variable, boolean>();
-    const callable = (node: TSESTree.Expression): boolean => {
-      const type = checker.getTypeAtLocation(
-        services.esTreeNodeToTSNodeMap.get(unwrapExpression(node)),
-      );
-      const members = type.isUnion() ? type.types : [type];
-      return members.some((member) => member.getCallSignatures().length > 0);
-    };
-    const nativeArray = (node: TSESTree.CallExpression): boolean => {
-      const callee = unwrapExpression(node.callee);
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const receiver = checker.getNonNullableType(
-        checker.getTypeAtLocation(
-          services.esTreeNodeToTSNodeMap.get(unwrapExpression(callee.object)),
-        ),
-      );
-      const members = receiver.isUnion() ? receiver.types : [receiver];
-      if (
-        !members.every(
-          (type) => checker.isArrayType(type) || checker.isTupleType(type),
-        )
-      )
-        return false;
-      const declaration = checker.getResolvedSignature(
-        services.esTreeNodeToTSNodeMap.get(node),
-      )?.declaration;
-      return (
-        declaration !== undefined &&
-        services.program.isSourceFileDefaultLibrary(
-          declaration.getSourceFile(),
-        ) &&
-        ts.isInterfaceDeclaration(declaration.parent) &&
-        ["Array", "ReadonlyArray"].includes(declaration.parent.name.text)
-      );
-    };
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: Candidate[] = [];
     return {
-      CallExpression(node): void {
+      before() {
+        tsrs = null;
+        candidates = [];
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isGeneratedFile(file, context.sourceCode.text) || isTestFile(file) || !clientDirective(context.sourceCode.ast)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      CallExpression(node) {
+        const source = context.sourceCode;
         const callee = unwrapExpression(node.callee);
-        if (
-          node.optional ||
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.optional ||
-          node.arguments.length !== 1 ||
-          !METHODS.has(ASTUtils.getPropertyName(callee) ?? "")
-        )
-          return;
+        if (node.optional || callee.type !== "MemberExpression" || callee.optional || node.arguments.length !== 1 ||
+          !METHODS.has(getPropertyName(callee) ?? "")) return;
         const callback = node.arguments[0];
-        if (
-          callback?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-          callback?.type !== AST_NODE_TYPES.FunctionExpression
-        )
-          return;
+        if (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression") return;
         const component = renderFunction(node);
-        if (
-          component === null ||
-          !parameterPath(
-            context.sourceCode,
-            callee.object,
-            firstParameterBindings(context.sourceCode, component),
-          ) ||
-          !projection(context.sourceCode, callback)
-        )
-          return;
-        let interactive = interactions.get(component);
-        if (interactive === undefined) {
-          interactive = clientInteraction(
-            context.sourceCode,
-            component.body,
-            callable,
-          );
-          interactions.set(component, interactive);
-        }
-        if (
-          !interactive ||
-          !onlyProjectedInput(
-            context.sourceCode,
-            callee.object,
-            nativeArray,
-            projectedInputs,
-          )
-        )
-          return;
-        context.report({ node, messageId: "prepareData" });
+        if (component === null || !parameterPath(source, callee.object, firstParameterBindings(source, component)) ||
+          !projection(source, callback)) return;
+        candidates.push({ node, component, receiver: callee.object });
+      },
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const source = context.sourceCode;
+        const found = tsrs.run((file) => {
+          const { callable, nativeArray } = typedProofs(nativeTypes(file));
+          const interactions = new Map<Node, boolean>();
+          const projectedInputs = new Map<TsVariable, boolean>();
+          return candidates.map(({ component, receiver }) => {
+            let interactive = interactions.get(component);
+            if (interactive === undefined) {
+              interactive = component.body !== null && clientInteraction(source, component.body, callable);
+              interactions.set(component, interactive);
+            }
+            return interactive && onlyProjectedInput(source, receiver, nativeArray, projectedInputs);
+          });
+        });
+        if (found === null) return;
+        candidates.forEach(({ node }, i) => {
+          if (found[i] === true) context.report({ node, messageId: "prepareData" });
+        });
       },
     };
   },
 });
-
-function clientDirective(program: TSESTree.Program): boolean {
-  for (const statement of program.body) {
-    if (
-      statement.type !== AST_NODE_TYPES.ExpressionStatement ||
-      statement.directive === undefined
-    )
-      return false;
-    if (statement.directive === "use client") return true;
-  }
-  return false;
-}
-
-function projection(
-  source: Readonly<TypeScriptSourceCode>,
-  callback: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-  mode: "data" | "view" = "data",
-): boolean {
-  if (callback.async || callback.generator || callback.params.length !== 1)
-    return false;
-  const parameter = callback.params[0];
-  if (
-    parameter?.type === AST_NODE_TYPES.ObjectPattern &&
-    parameter.properties.some(
-      (property) =>
-        property.type !== AST_NODE_TYPES.Property ||
-        property.computed ||
-        property.value.type !== AST_NODE_TYPES.Identifier,
-    )
-  )
-    return false;
-  const parameters = firstParameterBindings(source, callback);
-  if (parameters.size === 0) return false;
-  let body: TSESTree.Node = callback.body;
-  if (body.type === AST_NODE_TYPES.BlockStatement) {
-    const [statement] = body.body;
-    if (
-      body.body.length !== 1 ||
-      statement?.type !== AST_NODE_TYPES.ReturnStatement ||
-      statement.argument === null
-    )
-      return false;
-    body = statement.argument;
-  }
-  let fieldRead = false;
-  const inspect = (node: TSESTree.Node, depth: number): boolean => {
-    if (depth > 64) return false;
-    node = unwrapExpression(node);
-    if (parameterPath(source, node, parameters)) {
-      if (
-        node.type !== AST_NODE_TYPES.MemberExpression &&
-        callback.params[0]?.type !== AST_NODE_TYPES.ObjectPattern
-      )
-        return false;
-      fieldRead = true;
-      return true;
-    }
-    if (node.type === AST_NODE_TYPES.Literal) return !("regex" in node);
-    if (node.type === AST_NODE_TYPES.UnaryExpression)
-      return (
-        ["!", "+", "-", "~", "typeof"].includes(node.operator) &&
-        inspect(node.argument, depth + 1)
-      );
-    if (node.type === AST_NODE_TYPES.BinaryExpression)
-      return (
-        BINARY.has(node.operator) &&
-        inspect(node.left, depth + 1) &&
-        inspect(node.right, depth + 1)
-      );
-    if (node.type === AST_NODE_TYPES.LogicalExpression)
-      return inspect(node.left, depth + 1) && inspect(node.right, depth + 1);
-    if (node.type === AST_NODE_TYPES.ConditionalExpression)
-      return (
-        inspect(node.test, depth + 1) &&
-        inspect(node.consequent, depth + 1) &&
-        inspect(node.alternate, depth + 1)
-      );
-    if (node.type === AST_NODE_TYPES.ArrayExpression)
-      return node.elements.every(
-        (element) => element !== null &&
-          element.type !== AST_NODE_TYPES.SpreadElement &&
-          inspect(element, depth + 1),
-      );
-    if (node.type === AST_NODE_TYPES.ObjectExpression)
-      return node.properties.every(
-        (property) =>
-          property.type === AST_NODE_TYPES.Property &&
-          property.kind === "init" &&
-          !property.method &&
-          !property.computed &&
-          inspect(property.value, depth + 1),
-      );
-    return (
-      mode === "view" &&
-      displayProjection(node, (child) => inspect(child, depth + 1))
-    );
-  };
-  return inspect(body, 0) && fieldRead;
-}
-
-function displayProjection(
-  node: TSESTree.Node,
-  inspectChild: (child: TSESTree.Node) => boolean,
-): boolean {
-  if (node.type === AST_NODE_TYPES.JSXElement)
-    return (
-      node.openingElement.attributes.every(
-        (attribute) =>
-          attribute.type === AST_NODE_TYPES.JSXAttribute &&
-          (attribute.value === null || inspectChild(attribute.value)),
-      ) && node.children.every(inspectChild)
-    );
-  if (node.type === AST_NODE_TYPES.JSXFragment)
-    return node.children.every(inspectChild);
-  if (node.type === AST_NODE_TYPES.JSXText) return true;
-  if (node.type === AST_NODE_TYPES.JSXExpressionContainer)
-    return (
-      node.expression.type === AST_NODE_TYPES.JSXEmptyExpression ||
-      inspectChild(node.expression)
-    );
-  return false;
-}
-
-function onlyProjectedInput(
-  source: Readonly<TypeScriptSourceCode>,
-  receiver: TSESTree.Node,
-  nativeArray: (node: TSESTree.CallExpression) => boolean,
-  cache: WeakMap<TSESLint.Scope.Variable, boolean>,
-): boolean {
-  let root = unwrapExpression(receiver);
-  while (root.type === AST_NODE_TYPES.MemberExpression)
-    root = unwrapExpression(root.object);
-  if (root.type !== AST_NODE_TYPES.Identifier) return false;
-  const variable = ASTUtils.findVariable(source.getScope(root), root.name);
-  if (variable === null) return false;
-  const cached = cache.get(variable);
-  if (cached !== undefined) return cached;
-  const projected = variable.references.every((reference) => {
-    if (typeOnlyReference(reference)) return true;
-    if (!reference.isRead()) return false;
-    let access = outerExpression(reference.identifier);
-    let parent = access.parent;
-    while (
-      parent?.type === AST_NODE_TYPES.MemberExpression &&
-      parent.object === access
-    ) {
-      access = outerExpression(parent);
-      parent = access.parent;
-    }
-    const member = unwrapExpression(access);
-    const call = parent;
-    if (call?.type !== AST_NODE_TYPES.CallExpression) return false;
-    if (
-      member.type !== AST_NODE_TYPES.MemberExpression ||
-      member.optional ||
-      !METHODS.has(ASTUtils.getPropertyName(member) ?? "") ||
-      call.optional ||
-      call.arguments.length !== 1 ||
-      !nativeArray(call)
-    )
-      return false;
-    const callback = call.arguments[0];
-    return (
-      (callback?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-        callback?.type === AST_NODE_TYPES.FunctionExpression) &&
-      (projection(source, callback) ||
-        projection(source, callback, "view")) &&
-      call.callee === access
-    );
-  });
-  cache.set(variable, projected);
-  return projected;
-}
-
-function clientInteraction(
-  source: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Node,
-  callable: (node: TSESTree.Expression) => boolean,
-): boolean {
-  if (
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.FunctionDeclaration
-  )
-    return false;
-  if (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    (reactHook(source, node.callee, "useState") ||
-      reactHook(source, node.callee, "useReducer"))
-  )
-    return true;
-  if (
-    node.type === AST_NODE_TYPES.JSXOpeningElement &&
-    node.name.type === AST_NODE_TYPES.JSXIdentifier &&
-    /^[a-z]/u.test(node.name.name) &&
-    node.attributes.some(
-      (attribute) =>
-        attribute.type === AST_NODE_TYPES.JSXAttribute &&
-        attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
-        DOM_EVENTS.has(attribute.name.name) &&
-        attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-        attribute.value.expression.type !== AST_NODE_TYPES.JSXEmptyExpression &&
-        callable(attribute.value.expression),
-    )
-  )
-    return true;
-  return forEachOwnAstChild(
-    node,
-    (child) => clientInteraction(source, child, callable),
-    (key) => key !== "tokens" && key !== "comments",
-  );
-}

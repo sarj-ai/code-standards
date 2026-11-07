@@ -1,26 +1,12 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-boolean-selector-parameter.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, {
-  NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION,
-} from "../../src/rules/no-boolean-selector-parameter.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const CONCISE_DISPATCH_EXAMPLE = "const book = (premium: boolean) => premium ? premiumBook() : regularBook();";
+const VALUE_MAPPING_EXAMPLE = 'function label(enabled: boolean) { if (enabled) { return "Enabled"; } else { return "Disabled"; } }';
+const AUTOFIX_SOURCE = "function premiumBook() { return 'premium'; }\nfunction regularBook() { return 'regular'; }\nconst book = (premium: boolean) => premium ? premiumBook() : regularBook();\nexport function choices(): string[] { return [book(true), book(false), book(true)]; }";
+const AUTOFIX_FIXED = "function premiumBook() { return 'premium'; }\nfunction regularBook() { return 'regular'; }\nexport function choices(): string[] { return [premiumBook(), regularBook(), premiumBook()]; }";
 
 const SELECT = "if (flag) { a(); } else { b(); }";
 const FORWARDING_ADAPTER =
@@ -30,12 +16,11 @@ const FIXED_TOGGLE =
 const CONDITIONAL_HANDLER =
   "declare const compact: boolean; declare const otherHandler: (flag: boolean) => void; const handler = (flag: boolean) => flag ? a() : b();";
 
-TESTER.run("no-boolean-selector-parameter", rule, {
+TESTER.run("no-boolean-selector-parameter", rule, typed({
   valid: [
     {
       name: "public pure return mapping",
-      code: NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION.examples[1].files[0]
-        .source,
+      code: VALUE_MAPPING_EXAMPLE,
     },
     ...[
       [
@@ -221,10 +206,6 @@ TESTER.run("no-boolean-selector-parameter", rule, {
       code: `function select(flag: boolean) { ${SELECT} }`,
     },
     {
-      name: "reasoned exact suppression",
-      code: `function select(flag: boolean) {\n// eslint-disable-next-line @rule-tester/no-boolean-selector-parameter -- Reviewed legacy public API remains stable.\n${SELECT}\n}`,
-    },
-    {
       name: "named actual JSX callback",
       filename: "component.tsx",
       code: `declare function Toggle(props: {onChange: (flag: boolean) => void}): unknown; const handler = (flag: boolean) => { ${SELECT} }; const element = <Toggle onChange={handler} />;`,
@@ -267,19 +248,16 @@ TESTER.run("no-boolean-selector-parameter", rule, {
   invalid: [
     {
       name: "routes literal calls to existing operations",
-      code: NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION.examples[2].files[0]
-        .source,
+      code: AUTOFIX_SOURCE,
       errors: [
         { messageId: "booleanSelector", data: { parameterName: "premium" } },
       ],
       output:
-        NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION.examples[2].fixedFiles[0]
-          .source,
+        AUTOFIX_FIXED,
     },
     {
       name: "public concise dispatch",
-      code: NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION.examples[0].files[0]
-        .source,
+      code: CONCISE_DISPATCH_EXAMPLE,
       errors: [
         { messageId: "booleanSelector", data: { parameterName: "premium" } },
       ],
@@ -478,26 +456,17 @@ TESTER.run("no-boolean-selector-parameter", rule, {
       output: null,
     })),
   ],
+}));
+
+TESTER.run("no-boolean-selector-parameter without type information", rule, {
+  valid: [
+    { code: `function select(flag: boolean) { ${SELECT} }`, settings: { sarj: { typeAware: false } } },
+    { code: "const select = (flag: boolean) => flag ? a() : b();", settings: { sarj: { typeAware: false } } },
+  ],
+  invalid: [],
 });
 
-const UNTYPED_TESTER = new RuleTester({ languageOptions: { parser } });
-UNTYPED_TESTER.run(
-  "no-boolean-selector-parameter without type information",
-  rule,
-  {
-    valid: [
-      { code: `function select(flag: boolean) { ${SELECT} }` },
-      { code: "const select = (flag: boolean) => flag ? a() : b();" },
-    ],
-    invalid: [],
-  },
-);
-
-const OWNED_BOUNDARY_TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
-
-OWNED_BOUNDARY_TESTER.run("owned boolean selector callback and effect boundaries", rule, {
+TESTER.run("owned boolean selector callback and effect boundaries", rule, typed({
   valid: [
     {
       name: "inline async callback retains its external input even with awaited effects",
@@ -574,4 +543,4 @@ OWNED_BOUNDARY_TESTER.run("owned boolean selector callback and effect boundaries
       errors: [{ messageId: "booleanSelector" }], output: null,
     },
   ],
-});
+}));

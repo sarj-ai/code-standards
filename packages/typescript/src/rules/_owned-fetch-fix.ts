@@ -1,112 +1,67 @@
-/**
- * @fileoverview _owned-fetch-fix — repair the receiver of one owned literal request.
- */
+/** @fileoverview _owned-fetch-fix — repair the receiver of one owned literal request. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { soleConstDeclarator, soleExportedFunction } from "./_closed-module.js";
 
 /** Repair a receiver only when the private stored callable is used by one literal request. */
-export function ownedFetchFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Expression,
-): NativeReportFix | null {
-  if (
-    node.type !== AST_NODE_TYPES.Identifier ||
-    node.name !== "fetch" ||
-    sourceCode.ast.body.length !== 1 ||
-    sourceCode.getAllComments().length > 0 ||
-    (ASTUtils.findVariable(sourceCode.getScope(node), "fetch")?.defs.length ??
-      0) !== 0 ||
-    (ASTUtils.findVariable(sourceCode.getScope(node), "undefined")?.defs
-      .length ?? 0) !== 0
-  )
+export function ownedFetchFix(sourceCode: SourceCode, node: Node): FixFn | null {
+  if (node.type !== "Identifier" || node.name !== "fetch" || isShadowed(sourceCode, node, "fetch") ||
+    isShadowed(sourceCode, node, "undefined")) return null;
+  const entry = soleExportedFunction(sourceCode);
+  if (entry === null || entry.owner.params.length !== 0 || isPresent(entry.owner.returnType) || entry.body.length !== 2)
     return null;
-  const statement = sourceCode.ast.body[0];
+  const [declaration, returned] = entry.body;
+  if (declaration?.type !== "VariableDeclaration" || returned?.type !== "ReturnStatement") return null;
+  const object = soleConstDeclarator(declaration);
   if (
-    statement?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-    statement.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration
-  )
-    return null;
-  const owner = statement.declaration;
-  if (
-    owner.async ||
-    owner.declare ||
-    owner.generator ||
-    owner.typeParameters !== undefined ||
-    owner.params.length !== 0 ||
-    owner.returnType !== undefined ||
-    owner.body.body.length !== 2
-  )
-    return null;
-  const [declaration, returned] = owner.body.body;
-  if (
-    declaration?.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declaration.kind !== "const" ||
-    declaration.declare ||
-    declaration.declarations.length !== 1 ||
-    returned?.type !== AST_NODE_TYPES.ReturnStatement
-  )
-    return null;
-  const object = declaration.declarations[0];
-  if (
-    object?.id.type !== AST_NODE_TYPES.Identifier ||
-    object.id.typeAnnotation !== undefined ||
-    object.init?.type !== AST_NODE_TYPES.ObjectExpression ||
+    object?.id.type !== "Identifier" ||
+    isPresent(object.id.typeAnnotation) ||
+    object.init?.type !== "ObjectExpression" ||
     object.init.properties.length !== 1
   )
     return null;
   const property = object.init.properties[0];
-  if (
-    property?.type !== AST_NODE_TYPES.Property ||
-    property.computed ||
-    property.kind !== "init" ||
-    property.method ||
-    property.value !== node
-  )
-    return null;
-  const key = ASTUtils.getPropertyName(property);
-  if (
-    key === null ||
-    key === "__proto__" ||
-    !soleLiteralRequest(sourceCode, returned.argument, declaration, object, key)
-  )
+  if (property?.type !== "Property" || property.computed || property.kind !== "init" || property.method ||
+    property.value !== node) return null;
+  const key = getPropertyName(property);
+  if (key === null || key === "__proto__" || !soleLiteralRequest(sourceCode, returned.argument, declaration, object, key))
     return null;
   const replacement = property.shorthand
     ? `${sourceCode.getText(property.key)}: fetch.bind(undefined)`
     : "fetch.bind(undefined)";
-  return (fixer) =>
-    fixer.replaceText(property.shorthand ? property : node, replacement);
+  return (fixer) => fixer.replaceText(property.shorthand ? property : node, replacement);
+}
+
+function isShadowed(sourceCode: SourceCode, node: Node, name: string): boolean {
+  return (findVariable(sourceCode.getScope(node), name)?.defs.length ?? 0) !== 0;
 }
 
 function soleLiteralRequest(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Expression | null,
-  declaration: TSESTree.VariableDeclaration,
-  object: TSESTree.VariableDeclarator,
+  sourceCode: SourceCode,
+  node: Node | null | undefined,
+  declaration: ESTree.VariableDeclaration,
+  object: ESTree.VariableDeclarator,
   key: string,
 ): boolean {
   if (
-    node?.type !== AST_NODE_TYPES.CallExpression ||
+    node?.type !== "CallExpression" ||
     node.optional ||
-    node.typeArguments !== undefined ||
+    isPresent(node.typeArguments) ||
     node.arguments.length !== 1 ||
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.type !== "MemberExpression" ||
     node.callee.optional ||
-    ASTUtils.getPropertyName(node.callee) !== key ||
-    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-    object.id.type !== AST_NODE_TYPES.Identifier ||
+    getPropertyName(node.callee) !== key ||
+    node.callee.object.type !== "Identifier" ||
+    object.id.type !== "Identifier" ||
     node.callee.object.name !== object.id.name
   )
     return false;
   const input = node.arguments[0];
-  if (
-    input?.type !== AST_NODE_TYPES.Literal ||
-    typeof input.value !== "string" ||
-    !input.value.startsWith("data:")
-  )
+  if (input?.type !== "Literal" || typeof input.value !== "string" || !input.value.startsWith("data:"))
     return false;
   const identifier = object.id;
   const receiver = node.callee.object;
@@ -117,12 +72,9 @@ function soleLiteralRequest(
     binding !== undefined &&
     binding.defs.length === 1 &&
     binding.defs[0]?.node === object &&
-    ASTUtils.findVariable(sourceCode.getScope(receiver), identifier.name) ===
-      binding &&
+    findVariable(sourceCode.getScope(receiver), identifier.name) === binding &&
     binding.references.every(
-      (reference) =>
-        reference.identifier === identifier ||
-        reference.identifier === receiver,
+      (reference) => reference.identifier === identifier || reference.identifier === receiver,
     )
   );
 }

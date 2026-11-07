@@ -18,7 +18,7 @@
     "its `note`, and set `status: \"renamed\"` with a `replacement` when the rule",
     "still exists under another name.",
     "",
-    "`kind` is `eslint` for `@sarj/<name>` ESLint rules, `python`/`sql`/`iac` for a",
+    "`kind` is `oxlint` for `@sarj/<name>` Oxlint plugin rules, `python`/`sql`/`iac` for a",
     "rule id that is also a pre-commit hook id, `text` for config-text rules, and",
     "`code` for a `SARJnnn` code as written in a `sarj-noqa` comment."
   ],
@@ -292,7 +292,14 @@
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
     ],
-    "eslint": [
+    "oxlint": [
+      "directive-disable-enable-pair",
+      "directive-no-aggregating-enable",
+      "directive-no-duplicate-disable",
+      "directive-no-restricted-disable",
+      "directive-no-unused-enable",
+      "directive-no-use",
+      "directive-require-description",
       "duplicate-test-body",
       "enforce-file-structure",
       "excessive-commentary",
@@ -346,6 +353,7 @@
       "no-negative-only-http-status-assertion",
       "no-numeric-search-param-coercion",
       "no-offset-pagination",
+      "no-oxlint-directive",
       "no-partial-type-predicate",
       "no-positional-tuple-return",
       "no-production-browser-source-maps",
@@ -754,154 +762,154 @@
   "retired": [
     {
       "id": "@sarj/ban-loose-type-guards-in-tests",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/jsdoc-restates-signature",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "renamed",
       "replacement": "@sarj/no-restated-jsdoc",
       "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/no-restated-jsdoc."
     },
     {
       "id": "@sarj/no-async-callback-in-wait-for",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the entry and suppressions; Testing Library supports async waitFor callbacks and retries when their promises reject."
     },
     {
       "id": "@sarj/no-async-callback-in-waitfor",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the stale alias; its former replacement was also retired because Testing Library supports async waitFor callbacks."
     },
     {
       "id": "@sarj/no-conditional-in-test",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Removed in @sarj/eslint-plugin 15.0.0. Delete the entry and suppressions; syntax cannot distinguish weak conditional expectations from valid filtering, discriminant invariants, or implication checks."
     },
     {
       "id": "@sarj/no-implicit-attribute-access",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/no-sequential-await",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the entry; core `no-await-in-loop` covers it."
     },
     {
       "id": "@sarj/no-template-literal-in-log",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/no-unsafe-cast",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the entry; keep `@typescript-eslint/consistent-type-assertions` enabled."
     },
     {
       "id": "@sarj/prefer-setup-file-mocks",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/prefer-shadcn",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the retired entry. Application-profile consumers can separately adopt `@sarj/prefer-shadcn-primitives`."
     },
     {
       "id": "@sarj/prefer-single-sentence-comment",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions. Sentence count does not distinguish durable rationale from noise. Use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules."
     },
     {
       "id": "@sarj/prefer-string-literal-union",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; syntax cannot prove that an open string domain is closed."
     },
     {
       "id": "@sarj/prefer-zod-enum",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Replace this entry with `zod/prefer-enum-over-literal-union`, which proves every arm is a string literal."
     },
     {
       "id": "@sarj/primary-export-file-name",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/require-interface-for-injected-service",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "renamed",
       "replacement": "@sarj/require-port-for-service",
       "note": "Replace @sarj/require-interface-for-injected-service with @sarj/require-port-for-service before upgrading."
     },
     {
       "id": "@sarj/require-parameterized-tests",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete stale references; the rule was never registered."
     },
     {
       "id": "@sarj/require-schema-validate-search",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the entry; use `@typescript-eslint/consistent-type-assertions`."
     },
     {
       "id": "@sarj/single-public-export",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
     },
     {
       "id": "@sarj/strict-test-assertions",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "renamed",
       "replacement": "@sarj/prefer-whole-object-assertion",
       "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/prefer-whole-object-assertion."
     },
     {
       "id": "@sarj/trailing-value-narration",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "renamed",
       "replacement": "@sarj/no-trailing-value-narration",
       "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/no-trailing-value-narration."
     },
     {
       "id": "@sarj/zod-naming-convention",
-      "kind": "eslint",
+      "kind": "oxlint",
       "status": "renamed",
       "replacement": "@sarj/require-pascal-case-zod-schema-name",
       "note": "Replace @sarj/zod-naming-convention with @sarj/require-pascal-case-zod-schema-name before upgrading."

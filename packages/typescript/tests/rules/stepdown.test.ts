@@ -1,20 +1,22 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { STEPDOWN_DOCUMENTATION } from "../../src/rules/stepdown.js";
+import rule from "../../src/rules/stepdown.js";
 import {
   ErasedPrivate,
   ReorderedPrivate,
 } from "../fixtures/private-member-reflection.js";
+import { RuleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = new RuleTester({
+  eslintCompat: true,
+  languageOptions: { parserOptions: { lang: "ts" } },
+});
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const CALLER_FIRST_EXAMPLE =
+  "function run() { return load(); }\nfunction load() { return 1; }";
+const HELPER_FIRST_EXAMPLE =
+  "function load() { return 1; }\nfunction run() { return load(); }";
 
 const DEEP_CYCLE_SIZE = 12_000;
 const DEEP_CYCLE = Array.from(
@@ -145,8 +147,9 @@ RULE_TESTER.run("stepdown", rule, {
       code: "class Service { private load() { return 1; } run() { return this.load(); } } let other = {}; other = new Service(); other['load']();",
     },
     {
-      name: "accepts the documented caller-first order",
-      code: STEPDOWN_DOCUMENTATION.examples[0].files[0].source,
+      name: "accepts the documented caller-first order (documented path keeps it distinct from a same-code case)",
+      filename: "src/run.ts",
+      code: CALLER_FIRST_EXAMPLE,
     },
     {
       name: "handles a deep cyclic graph without recursive stack overflow",
@@ -354,8 +357,9 @@ RULE_TESTER.run("stepdown", rule, {
       code: "function helper() { return 1; }\nfunction testThing() { return helper(); }",
     },
     {
-      name: "allows generated files",
+      name: "allows generated files (cwd /repo: Oxlint's default cwd would hide generated/)",
       filename: "/repo/src/generated/service.ts",
+      cwd: "/repo",
       code: "function helper() { return 1; }\nfunction run() { return helper(); }",
     },
     {
@@ -419,6 +423,7 @@ RULE_TESTER.run("stepdown", rule, {
     },
     {
       name: "applies the source-owned exact correction",
+      filename: "src/autofix-example.ts",
       code: "function load() { return 1; }\nexport function run() { return load(); }",
       output:
         "export function run() { return load(); }\nfunction load() { return 1; }",
@@ -601,7 +606,8 @@ RULE_TESTER.run("stepdown", rule, {
     },
     {
       name: "reports the documented helper-first order",
-      code: STEPDOWN_DOCUMENTATION.examples[1].files[0].source,
+      filename: "src/run.ts",
+      code: HELPER_FIRST_EXAMPLE,
       errors: [
         {
           messageId: "helperAboveOnlyCaller",

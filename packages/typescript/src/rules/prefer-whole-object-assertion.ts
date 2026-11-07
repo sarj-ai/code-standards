@@ -1,18 +1,18 @@
 /**
  * @fileoverview prefer-whole-object-assertion — a run of `expect`s on one receiver fails on the first mismatch and says nothing about the rest of the value.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts
+ * Port of the 18.x `prefer-whole-object-assertion` rule. Same algorithm;
+ * the test-file and generated-file gates run in `before()`.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { getPropertyName } from "../utils/static-string.js";
+import { acceptedTestFrameworkName, EXPECT_ASSERTION, type Identifier } from "../utils/test-mock-provenance.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { acceptedTestFrameworkName, EXPECT_ASSERTION } from "./_test-mock-provenance.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "combineAssertions" | "assertArrayOnce";
-type Options = readonly [];
+const NAME = "prefer-whole-object-assertion";
 
 const MERGEABLE_MATCHERS: ReadonlySet<string> = new Set(["toBe", "toEqual", "toStrictEqual"]);
 const SYNTHETIC_LITERAL_MATCHERS: ReadonlyMap<string, string> = new Map([
@@ -31,32 +31,15 @@ const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 /** A run shorter than this is a single assertion; there is nothing to combine. */
 const MIN_RUN_LENGTH = 2;
 
-export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
-  rationale: "One whole-object assertion presents related expectations together and produces a complete structural diff.",
-  remediation: "Consider one `toMatchObject` assertion for ordinary data objects. Preserve missing-property checks, identity, and getter or proxy behavior when deciding whether to combine assertions.",
-  category: "testing",
-  aliases: ["strict-test-assertions"],
-  autofix: "none",
-  limitations: ["Undefined-property assertions are excluded because whole-object matching can require previously absent properties. Indexed runs with an immediately adjacent literal exact-length assertion are excluded; non-adjacent length checks and intentional prefix contracts remain manual review. No automatic rewrite: grouping can change observable getter or proxy reads."],
-  examples: [
-    { id: "whole-object", title: "Assert the object once", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
-    { id: "member-run", title: "Consider grouping related data properties", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
-    { id: "indexed-prefix", scenarioId: "array-length", title: "Review the collection contract before combining indexed assertions", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(users[0]).toEqual('Ada');\nexpect(users[1]).toEqual('Grace');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
-    { id: "length-and-prefix", scenarioId: "array-length", title: "A separate exact length can accompany an intentional prefix contract", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(users).toHaveLength(3);\nexpect(users[0]).toEqual('Ada');\nexpect(users[1]).toEqual('Grace');" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
 /** How a run reaches into its receiver: `o.name`, or `xs[0]`. */
 type AssertionKey =
   | { readonly kind: "property"; readonly path: readonly string[] }
   | { readonly kind: "index"; readonly index: number };
 
 interface Assertion {
-  readonly statement: TSESTree.ExpressionStatement;
+  readonly statement: ESTree.ExpressionStatement;
   /** The object the asserted member expression hangs off — the run's grouping key. */
-  readonly receiver: TSESTree.Expression;
+  readonly receiver: ESTree.Expression;
   readonly key: AssertionKey;
   readonly matcher: string;
   /** Source text of the expected value, including nullary matcher literals. */
@@ -65,14 +48,14 @@ interface Assertion {
   readonly expectedIsLiteral: boolean;
 }
 
-function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => string): string | null {
+function literalText(node: Node, getText: (node: Node) => string): string | null {
   node = unwrapExpression(node);
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return "regex" in node ? null : getText(node);
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0 ? getText(node) : null;
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       return NUMERIC_SIGNS.has(node.operator) && literalText(node.argument, getText) !== null
         ? getText(node)
         : null;
@@ -81,18 +64,18 @@ function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => stri
   }
 }
 
-function isPureReceiver(node: TSESTree.Node): boolean {
-      node = unwrapExpression(node);
+function isPureReceiver(node: Node): boolean {
+  node = unwrapExpression(node);
   switch (node.type) {
-    case AST_NODE_TYPES.Identifier:
-    case AST_NODE_TYPES.ThisExpression:
+    case "Identifier":
+    case "ThisExpression":
       return true;
-    case AST_NODE_TYPES.MemberExpression:
+    case "MemberExpression":
       if (node.optional) {
         return false;
       }
       if (node.computed) {
-        return node.property.type === AST_NODE_TYPES.Literal && isPureReceiver(node.object);
+        return node.property.type === "Literal" && isPureReceiver(node.object);
       }
       return isPureReceiver(node.object);
     default:
@@ -101,37 +84,82 @@ function isPureReceiver(node: TSESTree.Node): boolean {
 }
 
 /** A non-negative integer array index written as a literal, else `null`. */
-function literalIndex(node: TSESTree.Node): number | null {
-  if (node.type !== AST_NODE_TYPES.Literal || typeof node.value !== "number") {
+function literalIndex(node: Node): number | null {
+  if (node.type !== "Literal" || typeof node.value !== "number") {
     return null;
   }
   return Number.isInteger(node.value) && node.value >= 0 ? node.value : null;
 }
 
 function propertyAccess(
-  node: TSESTree.MemberExpression,
-): { readonly receiver: TSESTree.Expression; readonly path: readonly string[] } | null {
+  node: ESTree.MemberExpression,
+): { readonly receiver: ESTree.Expression; readonly path: readonly string[] } | null {
   const path: string[] = [];
-  let current: TSESTree.Expression = node;
-  while (current.type === AST_NODE_TYPES.MemberExpression && !current.optional) {
-    const name = ASTUtils.getPropertyName(current);
+  let current: ESTree.Expression = node;
+  while (current.type === "MemberExpression" && !current.optional) {
+    const name = getPropertyName(current);
     if (
       name === null || COLLECTION_PROPERTIES.has(name) || LITERAL_KEY_HAZARDS.has(name)
     ) return null;
     path.unshift(name);
-    current = unwrapExpression(current.object);
+    current = unwrapExpression(current.object) as ESTree.Expression;
   }
   return path.length > 0 && isPureReceiver(current) ? { receiver: current, path } : null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-whole-object-assertion",
-  documentation: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION,
+/** `expect(actual).matcher(...)` as a statement, before checking where `expect` comes from. */
+interface ExpectStatement {
+  readonly statement: ESTree.ExpressionStatement;
+  readonly call: ESTree.CallExpression;
+  readonly matcher: string;
+  readonly expect: Identifier;
+  /** The single `expect` argument, unwrapped. */
+  readonly actual: Node;
+}
+
+function expectStatement(statement: ESTree.Statement | undefined): ExpectStatement | null {
+  if (statement?.type !== "ExpressionStatement" || statement.expression.type !== "CallExpression") return null;
+  const call = statement.expression;
+  const callee = unwrapExpression(call.callee);
+  if (callee.type !== "MemberExpression") return null;
+  const matcher = getPropertyName(callee);
+  const expectCall = unwrapExpression(callee.object);
+  if (matcher === null || expectCall.type !== "CallExpression" || expectCall.arguments.length !== 1) return null;
+  const expect = unwrapExpression(expectCall.callee);
+  if (expect.type !== "Identifier") return null;
+  return { statement, call, matcher, expect, actual: unwrapExpression(expectCall.arguments[0] as Node) };
+}
+
+/** The leading path segments all `paths` share, stopping before any path's last segment. */
+/** `receiver` in `expect(receiver.length).toBe(n)` and the other mergeable matchers. */
+function lengthReceiver(actual: Node, matcher: string): Node | null {
+  if (!MERGEABLE_MATCHERS.has(matcher) || actual.type !== "MemberExpression" || actual.optional ||
+    getPropertyName(actual) !== "length") return null;
+  return unwrapExpression(actual.object);
+}
+
+function commonPathPrefix(paths: readonly (readonly string[])[]): string[] {
+  const prefix: string[] = [];
+  for (let index = 0; ; index += 1) {
+    const candidate = paths[0]?.[index];
+    if (candidate === undefined || paths.some((path) => path[index] !== candidate || path.length === index + 1)) return prefix;
+    prefix.push(candidate);
+  }
+}
+
+/** Whether one path repeats another or runs through it, so the two cannot share one object literal. */
+function hasOverlappingPaths(paths: readonly (readonly string[])[]): boolean {
+  return paths.some((shorter, i) => paths.some((longer, j) =>
+    i !== j && shorter.length <= longer.length && shorter.every((name, index) => longer[index] === name)));
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
+      url: docsUrl(NAME),
     },
     messages: {
       combineAssertions:
@@ -141,65 +169,21 @@ export default createRule<Options, MessageIds>({
     },
     schema: [],
   },
-  defaultOptions: [],
-  create(context) {
-    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
-    const { sourceCode } = context;
+  createOnce(context) {
+    let sourceCode: SourceCode;
+
 
     /** Distinct literal expectations are candidates, not proof of equivalent runtime reads. */
     function reportPropertyRun(run: readonly Assertion[]): void {
-      type ObjectTree = Map<string, string | ObjectTree>;
-      const tree: ObjectTree = new Map();
-      const paths: string[][] = [];
+      const paths: (readonly string[])[] = [];
       for (const assertion of run) {
-        if (assertion.key.kind !== "property" || !assertion.expectedIsLiteral) {
-          return;
-        }
-        if (!MERGEABLE_MATCHERS.has(assertion.matcher) && !SYNTHETIC_LITERAL_MATCHERS.has(assertion.matcher)) {
-          return;
-        }
-        paths.push([...assertion.key.path]);
+        if (assertion.key.kind !== "property" || !assertion.expectedIsLiteral) return;
+        if (!MERGEABLE_MATCHERS.has(assertion.matcher) && !SYNTHETIC_LITERAL_MATCHERS.has(assertion.matcher)) return;
+        paths.push(assertion.key.path);
       }
-      const commonPrefix: string[] = [];
-      for (let index = 0;;index += 1) {
-        const candidate = paths[0]?.[index];
-        if (candidate === undefined || paths.some((path) => path[index] !== candidate || path.length === index + 1)) {
-          break;
-        }
-        commonPrefix.push(candidate);
-      }
-      if (!populateAssertionTree()) return;
-      function populateAssertionTree(): boolean {
-        for (const [assertionIndex, assertion] of run.entries()) {
-          if (assertion.key.kind !== "property") return false;
-          let branch = tree;
-          const relativePath = paths[assertionIndex]?.slice(commonPrefix.length) ?? [];
-          for (const [index, name] of relativePath.entries()) {
-            const leaf = index === relativePath.length - 1;
-            const existing = branch.get(name);
-            if (leaf) {
-              if (existing !== undefined) return false;
-              branch.set(name, assertion.expectedText);
-            } else if (existing === undefined) {
-              const nested: ObjectTree = new Map();
-              branch.set(name, nested);
-              branch = nested;
-            } else if (existing instanceof Map) {
-              branch = existing;
-            } else {
-              return false;
-            }
-          }
-        }
-        return true;
-      }
-
       const first = run[0];
-      if (first === undefined) {
-        return;
-      }
+      if (first === undefined || hasOverlappingPaths(paths)) return;
+      const commonPrefix = commonPathPrefix(paths);
       const receiverText = `${sourceCode.getText(first.receiver)}${commonPrefix.map((name) => /^[A-Za-z_$][\w$]*$/u.test(name) ? `.${name}` : `[${JSON.stringify(name)}]`).join("")}`;
       context.report({
         node: first.statement,
@@ -208,7 +192,7 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function reportIndexRun(run: readonly Assertion[], before: TSESTree.Statement | undefined, after: TSESTree.Statement | undefined): void {
+    function reportIndexRun(run: readonly Assertion[], before: ESTree.Statement | undefined, after: ESTree.Statement | undefined): void {
       const first = run[0];
       if (first === undefined || !ARRAY_MATCHERS.has(first.matcher)) {
         return;
@@ -236,7 +220,7 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function checkBody(body: readonly TSESTree.Statement[]): void {
+    function checkBody(body: readonly ESTree.Statement[]): void {
       let run: Assertion[] = [];
       let start = 0;
 
@@ -273,80 +257,34 @@ export default createRule<Options, MessageIds>({
       flush();
     }
 
-    function parseAssertion(statement: TSESTree.Statement): Assertion | null {
-      if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
-        return null;
-      }
-      const call = statement.expression;
-      if (call.type !== AST_NODE_TYPES.CallExpression) {
-        return null;
-      }
-      const callee = unwrapExpression(call.callee);
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-      const matcher = ASTUtils.getPropertyName(callee);
-      if (matcher === null) return null;
-      const expectCall = calleeReceiver;
-      const expectCallee = expectCall.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(expectCall.callee) : null;
-      if (
-        expectCall.type !== AST_NODE_TYPES.CallExpression ||
-        expectCallee?.type !== AST_NODE_TYPES.Identifier ||
-        expectCallee.name !== "expect" ||
-        expectCall.arguments.length !== 1
-      ) {
-        return null;
-      }
-      const actual = expectCall.arguments[0] === undefined ? undefined : unwrapExpression(expectCall.arguments[0]);
-      if (!isTestExpect(expectCallee)) return null;
-      if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
-        return null;
-      }
-      if (!isPureReceiver(actual.object)) {
-        return null;
-      }
-
-      let key: AssertionKey;
-      let receiver: TSESTree.Expression;
+    function parseAssertion(statement: ESTree.Statement): Assertion | null {
+      const expectation = expectStatement(statement);
+      if (expectation === null || expectation.expect.name !== "expect" || !isTestExpect(expectation.expect)) return null;
+      const { statement: expression, call, matcher, actual } = expectation;
+      if (actual.type !== "MemberExpression" || actual.optional || !isPureReceiver(actual.object)) return null;
       const index = actual.computed ? literalIndex(actual.property) : null;
-      if (index !== null) {
-        key = { kind: "index", index };
-        receiver = actual.object;
-      } else {
-        const access = propertyAccess(actual);
-        if (access === null) return null;
-        key = { kind: "property", path: access.path };
-        receiver = access.receiver;
-      }
-
-      return assertionExpectation(statement, call, receiver, key, matcher);
+      if (index !== null) return assertionExpectation(expression, call, actual.object, { kind: "index", index }, matcher);
+      const access = propertyAccess(actual);
+      if (access === null) return null;
+      return assertionExpectation(expression, call, access.receiver, { kind: "property", path: access.path }, matcher);
     }
 
-    function isTestExpect(callee: TSESTree.Identifier): boolean {
+    function isTestExpect(callee: Identifier): boolean {
       return acceptedTestFrameworkName(sourceCode, callee, "assertion", EXPECT_ASSERTION) !== null;
     }
 
-    function isExactLengthAssertion(statement: TSESTree.Statement | undefined, receiver: TSESTree.Expression): boolean {
-      if (statement?.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return false;
-      const call = statement.expression;
-      const callee = unwrapExpression(call.callee);
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || call.arguments.length !== 1) return false;
-      const matcher = ASTUtils.getPropertyName(callee);
-      const assertion = unwrapExpression(callee.object);
-      if (assertion.type !== AST_NODE_TYPES.CallExpression || assertion.arguments.length !== 1) return false;
-      const expect = unwrapExpression(assertion.callee);
-      if (expect.type !== AST_NODE_TYPES.Identifier || !isTestExpect(expect)) return false;
-      const expected = call.arguments[0] === undefined ? undefined : unwrapExpression(call.arguments[0]);
-      if (expected?.type !== AST_NODE_TYPES.Literal || typeof expected.value !== "number" || !Number.isInteger(expected.value) || expected.value < 0) return false;
-      let actual = assertion.arguments[0] === undefined ? undefined : unwrapExpression(assertion.arguments[0]);
-      if (matcher !== "toHaveLength") {
-        if (matcher === null || !MERGEABLE_MATCHERS.has(matcher) || actual?.type !== AST_NODE_TYPES.MemberExpression ||
-            actual.optional || ASTUtils.getPropertyName(actual) !== "length") return false;
-        actual = unwrapExpression(actual.object);
-      }
-      return actual !== undefined && sourceCode.getText(actual) === sourceCode.getText(receiver);
+    /** `expect(receiver).toHaveLength(n)` or `expect(receiver.length).toBe(n)` for a literal non-negative integer `n`. */
+    function isExactLengthAssertion(statement: ESTree.Statement | undefined, receiver: ESTree.Expression): boolean {
+      const expectation = expectStatement(statement);
+      if (expectation === null || expectation.call.arguments.length !== 1 || !isTestExpect(expectation.expect)) return false;
+      const { call, matcher, actual } = expectation;
+      const expected = unwrapExpression(call.arguments[0] as Node);
+      if (expected.type !== "Literal" || typeof expected.value !== "number" || !Number.isInteger(expected.value) || expected.value < 0) return false;
+      const measured = matcher === "toHaveLength" ? actual : lengthReceiver(actual, matcher);
+      return measured !== null && sourceCode.getText(measured) === sourceCode.getText(receiver);
     }
 
-    function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
+    function assertionExpectation(statement: ESTree.ExpressionStatement, call: ESTree.CallExpression, receiver: ESTree.Expression | ESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
       const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
       if (synthetic !== undefined && call.arguments.length === 0) {
         return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
@@ -355,7 +293,7 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const expected = call.arguments[0];
-      if (call.arguments.length !== 1 || expected === undefined || expected.type === AST_NODE_TYPES.SpreadElement) {
+      if (call.arguments.length !== 1 || expected === undefined || expected.type === "SpreadElement") {
         return null;
       }
       const literal = literalText(expected, (node) => sourceCode.getText(node));
@@ -370,10 +308,17 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      BlockStatement: (node: TSESTree.BlockStatement): void => {
+      before(): boolean | void {
+        sourceCode = context.sourceCode;
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (!isTestFile(file) || isGeneratedFile(file, sourceCode.text)) {
+          return false;
+        }
+      },
+      BlockStatement: (node: ESTree.BlockStatement): void => {
         checkBody(node.body);
       },
-      Program: (node: TSESTree.Program): void => {
+      Program: (node: ESTree.Program): void => {
         checkBody(node.body);
       },
     };

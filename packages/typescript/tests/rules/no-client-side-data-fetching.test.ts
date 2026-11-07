@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-client-side-data-fetching.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION,
-} from "../../src/rules/no-client-side-data-fetching.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-client-side-data-fetching", rule, {
   valid: [
@@ -19,8 +10,8 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
     { code: "async function load() { return await fetch('/x'); }" },
 
     {
-      code: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].files[0].source,
-      filename: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].focusPath,
+      code: "import { loadUsers } from './users-client';\nexport default async function Users() { const users = await loadUsers(); return <pre>{JSON.stringify(users)}</pre>; }",
+      filename: "app/users/page.tsx",
       languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     },
 
@@ -66,7 +57,7 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
   ],
   invalid: [
     {
-      code: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[1].files[0].source,
+      code: "'use client'; import { useEffect } from 'react';\nexport function Users() { useEffect(() => { fetch('/api/users'); }, []); return null; }",
       errors: [{ messageId: "noClientFetch" }],
     },
     {

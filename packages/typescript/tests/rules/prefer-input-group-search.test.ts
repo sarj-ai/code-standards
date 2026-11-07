@@ -1,21 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-input-group-search.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION } from "../../src/rules/prefer-input-group-search.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaFeatures: { jsx: true } },
-  },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 
 const IMPORTS = `
   import { Search } from "lucide-react";
@@ -37,7 +24,7 @@ RULE_TESTER.run("prefer-input-group-search", rule, {
       name: "does not confuse a search action with input decoration",
       code: `import { Search } from "lucide-react"; import { Input } from "@/components/ui/input"; <div><button><Search /></button><Input placeholder="Rename file" /></div>`,
     },
-    { name: "public no-match example", filename: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[0].focusPath, code: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/search.tsx", code: "import { Search } from 'lucide-react'; import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'; const field = <InputGroup><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput /></InputGroup>;" },
     {
       name: "accepts the shared input group",
       code: `
@@ -90,7 +77,7 @@ RULE_TESTER.run("prefer-input-group-search", rule, {
       code: `import { SearchIcon } from "lucide-react"; import { Input } from "@/components/ui/input"; import { InputGroup } from "@/components/ui/input-group"; <div><SearchIcon /><Input /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
-    { name: "public match example", filename: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[1].focusPath, code: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferInputGroup" }] },
+    { name: "public match example", filename: "src/search.tsx", code: "import { Search } from 'lucide-react'; import { Input } from '@/components/ui/input'; import { InputGroup } from '@/components/ui/input-group'; const field = <div><Search /><Input /></div>;", errors: [{ messageId: "preferInputGroup" }] },
     {
       name: "rejects direct search and input siblings",
       code: `${IMPORTS}<div><Search /><Input /></div>`,

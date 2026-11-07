@@ -107,6 +107,10 @@ def test_does_not_rewrite_a_ratchet_shaped_unrelated_json_file(tmp_path: Path) -
             "// eslint-enable @sarj/prefer-string-literal-union, unicorn/no-null\n",
             "// eslint-enable unicorn/no-null\n",
         ),
+        (
+            "// oxlint-disable-next-line @sarj/require-interface-for-injected-service, typescript/no-explicit-any\n",
+            "// oxlint-disable-next-line @sarj/require-port-for-service, typescript/no-explicit-any\n",
+        ),
         ("value = 1  # sarj-noqa: SARJ061, SARJ096\n", "value = 1  # sarj-noqa: SARJ096\n"),
         ("# sarj-noqa: SARJ061\nvalue = 1\n", "value = 1\n"),
     ],
@@ -178,8 +182,9 @@ def test_migrates_exact_eslint_config_keys_from_the_retirement_ledger(
     )
 
 
-def test_migrates_exact_key_in_exported_eslint_config_call(tmp_path: Path) -> None:
-    target = tmp_path / "eslint.config.mts"
+@pytest.mark.parametrize("name", ["eslint.config.mts", "oxlint.config.ts"])
+def test_migrates_exact_key_in_exported_lint_config_call(tmp_path: Path, name: str) -> None:
+    target = tmp_path / name
     source = "export default defineConfig({ rules: {\n  '@sarj/zod-naming-convention': 'error',\n} });\n"
     target.write_text(source, encoding="utf-8")
 
@@ -385,8 +390,19 @@ def test_jsx_wrapped_directive_is_not_deleted_into_an_empty_expression(tmp_path:
     assert retired_suppressions.reference_counts(target, source) == {"@sarj/prefer-string-literal-union": 1}
 
 
-def test_migrates_valid_eslint_bulk_suppressions_without_adding_budgets(tmp_path: Path) -> None:
-    target = tmp_path / "eslint-suppressions.json"
+def test_a_jsx_wrapped_directive_alone_on_its_line_is_deleted_with_its_braces(tmp_path: Path) -> None:
+    target = tmp_path / "component.tsx"
+    source = "<Panel>\n  {/* eslint-disable-next-line @sarj/prefer-string-literal-union */}\n  <Body />\n</Panel>\n"
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == (
+        retired_suppressions.Rewrite(target, "<Panel>\n  <Body />\n</Panel>\n"),
+    )
+
+
+@pytest.mark.parametrize("name", ["eslint-suppressions.json", "oxlint-suppressions.json"])
+def test_migrates_valid_bulk_suppressions_without_adding_budgets(tmp_path: Path, name: str) -> None:
+    target = tmp_path / name
     target.write_text(
         "{\n"
         '  "src/app.ts": {\n'
