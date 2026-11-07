@@ -132,7 +132,7 @@ class ExcessiveCommentary(Rule):
             return []
         narration = CommentNarration(context)
         findings: list[Diagnostic] = []
-        for group in groups(context.path, context.source):
+        for group in groups(context.path, context.source, tree=context.tree):
             if narration.match(group) is None:
                 continue
             findings.append(

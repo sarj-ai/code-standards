@@ -417,7 +417,9 @@ class PreferNominalIdTypes(Rule):
 
     def _expanded_facts(self, context: PythonFileContext, tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
         sources = (
-            context.session.nominal_project.sources(context.path, context.session.first_party)
+            context.session.nominal_project.sources(
+                context.path, context.session.first_party, project=context.session.project
+            )
             if context.path.is_file()
             else {}
         )

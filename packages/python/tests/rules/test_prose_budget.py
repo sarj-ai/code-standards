@@ -1,9 +1,14 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.rules import _prose_budget  # sarj-noqa: SARJ048 — white-box helper test
 from sarj_python_lint.rules._prose_budget import groups, sentence_units
+
+
+if TYPE_CHECKING:
+    import ast
 
 
 @pytest.mark.parametrize(
@@ -68,7 +73,7 @@ def test_groups_excludes_generated_and_vendored_files(path: Path) -> None:
 def test_groups_extracts_once_for_adjacent_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
 
-    def extract(_path: Path, _source: str) -> list[_prose_budget.ProseGroup]:
+    def extract(_path: Path, _source: str, _tree: ast.Module | None = None) -> list[_prose_budget.ProseGroup]:
         nonlocal calls
         calls += 1
         return [_prose_budget.ProseGroup(1, 1, "Fact.", "comment")]

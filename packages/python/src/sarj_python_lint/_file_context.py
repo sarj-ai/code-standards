@@ -8,7 +8,7 @@ from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._source import python_source_lines, symbol_prefilter_source
 from sarj_python_lint.rule_base import SuppressionIndex
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
-from sarj_python_lint.rules._ast_index import NodeIndex
+from sarj_python_lint.rules._ast_index import NodeIndex, SharedModule, share_module
 from sarj_python_lint.rules._binding_inventory import BindingInventory
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._imports import ImportIndex
@@ -63,8 +63,13 @@ class PythonFileContext:
         return is_generated(self.path, self.source)
 
     @cached_property
+    def _shared_module(self) -> SharedModule:
+        # Registering the tree lets every `walk`/`nodes` call on it reuse this index.
+        return share_module(self._valid_tree())
+
+    @cached_property
     def node_index(self) -> NodeIndex:
-        return NodeIndex.of_module(self._valid_tree())
+        return self._shared_module.index
 
     def nodes[NodeT: ast.AST](self, *types: type[NodeT]) -> list[NodeT]:
         return [node for node in self.node_index.query(types) if isinstance(node, types)]

@@ -142,7 +142,7 @@ class NoTypedDocSections(Rule):
                 severity=Severity.ERROR,
                 column_encoding=group.column_encoding,
             )
-            for group in groups(path, source)
+            for group in groups(path, source, tree=context.tree)
             if group.typed_restatements and group.line not in excluded_lines
         ]
 

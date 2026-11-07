@@ -245,7 +245,9 @@ def _has_analytical_wrapper(context: PythonFileContext) -> bool:
     if not qualified:
         return False
     # Distribution ownership also covers namespaces shared by workspace members.
-    sources = context.session.nominal_project.sources(context.path, context.session.first_party, include_generated=True)
+    sources = context.session.nominal_project.sources(
+        context.path, context.session.first_party, include_generated=True, project=context.session.project
+    )
     return any(_analytical_query_type(name, sources, frozenset()) for name in qualified)
 
 

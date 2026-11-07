@@ -234,6 +234,14 @@ class _ImportNamespaceWrites:
     incomplete: bool
 
 
+def parsed_tree(project: ProjectIndexSet, path: Path, source: str) -> ast.Module | None:
+    # Never raises, even when sealed: callers fall back to parsing `source` themselves.
+    unit: SourceUnit | None = None
+    with suppress(NeedsSerialSourceError):
+        unit = project.unit(path)
+    return unit.tree if unit is not None and unit.source == source else None
+
+
 def imports_outside(tree: ast.Module | None, modules: frozenset[str]) -> bool:
     if tree is None:
         return True
@@ -888,7 +896,7 @@ class ProjectIndexSet:
     def _mock_specs(self) -> Mapping[SymbolRef, frozenset[Path]]:
         specs: dict[SymbolRef, set[Path]] = {}
         for candidate in self._units.values():
-            if candidate.tree is None:
+            if candidate.tree is None or not _imports_unittest_mock(candidate):
                 continue
             for call in walk_ast(candidate.tree):
                 if isinstance(call, ast.Call):
@@ -1801,6 +1809,20 @@ def _mock_spec_targets(unit: SourceUnit, call: ast.Call) -> Iterator[SymbolRef]:
             yield target
     if mock_name == "create_autospec" and call.args and (target := _direct_base_symbol(unit, call.args[0])) is not None:
         yield target
+
+
+_UNITTEST_MOCK = SymbolRef("unittest", "mock")
+
+
+def _imports_unittest_mock(unit: SourceUnit) -> bool:
+    # `_mock_function_name` only resolves names bound to `unittest.mock` or its members.
+    if unit.tree is None:
+        return False
+    return any(
+        symbol.module == "unittest.mock" or symbol == _UNITTEST_MOCK
+        for symbols in (unit.imports.values(), _absolute_import_symbols(unit.tree).values())
+        for symbol in symbols
+    )
 
 
 def _mock_function_name(unit: SourceUnit, function: ast.expr) -> str | None:
