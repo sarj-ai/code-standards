@@ -4,7 +4,8 @@
 set -uo pipefail
 
 log="$RUNNER_TEMP/standards-rollout.log"
-window="$(date -u +%Y-%m-%d)/$((10#$(date -u +%H) / 6))"
+now="$(date -u +%Y-%m-%d/%H)"
+window="${now%/*}/$((10#${now#*/} / 6))"
 registry_digest="$(printf '%s' "$REGISTRY_TOML" | sha256sum | cut -c1-64)"
 # Only scheduled and release-dispatched runs reuse a failure; a person dispatching
 # the workflow always retries every pending consumer.
