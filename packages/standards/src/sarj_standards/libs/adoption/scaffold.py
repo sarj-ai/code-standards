@@ -135,6 +135,11 @@ class Plan:
 
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
 _BLACKSMITH_X64_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-(?P<release>\d{4})")
+_BLACKSMITH_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-\d{4}(?:-arm)?")
+_ACTIONS_CHECKOUT: Final = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
+# Blacksmith's checkout reuses a per-repository bare mirror on a sticky disk and falls back to the
+# upstream checkout, so full-history reads cost seconds instead of a complete clone per job.
+_BLACKSMITH_CHECKOUT: Final = "useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1"
 
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
 _PYRIGHT_POLICY_PARENT: Final = ".basedpyright-strict.json"
@@ -2748,6 +2753,8 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
         if _harden_runner_supported(runner)
         else ""
     )
+    job_runner = _commit_policy_runner(runner)
+    checkout = _BLACKSMITH_CHECKOUT if _BLACKSMITH_UBUNTU_RUNNER.fullmatch(job_runner) else _ACTIONS_CHECKOUT
     return (
         """\
 # Managed by code-standards commit policy; regenerate with `code-standards setup`.
@@ -2770,14 +2777,14 @@ jobs:
       group: commit-policy-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
 """
-        f"    runs-on: {_commit_policy_runner(runner)}\n"
+        f"    runs-on: {job_runner}\n"
         """\
     timeout-minutes: 5
     steps:
 """
         f"{harden}"
+        f"      - uses: {checkout}\n"
         """\
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merged && github.event.pull_request.head.sha || '' }}
           fetch-depth: 0
