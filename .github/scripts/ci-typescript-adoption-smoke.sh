@@ -13,7 +13,8 @@ if compgen -G "$repo/eslint*" >/dev/null; then
   echo "setup wrote ESLint configuration for the typescript capability" >&2
   exit 1
 fi
-jq --exit-status '.overrides | has("eslint-plugin-react")' "$repo/package.json" >/dev/null
+jq --exit-status '.overrides == {}' "$repo/package.json" >/dev/null
+jq --exit-status '.devDependencies | has("eslint") | not' "$repo/package.json" >/dev/null
 jq --exit-status '.devDependencies | has("oxlint") and has("oxfmt") and has("tsrs")' "$repo/package.json" >/dev/null
 
 # Resolution only, and without the unpublished @sarj/eslint-plugin pin:

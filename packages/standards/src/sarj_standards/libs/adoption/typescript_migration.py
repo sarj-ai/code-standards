@@ -5,6 +5,7 @@ from functools import cache
 import json
 from pathlib import Path
 import re
+import shlex
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.json_boundary import parse_json
@@ -60,6 +61,12 @@ _LEGACY_PEERS: Final = frozenset(
     {
         "@eslint-community/eslint-plugin-eslint-comments",
         "@eslint/compat",
+        "@eslint-react/eslint-plugin",
+        "@tanstack/eslint-plugin-query",
+        "@biomejs/biome",
+        "prettier",
+        "react-doctor",
+        "eslint-plugin-react-you-might-not-need-an-effect",
         "@eslint/js",
         "@shadcn/lint",
         "@types/eslint-plugin-no-unsanitized",
@@ -76,6 +83,9 @@ _LEGACY_PEERS: Final = frozenset(
         "@typescript/native",
         "@vitest/eslint-plugin",
         "eslint",
+        "eslint-config-next",
+        "eslint-config-expo",
+        "eslint-config-prettier",
         "eslint-node-test",
         "eslint-plugin-better-tailwindcss",
         "eslint-plugin-jest",
@@ -170,7 +180,10 @@ def plan(root: Path, typescript_root: Path, files: Sequence[Path]) -> Migration:
     _plan_directives(kept, changes)
     _plan_tsconfig_references(typescript_root, sources, changes)
     _plan_workspace_type_checks(typescript_root, sources, changes)
-    retired = _retired_dependencies(typescript_root, sources, changes.deletes, replace_eslint=not keeps_eslint)
+    _validate_retired_commands(typescript_root, sources, changes)
+    if changes.errors:
+        return Migration(errors=tuple(changes.errors))
+    retired = _retired_dependencies(sources, changes.deletes, replace_eslint=not keeps_eslint)
     if not keeps_eslint and changes.deletes:
         _note_eslint_invocations(typescript_root, sources, changes)
     return Migration(
@@ -182,10 +195,34 @@ def plan(root: Path, typescript_root: Path, files: Sequence[Path]) -> Migration:
     )
 
 
+def _validate_retired_commands(typescript_root: Path, sources: Sequence[Path], changes: _Changes) -> None:
+    for source in sources:
+        if source.name != "package.json" and (
+            source.name in _HOOK_AND_CI_NAMES or source.suffix == ".sh" or ".github" in source.parts
+        ):
+            command = source.read_text(encoding="utf-8", errors="replace")
+            if any(_invokes(binary, command) for binary in ("eslint", "prettier", "biome")):
+                changes.errors.append(
+                    f"{_relative(source, typescript_root)} invokes retired tooling; use code-standards check/fix before update"
+                )
+        if source.name == "package.json":
+            _validate_package_commands(typescript_root, source, changes)
+
+
+def _validate_package_commands(root: Path, source: Path, changes: _Changes) -> None:
+    for name, command in _scripts(source).items():
+        migrated = _migrated_script(command, lint="oxlint", replace_eslint=True)
+        if not isinstance(migrated, str):
+            continue
+        if any(_invokes(binary, migrated) for binary in ("eslint", "prettier", "biome")):
+            changes.errors.append(
+                f"{_relative(source, root)} script {name}: port unsupported command `{command}` to code-standards before update"
+            )
+
+
 def migrated_scripts(scripts: Mapping[str, JsonValue], *, lint: str, replace_eslint: bool) -> dict[str, JsonValue]:
     updated = {
-        name: _migrated_script(name, command, lint=lint, replace_eslint=replace_eslint)
-        for name, command in scripts.items()
+        name: _migrated_script(command, lint=lint, replace_eslint=replace_eslint) for name, command in scripts.items()
     }
     updated.setdefault("lint", lint)
     updated.setdefault("format", "oxfmt")
@@ -211,20 +248,31 @@ def _plan_entrypoint(typescript_root: Path, sources: Sequence[Path], changes: _C
         )
         return True
     nested = [path for path in sources if path.name in LEGACY_ESLINT_CONFIG_NAMES and path.parent != typescript_root]
-    changes.notes.extend(
+    keeps_root = _plan_root_config(typescript_root, configs[0] if configs else None, changes)
+    aliases = [path for path in nested if _reexports_deleted_config(path, changes)]
+    changes.deletes.extend(aliases)
+    nested = [path for path in nested if path not in aliases]
+    changes.errors.extend(
         f"kept nested ESLint config {path.relative_to(typescript_root).as_posix()}: Oxlint does not read it; "
         f"port its overrides into {OXLINT_ENTRYPOINT} and delete it"
         for path in nested
     )
-    keeps_root = _plan_root_config(typescript_root, configs[0] if configs else None, changes)
     return keeps_root or bool(nested)
+
+
+def _reexports_deleted_config(path: Path, changes: _Changes) -> bool:
+    match = re.fullmatch(
+        r"""\s*export\s*\{\s*default\s*\}\s*from\s*(["'])(\.[^"']+)\1\s*;?\s*""",
+        path.read_text(encoding="utf-8"),
+    )
+    return match is not None and (path.parent / match.group(2)).resolve() in changes.deletes
 
 
 def _plan_root_config(typescript_root: Path, config: Path | None, changes: _Changes) -> bool:
     # Writes the Oxlint entrypoint, translated from `config` when it can be; returns whether `config` stays.
     if any((typescript_root / name).is_file() for name in OXLINT_CONFIG_NAMES):
         if config is not None:
-            changes.notes.append(_kept_note(config, "Oxlint does not read it"))
+            changes.errors.append(_kept_note(config, "Oxlint already exists; merge these overrides before update"))
         return config is not None
     target = typescript_root / OXLINT_ENTRYPOINT
     if config is None:
@@ -233,8 +281,7 @@ def _plan_root_config(typescript_root: Path, config: Path | None, changes: _Chan
     try:
         translation = eslint_config.translate(config.read_text(encoding="utf-8"))
     except eslint_config.UntranslatableError as exc:
-        changes.writes.append((target, render_entrypoint()))
-        changes.notes.append(_kept_note(config, f"it is not a static Standards config: {exc}"))
+        changes.errors.append(_kept_note(config, f"it is not a static Standards config: {exc}"))
         return True
     rendered = render_entrypoint(
         options=translation.options, ignore_patterns=translation.ignore_patterns, overrides=translation.overrides
@@ -413,9 +460,9 @@ def _with_references(owner: Path, names: Sequence[str]) -> str | None:
 
 
 def _retired_dependencies(
-    typescript_root: Path, sources: Sequence[Path], deletes: Collection[Path], *, replace_eslint: bool
+    sources: Sequence[Path], deletes: Collection[Path], *, replace_eslint: bool
 ) -> frozenset[str]:
-    candidates = _LEGACY_PEERS - manifest.typescript_peers().keys()
+    candidates = _dependency_candidates(sources)
     # ESLint loads a kept TypeScript config through jiti.
     used: set[str] = set() if replace_eslint else {"jiti"}
     for path in sources:
@@ -425,25 +472,28 @@ def _retired_dependencies(
             text = path.read_text(encoding="utf-8", errors="replace")
             used.update(_package_name(match.group("spec")) for match in _SPECIFIER.finditer(text))
         elif path.name == "package.json":
-            used.update(
-                _script_packages(
-                    path, candidates, root_package=path.parent == typescript_root, replace_eslint=replace_eslint
-                )
-            )
+            used.update(_script_packages(path, candidates, replace_eslint=replace_eslint))
     return frozenset(candidates - used)
 
 
-def _script_packages(
-    path: Path, candidates: Collection[str], *, root_package: bool, replace_eslint: bool
-) -> Iterator[str]:
-    for name, raw in _scripts(path).items():
+def _dependency_candidates(sources: Sequence[Path]) -> set[str]:
+    candidates = set(_LEGACY_PEERS - manifest.typescript_peers().keys())
+    for source in sources:
+        if source.name == "package.json":
+            document = parse_json(source.read_text(encoding="utf-8"))
+            dependencies = document.get("devDependencies") if isinstance(document, dict) else None
+            if isinstance(dependencies, dict):
+                candidates.update(
+                    name for name in dependencies if name.startswith(("prettier-plugin-", "@prettier/plugin-"))
+                )
+    return candidates
+
+
+def _script_packages(path: Path, candidates: Collection[str], *, replace_eslint: bool) -> Iterator[str]:
+    for raw in _scripts(path).values():
         if not isinstance(raw, str):
             continue
-        command = (
-            str(_migrated_script(name, raw, lint="oxlint", replace_eslint=replace_eslint))
-            if root_package
-            else _type_checked_with_tsrs(raw)
-        )
+        command = str(_migrated_script(raw, lint="oxlint", replace_eslint=replace_eslint))
         for package in candidates:
             binary = _PACKAGE_BINARIES.get(package)
             if (binary is not None and _invokes(binary, command)) or f"node_modules/{package}/" in command:
@@ -461,22 +511,65 @@ def _scripts(path: Path) -> Mapping[str, JsonValue]:
 
 
 def _plan_workspace_type_checks(typescript_root: Path, sources: Sequence[Path], changes: _Changes) -> None:
-    # The root package.json is merged with the peers; workspace packages only move their type checks to tsrs.
+    package = typescript_root / "package.json"
+    root_document = parse_json(package.read_text(encoding="utf-8")) if package.is_file() else {}
+    manager = str(root_document.get("packageManager", "npm") if isinstance(root_document, dict) else "npm").split(
+        "@", 1
+    )[0]
+    retired = _retired_dependencies(sources, changes.deletes, replace_eslint=True)
     for path in sources:
         if path.name != "package.json" or path.parent == typescript_root:
             continue
-        text = path.read_text(encoding="utf-8")
-        rewritten = text
-        for command in _scripts(path).values():
-            if not isinstance(command, str) or (migrated := _type_checked_with_tsrs(command)) == command:
-                continue
-            encoded = json.dumps(command, ensure_ascii=False)
-            if rewritten.count(encoded) != 1:
-                changes.notes.append(f"move `{command}` in {_relative(path, typescript_root)} to tsrs by hand")
-                continue
-            rewritten = rewritten.replace(encoded, json.dumps(migrated, ensure_ascii=False))
-        if rewritten != text:
-            changes.writes.append((path, rewritten))
+        document = parse_json(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            continue
+        updated = _workspace_document(document, path, typescript_root, manager, retired)
+        if updated != document:
+            changes.writes.append((path, json.dumps(updated, indent=2, ensure_ascii=False) + "\n"))
+
+
+def _workspace_document(
+    document: Mapping[str, JsonValue], path: Path, root: Path, manager: str, retired: Collection[str]
+) -> dict[str, JsonValue]:
+    scripts = document.get("scripts")
+    scripts = scripts if isinstance(scripts, dict) else {}
+    rewritten: dict[str, JsonValue] = {
+        name: _workspace_script(command, path, root, manager) for name, command in scripts.items()
+    }
+    updated = {key: value for key, value in document.items() if key != "prettier"}
+    updated["scripts"] = rewritten
+    dependencies = document.get("devDependencies")
+    if isinstance(dependencies, dict):
+        updated["devDependencies"] = {key: value for key, value in dependencies.items() if key not in retired}
+    return updated
+
+
+def _workspace_script(command: JsonValue, path: Path, root: Path, manager: str) -> JsonValue:
+    migrated = _migrated_script(command, lint="code-standards check --trust-repository-code", replace_eslint=True)
+    if migrated == command or not isinstance(migrated, str) or migrated.startswith("tsrs"):
+        return migrated
+    script = _workspace_script_name(migrated)
+    scope = shlex.quote(path.parent.relative_to(root).as_posix())
+    relative_root = shlex.quote(str(Path(*(".." for _ in path.parent.relative_to(root).parts))))
+    invocation = _workspace_invocation(manager, script, scope, relative_root)
+    if "--fix" in str(_migrated_script(command, lint="lint", replace_eslint=True)):
+        invocation += " --fix"
+    return invocation
+
+
+def _workspace_script_name(command: str) -> str:
+    if "--check" in command:
+        return "format:check"
+    return "format" if command.startswith("oxfmt") else "lint"
+
+
+def _workspace_invocation(manager: str, script: str, scope: str, relative_root: str) -> str:
+    if manager == "pnpm":
+        return f"pnpm -w run {script} {scope}"
+    runner = {"yarn": "yarn --cwd", "bun": "bun run --cwd"}.get(manager)
+    if runner is not None:
+        return f"{runner} {relative_root} {script} {scope}"
+    return f"npm --prefix {relative_root} run {script} -- {scope}"
 
 
 def _package_name(specifier: str) -> str:
@@ -509,19 +602,65 @@ def _commands(path: Path, typescript_root: Path) -> str:
     return ""
 
 
-def _migrated_script(name: str, command: JsonValue, *, lint: str, replace_eslint: bool) -> JsonValue:
+def _migrated_script(command: JsonValue, *, lint: str, replace_eslint: bool) -> JsonValue:
     # Only plain invocations move: `eslint [.] [--fix]`, and a `format` script's `prettier --write|--check [.]`
     # or `biome format [--write] [.]`. A warning budget goes too: Standards owns warning promotion. Anything
     # with other arguments stays, and a remaining ESLint call is reported.
     if not isinstance(command, str):
         return command
-    unbudgeted = _WARNING_BUDGET.sub("", _RUNNER.sub("", command, count=1))
-    plain = () if _SHELL_OPERATOR.search(command) else tuple(word for word in unbudgeted.split() if word != ".")
-    if replace_eslint and plain in {("eslint",), ("eslint", "--fix")}:
-        return lint if plain == ("eslint",) else f"{lint} --fix"
-    if name in {"format", "format:check"} and plain in _FORMATTER_MODES:
-        return _FORMATTER_MODES[plain]
+    stripped = _RUNNER.sub("", command, count=1)
+    stripped = re.sub(r"^OXLINT_TSGOLINT_PATH=\S+\s+", "", stripped)
+    if _SHELL_OPERATOR.search(stripped):
+        return _type_checked_with_tsrs(command)
+    words = shlex.split(_WARNING_BUDGET.sub("", stripped))
+    if not words:
+        return command
+    binary = words.pop(0)
+    if binary == "biome" and words and words[0] in {"check", "lint", "format"}:
+        mode = words.pop(0)
+    else:
+        mode = "format" if binary in {"prettier", "oxfmt"} else "lint"
+    parsed = _simple_arguments(words, binary=binary, check=mode == "format" and binary != "oxfmt")
+    if parsed is None:
+        return _type_checked_with_tsrs(command)
+    paths, fix, check = parsed
+    if binary in {"eslint", "oxlint", "biome"} and mode != "format" and replace_eslint:
+        return " ".join([lint, *(["--fix"] if fix else []), *paths])
+    if binary in {"prettier", "biome", "oxfmt"} and mode == "format":
+        return " ".join(["oxfmt", *(["--check"] if check else []), *paths])
     return _type_checked_with_tsrs(command)
+
+
+def _simple_arguments(words: Sequence[str], *, binary: str, check: bool) -> tuple[list[str], bool, bool] | None:
+    paths: list[str] = []
+    fix = False
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in {"--fix", "--write", "-w"}:
+            fix = True
+            check = False
+        elif word in {"--check", "-c"}:
+            check = True
+        elif word in {"--config-path", "--config"}:
+            index += 1
+        elif word.startswith(("--config-path=", "--config=")) or (
+            binary == "oxlint"
+            and word
+            in {
+                "--type-aware",
+                "--type-check",
+                "--deny-warnings",
+                "--report-unused-disable-directives",
+            }
+        ):
+            pass
+        elif word.startswith("-"):
+            return None
+        elif word != ".":
+            paths.append(shlex.quote(word))
+        index += 1
+    return paths, fix, check
 
 
 def _type_checked_with_tsrs(command: str) -> str:

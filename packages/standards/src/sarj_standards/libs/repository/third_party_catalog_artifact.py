@@ -417,8 +417,8 @@ def _react_doctor_provider(root: Path) -> _Provider:
         id="react-doctor",
         label="React Doctor",
         engine="react-doctor",
-        package="react-doctor",
-        version=peers["react-doctor"],
+        package="oxlint-plugin-react-doctor",
+        version=peers["oxlint-plugin-react-doctor"],
         homepage="https://react.doctor/",
     )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 import json
@@ -53,24 +54,9 @@ _BIOME_LANGUAGES: Final = {
 }
 # Biome formats HTML only when `html.formatter.enabled` is true.
 _BIOME_HTML: Final = frozenset({"htm", "html"})
-# Style for repositories without a formatter: Platform's `.oxfmtrc.json` without its repository paths.
-_DEFAULT_STYLE: Final[Mapping[str, JsonValue]] = {
-    "printWidth": 80,
-    "sortPackageJson": False,
-    "sortImports": {
-        "groups": [
-            ["side_effect", "side_effect_style"],
-            ["builtin", "type-builtin"],
-            ["external", "type-external"],
-            ["internal", "type-internal", "subpath", "type-subpath", "unknown"],
-            ["parent", "type-parent", "sibling", "type-sibling", "index", "type-index"],
-        ],
-        "newlinesBetween": True,
-    },
-}
 # oxfmt's own config discovery order.
 CONFIG_NAMES: Final = (".oxfmtrc.json", ".oxfmtrc.jsonc", "oxfmt.config.ts", "oxfmt.config.mts")
-_PRETTIER_CONFIGS: Final = (
+PRETTIER_CONFIG_NAMES: Final = (
     ".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml", ".prettierrc.json5", ".prettierrc.js",
     "prettier.config.js", ".prettierrc.ts", "prettier.config.ts", ".prettierrc.mjs", "prettier.config.mjs",
     ".prettierrc.mts", "prettier.config.mts", ".prettierrc.cjs", "prettier.config.cjs", ".prettierrc.cts",
@@ -275,33 +261,100 @@ def write_command(paths: Sequence[str], *, project: Path, root: Path) -> lifecyc
     return lifecycle.Command("oxfmt", external.local_node_binary_argv("oxfmt", argv, project, root) or argv, project)
 
 
-def seed_config(root: Path, *, runner: ProcessExecutor | None = None) -> OxfmtSeed:
+def seed_config(
+    root: Path,
+    *,
+    runner: ProcessExecutor | None = None,  # ruff: ignore[unused-function-argument] -- Retained for callers of the former formatter migration API.
+) -> OxfmtSeed:
+    # Adoption shares style across repositories; preserve only file coverage.
     root = root.resolve()
+    inherited = _existing_coverage(root)
+    biome = _biome_config(root)
+    seed = _biome_seed(biome, OxfmtSeed("biome", {})) if biome is not None else OxfmtSeed(None, {})
+    if seed.warnings:
+        raise ValueError("; ".join(seed.warnings))
+    options = _coverage_options(seed.options)
+    options.update(inherited)
+    source = "oxfmt" if (root / ".oxfmtrc.json").is_file() else seed.source
+    if _has_prettier_config(root):
+        source = source or "prettier"
+        options.setdefault("extensions", _sorted(_PRETTIER_EXTENSIONS))
+    ignore_file = root / ".prettierignore"
+    if ignore_file.is_file():
+        patterns = [line.strip() for line in ignore_file.read_text(encoding="utf-8").splitlines()]
+        options["ignorePatterns"] = [
+            *_strings(options.get("ignorePatterns", [])),
+            *(pattern for pattern in patterns if pattern and not pattern.startswith("#")),
+        ]
+    return OxfmtSeed(source, options, seed.warnings)
+
+
+def _coverage_options(options: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
+    return {key: value for key, value in options.items() if key in {"ignorePatterns", "extensions"}}
+
+
+def _existing_coverage(root: Path) -> dict[str, JsonValue]:
     existing = [name for name in CONFIG_NAMES if (root / name).is_file()]
+    inherited: dict[str, JsonValue] = {}
+    entrypoint = root / "oxfmt.config.mts"
+    if existing == ["oxfmt.config.mts"]:
+        raw = _entrypoint_options(entrypoint)
+        if not isinstance(raw, dict) or "overrides" in raw:
+            msg = "oxfmt overrides need manual review before adopting shared style"
+            raise ValueError(msg)
+        inherited = _coverage_options(raw)
+        existing = []
     if existing == [".oxfmtrc.json"]:
-        return OxfmtSeed("oxfmt", _without_schema(_json_object(root / ".oxfmtrc.json")))
+        config = _without_schema(_json_object(root / ".oxfmtrc.json"))
+        if "overrides" in config:
+            msg = "oxfmt overrides need manual review before adopting shared style"
+            raise ValueError(msg)
+        inherited = _coverage_options(config)
+        existing = []
     if existing:
         msg = f"{existing[0]} already configures oxfmt; port it to oxfmt.config.mts by hand"
         raise ValueError(msg)
-    prettier = _has_prettier_config(root)
-    biome = _biome_config(root)
-    if prettier and biome is not None:
-        msg = "both Prettier and the Biome formatter are configured; disable one before seeding oxfmt"
+    return inherited
+
+
+def _entrypoint_options(entrypoint: Path) -> JsonValue:
+    text = entrypoint.read_text(encoding="utf-8")
+    match = re.fullmatch(
+        r"\s*import \{ createConfig \} from [\"\']\./oxfmt\.strict\.mts[\"\'];?\s*(?://[^\n]*\n\s*)*export default createConfig\((?P<options>\{.*\})?\);?\s*",
+        text,
+        re.DOTALL,
+    )
+    if match is None:
+        msg = "handcrafted oxfmt.config.mts must be migrated to the shared style by hand"
         raise ValueError(msg)
-    if biome is not None:
-        return _biome_seed(biome, _migrate(root, "biome", runner))
-    if prettier:
-        seed = _migrate(root, "prettier", runner)
-        return replace(seed, options={**seed.options, "extensions": _sorted(_PRETTIER_EXTENSIONS)})
-    return OxfmtSeed(None, dict(_DEFAULT_STYLE))
+    return _static_options(match["options"] or "{}")
+
+
+def matches_shared_config(root: Path, seed: OxfmtSeed) -> bool:
+    entrypoint = root / "oxfmt.config.mts"
+    return entrypoint.is_file() and _entrypoint_options(entrypoint) == dict(seed.options)
+
+
+def _static_options(text: str) -> JsonValue:
+    # Accept only a literal object, including the keys and trailing commas oxfmt emits.
+    tokens = re.compile(
+        r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<key>\b[A-Za-z_$][\w$]*)(?=\s*:)|(?P<trailing>,)(?=\s*[}\]])"""
+    )
+
+    def normalize(match: re.Match[str]) -> str:
+        if match["key"] is not None:
+            return json.dumps(match["key"])
+        if match["trailing"] is not None:
+            return ""
+        return json.dumps(ast.literal_eval(match[0])) if match[0].startswith("'") else match[0]
+
+    return parse_json(tokens.sub(normalize, text))
 
 
 def render_config(seed: OxfmtSeed) -> str:
-    origins = {None: "Platform's default oxfmt style", "oxfmt": ".oxfmtrc.json"}
-    origin = origins.get(seed.source, f"{seed.source} by `oxfmt --migrate`")
     return (
         'import { createConfig } from "./oxfmt.strict.mts";\n\n'
-        f"// Seeded once from {origin}. Repository-owned: edit style, ignores and overrides here.\n"
+        "// Shared Standards style; repository-owned file coverage and exclusions.\n"
         f"export default createConfig({json.dumps(seed.options, indent=2)});\n"
     )
 
@@ -369,32 +422,8 @@ def _failure(issue: ExecutionIssue, invocation: InvocationId) -> ToolReport:
     )
 
 
-def _migrate(root: Path, source: Literal["biome", "prettier"], runner: ProcessExecutor | None) -> OxfmtSeed:
-    execute = external.DEFAULT_EXECUTOR if runner is None else runner
-    binary = _binary(execute, project=root, root=root)
-    if binary is None:
-        msg = "oxfmt is not installed locally; install the repository's packages before seeding oxfmt"
-        raise OSError(msg)
-    target = root / ".oxfmtrc.json"
-    try:
-        output = execute.run(external.process_request((*binary, f"--migrate={source}"), cwd=root))
-        if output.returncode != 0 or not target.is_file():
-            msg = f"oxfmt --migrate={source} failed: {output.stderr.strip() or output.stdout.strip()}"
-            raise ValueError(msg)
-        migrated = _without_schema(_json_object(target))
-    finally:
-        target.unlink(missing_ok=True)
-    # oxfmt lists review items as "  - <item>" on stderr; seeding handles Biome overrides itself.
-    warnings = tuple(
-        line.removeprefix("  - ")
-        for line in output.stderr.splitlines()
-        if line.startswith("  - ") and "cannot be migrated automatically" not in line
-    )
-    return OxfmtSeed(source, migrated, warnings)
-
-
 def _has_prettier_config(root: Path) -> bool:
-    if any((root / name).is_file() for name in _PRETTIER_CONFIGS):
+    if any((root / name).is_file() for name in PRETTIER_CONFIG_NAMES):
         return True
     package = root / "package.json"
     return package.is_file() and "prettier" in _json_object(package)
@@ -404,6 +433,14 @@ def _biome_config(root: Path) -> _BiomeConfig | None:
     path = next((root / name for name in BIOME_CONFIG_NAMES if (root / name).is_file()), None)
     if path is None:
         return None
+    document = _json_object(path)
+    linter = document.get("linter")
+    if isinstance(linter, dict) and (linter.get("rules") or linter.get("domains")):
+        msg = f"{path.name} has custom lint rules; port them to Oxlint before update"
+        raise ValueError(msg)
+    if document.get("extends"):
+        msg = f"{path.name} extends another config; port its coverage before update"
+        raise ValueError(msg)
     config = _BiomeConfig.model_validate_json(path.read_bytes())
     return None if config.formatter.enabled is False else config
 
@@ -412,14 +449,13 @@ def _biome_seed(biome: _BiomeConfig, migrated: OxfmtSeed) -> OxfmtSeed:
     notes = list(migrated.warnings)
     options = dict(migrated.options)
     extensions = _biome_extensions(biome, notes)
+    if biome.files.includes is not None:
+        options["ignorePatterns"] = [
+            pattern.removeprefix("!") for pattern in biome.files.includes if pattern.startswith("!")
+        ]
     if biome.formatter.includes is not None:
         excluded = [pattern.removeprefix("!") for pattern in biome.formatter.includes if pattern.startswith("!")]
         options["ignorePatterns"] = [*_strings(options.pop("ignorePatterns", [])), *excluded]
-    overrides: list[JsonValue] = [
-        override
-        for language in ("css", "json")
-        if extensions & _BIOME_LANGUAGES[language] and (override := _biome_language_override(biome, language))
-    ]
     notes.extend(
         f"Biome override {list(override.includes)} sets formatter options; port it to oxfmt overrides"
         for override in biome.overrides
@@ -427,8 +463,6 @@ def _biome_seed(biome: _BiomeConfig, migrated: OxfmtSeed) -> OxfmtSeed:
     )
     # Biome never sorts package.json; oxfmt does unless told otherwise.
     options |= {"sortPackageJson": False, "extensions": _sorted(extensions)}
-    if overrides:
-        options["overrides"] = overrides
     return OxfmtSeed("biome", options, tuple(notes))
 
 
@@ -460,41 +494,6 @@ def _biome_includes(patterns: Sequence[str] | None, notes: list[str]) -> set[str
         if pattern not in {"**", "**/*"} and (match is None or match["prefix"] not in {None, "**/"}):
             notes.append(f"Biome include {pattern!r} kept by file type only; add oxfmt ignores for other paths")
     return extensions
-
-
-def _biome_language_override(biome: _BiomeConfig, language: Literal["css", "json"]) -> dict[str, JsonValue] | None:
-    javascript = _biome_style(biome, biome.javascript.formatter)
-    javascript |= {
-        "singleQuote": _quote_style(biome.javascript.formatter) == "single",
-        "trailingComma": _trailing_commas(biome.javascript.formatter, "all"),
-    }
-    style = _biome_style(biome, biome.formatters()[language])
-    if language == "css":
-        style["singleQuote"] = _quote_style(biome.css.formatter) == "single"
-    else:
-        style["trailingComma"] = _trailing_commas(biome.json_language.formatter, "none")
-    options = {key: value for key, value in style.items() if javascript[key] != value}
-    members = sorted(_BIOME_LANGUAGES[language])
-    files = f"**/*.{members[0]}" if len(members) == 1 else f"**/*.{{{','.join(members)}}}"
-    return {"files": [files], "options": options} if options else None
-
-
-def _biome_style(biome: _BiomeConfig, language: _BiomeFormatter | None) -> dict[str, JsonValue]:
-    specific = _BiomeFormatter() if language is None else language
-    general = biome.formatter
-    return {
-        "printWidth": specific.line_width or general.line_width or 80,
-        "tabWidth": specific.indent_width or general.indent_width or 2,
-        "useTabs": (specific.indent_style or general.indent_style or "tab") == "tab",
-    }
-
-
-def _quote_style(formatter: _BiomeFormatter | None) -> str:
-    return "double" if formatter is None or formatter.quote_style is None else formatter.quote_style
-
-
-def _trailing_commas(formatter: _BiomeFormatter | None, default: str) -> str:
-    return default if formatter is None or formatter.trailing_commas is None else formatter.trailing_commas
 
 
 def _sorted(values: Iterable[str]) -> list[JsonValue]:

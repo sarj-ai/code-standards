@@ -71,7 +71,7 @@ from .shell_policy import SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from typing import BinaryIO
 
     from pydantic import JsonValue
@@ -108,14 +108,8 @@ _NO_UPSTREAM_RULES = UpstreamRules()
 
 
 _TIMEOUT = timedelta(minutes=15)
-# Where `oxlint-suppressions.json` waits while React Doctor runs in its directory.
-_PARKED_SUPPRESSIONS = ".oxlint-suppressions.json.react-doctor"
-# Baseline commands run Oxlint and React Doctor in parallel threads; Oxlint must never run while
-# the suppressions file is parked. Oxlint has no flag or variable for another suppressions path,
-# and React Doctor always runs it in the project directory, so the file has to move.
+# Serialize Oxlint suppression ledger access between baseline workers.
 _SUPPRESSIONS_LOCK = threading.Lock()
-# Eighth-second steps convert exactly to integer milliseconds in Node.
-_REACT_DOCTOR_TICKS_PER_SECOND = 8
 _DETEKT_FINDINGS = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_BYTES = 64 * 1024
@@ -141,9 +135,6 @@ _DEPTRY_ANNOTATION_RE: Final = re.compile(
     r"(?:,col=(?P<column>[1-9][0-9]*))?,title=(?P<code>DEP00[123])::(?P<message>.*)$"
 )
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
-_REACT_DOCTOR_SOURCE_RE: Final = re.compile(r"\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])\Z")
-_REACT_DOCTOR_GENERATED_BUNDLE_RE: Final = re.compile(r"\.(?:iife|umd|global|min)\.m?js\Z", re.IGNORECASE | re.ASCII)
-_REACT_DOCTOR_GENERATED_DIRECTORY_RE: Final = re.compile(r"(?:^|/)__generated__/")
 _NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _LARGE_NODE_OPTIONS: Final = "--max-old-space-size=8192"
 _LARGE_HOST_MEMORY: Final = 12 * 1024**3
@@ -235,8 +226,10 @@ class _ReactDoctorProtocolModel(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
 
 
-class _ReactDoctorFailure(_ReactDoctorProtocolModel):
-    message: str = Field(min_length=1)
+class _ReactDoctorSourcePosition(_ReactDoctorProtocolModel):
+    line: int = Field(ge=0)
+    character: int = Field(ge=0)
+    byte_offset: int = Field(alias="byteOffset", ge=0)
 
 
 class _ReactDoctorDiagnostic(_ReactDoctorProtocolModel):
@@ -247,47 +240,10 @@ class _ReactDoctorDiagnostic(_ReactDoctorProtocolModel):
     message: str = Field(min_length=1)
     line: int = Field(ge=0)
     column: int = Field(ge=0)
+    source_position: _ReactDoctorSourcePosition | None = Field(default=None, alias="sourcePosition")
     end_line: int | None = Field(default=None, alias="endLine", ge=0)
     end_column: int | None = Field(default=None, alias="endColumn", ge=0)
     url: str | None = None
-
-
-class _ReactDoctorProject(_ReactDoctorProtocolModel):
-    directory: str = Field(min_length=1)
-    complete: bool
-    diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
-    skipped_checks: tuple[object, ...] | None = Field(  # sarj-noqa: SARJ528 -- Count-only native payload.
-        default=None, alias="skippedChecks"
-    )
-    skipped_check_reasons: dict[str, str] = Field(default_factory=dict, alias="skippedCheckReasons")
-    analyzed_file_count: int | None = Field(default=None, alias="analyzedFileCount", ge=0)
-    scanned_file_count: int | None = Field(default=None, alias="scannedFileCount", ge=0)
-
-
-class _ReactDoctorIncompleteError(ValueError):
-    pass
-
-
-class _ReactDoctorDiff(_ReactDoctorProtocolModel):
-    base_branch: str = Field(alias="baseBranch", min_length=1)
-    changed_file_count: int = Field(alias="changedFileCount", ge=0)
-    is_current_changes: bool | None = Field(default=None, alias="isCurrentChanges")
-
-
-class _ReactDoctorReport(_ReactDoctorProtocolModel):
-    schema_version: Literal[3] = Field(alias="schemaVersion")
-    version: str = Field(min_length=1)
-    ok: bool
-    projects: tuple[_ReactDoctorProject, ...]
-    diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
-    react_detected: bool | None = Field(default=None, alias="reactDetected")
-    # The v3 serializer emits this field only when degradation occurred.
-    baseline_degraded: bool = Field(default=False, alias="baselineDegraded")
-    diff: _ReactDoctorDiff | None = None
-    skipped_projects: tuple[object, ...] = Field(  # sarj-noqa: SARJ528 -- Count-only native payload.
-        default=(), alias="skippedProjects"
-    )
-    error: _ReactDoctorFailure | None
 
 
 class _BasedPyrightPosition(BaseModel):
@@ -503,10 +459,11 @@ def analyze_external(
                 projects=react_projects,
                 root=root,
                 runner=react_execute,
-                use_local_binary=local_tools,
                 file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
                 full_scan=react_doctor_full_scan,
+                paths=contained,
+                include_compiler=not (typescript and (capabilities is None or TYPESCRIPT_CAPABILITY in capabilities)),
             )
         )
     if policy is None:
@@ -1275,630 +1232,93 @@ def _invoke_react_doctor(
     projects: Sequence[Path],
     root: Path,
     runner: ProcessExecutor,
-    use_local_binary: bool,
     file_count: int,
     staged: bool,
     full_scan: bool = False,
-    allow_empty_projects: bool = False,
+    paths: Sequence[str] = (),
+    include_compiler: bool = True,
 ) -> ToolReport:
-    name = "react-doctor"
-    doctor_runner = _react_doctor_budget_runner(runner)
-    scope_base = None if staged or full_scan else change_scope_base()
-    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan, base=scope_base)
-    if scope_base and _react_doctor_changed_scope_is_disjoint(
-        projects,
-        root=root,
-        runner=runner,
-        scope_root=project,
-        reported_base=scope_base,
-    ):
-        project_id = project.relative_to(root).as_posix() or "."
-        return ToolReport(
-            name,
-            Completion.COMPLETE,
-            analyzer_id=AnalyzerId(name),
-            invocation_id=InvocationId(f"{name}:{project_id}"),
-            file_count=0,
-        )
-    if use_local_binary and (issue := _missing_local_binary_issue(name, project, root)) is not None:
-        return ToolReport(
-            name,
-            Completion.FAILED,
-            issues=(issue,),
-            analyzer_id=AnalyzerId(name),
-            invocation_id=InvocationId(name),
-            file_count=file_count,
-        )
-    install_root = packagemanager.workspace_root(project, root)
-    client = packagemanager.detect(install_root)
-    if staged and not full_scan:
-        allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
-            projects,
-            root=root,
-            runner=runner,
-            staged=True,
-        )
-
-    def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
-        argv = packagemanager.exec_argv(
-            client,
-            name,
-            ".",
-            "--project",
-            ",".join(item.relative_to(project).as_posix() or "." for item in projects),
-            *selected_scope,
-            "--blocking",
-            "error",
-            "--no-warnings",
-            "--no-dead-code",
-            "--no-supply-chain",
-            "--no-score",
-            "--no-cache",
-            "--max-duration",
-            str(_TIMEOUT.total_seconds()),
-            "--json",
-            "--json-compact",
-            "--no-color",
-        )
-        return _local_node_binary_argv(name, argv, project, root) if use_local_binary else tuple(argv)
-
-    expected_projects = frozenset(item.resolve() for item in projects)
-    argv = doctor_argv(scope_args)
-    parser: ProtocolParser = partial(
-        parse_react_doctor,
-        expected_projects=expected_projects,
-        allow_empty_projects=allow_empty_projects,
-    )
-    if staged and not full_scan:
-        parser = partial(
-            _parse_react_doctor_staged_with_full_fallback,
-            expected_projects=expected_projects,
-            allow_empty_projects=allow_empty_projects,
-            runner=doctor_runner,
-            cwd=project,
-            full_argv=doctor_argv(("--scope", "full")),
-        )
-    elif not full_scan:
-        parser = partial(
-            _parse_react_doctor_changed_scope,
-            expected_projects=expected_projects,
-            allow_empty_projects=allow_empty_projects,
-            runner=runner,
-            scope_root=project,
-            projects=projects,
-        )
-    execution_runner = doctor_runner
-    if scope_base and not staged and not full_scan:
-        execution_runner = _react_doctor_baseline_retry_runner(
-            argv,
-            root=root,
-            runner=doctor_runner,
-            explicit_base=scope_base,
-        )
-    with _without_oxlint_suppressions(projects):
-        return _invoke(
-            name,
-            argv,
-            cwd=project,
-            root=root,
-            runner=execution_runner,
-            parser=parser,
-            invocation_id=InvocationId(project.relative_to(root).as_posix()) or None,
-            file_count=file_count,
-        )
-
-
-@contextlib.contextmanager
-def _without_oxlint_suppressions(projects: Sequence[Path]) -> Generator[None]:
-    # React Doctor runs its own Oxlint in each project directory, and Oxlint applies the
-    # suppressions file it finds there; no flag or variable turns that off. The repository's
-    # entries then read as stale and every React Doctor finding as unsuppressed, so React
-    # Doctor drops its whole lint check for that project. The file waits aside meanwhile.
-    hidden: list[tuple[Path, Path]] = []
-    with _SUPPRESSIONS_LOCK:
-        try:
-            for project in projects:
-                path = project / OXLINT_SUPPRESSIONS
-                parked = path.with_name(_PARKED_SUPPRESSIONS)
-                if parked.is_file() and not path.exists():
-                    # An interrupted run left the file parked.
-                    parked.replace(path)
-                if path.is_file():
-                    path.replace(parked)
-                    hidden.append((parked, path))
-            yield
-        finally:
-            for parked, path in hidden:
-                # Another process may have restored the file, or written a new one, meanwhile.
-                if parked.is_file() and not path.exists():
-                    parked.replace(path)
-
-
-def _react_doctor_budget_runner(runner: ProcessExecutor) -> ProcessExecutor:
-    deadline = time.monotonic() + _TIMEOUT.total_seconds()
-
-    def bounded(request: ProcessRequest) -> ProcessOutput:
-        nonlocal deadline
-        if request.argv[0] == "git" or "--max-duration" not in request.argv:
-            return runner.run(request)
-        now = time.monotonic()
-        deadline = min(deadline, now + request.timeout_seconds)
-        if request.deadline is not None:
-            deadline = min(deadline, request.deadline)
-        remaining = int((deadline - now) * _REACT_DOCTOR_TICKS_PER_SECOND) / _REACT_DOCTOR_TICKS_PER_SECOND
-        if remaining <= 0:
-            raise subprocess.TimeoutExpired(request.argv, 0)
-        argv = list(request.argv)
-        argv[argv.index("--max-duration") + 1] = str(remaining)
-        return runner.run(replace(request, argv=tuple(argv), deadline=deadline))
-
-    return RequestExecutor(bounded, executor_capabilities(runner))
-
-
-def _react_doctor_baseline_retry_runner(
-    doctor_argv: Sequence[str],
-    *,
-    root: Path,
-    runner: ProcessExecutor,
-    explicit_base: str,
-) -> ProcessExecutor:
-    expected_argv = tuple(doctor_argv)
-    head_before = runner.run(
-        process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
-    )
-    expected_head = head_before.stdout.strip()
-    eligible = head_before.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", expected_head) is not None
-    attempted = False
-
-    def bounded(request: ProcessRequest) -> ProcessOutput:
-        nonlocal attempted
-        output = runner.run(request)
-        if attempted or request.argv != expected_argv:
-            return output
-        attempted = True
-        if not eligible or not _retryable_react_doctor_baseline(output, explicit_base=explicit_base):
-            return output
-        if not _react_doctor_retry_git_state_is_safe(
-            root,
-            runner=runner,
-            explicit_base=explicit_base,
-            expected_head=expected_head,
-        ):
-            return output
-        return runner.run(request)
-
-    return RequestExecutor(bounded, executor_capabilities(runner))
-
-
-def _retryable_react_doctor_baseline(output: ProcessOutput, *, explicit_base: str) -> bool:
-    if output.returncode not in {0, 1} or not output.stdout.strip():
-        return False
-    try:
-        report = _ReactDoctorReport.model_validate_json(output.stdout)
-    except ValueError:
-        return False
-    return (
-        report.baseline_degraded
-        and report.version == manifest.typescript_peers()["react-doctor"]
-        and report.error is None
-        and report.diff is not None
-        and report.diff.base_branch == explicit_base
-    )
-
-
-def _react_doctor_retry_git_state_is_safe(
-    root: Path,
-    *,
-    runner: ProcessExecutor,
-    explicit_base: str,
-    expected_head: str,
-) -> bool:
-    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", explicit_base) is None:
-        return False
-    if ".." in explicit_base or "@{" in explicit_base:
-        return False
-    base = runner.run(
-        process_request(
-            ("git", "rev-parse", "--verify", "--end-of-options", f"{explicit_base}^{{commit}}"),
-            cwd=root,
-        )
-    )
-    head = runner.run(process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root))
-    resolved_base = base.stdout.strip()
-    resolved_head = head.stdout.strip()
-    if (
-        base.returncode != 0
-        or head.returncode != 0
-        or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None
-        or resolved_head != expected_head
-    ):
-        return False
-    ancestor = runner.run(
-        process_request(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
-    )
-    return ancestor.returncode == 0
-
-
-def _parse_react_doctor_staged_with_full_fallback(
-    payload: str,
-    *,
-    root: Path,
-    expected_projects: frozenset[Path],
-    allow_empty_projects: bool,
-    runner: ProcessExecutor,
-    cwd: Path,
-    full_argv: Sequence[str],
-) -> tuple[Diagnostic, ...]:
-    report = _ReactDoctorReport.model_validate_json(payload)
-    report = _react_doctor_without_untouched_empty_projects(
-        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
-    )
-    scoped_projects = _react_doctor_scoped_project_set(
-        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
-    )
-    if report.react_detected is not False:
-        return _parse_react_doctor_report(
-            report,
-            root=root,
-            expected_projects=scoped_projects,
-            allow_empty_projects=allow_empty_projects,
-            include_warnings=False,
-            require_react_detection=True,
-        )
-
-    _parse_react_doctor_report(
-        report,
-        root=root,
-        expected_projects=scoped_projects,
-        allow_empty_projects=allow_empty_projects,
-        include_warnings=False,
-        require_react_detection=False,
-    )
-    staged_paths = _react_doctor_staged_paths(root, runner=runner)
-    output = runner.run(process_request(full_argv, cwd=cwd))
-    if output.returncode not in {0, 1}:
-        msg = output.stderr.strip() or f"React Doctor full fallback exited {output.returncode}"
-        raise OSError(msg)
-    if not output.stdout.strip():
-        msg = output.stderr.strip() or "React Doctor full fallback returned empty structured output"
-        raise ValueError(msg)
-    diagnostics = parse_react_doctor(output.stdout, root=root, expected_projects=expected_projects)
-    if output.returncode == 1 and not diagnostics:
-        msg = output.stderr.strip() or "React Doctor full fallback exited 1 but reported no diagnostics"
-        raise ValueError(msg)
-    return tuple(item for item in diagnostics if item.location.path in staged_paths)
-
-
-def _parse_react_doctor_changed_scope(
-    payload: str,
-    *,
-    root: Path,
-    expected_projects: frozenset[Path],
-    allow_empty_projects: bool,
-    runner: ProcessExecutor,
-    scope_root: Path,
-    projects: Sequence[Path],
-) -> tuple[Diagnostic, ...]:
-    report = _ReactDoctorReport.model_validate_json(payload)
-    report = _react_doctor_without_untouched_empty_projects(
-        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
-    )
-    allow_empty_projects = allow_empty_projects or _react_doctor_empty_changed_scope_has_no_source(
-        report,
-        projects=projects,
-        root=root,
-        runner=runner,
-        scope_root=scope_root,
-    )
-    return _parse_react_doctor_report(
-        report,
-        root=root,
-        expected_projects=_react_doctor_scoped_project_set(
-            report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
+    # Project discovery and staged execution stay in Standards. The adapter invokes
+    # only the official native plugin and its public project-security callbacks.
+    adopted = manifest.load(root)
+    request = {
+        "installRoot": str(packagemanager.workspace_root(project, root)),
+        "config": str(
+            project / "doctor.config.json"
+            if (project / "doctor.config.json").is_file()
+            else _PACKAGED_MOBILE_CONFIGS / "doctor.config.json"
         ),
-        allow_empty_projects=allow_empty_projects,
-        include_warnings=False,
-        require_react_detection=True,
+        "repositoryRoot": str(root),
+        "includeCompiler": include_compiler,
+        "staged": staged,
+        "excludedDirectories": _react_doctor_excluded_directories(
+            root, () if adopted is None else adopted.doctor_excluded_paths
+        ),
+        "fullScan": full_scan,
+        "metadataPaths": [str(root / path) for path in paths if is_react_doctor_metadata(Path(path))],
+        "paths": [str(root / path) for path in paths],
+        "projects": [
+            {
+                "root": str(item),
+                "excluded": [str(other) for other in projects if other != item and other.is_relative_to(item)],
+            }
+            for item in projects
+        ],
+    }
+    # Yarn supplies the loader for its virtual dependency tree. A bare Node
+    # process cannot resolve managed peers in a Plug'n'Play installation.
+    node = ("yarn", "node") if _uses_plug_n_play(project, root) else ("node",)
+    return _invoke(
+        "react-doctor",
+        (*node, str(_PACKAGED_MOBILE_CONFIGS / "react-doctor-runner.mjs")),
+        cwd=project,
+        root=root,
+        runner=runner,
+        parser=parse_react_doctor,
+        file_count=file_count,
+        version=manifest.typescript_peers()["oxlint-plugin-react-doctor"],
+        input_bytes=json.dumps(request).encode("utf-8"),
     )
 
 
-def _react_doctor_without_untouched_empty_projects(
-    report: _ReactDoctorReport,
-    *,
-    expected_projects: frozenset[Path],
-    root: Path,
-    runner: ProcessExecutor,
-    scope_root: Path,
-    staged: bool,
-) -> _ReactDoctorReport:
-    # Native scoped reports can include an enclosing project with no selected
-    # files. Treat that like an omission only after independently proving it.
-    requested_base = change_scope_base()
-    if not staged and (
-        report.diff is None
-        or report.diff.is_current_changes is None
-        or (requested_base and report.diff.base_branch != requested_base)
-    ):
-        return report
-    retained: list[_ReactDoctorProject] = []
-    for project in report.projects:
-        directory = _contained_report_directory(project, root)
-        empty = (
-            directory in expected_projects
-            and project.complete
-            and project.skipped_checks == ()
-            and not project.skipped_check_reasons
-            and not project.diagnostics
-            and project.analyzed_file_count == 0
-            and project.scanned_file_count == 0
-        )
-        if empty and _react_doctor_scope_has_no_source(
-            (directory,),
-            root=root,
-            runner=runner,
-            staged=staged,
-            scope_root=scope_root,
-            reported_base=None if staged or report.diff is None else report.diff.base_branch,
-            reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
-            known_projects=tuple(expected_projects),
-        ):
+def _react_doctor_excluded_directories(root: Path, patterns: Sequence[str]) -> list[str]:
+    if not patterns:
+        return []
+    exclusions = PathSpec.from_lines("gitignore", patterns)
+    excluded: list[str] = []
+    for parent, directories, _filenames in os.walk(root, topdown=True, followlinks=False):
+        directory = Path(parent).resolve()
+        if exclusions.match_file(directory.relative_to(root).as_posix()):
+            excluded.append(str(directory))
+            directories[:] = []
             continue
-        retained.append(project)
-    return report.model_copy(update={"projects": tuple(retained)})
+        directories[:] = sorted(name for name in directories if name not in _JAVASCRIPT_SCAN_SKIP_DIRS)
+    return excluded
 
 
-def _react_doctor_scoped_project_set(
-    report: _ReactDoctorReport,
-    *,
-    expected_projects: frozenset[Path],
-    root: Path,
-    runner: ProcessExecutor,
-    scope_root: Path,
-    staged: bool,
-) -> frozenset[Path]:
-    reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
-    if not reported_projects or not reported_projects < expected_projects:
-        return expected_projects
-    if not staged and (report.diff is None or report.diff.is_current_changes is None):
-        return expected_projects
-    requested_base = change_scope_base()
-    if not staged and requested_base and report.diff is not None and report.diff.base_branch != requested_base:
-        return expected_projects
-    if _react_doctor_scope_has_no_source(
-        tuple(expected_projects - reported_projects),
-        root=root,
-        runner=runner,
-        staged=staged,
-        scope_root=scope_root,
-        reported_base=None if staged or report.diff is None else report.diff.base_branch,
-        reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
-        known_projects=tuple(expected_projects),
-    ):
-        return reported_projects
-    return expected_projects
+class _NativeReactDoctorReport(_ReactDoctorProtocolModel):
+    complete: Literal[True]
+    diagnostics: tuple[_ReactDoctorDiagnostic, ...]
 
 
-def _react_doctor_empty_changed_scope_has_no_source(
-    report: _ReactDoctorReport,
-    *,
-    projects: Sequence[Path],
-    root: Path,
-    runner: ProcessExecutor,
-    scope_root: Path,
-) -> bool:
-    if report.projects or report.diagnostics or report.diff is None:
-        return False
-    if not report.baseline_degraded and report.diff.is_current_changes is None:
-        return False
-    requested_base = change_scope_base()
-    if requested_base and report.diff.base_branch != requested_base:
-        return False
-    return _react_doctor_scope_has_no_source(
-        projects,
-        root=root,
-        runner=runner,
-        staged=False,
-        scope_root=scope_root,
-        reported_base=report.diff.base_branch,
-        reported_changed_file_count=report.diff.changed_file_count,
-    )
-
-
-def _react_doctor_staged_paths(root: Path, *, runner: ProcessExecutor) -> frozenset[str]:
-    output = runner.run(
-        process_request(
-            ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--"),
-            cwd=root,
+def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    report = _NativeReactDoctorReport.model_validate_json(payload)
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for item in report.diagnostics:
+        path = _react_doctor_path(item, root, root)
+        rule = f"{item.plugin}/{item.rule}"
+        diagnostics.append(
+            Diagnostic(
+                rule,
+                redact_message(item.message, root),
+                Severity.WARNING if item.severity == "warning" else Severity.ERROR,
+                "react-doctor",
+                _react_doctor_location(item, path, root, documents),
+                rule_id=rule,
+            )
         )
-    )
-    if output.returncode != 0:
-        msg = output.stderr.strip() or "git diff --cached failed while recovering React Doctor coverage"
-        raise OSError(msg)
-    paths: set[str] = set()
-    for value in (item for item in output.stdout.split("\0") if item):
-        path = Path(value)
-        if path.is_absolute() or ".." in path.parts:
-            msg = f"git diff --cached returned an unsafe path: {value!r}"
-            raise ValueError(msg)
-        paths.add(path.as_posix())
-    return frozenset(paths)
-
-
-def _react_doctor_changed_scope_is_disjoint(
-    projects: Sequence[Path],
-    *,
-    root: Path,
-    runner: ProcessExecutor,
-    scope_root: Path,
-    reported_base: str,
-) -> bool:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", reported_base):
-        return False
-    if ".." in reported_base or "@{" in reported_base:
-        return False
-    resolved_base_output = runner.run(
-        process_request(
-            ("git", "rev-parse", "--verify", "--end-of-options", f"{reported_base}^{{commit}}"),
-            cwd=root,
-        )
-    )
-    resolved_head_output = runner.run(
-        process_request(
-            ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
-            cwd=root,
-        )
-    )
-    resolved_base = resolved_base_output.stdout.strip()
-    resolved_head = resolved_head_output.stdout.strip()
-    if (
-        resolved_base_output.returncode != 0
-        or resolved_head_output.returncode != 0
-        or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None
-        or re.fullmatch(r"[0-9a-f]{40}", resolved_head) is None
-    ):
-        return False
-    ancestor = runner.run(
-        process_request(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
-    )
-    if ancestor.returncode != 0:
-        return False
-    changed = runner.run(
-        process_request(
-            (
-                "git",
-                "diff",
-                f"{resolved_base}...{resolved_head}",
-                "--name-only",
-                "--no-renames",
-                "-z",
-                "--",
-            ),
-            cwd=root,
-        )
-    )
-    if changed.returncode != 0:
-        return False
-    resolved_root = root.resolve()
-    resolved_scope = scope_root.resolve()
-    resolved_projects = tuple(project.resolve() for project in projects)
-    if (
-        not resolved_scope.is_relative_to(resolved_root)
-        or not resolved_projects
-        or any(
-            not project.is_relative_to(resolved_root) or not project.is_relative_to(resolved_scope)
-            for project in resolved_projects
-        )
-    ):
-        return False
-    if not _changed_paths_are_disjoint(changed.stdout, resolved_root, resolved_projects):
-        return False
-    status = runner.run(
-        process_request(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"), cwd=root)
-    )
-    if status.returncode != 0 or status.stdout:
-        return False
-    final_head = runner.run(
-        process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
-    )
-    return final_head.returncode == 0 and final_head.stdout.strip() == resolved_head
-
-
-def _react_doctor_scope_args(
-    *,
-    staged: bool,
-    full_scan: bool = False,
-    base: str | None = None,
-) -> tuple[str, ...]:
-    if full_scan:
-        return ("--scope", "full")
-    if staged:
-        return ("--staged",)
-    selected_base = change_scope_base() if base is None else base
-    if selected_base:
-        return ("--scope", "changed", "--base", selected_base)
-    return ("--scope", "changed")
-
-
-def _react_doctor_scope_has_no_source(
-    projects: Sequence[Path],
-    *,
-    root: Path,
-    runner: ProcessExecutor,
-    staged: bool,
-    scope_root: Path | None = None,
-    reported_base: str | None = None,
-    reported_changed_file_count: int | None = None,
-    known_projects: Sequence[Path] = (),
-) -> bool:
-    diff_filter = "--diff-filter=ACMR" if reported_changed_file_count is not None else "--diff-filter=ACMRT"
-    diff_args = _react_doctor_git_diff_args(
-        root, runner=runner, staged=staged, reported_base=reported_base, diff_filter=diff_filter
-    )
-    if diff_args is None:
-        return False
-    changed = runner.run(
-        process_request(
-            diff_args,
-            cwd=root,
-        )
-    )
-    if changed.returncode != 0:
-        return False
-    resolved_root = root.resolve()
-    resolved_scope = resolved_root if scope_root is None else scope_root.resolve()
-    if not resolved_scope.is_relative_to(resolved_root):
-        return False
-    resolved_projects = tuple(project.resolve() for project in projects)
-    changed_paths = tuple(item for item in changed.stdout.split("\0") if item)
-    resolved_known_projects = tuple(project.resolve() for project in known_projects)
-    if not _changed_scope_has_no_source(
-        changed_paths,
-        resolved_root,
-        resolved_scope,
-        resolved_projects,
-        reported_changed_file_count,
-        known_projects=resolved_known_projects,
-    ):
-        return False
-    if reported_changed_file_count is None:
-        return True
-    # Native changedFileCount uses ACMR, but source coverage must also reject
-    # type-changed source files that its counter deliberately omits.
-    source_diff = runner.run(
-        process_request(
-            tuple("--diff-filter=ACMRT" if arg == "--diff-filter=ACMR" else arg for arg in diff_args), cwd=root
-        )
-    )
-    return source_diff.returncode == 0 and _changed_scope_has_no_source(
-        tuple(item for item in source_diff.stdout.split("\0") if item),
-        resolved_root,
-        resolved_scope,
-        resolved_projects,
-        None,
-        known_projects=resolved_known_projects,
-    )
-
-
-def _react_doctor_git_diff_args(
-    root: Path,
-    *,
-    runner: ProcessExecutor,
-    staged: bool,
-    reported_base: str | None,
-    diff_filter: str,
-) -> tuple[str, ...] | None:
-    if staged:
-        return ("git", "diff", "--cached", "--name-only", diff_filter, "-z", "--")
-    base = reported_base or change_scope_base()
-    if not base:
-        return None
-    if reported_base is not None:
-        verified_base = _verified_react_changed_base(base, root, runner)
-        if verified_base is None:
-            return None
-        base = verified_base
-    # Native compares the verified base with the tracked worktree, not HEAD.
-    return ("git", "diff", base, "--name-only", diff_filter, "-z", "--")
+    return tuple(diagnostics)
 
 
 def change_scope_base() -> str:
@@ -2980,6 +2400,7 @@ def _invoke(
     invocation_id: InvocationId | None = None,
     file_count: int,
     version: str | None = None,
+    input_bytes: bytes | None = None,
 ) -> ToolReport:
     started = time.monotonic()
     try:
@@ -2993,6 +2414,7 @@ def _invoke(
             validator=validator,
             execution_parser=execution_parser,
             file_count=file_count,
+            input_bytes=input_bytes,
         )
         return ToolReport(
             report.name,
@@ -3031,8 +2453,9 @@ def _invoke_unchecked(
     execution_parser: RuleExecutionParser | None = None,
     validator: ProtocolValidator | None = None,
     file_count: int | None = None,
+    input_bytes: bytes | None = None,
 ) -> ToolReport:
-    output = runner.run(process_request(argv, cwd=cwd))
+    output = runner.run(process_request(argv, cwd=cwd, input_bytes=input_bytes, max_input_bytes=_MAX_STDOUT_BYTES))
     if output.returncode not in {0, 1}:
         message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
         issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
@@ -3045,12 +2468,6 @@ def _invoke_unchecked(
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     try:
         diagnostics = parser(output.stdout, root=root)
-    except _ReactDoctorIncompleteError as exc:
-        message = redact_message(str(exc), root)[:700]
-        if stderr := output.stderr.strip():
-            message += f"; stderr: {redact_message(stderr, root)[:300]}"
-        issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
-        return ToolReport(name, Completion.FAILED, issues=(issue,))
     except json.JSONDecodeError as exc:
         stderr = output.stderr.strip()
         message = stderr or f"{name} returned invalid structured JSON at line {exc.lineno}, column {exc.colno}"
@@ -3510,89 +2927,6 @@ def _shellcheck_reported_path(value: str, root: Path, virtual: Path | None) -> P
     return virtual
 
 
-def parse_react_doctor(
-    payload: str,
-    *,
-    root: Path,
-    expected_projects: frozenset[Path] | None = None,
-    allow_empty_projects: bool = False,
-    include_warnings: bool = False,
-) -> tuple[Diagnostic, ...]:
-    report = _ReactDoctorReport.model_validate_json(payload)
-    return _parse_react_doctor_report(
-        report,
-        root=root,
-        expected_projects=expected_projects,
-        allow_empty_projects=allow_empty_projects,
-        include_warnings=include_warnings,
-        require_react_detection=True,
-    )
-
-
-def _parse_react_doctor_report(
-    report: _ReactDoctorReport,
-    *,
-    root: Path,
-    expected_projects: frozenset[Path] | None,
-    allow_empty_projects: bool,
-    include_warnings: bool,
-    require_react_detection: bool,
-) -> tuple[Diagnostic, ...]:
-    _validate_react_report_status(report, require_react_detection=require_react_detection)
-    if not report.projects and allow_empty_projects:
-        if report.diagnostics:
-            msg = "React Doctor returned diagnostics without an analyzed project"
-            raise ValueError(msg)
-        return ()
-    if report.baseline_degraded:
-        msg = "React Doctor changed-scope baseline degraded"
-        raise ValueError(msg)
-    if not report.projects:
-        msg = "React Doctor returned no analyzed projects"
-        raise ValueError(msg)
-    if expected_projects is not None:
-        _validate_react_project_set(report, root, expected_projects, require_react_detection=require_react_detection)
-
-    documents: dict[Path, SourceDocument | None] = {}
-    diagnostics: list[Diagnostic] = []
-    for project in report.projects:
-        _validate_react_project_completion(project, expected_projects, root=root)
-        directory = _contained_report_directory(project, root)
-        for item in project.diagnostics:
-            # The 0.9.x compact JSON protocol can retain warning diagnostics
-            # even when both config and argv disable warnings. Standards only
-            # promotes React Doctor's error surface, so enforce that boundary
-            # after validating the complete upstream report.
-            if item.severity == "warning" and not include_warnings:
-                continue
-            path = _react_doctor_path(item, directory, root)
-            location = _react_doctor_location(item, path, root, documents)
-            rule = f"{item.plugin}/{item.rule}"
-            diagnostics.append(
-                Diagnostic(
-                    rule,
-                    redact_message(item.message, root),
-                    Severity.ERROR,
-                    "react-doctor",
-                    location,
-                    rule_id=rule,
-                    help_url=item.url,
-                )
-            )
-    return tuple(diagnostics)
-
-
-def _contained_report_directory(project: _ReactDoctorProject, root: Path) -> Path:
-    directory = Path(project.directory)
-    resolved = (directory if directory.is_absolute() else root / directory).resolve()
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError as exc:
-        msg = "React Doctor reported a project outside the repository root"
-        raise ValueError(msg) from exc
-    return resolved
-
-
 def _react_doctor_path(item: _ReactDoctorDiagnostic, directory: Path, root: Path) -> Path:
     raw_path = Path(item.file_path)
     resolved = (raw_path if raw_path.is_absolute() else directory / raw_path).resolve()
@@ -3611,6 +2945,9 @@ def _react_doctor_location(
     documents: dict[Path, SourceDocument | None],
 ) -> Location:
     relative_path = _relative(path, root)
+    if item.source_position is not None:
+        position = item.source_position
+        return Location(relative_path, position=Position(position.line, position.character, position.byte_offset))
     if item.line == 0 or item.column == 0:
         return Location(relative_path)
     start = _one_based_position(
@@ -3948,45 +3285,6 @@ def redact_message(value: str, root: Path) -> str:
     return message[:1024]
 
 
-def _changed_paths_are_disjoint(changed_paths: str, resolved_root: Path, resolved_projects: tuple[Path, ...]) -> bool:
-    for relative in (item for item in changed_paths.split("\0") if item):
-        relative_path = Path(relative)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            return False
-        candidate = resolved_root / relative_path
-        if any(candidate.is_relative_to(project) for project in resolved_projects):
-            return False
-        if is_react_doctor_metadata(candidate) and any(
-            project.is_relative_to(candidate.parent) for project in resolved_projects
-        ):
-            return False
-    return True
-
-
-def _verified_react_changed_base(base: str, root: Path, runner: ProcessExecutor) -> str | None:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", base) or ".." in base or "@{" in base:
-        return None
-    resolved = runner.run(
-        process_request(
-            ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
-            cwd=root,
-        )
-    )
-    resolved_base = resolved.stdout.strip()
-    if resolved.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None:
-        return None
-    ancestor = runner.run(process_request(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root))
-    if ancestor.returncode == 0:
-        return resolved_base
-    if ancestor.returncode != 1:
-        return None
-    common = runner.run(process_request(("git", "merge-base", resolved_base, "HEAD"), cwd=root))
-    common_base = common.stdout.strip()
-    if common.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", common_base) is None:
-        return None
-    return common_base
-
-
 def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected_paths: Sequence[str]) -> None:
     paths = _table(report.get("paths"), "mobsfscan paths")
     scanned_values = _array(paths.get("scanned"), "mobsfscan scanned paths")
@@ -3997,104 +3295,4 @@ def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected
     expected = {Path(value).resolve() for value in expected_paths}
     if scanned != expected:
         msg = f"mobsfscan coverage mismatch: expected {len(expected)} selected file(s), scanned {len(scanned)}"
-        raise ValueError(msg)
-
-
-def _validate_react_project_completion(
-    project: _ReactDoctorProject, expected_projects: frozenset[Path] | None, *, root: Path
-) -> None:
-    if not project.complete:
-        message = f"React Doctor project did not complete: {project.directory!r}"
-        raise _ReactDoctorIncompleteError(_react_project_incompleteness(project, message, root=root))
-    if project.skipped_checks or project.skipped_check_reasons:
-        message = f"React Doctor skipped checks for project: {project.directory!r}"
-        raise _ReactDoctorIncompleteError(_react_project_incompleteness(project, message, root=root))
-    if expected_projects is not None and (
-        project.skipped_checks is None or project.analyzed_file_count is None or project.scanned_file_count is None
-    ):
-        msg = f"React Doctor omitted completeness metadata for project: {project.directory!r}"
-        raise ValueError(msg)
-    if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
-        msg = f"React Doctor analyzed no files for project: {project.directory!r}"
-        raise ValueError(msg)
-
-
-def _react_project_incompleteness(project: _ReactDoctorProject, message: str, *, root: Path) -> str:
-    skipped_count = None if project.skipped_checks is None else len(project.skipped_checks)
-    coverage = (
-        f"analyzed={project.analyzed_file_count}, scanned={project.scanned_file_count}, skipped_checks={skipped_count}"
-    )
-    reasons = redact_message(json.dumps(project.skipped_check_reasons or {}, sort_keys=True), root)[:384]
-    return f"{redact_message(message, root)[:200]}; {coverage}; skipped_check_reasons={reasons}"
-
-
-def _validate_react_report_status(report: _ReactDoctorReport, *, require_react_detection: bool) -> None:
-    expected_version = manifest.typescript_peers()["react-doctor"]
-    if report.version != expected_version:
-        msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
-        raise ValueError(msg)
-    if report.error is not None:
-        msg = f"React Doctor scan failed: {report.error.message}"
-        raise ValueError(msg)
-    if not report.ok:
-        msg = "React Doctor report did not complete successfully"
-        raise ValueError(msg)
-    if report.skipped_projects:
-        msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
-        raise ValueError(msg)
-    if report.react_detected is False and require_react_detection:
-        msg = "React Doctor did not detect React in an expected project"
-        raise ValueError(msg)
-
-
-def _changed_scope_has_no_source(
-    changed_paths: tuple[str, ...],
-    resolved_root: Path,
-    resolved_scope: Path,
-    resolved_projects: tuple[Path, ...],
-    reported_changed_file_count: int | None,
-    *,
-    known_projects: tuple[Path, ...] = (),
-) -> bool:
-    scoped_changed_file_count = 0
-    for relative in changed_paths:
-        relative_path = Path(relative)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            return False
-        candidate = resolved_root / relative_path
-        if candidate.is_relative_to(resolved_scope):
-            scoped_changed_file_count += 1
-        if not _is_react_doctor_source_path(relative_path):
-            continue
-        # React Doctor attributes a file only to its nearest enclosing project,
-        # so an enclosing root project neither owns nor reports it.
-        owner = max(
-            (project for project in (*resolved_projects, *known_projects) if candidate.is_relative_to(project)),
-            key=lambda project: len(project.parts),
-            default=None,
-        )
-        if owner in resolved_projects:
-            return False
-    return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
-
-
-def _is_react_doctor_source_path(relative_path: Path) -> bool:
-    # Native filters Git-relative paths; checkout parents are not source paths.
-    path = relative_path.as_posix()
-    return (
-        _REACT_DOCTOR_SOURCE_RE.search(path) is not None
-        and _REACT_DOCTOR_GENERATED_BUNDLE_RE.search(path) is None
-        and _REACT_DOCTOR_GENERATED_DIRECTORY_RE.search(path) is None
-    )
-
-
-def _validate_react_project_set(
-    report: _ReactDoctorReport, root: Path, expected_projects: frozenset[Path], *, require_react_detection: bool
-) -> None:
-    if (report.react_detected is not True and require_react_detection) or report.baseline_degraded is not False:
-        msg = "React Doctor omitted required v3 detection or baseline-completeness metadata"
-        raise ValueError(msg)
-    reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
-    if reported_projects != expected_projects:
-        msg = "React Doctor did not return exactly the requested project set"
         raise ValueError(msg)

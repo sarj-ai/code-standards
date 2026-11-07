@@ -377,14 +377,16 @@ def test_default_react_runner_receives_validated_index_without_changing_security
         projects: Sequence[Path],
         root: Path,
         runner: ProcessExecutor,
-        use_local_binary: bool,
         file_count: int,
         staged: bool,
         full_scan: bool = False,
+        paths: Sequence[str] = (),
+        include_compiler: bool = True,
     ) -> api.ToolReport:
+        assert tuple(paths) == (str(source),)
+        assert include_compiler
         assert project == root == tmp_path
         assert tuple(projects) == (tmp_path,)
-        assert use_local_binary
         assert file_count == 1
         assert staged
         assert not full_scan

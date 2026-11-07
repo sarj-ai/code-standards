@@ -29,7 +29,16 @@ const SARJ_OPTIONS: Readonly<DummyRuleMap> = {
   ],
   "@sarj/directive-no-use": [
     "error",
-    { allow: ["eslint-disable-line", "eslint-disable-next-line", "eslint-env", "exported", "global", "globals"] },
+    {
+      allow: [
+        "eslint-disable-line",
+        "eslint-disable-next-line",
+        "eslint-env",
+        "exported",
+        "global",
+        "globals",
+      ],
+    },
   ],
   "@sarj/directive-require-description": ["error", { ignore: [] }],
   "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
@@ -52,19 +61,28 @@ export const SARJ_RULES: Readonly<DummyRuleMap> = {
 };
 
 // Rule sources and their documentation hold the very patterns a rule rejects.
-const SOURCE_OWNED_REJECTED_EXAMPLES: readonly OxlintOverride[] = ["src/rules", "src/docs"].flatMap((directory) => [
-  { files: [`${directory}/no-dynamic-sql.ts`, `${directory}/no-select-star.ts`], rules: { "@sarj/no-select-star": "off" } },
-  { files: [`${directory}/no-offset-pagination.ts`], rules: { "@sarj/no-offset-pagination": "off" } },
-  {
-    files: [`${directory}/store-insert-requires-on-conflict.ts`],
-    rules: { "@sarj/store-insert-requires-on-conflict": "off" },
-  },
-]);
+const SOURCE_OWNED_REJECTED_EXAMPLES: readonly OxlintOverride[] = ["src/rules", "src/docs"].flatMap(
+  (directory) => [
+    {
+      files: [`${directory}/no-dynamic-sql.ts`, `${directory}/no-select-star.ts`],
+      rules: { "@sarj/no-select-star": "off" },
+    },
+    {
+      files: [`${directory}/no-offset-pagination.ts`],
+      rules: { "@sarj/no-offset-pagination": "off" },
+    },
+    {
+      files: [`${directory}/store-insert-requires-on-conflict.ts`],
+      rules: { "@sarj/store-insert-requires-on-conflict": "off" },
+    },
+  ],
+);
 
 export default defineConfig({
   extends: [repositoryTooling],
   jsPlugins: [{ name: "@sarj", specifier: "@sarj/eslint-plugin" }],
-  ignorePatterns: ["dist/**", "tests/fixtures/**"],
+  // Upstream bundles are generated and hash-verified by build-upstream.ts.
+  ignorePatterns: ["dist/**", "tests/fixtures/**", "src/upstream/**"],
   rules: { ...SARJ_RULES },
   overrides: [
     ...SOURCE_OWNED_REJECTED_EXAMPLES,

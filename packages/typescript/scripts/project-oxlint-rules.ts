@@ -119,7 +119,8 @@ async function project(): Promise<void> {
   const usedNamespaces = new Set([...contextsByRule.keys()].map((ruleId) => splitRule(ruleId).namespace));
   const providers = [...usedNamespaces].map((namespace) => {
     const plugin = plugins.get(namespace);
-    const packageName = plugin?.specifier ?? "oxlint";
+    const specifier = plugin?.specifier ?? "oxlint";
+    const packageName = specifier.split("/").slice(0, specifier.startsWith("@") ? 2 : 1).join("/");
     const version = peers[packageName];
     if (version === undefined) throw new Error(`typescript.peers.json does not pin ${packageName}`);
     const { label, homepage } = plugin === undefined ? nativeProvider(namespace) : jsProvider(namespace);

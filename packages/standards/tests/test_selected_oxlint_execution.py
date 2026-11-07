@@ -134,12 +134,12 @@ def test_overlay_forces_type_aware_rules_on(tmp_path: Path) -> None:
 
 def test_fix_overlay_turns_per_path_exclusions_off_for_js_rules(tmp_path: Path) -> None:
     sources = {
-        "src/a.ts": "export function f(a = undefined) { return a; }\n",
-        "src/legacy/b.ts": "export function g(a = undefined) { return a; }\n",
+        "src/a.ts": "export function f() { return globalThis.Array; }\n",
+        "src/legacy/b.ts": "export function g() { return globalThis.Array; }\n",
     }
     root = project(tmp_path / "repo", sources)
     request = oxlint.OxlintRequest(
-        forced={}, disabled=((("src/legacy/**",), frozenset({"unicorn-js/no-useless-undefined"})),)
+        forced={}, disabled=((("src/legacy/**",), frozenset({"unicorn-js/no-unnecessary-global-this"})),)
     )
 
     for command in commands(root, "src", fix=True):
@@ -152,5 +152,5 @@ def test_fix_overlay_turns_per_path_exclusions_off_for_js_rules(tmp_path: Path) 
                 check=False,
             )
 
-    assert (root / "src/a.ts").read_text(encoding="utf-8") == "export function f(a?) { return a; }\n"
+    assert (root / "src/a.ts").read_text(encoding="utf-8") == "export function f() { return Array; }\n"
     assert (root / "src/legacy/b.ts").read_text(encoding="utf-8") == sources["src/legacy/b.ts"]

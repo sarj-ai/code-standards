@@ -1598,8 +1598,9 @@ def _plan_typescript(repository: Path, root: Path, plan: Plan) -> None:
             f"cannot safely wire {existing[0]}; extend createConfig() from ./{_OXLINT_PRESET} in its `extends`"
         )
         return
-    migration = typescript_migration.plan(repository, root, doctor.authored_files(repository))
-    seeding = typescript_tooling.plan_oxfmt_config(root)
+    sources = doctor.authored_files(repository)
+    migration = typescript_migration.plan(repository, root, sources)
+    seeding = typescript_tooling.plan_oxfmt_config(root, sources)
     plan.writes.extend((*migration.writes, *seeding.writes))
     plan.deletes.extend((*migration.deletes, *seeding.deletes))
     plan.notes.extend((*migration.notes, *seeding.notes))
@@ -1607,14 +1608,14 @@ def _plan_typescript(repository: Path, root: Path, plan: Plan) -> None:
     plan.migration_paths.update(
         (*(path for path, _ in (*migration.writes, *seeding.writes)), *migration.deletes, *seeding.deletes)
     )
-    plan.errors.extend(migration.errors)
+    plan.errors.extend((*migration.errors, *seeding.errors))
     client = plan.ecosystems.client
     install_root = plan.ecosystems.typescript_install_root or root
     package = _PackageMigration(
         migration.retired_dependencies,
         partial(
             typescript_migration.migrated_scripts,
-            lint=_lint_script(root, install_root),
+            lint="code-standards check --trust-repository-code",
             replace_eslint=not migration.keeps_eslint,
         ),
     )
@@ -1661,12 +1662,6 @@ def _artifact_path(table: str) -> str | None:
             return path
         case _:
             return None
-
-
-def _lint_script(root: Path, install_root: Path) -> str:
-    # Oxlint runs type-aware rules and the type check through tsrs-lint, which it only finds by path.
-    binaries = Path(os.path.relpath(install_root / "node_modules" / ".bin", root)).as_posix()
-    return f"OXLINT_TSGOLINT_PATH={binaries}/tsrs-lint oxlint"
 
 
 def _plan_package_scripts(root: Path, plan: Plan, package: _PackageMigration) -> None:
@@ -1791,13 +1786,16 @@ def _merged_npm_overrides(
     if not isinstance(parsed, dict) or not parsed:
         msg = "package.json must contain a non-empty JSON object"
         raise TypeError(msg)
-    data: dict[str, _PackageValue] = dict(parsed)
-    changed = False
+    data: dict[str, _PackageValue] = {
+        name: value for name, value in parsed.items() if name != "prettier" or package.scripts is None
+    }
+    changed = data != parsed
     runtime_dependencies = _package_table(data.get("dependencies"))
     existing_peers = _package_table(data.get("devDependencies"))
-    remaining = {name: pin for name, pin in existing_peers.items() if name not in package.retired}
+    remaining = _retained_dependencies(existing_peers, package.retired)
+    remaining_runtime = _retained_dependencies(runtime_dependencies, package.retired)
     updated_runtime, updated_peers = (
-        _pinned_peers(runtime_dependencies, remaining) if peers else _PinnedPeers(runtime_dependencies, remaining)
+        _pinned_peers(remaining_runtime, remaining) if peers else _PinnedPeers(remaining_runtime, remaining)
     )
     if (scripts := _migrated_scripts(parsed, package.scripts)) is not None:
         data["scripts"] = scripts
@@ -1814,6 +1812,12 @@ def _merged_npm_overrides(
         return None
     rendered = json.dumps(data, indent=_indent_of(text), ensure_ascii=False)
     return rendered + "\n" if text.endswith("\n") else rendered
+
+
+def _retained_dependencies(
+    dependencies: Mapping[str, _PackageValue], retired: frozenset[str]
+) -> dict[str, _PackageValue]:
+    return {name: pin for name, pin in dependencies.items() if name not in retired}
 
 
 class _PinnedPeers(NamedTuple):

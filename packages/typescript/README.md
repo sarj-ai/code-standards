@@ -10,6 +10,8 @@ npm install --save-dev @sarj/eslint-plugin
 
 Version 19 is an Oxlint JS plugin. Load it as `jsPlugins: [{ name: "@sarj", specifier: "@sarj/eslint-plugin" }]`, or extend the managed `createConfig()` that Standards syncs. Type-aware rules get type information from `tsrs`, a required peer; `settings.sarj.typeAware: false` or `SARJ_TYPE_AWARE=0` runs them untyped. The package no longer ships ESLint rules or presets. Rule names, options and suppression IDs are unchanged.
 
+Managed subpath entrypoints retain the selected upstream rules without installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript JavaScript API peer; the managed toolchain supplies TypeScript 6.
+
 Rules and configuration are documented in the generated rule directory.
 
 [Documentation](https://code-standards.sarj.ai/rules/oxlint/) · [Source](https://github.com/sarj-ai/code-standards)
