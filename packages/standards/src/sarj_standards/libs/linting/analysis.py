@@ -33,6 +33,7 @@ from sarj_standards.libs.rules import RuleEngine, RuleSelection
 
 from . import textlint
 from .process import raise_if_cancelled
+from .result_cache import CachedResult, cached_python_analysis
 from .runner import GroupedPaths, group_paths
 
 
@@ -273,13 +274,30 @@ def _native_report(
     if not files or rule_ids == frozenset():
         return None
     raise_if_cancelled(None)
-    try:
+
+    def run() -> ToolReport:
         return _run_native(
             name, package, files, root, sources=sources, python_baseline=python_baseline, rule_ids=rule_ids
+        )
+
+    try:
+        if package != "sarj_python_lint":
+            return run()
+        cached = cached_python_analysis(
+            name,
+            root,
+            selected=files,
+            parameters=(
+                f"rules={','.join(sorted(rule_ids)) if rule_ids is not None else '*'}",
+                f"baseline={python_baseline.read_text(encoding='utf-8') if python_baseline is not None else ''}",
+            ),
+            compute=lambda: CachedResult((run(),)),
         )
     except Exception as exc:  # ruff: ignore[blind-except] -- one analyzer failure must not erase other tool results.
         issue = ExecutionIssue(name, "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport(name, Completion.FAILED, issues=(issue,))
+    [report] = cached.reports
+    return report
 
 
 def _run_native(

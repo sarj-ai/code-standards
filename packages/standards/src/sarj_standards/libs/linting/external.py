@@ -65,6 +65,7 @@ from .process import (
     executor_capabilities,
     raise_if_cancelled,
 )
+from .result_cache import CachedResult, cached_python_analysis
 from .runner import GroupedPaths, accepts_hook_path, group_paths
 from .shell_policy import SHELLCHECK_ARGS
 
@@ -426,13 +427,16 @@ def analyze_external(
     def collect_python_reports() -> None:
         if routed.python:
             if capabilities is None or "ruff" in capabilities:
-                reports.extend(
-                    _invoke_ruff_projects(
-                        routed.python,
-                        root=root,
-                        runner=execute,
-                    )
+                ruff = cached_python_analysis(
+                    "ruff",
+                    root,
+                    selected=routed.python,
+                    parameters=(
+                        f"runner={type(execute).__qualname__}:{executor_capabilities(execute).tool_resolution}",
+                    ),
+                    compute=lambda: CachedResult(_invoke_ruff_projects(routed.python, root=root, runner=execute)),
                 )
+                reports.extend(ruff.reports)
             if capabilities is not None and "deptry" in capabilities:
                 reports.extend(
                     _invoke_deptry_projects(
