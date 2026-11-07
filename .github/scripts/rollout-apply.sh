@@ -28,4 +28,5 @@ else
   fi
 fi
 echo "$operation_status" >"$RUNNER_TEMP/standards-rollout.status"
+echo "status=$operation_status" >>"$GITHUB_OUTPUT"
 exit "$operation_status"

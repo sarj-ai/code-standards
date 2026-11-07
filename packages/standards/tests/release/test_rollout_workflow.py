@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import TypeGuard
@@ -341,6 +342,13 @@ elif name == "gh" and args[:2] == ["run", "list"]:
         sys.exit(status)
     selected = args[args.index("--status") + 1]
     print(json.dumps([row for row in json.loads(os.environ.get("ACTIVE_RUNS", "[]")) if row["status"] == selected]))
+elif name == "gh" and args[0] == "api" and "/git/ref/heads/" in args[1]:
+    print(os.environ.get("BASE_SHA", "b" * 40))
+    sys.exit(int(os.environ.get("GH_REF_STATUS", "0")))
+elif name == "gh" and args[0] == "api" and "/git/matching-refs/" in args[1]:
+    print(os.environ.get("ROLLOUT_SHA", "none"))
+elif name == "gh" and args[0] == "api" and "/actions/artifacts?" in args[1]:
+    print(os.environ.get("FAILED_RUN", ""))
 elif name == "gh" and args[0] == "api" and "/jobs?" in args[1]:
     status = int(os.environ.get("GH_JOBS_STATUS", "0"))
     if status:
@@ -348,6 +356,9 @@ elif name == "gh" and args[0] == "api" and "/jobs?" in args[1]:
     print(os.environ.get("ROLLOUT_JOBS", "{}"))
 elif name == "curl":
     Path(args[args.index("--output") + 1]).write_text("fixture bootstrap\n")
+elif name == "sha256sum" and "--check" not in args:
+    from hashlib import sha256
+    print(sha256(sys.stdin.buffer.read()).hexdigest() + "  -")
 elif name == "sha256sum":
     from hashlib import sha256
     expected, path = sys.stdin.read().strip().split(None, 1)
@@ -797,3 +808,164 @@ def test_publication_refuses_incomplete_run_identity(tmp_path: Path, runs: str) 
     assert _run_rollout("dispatch-standards-rollout.sh", recorder.environment).returncode != 0
     commands = _recorded_commands(recorder.commands)
     assert not any(command[:3] == ["gh", "workflow", "run"] for command in commands)
+
+
+_FAILURE_KEY = r"standards-rollout-failure-[0-9a-f]{64}"
+
+
+class _PlannedConsumers(RootModel[list[dict[str, str]]]):
+    pass
+
+
+def _planned(outputs: dict[str, str]) -> list[dict[str, str]]:
+    return _PlannedConsumers.model_validate_json(outputs["consumers"]).root
+
+
+def _unchanged_failures(tmp_path: Path, **values: str) -> tuple[dict[str, str], list[list[str]], str]:
+    defaults = {
+        "CONSUMERS": '[{"name":"App","identity":"example/app@main","workflow_runner":"fixture-runner"}]',
+        "CONSUMER_TOKEN": "consumer-token",
+        "ACTIONS_TOKEN": "actions-token",
+        "CONTROLLER_SHA": "c" * 40,
+        "EVENT_NAME": "schedule",
+        "TRIGGERING_ACTOR": "someone",
+        "PRESERVE_BASELINES": "true",
+        "REQUESTED_REPOSITORY_RULE": "",
+    }
+    recorder = _rollout_recorder(tmp_path, **(defaults | values))
+    result = _run_rollout("rollout-unchanged-failures.sh", recorder.environment)
+    assert result.returncode == 0, result.stderr
+    outputs = dict(
+        line.split("=", 1)
+        for line in Path(recorder.environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8").splitlines()
+    )
+    log = tmp_path / "standards-rollout.log"
+    return outputs, _recorded_commands(recorder.commands), log.read_text(encoding="utf-8") if log.exists() else ""
+
+
+@pytest.mark.parametrize(
+    ("event", "actor", "reused"),
+    [
+        ("schedule", "someone", True),
+        ("workflow_dispatch", "github-actions[bot]", True),
+        ("workflow_dispatch", "someone", False),
+    ],
+)
+def test_only_automated_runs_skip_a_consumer_whose_identical_inputs_failed(
+    tmp_path: Path, event: str, actor: str, *, reused: bool
+) -> None:
+    outputs, commands, log = _unchanged_failures(tmp_path, EVENT_NAME=event, TRIGGERING_ACTOR=actor, FAILED_RUN="77")
+
+    lookups = [command for command in commands if command[:2] == ["gh", "api"] and "/actions/artifacts?" in command[2]]
+    assert bool(lookups) is reused
+    if reused:
+        assert outputs == {"consumers": "[]", "skipped": '["App"]'}
+        assert "example/app@main: skipped" in log
+        assert "https://github.com/example/standards/actions/runs/77" in log
+        assert re.fullmatch(
+            rf"repos/example/standards/actions/artifacts\?name={_FAILURE_KEY}&per_page=1", lookups[0][2]
+        )
+    else:
+        assert outputs["skipped"] == "[]"
+        [consumer] = _planned(outputs)
+        assert re.fullmatch(_FAILURE_KEY, consumer.pop("failure_key"))
+        assert consumer == {"name": "App", "identity": "example/app@main", "workflow_runner": "fixture-runner"}
+        assert not log
+
+
+def test_consumers_without_a_recorded_failure_keep_their_matrix_entry_and_failure_key(tmp_path: Path) -> None:
+    outputs, commands, _ = _unchanged_failures(tmp_path)
+
+    assert outputs["skipped"] == "[]"
+    [consumer] = _planned(outputs)
+    assert re.fullmatch(_FAILURE_KEY, consumer["failure_key"])
+    assert ["gh", "api", "repos/example/app/git/ref/heads/main", "--jq", ".object.sha"] in commands
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"GH_REF_STATUS": "1"},
+        {"BASE_SHA": "not-a-commit"},
+        {"ROLLOUT_SHA": "unexpected"},
+        {"CONSUMERS": '[{"name":"App","identity":"malformed"}]'},
+    ],
+)
+def test_unknown_rollout_inputs_retry_the_consumer_without_recording_a_failure(
+    tmp_path: Path, values: dict[str, str]
+) -> None:
+    outputs, commands, _ = _unchanged_failures(tmp_path, FAILED_RUN="77", **values)
+
+    assert outputs["skipped"] == "[]"
+    [consumer] = _planned(outputs)
+    assert "failure_key" not in consumer
+    assert not any("/actions/artifacts?" in argument for command in commands for argument in command)
+
+
+def test_invalid_consumer_json_passes_the_plan_through(tmp_path: Path) -> None:
+    outputs, commands, _ = _unchanged_failures(tmp_path, CONSUMERS="invalid JSON")
+
+    assert outputs == {"consumers": "invalid JSON", "skipped": "[]"}
+    assert not any(command[0] == "gh" for command in commands)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"VERSION": "8.39.1"},
+        {"CONTROLLER_SHA": "d" * 40},
+        {"BASE_SHA": "e" * 40},
+        {"ROLLOUT_SHA": "f" * 40},
+        {"REGISTRY_TOML": "other registry\n"},
+        {"PRESERVE_BASELINES": "false"},
+        {"REQUESTED_REPOSITORY_RULE": "repository/artifacts/makefile-growth"},
+    ],
+)
+def test_any_changed_rollout_input_produces_a_new_failure_key(tmp_path: Path, changed: dict[str, str]) -> None:
+    (tmp_path / "baseline").mkdir()
+    (tmp_path / "changed").mkdir()
+    baseline, _, _ = _unchanged_failures(tmp_path / "baseline")
+    candidate, _, _ = _unchanged_failures(tmp_path / "changed", **changed)
+
+    assert _planned(baseline)[0]["failure_key"] != _planned(candidate)[0]["failure_key"]
+
+
+def test_rollout_report_keeps_skipped_consumers_failing(tmp_path: Path) -> None:
+    recorder = _rollout_recorder(
+        tmp_path, PLAN_STATUS="0", CONSUMERS="[]", ROLLOUT_RESULT="skipped", SKIPPED='["App"]', UV_STATUS="1"
+    )
+
+    assert _run_rollout("rollout-report.sh", recorder.environment).returncode == 0
+    assert (
+        Path(recorder.environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
+        == "result=failure\noperation_status=1\nstatus_status=1\n"
+    )
+
+
+def test_only_controller_outcome_failures_record_their_inputs() -> None:
+    jobs = _workflow()["jobs"]
+    assert _is_object(jobs)
+    plan = jobs["plan"]
+    assert _is_object(plan)
+    outputs = plan["outputs"]
+    assert _is_object(outputs)
+    assert outputs["consumers"] == "${{ steps.unchanged.outputs.consumers || steps.plan.outputs.consumers }}"
+    plan_steps = plan["steps"]
+    assert _is_array(plan_steps)
+    [unchanged] = [step for step in plan_steps if _is_object(step) and step.get("id") == "unchanged"]
+    assert _is_object(unchanged)
+    assert unchanged["continue-on-error"] == "true"
+    rollout = jobs["rollout"]
+    assert _is_object(rollout)
+    steps = rollout["steps"]
+    assert _is_array(steps)
+    [record] = [step for step in steps if _is_object(step) and step.get("name") == "Record the failed rollout inputs"]
+    assert _is_object(record)
+    condition = record["if"]
+    assert isinstance(condition, str)
+    assert "steps.apply.outputs.status == '1'" in condition
+    assert "steps.app-token.outcome == 'success'" in condition
+    options = record["with"]
+    assert _is_object(options)
+    assert options["name"] == "${{ matrix.consumer.failure_key }}"
+    assert options["retention-days"] == "1"
