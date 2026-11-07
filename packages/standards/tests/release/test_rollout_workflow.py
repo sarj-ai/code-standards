@@ -982,3 +982,35 @@ def test_only_controller_outcome_failures_record_their_inputs() -> None:
     assert _is_object(options)
     assert options["name"] == "${{ matrix.consumer.failure_key }}"
     assert options["retention-days"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("event", "requested", "expected"),
+    [
+        ("workflow_dispatch", "example/app@main", ["--consumer=example/app@main"]),
+        ("workflow_dispatch", "", []),
+        ("schedule", "example/app@main", []),
+        ("workflow_dispatch", "--help; $(touch unexpected)", ["--consumer=--help; $(touch unexpected)"]),
+    ],
+)
+def test_manual_dispatch_can_plan_one_consumer_and_schedules_plan_the_fleet(
+    tmp_path: Path, event: str, requested: str, expected: list[str]
+) -> None:
+    recorder = _rollout_recorder(
+        tmp_path, EVENT_NAME=event, REQUESTED_CONSUMER=requested, MATRIX_OUTPUT="consumers=[]\n"
+    )
+
+    assert _run_rollout("rollout-plan.sh", recorder.environment).returncode == 0
+    command = _recorded_commands(recorder.commands)[-1]
+    assert [argument for argument in command if argument.startswith("--consumer")] == expected
+    assert not (tmp_path / "unexpected").exists()
+    dispatch = _workflow()["on"]
+    assert _is_object(dispatch)
+    inputs = dispatch["workflow_dispatch"]
+    assert _is_object(inputs)
+    fields = inputs["inputs"]
+    assert _is_object(fields)
+    consumer = fields["consumer"]
+    assert _is_object(consumer)
+    assert consumer["required"] == "false"
+    assert not consumer["default"]
