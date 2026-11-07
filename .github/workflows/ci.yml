@@ -645,7 +645,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards wheel and integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
       run:
@@ -847,7 +847,7 @@ jobs:
     name: Python 3.14 compatibility
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       UV_PYTHON: '3.14'
