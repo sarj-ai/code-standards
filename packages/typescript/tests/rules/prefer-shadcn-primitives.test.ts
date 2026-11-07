@@ -354,5 +354,13 @@ RULE_TESTER.run("prefer-shadcn-primitives project detection", rule, {
       ...projectCase("reports a raw button when the exact project Button primitive exists", projectWith("const Button = () => null; export { Button };")),
       errors: [{ messageId: "preferShadcnPrimitive" }],
     },
+    {
+      ...projectCase("preserves literal replacement tokens in a path alias", {
+        ...projectWith("export const Button = () => null;"),
+        "components.json": '{"aliases":{"ui":"@/$&/ui"}}',
+        "src/$&/ui/button.tsx": "export const Button = () => null;",
+      }),
+      errors: [{ messageId: "preferShadcnPrimitive" }],
+    },
   ],
 });

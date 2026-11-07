@@ -569,7 +569,7 @@ function matchingAliasTargets(paths: Record<string, unknown>, alias: string): st
     const suffix = pattern.slice(star + 1);
     if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
     const substitution = alias.slice(prefix.length, alias.length - suffix.length);
-    matches.push(target.replace("*", substitution));
+    matches.push(target.replaceAll("*", () => substitution));
   }
   return matches;
 }
