@@ -54,6 +54,8 @@ PATH = ".repo-standards/baseline.json"
 # Policy 34 changes PR-template fingerprints. Preserve nonempty debt only when
 # the configured repository has no template review policy; active scopes need
 # a separate provenance review. Empty baselines contain no accepted identities.
+# Policy 35 requires Merge Risk in active template scopes and changes that
+# rule's fingerprints again. Keep the same empty-or-no-review-policy boundary.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -76,6 +78,7 @@ _IMAGE_POLICY_BASE = 30
 _IMAGE_ERROR_POLICY = 32
 _MIGRATION_COUNTS_POLICY = 33
 _PR_TEMPLATE_POLICY = 34
+_MERGE_RISK_POLICY = 35
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -154,6 +157,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
+    if target_policy_version == _MERGE_RISK_POLICY and baseline.policy_version != _PR_TEMPLATE_POLICY:
+        intermediate = migrate(contents, manifest, target_policy_version=_PR_TEMPLATE_POLICY)
+        return migrate(intermediate, manifest, target_policy_version=_MERGE_RISK_POLICY)
     if target_policy_version == _PR_TEMPLATE_POLICY and baseline.policy_version != _MIGRATION_COUNTS_POLICY:
         intermediate = migrate(contents, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
         return migrate(intermediate, manifest, target_policy_version=_PR_TEMPLATE_POLICY)
@@ -167,7 +173,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32)} and not baseline.fingerprints
     error_only_compatible = transition in {(29, 30), (31, 32)} and not baseline.include_warnings
     review_policy_absent = configured.pull_request is None or configured.pull_request.review_policy is None
-    template_compatible = transition == (33, 34) and (not baseline.fingerprints or review_policy_absent)
+    template_compatible = transition in {(33, 34), (34, 35)} and (not baseline.fingerprints or review_policy_absent)
     if (
         transition not in _COMPATIBLE_TRANSITIONS
         and not empty_compatible
