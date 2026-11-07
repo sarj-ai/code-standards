@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import ast
+from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+import copy
 import multiprocessing
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 import pytest
@@ -17,7 +20,8 @@ from sarj_python_lint.__main__ import analyze, main
 import sarj_python_lint._parallel as parallel_engine
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule
 from sarj_python_lint.rules import REGISTRY
-from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.rules._local_source import LocalSourceFacts
+from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
 
 
 if TYPE_CHECKING:
@@ -26,7 +30,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint._analysis_session import AnalysisSession
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint._prepared_sources import PreparedSourceSnapshot
+    from sarj_python_lint._prepared_sources import PreparedSourceInputs, PreparedSourceSnapshot
     from sarj_python_lint.rules._project_index import ProjectSourceSnapshot
 
 
@@ -42,7 +46,11 @@ class _RequestFacts(Rule):
         findings: list[Diagnostic] = []
         for name in names:
             path = context.path.parent / name
-            facts = context.session.local_source
+            facts = (
+                LocalSourceFacts(source_inputs=context.session.source_inputs)
+                if mode == "fresh"
+                else context.session.local_source
+            )
             found = (
                 facts.read_module(path)
                 if mode == "modules"
@@ -357,3 +365,151 @@ def test_large_analysis_preserves_serial_quotas_source_order_and_late_errors_wit
         with pytest.raises(RuntimeError, match="fixture file failed"):
             analyze([_RequestFacts.id, _FileFailure.id], paths, jobs=jobs, sources=sources)
     assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def _write_saturating_analysis(tmp_path: Path, later: list[str]) -> list[Path]:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "frozen-cache"\nversion = "0.1.0"\n')
+    (tmp_path / "provider.py").write_text("value = 1\n")
+    first = tmp_path / "first.py"
+    first.write_text("# resolutions\n" + "".join(f"# missing_{index}.py\n" for index in range(512)))
+    rest = [tmp_path / f"file_{index:03}.py" for index in range(len(later))]
+    for path, source in zip(rest, later, strict=True):
+        path.write_text(source)
+    return [first, *rest]
+
+
+def _observe_frozen_handoffs(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    original = parallel_engine.check_parallel
+    handoffs: list[bool] = []
+
+    def observe(
+        rule_types: list[type[Rule]],
+        loaded: dict[Path, str],
+        project: ProjectIndexSet | None,
+        *,
+        jobs: int,
+        source_inputs: PreparedSourceInputs | None = None,
+        frozen: parallel_engine.FrozenResolutions | None = None,
+    ) -> list[Diagnostic] | None:
+        result = original(rule_types, loaded, project, jobs=jobs, source_inputs=source_inputs, frozen=frozen)
+        speculative_small_batch = frozen is None
+        if not speculative_small_batch:
+            handoffs.append(result is not None)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the real handoff; a fake pool would miss quota divergence.
+        parallel_engine, "check_parallel", observe
+    )
+    return handoffs
+
+
+@pytest.mark.parametrize("later", ["resolutions", "modules"])
+def test_saturated_resolution_cache_hands_remaining_files_to_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, later: str
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, [f"# {later}\n# provider.py\n"] * engine.FROZEN_HANDOFF_MIN_FILES)
+    expected = analyze([_RequestFacts.id], paths)
+    assert len(expected) == (0 if later == "resolutions" else engine.FROZEN_HANDOFF_MIN_FILES)
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    before = {child.pid for child in multiprocessing.active_children()}
+    assert analyze([_RequestFacts.id], paths, jobs=3) == expected
+    assert handoffs == [True]
+    assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def test_frozen_handoff_replays_serially_when_modules_reach_their_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    count = engine.FROZEN_HANDOFF_MIN_FILES
+    later = [
+        "# modules\n" + "".join(f"# absent_{index}_{item}.py\n" for item in range(512 // count + 1))
+        for index in range(count)
+    ]
+    paths = _write_saturating_analysis(tmp_path, later)
+    expected = analyze([_RequestFacts.id], paths)
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2) == expected
+    assert handoffs == [False]
+
+
+@pytest.mark.parametrize("later", ["# modules\n# first.py\n", "# fresh\n# provider.py\n"])
+def test_frozen_handoff_uses_captured_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, later: str) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, [later] * engine.FROZEN_HANDOFF_MIN_FILES)
+    sources = SourceCatalog()
+    for path in paths:
+        sources.capture(path)
+    for path in paths:
+        path.write_text("if broken ==\n")  # captured bytes must win over changed files
+    expected = analyze([_RequestFacts.id], paths, sources=sources)
+    assert len(expected) == engine.FROZEN_HANDOFF_MIN_FILES
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2, sources=sources) == expected
+    assert handoffs == [True]
+
+
+def test_small_remainder_after_saturation_stays_serial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, ["# modules\n# provider.py\n"] * (engine.FROZEN_HANDOFF_MIN_FILES - 1))
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2) == analyze([_RequestFacts.id], paths)
+    assert handoffs == []
+
+
+def _index_units(sources: dict[str, str]) -> dict[Path, SourceUnit]:
+    return {
+        Path(name.replace(".", "/") + ".py"): SourceUnit(
+            Path(name.replace(".", "/") + ".py"), name, source, ast.parse(source), MappingProxyType({})
+        )
+        for name, source in sources.items()
+    }
+
+
+def test_restored_project_facts_match_recomputed_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    sources = {
+        "app.models": "class Record:\n    pass\n\n\nclass Escaped:\n    pass\n",
+        "app.focus": "import app.patch\nfrom app.models import Record\n\nvalue = Record()\n",
+        "app.patch": "import psycopg as driver\nfrom app import models\n\nholder = models.Escaped\ndriver.Connection = object\n",
+    }
+    symbols = (SymbolRef("app.models", "Record"), SymbolRef("app.models", "Escaped"))
+    warm = ProjectIndexSet(_index_units(sources), sealed=True)
+    for unit in warm.source_units:
+        warm.import_namespace_mutations.for_unit(unit)
+        warm.constructor_consumers(unit, "Record")
+    dynamic = [warm.nominal_membership_is_dynamic(symbol) for symbol in symbols]
+    snapshot = warm.source_snapshot(with_facts=True)
+    assert snapshot.facts is not None
+    transferred = {name for name, _ in snapshot.facts.cached}
+    assert transferred >= {"_escaped_nominal_classes", "_constructor_consumers"}
+
+    with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn")) as pool:
+        restored = ProjectIndexSet.from_source_snapshot(pool.submit(copy.copy, snapshot).result(), sealed=True)
+    cold = ProjectIndexSet(_index_units(sources), sealed=True)
+    for unit in cold.source_units:
+        cold.import_namespace_mutations.for_unit(unit)
+        cold.constructor_consumers(unit, "Record")
+    assert [cold.nominal_membership_is_dynamic(symbol) for symbol in symbols] == dynamic
+    restored_facts, cold_facts = dict[str, object](vars(restored)), dict[str, object](vars(cold))
+    assert {name: restored_facts[name] for name in transferred} == {name: cold_facts[name] for name in transferred}
+    assert [restored.nominal_membership_is_dynamic(symbol) for symbol in symbols] == dynamic
+    for restored_unit, cold_unit in zip(restored.source_units, cold.source_units, strict=True):
+        assert restored.import_namespace_mutations.for_unit(restored_unit) == cold.import_namespace_mutations.for_unit(
+            cold_unit
+        )
+    assert ProjectIndexSet(_index_units(sources)).source_snapshot().facts is None
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an exhausted value-origin budget is the order-dependent state under test.
+        warm, "_value_origins_incomplete", True
+    )
+    assert not warm.value_origins_complete
+    assert warm.source_snapshot(with_facts=True).facts is None

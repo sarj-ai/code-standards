@@ -75,6 +75,8 @@ SKIP_DIR_NAMES = frozenset(
 
 # Bound resource use, but never turn an unanalyzed selected file into success.
 _MAX_FILE_BYTES = 500_000
+# Spawned workers rebuild the project index; small remainders stay serial.
+FROZEN_HANDOFF_MIN_FILES = 64
 
 
 def _checked_size(path: Path, size: int) -> Path:
@@ -151,8 +153,23 @@ def _check(
     if parallel is not None:
         return parallel
     diags: list[Diagnostic] = []
-    for p, source in loaded.items():
+    pending = list(loaded.items())
+    handoff = jobs > 1
+    for index, (p, source) in enumerate(pending):
         diags.extend(check_source(rules, p, source, session=session))
+        if not handoff or len(pending) - index - 1 < FROZEN_HANDOFF_MIN_FILES:
+            continue
+        resolutions = session.local_source.saturated_resolutions()
+        if resolutions is None:
+            continue
+        # A refused handoff leaves this session untouched; finish serially.
+        handoff = False
+        frozen = _frozen_diagnostics(
+            rules, dict(pending[index + 1 :]), session, resolutions, jobs=jobs, source_inputs=source_inputs
+        )
+        if frozen is not None:
+            diags.extend(frozen)
+            return diags
     return diags
 
 
@@ -209,6 +226,32 @@ def _parallel_diagnostics(
         return check_parallel([type(rule) for rule in rules], loaded, session.project, jobs=jobs)
     return check_parallel(
         [type(rule) for rule in rules], loaded, session.project, jobs=jobs, source_inputs=source_inputs
+    )
+
+
+def _frozen_diagnostics(
+    rules: list[Rule],
+    remaining: dict[Path, str],
+    session: AnalysisSession,
+    resolutions: tuple[tuple[tuple[Path, str | None, int], Path | None], ...],
+    *,
+    jobs: int,
+    source_inputs: PreparedSourceInputs | None,
+) -> list[Diagnostic] | None:
+    # Serial order fills the resolution cache once. Afterwards each file sees the
+    # same full cache whatever ran before it, so workers can check the rest.
+    from sarj_python_lint._parallel import FrozenResolutions, check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
+
+    if session.project is not None and not session.project.value_origins_complete:
+        return None
+    frozen = FrozenResolutions(resolutions, session.local_source.cache_keys().modules)
+    return check_parallel(
+        [type(rule) for rule in rules],
+        remaining,
+        session.project,
+        jobs=jobs,
+        source_inputs=source_inputs,
+        frozen=frozen,
     )
 
 
@@ -668,7 +711,12 @@ def _check_command(
     fix: Annotated[
         bool, typer.Option("--fix", help="Apply proven safe fixes before checking the remaining diagnostics.")
     ] = False,
-    jobs: Annotated[int, typer.Option(min=1, help="Analysis worker budget (up to 2); default is serial.")] = 1,
+    jobs: Annotated[
+        int,
+        typer.Option(
+            min=1, help="Analysis worker budget; default is serial. Unsaturated batches use at most 2 workers."
+        ),
+    ] = 1,
 ) -> None:
     if fix:
         from sarj_python_lint.autofix import fix_paths  # ruff: ignore[import-outside-top-level] -- load mutation support only for an explicit fix request.

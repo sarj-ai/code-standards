@@ -11,13 +11,14 @@ import os
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, TypeIs, final
 from weakref import WeakKeyDictionary, WeakMethod
 
 from sarj_rule_contracts import SourceSnapshot
 
 from sarj_python_lint._prepared_sources import CapturedSource, NeedsSerialSourceError
 from sarj_python_lint._source import decode_python_source, read_python_source, symbol_prefilter_source
+from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rules._ast_index import (
     NodeIndex,
     SharedModule,
@@ -64,6 +65,20 @@ _MAX_FILES_PER_ROOT = 10_000
 _MAX_FILE_BYTES = 500_000
 _MAX_SOURCE_CHARS_PER_ROOT = 50_000_000
 _MAX_VALUE_ORIGIN_STATES = 4_096
+# Whole-project facts that are pure functions of the source graph. Type-provider
+# facts are keyed by AST identity, so workers recompute them when needed.
+_TRANSFERABLE_FACTS = (
+    "_escaped_nominal_classes",
+    "_runtime_origins",
+    "_runtime_namespaces",
+    "_runtime_type_provider_namespaces",
+    "_local_value_roots",
+    "_constructor_consumers",
+    "_constructor_operations",
+    "_direct_subclasses",
+    "_typed_class_consumers",
+    "_mock_specs",
+)
 _NEW_TYPE_MIN_ARGS = 2
 _CLASS_VALUE_NODES = (ast.Name, ast.Attribute)
 _BUILTIN_TYPE_PROVIDERS = frozenset({"dict", "frozenset", "list", "set", "tuple", "type"})
@@ -196,6 +211,7 @@ class ProjectSourceSnapshot:
     roots: tuple[Path, ...]
     units: tuple[_IndexedSource, ...]
     aliases: tuple[tuple[Path, Path], ...] = ()
+    facts: ProjectFacts | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +255,20 @@ class ImportNamespaceMutations:
         self._facts: Mapping[str, _ImportNamespaceWrites] | None = None
         self._reachable: dict[str, frozenset[str] | None] = {}
 
+    @property
+    def loaded_facts(self) -> Mapping[str, _ImportNamespaceWrites] | None:
+        return self._facts
+
+    @property
+    def reachable(self) -> Mapping[str, frozenset[str] | None]:
+        return self._reachable
+
+    def restore(
+        self, facts: Mapping[str, _ImportNamespaceWrites] | None, reachable: dict[str, frozenset[str] | None]
+    ) -> None:
+        self._facts = facts
+        self._reachable.update(reachable)
+
     def for_unit(self, unit: SourceUnit) -> frozenset[str] | None:
         if unit.module is None:
             return frozenset()
@@ -271,7 +301,35 @@ class ImportNamespaceMutations:
         return result
 
 
-@final
+# Memoized whole-project facts, in a picklable form, for an identical index.
+@dataclass(frozen=True, slots=True)
+class ProjectFacts:
+    cached: tuple[tuple[str, object], ...]
+    canonical_values: tuple[tuple[SymbolRef, tuple[SymbolRef, ...]], ...]
+    bound_value_prefixes: tuple[tuple[str, bool], ...]
+    namespace_mutation: tuple[tuple[str, bool], ...]
+    namespace_writes: tuple[tuple[str, _ImportNamespaceWrites], ...] | None
+    reachable: tuple[tuple[str, frozenset[str] | None], ...]
+
+
+def _plain(value: object) -> object:
+    # Read-only mapping views do not pickle; workers restore the same views.
+    if _is_proxy(value):
+        return {key: _plain(item) for key, item in value.items()}
+    return value
+
+
+def _is_proxy(value: object) -> TypeIs[MappingProxyType[object, object]]:
+    return isinstance(value, MappingProxyType)
+
+
+def _proxied(value: object) -> object:
+    if is_object_mapping(value):
+        return MappingProxyType({key: _proxied(item) for key, item in value.items()})
+    return value
+
+
+@final  # ruff: ignore[too-many-public-methods] -- one index owns the whole-project fact caches that spawned workers restore and check.
 class ProjectIndexSet:
     # Borrowed ASTs and import mappings must stay unchanged for this index's lifetime.
     # They remain mutable Python objects; in-place mutation can leave cached facts stale.
@@ -327,9 +385,15 @@ class ProjectIndexSet:
         self._classes = MappingProxyType(classes)
         self._nominals = MappingProxyType({key: frozenset(value) for key, value in nominals.items()})
 
-    def source_snapshot(self) -> ProjectSourceSnapshot:
+    @property
+    def value_origins_complete(self) -> bool:
+        # Once a value-origin trace exceeds its budget, later answers depend on query order.
+        return not self._value_origins_incomplete
+
+    def source_snapshot(self, *, with_facts: bool = False) -> ProjectSourceSnapshot:
         # Rebuild memoized facts without rescanning roots or changing the
         # module identities/order of the complete prepared source graph.
+        # with_facts also carries facts this index has already computed.
         return ProjectSourceSnapshot(
             self._roots,
             tuple(
@@ -343,6 +407,32 @@ class ProjectIndexSet:
                 for key, unit in self._units.items()
             ),
             tuple(self._aliases.items()),
+            self._memoized_facts() if with_facts else None,
+        )
+
+    def _memoized_facts(self) -> ProjectFacts | None:
+        if self._value_origins_incomplete:
+            return None
+        mutations = self.import_namespace_mutations
+        memoized = dict[str, object](vars(self))
+        return ProjectFacts(
+            tuple((name, _plain(memoized[name])) for name in _TRANSFERABLE_FACTS if name in memoized),
+            tuple(self._canonical_values.items()),
+            tuple(self._bound_value_prefixes.items()),
+            tuple(self._namespace_mutation.items()),
+            None if mutations.loaded_facts is None else tuple(mutations.loaded_facts.items()),
+            tuple(mutations.reachable.items()),
+        )
+
+    def _restore_facts(self, facts: ProjectFacts) -> None:
+        for name, value in facts.cached:
+            vars(self)[name] = _proxied(value)
+        self._canonical_values.update(facts.canonical_values)
+        self._bound_value_prefixes.update(facts.bound_value_prefixes)
+        self._namespace_mutation.update(facts.namespace_mutation)
+        self.import_namespace_mutations.restore(
+            None if facts.namespace_writes is None else MappingProxyType(dict(facts.namespace_writes)),
+            dict(facts.reachable),
         )
 
     @classmethod
@@ -368,7 +458,10 @@ class ProjectIndexSet:
                 imports=MappingProxyType(_imports(source.module, tree, is_package=source.path.name == "__init__.py")),
                 captured=source.captured,
             )
-        return cls(units, snapshot.roots, aliases=dict(snapshot.aliases), sealed=sealed)
+        index = cls(units, snapshot.roots, aliases=dict(snapshot.aliases), sealed=sealed)
+        if snapshot.facts is not None:
+            index._restore_facts(snapshot.facts)
+        return index
 
     @classmethod
     def build(

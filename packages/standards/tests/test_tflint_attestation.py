@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import operator
 import sys
+import threading
 from typing import TYPE_CHECKING
 
 import pytest
@@ -52,7 +54,8 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
         )
         assert all(report.completion is Completion.COMPLETE for report in reports)
         assert all(report.version == "0.65.0" for report in reports)
-        assert calls == [
+        # Projects run concurrently; each keeps its own attestation order.
+        assert sorted(calls, key=operator.itemgetter(0)) == [
             (tmp_path / "one", "version", False),
             (tmp_path / "one", "version", True),
             (tmp_path / "one", "analysis", True),
@@ -60,6 +63,39 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
             (tmp_path / "two", "version", True),
             (tmp_path / "two", "analysis", True),
         ]
+
+
+def test_tflint_projects_overlap_and_keep_project_report_order(*, tmp_path: Path) -> None:
+    paths = tuple(_source(root=tmp_path, project=project) for project in ("one", "two"))
+    second_started = threading.Event()
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if "--version" in argv:
+            return ProcessOutput(0, "TFLint version 0.65.0\n+ ruleset.google (0.40.0)", "")
+        issues: list[object] = []
+        if cwd.name == "two":
+            second_started.set()
+        else:
+            # The first project finishes only after the second has started.
+            assert second_started.wait(timeout=10)
+            issues.append(
+                {
+                    "rule": {"name": "terraform_typed_variables", "severity": "warning"},
+                    "message": "type",
+                    "range": {"filename": "main.tf", "start": {"line": 1, "column": 1}},
+                }
+            )
+        return ProcessOutput(2 if issues else 0, json.dumps({"errors": [], "issues": issues}), "")
+
+    reports = analyze_sources(
+        root=tmp_path,
+        paths=paths,
+        selected=frozenset({"tflint"}),
+        trust_repository_code=True,
+        runner=FakeProcessExecutor(runner),
+    )
+    assert [report.completion for report in reports] == [Completion.COMPLETE, Completion.COMPLETE]
+    assert [[item.location.path for item in report.diagnostics] for report in reports] == [["one/main.tf"], []]
 
 
 @pytest.mark.parametrize(

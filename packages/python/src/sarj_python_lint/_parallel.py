@@ -31,6 +31,14 @@ class _WorkerState:
     needs_serial: bool = False
 
 
+# A full resolution cache never admits another key, so every later file
+# observes exactly these entries in any order. Module keys keep their own limit.
+@dataclass(frozen=True, slots=True)
+class FrozenResolutions:
+    resolutions: tuple[tuple[_ResolutionKey, Path | None], ...]
+    modules: frozenset[Path]
+
+
 @dataclass(frozen=True, slots=True)
 class _FileResult:
     diagnostics: list[Diagnostic]
@@ -46,12 +54,20 @@ def _initialize(
     rule_types: list[type[Rule]],
     snapshot: ProjectSourceSnapshot | None,
     source_snapshot: PreparedSourceSnapshot | None = None,
+    frozen: FrozenResolutions | None = None,
 ) -> None:
     global _state  # ruff: ignore[global-statement] -- each spawned process owns one initialized session.
     rules = [rule_type() for rule_type in rule_types]
-    source_inputs = None if source_snapshot is None else PreparedSourceInputs.from_source_snapshot(source_snapshot)
+    source_inputs = (
+        None
+        if source_snapshot is None
+        else PreparedSourceInputs.from_source_snapshot(source_snapshot, resolves_unrecorded=frozen is not None)
+    )
     session = AnalysisSession() if source_inputs is None else AnalysisSession(source_inputs=source_inputs)
-    _state = _WorkerState(rules, session)
+    if frozen is not None:
+        # The parent's preparation lookups are already part of this full cache.
+        session.local_source.restore_resolutions(frozen.resolutions)
+    _state = _WorkerState(rules, session, resolutions=session.local_source.cache_keys().resolutions)
     try:
         _prepare_worker(_state, snapshot, source_inputs=source_inputs)
     except NeedsSerialSourceError:
@@ -59,7 +75,10 @@ def _initialize(
 
 
 def _prepare_worker(
-    state: _WorkerState, snapshot: ProjectSourceSnapshot | None, *, source_inputs: PreparedSourceInputs | None
+    state: _WorkerState,
+    snapshot: ProjectSourceSnapshot | None,
+    *,
+    source_inputs: PreparedSourceInputs | None,
 ) -> None:
     for rule in state.rules:
         rule.prepare_session(state.session)
@@ -93,6 +112,10 @@ def _check_file(item: tuple[Path, str | None]) -> _FileResult:
     except NeedsSerialSourceError:
         _state.needs_serial = True
         return _FileResult([], frozenset(), frozenset(), needs_serial=True)
+    project = _state.session.project
+    if project is not None and not project.value_origins_complete:
+        _state.needs_serial = True
+        return _FileResult([], frozenset(), frozenset(), needs_serial=True)
     keys = _state.session.local_source.cache_keys()
     result = _FileResult(diagnostics, keys.resolutions - _state.resolutions, keys.modules - _state.modules)
     _state.resolutions, _state.modules = keys.resolutions, keys.modules
@@ -112,26 +135,39 @@ def check_parallel(
     *,
     jobs: int,
     source_inputs: PreparedSourceInputs | None = None,
+    frozen: FrozenResolutions | None = None,
 ) -> list[Diagnostic] | None:
     # The untouched parent rules/session remain the serial fallback. Workers
     # receive the same complete project snapshot and selected source strings.
     # Select the untouched serial session before a large batch can require a
     # complete parallel pass followed by the same quota-sensitive serial replay.
-    if len(loaded) >= LOCAL_SOURCE_CACHE_LIMIT:
+    # A frozen resolution cache has already spent that quota, so its remaining
+    # files only need the module quota check below.
+    if frozen is None and len(loaded) >= LOCAL_SOURCE_CACHE_LIMIT:
         return None
     source_snapshot = None if source_inputs is None else source_inputs.source_snapshot()
-    if source_snapshot is not None and source_snapshot.eligible_raw_count >= LOCAL_SOURCE_CACHE_LIMIT:
+    if (
+        frozen is None
+        and source_snapshot is not None
+        and source_snapshot.eligible_raw_count >= LOCAL_SOURCE_CACHE_LIMIT
+    ):
         return None
-    workers = min(jobs, 2, len(loaded))
+    workers = min(jobs, len(loaded)) if frozen is not None else min(jobs, 2, len(loaded))
     pool = ProcessPoolExecutor(
         max_workers=workers,
         mp_context=multiprocessing.get_context("spawn"),
         initializer=_initialize,
-        initargs=(rule_types, project.source_snapshot() if project is not None else None, source_snapshot),
+        initargs=(
+            rule_types,
+            # A frozen handoff also carries the parent's memoized whole-project facts.
+            project.source_snapshot(with_facts=frozen is not None) if project is not None else None,
+            source_snapshot,
+            frozen,
+        ),
     )
     diagnostics: list[Diagnostic] = []
     resolutions: set[_ResolutionKey] = set()
-    modules: set[Path] = set()
+    modules: set[Path] = set() if frozen is None else set(frozen.modules)
     needs_serial = False
     try:
         # Keep workers busy while an earlier file delays ordered results.

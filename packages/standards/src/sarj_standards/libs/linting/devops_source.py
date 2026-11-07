@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from itertools import starmap
 import json
 import os
 from pathlib import Path
@@ -22,12 +24,13 @@ from sarj_standards.libs.diagnostics import (
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
 from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, ProcessOutput
+from sarj_standards.libs.linting.process import current_cancellation, initialize_process_cancellation
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from sarj_standards.libs.linting.devops_tools import NativeTool
     from sarj_standards.libs.linting.policy import Policy
@@ -400,6 +403,21 @@ def _project_inputs(paths: tuple[Path, ...]) -> tuple[tuple[Path, tuple[Path, ..
     return tuple((project, tuple(grouped[project])) for project in sorted(grouped))
 
 
+def _per_project[T](
+    projects: Sequence[tuple[Path, tuple[Path, ...]]], analyze: Callable[[Path, tuple[Path, ...]], T]
+) -> tuple[T, ...]:
+    # Each Terraform root runs its own process; keep project order in the report.
+    if len(projects) <= 1:
+        return tuple(starmap(analyze, projects))
+    with ThreadPoolExecutor(
+        max_workers=min(len(projects), os.process_cpu_count() or 1),
+        thread_name_prefix="terraform",
+        initializer=initialize_process_cancellation,
+        initargs=(current_cancellation(),),
+    ) as workers:
+        return tuple(workers.map(analyze, *zip(*projects, strict=True)))
+
+
 def _terraform_reports(
     root: Path,
     paths: tuple[Path, ...],
@@ -447,26 +465,23 @@ def _terraform_reports(
         )
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         reports.append(_failed("terraform-fmt", error, len(formatting_paths)))
-    for project, project_paths in _project_inputs(paths):
-        if not trust_repository_code:
-            reports.append(
-                _failed(
-                    "terraform-validate",
-                    "Terraform provider validation requires trusted repository code and preinitialized local providers",
-                    len(project_paths),
-                )
-            )
-            continue
-        reports.append(
-            _json_tool(
-                "terraform",
-                ("validate", "-json", "-no-color"),
-                project,
-                project_paths,
-                lambda payload, project_root: parse_terraform(payload, root, cwd=project_root),
-                runner=runner,
-            )
+    projects = _project_inputs(paths)
+    if not trust_repository_code:
+        message = "Terraform provider validation requires trusted repository code and preinitialized local providers"
+        reports.extend(_failed("terraform-validate", message, len(project_paths)) for _, project_paths in projects)
+        return tuple(reports)
+
+    def validate(project: Path, project_paths: tuple[Path, ...]) -> ToolReport:
+        return _json_tool(
+            "terraform",
+            ("validate", "-json", "-no-color"),
+            project,
+            project_paths,
+            lambda payload, project_root: parse_terraform(payload, root, cwd=project_root),
+            runner=runner,
         )
+
+    reports.extend(_per_project(projects, validate))
     return tuple(reports)
 
 
@@ -479,8 +494,8 @@ def _tflint_reports(
                 "tflint", "TFLint requires trusted repository configuration and installed pinned plugins", len(paths)
             ),
         )
-    return tuple(
-        _tflint_report(root, project, project_paths, runner) for project, project_paths in _project_inputs(paths)
+    return _per_project(
+        _project_inputs(paths), lambda project, project_paths: _tflint_report(root, project, project_paths, runner)
     )
 
 
