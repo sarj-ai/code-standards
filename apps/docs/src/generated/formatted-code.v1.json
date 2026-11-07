@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8c4e496fa107ac9fdddd5551aab285a94193666e690066b066a3f5deb9ff2c5f",
-  "cliSha256": "3b63dede74255fd77d5389cc0e531f97fbef5848fc898e8412dbbecfea0ffca5",
+  "catalogSha256": "2e32cea83200198853e590571bfac921b43cd7bbb8e4caf7aec1c096a685b342",
+  "cliSha256": "acdba4e0f1316e3a8bf5dc20de123b2284221c56f74ce72990581e53213a2390",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -16626,6 +16626,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Test replaces an application collaborator"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-injected-service": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Worker:\n    def __init__(self, store):\n        self.store = store\n\n    def run(self):\n        return self.store.load()\n\n\nclass Consumer:\n    def __init__(self, store):\n        self.store = store\n\n    def run(self):\n        return Worker(self.store).run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "constructs-service-during-operation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The consumer hardwires a collaborator using an existing dependency"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Worker:\n    def __init__(self, store):\n        self.store = store\n\n    def run(self):\n        return self.store.load()\n\n\nclass Consumer:\n    def __init__(self, worker):\n        self.worker = worker\n\n    def run(self):\n        return self.worker.run()\n\n\ndef compose(store):\n    return Consumer(Worker(store))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "injects-composed-service",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The composition boundary supplies the collaborator"
         }
       ],
       "optionsSchemaSource": null

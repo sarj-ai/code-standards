@@ -132,6 +132,7 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import (
 from sarj_python_lint.rules.prefer_injected_dependency_over_monkeypatch import (
     PreferInjectedDependencyOverMonkeypatch,
 )
+from sarj_python_lint.rules.prefer_injected_service import PreferInjectedService
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 from sarj_python_lint.rules.prefer_match_exception_dispatch import PreferMatchExceptionDispatch
@@ -290,6 +291,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferInjectedService.id: PreferInjectedService,
         FastapiRouteDeclaresSecurity.id: FastapiRouteDeclaresSecurity,
         PreferValidatedUuidComparison.id: PreferValidatedUuidComparison,
         PreferSinglePsycopgCursor.id: PreferSinglePsycopgCursor,

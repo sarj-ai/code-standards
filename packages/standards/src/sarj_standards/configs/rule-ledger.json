@@ -161,6 +161,7 @@
       "prefer-grouped-settings",
       "prefer-immutable-module-constant",
       "prefer-injected-dependency-over-monkeypatch",
+      "prefer-injected-service",
       "prefer-library-fake",
       "prefer-match-assert-never",
       "prefer-match-exception-dispatch",
@@ -688,7 +689,8 @@
       "SARJ560",
       "SARJ561",
       "SARJ562",
-      "SARJ563"
+      "SARJ563",
+      "SARJ564"
     ],
     "sql": [
       "SARJ101",
