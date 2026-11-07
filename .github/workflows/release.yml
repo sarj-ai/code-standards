@@ -789,7 +789,7 @@ jobs:
   build-standards:
     needs: detect
     if: needs.detect.outputs.standards == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: read
