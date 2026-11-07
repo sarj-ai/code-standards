@@ -588,7 +588,7 @@ class NoCommentCruft(Rule):
         nested = nested_comment_lines(source)
         enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
         license_header = _license_header_lines(standalone)
-        walls = statement_comment_walls(path, source, standalone)
+        walls = statement_comment_walls(context.tree, source, standalone)
         wall_members = frozenset(line for members in walls.values() for line in members)
 
         def classify_comments() -> None:

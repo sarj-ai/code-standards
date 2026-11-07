@@ -6,6 +6,7 @@ import ast
 from collections import deque
 from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeIs, final
+from weakref import WeakValueDictionary
 
 
 if TYPE_CHECKING:
@@ -84,7 +85,9 @@ def has_own_yield(function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
 
 
 def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
-    if index is not None and index.tree is node:
+    if index is None or index.tree is not node:
+        index = NodeIndex.shared(node)
+    if index is not None:
         yield from index.query((ast.AST,))
         return
     queue = children(node)
@@ -98,14 +101,54 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
         yield current
 
 
+# Parsed modules are shared by the file context, the project index and every rule.
+# Their owner (a project `SourceUnit`) holds a `SharedModule`, which indexes the
+# module once, on first use. The registry is weak, so the index lives exactly as
+# long as its owner. Unowned (usually synthetic) modules are walked directly:
+# indexing costs more than one walk.
+@final
+class SharedModule:
+    def __init__(self, tree: ast.Module) -> None:
+        self.tree = tree
+        self._index: NodeIndex | None = None
+
+    @property
+    def index(self) -> NodeIndex:
+        if self._index is None:
+            self._index = NodeIndex(self.tree)
+        return self._index
+
+
+_SHARED: WeakValueDictionary[int, SharedModule] = WeakValueDictionary()
+
+
+def share_module(tree: ast.Module) -> SharedModule:
+    shared = _SHARED.get(id(tree))
+    if shared is None or shared.tree is not tree:
+        shared = _SHARED[id(tree)] = SharedModule(tree)
+    return shared
+
+
 @final
 class NodeIndex:
-    __slots__ = ("_buckets", "_flat", "_parents", "_queries", "tree")
+    __slots__ = ("_buckets", "_ends", "_flat", "_parents", "_queries", "tree")
+
+    @staticmethod
+    def shared(tree: ast.AST) -> NodeIndex | None:
+        owner = _SHARED.get(id(tree)) if isinstance(tree, ast.Module) else None
+        return owner.index if owner is not None and owner.tree is tree else None
+
+    @classmethod
+    def of_module(cls, tree: ast.Module) -> NodeIndex:
+        shared = cls.shared(tree)
+        return shared if shared is not None else cls(tree)
 
     def __init__(self, tree: ast.AST) -> None:
         self.tree = tree
         buckets: dict[type[ast.AST], list[ast.AST]] = {}
         flat: list[ast.AST] = [tree]
+        # `flat[i]`'s children are `flat[ends[i - 1]:ends[i]]` (the first starts at 1).
+        ends: list[int] = []
         i = 0
         while i < len(flat):
             current = flat[i]
@@ -117,15 +160,24 @@ class NodeIndex:
             else:
                 bucket.append(current)
             flat += children(current)
+            ends.append(len(flat))
         self._buckets: dict[type[ast.AST], list[ast.AST]] = buckets
         self._flat: list[ast.AST] = flat
+        self._ends = ends
         self._parents: Mapping[ast.AST, ast.AST] | None = None
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
 
     @property
     def parents(self) -> Mapping[ast.AST, ast.AST]:
         if self._parents is None:
-            self._parents = MappingProxyType({child: parent for parent in self._flat for child in children(parent)})
+            flat = self._flat
+            parents: dict[ast.AST, ast.AST] = {}
+            start = 1
+            for parent, end in zip(flat, self._ends, strict=True):
+                for child in flat[start:end]:
+                    parents[child] = parent
+                start = end
+            self._parents = MappingProxyType(parents)
         return self._parents
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
@@ -148,11 +200,16 @@ class NodeIndex:
         return result
 
 
+def _index_for(tree: ast.AST, index: NodeIndex | None) -> NodeIndex:
+    if index is not None and index.tree is tree:
+        return index
+    shared = NodeIndex.shared(tree)
+    return shared if shared is not None else NodeIndex(tree)
+
+
 def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT], index: NodeIndex | None = None) -> list[NodeT]:
-    selected = index if index is not None and index.tree is tree else NodeIndex(tree)
-    return [node for node in selected.query(types) if isinstance(node, types)]
+    return [node for node in _index_for(tree, index).query(types) if isinstance(node, types)]
 
 
 def parent_map(tree: ast.AST, *, index: NodeIndex | None = None) -> Mapping[ast.AST, ast.AST]:
-    selected = index if index is not None and index.tree is tree else NodeIndex(tree)
-    return selected.parents
+    return _index_for(tree, index).parents

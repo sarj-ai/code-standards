@@ -3,8 +3,10 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._binding_inventory import binding_names, scope_binding_names
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
@@ -26,6 +28,41 @@ def _attribute_root(node: ast.expr) -> str | None:
     while isinstance(node, ast.Attribute):
         node = node.value
     return node.id if isinstance(node, ast.Name) else None
+
+
+def _subscripted_attribute_root(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute | ast.Subscript):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+_WRITTEN_ATTRIBUTE_ROOTS: WeakKeyDictionary[ast.Module, frozenset[str | None]] = WeakKeyDictionary()
+_WRITTEN_SUBSCRIPTED_ATTRIBUTE_ROOTS: WeakKeyDictionary[ast.Module, frozenset[str | None]] = WeakKeyDictionary()
+_MODULE_STATEMENT_BINDINGS: WeakKeyDictionary[ast.Module, frozenset[str]] = WeakKeyDictionary()
+
+
+def written_attribute_roots(tree: ast.Module, *, through_subscripts: bool = False) -> frozenset[str | None]:
+    cache = _WRITTEN_SUBSCRIPTED_ATTRIBUTE_ROOTS if through_subscripts else _WRITTEN_ATTRIBUTE_ROOTS
+    roots = cache.get(tree)
+    if roots is None:
+        root_of = _subscripted_attribute_root if through_subscripts else _attribute_root
+        roots = cache[tree] = frozenset(
+            root_of(node) for node in nodes(tree, ast.Attribute) if not isinstance(node.ctx, ast.Load)
+        )
+    return roots
+
+
+def _module_statement_bindings(tree: ast.Module) -> frozenset[str]:
+    names = _MODULE_STATEMENT_BINDINGS.get(tree)
+    if names is None:
+        names = _MODULE_STATEMENT_BINDINGS[tree] = frozenset(
+            name
+            for statement in tree.body
+            if not isinstance(statement, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+            for node in ast.walk(statement)
+            for name in binding_names(node)
+        )
+    return names
 
 
 @dataclass(frozen=True)
@@ -116,10 +153,7 @@ class DeclaredContracts:
         imports = self._module_semantics(owner).imports
         if name in imports.shadowed_names:
             return False
-        return not any(
-            isinstance(node, ast.Attribute) and not isinstance(node.ctx, ast.Load) and _attribute_root(node) == name
-            for node in ast.walk(owner.tree)
-        )
+        return name not in written_attribute_roots(owner.tree)
 
     def _stable_declaration(self, source: SourceUnit, name: str) -> ast.ClassDef | None:
         if source.tree is None:
@@ -133,12 +167,7 @@ class DeclaredContracts:
             return None
         if not self._identity_decorators(source, declarations[0]):
             return None
-        if any(
-            name in binding_names(node)
-            for statement in source.tree.body
-            if not isinstance(statement, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
-            for node in ast.walk(statement)
-        ):
+        if name in _module_statement_bindings(source.tree):
             return None
         return declarations[0]
 

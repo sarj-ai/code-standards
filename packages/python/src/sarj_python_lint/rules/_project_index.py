@@ -4,7 +4,7 @@ import ast
 from collections import deque
 from collections.abc import Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import chain
 import os
@@ -12,13 +12,21 @@ from pathlib import Path
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
-from weakref import WeakMethod
+from weakref import WeakKeyDictionary, WeakMethod
 
 from sarj_rule_contracts import SourceSnapshot
 
 from sarj_python_lint._prepared_sources import CapturedSource, NeedsSerialSourceError
 from sarj_python_lint._source import decode_python_source, read_python_source, symbol_prefilter_source
-from sarj_python_lint.rules._ast_index import NodeIndex, children, nodes, walk as walk_ast
+from sarj_python_lint.rules._ast_index import (
+    NodeIndex,
+    SharedModule,
+    children,
+    nodes,
+    parent_map,
+    share_module,
+    walk as walk_ast,
+)
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
@@ -154,6 +162,12 @@ class SourceUnit:
     tree: ast.Module | None
     imports: Mapping[str, SymbolRef]
     captured: CapturedSource | None = None
+    # Owns the shared node index of `tree`, so every rule reuses one traversal.
+    _shared: SharedModule | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.tree is not None:
+            object.__setattr__(self, "_shared", share_module(self.tree))
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +284,7 @@ class ProjectIndexSet:
         *,
         aliases: Mapping[Path, Path] | None = None,
         sealed: bool = False,
+        reuse_symbols: Mapping[Path, tuple[SourceUnit, _UnitSymbols | None]] | None = None,
     ) -> None:
         self._units = MappingProxyType(dict(units))
         # Borrow the prepared graph without filesystem discovery or reparsing.
@@ -297,7 +312,18 @@ class ProjectIndexSet:
         )
         classes: dict[SymbolRef, ClassSummary] = {}
         nominals: dict[str, set[SymbolRef]] = {}
-        _collect_unit_symbols(units, classes, nominals)
+        # Unit symbols depend only on the unit, so `with_unit` reuses every unchanged one.
+        unit_symbols: dict[Path, tuple[SourceUnit, _UnitSymbols | None]] = {}
+        for key, unit in units.items():
+            previous = reuse_symbols.get(key) if reuse_symbols is not None else None
+            collected = previous[1] if previous is not None and previous[0] is unit else _unit_symbols(unit)
+            unit_symbols[key] = (unit, collected)
+            if collected is None:
+                continue
+            classes.update(collected.classes)
+            for field_key, nominal in collected.nominals:
+                nominals.setdefault(field_key, set()).add(nominal)
+        self._unit_symbols = unit_symbols
         self._classes = MappingProxyType(classes)
         self._nominals = MappingProxyType({key: frozenset(value) for key, value in nominals.items()})
 
@@ -385,7 +411,13 @@ class ProjectIndexSet:
         return cls(_units({path: source}))
 
     def with_unit(self, unit: SourceUnit) -> Self:
-        return type(self)({**self._units, unit.path: unit}, self._roots, aliases=self._aliases, sealed=self._sealed)
+        return type(self)(
+            {**self._units, unit.path: unit},
+            self._roots,
+            aliases=self._aliases,
+            sealed=self._sealed,
+            reuse_symbols=self._unit_symbols,
+        )
 
     def unit(self, path: Path) -> SourceUnit | None:
         direct = self._units.get(path)
@@ -463,7 +495,7 @@ class ProjectIndexSet:
                 unit is None
                 or unit.tree is None
                 or dynamic_namespace_access(
-                    walk_ast(unit.tree), ImportIndex.from_tree(unit.tree), NodeIndex(unit.tree).parents
+                    walk_ast(unit.tree), ImportIndex.from_tree(unit.tree), parent_map(unit.tree)
                 )
             )
         return self._namespace_mutation[symbol.module] or symbol in self._escaped_nominal_classes
@@ -578,7 +610,8 @@ class ProjectIndexSet:
         escaped = set(already_escaped)
         imports = self._runtime_origins[unit.module] if unit.module is not None else _runtime_import_origins(unit)
         roots = self._unit_value_roots(unit, imports, namespaces, already_escaped=escaped)
-        if roots == frozenset():
+        # Every class value use is rooted at a name in the tree.
+        if roots is not None and roots.isdisjoint(_tree_names(unit.tree)):
             return frozenset(escaped)
         for use in _runtime_class_value_uses(
             unit.tree,
@@ -1119,6 +1152,16 @@ def _proven_type_provider(provider: ast.expr, imports: ImportIndex) -> bool:
     return imports.resolved_symbol(provider, sources=_GENERIC_TYPE_SOURCES) in _GENERIC_TYPE_PROVIDERS
 
 
+_TREE_NAMES: WeakKeyDictionary[ast.Module, frozenset[str]] = WeakKeyDictionary()
+
+
+def _tree_names(tree: ast.Module) -> frozenset[str]:
+    names = _TREE_NAMES.get(tree)
+    if names is None:
+        names = _TREE_NAMES[tree] = frozenset(node.id for node in nodes(tree, ast.Name))
+    return names
+
+
 def _reference_has_root(reference: ast.Name | ast.Attribute, roots: frozenset[str] | None) -> bool:
     if roots is None:
         return True
@@ -1319,19 +1362,25 @@ def _direct_base_symbol(unit: SourceUnit, expression: ast.expr) -> SymbolRef | N
     return None
 
 
-def _collect_unit_symbols(
-    units: Mapping[Path, SourceUnit], classes: dict[SymbolRef, ClassSummary], nominals: dict[str, set[SymbolRef]]
-) -> None:
-    for unit in units.values():
-        if unit.module is None or unit.tree is None:
-            continue
-        for statement in unit.tree.body:
-            if isinstance(statement, ast.ClassDef):
-                symbol = SymbolRef(unit.module, statement.name)
-                classes[symbol] = _class_summary(unit, statement, symbol)
-            nominal = _new_type(statement, unit.module)
-            if nominal is not None:
-                nominals.setdefault(_field_key(nominal.name), set()).add(nominal)
+@dataclass(frozen=True, slots=True)
+class _UnitSymbols:
+    classes: tuple[tuple[SymbolRef, ClassSummary], ...]
+    nominals: tuple[tuple[str, SymbolRef], ...]
+
+
+def _unit_symbols(unit: SourceUnit) -> _UnitSymbols | None:
+    if unit.module is None or unit.tree is None:
+        return None
+    classes: list[tuple[SymbolRef, ClassSummary]] = []
+    nominals: list[tuple[str, SymbolRef]] = []
+    for statement in unit.tree.body:
+        if isinstance(statement, ast.ClassDef):
+            symbol = SymbolRef(unit.module, statement.name)
+            classes.append((symbol, _class_summary(unit, statement, symbol)))
+        nominal = _new_type(statement, unit.module)
+        if nominal is not None:
+            nominals.append((_field_key(nominal.name), nominal))
+    return _UnitSymbols(tuple(classes), tuple(nominals))
 
 
 def _field_key(type_name: str) -> str:
@@ -1687,22 +1736,28 @@ def _direct_import_symbol(unit: SourceUnit, name: str) -> SymbolRef | None:
     imported = unit.imports.get(name)
     if imported is not None or unit.tree is None:
         return imported
-    for statement in _module_import_statements(unit.tree):
-        if (matched := _absolute_import_symbol(statement, name)) is not None:
-            return matched
-    return None
+    return _absolute_import_symbols(unit.tree).get(name)
 
 
-def _absolute_import_symbol(statement: ast.stmt, name: str) -> SymbolRef | None:
-    if isinstance(statement, ast.ImportFrom) and statement.level == 0 and statement.module is not None:
-        for alias in statement.names:
-            if (alias.asname or alias.name) == name:
-                return SymbolRef(statement.module, alias.name)
-    if isinstance(statement, ast.Import):
-        for alias in statement.names:
-            if (alias.asname or alias.name.partition(".")[0]) == name:
-                return SymbolRef(alias.name if alias.asname else alias.name.partition(".")[0], "")
-    return None
+_ABSOLUTE_IMPORT_SYMBOLS: WeakKeyDictionary[ast.Module, Mapping[str, SymbolRef]] = WeakKeyDictionary()
+
+
+def _absolute_import_symbols(tree: ast.Module) -> Mapping[str, SymbolRef]:
+    # The first absolute import binding each local name, in statement and alias order.
+    symbols = _ABSOLUTE_IMPORT_SYMBOLS.get(tree)
+    if symbols is not None:
+        return symbols
+    first: dict[str, SymbolRef] = {}
+    for statement in _module_import_statements(tree):
+        if isinstance(statement, ast.ImportFrom) and statement.level == 0 and statement.module is not None:
+            for alias in statement.names:
+                first.setdefault(alias.asname or alias.name, SymbolRef(statement.module, alias.name))
+        elif isinstance(statement, ast.Import):
+            for alias in statement.names:
+                local = alias.asname or alias.name.partition(".")[0]
+                first.setdefault(local, SymbolRef(alias.name if alias.asname else alias.name.partition(".")[0], ""))
+    symbols = _ABSOLUTE_IMPORT_SYMBOLS[tree] = MappingProxyType(first)
+    return symbols
 
 
 def _annotation_symbols(unit: SourceUnit, annotation: ast.expr | None) -> Iterator[SymbolRef]:

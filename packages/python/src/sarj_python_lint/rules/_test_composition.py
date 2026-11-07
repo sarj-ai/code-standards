@@ -4,7 +4,9 @@ import ast
 from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
+from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._declared_contracts import DeclaredClass
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
 
@@ -35,10 +37,17 @@ class WiringScope:
 
 
 def direct_nodes(node: ast.AST) -> Iterator[ast.AST]:
-    for child in ast.iter_child_nodes(node):
+    # Depth-first pre-order without entering nested scopes; an explicit stack
+    # avoids one generator frame per tree level.
+    pending = children(node)
+    pending.reverse()
+    while pending:
+        child = pending.pop()
         yield child
         if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            yield from direct_nodes(child)
+            nested = children(child)
+            nested.reverse()
+            pending += nested
 
 
 def _class_owner(context: PythonFileContext, expression: ast.expr, project: ProjectIndexSet) -> DeclaredClass | None:
@@ -56,12 +65,23 @@ def _class_owner(context: PythonFileContext, expression: ast.expr, project: Proj
     owner = next((node for node in unit.tree.body if isinstance(node, ast.ClassDef) and node.name == name), None)
     if owner is None:
         return None
-    if any(
-        isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, (ast.Store, ast.Del))
-        for node in direct_nodes(unit.tree)
-    ):
+    if name in _rebound_names(unit.tree):
         return None
     return DeclaredClass(unit, owner)
+
+
+_REBOUND_NAMES: WeakKeyDictionary[ast.Module, frozenset[str]] = WeakKeyDictionary()
+
+
+def _rebound_names(tree: ast.Module) -> frozenset[str]:
+    names = _REBOUND_NAMES.get(tree)
+    if names is None:
+        names = _REBOUND_NAMES[tree] = frozenset(
+            node.id
+            for node in direct_nodes(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+        )
+    return names
 
 
 def constructor(

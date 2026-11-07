@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
+from weakref import WeakKeyDictionary
 
 from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
 
@@ -30,6 +31,17 @@ class ImportIndex:
 
     @classmethod
     def from_tree(cls, tree: ast.Module, *, module_scope_only: bool = False) -> Self:
+        # Rules ask for the same (immutable) module's imports many times per file.
+        cache = _MODULE_SCOPE_INDEXES if module_scope_only else _INDEXES
+        hit = cache.get(tree)
+        if type(hit) is cls:
+            return hit
+        built = cls._build(tree, module_scope_only=module_scope_only)
+        cache[tree] = built
+        return built
+
+    @classmethod
+    def _build(cls, tree: ast.Module, *, module_scope_only: bool) -> Self:
         candidates: dict[str, set[_ImportTarget]] = {}
         statements = _module_import_statements(tree) if module_scope_only else tree.body
         _collect_import_candidates(statements, candidates)
@@ -83,6 +95,10 @@ class ImportIndex:
                 return _ImportTarget(".".join((target.module, *ordered[:-1])), ordered[-1])
             case _:
                 return None
+
+
+_INDEXES: WeakKeyDictionary[ast.Module, ImportIndex] = WeakKeyDictionary()
+_MODULE_SCOPE_INDEXES: WeakKeyDictionary[ast.Module, ImportIndex] = WeakKeyDictionary()
 
 
 def ambiguous_import_names(context: PythonFileContext) -> frozenset[str]:

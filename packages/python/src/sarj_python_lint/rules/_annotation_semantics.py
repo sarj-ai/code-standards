@@ -4,6 +4,7 @@ import ast
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple, Self
+from weakref import WeakKeyDictionary
 
 from sarj_python_lint.rules._imports import ImportIndex
 
@@ -151,10 +152,17 @@ def scope_bound_names(statements: list[ast.stmt]) -> set[str]:
     return {name for statement in statements for name in _bound_names(statement)}
 
 
-def _bound_names(statement: ast.stmt) -> set[str]:
-    collector = _ScopeBindings()
-    collector.visit(statement)
-    return collector.names
+_BOUND_NAMES: WeakKeyDictionary[ast.stmt, frozenset[str]] = WeakKeyDictionary()
+
+
+def _bound_names(statement: ast.stmt) -> frozenset[str]:
+    # Statements are immutable once parsed, and rules ask about the same scopes repeatedly.
+    names = _BOUND_NAMES.get(statement)
+    if names is None:
+        collector = _ScopeBindings()
+        collector.visit(statement)
+        names = _BOUND_NAMES[statement] = frozenset(collector.names)
+    return names
 
 
 def _target_names(node: ast.expr) -> set[str]:

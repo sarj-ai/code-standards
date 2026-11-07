@@ -312,7 +312,7 @@ class NoRestatedComment(Rule):
             return []
         lines = context.source_lines
         wall_members = frozenset(
-            line for members in statement_comment_walls(path, source, standalone).values() for line in members
+            line for members in statement_comment_walls(context.tree, source, standalone).values() for line in members
         )
         candidates = [
             run[0]
