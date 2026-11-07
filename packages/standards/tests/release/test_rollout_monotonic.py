@@ -340,14 +340,18 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str, verif
         assert f"## {section}\n\n" in body
     assert f"Exact pushed head: `{'a' * 40}`" in body
     assert 'Committed paths (2):\n\n    ".sarj-standards.toml"\n    "pyproject.toml"' in body
-    assert "Manual verification instructions (not recorded executions)" in body
-    assert f"1. Check out `{'a' * 40}`." in body
-    assert "2. Review every committed path" in body
-    assert "3. Run the registered consumer verification" in body
+    assert body.count("a" * 40) == 1
+    assert "`code-standards==8.2.1`" in body
+    assert f"`{consumer().identity}`" in body
+    assert "Manual verification instructions" not in body
+    assert "## Design" not in body
+    assert "Manual checks (not recorded)" in body
+    assert "- [ ] Review the committed paths at the head above." in body
+    assert "- [ ] Run configured consumer checks; inspect hosted CI and required approvals." in body
     assert "required approvals and product QA remain separate gates" in body
     if verify:
-        assert "selected local verification completed for the candidate tree" in body
-        assert "published head retains the verified tree and consumer base" in body
+        assert "Preparation and selected local verification completed" in body
+        assert "published head retains the verified tree and base" in body
     else:
         assert "No consumer verification command is configured; no consumer checks are claimed" in body
         assert "verification completed" not in body
