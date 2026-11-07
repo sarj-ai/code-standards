@@ -17,6 +17,7 @@ from sarj_python_lint.__main__ import analyze, main
 import sarj_python_lint._parallel as parallel_engine
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule
 from sarj_python_lint.rules import REGISTRY
+from sarj_python_lint.rules._local_source import LocalSourceFacts
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint._analysis_session import AnalysisSession
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint._prepared_sources import PreparedSourceSnapshot
+    from sarj_python_lint._prepared_sources import PreparedSourceInputs, PreparedSourceSnapshot
     from sarj_python_lint.rules._project_index import ProjectSourceSnapshot
 
 
@@ -42,7 +43,12 @@ class _RequestFacts(Rule):
         findings: list[Diagnostic] = []
         for name in names:
             path = context.path.parent / name
-            facts = context.session.local_source
+            # Some rules own a per-file cache over the shared captured inputs.
+            facts = (
+                LocalSourceFacts(source_inputs=context.session.source_inputs)
+                if mode == "fresh"
+                else context.session.local_source
+            )
             found = (
                 facts.read_module(path)
                 if mode == "modules"
@@ -357,3 +363,104 @@ def test_large_analysis_preserves_serial_quotas_source_order_and_late_errors_wit
         with pytest.raises(RuntimeError, match="fixture file failed"):
             analyze([_RequestFacts.id, _FileFailure.id], paths, jobs=jobs, sources=sources)
     assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def _write_saturating_analysis(tmp_path: Path, later: list[str]) -> list[Path]:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "frozen-cache"\nversion = "0.1.0"\n')
+    (tmp_path / "provider.py").write_text("value = 1\n")
+    first = tmp_path / "first.py"
+    first.write_text("# resolutions\n" + "".join(f"# missing_{index}.py\n" for index in range(512)))
+    rest = [tmp_path / f"file_{index:03}.py" for index in range(len(later))]
+    for path, source in zip(rest, later, strict=True):
+        path.write_text(source)
+    return [first, *rest]
+
+
+def _observe_frozen_handoffs(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    original = parallel_engine.check_parallel
+    handoffs: list[bool] = []
+
+    def observe(
+        rule_types: list[type[Rule]],
+        loaded: dict[Path, str],
+        project: ProjectIndexSet | None,
+        *,
+        jobs: int,
+        source_inputs: PreparedSourceInputs | None = None,
+        frozen: parallel_engine.FrozenResolutions | None = None,
+    ) -> list[Diagnostic] | None:
+        result = original(rule_types, loaded, project, jobs=jobs, source_inputs=source_inputs, frozen=frozen)
+        # Small batches first try the existing speculative pool, which replays at the quota.
+        if frozen is not None:
+            handoffs.append(result is not None)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the real handoff; a fake pool would miss quota divergence.
+        parallel_engine, "check_parallel", observe
+    )
+    return handoffs
+
+
+@pytest.mark.parametrize("later", ["resolutions", "modules"])
+def test_saturated_resolution_cache_hands_remaining_files_to_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, later: str
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, [f"# {later}\n# provider.py\n"] * engine.FROZEN_HANDOFF_MIN_FILES)
+    expected = analyze([_RequestFacts.id], paths)
+    # New resolutions after saturation fail in every order; module reads still succeed.
+    assert len(expected) == (0 if later == "resolutions" else engine.FROZEN_HANDOFF_MIN_FILES)
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    before = {child.pid for child in multiprocessing.active_children()}
+    assert analyze([_RequestFacts.id], paths, jobs=3) == expected
+    assert handoffs == [True]
+    assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def test_frozen_handoff_replays_serially_when_modules_reach_their_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    count = engine.FROZEN_HANDOFF_MIN_FILES
+    later = [
+        "# modules\n" + "".join(f"# absent_{index}_{item}.py\n" for item in range(512 // count + 1))
+        for index in range(count)
+    ]
+    paths = _write_saturating_analysis(tmp_path, later)
+    expected = analyze([_RequestFacts.id], paths)
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2) == expected
+    assert handoffs == [False]
+
+
+@pytest.mark.parametrize("later", ["# modules\n# first.py\n", "# fresh\n# provider.py\n"])
+def test_frozen_handoff_uses_captured_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, later: str) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, [later] * engine.FROZEN_HANDOFF_MIN_FILES)
+    sources = SourceCatalog()
+    for path in paths:
+        sources.capture(path)
+    # Workers must read the captured selected bytes, not the changed files.
+    for path in paths:
+        path.write_text("if broken ==\n")
+    expected = analyze([_RequestFacts.id], paths, sources=sources)
+    assert len(expected) == engine.FROZEN_HANDOFF_MIN_FILES
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2, sources=sources) == expected
+    assert handoffs == [True]
+
+
+def test_small_remainder_after_saturation_stays_serial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the registry lookup is under test; injecting rules would bypass it.
+        engine, "REGISTRY", {**REGISTRY, _RequestFacts.id: _RequestFacts}
+    )
+    paths = _write_saturating_analysis(tmp_path, ["# modules\n# provider.py\n"] * (engine.FROZEN_HANDOFF_MIN_FILES - 1))
+    handoffs = _observe_frozen_handoffs(monkeypatch)
+    assert analyze([_RequestFacts.id], paths, jobs=2) == analyze([_RequestFacts.id], paths)
+    assert handoffs == []

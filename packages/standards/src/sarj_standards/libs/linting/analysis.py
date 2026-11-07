@@ -36,6 +36,11 @@ from .process import raise_if_cancelled
 from .runner import GroupedPaths, group_paths
 
 
+# Native Python reaches its 512-entry module-resolution quota only on large
+# selections; workers then check the files after that quota is spent.
+_PARALLEL_PYTHON_FILES = 512
+
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Self
@@ -128,6 +133,7 @@ def analyze(
     policy: Policy | None = None,
     grouped: GroupedPaths | None = None,
     rule_selection: RuleSelection | None = None,
+    python_jobs: int = 1,
 ) -> AnalysisReport:
     root = root.resolve()
     try:
@@ -150,6 +156,7 @@ def analyze(
                 sources=sources,
                 python_baseline=python_baseline,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.PYTHON),
+                python_jobs=python_jobs,
             ),
             _native_report(
                 "sarj-sql-lint",
@@ -269,13 +276,21 @@ def _native_report(
     sources: SourceCatalog,
     python_baseline: Path | None = None,
     rule_ids: frozenset[str] | None = None,
+    python_jobs: int = 1,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
     raise_if_cancelled(None)
     try:
         return _run_native(
-            name, package, files, root, sources=sources, python_baseline=python_baseline, rule_ids=rule_ids
+            name,
+            package,
+            files,
+            root,
+            sources=sources,
+            python_baseline=python_baseline,
+            rule_ids=rule_ids,
+            python_jobs=python_jobs,
         )
     except Exception as exc:  # ruff: ignore[blind-except] -- one analyzer failure must not erase other tool results.
         issue = ExecutionIssue(name, "analyzer-failure", f"{type(exc).__name__}: {exc}")
@@ -291,6 +306,7 @@ def _run_native(
     sources: SourceCatalog,
     python_baseline: Path | None,
     rule_ids: frozenset[str] | None,
+    python_jobs: int = 1,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -316,6 +332,8 @@ def _run_native(
             paths,
             baseline=python_baseline,
             root=root,
+            # Smaller selections keep the established serial path and its startup cost.
+            jobs=python_jobs if len(paths) >= _PARALLEL_PYTHON_FILES else 1,
             sources=sources,
         )
     else:

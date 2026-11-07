@@ -10,6 +10,8 @@ from sarj_python_lint._source import decode_python_source
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sarj_rule_contracts import SourceCatalog
 
 
@@ -63,6 +65,7 @@ class PreparedSourceInputs:
     def __init__(self, catalog: SourceCatalog | None = None, *, sealed: bool = False) -> None:
         self._catalog = catalog
         self.sealed = sealed
+        self.resolves_unrecorded = False
         self._entries: dict[Path, CapturedSource] = {}
         self._selected: dict[Path, CapturedSource] = {}
         self._conflicts: set[Path] = set()
@@ -145,10 +148,13 @@ class PreparedSourceInputs:
         if not self.sealed and path not in self._entries and path not in self._conflicts:
             self._failed_modules.add(path)
 
-    def resolution(self, key: ResolutionKey) -> Path | None:
-        if key not in self._resolutions:
+    def resolution(self, key: ResolutionKey, resolve: Callable[[], Path | None]) -> Path | None:
+        if key in self._resolutions:
+            return self._resolutions[key]
+        if not self.resolves_unrecorded:
             raise NeedsSerialSourceError
-        return self._resolutions[key]
+        # The parent resolves an unrecorded key from the same filesystem; bytes stay sealed.
+        return resolve()
 
     def record_resolution(self, key: ResolutionKey, result: Path | None) -> None:
         if self.sealed:
@@ -165,8 +171,11 @@ class PreparedSourceInputs:
         )
 
     @classmethod
-    def from_source_snapshot(cls, snapshot: PreparedSourceSnapshot) -> PreparedSourceInputs:
+    def from_source_snapshot(
+        cls, snapshot: PreparedSourceSnapshot, *, resolves_unrecorded: bool = False
+    ) -> PreparedSourceInputs:
         inputs = cls(sealed=True)
+        inputs.resolves_unrecorded = resolves_unrecorded
         inputs._entries = dict(snapshot.entries)
         inputs._selected = dict(snapshot.selected)
         inputs._conflicts = set(snapshot.conflicts)

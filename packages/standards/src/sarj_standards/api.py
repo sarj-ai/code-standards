@@ -388,6 +388,7 @@ class Standards:
                 policy=selection_policy,
                 grouped=selected_groups,
                 rule_selection=rule_selection,
+                python_jobs=1 if jobs == 1 else os.process_cpu_count() or 1,
             )
             if rule_selection is None:
                 native = _with_library_policy(
