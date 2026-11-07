@@ -64,7 +64,7 @@ class PythonFileContext:
 
     @cached_property
     def node_index(self) -> NodeIndex:
-        return NodeIndex(self._valid_tree())
+        return NodeIndex.of_module(self._valid_tree())
 
     def nodes[NodeT: ast.AST](self, *types: type[NodeT]) -> list[NodeT]:
         return [node for node in self.node_index.query(types) if isinstance(node, types)]

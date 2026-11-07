@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 from sarj_python_lint.rule_base import Diagnostic, Severity
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._closed_helpers import call_matches
-from sarj_python_lint.rules._declared_contracts import DeclaredClass, DeclaredContracts, ordinary_pytest_test
+from sarj_python_lint.rules._declared_contracts import (
+    DeclaredClass,
+    DeclaredContracts,
+    ordinary_pytest_test,
+    written_attribute_roots,
+)
 from sarj_python_lint.rules._fixture_contracts import (
     CONSTRUCTION_HOOKS,
     MAX_DEPTH,
@@ -287,12 +292,7 @@ class FixtureContractParameters:
         if root.id in unit.imports:
             if root.id in imports.shadowed_names:
                 return False
-            return not any(
-                isinstance(node, ast.Attribute)
-                and not isinstance(node.ctx, ast.Load)
-                and self._root_name(node) == root.id
-                for node in ast.walk(unit.tree)
-            )
+            return root.id not in written_attribute_roots(unit.tree, through_subscripts=True)
         return True
 
     @staticmethod

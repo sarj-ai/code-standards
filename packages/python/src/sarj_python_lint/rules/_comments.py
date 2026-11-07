@@ -7,13 +7,11 @@ import tokenize
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
-from sarj_python_lint.rule_base import parse_or_none
 from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-    from pathlib import Path
 
 
 _LICENSE_RE = re.compile(
@@ -521,11 +519,10 @@ _WALL_STATEMENTS = (
 
 
 def statement_comment_walls(
-    path: Path,
+    tree: ast.Module | None,
     source: str,
     standalone: Sequence[tuple[int, int, str]],
 ) -> dict[int, frozenset[int]]:
-    tree = parse_or_none(path, source)
     if tree is None:
         return {}
     comments = {line: (col, body) for line, col, body in standalone}
