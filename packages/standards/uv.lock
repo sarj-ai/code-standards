@@ -141,7 +141,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==6.21.0" },
+    { name = "repo-standards", specifier = "==6.21.1" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -739,7 +739,7 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "6.21.0"
+version = "6.21.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
@@ -748,9 +748,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/05/ae78f89bed9c0d7eb5b1e96d8449849737aa2b9e0504572910515a5a4dab/repo_standards-6.21.0.tar.gz", hash = "sha256:672d67c4fa6aa043379e15b9c0cc9b05c0af60722328e3c9e8f4f8b988771302", size = 144843, upload-time = "2026-11-06T19:49:03.074Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/d2/663b839f482feebaeaf0ee6dba4fad784c6ade1b8839beaf85bc87f257b5/repo_standards-6.21.1.tar.gz", hash = "sha256:77b7bbb50f832f6eabdbb6d0ba0b8a78cb398248968d98503f09aab29703527c", size = 145126, upload-time = "2026-11-06T23:17:51.713Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/27/61485285e09c66d384adbe02498903d5f024e3f9451f53a783462e3635b7/repo_standards-6.21.0-py3-none-any.whl", hash = "sha256:51b61e488da98d52ea034ba85da1e5897d1970f87320254962a7ac6375a115f7", size = 167595, upload-time = "2026-11-06T19:49:01.476Z" },
+    { url = "https://files.pythonhosted.org/packages/73/67/c35e5cb8207ab8c934afbf7bba6f8f127bb29f0a069e75f2223a083c38db/repo_standards-6.21.1-py3-none-any.whl", hash = "sha256:39343adaf9e528feaff2817fe1d9a7a8293f593aebd22bdc0b23b4b15806e066", size = 167809, upload-time = "2026-11-06T23:17:50.053Z" },
 ]
 
 [[package]]

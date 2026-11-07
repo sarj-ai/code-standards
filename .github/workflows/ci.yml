@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@22d16f8cd306e246f12369e743713e7fb4add441 # v6.21.0
+        uses: sarj-ai/repo-standards@c35f025a41562e4c5abbe86bd5f72b0eacb1ffd5 # v6.21.1
 
   changes:
     name: Detect affected checks
@@ -645,7 +645,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards wheel and integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Native service fixture packages are pinned for Noble.
     timeout-minutes: 40
     defaults:
       run:
@@ -847,7 +847,7 @@ jobs:
     name: Python 3.14 compatibility
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       UV_PYTHON: '3.14'
