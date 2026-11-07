@@ -32,13 +32,15 @@ case "$package" in
 esac
 environment="$RUNNER_TEMP/$package-$format"
 uv venv --python "${STANDARDS_PYTHON:-3.15}" "$environment"
+# Siblings may have been published earlier in this run. Refresh cached registry
+# metadata so these installs can resolve the newly published versions.
 case "$format" in
-  wheel) uv pip install --python "$environment/bin/python" dist/*.whl ;;
+  wheel) uv pip install --refresh --python "$environment/bin/python" dist/*.whl ;;
   sdist)
     if [[ "$package" == standards ]]; then
-      uv pip install --python "$environment/bin/python" --find-links dist/deps dist/*.tar.gz
+      uv pip install --refresh --python "$environment/bin/python" --find-links dist/deps dist/*.tar.gz
     else
-      uv pip install --python "$environment/bin/python" dist/*.tar.gz
+      uv pip install --refresh --python "$environment/bin/python" dist/*.tar.gz
     fi
     ;;
   *) exit 64 ;;
