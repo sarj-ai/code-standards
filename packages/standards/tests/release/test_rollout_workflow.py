@@ -821,7 +821,14 @@ def _planned(outputs: dict[str, str]) -> list[dict[str, str]]:
     return _PlannedConsumers.model_validate_json(outputs["consumers"]).root
 
 
-def _unchanged_failures(tmp_path: Path, **values: str) -> tuple[dict[str, str], list[list[str]], str]:
+@dataclass(frozen=True)
+class _SkipResult:
+    outputs: dict[str, str]
+    commands: list[list[str]]
+    log: str
+
+
+def _unchanged_failures(tmp_path: Path, **values: str) -> _SkipResult:
     defaults = {
         "CONSUMERS": '[{"name":"App","identity":"example/app@main","workflow_runner":"fixture-runner"}]',
         "CONSUMER_TOKEN": "consumer-token",
@@ -840,7 +847,9 @@ def _unchanged_failures(tmp_path: Path, **values: str) -> tuple[dict[str, str], 
         for line in Path(recorder.environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8").splitlines()
     )
     log = tmp_path / "standards-rollout.log"
-    return outputs, _recorded_commands(recorder.commands), log.read_text(encoding="utf-8") if log.exists() else ""
+    return _SkipResult(
+        outputs, _recorded_commands(recorder.commands), log.read_text(encoding="utf-8") if log.exists() else ""
+    )
 
 
 @pytest.mark.parametrize(
@@ -854,7 +863,8 @@ def _unchanged_failures(tmp_path: Path, **values: str) -> tuple[dict[str, str], 
 def test_only_automated_runs_skip_a_consumer_whose_identical_inputs_failed(
     tmp_path: Path, event: str, actor: str, *, reused: bool
 ) -> None:
-    outputs, commands, log = _unchanged_failures(tmp_path, EVENT_NAME=event, TRIGGERING_ACTOR=actor, FAILED_RUN="77")
+    result = _unchanged_failures(tmp_path, EVENT_NAME=event, TRIGGERING_ACTOR=actor, FAILED_RUN="77")
+    outputs, commands, log = result.outputs, result.commands, result.log
 
     lookups = [command for command in commands if command[:2] == ["gh", "api"] and "/actions/artifacts?" in command[2]]
     assert bool(lookups) is reused
@@ -874,7 +884,8 @@ def test_only_automated_runs_skip_a_consumer_whose_identical_inputs_failed(
 
 
 def test_consumers_without_a_recorded_failure_keep_their_matrix_entry_and_failure_key(tmp_path: Path) -> None:
-    outputs, commands, _ = _unchanged_failures(tmp_path)
+    result = _unchanged_failures(tmp_path)
+    outputs, commands = result.outputs, result.commands
 
     assert outputs["skipped"] == "[]"
     [consumer] = _planned(outputs)
@@ -894,7 +905,8 @@ def test_consumers_without_a_recorded_failure_keep_their_matrix_entry_and_failur
 def test_unknown_rollout_inputs_retry_the_consumer_without_recording_a_failure(
     tmp_path: Path, values: dict[str, str]
 ) -> None:
-    outputs, commands, _ = _unchanged_failures(tmp_path, FAILED_RUN="77", **values)
+    result = _unchanged_failures(tmp_path, FAILED_RUN="77", **values)
+    outputs, commands = result.outputs, result.commands
 
     assert outputs["skipped"] == "[]"
     [consumer] = _planned(outputs)
@@ -903,7 +915,8 @@ def test_unknown_rollout_inputs_retry_the_consumer_without_recording_a_failure(
 
 
 def test_invalid_consumer_json_passes_the_plan_through(tmp_path: Path) -> None:
-    outputs, commands, _ = _unchanged_failures(tmp_path, CONSUMERS="invalid JSON")
+    result = _unchanged_failures(tmp_path, CONSUMERS="invalid JSON")
+    outputs, commands = result.outputs, result.commands
 
     assert outputs == {"consumers": "invalid JSON", "skipped": "[]"}
     assert not any(command[0] == "gh" for command in commands)
@@ -924,8 +937,8 @@ def test_invalid_consumer_json_passes_the_plan_through(tmp_path: Path) -> None:
 def test_any_changed_rollout_input_produces_a_new_failure_key(tmp_path: Path, changed: dict[str, str]) -> None:
     (tmp_path / "baseline").mkdir()
     (tmp_path / "changed").mkdir()
-    baseline, _, _ = _unchanged_failures(tmp_path / "baseline")
-    candidate, _, _ = _unchanged_failures(tmp_path / "changed", **changed)
+    baseline = _unchanged_failures(tmp_path / "baseline").outputs
+    candidate = _unchanged_failures(tmp_path / "changed", **changed).outputs
 
     assert _planned(baseline)[0]["failure_key"] != _planned(candidate)[0]["failure_key"]
 
