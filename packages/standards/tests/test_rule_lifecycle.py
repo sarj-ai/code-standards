@@ -527,6 +527,46 @@ def test_source_severity_editor_round_trips_other_engines(
     assert promoted.after == expected
 
 
+def test_typescript_lifecycle_edits_separate_documentation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _files(tmp_path)
+    _mock_builders(monkeypatch)
+    implementation = tmp_path / "packages/typescript/src/rules/sample.ts"
+    documentation = tmp_path / "packages/typescript/src/docs/sample.ts"
+    implementation.parent.mkdir(parents=True, exist_ok=True)
+    documentation.parent.mkdir(parents=True, exist_ok=True)
+    implementation.write_text("export default {};\n", encoding="utf-8")
+    documentation.write_text("export const SAMPLE_DOCUMENTATION = { summary: 'sample' };\n", encoding="utf-8")
+
+    def build_inventory(_root: Path) -> dict[str, JsonValue]:
+        return {
+            "schemaVersion": 1,
+            "rules": [{"family": "typescript", "id": "sample", "source": str(implementation.relative_to(tmp_path))}],
+        }
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate the lifecycle to one rule with the actual split module layout.
+        rule_inventory_artifact, "build", build_inventory
+    )
+    prepare_source = rule_level_source.prepare
+    package_root = Path(__file__).resolve().parents[3]
+
+    def prepare_documentation(
+        root: Path, selector: RuleSelector, source: str, level: DefaultLevel
+    ) -> rule_level_source.LevelEdit:
+        return prepare_source(package_root, selector, str(root / source), level)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- use the installed parser while the candidate files live in a private fixture.
+        rule_level_source, "prepare", prepare_documentation
+    )
+    selector = RuleSelector.parse("oxlint:sample")
+
+    assert rule_lifecycle.stage_warning(tmp_path, selector).changed
+    assert 'defaultLevel: "warning"' in documentation.read_text(encoding="utf-8")
+    assert implementation.read_text(encoding="utf-8") == "export default {};\n"
+    assert not rule_lifecycle.stage_warning(tmp_path, selector).changed
+    assert rule_lifecycle.promote_error(tmp_path, selector).changed
+    assert 'defaultLevel: "error"' in documentation.read_text(encoding="utf-8")
+
+
 def test_stage_warning_projects_new_severity_after_rule_was_imported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

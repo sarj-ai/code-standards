@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 # tsrs does all type checking (DECISIONS #16); `typescript` stays only for the JS API a plugin imports.
 TYPE_CHECKER = {
-    "tsrs": "0.22.0-ts7.1.0-beta",
+    "tsrs": "0.23.0-ts7.1.0-beta",
     "typescript": "npm:@typescript/typescript6@6.0.2",
 }
 

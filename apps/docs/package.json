@@ -39,7 +39,7 @@
     "react-doctor": "0.9.22",
     "sql-formatter": "15.9.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "tsrs": "0.22.0-ts7.1.0-beta",
+    "tsrs": "0.23.0-ts7.1.0-beta",
     "wrangler": "4.152.0",
     "@types/node": "26.6.5"
   },

@@ -212,6 +212,19 @@ let failed = false;
 let servicesAst: object | null = null;
 let servicesValue: TsrsServices | null = null;
 
+// Standards opts in before loading the plugin. Start the child before Oxlint
+// reserves its large per-thread arenas: Linux can reject a later fork with
+// ENOMEM even when those arenas mostly consume virtual, rather than real, memory.
+// Other callers retain lazy startup and the settings-based opt-out.
+// eslint-disable-next-line @sarj/no-raw-env -- Standards sets this explicit type-aware opt-in before plugin loading.
+if (process.env["SARJ_TYPE_AWARE"] === "1") {
+  try {
+    modules = loadTsrs(process.cwd());
+  } catch (error) {
+    fail(error);
+  }
+}
+
 /** tsrs type services for the current file, or null when off, unavailable, or failed. */
 export function tsrsServices(context: Context): TsrsServices | null {
   if (failed) return null;

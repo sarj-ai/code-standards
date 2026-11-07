@@ -113,11 +113,13 @@ describe("every rule module is a claim", () => {
   });
 
   it.each(MODULE_NAMES)("%s hand-writes no repo link", (name) => {
-    const exampleLine = `* Examples: ${REPO_BLOB}/packages/typescript/tests/rules/${name}.test.ts`;
-    const stray = moduleSource(name)
-      .split("\n")
-      .filter((line) => line.includes(REPO_BLOB) && line.trim() !== exampleLine);
-    expect(stray).toEqual([]);
+    const exampleUrl = `${REPO_BLOB}/packages/typescript/tests/rules/${name}.test.ts`;
+    for (const [text] of moduleSource(name).matchAll(/https?:\/\/[^\s]+/gu)) {
+      const url = new URL(text);
+      if (url.hostname === "github.com" && url.pathname.startsWith("/sarj-ai/code-standards/")) {
+        expect(url.href).toBe(exampleUrl);
+      }
+    }
   });
 });
 

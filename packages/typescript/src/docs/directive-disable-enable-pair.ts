@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_DISABLE_ENABLE_PAIR_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Require an `eslint-enable` directive for every block `eslint-disable` or `oxlint-disable` directive.",
   rationale:
     "A block disable without an enable directive switches the rule off for the rest of the file, including code written long after the exception was reviewed.",

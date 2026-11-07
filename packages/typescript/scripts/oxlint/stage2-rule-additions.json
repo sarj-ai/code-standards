@@ -6,6 +6,7 @@
     { "name": "effects", "specifier": "eslint-plugin-react-you-might-not-need-an-effect", "surveyedVersion": "1.0.2", "note": "the plugin ashStack vendors" }
   ],
   "rules": {
+    "@sarj/no-oxlint-directive": { "level": "warn", "note": "keep one suppression spelling; Standards separately enforces the required suppression policy" },
     "@tanstack/query/exhaustive-deps": { "level": "error", "files": "non-test", "findings": "Platform 8 (2 outside tests)" },
     "@tanstack/query/prefer-query-options": { "level": "warn", "findings": "Platform 28 (22 outside tests)" },
     "react/no-array-index-key": { "level": "error", "findings": "Platform 13 (react-doctor suppressed today), ai 11", "note": "convert the react-doctor-disable comments" },

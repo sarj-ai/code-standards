@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_NO_AGGREGATING_ENABLE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Disallow one `eslint-enable` or `oxlint-enable` directive closing several disable directives.",
   rationale:
     "When one enable directive closes several disable directives, removing one exception means editing a shared comment, and it is easy to re-enable a rule early or leave one off.",

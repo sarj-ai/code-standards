@@ -647,13 +647,14 @@ const RULES = {
   "oxc/misrefactored-assign-op": "error",
 
   // Suppression policy: @sarj ports of @eslint-community/eslint-comments that read eslint-* and oxlint-* directives.
-  "@sarj/directive-disable-enable-pair": ["error", {"allowWholeFile": false}],
-  "@sarj/directive-no-aggregating-enable": "error",
-  "@sarj/directive-no-duplicate-disable": "error",
-  "@sarj/directive-no-restricted-disable": ["error", "no-console", "react-hooks/exhaustive-deps", "react/exhaustive-deps", "@sarj/no-vague-suppression-description"],
-  "@sarj/directive-no-unused-enable": "error",
+  "@sarj/no-oxlint-directive": "warn",
+  "@sarj/directive-disable-enable-pair": ["warn", {"allowWholeFile": false}],
+  "@sarj/directive-no-aggregating-enable": "warn",
+  "@sarj/directive-no-duplicate-disable": "warn",
+  "@sarj/directive-no-restricted-disable": ["warn", "no-console", "react-hooks/exhaustive-deps", "react/exhaustive-deps", "@sarj/no-vague-suppression-description"],
+  "@sarj/directive-no-unused-enable": "warn",
   "@sarj/directive-no-use": [
-    "error",
+    "warn",
     {
       "allow": [
         "eslint-disable-line",
@@ -665,7 +666,7 @@ const RULES = {
       ]
     }
   ],
-  "@sarj/directive-require-description": ["error", {"ignore": []}],
+  "@sarj/directive-require-description": ["warn", {"ignore": []}],
 
   // ESLint core rules without a native port, or whose port reports differently (oxlint-plugin-eslint).
   "eslint-js/no-restricted-syntax": [

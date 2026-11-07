@@ -5,6 +5,7 @@ import type { RuleDocumentation } from "../documentation.js";
 const ALLOW = [{ allow: ["eslint-disable-line", "eslint-disable-next-line", "eslint-env", "exported", "global", "globals"] }] as const;
 
 export const DIRECTIVE_NO_USE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Disallow directive comments, `eslint-*` or `oxlint-*`, except the allowed kinds.",
   rationale:
     "Block disables and inline rule configuration hide diagnostics for whole regions of a file. Allowing only line-scoped directives keeps each exception next to the code it excuses.",

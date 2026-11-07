@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_NO_RESTRICTED_DISABLE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Disallow `eslint-disable` and `oxlint-disable` directives that turn off a restricted rule or every rule.",
   rationale:
     "Some rules guard policy that a local exception must not waive, such as the suppression rules themselves. A directive that disables every rule also disables those.",

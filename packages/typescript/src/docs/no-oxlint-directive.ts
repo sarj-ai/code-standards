@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_OXLINT_DIRECTIVE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Write every suppression directive with the `eslint-*` spelling.",
   rationale:
     "Oxlint honors both `oxlint-*` and `eslint-*` directive comments. With two spellings, finding every suppression in a repository takes two searches, and the same directive reads differently from file to file. One spelling keeps suppressions findable and reviewable alike; `eslint-*` is the spelling existing code already uses.",

@@ -130,7 +130,9 @@ def _warning_success_message(selector: RuleSelector, *, warning: bool, already_s
 def _live_sources(repository: Path) -> dict[RuleSelector, str]:
     inventory = rule_inventory_artifact.build(repository)
     return {
-        RuleSelector(_ENGINE_BY_FAMILY[entry["family"]], RuleId(entry["id"])): entry["source"]
+        RuleSelector(_ENGINE_BY_FAMILY[entry["family"]], RuleId(entry["id"])): (
+            f"packages/typescript/src/docs/{entry['id']}.ts" if entry["family"] == "typescript" else entry["source"]
+        )
         for entry in inventory["rules"]
         if entry["family"] in _ENGINE_BY_FAMILY
     }

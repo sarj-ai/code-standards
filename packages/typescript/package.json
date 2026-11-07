@@ -71,7 +71,7 @@
     "oxlint-plugin-eslint": "1.91.0",
     "prettier": "3.9.10",
     "syncpack": "15.3.3",
-    "tsrs": "0.22.0-ts7.1.0-beta",
+    "tsrs": "0.23.0-ts7.1.0-beta",
     "tsup": "9.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "uuid": "13.0.0",
@@ -79,7 +79,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "tsrs": ">=0.22.0-ts7.1.0-beta"
+    "tsrs": ">=0.23.0-ts7.1.0-beta"
   },
   "engines": {
     "node": "^22.22.2 || >=24.15.0"

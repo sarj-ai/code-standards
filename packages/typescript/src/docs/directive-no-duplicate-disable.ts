@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_NO_DUPLICATE_DISABLE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Disallow `eslint-disable` and `oxlint-disable` directives for rules that are already disabled there.",
   rationale:
     "A second disable directive for a rule that is already off changes nothing, and it stays behind as a stale exception when the first one is removed.",

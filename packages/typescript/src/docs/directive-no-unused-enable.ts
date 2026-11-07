@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_NO_UNUSED_ENABLE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Disallow `eslint-enable` and `oxlint-enable` directives for rules that are not disabled.",
   rationale: "An enable directive with nothing to close is left over from an exception that is gone, and it misleads readers into looking for one.",
   remediation: "Delete the enable directive, or the rule name it does not need.",

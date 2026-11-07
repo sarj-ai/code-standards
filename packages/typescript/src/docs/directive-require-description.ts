@@ -3,6 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const DIRECTIVE_REQUIRE_DESCRIPTION_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Require a `--` description on every directive comment, `eslint-*` or `oxlint-*`.",
   rationale:
     "A directive comment changes what the linter checks. Without a reason next to it, a reviewer cannot tell whether the exception still holds or can be removed.",
