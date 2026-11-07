@@ -80,7 +80,7 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
 
 def test_verification_type_checks_with_the_local_tsrs_lint(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    tsrs_lint = tmp_path / "node_modules" / ".bin" / "tsrs-lint"
+    tsrs_lint = tmp_path / "node_modules" / ".bin" / ("tsrs-lint.cmd" if os.name == "nt" else "tsrs-lint")
     tsrs_lint.parent.mkdir(parents=True)
     tsrs_lint.touch()
     ecosystems = scaffold.Ecosystems(False, True, typescript_root=tmp_path)

@@ -711,7 +711,15 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     for format_name, suffix in (("wheel", "whl"), ("sdist", "tar.gz")):
         venv = str(tmp_path / f"{package}-{format_name}")
         assert ["uv", "venv", "--python", runtime, venv] in calls
-        assert ["uv", "pip", "install", "--python", venv + "/bin/python", f"dist/example.{suffix}"] in calls
+        assert [
+            "uv",
+            "pip",
+            "install",
+            "--refresh",
+            "--python",
+            venv + "/bin/python",
+            f"dist/example.{suffix}",
+        ] in calls
     imports = [call for call in calls if call[0] == "python"]
     assert [call[-1] for call in imports] == [module] * (2 if package == "contracts" else 1)
     if executable is not None:
