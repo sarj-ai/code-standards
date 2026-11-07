@@ -304,6 +304,8 @@ def _package_usage(name: str, engine: str | None) -> str:
             "Adopt the repository once with `code-standards setup`. It installs one canonical staged gate "
             "that includes semantic lint and repository policy, plus commit-message and pull-request history "
             "enforcement. Do not install Repo Standards separately.\n\n"
+            "Managed commit hooks advise on subjects over 72 descriptive characters. These warnings "
+            "preserve message text and validation results.\n\n"
             "The pre-commit gate runs once on every commit and discovers paths directly from the Git index, "
             "including mixed file types and deletion-only commits. The shared dispatcher selects applicable "
             "rules and retains type analysis, repository policy, exclusions and suppression accountability. "

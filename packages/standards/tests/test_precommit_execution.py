@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from sarj_standards.cli.main import main
-from sarj_standards.libs.adoption import doctor, hooks, launcher, scaffold
+from sarj_standards.libs.adoption import doctor, hooks, launcher, manifest, scaffold
 from sarj_standards.libs.repository import hooks as repository_hooks
 
 
@@ -98,6 +98,70 @@ def test_real_git_precommit_runs_once_and_shows_diagnostics(tmp_path: Path, stat
         "args": ["check", "--staged", "--fix", "--trust-repository-code"],
         "paths": sorted(names),
     }
+
+
+@pytest.mark.parametrize("commit_only", [False, True])
+@pytest.mark.parametrize("manager", ["pre-commit", "lefthook"])
+def test_real_git_commit_message_hook_shows_advice_and_preserves_facts(
+    tmp_path: Path, manager: manifest.HookManager, *, commit_only: bool
+) -> None:
+    repository = _repository(tmp_path / "repository")
+    if manager == "lefthook":
+        (repository / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
+    if commit_only:
+        plan = scaffold.build_commit_policy_plan(repository, force=False, hook_manager=manager)
+        assert not plan.errors
+        scaffold.apply(plan)
+        prefix = shlex.join(launcher.argv(version=manifest.adopted_version()))
+    else:
+        if manager == "pre-commit":
+            (repository / ".pre-commit-config.yaml").write_text(
+                "repos:\n" + scaffold.precommit_block(), encoding="utf-8"
+            )
+        else:
+            wired = hooks.wire_lefthook_commit_message_check(repository)
+            wired.path.write_text(wired.contents, encoding="utf-8")
+        prefix = launcher.repository_command()
+    config = repository / (".pre-commit-config.yaml" if manager == "pre-commit" else "lefthook.yml")
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(prefix, shlex.join((sys.executable, "-m", "sarj_standards"))),
+        encoding="utf-8",
+    )
+    _git(repository, "add", config.name)
+    environment = _environment(tmp_path / "pre-commit-cache")
+    if manager == "pre-commit":
+        subprocess.run(
+            (sys.executable, "-m", "pre_commit", "install", "--hook-type", "commit-msg"),
+            cwd=repository,
+            check=True,
+            env=environment,
+            capture_output=True,
+        )
+    else:
+        assert repository_hooks.install(repository) == 0
+    message = tmp_path / "message.txt"
+    header = "fix: preserve " + "essential_identifier_" * 4
+    body = "\n\nReason and material caveat.\n\nRefs: SARJ-123\n"
+    message.write_text(header + body, encoding="utf-8")
+    committed = subprocess.run(
+        ("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qF", str(message)),
+        cwd=repository,
+        check=False,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert committed.returncode == 0, committed.stdout + committed.stderr
+    assert (committed.stdout + committed.stderr).count("subject.too-long") == 1
+    stored = subprocess.run(
+        ("git", "log", "-1", "--format=%B"),
+        cwd=repository,
+        check=True,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert stored.stdout.rstrip("\n") == (header + body).rstrip("\n")
 
 
 @pytest.mark.parametrize("state", ["empty", "deleted"])

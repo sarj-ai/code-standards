@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Annotated, Final, NoReturn
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, JsonValue, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
+from repo_standards.core.subject import subject_advisories
 import typer
 
 from sarj_standards import __version__
@@ -3014,8 +3015,9 @@ def cmd_commit_message(args: _Args) -> int:
     )
     if result.fix_applied:
         print("Commit message: safely normalized; validation passed.")
-        return 0
     if result.satisfied:
+        for advice in subject_advisories(result.header):
+            print(f"Advisory: {advice.code}\n{advice.message}\n{advice.remediation}")
         return 0
     finding = result.findings[0]
     print(f"Commit message: {finding.code}", file=sys.stderr)

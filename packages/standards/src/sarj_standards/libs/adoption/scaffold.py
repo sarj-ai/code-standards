@@ -2328,6 +2328,7 @@ def _precommit_commit_message_hook(runner_prefix: str, *, hook_indent: int = 6) 
         f"{field}always_run: true\n"
         f"{field}pass_filenames: true\n"
         f"{field}require_serial: true\n"
+        f"{field}verbose: true\n"
         f"{field}stages: [commit-msg]\n"
     )
 
