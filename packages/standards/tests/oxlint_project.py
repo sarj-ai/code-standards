@@ -82,7 +82,7 @@ def project(root: Path, files: Mapping[str, str], *, config: str = CONSUMER, git
     (root / "package.json").write_text('{"type":"module","private":true}\n', encoding="utf-8")
     (root / "tsconfig.json").write_text(
         '{"compilerOptions":{"strict":true,"module":"nodenext","moduleResolution":"nodenext","noEmit":true,'
-        '"skipLibCheck":true},"include":["**/*.ts"]}\n',
+        '"skipLibCheck":true,"allowImportingTsExtensions":true},"include":["**/*.ts"]}\n',
         encoding="utf-8",
     )
     (plugin / "index.mjs").write_text(

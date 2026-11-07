@@ -325,6 +325,21 @@ def test_full_run_type_checks_and_names_files_the_config_ignores(tmp_path: Path)
     assert not list(root.glob(".sarj-oxlint-*"))
 
 
+def test_full_run_type_checks_project_files_outside_the_lint_selection(tmp_path: Path) -> None:
+    root = project(
+        tmp_path / "repo",
+        {
+            "src/selected.ts": "export const selected = 1;\n",
+            "src/sibling.ts": "export const n: number = 'x';\n",
+        },
+    )
+
+    report = analyze(root, oxlint.OxlintRequest(), "src/selected.ts")
+
+    assert report.issues == ()
+    assert {(item.rule_id, item.location.path) for item in report.diagnostics} == {("tsc/TS2322", "src/sibling.ts")}
+
+
 def test_explicit_config_disables_nested_config_lookup(tmp_path: Path) -> None:
     root = project(
         tmp_path / "repo",
