@@ -13,7 +13,12 @@ elif [[ -z "$GH_TOKEN" ]]; then
   plan_status=1
 else
   matrix_output="$RUNNER_TEMP/rollout-plan.outputs"
-  run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION" "${repository_rule_args[@]}" || plan_status=$?
+  consumer_args=()
+  # A manual dispatch may plan one registered consumer; schedules always plan the fleet.
+  if [[ "${EVENT_NAME:-}" == workflow_dispatch && -n "${REQUESTED_CONSUMER:-}" ]]; then
+    consumer_args=("--consumer=$REQUESTED_CONSUMER")
+  fi
+  run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION" "${repository_rule_args[@]}" "${consumer_args[@]}" || plan_status=$?
   if ((plan_status == 0)); then
     consumers="$(sed -n 's/^consumers=//p' "$matrix_output")"
     if [[ -z "$consumers" ]]; then

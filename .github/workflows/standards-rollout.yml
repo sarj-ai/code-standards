@@ -22,6 +22,11 @@ on:
         required: false
         default: ''
         type: string
+      consumer:
+        description: Optional owner/repository@branch to plan and apply alone; empty selects every consumer
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -80,6 +85,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           EVENT_NAME: ${{ github.event_name }}
           REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
+          REQUESTED_CONSUMER: ${{ inputs.consumer || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: bash .github/scripts/rollout-plan.sh
       # Stuck consumers otherwise repeat the same failing apply on paid runners
