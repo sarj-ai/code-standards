@@ -318,7 +318,7 @@ class DocstringFixes:
         return [TextEdit(literal[0], literal[1], replacement)]
 
     def _labels(self, expression: ast.Expr, diagnostic: Diagnostic) -> list[TextEdit]:
-        for group in groups(self.context.path, self.context.source):
+        for group in groups(self.context.path, self.context.source, tree=self.context.tree):
             if group.line != expression.lineno or diagnostic.line not in group.typed_restatements:
                 continue
             edits: list[TextEdit] = []

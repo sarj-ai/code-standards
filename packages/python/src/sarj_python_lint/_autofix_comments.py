@@ -48,7 +48,9 @@ class CommentFixes:
         self.statements: dict[int, list[ast.stmt]] = {}
         for statement in context.nodes(ast.stmt):
             self.statements.setdefault(statement.lineno, []).append(statement)
-        self.prose_groups = {(group.line, group.col): group for group in groups(context.path, context.source)}
+        self.prose_groups = {
+            (group.line, group.col): group for group in groups(context.path, context.source, tree=context.tree)
+        }
         self.narration: CommentNarration | None = None
 
     def fixes(self, diagnostic: Diagnostic) -> list[TextEdit]:

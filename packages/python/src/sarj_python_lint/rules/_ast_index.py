@@ -10,10 +10,14 @@ from weakref import WeakValueDictionary
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
 
 _AST = ast.AST
+
+
+# A child lookup: `children`, or a file's `NodeIndex.children` when nodes are reused.
+type ChildNodes = Callable[[ast.AST], Sequence[ast.AST]]
 
 
 def statement_blocks(statements: list[ast.stmt]) -> Iterator[list[ast.stmt]]:
@@ -131,17 +135,12 @@ def share_module(tree: ast.Module) -> SharedModule:
 
 @final
 class NodeIndex:
-    __slots__ = ("_buckets", "_ends", "_flat", "_parents", "_queries", "tree")
+    __slots__ = ("_buckets", "_children", "_ends", "_flat", "_parents", "_queries", "tree")
 
     @staticmethod
     def shared(tree: ast.AST) -> NodeIndex | None:
         owner = _SHARED.get(id(tree)) if isinstance(tree, ast.Module) else None
         return owner.index if owner is not None and owner.tree is tree else None
-
-    @classmethod
-    def of_module(cls, tree: ast.Module) -> NodeIndex:
-        shared = cls.shared(tree)
-        return shared if shared is not None else cls(tree)
 
     def __init__(self, tree: ast.AST) -> None:
         self.tree = tree
@@ -165,6 +164,7 @@ class NodeIndex:
         self._flat: list[ast.AST] = flat
         self._ends = ends
         self._parents: Mapping[ast.AST, ast.AST] | None = None
+        self._children: dict[ast.AST, Sequence[ast.AST]] | None = None
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
 
     @property
@@ -179,6 +179,20 @@ class NodeIndex:
                 start = end
             self._parents = MappingProxyType(parents)
         return self._parents
+
+    def children(self, node: ast.AST) -> Sequence[ast.AST]:
+        # Equal to `children(node)` without re-reading fields; callers must not mutate the result.
+        lists = self._children
+        if lists is None:
+            flat = self._flat
+            lists = {}
+            start = 1
+            for parent, end in zip(flat, self._ends, strict=True):
+                lists[parent] = flat[start:end] if end > start else ()
+                start = end
+            self._children = lists
+        found = lists.get(node)
+        return found if found is not None else children(node)
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
         hit = self._queries.get(types)

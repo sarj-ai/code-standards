@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 import tomllib
@@ -12,10 +12,11 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from sarj_python_lint._source import read_python_source
-from sarj_python_lint.rules._ast_index import NodeIndex
+from sarj_python_lint.rules._ast_index import NodeIndex, walk as walk_ast
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._project_index import ProjectIndexSet, parsed_tree
 
 
 if TYPE_CHECKING:
@@ -35,21 +36,28 @@ _SKIP = frozenset({"node_modules", "vendor", "vendored", "build", "dist", "__pyc
 class NominalSource:
     path: Path
     text: str
+    # The project's tree for this exact text, when it already parsed the file.
+    parsed: ast.Module | None = field(default=None, compare=False, repr=False)
 
     @cached_property
     def node_index(self) -> NodeIndex | None:
         tree = self.tree
-        return NodeIndex(tree) if tree is not None else None
+        if tree is None:
+            return None
+        shared = NodeIndex.shared(tree)
+        return shared if shared is not None else NodeIndex(tree)
 
     @cached_property
     def tree(self) -> ast.Module | None:
-        try:
-            tree = ast.parse(self.text, filename=str(self.path))
-        except SyntaxError:
-            return None
+        tree = self.parsed
+        if tree is None:
+            try:
+                tree = ast.parse(self.text, filename=str(self.path))
+            except SyntaxError:
+                return None
         if any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-            for node in ast.walk(tree)
+            for node in walk_ast(tree)
         ):
             return None
         return tree
@@ -106,7 +114,12 @@ class NominalProjectFacts:
         self._scopes: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
 
     def sources(
-        self, path: Path, first_party: FirstPartyFacts, *, include_generated: bool = False
+        self,
+        path: Path,
+        first_party: FirstPartyFacts,
+        *,
+        include_generated: bool = False,
+        project: ProjectIndexSet | None = None,
     ) -> dict[str, NominalSource]:
         owner = distribution_root(path, facts=first_party)
         root = first_party.project_root(path)
@@ -116,7 +129,7 @@ class NominalProjectFacts:
         if key in self._scopes:
             return self._scopes[key]
         distributions = self._accessible_distributions(owner, root)
-        sources = self._merge_sources(distributions, include_generated=include_generated)
+        sources = self._merge_sources(distributions, include_generated=include_generated, project=project)
         self._scopes[key] = sources
         return sources
 
@@ -160,14 +173,18 @@ class NominalProjectFacts:
         )
 
     def _merge_sources(
-        self, distributions: tuple[_Distribution, ...], *, include_generated: bool = False
+        self,
+        distributions: tuple[_Distribution, ...],
+        *,
+        include_generated: bool = False,
+        project: ProjectIndexSet | None = None,
     ) -> dict[str, NominalSource]:
         sources: dict[str, NominalSource] = {}
         ambiguous: set[str] = set()
         for distribution in distributions:
             key = (distribution.root, include_generated)
             if key not in self._sources:
-                self._sources[key] = _sources(distribution.root, include_generated=include_generated)
+                self._sources[key] = _sources(distribution.root, include_generated=include_generated, project=project)
             for module, source in self._sources[key].items():
                 if module in sources:
                     ambiguous.add(module)
@@ -261,7 +278,9 @@ def _files(root: Path, pattern: str) -> list[Path]:
     return found
 
 
-def _sources(root: Path, *, include_generated: bool = False) -> dict[str, NominalSource]:
+def _sources(
+    root: Path, *, include_generated: bool = False, project: ProjectIndexSet | None = None
+) -> dict[str, NominalSource]:
     sources: dict[str, NominalSource] = {}
     ambiguous: set[str] = set()
     total_bytes = 0
@@ -275,7 +294,7 @@ def _sources(root: Path, *, include_generated: bool = False) -> dict[str, Nomina
         module = _module_name(root, path)
         if not module:
             continue
-        source = _source(path, include_generated=include_generated)
+        source = _source(path, include_generated=include_generated, project=project)
         if source is None:
             continue
         if module in sources:
@@ -295,7 +314,9 @@ def _module_name(root: Path, path: Path) -> str | None:
     return ".".join(parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], path.stem)) or None
 
 
-def _source(path: Path, *, include_generated: bool = False) -> NominalSource | None:
+def _source(
+    path: Path, *, include_generated: bool = False, project: ProjectIndexSet | None = None
+) -> NominalSource | None:
     try:
         if path.is_symlink() or path.stat().st_size > _MAX_BYTES:
             return None
@@ -304,7 +325,7 @@ def _source(path: Path, *, include_generated: bool = False) -> NominalSource | N
             return None
     except OSError, UnicodeError, SyntaxError:
         return None
-    return NominalSource(path, text)
+    return NominalSource(path, text, parsed_tree(project, path, text) if project is not None else None)
 
 
 def _is_mapping(value: object) -> TypeGuard[dict[object, object]]:

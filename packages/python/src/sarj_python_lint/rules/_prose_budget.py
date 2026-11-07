@@ -136,20 +136,22 @@ def _without_examples_metadata(text: str) -> str:
     return "\n".join(kept)
 
 
-def groups(path: Path, source: str) -> list[ProseGroup]:
+def groups(path: Path, source: str, *, tree: ast.Module | None = None) -> list[ProseGroup]:
     global _last_groups  # ruff: ignore[global-statement] -- rules run sequentially per file.
     path_key = str(path)
     if _last_groups is not None and _last_groups[0] == path_key and _last_groups[1] is source:
         return list(_last_groups[2])
-    extracted = _extract_groups(path, source)
+    extracted = _extract_groups(path, source, tree)
     _last_groups = (path_key, source, tuple(extracted))
     return extracted
 
 
-def _extract_groups(path: Path, source: str) -> list[ProseGroup]:
+def _extract_groups(path: Path, source: str, tree: ast.Module | None = None) -> list[ProseGroup]:
     if is_generated(path, source):
         return []
-    tree = parse_or_none(path, source)
+    # Callers pass the file's shared tree; without one, parse (both fail the same way).
+    if tree is None:
+        tree = parse_or_none(path, source)
     if tree is None:
         return []
     out = _docstring_groups(tree)

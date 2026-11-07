@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_annotation_union
-from sarj_python_lint.rules._ast_index import children, walk, walk as walk_ast
+from sarj_python_lint.rules._ast_index import ChildNodes, children, walk, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -424,6 +424,7 @@ class PreferStrEnum(Rule):
         rejection_imports = _assert_never_imports(context, imports)
         test_path = is_test_path(path)
         check_clusters = not test_path
+        child_nodes = context.node_index.children
         literal_aliases = _module_literal_aliases(tree)
         alias_names = literal_aliases.names
         closed_collections = _module_closed_collections(tree, node_index=context.node_index)
@@ -460,10 +461,12 @@ class PreferStrEnum(Rule):
         ) -> dict[str, _ClusterEntry] | None:
             if check_clusters:
                 comprehension_opacity.update(
-                    _closed_comprehension_targets(node, alias_names, raw_string_aliases, imports=imports)
+                    _closed_comprehension_targets(
+                        node, alias_names, raw_string_aliases, imports=imports, child_nodes=child_nodes
+                    )
                 )
                 child_active: dict[str, _ClusterEntry] = {}
-                shadowed = _function_shadowed_names(node)
+                shadowed = _function_shadowed_names(node, child_nodes=child_nodes)
                 inherited = cluster_opacity.get(id(active), frozenset()) - shadowed
                 opaque = (
                     inherited
@@ -476,6 +479,7 @@ class PreferStrEnum(Rule):
                         closed_collections=frozenset(closed_collections),
                         imports=imports,
                         type_parameters=_annotation_type_parameters(node, context.parents),
+                        child_nodes=child_nodes,
                     )
                     | method_closed_attributes.get(id(node), frozenset())
                 )
@@ -540,10 +544,10 @@ class PreferStrEnum(Rule):
                     )
                 }
                 stack.extend(
-                    (child, active if id(child) in outer_expressions else child_active) for child in children(node)
+                    (child, active if id(child) in outer_expressions else child_active) for child in child_nodes(node)
                 )
             else:
-                stack.extend((child, child_active) for child in children(node))
+                stack.extend((child, child_active) for child in child_nodes(node))
 
         def collect_clusters() -> None:
             stack: list[tuple[ast.AST, dict[str, _ClusterEntry] | None]] = [(tree, None)]
@@ -908,16 +912,19 @@ def _opaque_names(
     closed_collections: frozenset[str],
     imports: ImportIndex | None,
     type_parameters: frozenset[str],
+    child_nodes: ChildNodes = children,
 ) -> frozenset[str]:
     base = (
-        _literal_typed_names(func, alias_names)
-        | _explicitly_open_literal_union_names(func, raw_string_aliases)
-        | _dynamically_constrained_names(func, closed_collections)
-        | _foreign_typed_names(func, raw_string_aliases, imports=imports, type_parameters=type_parameters)
-        | _wire_bound_names(func, literal_funcs, module_func_names)
-        | _fallback_consumed_names(func)
+        _literal_typed_names(func, alias_names, child_nodes=child_nodes)
+        | _explicitly_open_literal_union_names(func, raw_string_aliases, child_nodes=child_nodes)
+        | _dynamically_constrained_names(func, closed_collections, child_nodes=child_nodes)
+        | _foreign_typed_names(
+            func, raw_string_aliases, imports=imports, type_parameters=type_parameters, child_nodes=child_nodes
+        )
+        | _wire_bound_names(func, literal_funcs, module_func_names, child_nodes=child_nodes)
+        | _fallback_consumed_names(func, child_nodes=child_nodes)
     )
-    return _close_over_assignments(func, base)
+    return _close_over_assignments(func, base, child_nodes=child_nodes)
 
 
 def _class_method_owned_attributes(
@@ -928,7 +935,9 @@ def _class_method_owned_attributes(
         attributes: set[str] = set()
         methods = [stmt for stmt in cls.body if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))]
         _collect_class_owned_attributes(cls, attributes)
-        _collect_method_owned_attributes(methods, attributes)
+        _collect_method_owned_attributes(
+            methods, attributes, child_nodes=node_index.children if node_index is not None else children
+        )
         owned = frozenset(attributes)
         result.update((id(method), owned) for method in methods)
     return result
@@ -959,7 +968,10 @@ def _class_method_closed_attributes(
 
 
 def _dynamically_constrained_names(
-    func: ast.FunctionDef | ast.AsyncFunctionDef, closed_collections: frozenset[str]
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    closed_collections: frozenset[str],
+    *,
+    child_nodes: ChildNodes = children,
 ) -> frozenset[str]:
     result: set[str] = set()
     stack: list[ast.AST] = list(func.body)
@@ -979,11 +991,13 @@ def _dynamically_constrained_names(
                 key = None
             if key is not None:
                 result.add(key)
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(result)
 
 
-def _fallback_consumed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+def _fallback_consumed_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, *, child_nodes: ChildNodes = children
+) -> frozenset[str]:
     open_names: set[str] = set()
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -992,7 +1006,7 @@ def _fallback_consumed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> fr
             continue
         if isinstance(node, ast.If):
             _collect_fallback_chain_names(node, open_names)
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(open_names)
 
 
@@ -1023,7 +1037,9 @@ def _statements_read_key(statements: list[ast.stmt], key: str) -> bool:
     return False
 
 
-def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_names: frozenset[str]) -> frozenset[str]:
+def _literal_typed_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, alias_names: frozenset[str], *, child_nodes: ChildNodes = children
+) -> frozenset[str]:
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -1040,13 +1056,15 @@ def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_nam
             and _is_literal_annotation(node.annotation, alias_names)
         ):
             names.add(node.target.id)
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(names)
 
 
 def _explicitly_open_literal_union_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     raw_string_aliases: frozenset[str],
+    *,
+    child_nodes: ChildNodes = children,
 ) -> frozenset[str]:
     names: set[str] = set()
     args = func.args
@@ -1064,7 +1082,7 @@ def _explicitly_open_literal_union_names(
             and _is_literal_plus_open_string(node.annotation, raw_string_aliases)
         ):
             names.add(node.target.id)
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(names)
 
 
@@ -1101,6 +1119,7 @@ def _closed_comprehension_targets(
     raw_string_aliases: frozenset[str],
     *,
     imports: ImportIndex | None,
+    child_nodes: ChildNodes = children,
 ) -> dict[int, frozenset[str]]:
     annotations: dict[str, ast.expr] = {
         arg.arg: arg.annotation
@@ -1114,7 +1133,7 @@ def _closed_comprehension_targets(
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
         own_nodes.append(node)
-        pending.extend(children(node))
+        pending.extend(child_nodes(node))
     for node in own_nodes:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             annotations[node.target.id] = node.annotation
@@ -1128,9 +1147,11 @@ def _closed_comprehension_targets(
     return result
 
 
-def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: frozenset[str]) -> frozenset[str]:
+def _close_over_assignments(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, seed: frozenset[str], *, child_nodes: ChildNodes = children
+) -> frozenset[str]:
     edges: list[tuple[str, frozenset[str]]] = []
-    for target, value in _local_bindings(func):
+    for target, value in _local_bindings(func, child_nodes=child_nodes):
         if _is_valid_url_group(value):
             continue
         sources = {node.id for node in walk(value) if isinstance(node, ast.Name)}
@@ -1155,16 +1176,22 @@ def _is_valid_url_group(value: ast.expr) -> bool:
     )
 
 
-def _function_shadowed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+def _function_shadowed_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, *, child_nodes: ChildNodes = children
+) -> set[str]:
     arguments = [*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs]
     if func.args.vararg is not None:
         arguments.append(func.args.vararg)
     if func.args.kwarg is not None:
         arguments.append(func.args.kwarg)
-    return {argument.arg for argument in arguments} | {target for target, _value in _local_bindings(func)}
+    return {argument.arg for argument in arguments} | {
+        target for target, _value in _local_bindings(func, child_nodes=child_nodes)
+    }
 
 
-def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_LocalBinding]:
+def _local_bindings(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, *, child_nodes: ChildNodes = children
+) -> list[_LocalBinding]:
     bindings: list[_LocalBinding] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -1182,7 +1209,7 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Local
                 pass
         if value is not None:
             bindings.extend(_LocalBinding(name, value) for target in targets for name in _bound_target_names(target))
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return bindings
 
 
@@ -1192,6 +1219,7 @@ def _foreign_typed_names(
     *,
     imports: ImportIndex | None,
     type_parameters: frozenset[str],
+    child_nodes: ChildNodes = children,
 ) -> frozenset[str]:
     names: set[str] = set()
     args = func.args
@@ -1214,7 +1242,7 @@ def _foreign_typed_names(
             )
         ):
             names.add(node.target.id)
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(names)
 
 
@@ -1313,15 +1341,17 @@ def _wire_bound_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     literal_funcs: frozenset[str],
     module_func_names: frozenset[str],
+    *,
+    child_nodes: ChildNodes = children,
 ) -> frozenset[str]:
     names: set[str] = set()
     local_shadows = {
         node.name for node in func.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
     }
-    local_shadows.update(target for target, _value in _local_bindings(func))
+    local_shadows.update(target for target, _value in _local_bindings(func, child_nodes=child_nodes))
     blocked_wire_calls = module_func_names | local_shadows
     visible_literal_funcs = literal_funcs - local_shadows
-    for target, value in _local_bindings(func):
+    for target, value in _local_bindings(func, child_nodes=child_nodes):
         if _is_wire_lookup(value, blocked_wire_calls) or (
             isinstance(value, ast.Call) and _trailing_name(value.func) in visible_literal_funcs
         ):
@@ -1335,7 +1365,7 @@ def _wire_bound_names(
             node.iter, blocked_wire_calls
         ):
             names.update(_bound_target_names(node.target))
-        stack.extend(children(node))
+        stack.extend(child_nodes(node))
     return frozenset(names)
 
 
@@ -1517,8 +1547,9 @@ def _module_literal_collections(tree: ast.Module) -> dict[str, list[str]]:
 
 def _non_membership_collection_reads(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[str]:
     unsafe: set[str] = set()
+    child_nodes = node_index.children if node_index is not None else children
     for parent in walk_ast(tree, index=node_index):
-        for child in children(parent):
+        for child in child_nodes(parent):
             if not isinstance(child, ast.Name) or not isinstance(child.ctx, ast.Load):
                 continue
             if (
@@ -1534,8 +1565,9 @@ def _non_membership_collection_reads(tree: ast.AST, *, node_index: NodeIndex | N
 
 def _unsafe_attribute_collection_uses(tree: ast.AST, *, node_index: NodeIndex | None = None) -> dict[str, set[str]]:
     unsafe: dict[str, set[str]] = {}
+    child_nodes = node_index.children if node_index is not None else children
     for parent in walk_ast(tree, index=node_index):
-        for child in children(parent):
+        for child in child_nodes(parent):
             if not isinstance(child, ast.Attribute) or not isinstance(child.value, ast.Name):
                 continue
             if (
@@ -2122,7 +2154,7 @@ def _alias_binding_counts(tree: ast.AST, *, node_index: NodeIndex | None = None)
 
 
 def _collect_method_owned_attributes(
-    methods: list[ast.FunctionDef | ast.AsyncFunctionDef], attributes: set[str]
+    methods: list[ast.FunctionDef | ast.AsyncFunctionDef], attributes: set[str], *, child_nodes: ChildNodes = children
 ) -> None:
     for method in methods:
         stack: list[ast.AST] = list(method.body)
@@ -2138,7 +2170,7 @@ def _collect_method_owned_attributes(
                     and target.value.id in _OWNED_ROOTS
                 ):
                     attributes.add(target.attr)
-            stack.extend(children(node))
+            stack.extend(child_nodes(node))
 
 
 def _assignment_targets(node: ast.AST) -> list[ast.expr]:
