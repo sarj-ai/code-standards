@@ -31,14 +31,10 @@ class _WorkerState:
     needs_serial: bool = False
 
 
+# A full resolution cache never admits another key, so every later file
+# observes exactly these entries in any order. Module keys keep their own limit.
 @dataclass(frozen=True, slots=True)
 class FrozenResolutions:
-    """A parent session whose resolution cache reached its limit.
-
-    A full cache never admits another key, so every later file observes exactly
-    these entries in any order. Module keys still count toward their own limit.
-    """
-
     resolutions: tuple[tuple[_ResolutionKey, Path | None], ...]
     modules: frozenset[Path]
 
@@ -58,19 +54,19 @@ def _initialize(
     rule_types: list[type[Rule]],
     snapshot: ProjectSourceSnapshot | None,
     source_snapshot: PreparedSourceSnapshot | None = None,
-    frozen_resolutions: tuple[tuple[_ResolutionKey, Path | None], ...] = (),
+    frozen: FrozenResolutions | None = None,
 ) -> None:
     global _state  # ruff: ignore[global-statement] -- each spawned process owns one initialized session.
     rules = [rule_type() for rule_type in rule_types]
     source_inputs = (
         None
         if source_snapshot is None
-        else PreparedSourceInputs.from_source_snapshot(source_snapshot, resolves_unrecorded=bool(frozen_resolutions))
+        else PreparedSourceInputs.from_source_snapshot(source_snapshot, resolves_unrecorded=frozen is not None)
     )
     session = AnalysisSession() if source_inputs is None else AnalysisSession(source_inputs=source_inputs)
-    if frozen_resolutions:
+    if frozen is not None:
         # The parent's preparation lookups are already part of this full cache.
-        session.local_source.restore_resolutions(frozen_resolutions)
+        session.local_source.restore_resolutions(frozen.resolutions)
     _state = _WorkerState(rules, session, resolutions=session.local_source.cache_keys().resolutions)
     try:
         _prepare_worker(_state, snapshot, source_inputs=source_inputs)
@@ -79,7 +75,10 @@ def _initialize(
 
 
 def _prepare_worker(
-    state: _WorkerState, snapshot: ProjectSourceSnapshot | None, *, source_inputs: PreparedSourceInputs | None
+    state: _WorkerState,
+    snapshot: ProjectSourceSnapshot | None,
+    *,
+    source_inputs: PreparedSourceInputs | None,
 ) -> None:
     for rule in state.rules:
         rule.prepare_session(state.session)
@@ -111,6 +110,10 @@ def _check_file(item: tuple[Path, str | None]) -> _FileResult:
             source = _selected_worker_source(_state.session, path)
         diagnostics = check_source(_state.rules, path, source, session=_state.session)
     except NeedsSerialSourceError:
+        _state.needs_serial = True
+        return _FileResult([], frozenset(), frozenset(), needs_serial=True)
+    project = _state.session.project
+    if project is not None and not project.value_origins_complete:
         _state.needs_serial = True
         return _FileResult([], frozenset(), frozenset(), needs_serial=True)
     keys = _state.session.local_source.cache_keys()
@@ -156,9 +159,10 @@ def check_parallel(
         initializer=_initialize,
         initargs=(
             rule_types,
-            project.source_snapshot() if project is not None else None,
+            # A frozen handoff also carries the parent's memoized whole-project facts.
+            project.source_snapshot(with_facts=frozen is not None) if project is not None else None,
             source_snapshot,
-            () if frozen is None else frozen.resolutions,
+            frozen,
         ),
     )
     diagnostics: list[Diagnostic] = []

@@ -242,6 +242,8 @@ def _frozen_diagnostics(
     # same full cache whatever ran before it, so workers can check the rest.
     from sarj_python_lint._parallel import FrozenResolutions, check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
 
+    if session.project is not None and not session.project.value_origins_complete:
+        return None
     frozen = FrozenResolutions(resolutions, session.local_source.cache_keys().modules)
     return check_parallel(
         [type(rule) for rule in rules],

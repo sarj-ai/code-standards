@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import ast
+from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+import copy
 import multiprocessing
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 import pytest
@@ -18,7 +21,7 @@ import sarj_python_lint._parallel as parallel_engine
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._local_source import LocalSourceFacts
-from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
 
 
 if TYPE_CHECKING:
@@ -43,7 +46,6 @@ class _RequestFacts(Rule):
         findings: list[Diagnostic] = []
         for name in names:
             path = context.path.parent / name
-            # Some rules own a per-file cache over the shared captured inputs.
             facts = (
                 LocalSourceFacts(source_inputs=context.session.source_inputs)
                 if mode == "fresh"
@@ -390,8 +392,8 @@ def _observe_frozen_handoffs(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
         frozen: parallel_engine.FrozenResolutions | None = None,
     ) -> list[Diagnostic] | None:
         result = original(rule_types, loaded, project, jobs=jobs, source_inputs=source_inputs, frozen=frozen)
-        # Small batches first try the existing speculative pool, which replays at the quota.
-        if frozen is not None:
+        speculative_small_batch = frozen is None
+        if not speculative_small_batch:
             handoffs.append(result is not None)
         return result
 
@@ -410,7 +412,6 @@ def test_saturated_resolution_cache_hands_remaining_files_to_workers(
     )
     paths = _write_saturating_analysis(tmp_path, [f"# {later}\n# provider.py\n"] * engine.FROZEN_HANDOFF_MIN_FILES)
     expected = analyze([_RequestFacts.id], paths)
-    # New resolutions after saturation fail in every order; module reads still succeed.
     assert len(expected) == (0 if later == "resolutions" else engine.FROZEN_HANDOFF_MIN_FILES)
     handoffs = _observe_frozen_handoffs(monkeypatch)
     before = {child.pid for child in multiprocessing.active_children()}
@@ -446,9 +447,8 @@ def test_frozen_handoff_uses_captured_sources(tmp_path: Path, monkeypatch: pytes
     sources = SourceCatalog()
     for path in paths:
         sources.capture(path)
-    # Workers must read the captured selected bytes, not the changed files.
     for path in paths:
-        path.write_text("if broken ==\n")
+        path.write_text("if broken ==\n")  # captured bytes must win over changed files
     expected = analyze([_RequestFacts.id], paths, sources=sources)
     assert len(expected) == engine.FROZEN_HANDOFF_MIN_FILES
     handoffs = _observe_frozen_handoffs(monkeypatch)
@@ -464,3 +464,52 @@ def test_small_remainder_after_saturation_stays_serial(tmp_path: Path, monkeypat
     handoffs = _observe_frozen_handoffs(monkeypatch)
     assert analyze([_RequestFacts.id], paths, jobs=2) == analyze([_RequestFacts.id], paths)
     assert handoffs == []
+
+
+def _index_units(sources: dict[str, str]) -> dict[Path, SourceUnit]:
+    return {
+        Path(name.replace(".", "/") + ".py"): SourceUnit(
+            Path(name.replace(".", "/") + ".py"), name, source, ast.parse(source), MappingProxyType({})
+        )
+        for name, source in sources.items()
+    }
+
+
+def test_restored_project_facts_match_recomputed_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    sources = {
+        "app.models": "class Record:\n    pass\n\n\nclass Escaped:\n    pass\n",
+        "app.focus": "import app.patch\nfrom app.models import Record\n\nvalue = Record()\n",
+        "app.patch": "import psycopg as driver\nfrom app import models\n\nholder = models.Escaped\ndriver.Connection = object\n",
+    }
+    symbols = (SymbolRef("app.models", "Record"), SymbolRef("app.models", "Escaped"))
+    warm = ProjectIndexSet(_index_units(sources), sealed=True)
+    for unit in warm.source_units:
+        warm.import_namespace_mutations.for_unit(unit)
+        warm.constructor_consumers(unit, "Record")
+    dynamic = [warm.nominal_membership_is_dynamic(symbol) for symbol in symbols]
+    snapshot = warm.source_snapshot(with_facts=True)
+    assert snapshot.facts is not None
+    transferred = {name for name, _ in snapshot.facts.cached}
+    assert transferred >= {"_escaped_nominal_classes", "_constructor_consumers"}
+
+    with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn")) as pool:
+        restored = ProjectIndexSet.from_source_snapshot(pool.submit(copy.copy, snapshot).result(), sealed=True)
+    cold = ProjectIndexSet(_index_units(sources), sealed=True)
+    for unit in cold.source_units:
+        cold.import_namespace_mutations.for_unit(unit)
+        cold.constructor_consumers(unit, "Record")
+    assert [cold.nominal_membership_is_dynamic(symbol) for symbol in symbols] == dynamic
+    restored_facts, cold_facts = dict[str, object](vars(restored)), dict[str, object](vars(cold))
+    assert {name: restored_facts[name] for name in transferred} == {name: cold_facts[name] for name in transferred}
+    assert [restored.nominal_membership_is_dynamic(symbol) for symbol in symbols] == dynamic
+    for restored_unit, cold_unit in zip(restored.source_units, cold.source_units, strict=True):
+        assert restored.import_namespace_mutations.for_unit(restored_unit) == cold.import_namespace_mutations.for_unit(
+            cold_unit
+        )
+    assert ProjectIndexSet(_index_units(sources)).source_snapshot().facts is None
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an exhausted value-origin budget is the order-dependent state under test.
+        warm, "_value_origins_incomplete", True
+    )
+    assert not warm.value_origins_complete
+    assert warm.source_snapshot(with_facts=True).facts is None

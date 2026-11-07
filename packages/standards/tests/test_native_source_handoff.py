@@ -206,10 +206,11 @@ def test_missing_captured_source_fails_without_normalizer_disk_fallback(
         *,
         baseline: Path | None = None,
         root: Path | None = None,
+        jobs: int = 1,
         sources: SourceCatalog | None = None,
     ) -> list[PythonDiagnostic]:
         assert sources is not None
-        result = original(rule_ids, paths, baseline=baseline, root=root)
+        result = original(rule_ids, paths, baseline=baseline, root=root, jobs=jobs)
         path.unlink()
         return result
 
