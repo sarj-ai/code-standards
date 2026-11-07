@@ -1596,6 +1596,9 @@ def _shell_embeds_program(
     # Workflow expressions are evaluated by Actions before shell parsing. Treat
     # each expression as an opaque word, never interpret its contents as shell.
     source = WORKFLOW_EXPRESSION_RE.sub("workflow_expression", source)
+    literal = source.strip("\n")
+    if re.fullmatch(r"[-A-Za-z0-9_./:+@%, \t]+", literal) and classify_interpreter(literal.split()).kind == "external":
+        return False
     tree = parse_shell(source)
     if tree.get("Type") != "File":
         msg = "shfmt did not return a File AST"

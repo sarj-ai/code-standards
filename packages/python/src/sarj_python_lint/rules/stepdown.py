@@ -32,6 +32,7 @@ _DEF_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+type _AliasCallLine = Callable[[ast.FunctionDef | ast.AsyncFunctionDef, str, int], int | None]
 
 # These decorators preserve definitions without registration; unknown decorators remain movement barriers.
 _ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
@@ -979,6 +980,7 @@ def _module_call_graph(
     pinned: set[str],
 ) -> None:
     binding_counts = cache(_scope_binding_counts)
+    alias_call_line = _cached_alias_call_line(parents)
     for definition in defs:
         name = definition.name
         callees = graph.setdefault(name, set())
@@ -991,7 +993,7 @@ def _module_call_graph(
         for node in nodes:
             if not isinstance(node, ast.Name) or node.id not in all_defs or node.id in local:
                 continue
-            line = _call_reference_line(node, definition, parents, binding_counts)
+            line = _call_reference_line(node, definition, parents, binding_counts, alias_call_line)
             if line is None:
                 pinned.add(node.id)
             elif node.id != name:
@@ -1038,12 +1040,24 @@ def _nested_class_name_loads(definition: _Def) -> set[str]:
     }
 
 
+def _cached_alias_call_line(parents: Mapping[int, ast.AST]) -> _AliasCallLine:
+    @cache
+    def call_line(owner: ast.FunctionDef | ast.AsyncFunctionDef, alias: str, assigned_line: int) -> int | None:
+        return _local_alias_call_line(owner, alias, assigned_line, parents)
+
+    return call_line
+
+
 def _call_reference_line(
-    node: ast.expr, owner: _Def, parents: Mapping[int, ast.AST], binding_counts: Callable[[_Def], Counter[str]]
+    node: ast.expr,
+    owner: _Def,
+    parents: Mapping[int, ast.AST],
+    binding_counts: Callable[[_Def], Counter[str]],
+    alias_call_line: _AliasCallLine,
 ) -> int | None:
     parent = parents.get(id(node))
     if isinstance(parent, ast.Call) and parent.func is node:
-        return node.lineno if _call_scope_is_local(node, owner, parents, binding_counts) else None
+        return node.lineno if _call_scope_is_local(node, owner, parents, binding_counts, alias_call_line) else None
     if not isinstance(owner, _DEF_NODES):
         return None
     alias = _assignment_alias(parent, node)
@@ -1053,11 +1067,15 @@ def _call_reference_line(
         isinstance(child, ast.Nonlocal) and alias in child.names for child in _walk(owner)
     ):
         return None
-    return _local_alias_call_line(owner, alias, node.lineno, parents)
+    return alias_call_line(owner, alias, node.lineno)
 
 
 def _call_scope_is_local(
-    node: ast.expr, owner: _Def, parents: Mapping[int, ast.AST], binding_counts: Callable[[_Def], Counter[str]]
+    node: ast.expr,
+    owner: _Def,
+    parents: Mapping[int, ast.AST],
+    binding_counts: Callable[[_Def], Counter[str]],
+    alias_call_line: _AliasCallLine,
 ) -> bool:
     current: ast.AST = node
     while id(current) in parents:
@@ -1070,10 +1088,10 @@ def _call_scope_is_local(
             enclosing = parents.get(id(parent))
             if not isinstance(enclosing, _DEF_NODES) or binding_counts(enclosing)[parent.name] != 1:
                 return False
-            if _local_alias_call_line(enclosing, parent.name, parent.lineno, parents) is None:
+            if alias_call_line(enclosing, parent.name, parent.lineno) is None:
                 return False
         if isinstance(parent, ast.Lambda) and current is parent.body:
-            return _call_reference_line(parent, owner, parents, binding_counts) is not None
+            return _call_reference_line(parent, owner, parents, binding_counts, alias_call_line) is not None
         current = parent
     return False
 
@@ -1165,6 +1183,7 @@ def _class_call_graph(
     stable_class_name: bool,
 ) -> None:
     binding_counts = cache(_scope_binding_counts)
+    alias_call_line = _cached_alias_call_line(parents)
     for method in methods:
         callees = graph.setdefault(method.name, set())
         receivers = _method_receivers(method, cls.name, transparent, stable_class_name=stable_class_name)
@@ -1181,7 +1200,7 @@ def _class_call_graph(
             target_is_instance = not any(
                 transparent.get(id(decorator)) in _ORDER_TRANSPARENT_DECORATORS for decorator in target.decorator_list
             )
-            line = _call_reference_line(node, method, parents, binding_counts)
+            line = _call_reference_line(node, method, parents, binding_counts, alias_call_line)
             if receiver_kind is None or (receiver_kind == "class" and target_is_instance) or line is None:
                 pinned.add(node.attr)
             elif node.attr != method.name:
