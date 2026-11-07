@@ -1,115 +1,36 @@
 /**
  * @fileoverview require-port-for-service — advisory detection for exported services that may benefit from focused consumer ports.
  *
+ * Port of the 18.x `require-port-for-service` rule. Same algorithm. The
+ * constructor, contract and module-index analysis lives in
+ * `./_service-class.ts`, which `require-explicit-service-contract` shares;
+ * this file holds the advisory's own exemptions.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-port-for-service.test.ts
  */
 
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { forEachOwnAstChild } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { existingFactoryContractFix } from "../utils/existing-factory-contract-fix.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "../utils/paths.js";
 import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+  type ClassNode,
+  type Collaborator,
+  constructorFacts,
+  implementsOf,
+  invokedInstanceField,
+  isExportedServiceClass,
+  isPrivateOrProtected,
+  publicMethodNames,
+  type ServiceFile,
+  serviceFile,
+} from "./_service-class.js";
 
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { existingFactoryContractFix } from "./_existing-factory-contract-fix.js";
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import {
-  isGeneratedFile,
-  isScriptFile,
-  isStoryFile,
-  isTestFile,
-} from "./_paths.js";
-
-type MessageIds = "requireInterface";
-type Options = readonly [];
-
-export const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
-  summary:
-    "Advise when an exported service with injected collaborators has public methods not covered by its declared ports.",
-  rationale:
-    "A declared port keeps consumers coupled to the service capability instead of its concrete implementation.",
-  remediation:
-    "Declare and implement an interface covering the service's public methods.",
-  category: "architecture",
-  autofix: "safe",
-  aliases: ["require-interface-for-injected-service"],
-  limitations: [
-    "Automatic fixes only add the exact existing closed type alias named by an already-authored direct factory return annotation. A complete comment-free four-declaration module must contain one exported closed object type alias containing one zero-argument void method, one local matching worker interface, one ordinary nonabstract nongeneric class with an empty constructor retaining a private readonly worker parameter and one matching public forwarding method, and one exported ordinary required-worker-parameter factory returning that exact new class as the port. Unique lexical bindings, no heritage/decorators/defaults/imports/merges/other members or authority, and exact existing types/calls are required. Mergeable public interfaces are refused because downstream declaration augmentation can introduce a private-field compatibility error. No contract, method, field, import or name is invented; emitted JavaScript remains identical. Other shapes remain manual.",
-    "Retained injection requires an untouched parameter property or a single direct, unconditional constructor assignment. Conditional, repeated, replaced, updated, or deleted stores are unresolved rather than proof of retained injection.",
-  ],
-  examples: [
-    {
-      id: "declared-service-port",
-      title: "Implement the service port",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/service.ts",
-          source:
-            "interface Handler { handle(): void }\nexport class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
-        },
-      ],
-      focusPath: "src/service.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "concrete-injected-service",
-      title: "Do not expose only the concrete service",
-      outcome: "match",
-      files: [
-        {
-          path: "src/service.ts",
-          source:
-            "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
-        },
-      ],
-      focusPath: "src/service.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "The existing factory already names the service contract",
-      outcome: "match",
-      files: [
-        {
-          path: "src/service.ts",
-          source:
-            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/service.ts",
-          source:
-            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
-        },
-      ],
-      focusPath: "src/service.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-const CONFIGISH_TYPE_RE =
-  /(?:Options|Opts|Config|Configuration|Settings|Params|Props|Args|Env|Environment|Callbacks|Flags)$/;
-
-/** Configuration names plus logger and clock, which alone do not establish a service seam. */
-const CONFIGISH_NAME_RE =
-  /^(?:options|opts|config|configuration|settings|params|props|args|env|environment|callbacks|flags|logger|log|clock)$/i;
+const NAME = "require-port-for-service";
 
 /** Third-party transports commonly replaced below a thin client wrapper. */
 const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
-
-/** Containers and mapped helpers describe data rather than substitutable implementations. */
-const BUILTIN_CONTAINER_TYPE_RE =
-  /^(?:Record|Map|WeakMap|Set|WeakSet|Array|ReadonlyArray|ReadonlyMap|ReadonlySet|Promise|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|NonNullable|Awaited|Parameters|ReturnType|InstanceType)$/;
-
-/** Nominal leaf values are constructor data, not collaborators with swappable behavior. */
-const VALUE_TYPE_RE =
-  /^(?:ArrayBuffer|Blob|Buffer|Date|NodePath|RegExp|URL|URLSearchParams)$/;
 
 const TRANSPORT_WRAPPER_NAME_RE = /(?:Client$|^Http[A-Z])/;
 /** Error values carry diagnostic data; their callable formatting surface is not a service port. */
@@ -121,683 +42,95 @@ const FLUENT_RESULT_TYPE_RE = /(?:Builder|Base|Query|Without)(?:\W|$)/;
 const ROUTER_FACTORY_NAME = "Router";
 
 /** Namespaced framework HTTP types; unqualified DOM globals do not match. */
-const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set([
-  "Request",
-  "Response",
-  "NextFunction",
-]);
-const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<string> = new Set([
-  "=",
-  "&&=",
-  "??=",
-  "||=",
-]);
+const FRAMEWORK_HTTP_TYPES: ReadonlySet<string> = new Set(["Request", "Response", "NextFunction"]);
 
-interface Collaborator {
-  readonly name: string;
-  /** Rightmost segment of the type name — what the config-ish guards test. */
-  readonly typeName: string;
-  /** Full source spelling, including any namespace qualifier, for the message. */
-  readonly display: string;
-  /** Instance fields that retain this constructor parameter. */
-  readonly fields: readonly string[];
-}
-
-const staticMemberName = (member: TSESTree.MemberExpression): string | null => {
-  if (member.property.type === AST_NODE_TYPES.PrivateIdentifier)
-    return `#${member.property.name}`;
-  return ASTUtils.getPropertyName(member);
-};
-
-const detachedValueExports = (
-  program: TSESTree.Program,
-): ReadonlySet<string> => {
-  const names = new Set<string>();
-  for (const statement of program.body) {
-    if (
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      statement.declaration === null &&
-      statement.source === null &&
-      statement.exportKind !== "type"
-    ) {
-      for (const specifier of statement.specifiers) {
-        if (specifier.exportKind !== "type") names.add(specifier.local.name);
-      }
-    } else if (
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-      statement.declaration.type === AST_NODE_TYPES.Identifier
-    ) {
-      names.add(statement.declaration.name);
-    } else if (
-      statement.type === AST_NODE_TYPES.TSExportAssignment &&
-      statement.expression.type === AST_NODE_TYPES.Identifier
-    ) {
-      names.add(statement.expression.name);
-    }
-  }
-  return names;
-};
-
-const isExportedClass = (
-  node: TSESTree.ClassDeclaration,
-  detached: ReadonlySet<string>,
-): boolean =>
-  node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-  node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
-  (node.id !== null && detached.has(node.id.name));
-
-export const createExportedServiceClassResolver = (
-  program: TSESTree.Program,
-): ((node: TSESTree.ClassDeclaration) => boolean) => {
-  const detached = detachedValueExports(program);
-  return (node): boolean => isExportedClass(node, detached);
-};
-
-/** The rightmost segment plus the full spelling of a bare type reference, or null for anything else. */
-const readTypeReference = (
-  annotation: TSESTree.TypeNode | undefined,
-): { readonly typeName: string; readonly display: string } | null => {
-  if (annotation?.type === AST_NODE_TYPES.TSUnionType) {
-    const members = annotation.types.filter(
-      (member) =>
-        member.type !== AST_NODE_TYPES.TSUndefinedKeyword &&
-        member.type !== AST_NODE_TYPES.TSNullKeyword,
-    );
-    annotation = members.length === 1 ? members[0] : undefined;
-  }
-  if (
-    annotation === undefined ||
-    annotation.type !== AST_NODE_TYPES.TSTypeReference
-  )
-    return null;
-  const { typeName } = annotation;
-  const rightmost =
-    typeName.type === AST_NODE_TYPES.Identifier
-      ? typeName.name
-      : typeName.type === AST_NODE_TYPES.TSQualifiedName
-        ? typeName.right.name
-        : null;
-  if (rightmost === null) return null;
-  return { typeName: rightmost, display: qualifiedName(typeName) };
-};
-
-/** `catalog.Client` -> `"catalog.Client"`; a nested qualifier is flattened the same way. */
-const qualifiedName = (name: TSESTree.EntityName): string =>
-  name.type === AST_NODE_TYPES.Identifier
-    ? name.name
-    : name.type === AST_NODE_TYPES.TSQualifiedName
-      ? `${qualifiedName(name.left)}.${name.right.name}`
-      : "";
-
-/** Property signatures of a `{ a: A; b: B }` body, keyed by property name. */
-const propertySignatureTypes = (
-  members: readonly TSESTree.TypeElement[],
-): Map<string, TypeReference> => {
-  const types = new Map<string, TypeReference>();
-  for (const member of members) {
-    if (member.type !== AST_NODE_TYPES.TSPropertySignature) continue;
-    if (member.computed || member.key.type !== AST_NODE_TYPES.Identifier)
-      continue;
-    const reference = readTypeReference(member.typeAnnotation?.typeAnnotation);
-    if (reference === null) continue;
-    types.set(member.key.name, reference);
-  }
-  return types;
-};
-
-type TypeReference = { readonly typeName: string; readonly display: string };
-type MemberTypes = ReadonlyMap<string, TypeReference>;
-
-const fileTypeIndex = (program: TSESTree.Program): FileTypeIndex => {
-  const objects = new Map<string, MemberTypes>();
-  const functionAliases = localFunctionAliases(program);
-  function collectDeclaredType(statement: TSESTree.ProgramStatement): void {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-        ? statement.declaration
-        : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
-      objects.set(
-        declaration.id.name,
-        propertySignatureTypes(declaration.body.body),
-      );
-      return;
-    }
-    if (declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) return;
-    const aliased = declaration.typeAnnotation;
-    // `type Deps = { … }` and `type Deps = Base & { … }` both resolve; the
-    // intersection form is how a bag is usually extended.
-    const literals =
-      aliased.type === AST_NODE_TYPES.TSTypeLiteral
-        ? [aliased]
-        : aliased.type === AST_NODE_TYPES.TSIntersectionType
-          ? aliased.types.filter(
-              (part) => part.type === AST_NODE_TYPES.TSTypeLiteral,
-            )
-          : [];
-    if (literals.length === 0) return;
-    const merged = new Map<string, TypeReference>();
-    for (const literal of literals) {
-      for (const [name, reference] of propertySignatureTypes(literal.members)) {
-        merged.set(name, reference);
-      }
-    }
-    objects.set(declaration.id.name, merged);
-  }
-
-  for (const statement of program.body) {
-    collectDeclaredType(statement);
-  }
-  return { objects, functionAliases };
-};
-
-/** Direct callable aliases and local aliases to them share the same capability. */
-function localFunctionAliases(program: TSESTree.Program): ReadonlySet<string> {
-  const names = new Set<string>();
-  const parents = new Map<string, string>();
-  for (const statement of program.body) {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-        ? statement.declaration
-        : statement;
-    if (declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) continue;
-    const annotation = declaration.typeAnnotation;
-    if (
-      annotation.type === AST_NODE_TYPES.TSFunctionType ||
-      annotation.type === AST_NODE_TYPES.TSConstructorType
-    )
-      names.add(declaration.id.name);
-    if (
-      annotation.type === AST_NODE_TYPES.TSTypeReference &&
-      annotation.typeName.type === AST_NODE_TYPES.Identifier
-    )
-      parents.set(declaration.id.name, annotation.typeName.name);
-  }
-  for (let pass = 0; pass < parents.size; pass += 1) {
-    let changed = false;
-    for (const [name, parent] of parents) {
-      if (names.has(parent) && !names.has(name)) {
-        names.add(name);
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  return names;
-}
-
-/** Locally declared object shapes and function aliases used to resolve constructor bags. */
-interface FileTypeIndex {
-  /** `interface Deps { … }` / `type Deps = { … }`, by name. */
-  readonly objects: ReadonlyMap<string, MemberTypes>;
-  /** `type Replayer = (e: Event) => void` — a callback with a nominal name. */
-  readonly functionAliases: ReadonlySet<string>;
-}
-
-/** Names bound by `class Foo<T>` / `constructor<T>()` — placeholders, not implementations. */
-const typeParameterNames = (
-  ...declarations: readonly (TSESTree.TSTypeParameterDeclaration | undefined)[]
-): ReadonlySet<string> => {
-  const names = new Set<string>();
-  for (const declaration of declarations) {
-    for (const parameter of declaration?.params ?? [])
-      names.add(parameter.name.name);
-  }
-  return names;
-};
-
-const readConstructor = (
-  ctor: TSESTree.MethodDefinition,
-  declared: () => FileTypeIndex,
-  typeParameters: ReadonlySet<string>,
-): ConstructorFacts => {
-  const body = ctor.value.body;
-  const storedFieldsFrom = new Map<string, Set<string>>();
-  const storedMemberFieldsFrom = new Map<string, Map<string, Set<string>>>();
-  const constructedFieldNames = new Set<string>();
-  const writtenFieldNames = new Set<string>();
-  const unstableFieldNames = new Set<string>();
-  const localBindings = new Set<string>();
-  let constructedFields = 0;
-
-  if (body !== null && body !== undefined) scanStoredFields(body);
-
-  function scanStoredFields(body: TSESTree.BlockStatement): void {
-    const pending: TSESTree.Node[] = [...body.body];
-    function recordStoredField(current: TSESTree.Node): void {
-      if (
-        current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-        current.type === AST_NODE_TYPES.FunctionExpression ||
-        current.type === AST_NODE_TYPES.FunctionDeclaration ||
-        current.type === AST_NODE_TYPES.ClassExpression ||
-        current.type === AST_NODE_TYPES.ClassDeclaration
-      )
-        return;
-      if (
-        current.type === AST_NODE_TYPES.VariableDeclarator &&
-        current.id.type === AST_NODE_TYPES.Identifier
-      )
-        localBindings.add(current.id.name);
-      const expression =
-        current.type === AST_NODE_TYPES.AssignmentExpression ? current : null;
-      const storedField = writtenInstanceField(current);
-      if (storedField !== null) {
-        if (writtenFieldNames.has(storedField))
-          unstableFieldNames.add(storedField);
-        writtenFieldNames.add(storedField);
-        if (
-          expression?.operator !== "=" ||
-          expression.parent.type !== AST_NODE_TYPES.ExpressionStatement ||
-          expression.parent.parent !== body
-        )
-          unstableFieldNames.add(storedField);
-      }
-      if (
-        expression?.type !== AST_NODE_TYPES.AssignmentExpression ||
-        !STORAGE_ASSIGNMENT_OPERATORS.has(expression.operator) ||
-        expression.left.type !== AST_NODE_TYPES.MemberExpression ||
-        expression.left.object.type !== AST_NODE_TYPES.ThisExpression ||
-        storedField === null
-      ) {
-        enqueueChildren(current);
-        return;
-      }
-      const source = unwrapExpression(expression.right);
-      if (source.type === AST_NODE_TYPES.NewExpression) {
-        constructedFields += 1;
-        constructedFieldNames.add(storedField);
-      } else if (source.type === AST_NODE_TYPES.Identifier) {
-        // `this.svc = svc`
-        const fields = storedFieldsFrom.get(source.name) ?? new Set<string>();
-        fields.add(storedField);
-        storedFieldsFrom.set(source.name, fields);
-      } else if (
-        source.type === AST_NODE_TYPES.MemberExpression &&
-        source.object.type === AST_NODE_TYPES.Identifier
-      ) {
-        // `this.slack = deps.slack` — a dependency bag spread onto fields.
-        const fields =
-          storedFieldsFrom.get(source.object.name) ?? new Set<string>();
-        fields.add(storedField);
-        storedFieldsFrom.set(source.object.name, fields);
-        const member = staticMemberName(source);
-        if (member !== null) {
-          const members =
-            storedMemberFieldsFrom.get(source.object.name) ??
-            new Map<string, Set<string>>();
-          const memberFields = members.get(member) ?? new Set<string>();
-          memberFields.add(storedField);
-          members.set(member, memberFields);
-          storedMemberFieldsFrom.set(source.object.name, members);
-        }
-      }
-      enqueueChildren(current);
-    }
-
-    function enqueueChildren(current: TSESTree.Node): void {
-      forEachOwnAstChild(current, (child) => {
-        pending.push(child);
-      });
-    }
-
-    while (pending.length > 0) {
-      const current = pending.pop();
-      if (current === undefined) break;
-      recordStoredField(current);
-    }
-  }
-
-  const collaborators: Collaborator[] = [];
-  function collectCollaborators(parameter: TSESTree.Parameter): void {
-    for (const reference of parameterCollaborators(
-      parameter,
-      declared,
-      storedMemberFieldsFrom,
-    )) {
-      if (localBindings.has(reference.name)) continue;
-      let fields = reference.fields;
-      if (parameter.type === AST_NODE_TYPES.TSParameterProperty) {
-        if (writtenFieldNames.has(reference.name)) continue;
-        fields = [reference.name];
-      } else if (fields.length === 0)
-        fields = [...(storedFieldsFrom.get(reference.name) ?? [])];
-      const injectedFields = fields.filter(
-        (field) =>
-          !constructedFieldNames.has(field) && !unstableFieldNames.has(field),
-      );
-      if (injectedFields.length === 0) continue;
-      if (CONFIGISH_TYPE_RE.test(reference.typeName)) continue;
-      if (CONFIGISH_NAME_RE.test(reference.name)) continue;
-      // A bare type reference can still be one of three things a port would
-      // protect nothing about, each of them the inline shape this rule already
-      // rejects wearing a nominal name.
-      if (
-        typeParameters.has(reference.typeName) ||
-        BUILTIN_CONTAINER_TYPE_RE.test(reference.typeName) ||
-        VALUE_TYPE_RE.test(reference.typeName) ||
-        declared().functionAliases.has(reference.typeName)
-      )
-        continue;
-      collaborators.push({ ...reference, fields: injectedFields });
-    }
-  }
-
-  for (const parameter of ctor.value.params) {
-    collectCollaborators(parameter);
-  }
-
-  return { collaborators, constructedFields };
-};
-
-/** Every collaborator a single constructor parameter contributes: 0, 1, or (destructured) many. */
-const parameterCollaborators = (
-  parameter: TSESTree.Parameter,
-  declared: () => FileTypeIndex,
-  storedMemberFieldsFrom: ReadonlyMap<
-    string,
-    ReadonlyMap<string, ReadonlySet<string>>
-  >,
-): readonly Collaborator[] => {
-  let target: TSESTree.Node = parameter;
-  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
-  if (target.type === AST_NODE_TYPES.ObjectPattern) {
-    return objectPatternCollaborators(target, declared);
-  }
-  const named = namedParameterCollaborator(parameter);
-  if (
-    named !== null &&
-    !CONFIGISH_NAME_RE.test(named.name) &&
-    !CONFIGISH_TYPE_RE.test(named.typeName)
-  )
-    return [named];
-  return namedBagCollaborators(parameter, declared, storedMemberFieldsFrom);
-};
-
-/** Resolve `this.repo = options.repo` without treating the whole options bag as a service. */
-const namedBagCollaborators = (
-  annotated: TSESTree.Parameter,
-  declared: () => FileTypeIndex,
-  storedMemberFieldsFrom: ReadonlyMap<
-    string,
-    ReadonlyMap<string, ReadonlySet<string>>
-  >,
-): Collaborator[] => {
-  let target: TSESTree.Node = annotated;
-  if (target.type === AST_NODE_TYPES.TSParameterProperty)
-    target = target.parameter;
-  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
-  if (target.type !== AST_NODE_TYPES.Identifier) return [];
-  const members = bagMemberTypes(
-    target.typeAnnotation?.typeAnnotation,
-    declared,
+/** The collaborators and uncovered public surface of an exported service, or null when the advisory does not apply. */
+function servicePortGap(
+  node: ClassNode,
+  className: string,
+  file: ServiceFile,
+  sourceCode: SourceCode,
+): { readonly collaborators: readonly Collaborator[]; readonly methods: readonly string[] } | null {
+  const facts = constructorFacts(node, file);
+  if (facts === null) return null;
+  const invoked = behaviorallyInvokedFields(node.body);
+  const collaborators = facts.collaborators.filter((collaborator) =>
+    collaborator.fields.some((field) => invoked.has(field)),
   );
-  if (members === null) return [];
-  const storedMembers = storedMemberFieldsFrom.get(target.name);
-  if (storedMembers === undefined) return [];
-
-  const collaborators: Collaborator[] = [];
-  for (const [name, fields] of storedMembers) {
-    if (CONFIGISH_NAME_RE.test(name)) continue;
-    const reference = members.get(name);
-    if (reference === undefined) continue;
-    collaborators.push({ name, ...reference, fields: [...fields] });
-  }
-  return collaborators;
-};
-
-const namedParameterCollaborator = (
-  annotated: TSESTree.Parameter,
-): Collaborator | null => {
-  let target: TSESTree.Node = annotated;
-  if (target.type === AST_NODE_TYPES.TSParameterProperty)
-    target = target.parameter;
-  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
-  if (target.type !== AST_NODE_TYPES.Identifier) return null;
-  const reference = readTypeReference(target.typeAnnotation?.typeAnnotation);
-  if (reference === null) return null;
-  return { name: target.name, ...reference, fields: [] };
-};
-
-interface ConstructorFacts {
-  /** Parameters assigned to an instance field, either as a parameter property or in the body. */
-  readonly collaborators: readonly Collaborator[];
-  /** How many instance fields the constructor fills with a `new` expression. */
-  readonly constructedFields: number;
+  if (collaborators.length === 0 || facts.constructedFields > collaborators.length) return null;
+  // HTTP wiring: a router factory is mounted by the bootstrap, not injected.
+  if (isFrameworkWiring(node.body)) return null;
+  // A lone third-party transport is not a seam a port could protect.
+  if (isTransportWrapper(className, collaborators, sourceCode.ast)) return null;
+  if (isFluentConstructionObject(node, sourceCode)) return null;
+  const methods = publicMethodNames(node.body, file.functionAliases);
+  if (methods.length === 0 || hasServicePort(node, methods, file)) return null;
+  return { collaborators, methods };
 }
-
-/** Resolve separately stored collaborators from a locally typed constructor bag. */
-const objectPatternCollaborators = (
-  pattern: TSESTree.ObjectPattern,
-  declared: () => FileTypeIndex,
-): Collaborator[] => {
-  const annotation = pattern.typeAnnotation?.typeAnnotation;
-  if (annotation === undefined) return [];
-  const members = bagMemberTypes(annotation, declared);
-  if (members === null) return [];
-
-  const collaborators: Collaborator[] = [];
-  for (const property of pattern.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed)
-      continue;
-    if (property.key.type !== AST_NODE_TYPES.Identifier) continue;
-    const key = property.key.name;
-    const bound =
-      property.value.type === AST_NODE_TYPES.AssignmentPattern
-        ? property.value.left
-        : property.value;
-    if (bound.type !== AST_NODE_TYPES.Identifier) continue;
-    // A renamed binding (`{ repo: userRepo }`) offers two names; either one
-    // reading as config-ish is enough to drop it, on the same reasoning that
-    // drops a config-ish parameter name.
-    if (CONFIGISH_NAME_RE.test(key)) continue;
-    const reference = members.get(key);
-    if (reference === undefined) continue;
-    collaborators.push({ name: bound.name, ...reference, fields: [] });
-  }
-  return collaborators;
-};
-
-/**
- * Member types of an options-object parameter's annotation: the annotation's own
- * body when it is written inline, otherwise the declaration it names, resolved
- * in this file only.
- */
-const bagMemberTypes = (
-  annotation: TSESTree.TypeNode | undefined,
-  declared: () => FileTypeIndex,
-): MemberTypes | null => {
-  if (annotation === undefined) return null;
-  if (annotation.type === AST_NODE_TYPES.TSTypeLiteral) {
-    return propertySignatureTypes(annotation.members);
-  }
-  // A qualified `catalog.Deps` names another module by construction.
-  if (
-    annotation.type !== AST_NODE_TYPES.TSTypeReference ||
-    annotation.typeName.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return null;
-  }
-  return declared().objects.get(annotation.typeName.name) ?? null;
-};
 
 /** Framework router wiring is mounted at bootstrap rather than injected into consumers. */
-const isFrameworkWiring = (body: TSESTree.ClassBody): boolean =>
-  subtreeHas(body, (node) => {
-    if (node.type === AST_NODE_TYPES.CallExpression) {
+function isFrameworkWiring(body: ESTree.ClassBody): boolean {
+  return subtreeHas(body, (node) => {
+    if (node.type === "CallExpression") {
       const { callee } = node;
-      if (callee.type === AST_NODE_TYPES.Identifier)
-        return callee.name === ROUTER_FACTORY_NAME;
+      if (callee.type === "Identifier") return callee.name === ROUTER_FACTORY_NAME;
       return (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
+        callee.type === "MemberExpression" &&
         !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier &&
+        callee.property.type === "Identifier" &&
         callee.property.name === ROUTER_FACTORY_NAME
       );
     }
     // `express.Request` — qualified on purpose, so the DOM `Request`/`Response`
     // globals a Workers `fetch` handler names do not read as express wiring.
     return (
-      node.type === AST_NODE_TYPES.TSTypeReference &&
-      node.typeName.type === AST_NODE_TYPES.TSQualifiedName &&
+      node.type === "TSTypeReference" &&
+      node.typeName.type === "TSQualifiedName" &&
       FRAMEWORK_HTTP_TYPES.has(node.typeName.right.name)
     );
   });
-
-/** Walk every descendant node, `parent` links excluded, until `found` returns true. */
-const subtreeHas = (
-  root: TSESTree.Node,
-  found: (node: TSESTree.Node) => boolean,
-): boolean => {
-  let hit = false;
-  const visit = (current: TSESTree.Node): void => {
-    if (hit) return;
-    if (found(current)) {
-      hit = true;
-      return;
-    }
-    forEachOwnAstChild(current, (child) => {
-      visit(child);
-      return hit;
-    });
-  };
-  visit(root);
-  return hit;
-};
-
-const invokedInstanceField = (call: TSESTree.CallExpression): string | null => {
-  let callee: TSESTree.Node = unwrapExpression(call.callee);
-  while (callee.type === AST_NODE_TYPES.ChainExpression)
-    callee = unwrapExpression(callee.expression);
-  const direct = instanceField(callee);
-  if (direct !== null) return direct;
-  return callee.type === AST_NODE_TYPES.MemberExpression
-    ? instanceField(unwrapExpression(callee.object))
-    : null;
-};
-
-const instanceField = (candidate: TSESTree.Node): string | null => {
-  let node = candidate;
-  while (
-    node.type === AST_NODE_TYPES.ChainExpression ||
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
-  )
-    node = node.expression;
-  return node.type === AST_NODE_TYPES.MemberExpression &&
-    node.object.type === AST_NODE_TYPES.ThisExpression
-    ? staticMemberName(node)
-    : null;
-};
-
-/** Direct instance-field writes shared by constructor retention and operation identity. */
-function writtenInstanceField(node: TSESTree.Node): string | null {
-  if (
-    node.type === AST_NODE_TYPES.AssignmentExpression ||
-    node.type === AST_NODE_TYPES.ForOfStatement ||
-    node.type === AST_NODE_TYPES.ForInStatement
-  )
-    return instanceField(node.left);
-  if (node.type === AST_NODE_TYPES.UpdateExpression)
-    return instanceField(node.argument);
-  if (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
-    node.operator === "delete"
-  )
-    return instanceField(node.argument);
-  if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    isDestructuredWriteTarget(node)
-  )
-    return instanceField(node);
-  return null;
 }
 
-/** Pattern values are writes only when their enclosing pattern is an assignment or loop target. */
-function isDestructuredWriteTarget(node: TSESTree.MemberExpression): boolean {
-  const access = outerExpression(node);
-  let target: TSESTree.Node = access;
-  for (;;) {
-    const parent: TSESTree.Node = target.parent;
-    if (
-      parent.type === AST_NODE_TYPES.Property &&
-      parent.value === target &&
-      parent.parent.type === AST_NODE_TYPES.ObjectPattern
-    ) {
-      target = parent.parent;
-      continue;
-    }
-    if (
-      parent.type === AST_NODE_TYPES.ArrayPattern ||
-      parent.type === AST_NODE_TYPES.ObjectPattern ||
-      (parent.type === AST_NODE_TYPES.RestElement &&
-        parent.argument === target) ||
-      (parent.type === AST_NODE_TYPES.AssignmentPattern &&
-        parent.left === target)
-    ) {
-      target = parent;
-      continue;
-    }
-    return (
-      target !== access &&
-      (parent.type === AST_NODE_TYPES.AssignmentExpression ||
-        parent.type === AST_NODE_TYPES.ForOfStatement ||
-        parent.type === AST_NODE_TYPES.ForInStatement) &&
-      parent.left === target
-    );
-  }
+/** Walk every descendant node, `parent` links excluded, until `found` returns true. */
+function subtreeHas(root: Node, found: (node: Node) => boolean): boolean {
+  return found(root) || forEachOwnAstChild(root, (child) => subtreeHas(child, found));
 }
 
 /** Instance fields whose retained object is called or receives a direct method call. */
-const behaviorallyInvokedFields = (
-  body: TSESTree.ClassBody,
-): ReadonlySet<string> => {
+function behaviorallyInvokedFields(body: ESTree.ClassBody): ReadonlySet<string> {
   const invoked = new Set<string>();
-  const visit = (current: TSESTree.Node): void => {
+  const visit = (current: Node): void => {
     if (
-      current.type === AST_NODE_TYPES.ClassDeclaration ||
-      current.type === AST_NODE_TYPES.ClassExpression ||
-      current.type === AST_NODE_TYPES.FunctionDeclaration ||
-      current.type === AST_NODE_TYPES.FunctionExpression
+      current.type === "ClassDeclaration" ||
+      current.type === "ClassExpression" ||
+      current.type === "FunctionDeclaration" ||
+      current.type === "FunctionExpression"
     )
       return;
-    if (current.type === AST_NODE_TYPES.CallExpression) {
+    if (current.type === "CallExpression") {
       const field = invokedInstanceField(current);
       if (field !== null) invoked.add(field);
     }
     forEachOwnAstChild(current, visit);
   };
   for (const member of body.body) {
-    if (member.type === AST_NODE_TYPES.StaticBlock || member.static) continue;
-    if (member.type === AST_NODE_TYPES.MethodDefinition) {
-      if (member.value.body !== null && member.value.body !== undefined)
-        visit(member.value.body);
+    if (member.type === "StaticBlock" || member.static) continue;
+    if (member.type === "MethodDefinition") {
+      if (member.value.body !== null) visit(member.value.body);
       continue;
     }
-    if (
-      member.type !== AST_NODE_TYPES.PropertyDefinition ||
-      member.value === null
-    )
-      continue;
-    visit(
-      member.value.type === AST_NODE_TYPES.ArrowFunctionExpression
-        ? member.value.body
-        : member.value,
-    );
+    if (member.type !== "PropertyDefinition" || member.value === null) continue;
+    visit(member.value.type === "ArrowFunctionExpression" ? member.value.body : member.value);
   }
   return invoked;
-};
+}
 
-const stem = (name: string): string =>
-  name.replace(/^I(?=[A-Z])/, "").replace(/Impl$/, "");
+function stem(name: string): string {
+  return name.replace(/^I(?=[A-Z])/, "").replace(/Impl$/, "");
+}
 
 /** Report whether the class is a thin wrapper over somebody else's HTTP transport. */
-const isTransportWrapper = (
-  className: string,
-  collaborators: readonly Collaborator[],
-  program: TSESTree.Program,
-): boolean => {
+function isTransportWrapper(className: string, collaborators: readonly Collaborator[], program: ESTree.Program): boolean {
   const [only] = collaborators;
   if (collaborators.length !== 1 || only === undefined) return false;
   if (!HTTP_TRANSPORT_TYPE_RE.test(only.typeName)) return false;
@@ -807,393 +140,57 @@ const isTransportWrapper = (
     const other = stem(name);
     return target.endsWith(other) || other.endsWith(target);
   });
-};
+}
 
 /** Interface declarations at the top level of this module, exported or not. */
-const fileInterfaceNames = (program: TSESTree.Program): string[] => {
+function fileInterfaceNames(program: ESTree.Program): string[] {
   const names: string[] = [];
   for (const statement of program.body) {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-        ? statement.declaration
-        : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration)
-      names.push(declaration.id.name);
+    const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    if (declaration?.type === "TSInterfaceDeclaration") names.push(declaration.id.name);
   }
   return names;
-};
+}
 
-const publicMethodNames = (
-  body: TSESTree.ClassBody,
-  functionAliases: ReadonlySet<string>,
-): string[] => {
-  const names: string[] = [];
-  function collectPublicCallable(member: TSESTree.ClassElement): void {
-    if (member.type === AST_NODE_TYPES.PropertyDefinition) {
-      if (
-        member.static ||
-        member.accessibility === "private" ||
-        member.accessibility === "protected"
-      )
-        return;
-      // ECMAScript #private fields have no TypeScript accessibility modifier.
-      // A function-valued #field is still implementation detail and must not
-      // become the synthetic public surface member `…`.
-      if (member.key.type === AST_NODE_TYPES.PrivateIdentifier) return;
-      if (
-        member.value?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-        member.value?.type !== AST_NODE_TYPES.FunctionExpression &&
-        member.typeAnnotation?.typeAnnotation.type !==
-          AST_NODE_TYPES.TSFunctionType &&
-        !(
-          member.typeAnnotation?.typeAnnotation.type ===
-            AST_NODE_TYPES.TSTypeReference &&
-          member.typeAnnotation.typeAnnotation.typeName.type ===
-            AST_NODE_TYPES.Identifier &&
-          functionAliases.has(
-            member.typeAnnotation.typeAnnotation.typeName.name,
-          )
-        )
-      )
-        return;
-      names.push(declaredMemberName(member) ?? "…");
-      return;
-    }
-    if (member.type !== AST_NODE_TYPES.MethodDefinition) return;
-    if (member.kind !== "method" || member.static) return;
-    if (
-      member.accessibility === "private" ||
-      member.accessibility === "protected"
-    )
-      return;
-    if (member.key.type === AST_NODE_TYPES.PrivateIdentifier) return;
-    names.push(declaredMemberName(member) ?? "…");
-  }
-
-  for (const member of body.body) {
-    collectPublicCallable(member);
-  }
-  return names;
-};
-
-const isFluentConstructionObject = (
-  node: TSESTree.ClassDeclaration,
-  getText: (node: TSESTree.Node) => string,
-): boolean => {
+function isFluentConstructionObject(node: ClassNode, sourceCode: SourceCode): boolean {
   if (node.id === null) return false;
-  const methods = node.body.body.filter(member => member.type === AST_NODE_TYPES.MethodDefinition).filter(
-    (member) =>
+  const className = node.id.name;
+  const methods = node.body.body.flatMap((member) =>
+    member.type === "MethodDefinition" &&
       member.kind === "method" &&
       !member.static &&
-      member.accessibility !== "private" &&
-      member.accessibility !== "protected" &&
-      member.value.body !== null,
-  );
+      !isPrivateOrProtected(member) &&
+      member.value.body !== null
+      ? [member]
+      : []);
   if (methods.length === 0) return false;
   return methods.every((member) => {
     const result = member.value.returnType?.typeAnnotation;
     if (result === undefined) return false;
     const returnsOwnType =
-      result.type === AST_NODE_TYPES.TSTypeReference &&
-      result.typeName.type === AST_NODE_TYPES.Identifier &&
-      result.typeName.name === node.id?.name;
-    return (
-      returnsOwnType ||
-      (FLUENT_BUILDER_NAME_RE.test(node.id?.name ?? "") &&
-        FLUENT_RESULT_TYPE_RE.test(getText(result)))
-    );
+      result.type === "TSTypeReference" && result.typeName.type === "Identifier" && result.typeName.name === className;
+    return returnsOwnType || (FLUENT_BUILDER_NAME_RE.test(className) && FLUENT_RESULT_TYPE_RE.test(sourceCode.getText(result)));
   });
-};
-
-function localClassAbstractness(
-  program: TSESTree.Program,
-): ReadonlyMap<string, boolean> {
-  const classes = new Map<string, boolean>();
-  const parents = new Map<string, string>();
-  for (const statement of program.body) {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration
-        ? statement.declaration
-        : statement;
-    if (
-      declaration?.type === AST_NODE_TYPES.ClassDeclaration &&
-      declaration.id !== null
-    ) {
-      classes.set(declaration.id.name, declaration.abstract === true);
-      if (declaration.superClass?.type === AST_NODE_TYPES.Identifier) {
-        parents.set(declaration.id.name, declaration.superClass.name);
-      }
-    }
-  }
-  for (let pass = 0; pass < classes.size; pass += 1) {
-    let changed = false;
-    for (const [name, parent] of parents) {
-      if (classes.get(name) !== true && classes.get(parent) === true) {
-        classes.set(name, true);
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  return classes;
 }
 
-function declaredMemberName(member: {
-  key: TSESTree.Node;
-  computed: boolean;
-}): string | null {
-  if (!member.computed && member.key.type === AST_NODE_TYPES.Identifier)
-    return member.key.name;
-  if (
-    member.key.type === AST_NODE_TYPES.Literal &&
-    typeof member.key.value === "string"
-  )
-    return member.key.value;
-  return null;
-}
-
-function localInterfaceSurfaces(
-  program: TSESTree.Program,
-): ReadonlyMap<string, ReadonlySet<string>> {
-  const interfaces = new Map<string, Set<string>>();
-  const parents = new Map<string, string[]>();
-  const functionAliases = localFunctionAliases(program);
-  function collectInterfaceSurface(statement: TSESTree.ProgramStatement): void {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-        ? statement.declaration
-        : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
-      const callables =
-        interfaces.get(declaration.id.name) ?? new Set<string>();
-      const parts =
-        declaration.typeAnnotation.type === AST_NODE_TYPES.TSIntersectionType
-          ? declaration.typeAnnotation.types
-          : [declaration.typeAnnotation];
-      const inherited = parents.get(declaration.id.name) ?? [];
-      for (const part of parts) {
-        if (
-          part.type === AST_NODE_TYPES.TSTypeReference &&
-          part.typeName.type === AST_NODE_TYPES.Identifier
-        ) {
-          inherited.push(part.typeName.name);
-          continue;
-        }
-        if (part.type === AST_NODE_TYPES.TSTypeReference) {
-          inherited.push("*");
-          continue;
-        }
-        if (part.type !== AST_NODE_TYPES.TSTypeLiteral) continue;
-        addCallableMembers(part.members, callables);
-      }
-      interfaces.set(declaration.id.name, callables);
-      parents.set(declaration.id.name, inherited);
-      return;
-    }
-    if (declaration?.type !== AST_NODE_TYPES.TSInterfaceDeclaration) return;
-    const callables = interfaces.get(declaration.id.name) ?? new Set<string>();
-    addCallableMembers(declaration.body.body, callables);
-    interfaces.set(declaration.id.name, callables);
-    parents.set(declaration.id.name, [
-      ...(parents.get(declaration.id.name) ?? []),
-      ...declaration.extends.flatMap((heritage) =>
-        heritage.expression.type === AST_NODE_TYPES.Identifier
-          ? [heritage.expression.name]
-          : ["*"],
-      ),
-    ]);
-  }
-
-  for (const statement of program.body) {
-    collectInterfaceSurface(statement);
-  }
-  function addCallableMembers(
-    members: readonly TSESTree.TypeElement[],
-    callables: Set<string>,
-  ): void {
-    for (const member of members) {
-      if (
-        member.type !== AST_NODE_TYPES.TSMethodSignature &&
-        member.type !== AST_NODE_TYPES.TSPropertySignature
-      )
-        continue;
-      const name = declaredMemberName(member);
-      if (name === null) continue;
-      if (member.type === AST_NODE_TYPES.TSMethodSignature) {
-        callables.add(name);
-        continue;
-      }
-      if (member.type !== AST_NODE_TYPES.TSPropertySignature) continue;
-      const annotation = member.typeAnnotation?.typeAnnotation;
-      if (
-        annotation?.type === AST_NODE_TYPES.TSFunctionType ||
-        (annotation?.type === AST_NODE_TYPES.TSTypeReference &&
-          annotation.typeName.type === AST_NODE_TYPES.Identifier &&
-          functionAliases.has(annotation.typeName.name))
-      )
-        callables.add(name);
-    }
-  }
-
-  function expandInheritedSurfaces(): boolean {
-    let changed = false;
-    for (const [name, inherited] of parents) {
-      const surface = interfaces.get(name);
-      if (surface === undefined) continue;
-      for (const parent of inherited) {
-        const parentSurface = interfaces.get(parent);
-        const additions = parentSurface ?? new Set(["*"]);
-        for (const method of additions) {
-          if (!surface.has(method)) {
-            surface.add(method);
-            changed = true;
-          }
-        }
-      }
-    }
-    return changed;
-  }
-
-  for (let pass = 0; pass <= interfaces.size; pass += 1) {
-    const changed = expandInheritedSurfaces();
-    if (!changed) break;
-  }
-  return interfaces;
-}
-
-function hasServicePort(
-  node: TSESTree.ClassDeclaration,
-  methods: readonly string[],
-  classes: ReadonlyMap<string, boolean>,
-  interfaces: ReadonlyMap<string, ReadonlySet<string>>,
-): boolean {
+function hasServicePort(node: ClassNode, methods: readonly string[], file: ServiceFile): boolean {
   if (node.superClass !== null) {
-    if (node.superClass.type !== AST_NODE_TYPES.Identifier) return true;
-    const localAbstract = classes.get(node.superClass.name);
+    if (node.superClass.type !== "Identifier") return true;
+    const localAbstract = localAbstractness(node.superClass.name, file.classes);
     if (localAbstract === undefined || localAbstract) return true;
   }
-  if (node.implements.length === 0) return false;
-  return implementedSurfaceCovers(node, methods, classes, interfaces);
+  if (implementsOf(node).length === 0) return false;
+  return implementedSurfaceCovers(node, methods, file);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "require-port-for-service",
-  documentation: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION,
-  meta: {
-    type: "suggestion",
-    docs: {
-      description:
-        "Advise when an exported service with injected collaborators has public methods not covered by its declared ports.",
-    },
-    schema: [],
-    fixable: "code",
-    messages: {
-      requireInterface:
-        "`{{name}}` stores injected collaborator(s) ({{deps}}), and its declared ports do not cover its public callable surface ({{methods}}). Where consumers need substitution, type them against one or more focused interfaces; do not create one broad interface solely to satisfy this advisory.",
-    },
-  },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context) || isStoryFile(context) || isScriptFile(context))
-      return {};
-    if (isGeneratedFile(context, context.sourceCode.getText())) return {};
-
-    // One pass over the module's top level, and only for a file that actually
-    // has an options-object constructor to read.
-    let declaredTypes: FileTypeIndex | null = null;
-    const detachedExports = detachedValueExports(context.sourceCode.ast);
-    const localClasses = localClassAbstractness(context.sourceCode.ast);
-    const localInterfaces = localInterfaceSurfaces(context.sourceCode.ast);
-    const objectTypes = (): FileTypeIndex =>
-      (declaredTypes ??= fileTypeIndex(context.sourceCode.ast));
-    return {
-      ClassDeclaration(node: TSESTree.ClassDeclaration): void {
-        if (node.id === null) return;
-        if (!isExportedClass(node, detachedExports)) return;
-        if (ERROR_VALUE_NAME_RE.test(node.id.name)) return;
-        // The port itself must never fire.
-        if (node.abstract === true) return;
-        if (node.decorators.length > 0) return;
-
-        const ctor = node.body.body.find(
-          (member) =>
-            member.type === AST_NODE_TYPES.MethodDefinition &&
-            member.kind === "constructor" &&
-            member.value.body !== null &&
-            member.value.body !== undefined,
-        );
-        if (ctor?.type !== AST_NODE_TYPES.MethodDefinition) return;
-
-        const constructorFacts = readConstructor(
-          ctor,
-          objectTypes,
-          typeParameterNames(node.typeParameters, ctor.value.typeParameters),
-        );
-        const invoked = behaviorallyInvokedFields(node.body);
-        const collaborators = constructorFacts.collaborators.filter(
-          (collaborator) =>
-            collaborator.fields.some((field) => invoked.has(field)),
-        );
-        if (collaborators.length === 0) return;
-        if (constructorFacts.constructedFields > collaborators.length) return;
-        // HTTP wiring: a router factory is mounted by the bootstrap, not injected.
-        if (isFrameworkWiring(node.body)) return;
-        // A lone third-party transport is not a seam a port could protect.
-        if (
-          isTransportWrapper(
-            node.id.name,
-            collaborators,
-            context.sourceCode.ast,
-          )
-        )
-          return;
-        if (
-          isFluentConstructionObject(node, (result) =>
-            context.sourceCode.getText(result),
-          )
-        )
-          return;
-
-        const methods = publicMethodNames(
-          node.body,
-          objectTypes().functionAliases,
-        );
-        if (methods.length === 0) return;
-        if (hasServicePort(node, methods, localClasses, localInterfaces))
-          return;
-
-        context.report({
-          node: node.id,
-          messageId: "requireInterface",
-          data: {
-            name: node.id.name,
-            deps: collaborators
-              .map((c) => `${c.name}: ${c.display}`)
-              .join(", "),
-            methods: methods.join(", "),
-          },
-          fix: existingFactoryContractFix(context.sourceCode, node),
-        });
-      },
-    };
-  },
-});
-
-function implementedSurfaceCovers(
-  node: TSESTree.ClassDeclaration,
-  methods: readonly string[],
-  classes: ReadonlyMap<string, boolean>,
-  interfaces: ReadonlyMap<string, ReadonlySet<string>>,
-): boolean {
+function implementedSurfaceCovers(node: ClassNode, methods: readonly string[], file: ServiceFile): boolean {
   const combined = new Set<string>();
-  for (const implementation of node.implements) {
-    if (implementation.expression.type !== AST_NODE_TYPES.Identifier)
-      return true;
+  for (const implementation of implementsOf(node)) {
+    if (implementation.expression.type !== "Identifier") return true;
     const name = implementation.expression.name;
-    const localAbstract = classes.get(name);
+    const localAbstract = localAbstractness(name, file.classes);
     if (localAbstract === true) return true;
-    const surface = interfaces.get(name);
+    const surface = file.interfaces.get(name);
     if (surface === undefined && localAbstract === undefined) return true;
     if (surface === undefined) continue;
     if (surface.has("*")) return true;
@@ -1202,284 +199,64 @@ function implementedSurfaceCovers(
   return methods.every((method) => combined.has(method));
 }
 
-/** Shared, provenance-based evidence for the strict declared-contract rule. */
-export function createServiceOperationResolver(
-  program: TSESTree.Program,
-): (node: TSESTree.ClassDeclaration) => readonly string[] {
-  let declaredTypes: FileTypeIndex | null = null;
-  return (node): readonly string[] => {
-    const ctor = node.body.body.find(
-      (member) =>
-        member.type === AST_NODE_TYPES.MethodDefinition &&
-        member.kind === "constructor" &&
-        member.value.body !== null,
-    );
-    if (ctor?.type !== AST_NODE_TYPES.MethodDefinition) return [];
-    const declared = (): FileTypeIndex =>
-      (declaredTypes ??= fileTypeIndex(program));
-    const facts = readConstructor(
-      ctor,
-      declared,
-      typeParameterNames(node.typeParameters, ctor.value.typeParameters),
-    );
-    const retained = new Set(
-      facts.collaborators.flatMap((collaborator) => collaborator.fields),
-    );
-    if (retained.size === 0) return [];
-
-    const callers = new Map<string, Set<string>>();
-    const active = new Set<string>();
-    for (const [name, body] of serviceOperationBodies(node)) {
-      forEachServiceCall(body, (call) => {
-        if (retained.has(invokedInstanceField(call) ?? "")) active.add(name);
-        if (
-          call.callee.type === AST_NODE_TYPES.MemberExpression &&
-          call.callee.object.type === AST_NODE_TYPES.ThisExpression
-        ) {
-          const callee = staticMemberName(call.callee);
-          if (callee !== null) {
-            const linked = callers.get(callee) ?? new Set<string>();
-            linked.add(name);
-            callers.set(callee, linked);
-          }
-        }
-      });
-    }
-    const pending = [...active];
-    while (pending.length > 0) {
-      const callee = pending.pop();
-      if (callee === undefined) break;
-      for (const caller of callers.get(callee) ?? []) {
-        if (active.has(caller)) continue;
-        active.add(caller);
-        pending.push(caller);
-      }
-    }
-    return publicMethodNames(node.body, declared().functionAliases).filter(
-      (name) => active.has(name),
-    );
-  };
+/** Whether a top-level class is abstract, itself or through a local ancestor; undefined when it is not local. */
+function localAbstractness(name: string, classes: ReadonlyMap<string, ClassNode>): boolean | undefined {
+  let current = classes.get(name);
+  if (current === undefined) return undefined;
+  const seen = new Set<string>([name]);
+  for (;;) {
+    if (current.abstract === true) return true;
+    const parent: string | null = current.superClass?.type === "Identifier" ? current.superClass.name : null;
+    if (parent === null || seen.has(parent)) return false;
+    seen.add(parent);
+    current = classes.get(parent);
+    if (current === undefined) return false;
+  }
 }
 
-/** Method and function-property bodies, excluding static or rewritten operations. */
-function serviceOperationBodies(
-  node: TSESTree.ClassDeclaration,
-): ReadonlyMap<string, TSESTree.Node> {
-  const bodies = new Map<string, TSESTree.Node>();
-  const written = new Set<string>();
-  const pending: TSESTree.Node[] = [node.body];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (current === undefined) break;
-    const name = writtenInstanceField(current);
-    if (name !== null) written.add(name);
-    forEachOwnAstChild(current, (child) => {
-      pending.push(child);
-    });
-  }
-  for (const member of node.body.body) {
-    if (
-      member.type !== AST_NODE_TYPES.MethodDefinition &&
-      member.type !== AST_NODE_TYPES.PropertyDefinition
-    )
-      continue;
-    if (
-      member.static ||
-      member.decorators.length > 0 ||
-      (member.type === AST_NODE_TYPES.MethodDefinition &&
-        member.kind !== "method")
-    )
-      continue;
-    if (
-      member.value?.type !== AST_NODE_TYPES.FunctionExpression &&
-      member.value?.type !== AST_NODE_TYPES.ArrowFunctionExpression
-    )
-      continue;
-    const name = declaredMemberName(member);
-    if (name !== null && !written.has(name) && member.value.body !== null)
-      bodies.set(name, member.value.body);
-  }
-  return bodies;
-}
-
-/** Calls in the operation itself, without assuming nested callbacks execute. */
-function forEachServiceCall(
-  node: TSESTree.Node,
-  onCall: (call: TSESTree.CallExpression) => void,
-): void {
-  if (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    node.type === AST_NODE_TYPES.ClassDeclaration ||
-    node.type === AST_NODE_TYPES.ClassExpression
-  )
-    return;
-  if (node.type === AST_NODE_TYPES.BlockStatement) {
-    for (const statement of node.body) {
-      forEachServiceCall(statement, onCall);
-      if (terminatesOperation(statement)) break;
-    }
-    return;
-  }
-  const branch = literalExecutionBranch(node);
-  if (branch !== null) {
-    forEachServiceCall(branch, onCall);
-    return;
-  }
-  if (node.type === AST_NODE_TYPES.CallExpression) onCall(node);
-  forEachOwnAstChild(node, (child) => {
-    forEachServiceCall(child, onCall);
-  });
-}
-
-/** Boolean literals select a branch without guessing at arbitrary expressions. */
-function literalExecutionBranch(node: TSESTree.Node): TSESTree.Node | null {
-  if (
-    node.type === AST_NODE_TYPES.WhileStatement &&
-    node.test.type === AST_NODE_TYPES.Literal &&
-    node.test.value === false
-  )
-    return node.test;
-  if (
-    (node.type === AST_NODE_TYPES.IfStatement ||
-      node.type === AST_NODE_TYPES.ConditionalExpression) &&
-    node.test.type === AST_NODE_TYPES.Literal &&
-    typeof node.test.value === "boolean"
-  ) {
-    return node.test.value ? node.consequent : (node.alternate ?? node.test);
-  }
-  if (
-    node.type !== AST_NODE_TYPES.LogicalExpression ||
-    node.left.type !== AST_NODE_TYPES.Literal ||
-    typeof node.left.value !== "boolean"
-  )
-    return null;
-  if (node.operator === "&&") return node.left.value ? node.right : node.left;
-  if (node.operator === "||") return node.left.value ? node.left : node.right;
-  return node.left;
-}
-
-/** Only unconditional exits and selected literal branches stop the operation. */
-function terminatesOperation(node: TSESTree.Node): boolean {
-  if (
-    node.type === AST_NODE_TYPES.ReturnStatement ||
-    node.type === AST_NODE_TYPES.ThrowStatement
-  )
-    return true;
-  if (node.type === AST_NODE_TYPES.BlockStatement)
-    return node.body.some(terminatesOperation);
-  if (node.type !== AST_NODE_TYPES.IfStatement) return false;
-  const branch = literalExecutionBranch(node);
-  if (branch !== null) return terminatesOperation(branch);
-  return (
-    node.alternate !== null &&
-    terminatesOperation(node.consequent) &&
-    terminatesOperation(node.alternate)
-  );
-}
-
-/** `null` means a declared contract cannot be resolved by this syntax-only pass. */
-export function hasDeclaredServiceContract(
-  node: TSESTree.ClassDeclaration,
-  operations: readonly string[],
-  program: TSESTree.Program,
-): boolean | null {
-  const interfaces = localInterfaceSurfaces(program);
-  const classes = localClassDeclarations(program);
-  const functionAliases = fileTypeIndex(program).functionAliases;
-  const covered = new Set<string>();
-  const pending = [node];
-  const seen = new Set<TSESTree.ClassDeclaration>();
-
-  function addImplementedContracts(
-    current: TSESTree.ClassDeclaration,
-  ): boolean {
-    for (const implementation of current.implements) {
-      if (implementation.expression.type !== AST_NODE_TYPES.Identifier)
-        return false;
-      const name = implementation.expression.name;
-      const surface = interfaces.get(name);
-      const base = classes.get(name);
-      if (surface === undefined && base === undefined) return false;
-      if (surface?.has("*")) return false;
-      for (const method of surface ?? []) covered.add(method);
-      if (base?.abstract) pending.push(base);
-    }
-    return true;
-  }
-
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (current === undefined || seen.has(current)) continue;
-    seen.add(current);
-    if (current.decorators.length > 0) return null;
-    if (current.abstract) {
-      for (const method of abstractContractOperations(current, functionAliases))
-        covered.add(method);
-    }
-    if (!addImplementedContracts(current)) return null;
-    if (current.superClass === null) continue;
-    if (current.superClass.type !== AST_NODE_TYPES.Identifier) return null;
-    const base = classes.get(current.superClass.name);
-    if (base === undefined) return null;
-    pending.push(base);
-  }
-  return operations.every((name) => covered.has(name));
-}
-
-/** Declared classes preserve their own abstract status and explicit ancestry. */
-function localClassDeclarations(
-  program: TSESTree.Program,
-): ReadonlyMap<string, TSESTree.ClassDeclaration> {
-  const classes = new Map<string, TSESTree.ClassDeclaration>();
-  for (const statement of program.body) {
-    const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration
-        ? statement.declaration
-        : statement;
-    if (
-      declaration?.type === AST_NODE_TYPES.ClassDeclaration &&
-      declaration.id !== null
-    )
-      classes.set(declaration.id.name, declaration);
-  }
-  return classes;
-}
-
-/** Public concrete and abstract callable members of an abstract contract. */
-function abstractContractOperations(
-  node: TSESTree.ClassDeclaration,
-  functionAliases: ReadonlySet<string>,
-): ReadonlySet<string> {
-  const methods = new Set(publicMethodNames(node.body, functionAliases));
-  for (const member of node.body.body) {
-    if (
-      member.type !== AST_NODE_TYPES.TSAbstractMethodDefinition &&
-      member.type !== AST_NODE_TYPES.TSAbstractPropertyDefinition
-    )
-      continue;
-    if (
-      member.static ||
-      member.accessibility === "private" ||
-      member.accessibility === "protected"
-    )
-      continue;
-    if (member.type === AST_NODE_TYPES.TSAbstractPropertyDefinition) {
-      const annotation = member.typeAnnotation?.typeAnnotation;
-      if (
-        annotation?.type !== AST_NODE_TYPES.TSFunctionType &&
-        !(
-          annotation?.type === AST_NODE_TYPES.TSTypeReference &&
-          annotation.typeName.type === AST_NODE_TYPES.Identifier &&
-          functionAliases.has(annotation.typeName.name)
-        )
-      )
-        continue;
-    }
-    const name = declaredMemberName(member);
-    if (name !== null) methods.add(name);
-  }
-  return methods;
-}
+export default defineRule({
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Advise when an exported service with injected collaborators has public methods not covered by its declared ports.",
+      url: docsUrl(NAME),
+    },
+    schema: [],
+    fixable: "code",
+    messages: {
+      requireInterface:
+        "`{{name}}` stores injected collaborator(s) ({{deps}}), and its declared ports do not cover its public callable surface ({{methods}}). Where consumers need substitution, type them against one or more focused interfaces; do not create one broad interface solely to satisfy this advisory.",
+    },
+  },
+  createOnce(context) {
+    return {
+      before(): boolean | void {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isStoryFile(file) || isScriptFile(file)) return false;
+        if (isGeneratedFile(file, context.sourceCode.getText())) return false;
+      },
+      ClassDeclaration(node): void {
+        // The port itself must never fire.
+        if (node.id === null || node.abstract === true || node.decorators.length > 0) return;
+        if (ERROR_VALUE_NAME_RE.test(node.id.name)) return;
+        const { sourceCode } = context;
+        const file = serviceFile(sourceCode.ast);
+        if (!isExportedServiceClass(node, file)) return;
+        const gap = servicePortGap(node, node.id.name, file, sourceCode);
+        if (gap === null) return;
+        const fix = existingFactoryContractFix(sourceCode, node);
+        context.report({
+          node: node.id,
+          messageId: "requireInterface",
+          data: {
+            name: node.id.name,
+            deps: gap.collaborators.map((c) => `${c.name}: ${c.display}`).join(", "),
+            methods: gap.methods.join(", "),
+          },
+          ...(fix !== null && { fix }),
+        });
+      },
+    };
+  },
+});

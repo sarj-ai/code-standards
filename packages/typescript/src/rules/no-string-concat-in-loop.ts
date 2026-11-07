@@ -1,89 +1,25 @@
 /**
- * @fileoverview no-string-concat-in-loop — review repeated accumulation of a growing string.
+ * @fileoverview no-string-concat-in-loop — repeated string accumulation in loops.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-string-concat-in-loop.test.ts
+ * Port of the 18.x `no-string-concat-in-loop` rule. The rule is untyped,
+ * so the port covers all of it.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-import type { Scope } from "@typescript-eslint/utils/ts-eslint";
-
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { defineRule, type ESTree, type Node, type Scope, type TsVariable } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
 import { literalStringLoopFix } from "./_literal-string-loop-fix.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+const NAME = "no-string-concat-in-loop";
 
-type MessageIds = "noStringConcatInLoop" | "noStringReduce";
-type Options = readonly [];
-
-export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
-  summary:
-    "Prefer collecting string fragments over repeatedly accumulating a growing string inside a loop.",
-  rationale:
-    "Repeatedly rebuilding a growing string can copy all prior content on each iteration, making total work grow quadratically.",
-  remediation:
-    "Consider collecting fragments and joining once; preserve intermediate observations and coercion timing, and measure hot paths.",
-  category: "performance",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes require a sole exported zero-argument function with exactly a literal string initializer, a two-or-more literal-string for-of accumulation, and return of that same local string. Comments, intermediate reads, callbacks, imports, coercion and other control flow remain manual.",
-    "Only local identifiers initialized with a string or template literal and accumulated in a loop body are inspected.",
-    "Deferred function bodies are excluded except recognized direct forEach callbacks. Syntax does not establish engine-specific string allocation complexity.",
-  ],
-  examples: [
-    {
-      id: "join-fragments",
-      title: "Join collected fragments after the loop",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/render.ts",
-          source:
-            'const parts = []; for (const item of items) { parts.push(item); } const output = parts.join("");',
-        },
-      ],
-      focusPath: "src/render.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "rebuild-string",
-      title: "Do not rebuild a growing string in a loop",
-      outcome: "match",
-      files: [
-        {
-          path: "src/render.ts",
-          source:
-            "let output = ''; for (const item of items) { output = `${output}${item}`; }",
-        },
-      ],
-      focusPath: "src/render.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven source-owned correction",
-      outcome: "match",
-      files: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
-        },
-      ],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type LoopStatement =
+  | ESTree.ForStatement
+  | ESTree.ForOfStatement
+  | ESTree.ForInStatement
+  | ESTree.WhileStatement
+  | ESTree.DoWhileStatement;
 
 const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
   "ForStatement",
@@ -93,135 +29,67 @@ const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
   "DoWhileStatement",
 ]);
 
-/** Resolves an identifier through its enclosing scopes. */
-function findVariable(
-  scope: Scope.Scope,
-  name: string,
-): Scope.Variable | undefined {
-  let current: Scope.Scope | null = scope;
-  while (current !== null) {
-    const variable = current.variables.find((v) => v.name === name);
-    if (variable !== undefined) {
-      return variable;
-    }
-    current = current.upper;
-  }
-  return undefined;
-}
-
 /** Requires exactly one variable declaration with a string-literal initializer. */
-function isStringInitializedVariable(variable: Scope.Variable): boolean {
-  if (variable.defs.length !== 1) {
-    return false;
-  }
+function isStringInitializedVariable(variable: TsVariable): boolean {
+  if (variable.defs.length !== 1) return false;
   const def = variable.defs[0];
-  if (def === undefined || def.type !== "Variable") {
-    return false;
-  }
+  if (def === undefined || def.type !== "Variable") return false;
   const declarator = def.node;
-  if (declarator.type !== "VariableDeclarator") {
-    return false;
-  }
+  if (declarator.type !== "VariableDeclarator") return false;
   if (isStringLiteralInit(declarator.init)) return true;
-  if (
-    declarator.id.type === "Identifier" &&
-    declarator.id.typeAnnotation?.typeAnnotation.type === "TSStringKeyword"
-  ) {
+  if (declarator.id.type === "Identifier" && declarator.id.typeAnnotation?.typeAnnotation.type === "TSStringKeyword") {
     return true;
   }
   return isTemplateStringsArrayElement(declarator.init, variable.scope);
 }
 
 /** A tagged-template parameter is statically a string at every numeric index. */
-function isTemplateStringsArrayElement(
-  node: TSESTree.Expression | null,
-  scope: Scope.Scope,
-): boolean {
-  if (
-    node?.type !== "MemberExpression" ||
-    !node.computed ||
-    node.object.type !== "Identifier"
-  ) {
-    return false;
-  }
+function isTemplateStringsArrayElement(node: Node | null, scope: Scope): boolean {
+  if (node?.type !== "MemberExpression" || !node.computed || node.object.type !== "Identifier") return false;
   const source = findVariable(scope, node.object.name);
   if (source?.defs.length !== 1) return false;
-  const name = source.defs[0]?.name;
+  const name = source.defs[0]?.name as Node | undefined;
+  if (name?.type !== "Identifier") return false;
+  const annotation = name.typeAnnotation?.typeAnnotation;
   return (
-    name?.type === "Identifier" &&
-    name.typeAnnotation?.typeAnnotation.type === "TSTypeReference" &&
-    name.typeAnnotation.typeAnnotation.typeName.type === "Identifier" &&
-    name.typeAnnotation.typeAnnotation.typeName.name === "TemplateStringsArray"
+    annotation?.type === "TSTypeReference" &&
+    annotation.typeName.type === "Identifier" &&
+    annotation.typeName.name === "TemplateStringsArray"
   );
 }
 
 /** Checks whether an initializer is a string or template literal. */
-function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
-  if (node === null) {
-    return false;
-  }
+function isStringLiteralInit(node: Node | null): boolean {
+  if (node === null) return false;
   node = unwrapExpression(node);
-  if (node.type === "TemplateLiteral") {
-    return true;
-  }
-  if (node.type === "Literal") {
-    return typeof node.value === "string";
-  }
+  if (node.type === "TemplateLiteral") return true;
+  if (node.type === "Literal") return typeof node.value === "string";
   return false;
 }
 
 /** Recognizes longhand accumulation such as `s = s + x`. */
-function isConcatOntoTarget(rhs: TSESTree.Expression, target: string): boolean {
+function isConcatOntoTarget(rhs: Node, target: string): boolean {
   if (rhs.type === "TemplateLiteral") {
-    return rhs.expressions.some(
-      (expression) =>
-        expression.type === "Identifier" && expression.name === target,
-    );
+    return rhs.expressions.some((expression) => expression.type === "Identifier" && expression.name === target);
   }
-  if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") {
-    return false;
-  }
-  return (
-    isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target)
-  );
+  if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") return false;
+  return isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target);
 }
 
 /** Finds a target identifier in a chained `+` expression. */
-function isConcatOperand(
-  node: TSESTree.Expression | TSESTree.PrivateIdentifier,
-  target: string,
-): boolean {
-  if (node.type === "Identifier") {
-    return node.name === target;
-  }
+function isConcatOperand(node: Node, target: string): boolean {
+  if (node.type === "Identifier") return node.name === target;
   if (node.type === "BinaryExpression" && node.operator === "+") {
-    return (
-      isConcatOperand(node.left, target) || isConcatOperand(node.right, target)
-    );
+    return isConcatOperand(node.left, target) || isConcatOperand(node.right, target);
   }
   return false;
 }
 
 /** Checks whether the loop creates a fresh accumulator on every iteration. */
-function isDeclaredInsideLoop(
-  variable: Scope.Variable,
-  repetition: TSESTree.Node,
-): boolean {
+function isDeclaredInsideLoop(variable: TsVariable, repetition: Node): boolean {
   const def = variable.defs[0];
-  if (def === undefined) {
-    return false;
-  }
-  const body =
-    repetition.type === "CallExpression"
-      ? repetition.arguments[0]
-      : (
-          repetition as
-            | TSESTree.ForStatement
-            | TSESTree.ForOfStatement
-            | TSESTree.ForInStatement
-            | TSESTree.WhileStatement
-            | TSESTree.DoWhileStatement
-        ).body;
+  if (def === undefined) return false;
+  const body = repetition.type === "CallExpression" ? repetition.arguments[0] : (repetition as LoopStatement).body;
   if (body === undefined || body.type === "SpreadElement") return false;
   const [declStart, declEnd] = def.node.range;
   const [bodyStart, bodyEnd] = body.range;
@@ -229,167 +97,147 @@ function isDeclaredInsideLoop(
 }
 
 /** Finds the nearest loop whose body contains the assignment. */
-function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
-  let child: TSESTree.Node = node;
-  let parent = node.parent;
-  while (parent !== undefined && parent !== null) {
-    if (
-      (parent.type === "ArrowFunctionExpression" ||
-        parent.type === "FunctionExpression") &&
-      parent.parent.type === "CallExpression" &&
-      parent.parent.arguments[0] === parent &&
-      parent.parent.callee.type === "MemberExpression" &&
-      !parent.parent.callee.computed &&
-      parent.parent.callee.property.type === "Identifier" &&
-      parent.parent.callee.property.name === "forEach"
-    ) {
-      return parent.parent;
-    }
-    if (
-      parent.type === "ArrowFunctionExpression" ||
-      parent.type === "FunctionExpression" ||
-      parent.type === "FunctionDeclaration"
-    )
-      return null;
-    if (LOOP_NODE_TYPES.has(parent.type)) {
-      const loop = parent as
-        | TSESTree.ForStatement
-        | TSESTree.ForOfStatement
-        | TSESTree.ForInStatement
-        | TSESTree.WhileStatement
-        | TSESTree.DoWhileStatement;
-      if (loop.body === child) {
-        return loop;
-      }
-    }
+function enclosingLoop(node: Node): Node | null {
+  let child: Node = node;
+  let parent = parentOf(node);
+  while (parent !== null) {
+    const grandparent = parentOf(parent);
+    if (isForEachCallback(parent, grandparent)) return grandparent;
+    if (isFunctionNode(parent)) return null;
+    if (LOOP_NODE_TYPES.has(parent.type) && (parent as LoopStatement).body === child) return parent;
     child = parent;
-    parent = parent.parent;
+    parent = grandparent;
   }
   return null;
 }
 
-function immediatelyExitsLoop(
-  node: TSESTree.AssignmentExpression,
-  loop: TSESTree.Node,
-): boolean {
-  if (
-    !LOOP_NODE_TYPES.has(loop.type) ||
-    node.parent.type !== "ExpressionStatement"
-  )
-    return false;
-  const statement = node.parent;
-  const block = statement.parent;
-  if (block.type !== "BlockStatement") return false;
+/** True for the callback passed as the first argument of `items.forEach(...)`. */
+function isForEachCallback(node: Node, call: Node | null): boolean {
+  return (
+    (node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression") &&
+    call?.type === "CallExpression" &&
+    call.arguments[0] === node &&
+    call.callee.type === "MemberExpression" &&
+    !call.callee.computed &&
+    call.callee.property.type === "Identifier" &&
+    call.callee.property.name === "forEach"
+  );
+}
+
+function isFunctionNode(node: Node): boolean {
+  return node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression" || node.type === "FunctionDeclaration";
+}
+
+function immediatelyExitsLoop(node: ESTree.AssignmentExpression, loop: Node): boolean {
+  const statement = parentOf(node);
+  if (!LOOP_NODE_TYPES.has(loop.type) || statement?.type !== "ExpressionStatement") return false;
+  const block = parentOf(statement);
+  if (block?.type !== "BlockStatement") return false;
   const next = block.body[block.body.indexOf(statement) + 1];
-  if (
-    next?.type !== "BreakStatement" &&
-    next?.type !== "ReturnStatement" &&
-    next?.type !== "ThrowStatement"
-  )
-    return false;
-  if (next.type === "BreakStatement" && next.label !== null) return false;
-  for (
-    let current: TSESTree.Node | undefined = block;
-    current !== undefined && current !== loop;
-    current = current.parent
-  ) {
-    if (
-      current.type === "TryStatement" ||
-      (next.type === "BreakStatement" && current.type === "SwitchStatement")
-    )
-      return false;
+  return isLoopExit(next) && !exitIsIntercepted(block, loop, next?.type === "BreakStatement");
+}
+
+/** An unlabeled `break`, a `return` or a `throw` leaves the loop for good. */
+function isLoopExit(node: Node | undefined): boolean {
+  return (node?.type === "BreakStatement" && node.label === null) || node?.type === "ReturnStatement" || node?.type === "ThrowStatement";
+}
+
+/** A `try` can resume the loop after the exit, and a `switch` captures a `break`. */
+function exitIsIntercepted(block: Node, loop: Node, isBreak: boolean): boolean {
+  for (let current: Node | null = block; current !== null && current !== loop; current = parentOf(current)) {
+    if (current.type === "TryStatement" || (isBreak && current.type === "SwitchStatement")) return true;
   }
-  return true;
+  return false;
 }
 
 /** A small literal loop cannot exhibit unbounded quadratic growth. */
-function isSmallStaticForLoop(node: TSESTree.Node): boolean {
+function isSmallStaticForLoop(node: Node): boolean {
+  if (node.type !== "ForStatement") return false;
+  const iterations = staticForLoopIterations(node);
+  return iterations !== null && iterations >= 0 && iterations <= 8;
+}
+
+/** Iteration count of `for (let i = A; i < B; i++)` with integer literals, else null. */
+function staticForLoopIterations(node: ESTree.ForStatement): number | null {
+  const { test } = node;
+  const counter = literalCounter(node.init);
   if (
-    node.type !== "ForStatement" ||
-    node.init?.type !== "VariableDeclaration" ||
-    node.init.declarations.length !== 1 ||
-    node.test?.type !== "BinaryExpression" ||
-    (node.test.operator !== "<" && node.test.operator !== "<=") ||
-    node.update?.type !== "UpdateExpression" ||
-    node.update.operator !== "++"
+    counter === null ||
+    test?.type !== "BinaryExpression" ||
+    (test.operator !== "<" && test.operator !== "<=") ||
+    !isIdentifierNamed(test.left, counter.name) ||
+    !incrementsCounter(node.update, counter.name)
   ) {
-    return false;
+    return null;
   }
-  const declaration = node.init.declarations[0];
-  if (
-    declaration?.id.type !== "Identifier" ||
-    declaration.init?.type !== "Literal" ||
-    typeof declaration.init.value !== "number" ||
-    !Number.isInteger(declaration.init.value) ||
-    node.test.left.type !== "Identifier" ||
-    node.test.left.name !== declaration.id.name ||
-    node.test.right.type !== "Literal" ||
-    typeof node.test.right.value !== "number" ||
-    !Number.isInteger(node.test.right.value) ||
-    node.update.argument.type !== "Identifier" ||
-    node.update.argument.name !== declaration.id.name
-  ) {
-    return false;
-  }
-  const iterations =
-    node.test.right.value -
-    declaration.init.value +
-    (node.test.operator === "<=" ? 1 : 0);
-  return iterations >= 0 && iterations <= 8;
+  const end = integerLiteral(test.right);
+  return end === null ? null : end - counter.start + (test.operator === "<=" ? 1 : 0);
+}
+
+/** The counter declared by `let i = <integer>`, else null. */
+function literalCounter(init: ESTree.ForStatement["init"]): { readonly name: string; readonly start: number } | null {
+  if (init?.type !== "VariableDeclaration" || init.declarations.length !== 1) return null;
+  const declaration = init.declarations[0];
+  const start = integerLiteral(declaration?.init);
+  return declaration?.id.type === "Identifier" && start !== null ? { name: declaration.id.name, start } : null;
+}
+
+function incrementsCounter(update: ESTree.ForStatement["update"], name: string): boolean {
+  return update?.type === "UpdateExpression" && update.operator === "++" && isIdentifierNamed(update.argument, name);
+}
+
+function isIdentifierNamed(node: Node, name: string): boolean {
+  return node.type === "Identifier" && node.name === name;
+}
+
+function integerLiteral(node: Node | null | undefined): number | null {
+  return node?.type === "Literal" && typeof node.value === "number" && Number.isInteger(node.value) ? node.value : null;
 }
 
 /** Recognizes an exact Array.reduce-style string accumulator. */
-function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
-  if (
-    node.callee.type !== "MemberExpression" ||
-    node.callee.computed ||
-    node.callee.property.type !== "Identifier" ||
-    node.callee.property.name !== "reduce" ||
-    node.arguments.length !== 2
-  ) {
-    return false;
-  }
+function isStringSeededReduce(node: ESTree.CallExpression): boolean {
+  if (!isReduceCall(node)) return false;
   const [callback, initial] = node.arguments;
   if (
-    node.callee.object.type === "ArrayExpression" &&
-    node.callee.object.elements.length <= 8
-  ) {
-    return false;
-  }
-  if (
-    callback === undefined ||
-    initial === undefined ||
-    callback.type === "SpreadElement" ||
-    initial.type === "SpreadElement" ||
-    (callback.type !== "ArrowFunctionExpression" &&
-      callback.type !== "FunctionExpression") ||
+    (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression") ||
     callback.params[0]?.type !== "Identifier" ||
+    initial === undefined ||
+    initial.type === "SpreadElement" ||
     !isStringLiteralInit(initial)
   ) {
     return false;
   }
-  const accumulator = callback.params[0].name;
-  if (callback.body.type !== "BlockStatement") {
-    return isConcatOntoTarget(callback.body, accumulator);
-  }
-  if (
-    callback.body.body.length !== 1 ||
-    callback.body.body[0]?.type !== "ReturnStatement"
-  ) {
-    return false;
-  }
-  const returned = callback.body.body[0].argument;
-  return returned !== null && isConcatOntoTarget(returned, accumulator);
+  return returnsConcatOnto(callback.body, callback.params[0].name);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-string-concat-in-loop",
-  documentation: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION,
+function isReduceCall(node: ESTree.CallExpression): boolean {
+  const callee = node.callee;
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.property.type === "Identifier" &&
+    callee.property.name === "reduce" &&
+    node.arguments.length === 2 &&
+    !(callee.object.type === "ArrayExpression" && callee.object.elements.length <= 8)
+  );
+}
+
+/** True when a reducer body returns `accumulator + ...` directly or from its only statement. */
+function returnsConcatOnto(body: Node | null, accumulator: string): boolean {
+  if (body === null) return false;
+  if (body.type !== "BlockStatement") return isConcatOntoTarget(body, accumulator);
+  const statement = body.body.length === 1 ? body.body[0] : undefined;
+  return statement?.type === "ReturnStatement" && statement.argument !== null && isConcatOntoTarget(statement.argument, accumulator);
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
-      description: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.summary,
+      description:
+        "Prefer collecting string fragments over repeatedly accumulating a growing string inside a loop.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -399,73 +247,48 @@ export default createRule<Options, MessageIds>({
         "This reduce repeatedly accumulates a growing string. Consider mapping fragments and joining once if coercion timing and intermediate observations are unchanged.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) {
-      return {};
-    }
-
+  createOnce(context) {
     // Report each accumulator once per loop.
-    const reported = new WeakMap<TSESTree.Node, Set<string>>();
-
+    let reported = new WeakMap<Node, Set<string>>();
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (isStringSeededReduce(node)) {
-          context.report({ node, messageId: "noStringReduce" });
-        }
+      before() {
+        reported = new WeakMap();
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        return undefined;
       },
-      AssignmentExpression(node: TSESTree.AssignmentExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
+        if (isStringSeededReduce(node)) context.report({ node, messageId: "noStringReduce" });
+      },
+      AssignmentExpression(node: ESTree.AssignmentExpression): void {
         // The LHS must be a plain variable reference.
-        if (node.left.type !== "Identifier") {
-          return;
-        }
-        // Accept both the compound `s += x` and the longhand `s = s + x`; any
-        // other operator/shape (`s = x + y`, `s -= x`, ...) is not accumulation.
+        if (node.left.type !== "Identifier") return;
+        // Accept both the compound `s += x` and the longhand `s = s + x`.
         const isAccumulation =
-          node.operator === "+=" ||
-          (node.operator === "=" &&
-            isConcatOntoTarget(node.right, node.left.name));
-        if (!isAccumulation) {
-          return;
-        }
+          node.operator === "+=" || (node.operator === "=" && isConcatOntoTarget(node.right, node.left.name));
+        if (!isAccumulation) return;
         // Must occur inside a loop body, else it's a one-shot append.
         const loop = enclosingLoop(node);
-        if (loop === null) {
-          return;
-        }
+        if (loop === null) return;
         if (immediatelyExitsLoop(node, loop)) return;
-        if (isSmallStaticForLoop(loop)) {
-          return;
-        }
+        if (isSmallStaticForLoop(loop)) return;
 
-        const scope = context.sourceCode.getScope(node);
-        const variable = findVariable(scope, node.left.name);
+        const sourceCode = context.sourceCode;
+        const variable = findVariable(sourceCode.getScope(node), node.left.name);
         // Conservative: can't resolve the declaration -> don't flag.
-        if (variable === undefined) {
-          return;
-        }
-        if (!isStringInitializedVariable(variable)) {
-          return;
-        }
-        if (isDeclaredInsideLoop(variable, loop)) {
-          return;
-        }
+        if (variable === null) return;
+        if (!isStringInitializedVariable(variable)) return;
+        if (isDeclaredInsideLoop(variable, loop)) return;
 
         let seen = reported.get(loop);
         if (seen === undefined) {
           seen = new Set<string>();
           reported.set(loop, seen);
         }
-        if (seen.has(node.left.name)) {
-          return;
-        }
+        if (seen.has(node.left.name)) return;
         seen.add(node.left.name);
 
-        context.report({
-          node,
-          messageId: "noStringConcatInLoop",
-          fix: literalStringLoopFix(context.sourceCode, node),
-        });
+        const fix = literalStringLoopFix(sourceCode, node);
+        context.report({ node, messageId: "noStringConcatInLoop", ...(fix !== null && { fix }) });
       },
     };
   },

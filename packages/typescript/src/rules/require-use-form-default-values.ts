@@ -1,235 +1,219 @@
 /**
- * @fileoverview require-use-form-default-values — controlled react-hook-form fields need a stable initial value.
+ * @fileoverview require-use-form-default-values — directly bound Controller fields need form-level initialization or a field default.
+ *
+ * Port of the 18.x `require-use-form-default-values` rule. Same
+ * algorithm; the `react-hook-form` import gate and per-file state reset run in
+ * `before()`.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-use-form-default-values.test.ts
  */
 
-import type { NativeRuleListener } from "./_eslint-rule.js";
+import { defineRule, type ESTree, type Node, type TsReference, type TsVariable } from "../types.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { stableValueBinding, typeOnlyReference } from "../utils/stable-value-binding.js";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-import { stableValueBinding, typeOnlyReference } from "./_stable-value-binding.js";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-
-type MessageIds = "requireUseFormDefaultValues";
-type Options = readonly [];
-type ScopeVariable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
+const NAME = "require-use-form-default-values";
 type HookKind = "Controller" | "useController" | "useForm";
+type Identifier = Extract<Node, { type: "Identifier" }>;
 const UNSAFE_FORM_MEMBERS: ReadonlySet<string> = new Set(["__defineGetter__", "__defineSetter__", "__proto__", "valueOf"]);
 
-export const REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION = {
-  summary: "Require explicit form-level initialization or a field default for directly bound Controller fields.",
-  rationale: "React Hook Form exposes form-level defaultValues/values and field-level defaultValue as its explicit initialization mechanisms. A directly bound controlled field should not omit both mechanisms.",
-  remediation: "Provide a non-undefined defaultValues or values option to useForm, or a non-undefined defaultValue on the associated Controller/useController field.",
-  category: "correctness",
-  limitations: [
-    "The rule proves only that an explicit form-level initialization option or field default is present; it does not prove that a particular field path occurs inside a defaultValues/values object.",
-    "The rule reports only scope-resolved Controller/useController fields explicitly bound to a directly created useForm control. FormProvider context, wrapper hooks, dynamic options, spreads, computed properties, and interprocedural flows are intentionally left unreported.",
-    "Form bindings must have one initializer and remain local and read-only; aliases, exports, property writes, and other escaping uses are left unreported.",
-  ],
-  examples: [
-    {
-      id: "controlled-field-with-form-defaults",
-      title: "Initialize controlled fields at form level",
-      outcome: "no-match",
-      files: [{ path: "profile-form.tsx", source: "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm({ defaultValues: { name: '' } }); return <Controller control={form.control} name='name' render={() => null} />; }" }],
-      focusPath: "profile-form.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "controlled-field-without-default",
-      title: "Do not leave a controlled field uninitialized",
-      outcome: "match",
-      files: [{ path: "profile-form.tsx", source: "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form.control} name='name' render={() => null} />; }" }],
-      focusPath: "profile-form.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function staticPropertyName(property: TSESTree.Property): string | null {
-  if (property.computed) return null;
-  if (property.key.type === AST_NODE_TYPES.Identifier) return property.key.name;
-  if (property.key.type === AST_NODE_TYPES.Literal && typeof property.key.value === "string") return property.key.value;
-  return null;
+/** A non-computed property's static name. */
+function staticPropertyName(property: ESTree.ObjectProperty | ESTree.AssignmentTargetProperty | ESTree.BindingProperty): string | null {
+  return property.computed ? null : getPropertyName(property);
 }
 
-function readonlyFormReference(reference: ScopeVariable["references"][number]): boolean {
+function readonlyFormReference(reference: TsReference): boolean {
   if (typeOnlyReference(reference)) return true;
   const receiver = outerExpression(reference.identifier);
-  const parent = receiver.parent;
-  if (parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.init === receiver) return parent.id.type === AST_NODE_TYPES.ObjectPattern;
-  if (parent?.type !== AST_NODE_TYPES.MemberExpression || parent.object !== receiver) {
-    return parent?.type === AST_NODE_TYPES.UnaryExpression && parent.operator === "typeof";
+  const parent = parentOf(receiver);
+  if (parent?.type === "VariableDeclarator" && parent.init === receiver) return parent.id.type === "ObjectPattern";
+  if (parent?.type !== "MemberExpression" || parent.object !== receiver) {
+    return parent?.type === "UnaryExpression" && parent.operator === "typeof";
   }
-  const name = ASTUtils.getPropertyName(parent);
+  const name = getPropertyName(parent);
   return name !== null && !UNSAFE_FORM_MEMBERS.has(name) && !memberWrite(parent);
 }
 
-function memberWrite(node: TSESTree.Node): boolean {
+/** Whether a member is written directly or as part of a destructuring target. */
+function memberWrite(node: Node): boolean {
   let current = outerExpression(node);
-  let parent = current.parent;
-  while ((parent?.type === AST_NODE_TYPES.Property && parent.value === current) ||
-    parent?.type === AST_NODE_TYPES.ObjectPattern || parent?.type === AST_NODE_TYPES.ArrayPattern ||
-    parent?.type === AST_NODE_TYPES.RestElement ||
-    (parent?.type === AST_NODE_TYPES.AssignmentPattern && parent.left === current)) {
+  let parent = parentOf(current);
+  while (parent !== null && widensTarget(parent, current)) {
     current = parent;
-    parent = current.parent;
+    parent = parentOf(current);
   }
-  return (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === current) ||
-    (parent?.type === AST_NODE_TYPES.UpdateExpression && parent.argument === current) ||
-    (parent?.type === AST_NODE_TYPES.UnaryExpression && parent.operator === "delete") ||
-    ((parent?.type === AST_NODE_TYPES.ForOfStatement || parent?.type === AST_NODE_TYPES.ForInStatement) && parent.left === current);
+  return parent !== null && writesTarget(parent, current);
 }
 
-function stableForm(variable: ScopeVariable): boolean {
-  return !variable.defs.some((definition) => definition.type === "Variable" && definition.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) &&
-    stableValueBinding(variable, readonlyFormReference);
+/** `parent` is a pattern that writes `current` when it is written. */
+function widensTarget(parent: Node, current: Node): boolean {
+  return (parent.type === "Property" && parent.value === current) ||
+    parent.type === "ObjectPattern" || parent.type === "ArrayPattern" || parent.type === "RestElement" ||
+    (parent.type === "AssignmentPattern" && parent.left === current);
 }
 
+function writesTarget(parent: Node, target: Node): boolean {
+  return (parent.type === "AssignmentExpression" && parent.left === target) ||
+    (parent.type === "UpdateExpression" && parent.argument === target) ||
+    (parent.type === "UnaryExpression" && parent.operator === "delete") ||
+    ((parent.type === "ForOfStatement" || parent.type === "ForInStatement") && parent.left === target);
+}
 
-export default createRule<Options, MessageIds>({
-  name: "require-use-form-default-values",
-  documentation: REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION,
+function stableForm(variable: TsVariable): boolean {
+  return !variable.defs.some((definition) => {
+    if (definition.type !== "Variable") return false;
+    const declaration = definition.parent;
+    return declaration !== null && parentOf(declaration)?.type === "ExportNamedDeclaration";
+  }) && stableValueBinding(variable, readonlyFormReference);
+}
+
+export default defineRule({
   meta: {
     type: "problem",
-    docs: { description: REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION.summary },
+    docs: {
+      description: "Require explicit form-level initialization or a field default for directly bound Controller fields.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: { requireUseFormDefaultValues: "Add non-undefined defaultValues/values to the associated useForm call or non-undefined defaultValue to this field." },
   },
-  defaultOptions: [],
-  create(context) {
-    if (!context.sourceCode.ast.body.some((statement) => statement.type === AST_NODE_TYPES.ImportDeclaration && statement.source.value === "react-hook-form")) return {};
-    const imported = new Map<ScopeVariable, HookKind>();
-    const uninitializedForms = new Set<ScopeVariable>();
-    const uninitializedControls = new Set<ScopeVariable>();
-    const bindingNamed = (node: TSESTree.Node, name: string): ScopeVariable | null => ASTUtils.findVariable(context.sourceCode.getScope(node), name);
-    const bindingOf = (node: TSESTree.Identifier): ScopeVariable | null => bindingNamed(node, node.name);
-    const importedKind = (node: TSESTree.Identifier | TSESTree.JSXIdentifier): HookKind | null => {
+  createOnce(context) {
+    const imported = new Map<TsVariable, HookKind>();
+    const uninitializedForms = new Set<TsVariable>();
+    const uninitializedControls = new Set<TsVariable>();
+    const bindingNamed = (node: Node, name: string): TsVariable | null => findVariable(context.sourceCode.getScope(node), name);
+    const bindingOf = (node: Identifier): TsVariable | null => bindingNamed(node, node.name);
+    const importedKind = (node: Identifier | ESTree.JSXIdentifier): HookKind | null => {
       const variable = bindingNamed(node, node.name);
       return variable === null ? null : imported.get(variable) ?? null;
     };
-    const isDefinitelyUndefined = (node: TSESTree.Node): boolean => {
+    const isDefinitelyUndefined = (node: Node): boolean => {
       const value = unwrapExpression(node);
-      return (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void") ||
-        (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
+      return (value.type === "UnaryExpression" && value.operator === "void") ||
+        (value.type === "Identifier" && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
     };
-    const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
+    const uninitializedUseFormCall = (node: Node): boolean => {
       node = unwrapExpression(node);
-      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useForm") return false;
+      if (node.type !== "CallExpression") return false;
+      const callee = unwrapExpression(node.callee);
+      if (callee.type !== "Identifier" || importedKind(callee) !== "useForm") return false;
       const options = node.arguments[0];
-      return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
+      return options?.type !== "SpreadElement" && initializationState(options) === "uninitialized";
     };
 
-    const initializationState = (node: TSESTree.Node | undefined): "initialized" | "uninitialized" | "unknown" => {
+    const initializationState = (node: Node | undefined): "initialized" | "uninitialized" | "unknown" => {
       if (node === undefined) return "uninitialized";
-      if (node.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";
+      if (node.type !== "ObjectExpression") return "unknown";
       const initialization = new Map<string, boolean>();
       for (const property of node.properties) {
-        if (property.type === AST_NODE_TYPES.SpreadElement || property.computed) return "unknown";
-        if (property.type !== AST_NODE_TYPES.Property) continue;
+        if (property.type === "SpreadElement" || property.computed) return "unknown";
+        if (property.type !== "Property") continue;
         const name = staticPropertyName(property);
         if (name === "defaultValues" || name === "values") initialization.set(name, !isDefinitelyUndefined(property.value));
       }
       return [...initialization.values()].some(Boolean) ? "initialized" : "uninitialized";
     };
-    const isUninitializedForm = (node: TSESTree.Node): boolean => {
+    const isUninitializedForm = (node: Node): boolean => {
       node = unwrapExpression(node);
-      if (node.type !== AST_NODE_TYPES.Identifier) return false;
+      if (node.type !== "Identifier") return false;
       const variable = bindingOf(node);
       return variable !== null && uninitializedForms.has(variable);
     };
-    const isUninitializedControl = (node: TSESTree.Node): boolean => {
+    const isUninitializedControl = (node: Node): boolean => {
       node = unwrapExpression(node);
-      if (node.type === AST_NODE_TYPES.Identifier) {
+      if (node.type === "Identifier") {
         const variable = bindingOf(node);
         return variable !== null && uninitializedControls.has(variable);
       }
-      return node.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node) !== null && (ASTUtils.getPropertyName(node) ?? "") === "control" && isUninitializedForm(node.object);
+      return node.type === "MemberExpression" && getPropertyName(node) === "control" && isUninitializedForm(node.object);
     };
-    const fieldOptionsNeedDefault = (node: TSESTree.Node | undefined): boolean => {
-      if (node?.type !== AST_NODE_TYPES.ObjectExpression) return false;
-      let control: TSESTree.Node | null = null;
+    const fieldOptionsNeedDefault = (node: Node | undefined): boolean => {
+      if (node?.type !== "ObjectExpression") return false;
+      let control: Node | null = null;
       let hasDefault = false;
       for (const property of node.properties) {
-        if (property.type === AST_NODE_TYPES.SpreadElement || property.computed) return false;
-        if (property.type !== AST_NODE_TYPES.Property) continue;
+        if (property.type === "SpreadElement" || property.computed) return false;
+        if (property.type !== "Property") continue;
         const name = staticPropertyName(property);
         if (name === "control") control = property.value;
         if (name === "defaultValue") hasDefault = !isDefinitelyUndefined(property.value);
       }
       return control !== null && isUninitializedControl(control) && !hasDefault;
     };
-    const jsxAttribute = (node: TSESTree.JSXOpeningElement, name: string): TSESTree.JSXAttribute | null => {
-      let result: TSESTree.JSXAttribute | null = null;
+    const jsxAttribute = (node: ESTree.JSXOpeningElement, name: string): ESTree.JSXAttribute | null => {
+      let result: ESTree.JSXAttribute | null = null;
       for (const attribute of node.attributes) {
-        if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return null;
-        if (attribute.name.type === AST_NODE_TYPES.JSXIdentifier && attribute.name.name === name) result = attribute;
+        if (attribute.type === "JSXSpreadAttribute") return null;
+        if (attribute.name.type === "JSXIdentifier" && attribute.name.name === name) result = attribute;
       }
       return result;
     };
-    const trackDestructuredControl = (pattern: TSESTree.ObjectPattern): void => {
+    const trackDestructuredControl = (pattern: ESTree.ObjectPattern): void => {
       for (const property of pattern.properties) {
-        if (property.type !== AST_NODE_TYPES.Property || staticPropertyName(property) !== "control" || property.value.type !== AST_NODE_TYPES.Identifier) continue;
+        if (property.type !== "Property" || staticPropertyName(property) !== "control" || property.value.type !== "Identifier") continue;
         const variable = bindingOf(property.value);
         if (variable !== null && stableValueBinding(variable)) uninitializedControls.add(variable);
       }
     };
 
     return {
-      ImportDeclaration(node): void {
+      before() {
+        imported.clear();
+        uninitializedForms.clear();
+        uninitializedControls.clear();
+        if (!context.sourceCode.ast.body.some((statement) => statement.type === "ImportDeclaration" && statement.source.value === "react-hook-form")) return false;
+        return undefined;
+      },
+      ImportDeclaration(node) {
         if (node.source.value !== "react-hook-form") return;
         for (const specifier of node.specifiers) {
-          if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) continue;
-          const name = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+          if (specifier.type !== "ImportSpecifier") continue;
+          const name = importSpecifierName(specifier);
           if (name !== "Controller" && name !== "useController" && name !== "useForm") continue;
           const variable = bindingOf(specifier.local);
           if (variable !== null && stableValueBinding(variable)) imported.set(variable, name);
         }
       },
-      VariableDeclarator(node): void {
+      VariableDeclarator(node) {
         if (node.init === null) return;
         if (uninitializedUseFormCall(node.init)) {
-          if (node.id.type === AST_NODE_TYPES.Identifier) {
+          if (node.id.type === "Identifier") {
             const variable = bindingOf(node.id);
             if (variable !== null && stableForm(variable)) uninitializedForms.add(variable);
-          } else if (node.id.type === AST_NODE_TYPES.ObjectPattern) {
+          } else if (node.id.type === "ObjectPattern") {
             trackDestructuredControl(node.id);
           }
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.ObjectPattern && isUninitializedForm(node.init)) {
+        if (node.id.type === "ObjectPattern" && isUninitializedForm(node.init)) {
           trackDestructuredControl(node.id);
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.Identifier && node.init.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node.init) !== null && (ASTUtils.getPropertyName(node.init) ?? "") === "control" && isUninitializedForm(node.init.object)) {
+        if (node.id.type === "Identifier" && node.init.type === "MemberExpression" && getPropertyName(node.init) === "control" && isUninitializedForm(node.init.object)) {
           const variable = bindingOf(node.id);
           if (variable !== null && stableValueBinding(variable)) uninitializedControls.add(variable);
         }
       },
-      CallExpression(node): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useController" ||
-          !fieldOptionsNeedDefault(node.arguments[0]?.type === AST_NODE_TYPES.SpreadElement ? undefined : node.arguments[0])) return;
+      CallExpression(node) {
+        const callee = unwrapExpression(node.callee);
+        const options = node.arguments[0];
+        if (callee.type !== "Identifier" || importedKind(callee) !== "useController" ||
+          !fieldOptionsNeedDefault(options?.type === "SpreadElement" ? undefined : options)) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },
-      JSXOpeningElement(node): void {
-        if (node.name.type !== AST_NODE_TYPES.JSXIdentifier || importedKind(node.name) !== "Controller") return;
-        if (node.attributes.some((attribute) => attribute.type === AST_NODE_TYPES.JSXSpreadAttribute)) return;
+      JSXOpeningElement(node) {
+        if (node.name.type !== "JSXIdentifier" || importedKind(node.name) !== "Controller") return;
+        if (node.attributes.some((attribute) => attribute.type === "JSXSpreadAttribute")) return;
         const control = jsxAttribute(node, "control");
-        if (control?.value?.type !== AST_NODE_TYPES.JSXExpressionContainer || control.value.expression.type === AST_NODE_TYPES.JSXEmptyExpression || !isUninitializedControl(control.value.expression)) return;
+        if (control?.value?.type !== "JSXExpressionContainer" || control.value.expression.type === "JSXEmptyExpression" || !isUninitializedControl(control.value.expression)) return;
         const defaultValue = jsxAttribute(node, "defaultValue");
-        if (defaultValue !== null && (defaultValue.value === null || defaultValue.value.type !== AST_NODE_TYPES.JSXExpressionContainer ||
-          (defaultValue.value.expression.type !== AST_NODE_TYPES.JSXEmptyExpression && !isDefinitelyUndefined(defaultValue.value.expression)))) return;
+        if (defaultValue !== null && (defaultValue.value === null || defaultValue.value.type !== "JSXExpressionContainer" ||
+          (defaultValue.value.expression.type !== "JSXEmptyExpression" && !isDefinitelyUndefined(defaultValue.value.expression)))) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },
-    } satisfies NativeRuleListener;
+    };
   },
 });

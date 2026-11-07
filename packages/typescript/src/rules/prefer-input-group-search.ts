@@ -1,31 +1,16 @@
 /**
  * @fileoverview prefer-input-group-search — search fields should use the shared input-group primitive.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-input-group-search.test.ts
+ * Port of the 18.x `prefer-input-group-search` rule. Same algorithm;
+ * the per-file import names and occurrences are reset in `before()`.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { findVariable } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-
-type MessageIds = "preferInputGroup";
-type Options = readonly [];
-
-export const PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION = {
-  summary: "Require search icons and shared Input controls in the same visual wrapper to use InputGroup.",
-  rationale: "The shared compound control provides consistent spacing, focus behavior, and accessible composition.",
-  remediation: "Compose the search icon and field with InputGroup, InputGroupAddon, and InputGroupInput.",
-  category: "style",
-  limitations: [
-    "Opposite branches of the same conditional expression and icons with explicit interaction handlers are excluded; arbitrary component behavior is not inferred.",
-    "Only Search and Input bindings imported from the recognized shared modules are paired.",
-    "The file must import InputGroup, proving that the repository has adopted that optional primitive.",
-  ],
-  examples: [
-    { id: "grouped-search", title: "Use the shared input group", outcome: "no-match", files: [{ path: "src/search.tsx", source: "import { Search } from 'lucide-react'; import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'; const field = <InputGroup><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput /></InputGroup>;" }], focusPath: "src/search.tsx", expectedCount: 0, public: true },
-    { id: "loose-search-input", title: "Do not pair loose search controls", outcome: "match", files: [{ path: "src/search.tsx", source: "import { Search } from 'lucide-react'; import { Input } from '@/components/ui/input'; import { InputGroup } from '@/components/ui/input-group'; const field = <div><Search /><Input /></div>;" }], focusPath: "src/search.tsx", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "prefer-input-group-search";
 
 const INPUT_MODULE = /(?:^|\/)components\/ui\/input$/u;
 const INPUT_GROUP_MODULE = /(?:^|\/)components\/ui\/input-group$/u;
@@ -33,35 +18,33 @@ const MAX_JSX_DISTANCE = 2;
 const SEARCH_EXPORTS = ["Search", "SearchIcon", "LucideSearch"] as const;
 
 interface Occurrence {
-  ancestors: readonly TSESTree.Node[];
-  node: TSESTree.JSXOpeningElement;
+  ancestors: readonly Node[];
+  node: ESTree.JSXOpeningElement;
 }
 
 function localNamedImports(
-  node: TSESTree.ImportDeclaration,
+  node: ESTree.ImportDeclaration,
   importedName: string,
 ): string[] {
   return node.specifiers
     .filter(
       (specifier) =>
-        specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-        (specifier.imported.type === AST_NODE_TYPES.Identifier
-          ? specifier.imported.name
-          : specifier.imported.value) === importedName,
+        specifier.type === "ImportSpecifier" &&
+        importSpecifierName(specifier) === importedName,
     )
     .map((specifier) => specifier.local.name);
 }
 
-function elementName(node: TSESTree.JSXOpeningElement): string | null {
-  return node.name.type === AST_NODE_TYPES.JSXIdentifier
+function elementName(node: ESTree.JSXOpeningElement): string | null {
+  return node.name.type === "JSXIdentifier"
     ? node.name.name
     : null;
 }
 
-function jsxAncestors(occurrence: Occurrence): TSESTree.JSXElement[] {
+function jsxAncestors(occurrence: Occurrence): ESTree.JSXElement[] {
   return occurrence.ancestors.filter(
     (ancestor) =>
-      ancestor.type === AST_NODE_TYPES.JSXElement,
+      ancestor.type === "JSXElement",
   );
 }
 
@@ -78,7 +61,7 @@ function nearestEligibleCommonAncestor(
   search: Occurrence,
   input: Occurrence,
   inputGroupNames: ReadonlySet<string>,
-): TSESTree.JSXElement | null {
+): ESTree.JSXElement | null {
   const searchAncestors = jsxAncestors(search);
   const inputAncestorList = jsxAncestors(input);
   const inputAncestors = new Set(inputAncestorList);
@@ -105,7 +88,7 @@ function nearestEligibleCommonAncestor(
 
 function isActionIcon(
   search: Occurrence,
-  wrapper: TSESTree.JSXElement,
+  wrapper: ESTree.JSXElement,
 ): boolean {
   if (hasInteraction(search.node)) return true;
   return jsxAncestors(search).some((ancestor) => {
@@ -115,17 +98,17 @@ function isActionIcon(
   });
 }
 
-function hasInteraction(node: TSESTree.JSXOpeningElement): boolean {
+function hasInteraction(node: ESTree.JSXOpeningElement): boolean {
   return node.attributes.some((attribute) =>
-    attribute.type === AST_NODE_TYPES.JSXAttribute &&
-    attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+    attribute.type === "JSXAttribute" &&
+    attribute.name.type === "JSXIdentifier" &&
     /^(?:on[A-Z]|href$)/u.test(attribute.name.name),
   );
 }
 
 function mutuallyExclusive(left: Occurrence, right: Occurrence): boolean {
   return left.ancestors.some((ancestor, index) => {
-    if (ancestor.type !== AST_NODE_TYPES.ConditionalExpression) return false;
+    if (ancestor.type !== "ConditionalExpression") return false;
     const otherIndex = right.ancestors.indexOf(ancestor);
     if (otherIndex < 0) return false;
     const leftBranch = left.ancestors[index + 1];
@@ -135,14 +118,13 @@ function mutuallyExclusive(left: Occurrence, right: Occurrence): boolean {
   });
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-input-group-search",
-  documentation: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Require search icons and shared Input controls in the same visual wrapper to use InputGroup.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -150,16 +132,24 @@ export default createRule<Options, MessageIds>({
         "Use InputGroup with InputGroupAddon and InputGroupInput for this search field.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const inputNames = new Set<string>();
-    const inputGroupNames = new Set<string>();
-    const searchNames = new Set<string>();
-    const inputs: Occurrence[] = [];
-    const searches: Occurrence[] = [];
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let inputNames = new Set<string>();
+    let inputGroupNames = new Set<string>();
+    let searchNames = new Set<string>();
+    let inputs: Occurrence[] = [];
+    let searches: Occurrence[] = [];
 
     return {
-      ImportDeclaration(node): void {
+      before(): void {
+        sourceCode = context.sourceCode;
+        inputNames = new Set<string>();
+        inputGroupNames = new Set<string>();
+        searchNames = new Set<string>();
+        inputs = [];
+        searches = [];
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (node.importKind === "type") return;
         const source = String(node.source.value);
         if (source === "lucide-react") {
@@ -178,15 +168,15 @@ export default createRule<Options, MessageIds>({
           );
         }
       },
-      JSXOpeningElement(node): void {
+      JSXOpeningElement(node: ESTree.JSXOpeningElement): void {
         const name = elementName(node);
-        if (name === null) return;
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), name);
+        if (name === null || !searchNames.has(name) && !inputNames.has(name)) return;
+        const binding = findVariable(sourceCode.getScope(node), name);
         if (binding?.defs.length !== 1 ||
-          binding.defs[0]?.node.type !== AST_NODE_TYPES.ImportSpecifier ||
+          binding.defs[0]?.node.type !== "ImportSpecifier" ||
           binding.defs[0].node.importKind === "type") return;
         const occurrence = {
-          ancestors: context.sourceCode.getAncestors(node),
+          ancestors: sourceCode.getAncestors(node) as Node[],
           node,
         };
         if (searchNames.has(name)) searches.push(occurrence);
@@ -194,7 +184,7 @@ export default createRule<Options, MessageIds>({
       },
       "Program:exit"(): void {
         if (inputGroupNames.size === 0) return;
-        const reported = new Set<TSESTree.JSXElement>();
+        const reported = new Set<ESTree.JSXElement>();
         for (const search of searches) {
           if (isWithinInputGroup(search, inputGroupNames)) continue;
           for (const input of inputs) {

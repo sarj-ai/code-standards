@@ -1,156 +1,86 @@
 /**
  * @fileoverview prefer-zod-parse-output-type — a hand-written return contract can drift from the Zod schema that produces it.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-zod-parse-output-type.test.ts
+ * Port of the 18.x `prefer-zod-parse-output-type` rule. Typed: without
+ * tsrs type services it skips the file, as the original returns no visitors
+ * without a program.
+ *
+ * The walk collects local schemas and parse-return candidates, as the
+ * original does. `Program:exit` first drops candidates whose schema name
+ * matches no local schema (their symbols cannot match either), so files
+ * without one never build a tsrs program; the rest are checked against tsrs
+ * one by one, in the original's order. The typed helpers live in
+ * `_prefer-zod-parse-output-type-contracts.ts`.
+ *
+ * The original compares `typeParameters` to `undefined`; Oxlint gives null
+ * there. Ported checks accept both, including the shared
+ * `preferZodInferOwnsDefaultTwin` from the `prefer-zod-infer` port, so under
+ * Oxlint the original never defers a same-module twin to `prefer-zod-infer`
+ * and never fixes, while this port does both as the original does under ESLint.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeScriptSourceCode, NativeRuleContext, TypeServices, NativeReportFix } from "./_eslint-rule.js";
+import type { FixFn } from "@oxlint/plugins";
 
-
-
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
-
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { retainsNamedTypeUses } from "./_type-binding.js";
-import { importSpecifierName } from "./_import-specifier-name.js";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
-import { equivalentZodOutputContracts } from "./_equivalent-zod-output-contracts.js";
-import { hasAuthoritativeOutputContract } from "./_has-authoritative-output-contract.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
+import { enclosingFunction } from "../utils/stable-value-binding.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import type { TsrsFile, TsrsServices } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
+import { retainsNamedTypeUses } from "../utils/type-binding.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
+import { isZodModule } from "../utils/zod.js";
+import type { Contracts, TsNode, TsSymbol } from "./_prefer-zod-parse-output-type-contracts.js";
+import { contractsOf, equivalentZodOutputContracts, hasAuthoritativeOutputContract } from "./_prefer-zod-parse-output-type-contracts.js";
 import {
+  collectConstrainedNames,
+  isModuleLevelConst,
   isPreferZodInferModuleReshaper,
   isPreferZodInferTypeConstraintName,
   preferZodInferOwnsDefaultTwin,
 } from "./prefer-zod-infer.js";
 
-type MessageIds = "handWrittenParsedOutput";
-type Options = readonly [];
-
-export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",
-  rationale: "A hand-written contract can drift from the runtime-validated value. Schema ownership determines whether deriving the type preserves the domain architecture.",
-  remediation: "When the schema owns the contract, derive it with `z.output<typeof Schema>`. Preserve independently owned domain and public API contracts, and validate schema compatibility with those contracts.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "Requires TypeScript type information and a returned output from a module-level local Zod object schema's `.parse()` or `.safeParse()` result.",
-    "Same-module name-correlated twins that `prefer-zod-infer` can prove are left to that established rule; this companion owns richer or renamed same-module and cross-module contracts proven by parse-return data flow.",
-    "Only a single plain non-generic object interface or object type alias with exact property keys and bidirectional assignability is reported.",
-    "Direct returns, nullish conditional branches, and one immutable local parse-result binding are followed; second aliases, assignments, helper calls, imported schemas, and other indirect data flow are intentionally excluded.",
-    "Contracts returned from more than one distinct local schema are excluded because no single schema has unambiguous ownership.",
-    "Readonly, augmented, indexed, callable, generated, constrained, any, unknown, and never contracts are excluded rather than guessed.",
-    "Nested contracts must preserve property keys, optionality and readonly behavior through aliases, containers and unambiguous unions. Distinct nested classes, accessor or method declarations, opaque members, ambiguous unions, or graphs beyond 128 compared pairs or 16 union alternatives are excluded.",
-    "Explicit callable bindings, independently annotated contextual callbacks or object members, and class members fulfilling an annotated heritage contract retain ownership of their named output contract. Inference from the function body alone does not establish ownership; independent helpers remain eligible.",
-    "Automatic fixes replace only the bare return annotation of an unused private nongeneric synchronous function returning one direct local-schema parse result. The removed named contract must retain an independent top-level exported type-alias or direct type-export read; references in other removable annotations/assertions or its own definition cannot keep it live. Sole-use contracts, multiple consumers, public/callback/async/nullish/aliased returns, comments, shadowing and missing original Zod import provenance preserve manual ownership; schemas and domain declarations are never moved or exported.",
-  ],
-  examples: [
-    {
-      id: "schema-derived-return",
-      title: "Derive the validated return contract",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/row.ts",
-          source: 'import { z } from "zod"; const RowSchema = z.object({ id: z.string() }); type Row = z.output<typeof RowSchema>; function load(): Row { return RowSchema.parse({}); }',
-        },
-      ],
-      focusPath: "src/row.ts",
-      expectedCount: 0,
-      public: true, installedDependencies: [{ module: "zod", version: "4.6.7" }],
-    },
-    {
-      id: "hand-written-parsed-return",
-      title: "Do not hand-write the parsed return shape",
-      outcome: "match",
-      files: [
-        {
-          path: "src/contracts.ts",
-          source: "export interface ParsedRow { id: string }",
-        },
-        {
-          path: "src/row.ts",
-          source: 'import { z } from "zod"; import type { ParsedRow } from "./contracts.js"; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }',
-        },
-      ],
-      focusPath: "src/row.ts",
-      expectedCount: 1,
-      public: true, installedDependencies: [{ module: "zod", version: "4.6.7" }],
-    },
-    {
-      id: "safe-autofix",
-      title: "Derive an unused private parser return from its local schema",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): z.output<typeof RowSchema> { return RowSchema.parse({}); }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-      installedDependencies: [{ module: "zod", version: "4.6.7" }],
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "prefer-zod-parse-output-type";
 
 interface LocalSchema {
-  readonly identifier: TSESTree.Identifier;
-  readonly initializer: TSESTree.Node;
+  readonly identifier: ESTree.BindingIdentifier;
+  readonly initializer: Node;
   readonly name: string;
 }
 
 interface ParsedReturnCandidate {
-  readonly call: TSESTree.CallExpression;
+  readonly call: ESTree.CallExpression;
   readonly method: "parse" | "safeParse";
-  readonly output: TSESTree.Node;
-  readonly schema: TSESTree.Identifier;
+  readonly output: Node;
+  readonly schema: ESTree.IdentifierReference;
   readonly typeName: string;
-  readonly typeReference: TSESTree.TSTypeReference;
+  readonly typeReference: ESTree.TSTypeReference;
 }
 
-type FunctionNode =
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression;
-
-function isModuleLevelConst(node: TSESTree.VariableDeclarator): boolean {
-  const declaration = node.parent;
-  if (
-    declaration.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declaration.kind !== "const"
-  ) {
-    return false;
-  }
-  const container = declaration.parent;
-  return (
-    container.type === AST_NODE_TYPES.Program ||
-    (container.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      container.parent.type === AST_NODE_TYPES.Program)
-  );
+interface Eligible {
+  readonly candidate: ParsedReturnCandidate;
+  readonly contract: number;
+  readonly schema: LocalSchema;
+  readonly schemaSymbol: number;
 }
+
+type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function;
 
 /** True only for a call chain rooted at `z.object()` or `z.strictObject()`. */
-function isLocalZodObjectSchema(
-  node: TSESTree.Node,
-  namespaces: ReadonlySet<string>,
-): boolean {
+function isLocalZodObjectSchema(node: Node, namespaces: ReadonlySet<string>): boolean {
   let current = node;
-  while (current.type === AST_NODE_TYPES.CallExpression) {
+  while (current.type === "CallExpression") {
     const callee = unwrapExpression(current.callee);
-    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-    if (
-      callee.type !== AST_NODE_TYPES.MemberExpression ||
-      ASTUtils.getPropertyName(callee) === null
-    ) {
-      return false;
-    }
-    if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
-      return (
-        namespaces.has(calleeReceiver.name) &&
-        ((ASTUtils.getPropertyName(callee) ?? "") === "object" || (ASTUtils.getPropertyName(callee) ?? "") === "strictObject")
-      );
+    if (callee.type !== "MemberExpression") return false;
+    const name = getPropertyName(callee);
+    if (name === null) return false;
+    const calleeReceiver = unwrapExpression(callee.object);
+    if (calleeReceiver.type === "Identifier") {
+      return namespaces.has(calleeReceiver.name) && (name === "object" || name === "strictObject");
     }
     current = calleeReceiver;
   }
@@ -158,42 +88,28 @@ function isLocalZodObjectSchema(
 }
 
 interface ZodParseCall {
-  readonly call: TSESTree.CallExpression;
+  readonly call: ESTree.CallExpression;
   readonly method: "parse" | "safeParse";
-  readonly schema: TSESTree.Identifier;
+  readonly schema: ESTree.IdentifierReference;
 }
 
-function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
+function zodParseCall(node: ESTree.CallExpression): ZodParseCall | null {
   const callee = unwrapExpression(node.callee);
-  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
-    ASTUtils.getPropertyName(callee) === null
-  ) {
-    return null;
-  }
-  const method = ASTUtils.getPropertyName(callee);
+  if (callee.type !== "MemberExpression") return null;
+  const calleeReceiver = unwrapExpression(callee.object);
+  if (calleeReceiver.type !== "Identifier") return null;
+  const method = getPropertyName(callee);
   if (method !== "parse" && method !== "safeParse") return null;
-  return {
-    call: node,
-    method,
-    schema: calleeReceiver,
-  };
+  return { call: node, method, schema: calleeReceiver as ESTree.IdentifierReference };
 }
 
-function returnedOutputCandidate(
-  parsed: ZodParseCall,
-  output: TSESTree.Node,
-): ParsedReturnCandidate | null {
+function returnedOutputCandidate(parsed: ZodParseCall, output: Node): ParsedReturnCandidate | null {
   const owner = directReturnOwner(output);
   if (owner === null || enclosingFunction(parsed.call) !== owner) return null;
-  const annotation = owner?.returnType?.typeAnnotation;
-  if (annotation === undefined) return null;
+  const annotation = owner.returnType?.typeAnnotation;
+  if (!isPresent(annotation)) return null;
   const typeReference = returnContractReference(annotation);
-  if (typeReference === null || typeReference.typeName.type !== AST_NODE_TYPES.Identifier) {
-    return null;
-  }
+  if (typeReference === null || typeReference.typeName.type !== "Identifier") return null;
   return {
     call: parsed.call,
     method: parsed.method,
@@ -204,70 +120,48 @@ function returnedOutputCandidate(
   };
 }
 
-function directParseReturnCandidate(
-  node: TSESTree.CallExpression,
-): ParsedReturnCandidate | null {
+function directParseReturnCandidate(node: ESTree.CallExpression): ParsedReturnCandidate | null {
   const parsed = zodParseCall(node);
   return parsed?.method === "parse" ? returnedOutputCandidate(parsed, node) : null;
 }
 
-function localParseReturnCandidates(
-  node: TSESTree.VariableDeclarator,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): readonly ParsedReturnCandidate[] {
-  if (
-    node.id.type !== AST_NODE_TYPES.Identifier ||
-    node.init?.type !== AST_NODE_TYPES.CallExpression ||
-    node.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
-    node.parent.kind !== "const" ||
-    enclosingFunction(node.init) === null
-  ) {
-    return [];
-  }
+function localParseReturnCandidates(node: ESTree.VariableDeclarator, sourceCode: SourceCode): readonly ParsedReturnCandidate[] {
+  const declaration = parentOf(node);
+  if (node.id.type !== "Identifier" || node.init?.type !== "CallExpression" || declaration?.type !== "VariableDeclaration" ||
+    declaration.kind !== "const") return [];
   const parsed = zodParseCall(node.init);
-  if (parsed === null) return [];
+  if (parsed === null || enclosingFunction(node.init) === null) return [];
   const variable = sourceCode.getDeclaredVariables(node)[0];
   if (variable === undefined) return [];
   const candidates: ParsedReturnCandidate[] = [];
   for (const reference of variable.references) {
-    const identifier = reference.identifier;
-    const parent = identifier.parent;
-    const output =
-      parsed.method === "parse"
-        ? identifier
-        : parent.type === AST_NODE_TYPES.MemberExpression &&
-          parent.object === identifier &&
-          ASTUtils.getPropertyName(parent) !== null &&
-          (ASTUtils.getPropertyName(parent) ?? "") === "data"
-          ? parent
-          : null;
-    if (output === null) continue;
-    const candidate = returnedOutputCandidate(parsed, output);
+    const output = parsedOutput(parsed, reference.identifier);
+    const candidate = output === null ? null : returnedOutputCandidate(parsed, output);
     if (candidate !== null) candidates.push(candidate);
   }
   return candidates;
 }
 
+/** The parsed value a reference to the result reads: the binding for `parse`, `.data` for `safeParse`. */
+function parsedOutput(parsed: ZodParseCall, identifier: Node): Node | null {
+  if (parsed.method === "parse") return identifier;
+  const parent = parentOf(identifier);
+  return parent?.type === "MemberExpression" && parent.object === identifier && getPropertyName(parent) === "data"
+    ? parent
+    : null;
+}
+
 /** Returns the owning function only through wrappers that preserve the parsed value. */
-function directReturnOwner(node: TSESTree.Node): FunctionNode | null {
-  let current: TSESTree.Node = node;
-  while (current.parent !== undefined) {
-    const parent: TSESTree.Node = current.parent;
-    if (parent.type === AST_NODE_TYPES.ReturnStatement) {
-      return parent.argument === current ? enclosingFunction(parent) : null;
-    }
-    if (
-      parent.type === AST_NODE_TYPES.ArrowFunctionExpression &&
-      parent.expression &&
-      parent.body === current
-    ) {
-      return parent;
-    }
-    if (parent.type === AST_NODE_TYPES.AwaitExpression && parent.argument === current) {
+function directReturnOwner(node: Node): FunctionNode | null {
+  let current: Node = node;
+  for (let parent = parentOf(current); parent !== null; parent = parentOf(current)) {
+    if (parent.type === "ReturnStatement") return parent.argument === current ? enclosingFunction(parent) : null;
+    if (parent.type === "ArrowFunctionExpression" && parent.expression && parent.body === current) return parent;
+    if (parent.type === "AwaitExpression" && parent.argument === current) {
       current = parent;
       continue;
     }
-    if (parent.type === AST_NODE_TYPES.ConditionalExpression) {
+    if (parent.type === "ConditionalExpression") {
       const parsedWhenTrue = parent.consequent === current && isNullishExpression(parent.alternate);
       const parsedWhenFalse = parent.alternate === current && isNullishExpression(parent.consequent);
       if (parsedWhenTrue || parsedWhenFalse) {
@@ -280,76 +174,50 @@ function directReturnOwner(node: TSESTree.Node): FunctionNode | null {
   return null;
 }
 
-function isNullishExpression(node: TSESTree.Node): boolean {
-  return (
-    (node.type === AST_NODE_TYPES.Literal && node.value === null) ||
-    (node.type === AST_NODE_TYPES.Identifier && node.name === "undefined")
-  );
+/** `function f(): Contract { return schema.parse(x); }`: a plain declaration whose only statement returns the parse. */
+function soleParseReturnFunction(candidate: ParsedReturnCandidate): ESTree.Function | null {
+  const owner = directReturnOwner(candidate.output);
+  if (
+    owner?.type !== "FunctionDeclaration" || owner.async || owner.generator || isPresent(owner.typeParameters) ||
+    owner.returnType?.typeAnnotation !== candidate.typeReference
+  ) {
+    return null;
+  }
+  const statements = owner.body?.body ?? [];
+  const [statement] = statements;
+  return statements.length === 1 && statement?.type === "ReturnStatement" && statement.argument === candidate.call ? owner : null;
 }
 
-function enclosingFunction(node: TSESTree.Node): FunctionNode | null {
-  let current = node.parent;
-  while (current != null) {
-    if (
-      current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      current.type === AST_NODE_TYPES.FunctionDeclaration ||
-      current.type === AST_NODE_TYPES.FunctionExpression
-    ) {
-      return current;
-    }
-    current = current.parent;
-  }
-  return null;
+function isNullishExpression(node: Node): boolean {
+  return (node.type === "Literal" && (node as { value: unknown }).value === null) ||
+    (node.type === "Identifier" && node.name === "undefined");
 }
 
 /** Unwraps `Promise<T>` and nullish unions to one non-generic named contract. */
-function returnContractReference(node: TSESTree.TypeNode): TSESTree.TSTypeReference | null {
-  if (node.type === AST_NODE_TYPES.TSUnionType) {
-    const substantive = node.types.filter(
-      (member) =>
-        member.type !== AST_NODE_TYPES.TSNullKeyword &&
-        member.type !== AST_NODE_TYPES.TSUndefinedKeyword,
-    );
-    const [only] = substantive;
-    return substantive.length === 1 && only !== undefined
-      ? returnContractReference(only)
-      : null;
+function returnContractReference(node: ESTree.TSType): ESTree.TSTypeReference | null {
+  if (node.type === "TSUnionType") {
+    return soleReturnContract(node.types.filter((member) => member.type !== "TSNullKeyword" && member.type !== "TSUndefinedKeyword"));
   }
-  if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
-    node.typeName.name === "Promise"
-  ) {
-    const parameters = node.typeArguments?.params ?? [];
-    const [only] = parameters;
-    return parameters.length === 1 && only !== undefined
-      ? returnContractReference(only)
-      : null;
+  if (node.type === "TSTypeReference" && node.typeName.type === "Identifier" && node.typeName.name === "Promise") {
+    return soleReturnContract(node.typeArguments?.params ?? []);
   }
-  return node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
-    (node.typeArguments?.params.length ?? 0) === 0
+  return node.type === "TSTypeReference" && node.typeName.type === "Identifier" && (node.typeArguments?.params.length ?? 0) === 0
     ? node
     : null;
 }
 
-function recordZodNamespaces(
-  node: TSESTree.Program,
-  namespaces: Set<string>,
-): void {
+function soleReturnContract(types: readonly ESTree.TSType[]): ESTree.TSTypeReference | null {
+  const [only] = types;
+  return types.length === 1 && only !== undefined ? returnContractReference(only) : null;
+}
+
+function recordZodNamespaces(node: ESTree.Program, namespaces: Set<string>): void {
   for (const statement of node.body) {
-    if (
-      statement.type !== AST_NODE_TYPES.ImportDeclaration ||
-      !isZodModule(statement.source.value)
-    ) {
-      continue;
-    }
+    if (statement.type !== "ImportDeclaration" || !isZodModule(statement.source.value)) continue;
     for (const specifier of statement.specifiers) {
       if (
-        specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-        specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-        (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-          importSpecifierName(specifier) === "z")
+        specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier" ||
+        (specifier.type === "ImportSpecifier" && importSpecifierName(specifier) === "z")
       ) {
         namespaces.add(specifier.local.name);
       }
@@ -357,196 +225,41 @@ function recordZodNamespaces(
   }
 }
 
-function collectConstrainedNames(node: TSESTree.TypeNode, names: Set<string>): void {
-  if (node.type === AST_NODE_TYPES.TSTypeReference) {
-    if (node.typeName.type === AST_NODE_TYPES.Identifier) names.add(node.typeName.name);
-    for (const argument of node.typeArguments?.params ?? []) {
-      collectConstrainedNames(argument, names);
-    }
-    return;
-  }
-  if (node.type === AST_NODE_TYPES.TSArrayType) {
-    collectConstrainedNames(node.elementType, names);
-    return;
-  }
-  if (
-    node.type === AST_NODE_TYPES.TSUnionType ||
-    node.type === AST_NODE_TYPES.TSIntersectionType
-  ) {
-    for (const member of node.types) collectConstrainedNames(member, names);
-  }
+/** The single plain object interface or type literal alias declaring this symbol. */
+function handWrittenObjectDeclaration(env: Contracts, symbol: TsSymbol): TsNode | null {
+  const declarations = symbol.declarations ?? [];
+  const [handle] = declarations;
+  if (declarations.length !== 1 || handle === undefined) return null;
+  const kinds = env.kinds.SyntaxKind;
+  if (handle.kind !== kinds["InterfaceDeclaration"] && handle.kind !== kinds["TypeAliasDeclaration"]) return null;
+  const declaration = handle.resolve();
+  return declaration !== undefined && isPlainObjectDeclaration(kinds, declaration) ? declaration : null;
 }
 
-function reportCandidates(
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-  services: TypeServices,
-  schemas: readonly LocalSchema[],
-  candidates: readonly ParsedReturnCandidate[],
-  zodNamespaces: ReadonlySet<string>,
-  reshapedSchemas: ReadonlySet<string>,
-  constrainedTypeNames: ReadonlySet<string>,
-): void {
-  const checker = services.program.getTypeChecker();
-  const schemaSymbols = new Map<ts.Symbol, LocalSchema>();
-  for (const schema of schemas) {
-    const tsIdentifier = services.esTreeNodeToTSNodeMap.get(schema.identifier);
-    const symbol = checker.getSymbolAtLocation(tsIdentifier);
-    if (symbol !== undefined) schemaSymbols.set(symbol, schema);
+/** A non-generic `interface X { … }` without heritage, or `type X = { … }`, with only plain property members. */
+function isPlainObjectDeclaration(kinds: Contracts["kinds"]["SyntaxKind"], declaration: TsNode): boolean {
+  if (declaration.typeParameters !== undefined) return false;
+  if (declaration.kind === kinds["InterfaceDeclaration"]) {
+    return declaration.heritageClauses === undefined && hasPlainMembers(kinds, declaration.members);
   }
-  const eligible: Array<{
-    readonly candidate: ParsedReturnCandidate;
-    readonly contractSymbol: ts.Symbol;
-    readonly schema: LocalSchema;
-    readonly schemaSymbol: ts.Symbol;
-  }> = [];
-  const reported = new Set<ts.Symbol>();
-  function collectEligibleCandidate(candidate: ParsedReturnCandidate): void {
-    const tsSchema = services.esTreeNodeToTSNodeMap.get(candidate.schema);
-    const schemaSymbol = checker.getSymbolAtLocation(tsSchema);
-    if (schemaSymbol === undefined) return;
-    const schema = schemaSymbols.get(schemaSymbol);
-    if (schema === undefined) return;
-    const tsReference = services.esTreeNodeToTSNodeMap.get(candidate.typeReference);
-    const contract = checker.getTypeAtLocation(tsReference);
-    const contractSymbol = contract.aliasSymbol ?? contract.getSymbol();
-    if (contractSymbol === undefined) return;
-    const declaration = handWrittenObjectDeclaration(contractSymbol);
-    if (declaration === null || declaration.getSourceFile().isDeclarationFile) return;
-    const source = declaration.getSourceFile();
-    if (isGeneratedFile({ filename: source.fileName, cwd: context.cwd }, source.text)) return;
-    const tsOutput = services.esTreeNodeToTSNodeMap.get(candidate.output);
-    const parsed = checker.getTypeAtLocation(tsOutput);
-    if (hasAuthoritativeOutputContract(checker, tsOutput, contractSymbol)) return;
-    // A `z.ZodType<Contract>` constraint deliberately makes the TypeScript
-    // contract authoritative over the schema.
-    const constrained =
-      constrainedTypeNames.has(candidate.typeName) ||
-      (parsed.aliasSymbol ?? parsed.getSymbol()) === contractSymbol;
-    if (constrained) return;
-    if (declaration.getSourceFile() === tsSchema.getSourceFile()) {
-      const estreeDeclaration = services.tsNodeToESTreeNodeMap.get(declaration);
-      if (
-        (estreeDeclaration.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-          estreeDeclaration.type === AST_NODE_TYPES.TSTypeAliasDeclaration) &&
-        preferZodInferOwnsDefaultTwin({
-          constrained,
-          declaration: estreeDeclaration,
-          initializer: schema.initializer,
-          reshaped: reshapedSchemas.has(schema.name),
-          schemaName: schema.name,
-          typeName: candidate.typeName,
-          zodNamespaces,
-        })
-      ) {
-        return;
-      }
-    }
-    if (
-      !equivalentZodOutputContracts(
-        checker,
-        checker.getNonNullableType(parsed),
-        checker.getNonNullableType(contract),
-      )
-    ) {
-      return;
-    }
-    eligible.push({ candidate, contractSymbol, schema, schemaSymbol });
-  }
-
-  for (const candidate of candidates) { collectEligibleCandidate(candidate); }
-  const schemasByContract = new Map<ts.Symbol, Set<ts.Symbol>>();
-  const candidatesByContract = new Map<ts.Symbol, number>();
-  for (const { contractSymbol, schemaSymbol } of eligible) {
-    const contractSchemas = schemasByContract.get(contractSymbol) ?? new Set<ts.Symbol>();
-    contractSchemas.add(schemaSymbol);
-    schemasByContract.set(contractSymbol, contractSchemas);
-    candidatesByContract.set(contractSymbol, (candidatesByContract.get(contractSymbol) ?? 0) + 1);
-  }
-  for (const { candidate, contractSymbol, schema } of eligible) {
-    if (reported.has(contractSymbol) || schemasByContract.get(contractSymbol)?.size !== 1) continue;
-    reported.add(contractSymbol);
-    context.report({
-      node: candidate.typeReference,
-      messageId: "handWrittenParsedOutput",
-      fix: privateParsedOutputFix(context, candidate, schema, zodNamespaces, candidatesByContract.get(contractSymbol)),
-      data: {
-        methodName: candidate.method,
-        schemaName: schema.name,
-        typeName: candidate.typeName,
-      },
-    });
-  }
+  return declaration.kind === kinds["TypeAliasDeclaration"] && declaration.type?.kind === kinds["TypeLiteral"] &&
+    hasPlainMembers(kinds, declaration.type?.members);
 }
 
-
-function privateParsedOutputFix(
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-  candidate: ParsedReturnCandidate,
-  schema: LocalSchema,
-  namespaces: ReadonlySet<string>,
-  candidateCount: number | undefined,
-): NativeReportFix | null {
-  const owner = directReturnOwner(candidate.output);
-  if (candidateCount !== 1 || candidate.method !== "parse" || candidate.output !== candidate.call ||
-    owner?.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null || owner.async || owner.generator || owner.typeParameters !== undefined ||
-    owner.returnType?.typeAnnotation !== candidate.typeReference || owner.body?.body.length !== 1 ||
-    owner.body.body[0]?.type !== AST_NODE_TYPES.ReturnStatement || owner.body.body[0].argument !== candidate.call ||
-    context.sourceCode.getCommentsInside(owner).length > 0 ||
-    !retainsNamedTypeUses(context.sourceCode, candidate.typeReference) ||
-    !isUnusedPrivateBinding(context.sourceCode, owner, owner.id, context.filename)) return null;
-  const initializer = unwrapExpression(schema.initializer);
-  const callee = initializer.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(initializer.callee) : null;
-  const namespace = callee?.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : null;
-  if (namespace?.type !== AST_NODE_TYPES.Identifier || !namespaces.has(namespace.name)) return null;
-  const binding = ASTUtils.findVariable(context.sourceCode.getScope(namespace), namespace.name);
-  if (binding?.defs.length !== 1 || binding.defs[0]?.type !== "ImportBinding" ||
-    ASTUtils.findVariable(context.sourceCode.getScope(candidate.typeReference), namespace.name) !== binding) return null;
-  return (fixer) => fixer.replaceText(candidate.typeReference,
-    `${context.sourceCode.getText(namespace)}.output<typeof ${context.sourceCode.getText(schema.identifier)}>`);
+/** At least one member, each a typed, writable property signature. */
+function hasPlainMembers(kinds: Contracts["kinds"]["SyntaxKind"], members: readonly TsNode[] | undefined): boolean {
+  return members !== undefined && members.length > 0 && members.every((member) =>
+    member.kind === kinds["PropertySignature"] && member.type !== undefined &&
+    member.modifiers?.some((modifier) => modifier.kind === kinds["ReadonlyKeyword"]) !== true);
 }
 
-function handWrittenObjectDeclaration(
-  symbol: ts.Symbol,
-): ts.InterfaceDeclaration | ts.TypeAliasDeclaration | null {
-  const declarations = symbol.getDeclarations() ?? [];
-  const [declaration] = declarations;
-  if (declarations.length !== 1 || declaration === undefined) return null;
-  const plainMembers = (members: ts.NodeArray<ts.TypeElement>): boolean =>
-    members.length > 0 &&
-    members.every(
-      (member) =>
-        ts.isPropertySignature(member) &&
-        member.type !== undefined &&
-        member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ReadonlyKeyword) !== true,
-    );
-  if (
-    ts.isInterfaceDeclaration(declaration) &&
-    declaration.typeParameters === undefined &&
-    declaration.heritageClauses === undefined &&
-    plainMembers(declaration.members)
-  ) {
-    return declaration;
-  }
-  if (
-    ts.isTypeAliasDeclaration(declaration) &&
-    declaration.typeParameters === undefined &&
-    ts.isTypeLiteralNode(declaration.type) &&
-    plainMembers(declaration.type.members)
-  ) {
-    return declaration;
-  }
-  return null;
-}
-
-export default createRule<Options, MessageIds>({
-  name: "prefer-zod-parse-output-type",
-  documentation: PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
     docs: {
-      description:
-        "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",
+      description: "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -554,80 +267,188 @@ export default createRule<Options, MessageIds>({
         "`{{typeName}}` matches the validated output returned from `{{schemaName}}.{{methodName}}()`. If the schema owns this contract, consider `z.output<typeof {{schemaName}}>`. Preserve independent domain and public API contracts.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      isStoryFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    ) {
-      return {};
-    }
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
-    }
-    if (services === null) return {};
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let namespaces = new Set<string>();
+    let constrainedTypeNames = new Set<string>();
+    let reshapedSchemas = new Set<string>();
+    let schemas: LocalSchema[] = [];
+    let candidates: ParsedReturnCandidate[] = [];
 
-    const namespaces = new Set<string>();
-    const constrainedTypeNames = new Set<string>();
-    const reshapedSchemas = new Set<string>();
-    const schemas: LocalSchema[] = [];
-    const candidates: ParsedReturnCandidate[] = [];
+    /** The candidates whose schema symbol is a local schema's and whose contract matches its output. */
+    function eligibleCandidates(file: TsrsFile, pending: readonly ParsedReturnCandidate[]): Eligible[] {
+      const env = contractsOf(file);
+      const symbolId = (node: Node): number | undefined => {
+        const tsNode = file.tsNode(node) as TsNode | undefined;
+        return tsNode === undefined ? undefined : env.checker.getSymbolAtLocation(tsNode)?.id;
+      };
+      const schemaSymbols = new Map<number, LocalSchema>();
+      for (const schema of schemas) {
+        const symbol = symbolId(schema.identifier);
+        if (symbol !== undefined) schemaSymbols.set(symbol, schema);
+      }
+      const eligible: Eligible[] = [];
+      for (const candidate of pending) {
+        const schemaSymbol = symbolId(candidate.schema);
+        const schema = schemaSymbol === undefined ? undefined : schemaSymbols.get(schemaSymbol);
+        if (schemaSymbol === undefined || schema === undefined) continue;
+        const contract = eligibleContract(file, env, candidate, schema);
+        if (contract !== null) eligible.push({ candidate, contract, schema, schemaSymbol });
+      }
+      return eligible;
+    }
+
+    /** The candidate's contract symbol id when the original would report it, in its order of checks; else null. */
+    function eligibleContract(file: TsrsFile, env: Contracts, candidate: ParsedReturnCandidate, schema: LocalSchema): number | null {
+      const { checker } = env;
+      const handWritten = handWrittenContract(file, env, candidate);
+      if (handWritten === null) return null;
+      const { contract, declaration, source, symbol } = handWritten;
+      const tsOutput = file.tsNode(candidate.output) as TsNode | undefined;
+      if (tsOutput === undefined) return null;
+      const parsed = checker.getTypeAtLocation(tsOutput);
+      if (hasAuthoritativeOutputContract(env, tsOutput, symbol)) return null;
+      // A `z.ZodType<Contract>` constraint deliberately makes the TypeScript
+      // contract authoritative over the schema.
+      const constrained = constrainedTypeNames.has(candidate.typeName) ||
+        (parsed.getAliasSymbol() ?? parsed.getSymbol())?.id === symbol.id;
+      if (constrained) return null;
+      if (source.fileName === file.sourceFile.fileName && deferredToPreferZodInfer(file, candidate, schema, declaration, constrained)) return null;
+      if (!equivalentZodOutputContracts(env, checker.getNonNullableType(parsed), checker.getNonNullableType(contract))) return null;
+      return symbol.id;
+    }
+
+    /** The return contract's type, symbol and plain object declaration, when that declaration is hand-written source. */
+    function handWrittenContract(file: TsrsFile, env: Contracts, candidate: ParsedReturnCandidate) {
+      const tsReference = file.outerTsNode(candidate.typeReference) as TsNode | undefined;
+      if (tsReference === undefined) return null;
+      const contract = env.checker.getTypeAtLocation(tsReference);
+      const symbol = contract.getAliasSymbol() ?? contract.getSymbol();
+      if (symbol === undefined) return null;
+      const declaration = handWrittenObjectDeclaration(env, symbol);
+      if (declaration === null) return null;
+      const source = declaration.getSourceFile();
+      if (source.isDeclarationFile || isGeneratedFile({ filename: source.fileName, cwd: context.cwd }, source.text)) return null;
+      return { contract, declaration, source, symbol };
+    }
+
+    /** Whether `prefer-zod-infer` owns this same-module contract (it reports the twin instead). */
+    function deferredToPreferZodInfer(file: TsrsFile, candidate: ParsedReturnCandidate, schema: LocalSchema, declaration: TsNode, constrained: boolean): boolean {
+      const estreeDeclaration = file.esTreeNode(declaration);
+      return (estreeDeclaration?.type === "TSInterfaceDeclaration" || estreeDeclaration?.type === "TSTypeAliasDeclaration") &&
+        preferZodInferOwnsDefaultTwin({
+          constrained,
+          declaration: estreeDeclaration,
+          initializer: schema.initializer,
+          reshaped: reshapedSchemas.has(schema.name),
+          schemaName: schema.name,
+          typeName: candidate.typeName,
+          zodNamespaces: namespaces,
+        });
+    }
+
+    /** Report each contract once, and only when a single schema produces it. */
+    function report(eligible: readonly Eligible[]): void {
+      const schemasByContract = new Map<number, Set<number>>();
+      const candidatesByContract = new Map<number, number>();
+      for (const { contract, schemaSymbol } of eligible) {
+        const contractSchemas = schemasByContract.get(contract) ?? new Set<number>();
+        contractSchemas.add(schemaSymbol);
+        schemasByContract.set(contract, contractSchemas);
+        candidatesByContract.set(contract, (candidatesByContract.get(contract) ?? 0) + 1);
+      }
+      const reported = new Set<number>();
+      for (const { candidate, contract, schema } of eligible) {
+        if (reported.has(contract) || schemasByContract.get(contract)?.size !== 1) continue;
+        reported.add(contract);
+        context.report({
+          node: candidate.typeReference,
+          messageId: "handWrittenParsedOutput",
+          ...privateParsedOutputFix(candidate, schema, candidatesByContract.get(contract)),
+          data: { methodName: candidate.method, schemaName: schema.name, typeName: candidate.typeName },
+        });
+      }
+    }
+
+    function privateParsedOutputFix(candidate: ParsedReturnCandidate, schema: LocalSchema, candidateCount: number | undefined) {
+      const sourceCode = context.sourceCode;
+      const directParse = candidateCount === 1 && candidate.method === "parse" && candidate.output === candidate.call;
+      const owner = directParse ? soleParseReturnFunction(candidate) : null;
+      if (
+        owner === null || owner.id === null || sourceCode.getCommentsInside(owner).length > 0 ||
+        !retainsNamedTypeUses(sourceCode, candidate.typeReference) ||
+        !isUnusedPrivateBinding(sourceCode, owner, owner.id, context.filename)
+      ) {
+        return null;
+      }
+      const namespace = schemaZodNamespace(schema, candidate.typeReference);
+      if (namespace === null) return null;
+      const fix: FixFn = (fixer) => fixer.replaceText(candidate.typeReference,
+        `${sourceCode.getText(namespace)}.output<typeof ${sourceCode.getText(schema.identifier)}>`);
+      return { fix };
+    }
+
+    /** The imported Zod namespace the schema is built from, when the type reference sees the same binding. */
+    function schemaZodNamespace(schema: LocalSchema, typeReference: ESTree.TSTypeReference): Node | null {
+      const { sourceCode } = context;
+      const initializer = unwrapExpression(schema.initializer);
+      const callee = initializer.type === "CallExpression" ? unwrapExpression(initializer.callee) : null;
+      const namespace = callee?.type === "MemberExpression" ? unwrapExpression(callee.object) : null;
+      if (namespace?.type !== "Identifier" || !namespaces.has(namespace.name)) return null;
+      const binding = findVariable(sourceCode.getScope(namespace), namespace.name);
+      return binding?.defs.length === 1 && binding.defs[0]?.type === "ImportBinding" &&
+        findVariable(sourceCode.getScope(typeReference), namespace.name) === binding
+        ? namespace
+        : null;
+    }
+
     return {
-      Program(node): void {
+      before() {
+        tsrs = null;
+        namespaces = new Set();
+        constrainedTypeNames = new Set();
+        reshapedSchemas = new Set();
+        schemas = [];
+        candidates = [];
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isStoryFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      Program(node) {
         recordZodNamespaces(node, namespaces);
       },
-      VariableDeclarator(node): void {
-        if (
-          node.id.type === AST_NODE_TYPES.Identifier &&
-          node.init !== null &&
-          isModuleLevelConst(node) &&
-          isLocalZodObjectSchema(node.init, namespaces)
-        ) {
+      VariableDeclarator(node) {
+        if (node.id.type === "Identifier" && node.init !== null && isModuleLevelConst(node) && isLocalZodObjectSchema(node.init, namespaces)) {
           schemas.push({ identifier: node.id, initializer: node.init, name: node.id.name });
         }
         candidates.push(...localParseReturnCandidates(node, context.sourceCode));
       },
-      CallExpression(node): void {
+      CallExpression(node) {
         const candidate = directParseReturnCandidate(node);
         if (candidate !== null) candidates.push(candidate);
       },
-      "MemberExpression"(node: TSESTree.MemberExpression): void {
-        if (
-          node.object.type === AST_NODE_TYPES.Identifier &&
-          node.property.type === AST_NODE_TYPES.Identifier &&
-          isPreferZodInferModuleReshaper(node.property.name)
-        ) {
+      MemberExpression(node) {
+        if (node.object.type === "Identifier" && node.property.type === "Identifier" && isPreferZodInferModuleReshaper(node.property.name)) {
           reshapedSchemas.add(node.object.name);
         }
       },
-      TSTypeReference(node): void {
+      TSTypeReference(node) {
         const { typeName } = node;
-        const name =
-          typeName.type === AST_NODE_TYPES.Identifier
-            ? typeName.name
-            : typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-              typeName.right.type === AST_NODE_TYPES.Identifier
-              ? typeName.right.name
-              : null;
+        const name = typeName.type === "Identifier"
+          ? typeName.name
+          : typeName.type === "TSQualifiedName" && typeName.right.type === "Identifier" ? typeName.right.name : null;
         if (name === null || !isPreferZodInferTypeConstraintName(name)) return;
-        for (const argument of node.typeArguments?.params ?? []) {
-          collectConstrainedNames(argument, constrainedTypeNames);
-        }
+        for (const argument of node.typeArguments?.params ?? []) collectConstrainedNames(argument, constrainedTypeNames);
       },
-      "Program:exit"(): void {
-        reportCandidates(
-          context,
-          services,
-          schemas,
-          candidates,
-          namespaces,
-          reshapedSchemas,
-          constrainedTypeNames,
-        );
+      "Program:exit"() {
+        if (tsrs === null) return;
+        // A candidate whose schema name matches no local schema cannot match one by symbol either.
+        const schemaNames = new Set(schemas.map((schema) => schema.name));
+        const pending = candidates.filter((candidate) => schemaNames.has(candidate.schema.name));
+        if (pending.length === 0) return;
+        const eligible = tsrs.run((file) => eligibleCandidates(file, pending));
+        if (eligible !== null) report(eligible);
       },
     };
   },

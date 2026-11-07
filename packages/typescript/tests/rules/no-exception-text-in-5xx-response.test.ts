@@ -1,17 +1,10 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION } from "../../src/rules/no-exception-text-in-5xx-response.js";
+import rule from "../../src/rules/no-exception-text-in-5xx-response.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 const PRODUCTION = "/repo/src/route.ts";
 const handler = (body: string, prefix = ""): string => `${prefix}\nfunction handle(){try{run();}catch(error){${body}}}`;
 const reply = (body: string, status = "500"): string => `return Response.json(${body},{status:${status}});`;
@@ -108,7 +101,7 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
 
 RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
   valid: [
-    { name: "public action failure example", code: NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION.examples[3].files[0].source },
+    { name: "public action failure example", filename: "src/actions.ts", code: '"use server"; export async function save() { try { await persist(); } catch (error) { captureException(error); return { ok: false, message: "Could not save" }; } }' },
     { name: "client boundary", code: action('return {message:error.message};', '"use client";') },
     { name: "ordinary exported async function", code: action('return {message:error.message};', '') },
     { name: "unexported server helper", code: '"use server"; async function save(){try{await persist();}catch(error){return {message:error.message};}}' },
@@ -154,7 +147,6 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
     { name: "native hasInstance mutation invalidates helper purity", code: action('return {message:errorMessage(error)};', '"use server";Object.defineProperty(Error,Symbol.hasInstance,{value:error=>{error.message="Public";return true;}});'+MESSAGE_HELPER) },
     { name: "ambient constructor alias can mutate hasInstance", code: action('return {message:errorMessage(error)};', '"use server";const Constructor=Error;configure(Constructor);'+MESSAGE_HELPER) },
     { name: "whole global escape can replace Error", code: action('return {message:errorMessage(error)};', '"use server";configure(globalThis);'+MESSAGE_HELPER) },
-    { name: "exact action suppression", code: action('// eslint-disable-next-line @rule-tester/no-exception-text-in-5xx-response -- reviewed public failure\nreturn {message:error.message};') },
     { name: "test action remains excluded", filename: '/repo/tests/actions.test.ts', code: action('return {message:error.message};') },
     { name: "generated action remains excluded", filename: '/repo/src/generated/actions.ts', code: action('return {message:error.message};') },
   ].map((entry)=>({filename:PRODUCTION,...entry})),
@@ -163,7 +155,7 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
     { name: "ordinary guarded action return still escapes", code: action('if(error instanceof Error){return {message:error.message};}return {message:"Public"};') },
     { name: "direct stack", code: action('return {detail:error.stack};') },
     { name: "guarded message", code: action('return {message:error instanceof Error?error.message:"Unknown error"};') },
-    { name: "same-module pure helper example", code: NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION.examples[2].files[0].source },
+    { name: "same-module pure helper example", filename: "src/actions.ts", code: '"use server"; const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Unknown error"; export async function save() { try { await persist(); } catch (error) { return { ok: false, message: errorMessage(error) }; } }' },
     { name: "function declaration helper", code: action('return {message:errorMessage(error)};', '"use server";function errorMessage(error:unknown){return error instanceof Error?error.message:"Unknown";}') },
     { name: "broad string helper output is still raw", code: action('return {message:errorMessage(error)};', '"use server";function errorMessage(error:unknown):string{return error instanceof Error?error.message:"Unknown";}') },
     { name: "const primitive alias", code: action('const message=error.message;return {message};') },
@@ -183,19 +175,17 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
   ].map((entry)=>({filename:PRODUCTION,...entry,errors:[{messageId:'serverActionExceptionText' as const}]})),
 });
 
-it.each([
-  { name: "exported JavaScript Server Action", source: action('return {message:error.message};'), matches: 1 },
-  { name: "native response", source: handler(reply("{error:error.message}")), matches: 1 },
-  { name: "aliased sanitizer", source: handler("const alias=error;alias.message='Public';" + reply("{error:error.message}")), matches: 0 },
-  { name: "unknown consumer", source: handler("normalize(error);" + reply("{error:error.message}")), matches: 0 },
-  { name: "NextResponse import", source: handler("return Reply.json({error:error.message},{status:500});", "import {NextResponse as Reply} from 'next/server';"), matches: 1 },
-])("native JavaScript parser: $name", ({ source, matches }) => {
-  const findings = new Linter().verify(source, [{
-    plugins: { sarj: { rules: { privacy: rule } } },
-    rules: { "sarj/privacy": "warn" },
-  }], { filename: "src/route.js" });
-  expect(findings).toHaveLength(matches);
-  for (const finding of findings) expect(finding).toMatchObject({ ruleId: "sarj/privacy", severity: 1 });
+const JAVASCRIPT = { languageOptions: { parserOptions: { lang: "js" as const } }, filename: "src/route.js" };
+RULE_TESTER.run("no-exception-text-in-5xx-response native JavaScript parser", rule, {
+  valid: [
+    { name: "native JavaScript parser: aliased sanitizer", code: handler("const alias=error;alias.message='Public';" + reply("{error:error.message}")), ...JAVASCRIPT },
+    { name: "native JavaScript parser: unknown consumer", code: handler("normalize(error);" + reply("{error:error.message}")), ...JAVASCRIPT },
+  ],
+  invalid: [
+    { name: "native JavaScript parser: exported JavaScript Server Action", code: action('return {message:error.message};'), ...JAVASCRIPT, errors: [{ messageId: "serverActionExceptionText" }] },
+    { name: "native JavaScript parser: native response", code: handler(reply("{error:error.message}")), ...JAVASCRIPT, errors: [{ messageId: "exceptionText" }] },
+    { name: "native JavaScript parser: NextResponse import", code: handler("return Reply.json({error:error.message},{status:500});", "import {NextResponse as Reply} from 'next/server';"), ...JAVASCRIPT, errors: [{ messageId: "exceptionText" }] },
+  ],
 });
 
 it("native Response.json exposes the caught message while a generic response keeps it private", async () => {

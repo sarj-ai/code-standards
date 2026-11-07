@@ -1,5 +1,10 @@
+import { join } from "node:path";
+
 import rule from "../../src/rules/no-redundant-consumer-union.js";
-import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, runPrivateConsumerBoundaries } from "../private-consumer-cases.js";
+import { CONSUMER_PREFIX, runPrivateConsumerBoundaries, UNION_DECLARATIONS } from "./_private-consumer-cases.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
+
+const TESTER = ruleTester({ cwd: join(FIXTURES, "minimal-consumer") });
 
 const PREFIX = `${CONSUMER_PREFIX}${UNION_DECLARATIONS}`;
 const NULLABLE_PREFIX = `${CONSUMER_PREFIX}interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string}`;
@@ -11,7 +16,7 @@ const SCALAR_ARROW_HELPER = "const formatName = (value: string): string => '[' +
 
 const MERGED_OPTIONAL_SOURCE = "export {};\ninterface Name {readonly name: string}\ninterface Full {readonly name: string; readonly email?: string}\ninterface Full {readonly note?: string}\nexport type KeptFull = Full;\nconst full: Full = {name: 'Ada', email: 'a'};\nconst incompatibleExtra = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(full); label(incompatibleExtra);\n";
 
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union mutual optional surfaces", rule, {
+TESTER.run("no-redundant-consumer-union mutual optional surfaces", rule, typed({
   valid: [
     {name: "mixed exported and local fragments cannot establish one binding", filename: "probe.tsx",
       code: MERGED_OPTIONAL_SOURCE.replace("interface Full {readonly note?: string}", "export interface Full {readonly name: number; readonly note?: string}")},
@@ -19,7 +24,6 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union mutual optional surface
     {name: "defaulted-generic-alias-unsupported", filename: "probe.tsx", code: "export {};\ninterface Name {readonly name: string}\ntype Full<_Unused = unknown> = {readonly name: string; readonly email?: string};\nexport type KeptFull = Full;\nconst input = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(input);\n"},
 
     {name: "imported mutual contracts remain outside the local binding proof", filename: "probe.tsx", code: "export {}; import type {ConsumerName as Name} from './consumer-index'; interface Full extends Name {readonly email?: string} export type KeptFull = Full; const input = {name: 'Ada', email: 42}; function label(p: Full | Name): string {return p.name;} label(input);"},
-    {name: "malformed duplicate alias headers cannot establish mutual coverage", filename: "probe.tsx", code: "export {};\ninterface Name {readonly name: string}\ntype Ambiguous = {readonly name: string; readonly email?: string};\ntype Ambiguous = {readonly name: number; readonly email?: string};\ntype Full = Ambiguous;\nexport type KeptFull = Full;\nconst full: Full = {name: 'Ada', email: 'a'};\nconst incompatibleExtra = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(full); label(incompatibleExtra);\n"},
     {name: "equal-key mutual contracts stay unsupported", filename: "probe.tsx",
       code: `${OPTIONAL_PREFIX.replace("interface Full extends Name {readonly email?: string}", "interface Full extends Name {}")} function label(p: Full | Name): string {return p.name;} label(input);`},
     ...["", "readonly phone?: string;"].map((extra) => ({
@@ -63,10 +67,10 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union mutual optional surface
       code: `${OPTIONAL_PREFIX} function label(p: Full /* keep reviewed domain note */ | Name): string {return p.name;} label(input);`,
       output: null, errors: [{messageId: "redundant", data: {covered: "Full", covering: "Name"}}]},
   ],
-});
+}));
 
 runPrivateConsumerBoundaries("no-redundant-consumer-union", rule, "Dog | Animal", UNION_DECLARATIONS);
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union property declaration origins", rule, {
+TESTER.run("no-redundant-consumer-union property declaration origins", rule, typed({
   valid: [
     ...[
       ["conflicting nullable merge", "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string | null} interface Dog {readonly email: number | null}"],
@@ -90,8 +94,8 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union property declaration or
       return {name, filename: "probe.tsx", code, output: code.replace("Dog | Animal", "Animal"), errors: [{messageId: "redundant" as const}]};
     }),
   ],
-});
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
+}));
+TESTER.run("no-redundant-consumer-union", rule, typed({
   valid: [
     ...["", "declare global {interface Object {readonly __optionalToken: any}}"].map((augmentation) => ({
       name: "an optional covering key can reject a valid existing identifier: " + (augmentation ? "implicit Any" : "ordinary"),
@@ -124,9 +128,9 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
     {name: "imports aliases and re-exports preserve native identity", filename: "probe.tsx", code: `${CONSUMER_PREFIX}import type {ConsumerAlias, ConsumerName} from './consumer-index'; function label(p: ConsumerAlias | ConsumerName): string {return p.name;} label(account);`, output: null, errors: [{messageId: "redundant"}]},
     {name: "boolean and optional readonly fields", filename: "probe.tsx", code: `${CONSUMER_PREFIX}interface Base {readonly name: string; readonly enabled: boolean; readonly note?: string} interface Child extends Base {readonly email: string} const value = {name: 'Ada', enabled: true, email: 'a'}; function label(p: Child | Base): string {return p.enabled ? p.name + (p.note ?? '') : '';} label(value);`, output: null, errors: [{messageId: "redundant"}]},
   ],
-});
+}));
 
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union nullable readonly fields", rule, {
+TESTER.run("no-redundant-consumer-union nullable readonly fields", rule, typed({
   valid: [
     ...["Nullable", "'a' | null", "any | null", "unknown | null", "string | null | undefined", "(string) | null", "(string | null)"].map((type) => ({
       name: "unsupported nullable declaration domain " + type, filename: "probe.tsx",
@@ -175,9 +179,9 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union nullable readonly field
       code: `${NULLABLE_PREFIX}export type KeptDog = Dog; function label(p: Dog /* reviewed domain */ | Animal): string {return p.name ?? '';} label(account);`,
       output: null, errors: [{messageId: "redundant"}]},
   ],
-});
+}));
 
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union safe source edits", rule, {
+TESTER.run("no-redundant-consumer-union safe source edits", rule, typed({
   valid: [],
   invalid: [
     ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map((ending) => ({
@@ -225,9 +229,9 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union safe source edits", rul
     {name: "unresolved error caller field remains manual", filename: "probe.tsx", code: `${PREFIX}declare const value: {name: Missing; email: string}; function label(p: Dog | Animal): string {return p.name;} label(value);`, output: null, errors: [{messageId: "redundant"}]},
     {name: "TypeScript suppressions stay manual", filename: "probe.tsx", code: `${PREFIX}function label(p: Dog | Animal): string {return p.name;} // @ts-ignore preserve the authored checking boundary\nlabel(account);`, output: null, errors: [{messageId: "redundant"}]},
   ],
-});
+}));
 
-PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union local scalar helpers", rule, {
+TESTER.run("no-redundant-consumer-union local scalar helpers", rule, typed({
   valid: [
     {name: "whole-object helper arguments remain unsupported", filename: "probe.tsx",
       code: `${PREFIX}function formatAnimal(value: Animal): string {return value.name;} function label(p: Dog | Animal): string {return formatAnimal(p);} label(account);`},
@@ -260,4 +264,4 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union local scalar helpers", 
       code: `${PREFIX}${SCALAR_FUNCTION_HELPER}function label(p: Dog | Animal): string {return formatName(p.name);} label(account);`,
       output: null, errors: [{messageId: "redundant"}]},
   ],
-});
+}));

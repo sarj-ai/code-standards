@@ -1,20 +1,32 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-native-random-uuid.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
-} from "../../src/rules/prefer-native-random-uuid.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-});
+const PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION = {
+  examples: [
+    { focusPath: "src/id.ts", files: [{ path: "src/id.ts", source: "const id = globalThis.crypto.randomUUID();" }] },
+    { focusPath: "src/id.ts", files: [{ path: "src/id.ts", source: "import { v4 } from 'uuid'; const id = v4();" }] },
+    {
+      focusPath: "src/ids.ts",
+      files: [
+        {
+          path: "src/ids.ts",
+          source:
+            "import { v4, NIL } from 'uuid'; const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function packageId(): string { return v4(); } export function ids(): string[] { return [nativeId(), packageId(), NIL]; }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/ids.ts",
+          source:
+            "import { NIL } from 'uuid'; const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function packageId(): string { return nativeUuid(); } export function ids(): string[] { return [nativeId(), packageId(), NIL]; }",
+        },
+      ],
+    },
+  ],
+} as const;
 
 RULE_TESTER.run("prefer-native-random-uuid", rule, {
   valid: [
@@ -49,23 +61,23 @@ RULE_TESTER.run("prefer-native-random-uuid", rule, {
       output:
         PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[2].fixedFiles[0]
           .source,
-      errors: [{ messageId: "preferNative", suggestions: 1 }],
+      errors: [{ messageId: "preferNative", suggestions: [{ messageId: "replaceWithNative", output: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[2].files[0].source.replace("return v4();", "return globalThis.crypto.randomUUID();") }] }],
     },
     {
       name: "withholds replacement when globalThis is shadowed",
       code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }",
-      errors: [{ messageId: "preferNative", suggestions: 0 }],
+      errors: [{ messageId: "preferNative", suggestions: [] }],
     },
     {
       name: "preserves comments inside the replaced call",
       code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);",
-      errors: [{ messageId: "preferNative", suggestions: 0 }],
+      errors: [{ messageId: "preferNative", suggestions: [] }],
     },
     {
       name: "public match example",
       filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath,
       code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source,
-      errors: [{ messageId: "preferNative", suggestions: 1 }],
+      errors: [{ messageId: "preferNative", suggestions: [{ messageId: "replaceWithNative", output: "import { v4 } from 'uuid'; const id = globalThis.crypto.randomUUID();" }] }],
     },
     {
       code: 'import { v4 } from "uuid"; v4();',

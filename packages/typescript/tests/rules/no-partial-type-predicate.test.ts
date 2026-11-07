@@ -1,19 +1,15 @@
-import { join } from "node:path";
-
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { z } from "zod";
 
-import rule, { NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION } from "../../src/rules/no-partial-type-predicate.js";
+import rule from "../../src/rules/no-partial-type-predicate.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
+const TESTER = ruleTester({ cwd: FIXTURES });
+
+const BOOLEAN_FILTER_EXAMPLE = 'function isPositive(value: number): boolean { return value > 0; }';
+const PARTIAL_NUMBER_EXAMPLE = 'function isPositive(value: unknown): value is number { return typeof value === "number" && value > 0; }';
+const PARTIAL_UUID_EXAMPLE = 'import { z } from "zod"; export const UuidSchema: z.ZodUUID = z.uuid(); export function isUuid(value: unknown): value is string { return UuidSchema.safeParse(value).success; }';
+const BOOLEAN_UUID_EXAMPLE = 'import { z } from "zod"; export const UuidSchema: z.ZodUUID = z.uuid(); export function isUuid(value: unknown): boolean { return UuidSchema.safeParse(value).success; }';
 
 function predicate(expression: string, target = "number", input = "unknown"): string {
   return `function check(value: ${input}): value is ${target} { return ${expression}; }`;
@@ -23,19 +19,14 @@ function uuidPredicate(schema = "z.uuid()", expression = "UuidSchema.safeParse(v
   return `${prefix} const UuidSchema=${schema}; export function check(value:unknown):value is string{return ${expression};}`;
 }
 
-TESTER.run("no-partial-type-predicate", rule, {
+TESTER.run("no-partial-type-predicate", rule, typed({
   valid: [
     {
       name: "local paths alias has its own schema semantics",
-      filename: "guard.ts",
+      filename: "uuid-local-module/guard.ts",
       code: 'import {z} from "zod";const Schema=z.uuid();export function isString(value:unknown):value is string{return Schema.safeParse(value).success;}',
-      languageOptions: { parserOptions: {
-        projectService: false,
-        project: join(import.meta.dirname, "..", "fixtures", "uuid-local-module", "tsconfig.json"),
-        tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "uuid-local-module"),
-      } },
     },
-    { name: "public boolean filter", code: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public boolean filter", code: BOOLEAN_FILTER_EXAMPLE },
     ...[
       ["total primitive boundary", predicate('typeof value === "number"')],
       ["total string length", predicate('typeof value === "string" && value.length >= 0', "string")],
@@ -93,9 +84,8 @@ TESTER.run("no-partial-type-predicate", rule, {
       ["unchecked cast target is not broadened", 'function check(value: unknown): value is object { return !!value; }'],
     ].map(([name, code]) => ({ name, code })),
     { name: "generated file", filename: "guard.generated.ts", code: predicate('typeof value === "number" && value > 0') },
-    { name: "exact suppression", code: `// eslint-disable-next-line @rule-tester/no-partial-type-predicate -- legacy callback contract is reviewed\n${predicate('typeof value === "number" && value > 0')}` },
     ...[
-      ["UUID boolean example", NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[3].files[0].source],
+      ["UUID boolean example", BOOLEAN_UUID_EXAMPLE],
       ["UUID branded domain", 'import {z} from "zod";const UuidSchema=z.uuid().brand<"Uuid">();type Uuid=z.infer<typeof UuidSchema>;export function check(value:unknown):value is Uuid{return UuidSchema.safeParse(value).success;}'],
       ["UUID transform remains opaque", uuidPredicate('z.uuid().transform(value=>value)')],
       ["UUID refine remains opaque", uuidPredicate('z.uuid().refine(value=>value.length>0)')],
@@ -134,7 +124,7 @@ TESTER.run("no-partial-type-predicate", rule, {
   ],
   invalid: [
     ...[
-      ["UUID partial predicate example", NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[2].files[0].source],
+      ["UUID partial predicate example", PARTIAL_UUID_EXAMPLE],
       ["UUID legacy string chain", uuidPredicate('z.string().uuid()')],
       ["UUID ordinary one-argument parse read preserves native behavior", uuidPredicate()+'UuidSchema.safeParse("bad").error;'],
       ["UUID import alias", uuidPredicate('schema.uuid()', undefined, 'import {z as schema} from "zod";')],
@@ -166,7 +156,7 @@ TESTER.run("no-partial-type-predicate", rule, {
     { name: "preserves an exported filter contract", code: "export function check(v:unknown): v is number { return typeof v === \"number\" && v > 0; }", output: null, errors: [{ messageId: "partialPredicate" }] },
     { name: "preserves a dynamic private filter reference", code: "export {}; function check(v:unknown): v is number { return typeof v === \"number\" && v > 0; } eval(\"check\");", output: null, errors: [{ messageId: "partialPredicate" }] },
     { name: "preserves useful filter contract comments", code: "export {}; function check(v:unknown): v is /* reviewed boundary */ number { return typeof v === \"number\" && v > 0; }", output: null, errors: [{ messageId: "partialPredicate" }] },
-    { name: "public partial guard", code: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "partialPredicate" }] },
+    { name: "public partial guard", code: PARTIAL_NUMBER_EXAMPLE, errors: [{ messageId: "partialPredicate" }] },
     { name: "NaN remains a number outside all finite bounds", code: predicate('typeof value === "number" && value <= 1e309'), errors: [{ messageId: "partialPredicate", data: { target: "number", witness: "`NaN`" } }] },
     { name: "Infinity diagnostic preserves the actual witness", code: predicate('typeof value === "number" && value < 1e309'), errors: [{ messageId: "partialPredicate", data: { target: "number", witness: "`Infinity`" } }] },
     ...[
@@ -207,10 +197,10 @@ TESTER.run("no-partial-type-predicate", rule, {
       ["numeric alias stays broad", 'type Score = number; function check(value: unknown): value is Score { return typeof value === "number" && value > 0; }'],
       ["standalone arrow", 'const check = (value: number): value is number => value > 0;'],
       ["standalone expression", 'const check = function(value: number): value is number { return value > 0; };'],
-      ["tests stay checked", predicate('typeof value === "number" && value > 0')],
     ].map(([name, code]) => ({ name, code, errors: [{ messageId: "partialPredicate" as const }] })),
+    { name: "tests stay checked (test filename: Oxlint dedupes by code)", filename: "guard.test.ts", code: predicate('typeof value === "number" && value > 0'), errors: [{ messageId: "partialPredicate" }] },
   ],
-});
+}));
 
 it("native UUID validation rejects a witness that remains a valid string", () => {
   const witness = "not-a-uuid";
@@ -219,7 +209,6 @@ it("native UUID validation rejects a witness that remains a valid string", () =>
   expect(z.string().safeParse(witness).success).toBe(true);
 });
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-partial-type-predicate without a program", rule, {
-  valid: [predicate('typeof value === "number" && value > 0')], invalid: [],
+TESTER.run("no-partial-type-predicate without a program", rule, {
+  valid: [{ code: predicate('typeof value === "number" && value > 0'), settings: { sarj: { typeAware: false } } }], invalid: [],
 });

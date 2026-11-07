@@ -38,6 +38,7 @@ from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.policy import Policy
+from sarj_standards.libs.rules import oxlint_ids
 
 
 if TYPE_CHECKING:
@@ -175,6 +176,23 @@ def test_makefile_guard_cannot_be_captured_or_hidden_by_a_diagnostic_baseline(tm
     ]
     assert visible.diagnostics == (guarded,)
     assert visible.tools[0].baselined_count == 0
+
+
+@pytest.mark.parametrize(
+    ("source", "rule_id", "severity"),
+    [
+        pytest.param("oxlint", "tsc/tsconfig-error", Severity.ERROR, id="tsconfig-error"),
+        pytest.param("oxfmt", "format", Severity.ERROR, id="oxfmt-format"),
+    ],
+)
+def test_configuration_and_whole_file_format_errors_are_never_baselineable(
+    source: str, rule_id: str, severity: Severity
+) -> None:
+    # A baselined tsconfig error would switch type checking off; a baselined format finding a whole file.
+    blocked = Diagnostic(rule_id, "blocked", severity, source, Location("tsconfig.json"), rule_id=rule_id)
+
+    assert not baseline.is_baselineable(blocked)
+    assert baseline.is_baselineable(replace(blocked, rule_id="tsc/TS2322", code="TS2322"))
 
 
 def test_hiding_the_last_baselined_finding_preserves_failed_input_coverage(tmp_path: Path) -> None:
@@ -1153,8 +1171,10 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("selector", "expected"),
     [
-        ("eslint:@sarj/prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
-        ("eslint:prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("eslint:@sarj/prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
+        ("eslint:prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
+        ("oxlint:@sarj/prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
+        ("oxlint:prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
         ("sarj-iac-lint:no-restated-comment", "iac:no-restated-comment"),
         ("iac:no-restated-comment", "iac:no-restated-comment"),
         ("sarj-python-lint:no-unnecessary-docstring", "python:no-unnecessary-docstring"),
@@ -1192,7 +1212,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
             (
                 kwargs.get("rules"),
                 kwargs.get("include_react_doctor"),
-                kwargs.get("pass_on_unpruned_eslint_suppressions"),
+                kwargs.get("pass_on_unpruned_suppressions"),
             )
         )
         return report_from_tools(tmp_path, ())
@@ -1386,6 +1406,61 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
     updated = baseline.load(baseline_path)
     assert "a" * 64 not in updated
     assert updated == {"b" * 64: 1}
+
+
+@pytest.mark.parametrize(
+    ("legacy_rule_id", "selector"),
+    [
+        ("@sarj/prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
+        ("@sarj/prefer-ecmascript-private-members", "eslint:@sarj/prefer-ecmascript-private-members"),
+        ("@typescript-eslint/no-explicit-any", "oxlint:typescript/no-explicit-any"),
+        ("@typescript-eslint/no-explicit-any", "eslint:@typescript-eslint/no-explicit-any"),
+    ],
+)
+def test_scoped_baseline_update_replaces_eslint_era_debt_with_oxlint_findings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    legacy_rule_id: str,
+    selector: str,
+) -> None:
+    (oxlint_rule_id,) = oxlint_ids.bundled().rule_ids(legacy_rule_id)
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old = Diagnostic(
+        "OLD", "old", Severity.ERROR, "eslint", Location("old.ts"), rule_id=legacy_rule_id, fingerprint="a" * 64
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old,),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = Diagnostic(
+        "NEW", "replacement", Severity.ERROR, "oxlint", Location("new.ts"), rule_id=oxlint_rule_id, fingerprint="b" * 64
+    )
+
+    def analyze(
+        _self: api.Standards,
+        paths: Sequence[str] | None = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: Unpack[StandardsAnalyzeOptions],
+    ) -> AnalysisReport:
+        return report_from_tools(tmp_path, (ToolReport("oxlint", Completion.COMPLETE, (replacement,)),))
+
+    def analyze_external(_files: Sequence[str], **_kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+        return (ToolReport("oxlint", Completion.COMPLETE, (replacement,)),)
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_external
+    )
+
+    assert (
+        cli_main(["--root", str(tmp_path), "baseline", "update", "--output", str(baseline_path), "--rule", selector])
+        == 0
+    )
+    assert baseline.load(baseline_path) == {"b" * 64: 1}
 
 
 def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
@@ -1706,7 +1781,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "eslint:unicorn/prefer-iterator-helpers",
+                "eslint:unicorn/prefer-at",
             ]
         )
         == 0
@@ -1777,9 +1852,9 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
 
 @pytest.mark.parametrize(
     "selector",
-    ["eslint:@typescript-eslint/naming-convention", "eslint:unicorn/prefer-iterator-helpers"],
+    ["eslint:@typescript-eslint/no-explicit-any", "eslint:unicorn/prefer-at", "oxlint:typescript/no-explicit-any"],
 )
-def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
+def test_scoped_baseline_update_runs_only_oxlint_for_upstream_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     selector: str,
@@ -1808,7 +1883,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
 
     external_calls: list[object] = []
 
-    def analyze_eslint(files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def analyze_oxlint(files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         policy = kwargs.get("policy")
         assert isinstance(policy, Policy)
         external_calls.append(
@@ -1816,14 +1891,14 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
                 files,
                 kwargs.get("capabilities"),
                 kwargs.get("include_react_doctor"),
-                kwargs.get("pass_on_unpruned_eslint_suppressions"),
+                kwargs.get("pass_on_unpruned_suppressions"),
                 policy.allows_path(tmp_path / "generated" / "client.ts"),
             )
         )
         return ()
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
-        external, "analyze_external", analyze_eslint
+        external, "analyze_external", analyze_oxlint
     )
 
     assert (
@@ -1842,7 +1917,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         == 0
     )
     assert captured == []
-    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True, False)]
+    assert external_calls == [([str(tmp_path)], frozenset({"typescript"}), False, True, False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:

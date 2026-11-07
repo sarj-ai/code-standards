@@ -1,135 +1,108 @@
 /**
  * @fileoverview prefer-ecmascript-private-members — prefer runtime-enforced ECMAScript privacy to TypeScript-only `private`.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-ecmascript-private-members.test.ts
+ * Port of the 18.x `prefer-ecmascript-private-members` rule. Typed: the
+ * original returns no visitors without type information, so without tsrs (or
+ * when tsrs cannot hold the file) this port reports nothing. Classes are
+ * collected during the walk; `Program:exit` resolves every fix's member
+ * symbols in one tsrs request, then reports.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { NativeRuleContext, TypeServices } from "./_eslint-rule.js";
-
-
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
+import { defineRule, type ESTree } from "../types.js";
 import {
+  type ClassNode,
   convertibleMemberName,
   isUnobservedPrivateClass,
-  privateMemberFixes,
   type PrivateConvertibleMember,
-} from "./_class-private.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+  type PrivateMemberFixPlan,
+  privateMemberFixPlan,
+  resolvePrivateMemberFixes,
+} from "../utils/class-private.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import type { TsrsServices } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 
-type MessageIds = "preferEcmascriptPrivate";
-type Options = readonly [];
-
-export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
-  summary: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members.",
-  rationale: "ECMAScript private names enforce encapsulation at runtime instead of erasing the boundary during compilation.",
-  remediation: "Review reflection, instance escape and framework contracts before replacing TypeScript privacy with ECMAScript private names and updating references.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Ambient, abstract, computed, decorated, override, parameter-property, and generated declarations are excluded.",
-    "Automatic conversion is limited to unused private module/block classes with no heritage, decorators, computed members, static execution, or eval. Other migration is report-only: type information cannot prove that instances or constructors never escape through this, or that reflection and framework serialization do not observe ordinary private properties.",
-  ],
-  references: ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_elements"],
-  examples: [
-    {
-      id: "runtime-private-member",
-      title: "Use runtime-enforced privacy",
-      outcome: "no-match",
-      files: [{ path: "src/vault.ts", source: "class Vault { #read() { return 1; } open() { return this.#read(); } }" }],
-      focusPath: "src/vault.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "typescript-private-member",
-      title: "Do not erase a privacy boundary",
-      outcome: "match",
-      files: [{ path: "src/vault.ts", source: "class Vault { private read() { return 1; } open() { return this.read(); } }" }],
-      focusPath: "src/vault.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; class Vault { private read() { return 1; } open() { return this.read(); } }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; class Vault { #read() { return 1; } open() { return this.#read(); } }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function reportClass(
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-  services: TypeServices,
-): void {
-  const groups = new Map<string, PrivateConvertibleMember[]>();
-  for (const member of owner.body.body) {
-    if ((member.type !== AST_NODE_TYPES.MethodDefinition && member.type !== AST_NODE_TYPES.PropertyDefinition && member.type !== AST_NODE_TYPES.AccessorProperty) || !isConvertible(member)) continue;
-    const name = convertibleMemberName(member);
-    if (name === null) continue;
-    const members = groups.get(name) ?? [];
-    members.push(member);
-    groups.set(name, members);
-  }
-  for (const [name, members] of groups) {
-    const first = members[0];
-    if (first === undefined) continue;
-    context.report({
-      node: first.key,
-      messageId: "preferEcmascriptPrivate",
-      data: { name },
-      fix: isUnobservedPrivateClass(context.sourceCode, owner, context.filename) ? (privateMemberFixes(context, services, owner, members, true) ?? null) : null,
-    });
-  }
-}
+const NAME = "prefer-ecmascript-private-members";
 
 function isConvertible(member: PrivateConvertibleMember): boolean {
   return (
     member.accessibility === "private" &&
-    !(member.type === AST_NODE_TYPES.MethodDefinition && member.kind === "constructor") &&
+    !(member.type === "MethodDefinition" && member.kind === "constructor") &&
     !member.computed &&
-    member.key.type === AST_NODE_TYPES.Identifier &&
-    member.decorators.length === 0 &&
+    member.key.type === "Identifier" &&
+    (member.decorators?.length ?? 0) === 0 &&
     !("declare" in member && member.declare) &&
     !member.override &&
-    !(member.type === AST_NODE_TYPES.MethodDefinition && member.value.body === null)
+    !(member.type === "MethodDefinition" && (member.value.body ?? null) === null)
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-ecmascript-private-members",
-  documentation: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
+interface Finding {
+  readonly key: ESTree.Node;
+  readonly name: string;
+  readonly plan: PrivateMemberFixPlan | undefined;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members." },
+    docs: {
+      description: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       preferEcmascriptPrivate:
         "TypeScript `private {{name}}` is erased at runtime; use the ECMAScript private name `#{{name}}`.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let findings: Finding[] = [];
+
+    function collectClass(owner: ClassNode): void {
+      const groups = new Map<string, PrivateConvertibleMember[]>();
+      for (const member of owner.body.body) {
+        if ((member.type !== "MethodDefinition" && member.type !== "PropertyDefinition" && member.type !== "AccessorProperty") ||
+          !isConvertible(member)) continue;
+        const name = convertibleMemberName(member);
+        if (name === null) continue;
+        const members = groups.get(name) ?? [];
+        members.push(member);
+        groups.set(name, members);
+      }
+      if (groups.size === 0) return;
+      const sourceCode = context.sourceCode;
+      const unobserved = isUnobservedPrivateClass(sourceCode, owner, context.filename);
+      for (const [name, members] of groups) {
+        const first = members[0];
+        if (first === undefined) continue;
+        findings.push({ key: first.key, name, plan: unobserved ? privateMemberFixPlan(sourceCode, owner, members, true) : undefined });
+      }
     }
-    if (services === null) return {};
+
     return {
-      ClassDeclaration: (node): void => reportClass(context, node, services),
-      ClassExpression: (node): void => reportClass(context, node, services),
+      before() {
+        findings = [];
+        tsrs = null;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      ClassDeclaration: collectClass,
+      ClassExpression: collectClass,
+      "Program:exit"() {
+        if (findings.length === 0 || tsrs === null) return;
+        const fixes = tsrs.run((file) => resolvePrivateMemberFixes(file, findings.map((finding) => finding.plan)));
+        if (fixes === null) return;
+        findings.forEach((finding, i) => {
+          const fix = fixes[i];
+          const descriptor = { node: finding.key, messageId: "preferEcmascriptPrivate", data: { name: finding.name } };
+          context.report(fix === undefined ? descriptor : { ...descriptor, fix });
+        });
+      },
     };
   },
 });

@@ -1,24 +1,9 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/no-known-value-widening.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester({ cwd: FIXTURES });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, parserOptions: {
-    projectService: { allowDefaultProject: ["*.ts*"] },
-    tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-  } },
-});
-
-RULE_TESTER.run("no-known-value-widening", rule, {
+RULE_TESTER.run("no-known-value-widening", rule, typed({
   valid: [
     "function keep<T>(input: T | undefined) { const output: unknown = input; return output; }",
     "function keep<T>(input: T | null) { const output: unknown = input; return output; }",
@@ -48,16 +33,9 @@ RULE_TESTER.run("no-known-value-widening", rule, {
     { code: "type Bag = Readonly<Record<string, unknown>>; declare const tool: { name: string }; const fields: Bag = tool;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; function outer() { const fields: unknown = tool; return fields; }", errors: [{ messageId: "widening" }] },
   ],
-});
+}));
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
-
-SYNTAX_TESTER.run("no-known-value-widening without a type project", rule, {
-  valid: ["declare const tool: { name: string }; const fields: unknown = tool;"],
-  invalid: [],
-});
-
-RULE_TESTER.run("no-known-value-widening retained extensions", rule, {
+RULE_TESTER.run("no-known-value-widening retained extensions", rule, typed({
   valid: [
     { name: "preserves an unknown factory", code: "declare function decode(): unknown; const value: unknown = decode();" },
     { name: "preserves context-dependent generics", code: "declare function create<T>(): T; const value: unknown = create();" },
@@ -83,8 +61,8 @@ RULE_TESTER.run("no-known-value-widening retained extensions", rule, {
     { name: "preserves closed registry keys", code: "const handlers: Record<string, () => void> = { start() {}, stop() {} }; handlers.start();", output: null, errors: [{ messageId: "registry" }] },
     { name: "preserves closed registry type queries", code: "const handlers: Record<string, () => void> = { start() {}, stop() {} }; type Command = keyof typeof handlers;", output: null, errors: [{ messageId: "registry" }] },
   ],
-});
-RULE_TESTER.run("no-known-value-widening audited boundaries", rule, {
+}));
+RULE_TESTER.run("no-known-value-widening audited boundaries", rule, typed({
   valid: [
     { name: "preserves private destructuring replacements", code: "class Store { readonly #value: unknown = { id: 'u1' }; constructor(input: { value: unknown }) { ({ value: this.#value } = input); } read() { return this.#value; } }" },
     { name: "preserves nested private array assignment targets", code: "class Store { readonly #value: unknown = { id: 'u1' }; constructor(input: unknown[]) { [this.#value] = input; } read() { return this.#value; } }" },
@@ -92,12 +70,12 @@ RULE_TESTER.run("no-known-value-widening audited boundaries", rule, {
   ],
   invalid: [
   ],
-});
-RULE_TESTER.run("no-known-value-widening wrapped unary private writes", rule, {
+}));
+RULE_TESTER.run("no-known-value-widening wrapped unary private writes", rule, typed({
   valid: ["class Store { readonly #value: unknown = 1; constructor() { (this.#value as number)++; } read() { return this.#value; } }"],
   invalid: [],
-});
-RULE_TESTER.run("no-known-value-widening derived SDK contracts", rule, {
+}));
+RULE_TESTER.run("no-known-value-widening derived SDK contracts", rule, typed({
   valid: [
     { name: "preserves an unresolved SDK parameter contract", code: "import type { Client } from './missing-client.js'; const payload: Parameters<Client['update']>[0] = { id: 'u1' };" },
     { name: "preserves an aliased SDK parameter contract", code: "import type { Client } from './missing-client.js'; type Request = Parameters<Client['update']>[0]; const payload: Request = { id: 'u1' };" },
@@ -108,4 +86,14 @@ RULE_TESTER.run("no-known-value-widening derived SDK contracts", rule, {
   invalid: [
     { name: "still recognizes a direct local unknown alias", code: "type Opaque = unknown; const value: Opaque = { id: 'u1' };", output: null, errors: [{ messageId: "widening" }] },
   ],
+}));
+
+RULE_TESTER.run("no-known-value-widening without a type project", rule, {
+  valid: [{ code: "declare const tool: { name: string }; const fields: unknown = tool;", settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });
+
+RULE_TESTER.run("no-known-value-widening unannotated private field (port-only: the original crashes on Oxlint's null typeAnnotation)", rule, typed({
+  valid: ["class Store { readonly #value = { id: 'u1' }; read() { return this.#value; } }"],
+  invalid: [],
+}));

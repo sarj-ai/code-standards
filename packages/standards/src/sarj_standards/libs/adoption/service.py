@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import lifecycle, manifest, scaffold, transaction
+from . import lifecycle, manifest, scaffold, transaction, typescript_tooling
 from .configs import (
     CONFIG_NAMES,
     KOTLIN_CONFIGS,
@@ -18,8 +18,7 @@ from .configs import (
     PYTHON_COMPANION_CONFIGS,
     PYTHON_CONFIGS,
     SWIFT_CONFIGS,
-    eslint_preset_name,
-    typescript_companion_configs,
+    TYPESCRIPT_COMPANION_CONFIGS,
 )
 
 
@@ -115,6 +114,8 @@ class InitResult:
     sync: SyncResult | None = None
     failure: InitFailure | None = None
     error: str | None = None
+    #: What the post-install TypeScript steps (oxfmt seeding and formatting) did.
+    notes: tuple[str, ...] = ()
 
 
 def plan_sync(
@@ -158,12 +159,9 @@ def plan_sync(
     targets: list[SyncTarget] = []
 
     def append_target(name: str) -> None:
-        standard_source, target_name = CONFIG_NAMES[name]
-        source_name = standard_source
-        if name == "eslint":
+        source_name, target_name = CONFIG_NAMES[name]
+        if name in manifest.TYPESCRIPT_CONFIGS:
             base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
-            target_name = eslint_preset_name(base)
-            source_name = target_name
         elif name in PYTHON_CONFIGS:
             base = destination(_DestinationKind.PYTHON, python_dest)
         elif name in SWIFT_CONFIGS:
@@ -184,8 +182,8 @@ def plan_sync(
                         base / companion_target,
                     )
                 )
-        if name == "eslint":
-            for companion, (companion_source, companion_target) in typescript_companion_configs(target_name).items():
+        if name in manifest.TYPESCRIPT_CONFIGS:
+            for companion, (companion_source, companion_target) in TYPESCRIPT_COMPANION_CONFIGS.items():
                 targets.append(
                     SyncTarget(
                         companion,
@@ -227,7 +225,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     kotlin_dest: str | None = None,
     profile: manifest.Profile | None = None,
     hook_manager: manifest.HookManager | None = None,
-    allow_existing_nested_eslint: bool = False,
+    allow_existing_nested_oxlint: bool = False,
     enable_repository_rules: Sequence[str] = (),
 ) -> InitPlan:
     if profile is not None and profile not in manifest.PROFILES:
@@ -266,7 +264,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         kotlin_dest=selected_kotlin_dest,
         profile=selected_profile,
         hook_manager=selected_hook_manager,
-        allow_existing_nested_eslint=allow_existing_nested_eslint,
+        allow_existing_nested_oxlint=allow_existing_nested_oxlint,
         enable_repository_rules=enable_repository_rules,
         resolved_ecosystems=resolved_ecosystems,
     )
@@ -490,7 +488,23 @@ def _apply_init_transaction(
                 InitFailure.INSTALL,
                 f"dependency or hook installer exited with status {install_status}",
             )
+        return _finish_typescript(plan, file_transaction, sync_result)
     return InitResult(0, sync_result)
+
+
+def _finish_typescript(
+    plan: InitPlan, file_transaction: transaction.FileTransaction, sync_result: SyncResult
+) -> InitResult:
+    typescript_root = scaffold.configured_ecosystems(plan.scaffold.ecosystems, plan.scaffold.configs).typescript_root
+    if typescript_root is None:
+        return InitResult(0, sync_result)
+    try:
+        notes = typescript_tooling.finish(
+            file_transaction.root, typescript_root, file_transaction, written={path for path, _ in plan.scaffold.writes}
+        )
+    except (OSError, ValueError) as exc:
+        return InitResult(2, sync_result, InitFailure.INSTALL, str(exc))
+    return InitResult(0, sync_result, notes=notes)
 
 
 def _apply_planned_sync(
@@ -519,7 +533,7 @@ def init_destination(
     swift_dest: str = ".",
     kotlin_dest: str = ".",
 ) -> Path:
-    if name == "eslint":
+    if name in manifest.TYPESCRIPT_CONFIGS:
         base = root / typescript_dest
     elif name in PYTHON_CONFIGS:
         base = root / python_dest
@@ -529,7 +543,7 @@ def init_destination(
         base = root / kotlin_dest
     else:
         base = root
-    return base / (eslint_preset_name(base) if name == "eslint" else CONFIG_NAMES[name][1])
+    return base / CONFIG_NAMES[name][1]
 
 
 def _selected_configs(configs: Sequence[str] | None, adopted: manifest.Manifest | None) -> tuple[str, ...]:

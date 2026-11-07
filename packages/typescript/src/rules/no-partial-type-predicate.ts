@@ -1,192 +1,214 @@
 /**
  * @fileoverview no-partial-type-predicate — an explicit primitive predicate must recognize every value it promises.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-partial-type-predicate.test.ts
+ * Port of the 18.x `no-partial-type-predicate` rule. Typed: the
+ * original returns no visitors without a program, so without tsrs (or when
+ * tsrs cannot hold the file) this port reports nothing. The walk collects
+ * functions whose syntax can carry a primitive predicate; `Program:exit` runs
+ * the original's checks over tsrs's checker for each, then reports.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeServices, TypeScriptSourceCode } from "./_eslint-rule.js";
+import type { Type } from "tsrs/sync";
 
-
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { isNumberLiteralType } from "ts-api-utils";
-import ts from "typescript";
-
-import { privatePredicateBooleanFix } from "./_unused-private-binding.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { hasSeparatePredicateContract } from "./_has-separate-predicate-contract.js";
-import { isGeneratedFile } from "./_paths.js";
-import { staticString } from "./_static-string.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { functionNode, nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { hasSeparatePredicateContract } from "../utils/has-separate-predicate-contract.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName, staticString } from "../utils/static-string.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
+import { privatePredicateBooleanFix } from "../utils/unused-private-binding.js";
 import { uuidPredicateWitness } from "./_uuid-predicate-witness.js";
 
-type Options = readonly [];
-type MessageIds = "partialPredicate";
-type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
+const NAME = "no-partial-type-predicate";
+
+type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function;
+type Identifier = Node & { readonly type: "Identifier"; readonly name: string };
 type Primitive = string | number | bigint | boolean;
 type PrimitiveKind = "string" | "number" | "bigint" | "boolean";
 
 interface Predicate {
-  readonly annotation: TSESTree.TSTypePredicate;
-  readonly parameter: TSESTree.Identifier;
-  readonly expression: TSESTree.Expression;
+  readonly annotation: ESTree.TSTypePredicate;
+  readonly parameter: Identifier;
+  readonly expression: Node;
   readonly kind: PrimitiveKind;
-  readonly input: ts.Type;
+  readonly input: Type;
   readonly inputIsTarget: boolean;
+}
+
+/** The syntactic half of the original's `primitivePredicate`; tsrs answers the rest in `Program:exit`. */
+interface Candidate {
+  readonly node: FunctionNode;
+  readonly annotation: ESTree.TSTypePredicate;
+  readonly target: Node;
+  readonly parameter: Identifier;
 }
 
 const MAX_LENGTH_WITNESS = 256;
 
-export const NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION = {
-  summary: "Do not give a partial primitive filter an explicit type predicate that excludes valid values in the false branch.",
-  rationale: "Type predicates narrow both branches, and TypeScript trusts their implementation. A positive-number or non-empty-string predicate can return false for a value belonging to its promised type, causing callers to treat that value as a different type.",
-  remediation: "Use a boolean return for an intentional value filter, or recognize every member of the promised type. Preserve required callback and public contracts; a refined domain may need a distinct validated type. Recheck false-branch callers when changing a predicate.",
-  category: "correctness",
-  defaultLevel: "error",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes replace the unsound predicate with boolean only for an unused private function declaration without overloads, exports, eval, comments in the predicate, or declaration-file ownership. Runtime checks are preserved; observed callable contracts remain manual.",
-    "Requires type information and a non-generic, non-async function with one directly annotated parameter, an explicit broad string/number/bigint/boolean predicate and a single return. Literal, branded, structural, multi-primitive union, assertion, method and overloaded contracts are excluded; contextually typed callbacks are preserved.",
-    "Recognizes double-negation truthiness, a boolean parameter return or one same-kind literal comparison, optionally after a matching typeof equality. Without a typeof check, the input must already belong to the target primitive, except for double negation. String length comparisons use only concrete witnesses up to 256 characters. Arithmetic, dynamic bounds and complex boolean conditions are not inferred.",
-    "A broad string predicate returning local Schema.safeParse(parameter).success is also checked for a locally unchanged official z.uuid() or z.string().uuid() schema. The checker must resolve the namespace to installed node_modules/zod declaration files; local path aliases and opaque module resolution abstain. The const schema permits local parse/type/direct-export reads; every safeParse call must have exactly one direct argument, without options or spreads. Local aliases, method writes and opaque consumers abstain. Direct export alone is not mutation, but external consumer monkey-patching is not proved absent. Other value uses of its imported Zod namespace cause abstention. Transforms, brands, custom schemas, imported schemas and dynamic parse calls are excluded. Visible RegExp capabilities, regex literals or dynamic evaluation invalidate this initial native-pattern proof; external runtime monkeypatches are not inferred. The same unused-private-declaration fix boundary applies; observed or exported predicates remain manual.",
-    "A concrete member of the promised broad primitive must demonstrably return false. Numeric witnesses must also be assignable as literals to the declared input: broad number assignability alone does not prove membership in a numeric enum. Compiler-invalid target/input relations, any/never/generic inputs and opaque implementations abstain. This rule does not discourage total boundary guards or infer branded refinements. Generated files are excluded; tests remain checked.",
-  ],
-  references: ["https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"],
-  examples: [
-    { id: "boolean-value-filter", title: "Keep an intentional value filter boolean", outcome: "no-match", files: [{ path: "src/filter.ts", source: 'function isPositive(value: number): boolean { return value > 0; }' }], focusPath: "src/filter.ts", expectedCount: 0, public: true },
-    { id: "partial-number-predicate", title: "Zero remains a number when the predicate returns false", outcome: "match", files: [{ path: "src/guard.ts", source: 'function isPositive(value: unknown): value is number { return typeof value === "number" && value > 0; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
-    { id: "partial-uuid-predicate", scenarioId: "uuid", title: "A rejected UUID candidate can still be a string", outcome: "match", files: [{ path: "src/guard.ts", source: 'import { z } from "zod"; export const UuidSchema: z.ZodUUID = z.uuid(); export function isUuid(value: unknown): value is string { return UuidSchema.safeParse(value).success; }' }], installedDependencies: [{ module: "zod", version: "4.6.7" }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
-    { id: "boolean-uuid-filter", scenarioId: "uuid", title: "Keep a UUID value filter boolean", outcome: "no-match", files: [{ path: "src/filter.ts", source: 'import { z } from "zod"; export const UuidSchema: z.ZodUUID = z.uuid(); export function isUuid(value: unknown): boolean { return UuidSchema.safeParse(value).success; }' }], installedDependencies: [{ module: "zod", version: "4.6.7" }], focusPath: "src/filter.ts", expectedCount: 0, public: true },
-    {
-      id: "safe-autofix",
-      title: "Retain an unused private filter without unsound narrowing",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; function isPositive(value: unknown): value is number { return typeof value === \"number\" && value > 0; }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function isPositive(value: unknown): boolean { return typeof value === \"number\" && value > 0; }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-export default createRule<Options, MessageIds>({
-  name: "no-partial-type-predicate",
-  documentation: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION,
-  meta: {
-    type: "problem",
-    fixable: "code",
-    docs: { description: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.summary },
-    schema: [],
-    messages: { partialPredicate: "This predicate returns false for {{witness}}, which still belongs to `{{target}}`. Its false branch can therefore narrow unsafely. Use a boolean value filter or a predicate that recognizes every promised value." },
-  },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = getTypeServices(context);
-    function inspect(node: FunctionNode): void {
-      const predicate = primitivePredicate(node, services);
-      if (predicate === undefined) return;
-      const uuidWitness = predicate.kind === "string" ? uuidPredicateWitness(predicate.expression, predicate.parameter, context.sourceCode, services) : undefined;
-      if (uuidWitness !== undefined) {
-        context.report({ node: predicate.annotation, messageId: "partialPredicate", fix: privatePredicateBooleanFix(context.sourceCode, node, predicate.annotation, context.filename), data: { witness: showWitness(uuidWitness), target: "string" } });
-        return;
-      }
-      const refinement = refinementExpression(predicate, context.sourceCode);
-      if (refinement === undefined) return;
-      const witness = rejectedWitness(refinement, predicate, context.sourceCode);
-      if (witness === undefined) return;
-      if (typeof witness === "number" && !numericWitnessInInput(witness, predicate.input)) return;
-      context.report({ node: predicate.annotation, messageId: "partialPredicate", fix: privatePredicateBooleanFix(context.sourceCode, node, predicate.annotation, context.filename), data: {
-        witness: showWitness(witness), target: predicate.kind,
-      } });
-    }
-    return { FunctionDeclaration: inspect, FunctionExpression: inspect, ArrowFunctionExpression: inspect };
-  },
-});
-
-function primitivePredicate(node: FunctionNode, services: TypeServices): Predicate | undefined {
+function predicateCandidate(node: FunctionNode): Candidate | undefined {
   const annotation = node.returnType?.typeAnnotation;
   const parameter = node.params[0];
-  if (node.async || node.generator || node.typeParameters !== undefined || node.params.length !== 1 ||
-    annotation?.type !== AST_NODE_TYPES.TSTypePredicate || annotation.asserts ||
-    annotation.parameterName.type !== AST_NODE_TYPES.Identifier || annotation.typeAnnotation === undefined ||
-    parameter?.type !== AST_NODE_TYPES.Identifier || parameter.name !== annotation.parameterName.name || parameter.typeAnnotation === undefined) return undefined;
-  const checker = services.program.getTypeChecker();
-  const tsFunction = services.esTreeNodeToTSNodeMap.get(node);
-  if (ts.isMethodDeclaration(tsFunction)) return undefined;
-  if (hasSeparatePredicateContract(tsFunction, checker)) return undefined;
-  const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(annotation.typeAnnotation.typeAnnotation));
-  const kind = primitiveKind(target);
-  const input = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(parameter));
-  const unsafe = ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Conditional | ts.TypeFlags.IndexedAccess;
+  if (node.async || node.generator || isPresent(node.typeParameters) || node.params.length !== 1 ||
+    annotation?.type !== "TSTypePredicate" || annotation.asserts ||
+    annotation.parameterName.type !== "Identifier" || !isPresent(annotation.typeAnnotation) ||
+    parameter?.type !== "Identifier" || parameter.name !== annotation.parameterName.name || !isPresent(parameter.typeAnnotation)) return undefined;
+  return { node, annotation, target: annotation.typeAnnotation.typeAnnotation, parameter };
+}
+
+function primitivePredicate(candidate: Candidate, native: NativeTypes): Predicate | undefined {
+  const { node, annotation, parameter } = candidate;
+  const { ast, checker, sync } = native;
+  const tsFunction = functionNode(native, node);
+  if (tsFunction === undefined || ast.isMethodDeclaration(tsFunction)) return undefined;
+  if (hasSeparatePredicateContract(tsFunction, native)) return undefined;
+  const targetNode = native.outerNode(candidate.target);
+  const parameterNode = native.node(parameter);
+  if (targetNode === undefined || parameterNode === undefined) return undefined;
+  const target = checker.getTypeAtLocation(targetNode);
+  const kind = primitiveKind(target, native);
+  const input = checker.getTypeAtLocation(parameterNode);
+  const flags = sync.TypeFlags;
+  const unsafe = flags.Any | flags.Never | flags.TypeParameter | flags.Conditional | flags.IndexedAccess;
   if (kind === undefined || (input.flags & unsafe) !== 0 || !checker.isTypeAssignableTo(target, input)) return undefined;
   const expression = returnedExpression(node);
   return expression === undefined ? undefined : { annotation, parameter, expression, kind, input, inputIsTarget: checker.isTypeAssignableTo(input, target) };
 }
 
-function primitiveKind(type: ts.Type): PrimitiveKind | undefined {
-  if ((type.flags & ts.TypeFlags.String) !== 0) return "string";
-  if ((type.flags & ts.TypeFlags.Number) !== 0) return "number";
-  if ((type.flags & ts.TypeFlags.BigInt) !== 0) return "bigint";
-  if ((type.flags & ts.TypeFlags.Boolean) !== 0) return "boolean";
+function primitiveKind(type: Type, native: NativeTypes): PrimitiveKind | undefined {
+  const flags = native.sync.TypeFlags;
+  if ((type.flags & flags.String) !== 0) return "string";
+  if ((type.flags & flags.Number) !== 0) return "number";
+  if ((type.flags & flags.BigInt) !== 0) return "bigint";
+  if ((type.flags & flags.Boolean) !== 0) return "boolean";
   return undefined;
 }
 
 /** Numeric enum assignability accepts broad number even when an individual literal is outside the enum. */
-function numericWitnessInInput(value: number, input: ts.Type): boolean {
-  return (input.isUnion() ? input.types : [input]).some((member) =>
-    (member.flags & (ts.TypeFlags.Unknown | ts.TypeFlags.Number)) !== 0 ||
-    (Number.isFinite(value) && isNumberLiteralType(member) && member.value === value));
+function numericWitnessInInput(value: number, input: Type, native: NativeTypes): boolean {
+  const flags = native.sync.TypeFlags;
+  return (input.isUnionType() ? input.getTypes() : [input]).some((member) =>
+    (member.flags & (flags.Unknown | flags.Number)) !== 0 ||
+    (Number.isFinite(value) && member.isNumberLiteralType() && member.value === value));
 }
 
-function returnedExpression(node: FunctionNode): TSESTree.Expression | undefined {
-  if (node.body === undefined) return undefined;
-  if (node.body.type !== AST_NODE_TYPES.BlockStatement) return unwrapExpression(node.body);
+export default defineRule({
+  meta: {
+    type: "problem",
+    fixable: "code",
+    docs: {
+      description: "Do not give a partial primitive filter an explicit type predicate that excludes valid values in the false branch.",
+      url: docsUrl(NAME),
+    },
+    schema: [],
+    messages: { partialPredicate: "This predicate returns false for {{witness}}, which still belongs to `{{target}}`. Its false branch can therefore narrow unsafely. Use a boolean value filter or a predicate that recognizes every promised value." },
+  },
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: Candidate[] = [];
+
+    function collect(node: FunctionNode): void {
+      const candidate = predicateCandidate(node);
+      if (candidate !== undefined) candidates.push(candidate);
+    }
+
+    function inspect(candidate: Candidate, native: NativeTypes): { readonly witness: Primitive; readonly target: string } | undefined {
+      const sourceCode = context.sourceCode;
+      const predicate = primitivePredicate(candidate, native);
+      if (predicate === undefined) return undefined;
+      const uuidWitness = predicate.kind === "string" ? uuidPredicateWitness(predicate.expression, predicate.parameter, sourceCode, native) : undefined;
+      if (uuidWitness !== undefined) return { witness: uuidWitness, target: "string" };
+      const refinement = refinementExpression(predicate, sourceCode);
+      if (refinement === undefined) return undefined;
+      const witness = rejectedWitness(refinement, predicate, sourceCode);
+      if (witness === undefined) return undefined;
+      if (typeof witness === "number" && !numericWitnessInInput(witness, predicate.input, native)) return undefined;
+      return { witness, target: predicate.kind };
+    }
+
+    return {
+      before() {
+        tsrs = null;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      FunctionDeclaration: collect,
+      FunctionExpression: collect,
+      ArrowFunctionExpression: collect,
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const found = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          return candidates.map((candidate) => inspect(candidate, native));
+        });
+        if (found === null) return;
+        candidates.forEach((candidate, i) => {
+          const result = found[i];
+          if (result === undefined) return;
+          const fix = privatePredicateBooleanFix(context.sourceCode, candidate.node, candidate.annotation, context.filename);
+          context.report({
+            node: candidate.annotation, messageId: "partialPredicate",
+            data: { witness: showWitness(result.witness), target: result.target },
+            ...(fix !== null && { fix }),
+          });
+        });
+      },
+    };
+  },
+});
+
+function returnedExpression(node: FunctionNode): Node | undefined {
+  if (!isPresent(node.body)) return undefined;
+  if (node.body.type !== "BlockStatement") return unwrapExpression(node.body);
   const statement = node.body.body[0];
-  return node.body.body.length === 1 && statement?.type === AST_NODE_TYPES.ReturnStatement && statement.argument !== null ? unwrapExpression(statement.argument) : undefined;
+  return node.body.body.length === 1 && statement?.type === "ReturnStatement" && statement.argument !== null ? unwrapExpression(statement.argument) : undefined;
 }
 
-function refinementExpression(predicate: Predicate, sourceCode: TypeScriptSourceCode): TSESTree.Expression | undefined {
+function refinementExpression(predicate: Predicate, sourceCode: SourceCode): Node | undefined {
   const expression = predicate.expression;
-  if (expression.type !== AST_NODE_TYPES.LogicalExpression || expression.operator !== "&&") {
+  if (expression.type !== "LogicalExpression" || expression.operator !== "&&") {
     return predicate.inputIsTarget || doubleNegation(expression, predicate.parameter, sourceCode) ? expression : undefined;
   }
   const check = unwrapExpression(expression.left);
-  if (check.type !== AST_NODE_TYPES.BinaryExpression || (check.operator !== "===" && check.operator !== "==")) return undefined;
+  if (check.type !== "BinaryExpression" || (check.operator !== "===" && check.operator !== "==")) return undefined;
   for (const [left, right] of [[check.left, check.right], [check.right, check.left]] as const) {
     const value = unwrapExpression(left);
-    if (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "typeof" &&
+    if (value.type === "UnaryExpression" && value.operator === "typeof" &&
       sameParameter(value.argument, predicate.parameter, sourceCode) && staticString(right) === predicate.kind) return unwrapExpression(expression.right);
   }
   return undefined;
 }
 
-function doubleNegation(expression: TSESTree.Expression, parameter: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {
+function doubleNegation(expression: Node, parameter: Identifier, sourceCode: SourceCode): boolean {
   const outer = unwrapExpression(expression);
-  if (outer.type !== AST_NODE_TYPES.UnaryExpression || outer.operator !== "!") return false;
+  if (outer.type !== "UnaryExpression" || outer.operator !== "!") return false;
   const inner = unwrapExpression(outer.argument);
-  return inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === "!" && sameParameter(inner.argument, parameter, sourceCode);
+  return inner.type === "UnaryExpression" && inner.operator === "!" && sameParameter(inner.argument, parameter, sourceCode);
 }
 
-function sameParameter(node: TSESTree.Node, parameter: TSESTree.Identifier, sourceCode: TypeScriptSourceCode): boolean {
+function sameParameter(node: Node, parameter: Identifier, sourceCode: SourceCode): boolean {
   const value = unwrapExpression(node);
-  if (value.type !== AST_NODE_TYPES.Identifier) return false;
-  const binding = ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name);
-  return binding !== null && binding === ASTUtils.findVariable(sourceCode.getScope(value), value.name);
+  if (value.type !== "Identifier") return false;
+  const binding = findVariable(sourceCode.getScope(parameter), parameter.name);
+  return binding !== null && binding === findVariable(sourceCode.getScope(value), value.name);
 }
 
-function rejectedWitness(expression: TSESTree.Expression, predicate: Predicate, sourceCode: TypeScriptSourceCode): Primitive | undefined {
+function rejectedWitness(expression: Node, predicate: Predicate, sourceCode: SourceCode): Primitive | undefined {
   if (doubleNegation(expression, predicate.parameter, sourceCode)) return falsyWitness(predicate.kind);
   if (predicate.kind === "boolean" && sameParameter(expression, predicate.parameter, sourceCode)) return false;
-  if (expression.type !== AST_NODE_TYPES.BinaryExpression) return undefined;
+  if (expression.type !== "BinaryExpression") return undefined;
   const bound = literal(expression.right);
   if (bound === undefined) return undefined;
   if (sameParameter(expression.left, predicate.parameter, sourceCode) && typeof bound === predicate.kind) {
     return witnesses(bound).find((value) => comparison(value, expression.operator, bound) === false);
   }
   const left = unwrapExpression(expression.left);
-  if (predicate.kind !== "string" || typeof bound !== "number" || left.type !== AST_NODE_TYPES.MemberExpression || left.optional ||
-    ASTUtils.getPropertyName(left) !== "length" || !sameParameter(left.object, predicate.parameter, sourceCode)) return undefined;
+  if (predicate.kind !== "string" || typeof bound !== "number" || left.type !== "MemberExpression" || left.optional ||
+    getPropertyName(left) !== "length" || !sameParameter(left.object, predicate.parameter, sourceCode)) return undefined;
   return lengthWitnesses(bound).find((value) => comparison(value.length, expression.operator, bound) === false);
 }
 
@@ -199,14 +221,14 @@ function falsyWitness(kind: PrimitiveKind): Primitive {
   }
 }
 
-function literal(node: TSESTree.Node): Primitive | undefined {
+function literal(node: Node): Primitive | undefined {
   const value = unwrapExpression(node);
-  if (value.type === AST_NODE_TYPES.Literal && (typeof value.value === "string" || typeof value.value === "number" ||
+  if (value.type === "Literal" && (typeof value.value === "string" || typeof value.value === "number" ||
     typeof value.value === "bigint" || typeof value.value === "boolean")) return value.value;
-  if (value.type !== AST_NODE_TYPES.UnaryExpression || (value.operator !== "-" && value.operator !== "+")) return undefined;
+  if (value.type !== "UnaryExpression" || (value.operator !== "-" && value.operator !== "+")) return undefined;
   const operand = unwrapExpression(value.argument);
-  if (operand.type === AST_NODE_TYPES.Literal && typeof operand.value === "bigint" && value.operator === "-") return -operand.value;
-  if (operand.type !== AST_NODE_TYPES.Literal || typeof operand.value !== "number") return undefined;
+  if (operand.type === "Literal" && typeof operand.value === "bigint" && value.operator === "-") return -operand.value;
+  if (operand.type !== "Literal" || typeof operand.value !== "number") return undefined;
   return value.operator === "-" ? -operand.value : operand.value;
 }
 
@@ -225,7 +247,7 @@ function lengthWitnesses(bound: number): readonly string[] {
   return values;
 }
 
-function comparison(left: Primitive, operator: TSESTree.BinaryExpression["operator"], right: Primitive): boolean | undefined {
+function comparison(left: Primitive, operator: ESTree.BinaryExpression["operator"], right: Primitive): boolean | undefined {
   if (operator === "==" || operator === "===") return left === right;
   if (operator === "!=" || operator === "!==") return left !== right;
   if (typeof left === "boolean" || typeof right === "boolean") return undefined;

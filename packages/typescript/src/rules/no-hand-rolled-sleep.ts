@@ -1,59 +1,24 @@
 /**
  * @fileoverview no-hand-rolled-sleep — a hand-rolled promisified timer cannot be cancelled; the stdlib form takes an `AbortSignal`.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
+ * Port of the 18.x `no-hand-rolled-sleep` rule. The rule is untyped, so the port
+ * covers all of it.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isScriptFile, isTestFile, matchesAnyPattern } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+const NAME = "no-hand-rolled-sleep";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isScriptFile, isTestFile, matchesAnyPattern } from "./_paths.js";
+interface Options {
+  readonly allowIn?: readonly string[];
+  readonly checkClientModules?: boolean;
+}
 
-type MessageIds = "handRolledSleep" | "handRolledTimeoutRace";
-type Options = readonly [
-  {
-    allowIn?: readonly string[];
-    checkClientModules?: boolean;
-  }?,
-];
-
-export const NO_HAND_ROLLED_SLEEP_DOCUMENTATION = {
-  summary: "Disallow uncancellable promisified timers and timeout arms.",
-  rationale:
-    "A timer that outlives an aborted operation or a lost promise race retains work and can keep the process alive until it fires.",
-  remediation:
-    "Use `node:timers/promises` with an abort signal for delays, or pass `AbortSignal.timeout(...)` to the timed operation.",
-  category: "correctness",
-  limitations: [
-    "The rule skips tests, scripts, generated files, and client modules by default, and supports explicit path exemptions.",
-    "Locally shadowed constructors/timers and value-returning timers are excluded. Only recognized browser markers are excluded; choose a runtime-compatible cancellation API for other browser modules.",
-  ],
-  examples: [
-    {
-      id: "cancellable-node-timer",
-      title: "A standard-library timer accepts an abort signal",
-      outcome: "no-match",
-      files: [{
-        path: "src/lib/queue.ts",
-        source: "import { setTimeout as sleep } from \"node:timers/promises\";\nawait sleep(500, undefined, { signal });",
-      }],
-      focusPath: "src/lib/queue.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "uncancellable-sleep",
-      title: "A Promise wraps a timer without cancellation",
-      outcome: "match",
-      files: [{ path: "src/lib/queue.ts", source: "await new Promise((resolve) => setTimeout(resolve, 500));" }],
-      focusPath: "src/lib/queue.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Executor = ESTree.ArrowFunctionExpression | ESTree.Function;
 
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
   "globalThis",
@@ -66,127 +31,86 @@ const CLIENT_ONLY_MODULES =
   /^(react|react-dom|react-native|svelte|vue|preact|solid-js)(\/|$)|^next\/(navigation|router|link|image)$/;
 
 const RACE_METHODS: ReadonlySet<string> = new Set(["race", "any"]);
+const TIMER_MODULES: ReadonlySet<string> = new Set(["node:timers", "timers"]);
 
-
-function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
+function isSetTimeoutCallee(callee: Node): boolean {
   callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) {
+  if (callee.type === "Identifier") {
     return callee.name === "setTimeout";
   }
   return (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.type === "MemberExpression" &&
     !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier &&
+    callee.property.type === "Identifier" &&
     callee.property.name === "setTimeout" &&
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     GLOBAL_OBJECTS.has(callee.object.name)
   );
 }
 
-function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression):
-  | TSESTree.CallExpression
+function soleCall(fn: ESTree.ArrowFunctionExpression | ESTree.Function):
+  | ESTree.CallExpression
   | null {
-  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
-    const body = unwrapExpression(fn.body);
-    return body.type === AST_NODE_TYPES.CallExpression ? body : null;
+  // Callers pass only arrow and function expressions, which always have a body.
+  const fnBody = fn.body as Node;
+  if (fnBody.type !== "BlockStatement") {
+    const body = unwrapExpression(fnBody);
+    return body.type === "CallExpression" ? body : null;
   }
-  if (fn.body.body.length !== 1) {
+  if (fnBody.body.length !== 1) {
     return null;
   }
-  const [only] = fn.body.body;
-  if (only?.type !== AST_NODE_TYPES.ExpressionStatement) {
+  const [only] = fnBody.body;
+  if (only?.type !== "ExpressionStatement") {
     return null;
   }
   const expression = unwrapExpression(only.expression);
-  return expression.type === AST_NODE_TYPES.CallExpression ? expression : null;
+  return expression.type === "CallExpression" ? expression : null;
 }
 
-function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
+function isTimedDelay(delay: Node | undefined): boolean {
   if (delay === undefined) {
     return false;
   }
   delay = unwrapExpression(delay);
-  if (delay.type === AST_NODE_TYPES.Literal && typeof delay.value === "number") {
+  if (delay.type === "Literal" && typeof delay.value === "number") {
     return delay.value !== 0;
   }
   return true;
 }
 
-function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
-  callback = unwrapExpression(callback);
-  if (callback.type === AST_NODE_TYPES.Identifier) {
-    return callback.name === name;
-  }
-  if (
-    callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-    callback.type !== AST_NODE_TYPES.FunctionExpression
-  ) {
-    return false;
-  }
-  const call = soleCall(callback);
-  const callee = call === null ? null : unwrapExpression(call.callee);
-  return (
-    call !== null &&
-    call.arguments.length === 0 &&
-    callee?.type === AST_NODE_TYPES.Identifier &&
-    callee.name === name
-  );
+/** A settling callback passes no value: `resolve` itself or `() => resolve()`. */
+function passesNoValue(callback: Node): boolean {
+  const value = unwrapExpression(callback);
+  if (value.type === "Identifier") return true;
+  return (value.type === "ArrowFunctionExpression" || value.type === "FunctionExpression") && soleCall(value)?.arguments.length === 0;
 }
 
-function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
-  callback = unwrapExpression(callback);
-  if (callback.type === AST_NODE_TYPES.Identifier) {
-    return callback.name === name;
-  }
-  if (
-    callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-    callback.type !== AST_NODE_TYPES.FunctionExpression
-  ) {
-    return false;
-  }
-  const call = soleCall(callback);
-  const callee = call === null ? null : unwrapExpression(call.callee);
-  return (
-    call !== null &&
-    callee?.type === AST_NODE_TYPES.Identifier &&
-    callee.name === name
-  );
-}
-
-function parameterName(
-  fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-  index: number,
-): string | null {
-  const parameter = fn.params[index];
-  return parameter?.type === AST_NODE_TYPES.Identifier ? parameter.name : null;
-}
-
-function isRaceArm(node: TSESTree.NewExpression): boolean {
+function isRaceArm(node: ESTree.NewExpression): boolean {
   const array = node.parent;
-  if (array?.type !== AST_NODE_TYPES.ArrayExpression) {
+  if (array?.type !== "ArrayExpression") {
     return false;
   }
   const call = array.parent;
   return (
-    call?.type === AST_NODE_TYPES.CallExpression &&
+    call?.type === "CallExpression" &&
     call.arguments[0] === array &&
-    call.callee.type === AST_NODE_TYPES.MemberExpression &&
+    call.callee.type === "MemberExpression" &&
     !call.callee.computed &&
-    call.callee.object.type === AST_NODE_TYPES.Identifier &&
+    call.callee.object.type === "Identifier" &&
     call.callee.object.name === "Promise" &&
-    call.callee.property.type === AST_NODE_TYPES.Identifier &&
+    call.callee.property.type === "Identifier" &&
     RACE_METHODS.has(call.callee.property.name)
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-hand-rolled-sleep",
-  documentation: NO_HAND_ROLLED_SLEEP_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description: "Disallow uncancellable promisified timers and timeout arms.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -214,47 +138,49 @@ export default createRule<Options, MessageIds>({
         "Hand-rolled timeout arm: when the other promise wins, this timer is never cleared and keeps the event loop alive until it fires. Use `AbortSignal.timeout(ms)` and pass the signal to the operation.",
     },
   },
-  create(context, [optionsArg]) {
-    const { filename, sourceCode } = context;
-    if (
-      isTestFile(context) ||
-      isScriptFile(context) ||
-      isGeneratedFile(context, sourceCode.getText())
-    ) {
-      return {};
+  createOnce(context) {
+    let filename = "";
+    let checkClientModules = false;
+    let clientModule: boolean | null = null;
+
+    const bindingOf = (identifier: Node & { name: string }) => findVariable(context.sourceCode.getScope(identifier), identifier.name);
+    const isGlobal = (identifier: Node & { name: string }): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
+    /** `new Promise((settle) => setTimeout(callback, delay))` with a builtin timer and a nonzero delay. */
+    function promisifiedTimer(node: ESTree.NewExpression): { executor: Executor; call: ESTree.CallExpression; callback: Node } | null {
+      const callee = unwrapExpression(node.callee);
+      if (callee.type !== "Identifier" || callee.name !== "Promise" || !isGlobal(callee)) return null;
+      const executor = node.arguments[0];
+      if (executor?.type !== "ArrowFunctionExpression" && executor?.type !== "FunctionExpression") return null;
+      const call = soleCall(executor);
+      if (call === null || !isBuiltinTimer(call.callee)) return null;
+      const [callback, delay] = call.arguments;
+      return callback !== undefined && isTimedDelay(delay) ? { executor, call, callback } : null;
     }
 
-    const allowIn = optionsArg?.allowIn ?? [];
-    if (allowIn.length > 0 && matchesAnyPattern(filename, allowIn)) {
-      return {};
-    }
-
-    const checkClientModules = optionsArg?.checkClientModules ?? false;
-
-    const bindingOf = (identifier: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-    const isGlobal = (identifier: TSESTree.Identifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
-    const isBuiltinTimer = (callee: TSESTree.Node): boolean => {
+    const isBuiltinTimer = (callee: Node): boolean => {
       callee = unwrapExpression(callee);
       if (!isSetTimeoutCallee(callee)) return false;
-      if (callee.type === AST_NODE_TYPES.MemberExpression && callee.object.type === AST_NODE_TYPES.Identifier) return isGlobal(callee.object);
-      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+      if (callee.type === "MemberExpression" && callee.object.type === "Identifier") return isGlobal(callee.object);
+      if (callee.type !== "Identifier") return false;
       const binding = bindingOf(callee);
-      return binding === null || binding.defs.length === 0 || binding.defs.every((definition) =>
-        definition.node.type === AST_NODE_TYPES.ImportSpecifier &&
-        definition.node.imported.type === AST_NODE_TYPES.Identifier && definition.node.imported.name === "setTimeout" &&
-        definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
-        ["node:timers", "timers"].includes(String(definition.node.parent.source.value)));
+      return binding === null || binding.defs.length === 0 || binding.defs.every((definition) => {
+        const declaration = definition.node;
+        if (declaration.type !== "ImportSpecifier" || declaration.imported.type !== "Identifier" ||
+          declaration.imported.name !== "setTimeout") return false;
+        const statement = parentOf(declaration);
+        return statement?.type === "ImportDeclaration" && TIMER_MODULES.has(String(statement.source.value));
+      });
     };
-    const settlesParameter = (callback: TSESTree.Node, executor: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, index: number): boolean => {
+    /** The callback is, or solely calls, the executor's parameter `index`. */
+    const settlesParameter = (callback: Node, executor: Executor, index: number): boolean => {
       callback = unwrapExpression(callback);
       const parameter = executor.params[index];
-      if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
-      const callee = callback.type === AST_NODE_TYPES.Identifier ? callback :
-        callback.type === AST_NODE_TYPES.ArrowFunctionExpression || callback.type === AST_NODE_TYPES.FunctionExpression ? soleCall(callback)?.callee : null;
-      return callee?.type === AST_NODE_TYPES.Identifier && bindingOf(callee) === bindingOf(parameter);
+      if (parameter?.type !== "Identifier") return false;
+      const callee = callback.type === "Identifier" ? callback :
+        callback.type === "ArrowFunctionExpression" || callback.type === "FunctionExpression" ? soleCall(callback)?.callee : null;
+      return callee?.type === "Identifier" && bindingOf(callee) === bindingOf(parameter);
     };
 
-    let clientModule: boolean | null = null;
     const reportsSleepHere = (): boolean => {
       if (checkClientModules) {
         return true;
@@ -267,17 +193,17 @@ export default createRule<Options, MessageIds>({
       if (/\.[cm]?[jt]sx$/.test(filename)) {
         return true;
       }
-      const program = sourceCode.ast;
+      const program = context.sourceCode.ast;
       for (const statement of program.body) {
         if (
-          statement.type === AST_NODE_TYPES.ExpressionStatement &&
-          statement.expression.type === AST_NODE_TYPES.Literal &&
+          statement.type === "ExpressionStatement" &&
+          statement.expression.type === "Literal" &&
           statement.expression.value === "use client"
         ) {
           return true;
         }
         if (
-          statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          statement.type === "ImportDeclaration" &&
           typeof statement.source.value === "string" &&
           CLIENT_ONLY_MODULES.test(statement.source.value)
         ) {
@@ -288,42 +214,26 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      NewExpression(node: TSESTree.NewExpression): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "Promise" || !isGlobal(unwrappedNodeCallee)) {
+      before() {
+        filename = context.filename;
+        const file = { filename, cwd: context.cwd };
+        if (isTestFile(file) || isScriptFile(file) || isGeneratedFile(file, context.sourceCode.getText())) return false;
+        const options = context.options[0] as Options | undefined;
+        const allowIn = options?.allowIn ?? [];
+        if (allowIn.length > 0 && matchesAnyPattern(filename, allowIn)) return false;
+        checkClientModules = options?.checkClientModules ?? false;
+        clientModule = null;
+        return undefined;
+      },
+      NewExpression(node: ESTree.NewExpression): void {
+        const timer = promisifiedTimer(node);
+        if (timer === null) return;
+        const { executor, call, callback } = timer;
+        if (call.arguments.length === 2 && settlesParameter(callback, executor, 0) && passesNoValue(callback)) {
+          if (reportsSleepHere()) context.report({ node, messageId: "handRolledSleep" });
           return;
         }
-        const executor = node.arguments[0];
-        if (
-          executor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-          executor?.type !== AST_NODE_TYPES.FunctionExpression
-        ) {
-          return;
-        }
-        const call = soleCall(executor);
-        if (call === null || !isBuiltinTimer(call.callee)) {
-          return;
-        }
-        const [callback, delay] = call.arguments;
-        if (callback === undefined || !isTimedDelay(delay)) {
-          return;
-        }
-
-        const resolveName = parameterName(executor, 0);
-        if (resolveName !== null && call.arguments.length === 2 && settlesWithoutValue(callback, resolveName) && settlesParameter(callback, executor, 0)) {
-          if (reportsSleepHere()) {
-            context.report({ node, messageId: "handRolledSleep" });
-          }
-          return;
-        }
-
-        const rejectName = parameterName(executor, 1);
-        if (
-          rejectName !== null &&
-          isRaceArm(node) &&
-          settlesParameter(callback, executor, 1) &&
-          rejectsInCallback(callback, rejectName)
-        ) {
+        if (isRaceArm(node) && settlesParameter(callback, executor, 1)) {
           context.report({ node, messageId: "handRolledTimeoutRace" });
         }
       },

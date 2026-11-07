@@ -36,7 +36,7 @@ def test_projection_builds_fresh_unless_the_invocation_explicitly_provides_a_bui
     assert [argv[0] for argv in commands] == ["/tools/npm", "/tools/node", "/tools/node", "/tools/npm", "/tools/node"]
 
 
-def test_full_verification_shares_one_typescript_build_between_catalog_docs_and_dogfood() -> None:
+def test_full_verification_shares_one_typescript_build_and_lints_the_package_once() -> None:
     make = shutil.which("make")
     if make is None:
         pytest.skip("requires make to inspect the verification dependency graph")
@@ -50,7 +50,9 @@ def test_full_verification_shares_one_typescript_build_between_catalog_docs_and_
         "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built"
         in result.stdout
     )
-    assert "run dogfood:built" in result.stdout
+    # `npm run lint` runs the package's dogfood config; `dogfood:built` would lint it again.
+    assert result.stdout.count("npm --prefix packages/typescript run lint") == 1
+    assert "run dogfood:built" not in result.stdout
 
 
 class _ProjectionReachedError(Exception):

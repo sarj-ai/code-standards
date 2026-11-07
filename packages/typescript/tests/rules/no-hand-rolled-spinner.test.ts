@@ -1,21 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-hand-rolled-spinner.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_HAND_ROLLED_SPINNER_DOCUMENTATION } from "../../src/rules/no-hand-rolled-spinner.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaFeatures: { jsx: true } },
-  },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 
 const COMPONENT = "/repo/src/components/loading-state.tsx";
 
@@ -28,11 +15,11 @@ RULE_TESTER.run("no-hand-rolled-spinner", rule, {
     },
     { name: "later spread can replace spinner classes", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" {...props} />', filename: COMPONENT },
     { name: "last className wins", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" className="static" />', filename: COMPONENT },
-    { name: "accepts the documented shared spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[0].files[0].source, filename: COMPONENT },
+    { name: "accepts the documented shared spinner", code: '<Spinner className="size-4" />', filename: COMPONENT },
     {
-      name: "accepts the design-system spinner",
+      name: "accepts the design-system spinner (own filename: Oxlint dedupes by code)",
       code: `<Spinner className="size-4" />`,
-      filename: COMPONENT,
+      filename: "/repo/src/components/loading-state-2.tsx",
     },
     {
       name: "accepts a spinning icon",
@@ -104,7 +91,7 @@ RULE_TESTER.run("no-hand-rolled-spinner", rule, {
       errors: [{ messageId: "handRolledSpinner" }],
     },
     { name: "later explicit className overrides a spread", code: '<div {...props} className="animate-spin rounded-full border-2 border-t-transparent" />', filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
-    { name: "reports the documented border-ring spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[1].files[0].source, filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
+    { name: "reports the documented border-ring spinner", code: '<div className="size-4 animate-spin rounded-full border-2 border-t-transparent" />', filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     {
       name: "rejects a div border-ring spinner",
       code: `<div className="border-border h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />`,

@@ -1,21 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-non-nullable-collection.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION } from "../../src/rules/prefer-non-nullable-collection.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-non-nullable-collection", rule, {
   valid: [
@@ -69,8 +56,8 @@ RULE_TESTER.run("prefer-non-nullable-collection", rule, {
     { name: "negating a guard reverses its meaning", code: "interface Input { items: string[] | null } function f({items}: Input) { if (!(items === null || items.length === 0)) return 'present'; return items; }" },
     { name: "an escaping input can preserve its null state", code: "interface Input { items: string[] | null } function f(input: Input) { observe(input); return (input.items ?? []).length; }" },
     { name: "reversed less than comparison is not an empty check", code: "interface Input { items: string[] | null } function f({items}: Input) { if (items === null || 0 <= items.length) return 'present'; return items; }" },
-    { name: "public no-match example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].files[0].source },
-    { name: "public exported-input boundary example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[2].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[2].files[0].source },
+    { name: "public no-match example", filename: "src/search.ts", code: "interface Input { items: string[] } function search({ items }: Input) { return items.length; }" },
+    { name: "public exported-input boundary example", filename: "src/search.ts", code: "interface Input { items: string[] | undefined } export type WireInput = Input; function search({ items = [] }: Input) { return items.length; }" },
     "interface Input { organizationIds: OrganizationId[]; }",
     "type Response = { items: Array<string> };",
     "interface Input { value: string | string[] | null; }",
@@ -200,8 +187,8 @@ RULE_TESTER.run("prefer-non-nullable-collection", rule, {
     { name: "a private type query does not publish a private signature", code: "function read({ items = [] }: { items: string[] | undefined }) { return items.length; } type Api = typeof read;", errors: [{ messageId: "preferNonNullableCollection" }] },
     { name: "a query of another value does not publish a private signature", code: "function read({ items = [] }: { items: string[] | undefined }) { return items.length; } function other() { return 0; } export type Api = typeof other;", output: "function read({ items = [] }: { items: string[] }) { return items.length; } function other() { return 0; } export type Api = typeof other;", errors: [{ messageId: "preferNonNullableCollection" }] },
     { name: "a private query inside a public body does not publish a private signature", code: "function read({ items = [] }: { items: string[] | undefined }) { return items.length; } export function main() { type Api = typeof read; return 0; }", errors: [{ messageId: "preferNonNullableCollection" }] },
-    { name: "public match example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[1].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNonNullableCollection" }] },
-    { name: "public private-input review example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[3].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[3].files[0].source, errors: [{ messageId: "preferNonNullableCollection" }] },
+    { name: "public match example", filename: "src/search.ts", code: "interface Input { items: string[] | undefined } function search({ items = [] }: Input) { return items.length; }", errors: [{ messageId: "preferNonNullableCollection" }] },
+    { name: "public private-input review example", filename: "src/search.ts", code: "interface Input { items: string[] | undefined } type WireInput = Input; function search({ items = [] }: Input) { return items.length; }", errors: [{ messageId: "preferNonNullableCollection" }] },
     {
       name: "reports an undefined array defaulted during destructuring",
       code: [

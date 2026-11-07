@@ -14,16 +14,5 @@ export default Object.freeze({
       dependencyTypes: ["resolutions"],
       isIgnored: true,
     },
-    {
-      label: "Standards root peers are exact tested pins while workspaces use compatible ranges",
-      dependencies: [
-        "@eslint/js",
-        "eslint-plugin-perfectionist",
-        "eslint-plugin-react-hooks",
-        "eslint-plugin-simple-import-sort",
-        "typescript-eslint",
-      ],
-      isIgnored: true,
-    },
   ],
 } satisfies RcFile);

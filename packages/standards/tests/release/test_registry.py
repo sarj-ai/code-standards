@@ -36,7 +36,7 @@ def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3", contract
         f'[project]\nname = "code-standards"\nversion = "4.0.0"\ndependencies = {json.dumps(dependencies)}\n',
         encoding="utf-8",
     )
-    peers = root / "packages/standards/src/sarj_standards/configs/eslint.peers.json"
+    peers = root / "packages/standards/src/sarj_standards/configs/typescript.peers.json"
     peers.parent.mkdir(parents=True)
     peers.write_text(json.dumps({"peers": {"@sarj/eslint-plugin": "9.8.7"}}), encoding="utf-8")
 

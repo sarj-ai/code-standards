@@ -94,5 +94,5 @@ def test_calibration_tasks_have_stable_names_and_valid_states() -> None:
     campaign = _load_campaign()
     names = [task["task"] for task in campaign["tasks"]]
     assert len(names) == len(set(names))
-    assert all(name.startswith("rule-audit/") for name in names)
+    assert all(task["task"] == f"rule-audit/{task['family']}/{task['ruleId']}" for task in campaign["tasks"])
     assert {task["state"] for task in campaign["tasks"]} <= {"pending", "complete"}

@@ -1,24 +1,32 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-insecure-random-id.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_INSECURE_RANDOM_ID_DOCUMENTATION,
-} from "../../src/rules/no-insecure-random-id.js";
+const RULE_TESTER = ruleTester();
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const NO_INSECURE_RANDOM_ID_DOCUMENTATION = {
+  examples: [
+    { files: [{ path: "src/session.ts", source: "const sessionToken = crypto.randomUUID();" }], focusPath: "src/session.ts" },
+    { files: [{ path: "src/session.ts", source: "const sessionToken = Math.random();" }], focusPath: "src/session.ts" },
+    {
+      focusPath: "src/ids.ts",
+      files: [
+        {
+          path: "src/ids.ts",
+          source:
+            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const uuidDigit = Math.random() * 16 | 0; return (c === 'x' ? uuidDigit : (uuidDigit & 3) | 8).toString(16); }); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/ids.ts",
+          source:
+            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return nativeUuid(); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
+        },
+      ],
+    },
+  ],
+} as const;
 
 RULE_TESTER.run("no-insecure-random-id", rule, {
   valid: [
@@ -45,7 +53,6 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     { code: "const hex = (255).toString(16);" },
     { code: "const label = value.toString(36);" },
 
-
     { code: "const x = Math.random().toString(36).slice(2);" },
     { code: "const value = Math.random().toString(36);" },
     { code: "function spinning() { return Math.random(); }" },
@@ -57,7 +64,6 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     {
       code: "const simulateTokenRefreshResponse = () => ({ id: `sent-${Date.now()}-${Math.random()}` });",
     },
-
 
     { code: "const ratio = Math.random().toString();" },
     { code: "const ratio = Math.random().toString(10);" },
@@ -86,10 +92,8 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: "class ContextIdFactory { private readonly session = Math.random(); }",
     },
 
-
     { code: "const id = Math.random();" },
     { code: "const obj = { sessionId: Math.random() };" },
-
 
     { code: "const output = base + '/tmp/' + Math.random().toString(36);" },
     {
@@ -279,42 +283,11 @@ RULE_TESTER.run("no-insecure-random-id arithmetic-chain limitation", rule, {
   ],
 });
 
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined)
-    throw new Error("Missing rule documentation");
-  await verifyRuleExamples({
-    ...rule,
-    documentation: {
-      ...documentation,
-      examples: [
-        {
-          id: "predictable-token-static-member",
-          title: "Static member access preserves the rule outcome",
-          outcome: "match",
-          focusPath: "src/session.ts",
-          expectedCount: 1,
-          files: [
-            {
-              path: "src/session.ts",
-              source: 'const sessionToken = Math["random"]();',
-            },
-          ],
-        },
-        {
-          id: "predictable-token-dynamic-member",
-          title: "Unknown member access does not establish API identity",
-          outcome: "no-match",
-          focusPath: "src/session.ts",
-          expectedCount: 0,
-          files: [
-            {
-              path: "src/session.ts",
-              source: "const sessionToken = Math[auditDynamicMember]();",
-            },
-          ],
-        },
-      ],
-    },
-  });
+RULE_TESTER.run("no-insecure-random-id examples", rule, {
+  valid: [
+    { name: "predictable-token-dynamic-member", filename: "src/session.ts", code: "const sessionToken = Math[auditDynamicMember]();" },
+  ],
+  invalid: [
+    { name: "predictable-token-static-member", filename: "src/session.ts", code: 'const sessionToken = Math["random"]();', errors: [{ messageId: "insecureRandomId" }] },
+  ],
 });

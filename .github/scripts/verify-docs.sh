@@ -17,7 +17,7 @@ run_check() {
 run_check Examples npm run code-examples:check
 run_check Catalog npm run third-party-catalog:check
 run_check Routing npm run test:routing
-# Both checks read the prepared source. ESLint excludes Astro's generated
+# Both checks read the prepared source. Oxlint ignores Astro's generated
 # .astro directory; neither check depends on the other's output.
 run_check Lint npm --ignore-scripts run lint &
 lint_pid=$!

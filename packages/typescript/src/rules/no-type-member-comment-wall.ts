@@ -1,18 +1,16 @@
 /**
- * @fileoverview no-type-member-comment-wall — an object type whose member comments mostly re-spell the members is a wall the reader pays for by the block.
+ * @fileoverview no-type-member-comment-wall — an object type whose member comments mostly re-spell the members' names and types is a wall the reader pays for by the block.
+ *
+ * Port of the 18.x `no-type-member-comment-wall` rule. File gates and
+ * the comment line index move to `before()`; the judgement is unchanged.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
  */
 
-import type { NativeRuleFix } from "./_eslint-rule.js";
+import type { Comment, Fix, FixFn } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { commentLineEndings, exactMemberCommentRemovalRange, type CommentRemoval } from "./_comment-edits.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { commentLineEndings, exactMemberCommentRemovalRange, type CommentRemoval } from "../utils/comment-edits.js";
 import {
   BARE_LABEL_RE,
   WALL_DEFAULTS,
@@ -21,79 +19,36 @@ import {
   carriesValue,
   commentBody,
   hasJsDocTag,
-  isWall,
   isTagsOnly,
+  isWall,
   knownTokens,
   labelStems,
   novelWords,
-} from "./_comment-wall.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "commentWall";
-
-type Options = readonly [Partial<WallOptions>?];
+} from "../utils/comment-wall.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
 
 const BEHAVIORAL_RELATION_RE = /\b(?:not|no|never|only|must|shall|should|may|can|could|will|would|required|optional|if|unless|when|before|after|until|while|without|instead|true|false|null|undefined)\b|[<>=!]/iu;
 
-export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
-  summary: "Flag an object type whose member comments mostly re-spell the members' own names and types.",
-  rationale: "Repetitive member comments add scanning cost while hiding the comments that describe facts absent from the type.",
-  remediation: "Delete comments that restate member names or types and keep comments that add constraints or behavior.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: ["Automatic fixes remove only an exact multiword member-name comment on its own line and retain all physical line endings; threshold-based or novel prose remains manual.", "Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported. Negation, requirements, conditional relations, and fixed-value contracts are not counted as restatements. The novel-word threshold is a review heuristic, not proof that a comment contains no useful contract."],
-  examples: [
-    {
-      id: "uncommented-members",
-      title: "Let clear member names and types stand alone",
-      outcome: "no-match",
-      files: [{ path: "src/credentials.ts", source: "interface Credentials { host?: string; port?: number; username?: string; password?: string; }" }],
-      focusPath: "src/credentials.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "restated-type-members",
-      title: "Do not restate member names and types",
-      outcome: "match",
-      files: [{ path: "src/credentials.ts", source: "interface Credentials {\n  // Database host.\n  host?: string;\n  // Database host port.\n  port?: number;\n  // Database username.\n  username?: string;\n  // Database password.\n  password?: string;\n}" }],
-      focusPath: "src/credentials.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
 /** A member the rule can judge: a named property or method signature. */
-type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
+type NamedMember = ESTree.TSPropertySignature | ESTree.TSMethodSignature;
 
-function isNamedMember(node: TSESTree.TypeElement) {
-  return (
-    (node.type === AST_NODE_TYPES.TSPropertySignature ||
-      node.type === AST_NODE_TYPES.TSMethodSignature) &&
-    !node.computed
-  );
+/** Comments that document a member, and the restating ones among them with their exact removals. */
+interface Tally {
+  readonly commented: number;
+  readonly restated: number;
+  readonly removals: readonly CommentRemoval[];
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-type-member-comment-wall",
-  documentation: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
+export default defineRule({
   meta: {
-    defaultOptions: [WALL_DEFAULTS],
+    defaultOptions: [{ ...WALL_DEFAULTS }],
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Flag an object type whose member comments mostly re-spell the members' own names and types.",
+      url: docsUrl("no-type-member-comment-wall"),
     },
     schema: [WALL_SCHEMA],
     messages: {
@@ -101,29 +56,14 @@ export default createRule<Options, MessageIds>({
         "{{restated}} of this type's {{commented}} member comments appear to repeat names and types — review them for removal or clearer naming. Keep constraints and rationale.",
     },
   },
-  create(context, [provided]) {
-    const options: WallOptions = { ...WALL_DEFAULTS, ...provided };
-    const sourceCode = context.sourceCode;
-    // Generated or vendored, a test fixture, or a demo story: three kinds of
-    // file whose member comments are output rather than commentary.
-    if (
-      isGeneratedFile(context, sourceCode.text, ["externalTree"]) ||
-      isTestFile(context, ["fixtureTree"]) ||
-      isStoryFile(context, ["storyTree"])
-    ) {
-      return {};
-    }
+  createOnce(context) {
+    let options: WallOptions = WALL_DEFAULTS;
+    let sourceCode: SourceCode;
+    // Comments indexed by the line they end on (a leading comment) and the line they start on (a trailing one).
+    let endingOn = new Map<number, Comment>();
+    let startingOn = new Map<number, Comment>();
 
-    // One pass over the file's comments, indexed by the line they end on (a
-    // leading comment) and the line they start on (a trailing one).
-    const endingOn = new Map<number, TSESTree.Comment>();
-    const startingOn = new Map<number, TSESTree.Comment>();
-    for (const comment of sourceCode.getAllComments()) {
-      endingOn.set(comment.loc.end.line, comment);
-      if (!startingOn.has(comment.loc.start.line)) startingOn.set(comment.loc.start.line, comment);
-    }
-
-    function documentingComment(member: NamedMember): TSESTree.Comment | undefined {
+    function documentingComment(member: NamedMember): Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
       const ownsItsLine =
         beforeMember === null || beforeMember.loc.end.line < member.loc.start.line;
@@ -133,12 +73,11 @@ export default createRule<Options, MessageIds>({
         if (before === null || before.loc.end.line < lead.loc.start.line) {
           const previousLine = endingOn.get(lead.loc.start.line - 1);
           if (
-            lead.type === AST_TOKEN_TYPES.Line &&
-            previousLine?.type === AST_TOKEN_TYPES.Line &&
+            lead.type === "Line" &&
+            previousLine?.type === "Line" &&
             previousLine.loc.start.column === lead.loc.start.column
           ) {
-            // The final row alone can omit rationale carried above it, so leave
-            // a multi-line block unjudged instead of scoring a partial comment.
+            // The final row alone can omit rationale carried above it, so leave a multi-line block unjudged.
             return undefined;
           }
           return lead;
@@ -148,38 +87,22 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    function check(node: TSESTree.TSInterfaceBody | TSESTree.TSTypeLiteral): void {
-      const members = node.type === AST_NODE_TYPES.TSInterfaceBody ? node.body : node.members;
-      const named = members.filter(isNamedMember);
+    function check(node: ESTree.TSInterfaceBody | ESTree.TSTypeLiteral): void {
+      const members: readonly Node[] = node.type === "TSInterfaceBody" ? node.body : node.members;
+      const named = members.flatMap((member) =>
+        (member.type === "TSPropertySignature" || member.type === "TSMethodSignature") && !member.computed ? [member] : []);
       if (named.length === 0) return;
-
-      const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
-      let commented = 0;
-      let restated = 0;
-      const removals: CommentRemoval[] = [];
-      // A comment documents at most one member, so a shared block cannot be
-      // counted once per member that happens to sit next to it.
-      const claimed = new Set<TSESTree.Comment>();
-      for (const [index, { member, comment }] of documented.entries()) {
-        if (comment === undefined || claimed.has(comment)) continue;
-        const next = documented[index + 1];
-        if (isGroupLabel(comment, member, next !== undefined && next.comment === undefined)) {
-          continue;
-        }
-        claimed.add(comment);
-        commented += 1;
-        const body = commentBody(comment);
-        if (body.length === 0 || hasJsDocTag(comment) || carriesValue(body) || isTagsOnly(body) || BEHAVIORAL_RELATION_RE.test(body)) {
-          continue;
-        }
-        if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {
-          restated += 1;
-          const removal = exactMemberCommentRemovalRange(sourceCode.text, comment, member.key);
-          if (removal !== null) removals.push(removal);
-        }
-      }
-
+      const { commented, restated, removals } = tally(named);
       if (!isWall(named.length, commented, restated, options)) return;
+      const fix: FixFn = (fixer) => {
+        const fixes: Fix[] = [];
+        for (const removal of removals) {
+          const endings = commentLineEndings(sourceCode.text, removal);
+          if (endings === null) return null;
+          fixes.push(fixer.replaceTextRange([...removal.range], endings));
+        }
+        return fixes;
+      };
       context.report({
         node,
         loc: {
@@ -188,23 +111,40 @@ export default createRule<Options, MessageIds>({
         },
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
-        fix: removals.length === 0 ? null : (fixer) => {
-          const fixes: NativeRuleFix[] = [];
-          for (const removal of removals) {
-            const endings = commentLineEndings(sourceCode.text, removal);
-            if (endings === null) return null;
-            fixes.push(fixer.replaceTextRange([...(removal.range)], endings));
-          }
-          return fixes;
-        },
+        ...(removals.length > 0 && { fix }),
       });
     }
 
-    function isGroupLabel(
-      comment: TSESTree.Comment,
-      member: NamedMember,
-      headsRun: boolean,
-    ): boolean {
+    /** Count the members' own comments, and those that only re-spell the member. */
+    function tally(named: readonly NamedMember[]): Tally {
+      const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
+      let commented = 0;
+      let restated = 0;
+      const removals: CommentRemoval[] = [];
+      // A comment documents at most one member.
+      const claimed = new Set<Comment>();
+      for (const [index, { member, comment }] of documented.entries()) {
+        if (comment === undefined || claimed.has(comment)) continue;
+        const next = documented[index + 1];
+        if (isGroupLabel(comment, member, next !== undefined && next.comment === undefined)) continue;
+        claimed.add(comment);
+        commented += 1;
+        if (restatesMember(comment, member)) {
+          restated += 1;
+          const removal = exactMemberCommentRemovalRange(sourceCode.text, comment, member.key);
+          if (removal !== null) removals.push(removal);
+        }
+      }
+      return { commented, restated, removals };
+    }
+
+    function restatesMember(comment: Comment, member: NamedMember): boolean {
+      const body = commentBody(comment);
+      return body.length > 0 && !hasJsDocTag(comment) && !carriesValue(body) && !isTagsOnly(body) && !BEHAVIORAL_RELATION_RE.test(body) &&
+        novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords;
+    }
+
+    function isGroupLabel(comment: Comment, member: NamedMember, headsRun: boolean): boolean {
       if (comment.loc.end.line >= member.loc.start.line) return false;
       const body = commentBody(comment);
       if (!BARE_LABEL_RE.test(body)) return false;
@@ -214,6 +154,27 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
+      before() {
+        sourceCode = context.sourceCode;
+        const file = { filename: context.filename, cwd: context.cwd };
+        // Generated or vendored, a test fixture, or a demo story: member comments there are output rather than commentary.
+        if (
+          isGeneratedFile(file, sourceCode.text, ["externalTree"]) ||
+          isTestFile(file, ["fixtureTree"]) ||
+          isStoryFile(file, ["storyTree"])
+        ) {
+          return false;
+        }
+        const [provided] = context.options as unknown as readonly [Partial<WallOptions>?];
+        options = { ...WALL_DEFAULTS, ...provided };
+        endingOn = new Map();
+        startingOn = new Map();
+        for (const comment of sourceCode.getAllComments()) {
+          endingOn.set(comment.loc.end.line, comment);
+          if (!startingOn.has(comment.loc.start.line)) startingOn.set(comment.loc.start.line, comment);
+        }
+        return undefined;
+      },
       TSInterfaceBody: check,
       TSTypeLiteral: check,
     };

@@ -1,29 +1,16 @@
 /**
- * @fileoverview no-generic-single-export-module — a generic module name hides the responsibility expressed by its sole runtime export.
+ * @fileoverview no-generic-single-export-module — generic module stems should not hide a single responsibility.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-generic-single-export-module.test.ts
+ * Port of the 18.x `no-generic-single-export-module` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import type { TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "../utils/runtime-exports.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "./_runtime-exports.js";
-
-type MessageIds = "genericSingleExport";
-type Options = [];
-
-export const NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION = {
-  summary: "Disallow generic module stems when one runtime export already names the responsibility.",
-  rationale: "A generic filename hides the sole exported responsibility and makes navigation less descriptive.",
-  remediation: "Choose a responsibility-bearing module name or colocate the export with its domain.",
-  category: "maintainability",
-  limitations: ["Only the fixed generic-stem vocabulary with exactly one public runtime export is checked; exported destructuring patterns are excluded rather than undercounted."],
-  examples: [
-    { id: "responsibility-named-module", title: "Name the module after its export", outcome: "no-match", files: [{ path: "src/parse-order.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/parse-order.ts", expectedCount: 0, public: true },
-    { id: "generic-module-name", title: "Do not hide one export in a generic module", outcome: "match", files: [{ path: "src/utils.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/utils.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-generic-single-export-module";
 
 interface FileParts {
   readonly stem: string;
@@ -42,33 +29,40 @@ function isConventionalFrameworkUtility(filename: string, exported: string): boo
   return exported === "cn" && /(?:^|\/)lib\/utils\.[cm]?[jt]sx?$/u.test(normalized);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-generic-single-export-module",
-  documentation: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Disallow generic module stems when one runtime export already names the responsibility." },
+    docs: {
+      description: "Disallow generic module stems when one runtime export already names the responsibility.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       genericSingleExport:
         "Module stem `{{stem}}` is generic and its only runtime export is `{{exported}}`; choose a responsibility-bearing module name or colocate the export with its domain.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const file = fileParts(context.filename);
-    const { stem } = file;
-    if (
-      !GENERIC_MODULE_STEMS.has(stem) ||
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    ) return {};
+  createOnce(context) {
+    let file: FileParts = { stem: "", suffixes: [] };
     let hasCommonJsExport = false;
+    function checkCommonJs(node: ESTree.CallExpression | ESTree.MemberExpression): void {
+      if (isCommonJsExportReference(node, context.sourceCode)) hasCommonJsExport = true;
+    }
     return {
-      "CallExpression, MemberExpression"(node: TSESTree.CallExpression | TSESTree.MemberExpression): void {
-        if (isCommonJsExportReference(node, context.sourceCode)) hasCommonJsExport = true;
+      before() {
+        hasCommonJsExport = false;
+        file = fileParts(context.filename);
+        const scoped = { filename: context.filename, cwd: context.cwd };
+        if (
+          !GENERIC_MODULE_STEMS.has(file.stem) ||
+          isTestFile(scoped) ||
+          isGeneratedFile(scoped, context.sourceCode.text)
+        ) return false;
+        return undefined;
       },
-      "Program:exit"(program): void {
+      CallExpression: checkCommonJs,
+      MemberExpression: checkCommonJs,
+      "Program:exit"(program: ESTree.Program): void {
         if (hasCommonJsExport) return;
         const exports = runtimeExports(program);
         if (exports.ambiguous || exports.exports.length !== 1) return;
@@ -76,6 +70,7 @@ export default createRule<Options, MessageIds>({
         if (onlyExport === undefined) return;
         const { name: exported, node } = onlyExport;
         if (isConventionalFrameworkUtility(context.filename, exported)) return;
+        const { stem } = file;
         const exportedRole = exported.replaceAll(/[^a-z0-9]/giu, "").toLowerCase();
         const pathRole = [stem, ...file.suffixes].join("").replaceAll(/[^a-z0-9]/giu, "");
         if (exportedRole === pathRole && file.suffixes.length > 0) return;

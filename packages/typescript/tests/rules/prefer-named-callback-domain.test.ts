@@ -1,19 +1,9 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
 import rule from "../../src/rules/prefer-named-callback-domain.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const RULE_TESTER = ruleTester();
+
 RULE_TESTER.run("prefer-named-callback-domain", rule, {
   valid: [
     {
@@ -32,6 +22,11 @@ RULE_TESTER.run("prefer-named-callback-domain", rule, {
     },
   ],
   invalid: [
+    {
+      name: "skips unannotated callback parameters (port-only: the original crashes on Oxlint's null typeAnnotation)",
+      code: 'export type F = (cb: (x, y: "a" | "b") => void, ...rest) => void;',
+      errors: [{ messageId: "nameCallbackDomain" }],
+    },
     {
       name: "preserves unresolved ownership boundary 1",
       code: "type Boundary = 'seeded' | 'queued'; export interface Options { done?: (boundary: 'seeded' | 'queued') => void; }",

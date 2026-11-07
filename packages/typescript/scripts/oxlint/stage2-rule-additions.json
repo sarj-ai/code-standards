@@ -1,0 +1,51 @@
+{
+  "description": "The record of the rules oxlint.strict.mts added with the switch to Oxlint, beyond what Platform's config already enabled; tests/managed-config/additions.test.ts checks the config against it. From the Oxlint rule survey (Platform/products, portal, ai, automations; Oxlint 1.91.0). Size and complexity limits were left out on purpose. Rules with existing findings start as warnings.",
+  "jsPlugins": [
+    { "name": "@tanstack/query", "specifier": "@tanstack/eslint-plugin-query", "surveyedVersion": "5.106.1" },
+    { "name": "@eslint-react", "specifier": "@eslint-react/eslint-plugin", "surveyedVersion": "5.28.8" },
+    { "name": "effects", "specifier": "eslint-plugin-react-you-might-not-need-an-effect", "surveyedVersion": "1.0.2", "note": "the plugin ashStack vendors" }
+  ],
+  "rules": {
+    "@tanstack/query/exhaustive-deps": { "level": "error", "files": "non-test", "findings": "Platform 8 (2 outside tests)" },
+    "@tanstack/query/prefer-query-options": { "level": "warn", "findings": "Platform 28 (22 outside tests)" },
+    "react/no-array-index-key": { "level": "error", "findings": "Platform 13 (react-doctor suppressed today), ai 11", "note": "convert the react-doctor-disable comments" },
+    "@eslint-react/jsx-no-key-after-spread": { "level": "error", "findings": "Platform 2" },
+    "@eslint-react/web-api-no-leaked-event-listener": { "level": "warn" },
+    "@eslint-react/web-api-no-leaked-timeout": { "level": "warn" },
+    "@eslint-react/web-api-no-leaked-interval": { "level": "warn" },
+    "@eslint-react/web-api-no-leaked-resize-observer": { "level": "warn", "findings": "6 across the four leak rules, Platform only, one real leak" },
+    "effects/no-pass-live-state-to-parent": { "level": "warn" },
+    "effects/no-pass-data-to-parent": { "level": "warn" },
+    "react/iframe-missing-sandbox": { "level": "error", "findings": "portal 3" },
+    "@eslint-react/dom-no-unsafe-iframe-sandbox": { "level": "error" },
+    "oxc/bad-min-max-func": { "level": "error" },
+    "oxc/bad-object-literal-comparison": { "level": "error" },
+    "oxc/missing-throw": { "level": "error" },
+    "oxc/number-arg-out-of-range": { "level": "error" },
+    "oxc/uninvoked-array-callback": { "level": "error" },
+    "oxc/only-used-in-recursion": { "level": "error" },
+    "oxc/bad-array-method-on-arguments": { "level": "error" },
+    "vitest/hoisted-apis-on-top": { "level": "error" },
+    "vitest/require-awaited-expect-poll": { "level": "error" },
+    "vitest/valid-expect-in-promise": { "level": "error" },
+    "vitest/no-identical-title": { "level": "error" },
+    "vitest/no-duplicate-hooks": { "level": "error" },
+    "vitest/valid-describe-callback": { "level": "error" },
+    "vitest/valid-title": { "level": "error" },
+    "vitest/no-disabled-tests": { "level": "error" },
+    "vitest/no-conditional-expect": { "level": "warn", "findings": "Platform 163, portal 3, ai 3, automations 5" },
+    "radix": { "level": "error", "findings": "Platform 4" },
+    "import/no-duplicates": { "level": "warn", "findings": "Platform 13, portal 2, ai 2, automations 14", "note": "check fix style against consistent-type-imports" },
+    "oxc/no-barrel-file": { "level": "warn", "files": "Next.js app sources only" },
+    "typescript/no-unnecessary-parameter-property-assignment": { "level": "error" },
+    "react/capitalized-calls": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "react/hooks": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "react/memo-dependencies": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "react/invariant": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "react/syntax": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "react/rule-suppression": { "level": "error", "note": "React Compiler check, as in ashStack" }
+  },
+  "later": {
+    "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"
+  }
+}

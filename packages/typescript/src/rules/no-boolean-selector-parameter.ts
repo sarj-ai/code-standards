@@ -1,107 +1,69 @@
 /**
  * @fileoverview no-boolean-selector-parameter — preserve boolean data and required contracts while identifying operation selectors.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-boolean-selector-parameter.test.ts
+ * Port of the 18.x `no-boolean-selector-parameter` rule. Typed: the
+ * original returns no visitors without a program, so without tsrs (or when
+ * tsrs cannot hold the file) this port reports nothing. The walk finds the
+ * directly tested parameters of single-statement selectors (all syntax);
+ * `Program:exit` runs the original's type and contract checks for each over
+ * tsrs's checker, then reports.
  */
 
-import { getTypeServices, hasSideEffect } from "./_eslint-rule.js";
-
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import {
-  isBooleanDataSelection,
-  isEligibleBooleanSelector,
-} from "./_boolean-selector-contract.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { hasSideEffect } from "../utils/has-side-effect.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
+import { isBooleanDataSelection, isEligibleBooleanSelector } from "./_no-boolean-selector-parameter-contract.js";
 import { literalSelectorFix } from "./_literal-selector-fix.js";
-import { isGeneratedFile } from "./_paths.js";
 
-type Options = readonly [];
-type MessageIds = "booleanSelector";
-type FunctionNode = TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
+const NAME = "no-boolean-selector-parameter";
 
-export const NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION = {
-  summary:
-    "Prefer intention-revealing operations over a boolean parameter selecting between actions.",
-  rationale:
-    "A positional boolean hides which operation a caller requests. Splitting independent actions can make that intent explicit, while boolean data, pure mappings and externally required callback or method contracts remain valid.",
-  remediation:
-    "Consider separate named operations or an explicit domain mode. Review the public API and its callers manually; preserve required callback, setter and inherited contracts instead of wrapping them solely to silence the warning.",
-  category: "maintainability",
-  defaultLevel: "warning",
-  autofix: "safe",
-  limitations: [
-    "Requires type information. Checks an owned single-statement if/else, returned conditional or conditional expression statement, and expression-bodied arrow conditionals. Only a direct broad-boolean parameter or its negation is considered; optional, nullable, literal-only, generic, destructured and indirect predicate conditions are excluded.",
-    "Preserves setters, pure mappings, selected pure data passed to one stable lexical operation or assigned to one simple target, independently authored callable and inherited member contracts, inline callbacks, and statically proven named callback references. Independent helpers remain checked in JSX files; callback identity is established from references rather than handler names.",
-    "The block-body detector preserves the existing literal on[A-Z] object-property exemption; the concise-arrow extension does not infer a callback contract from that name. Multi-statement bodies, short-circuit guards, local parameter aliases and arbitrary control flow are not inferred. Noncomputed property reads count as data without proving getter effects; computed reads remain outside that exemption, including literal keys. Side-effect detection does not prove whether a called function is pure, and a warning requires manual design review. Generated files are excluded; tests remain checked.",
-    "Automatic fixes only reuse two already authored private zero-argument ordinary operations returning primitive string literals. A complete comment-free four-declaration module must contain those operations, one private const broad-boolean arrow selecting their direct calls, and one exported zero-argument ordinary function with an explicit string-array return that calls the selector exclusively with literal true and false. Calls are routed to the existing named operations and the exclusively used selector declaration is removed. All other APIs, callbacks, dynamic arguments, contracts and operation bodies remain manual.",
-  ],
-  references: [
-    "https://understandlegacycode.com/blog/what-is-wrong-with-boolean-parameters/",
-    "https://martinfowler.com/bliki/FlagArgument.html",
-  ],
-  examples: [
-    {
-      id: "concise-boolean-dispatch",
-      title: "Name the selected operation explicitly",
-      outcome: "match",
-      files: [
-        {
-          path: "src/book.ts",
-          source:
-            "const book = (premium: boolean) => premium ? premiumBook() : regularBook();",
-        },
-      ],
-      focusPath: "src/book.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "boolean-value-mapping",
-      title: "Boolean data may select a pure value",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/label.ts",
-          source:
-            'function label(enabled: boolean) { if (enabled) { return "Enabled"; } else { return "Disabled"; } }',
-        },
-      ],
-      focusPath: "src/label.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Call the already named selected operations",
-      outcome: "match",
-      files: [
-        {
-          path: "src/book.ts",
-          source:
-            "function premiumBook() { return 'premium'; }\nfunction regularBook() { return 'regular'; }\nconst book = (premium: boolean) => premium ? premiumBook() : regularBook();\nexport function choices(): string[] { return [book(true), book(false), book(true)]; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/book.ts",
-          source:
-            "function premiumBook() { return 'premium'; }\nfunction regularBook() { return 'regular'; }\nexport function choices(): string[] { return [premiumBook(), regularBook(), premiumBook()]; }",
-        },
-      ],
-      focusPath: "src/book.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function;
+type Identifier = Node & { readonly type: "Identifier"; readonly name: string };
 
-export default createRule<Options, MessageIds>({
-  name: "no-boolean-selector-parameter",
-  documentation: NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION,
+// Preserve the existing block-only onX object-property blind spot. Names do not
+// establish callback ownership; the unchanged typed contract helper does that.
+function preservesBlockObjectCallback(owner: FunctionNode): boolean {
+  const property = parentOf(owner);
+  if (property?.type !== "Property" || property.computed) return false;
+  const key = property.key;
+  const name = key.type === "Identifier" ? key.name :
+    key.type === "Literal" && typeof key.value === "string" ? key.value : undefined;
+  return name !== undefined && /^on[A-Z]/u.test(name);
+}
+
+function testIdentifier(test: Node): Identifier | undefined {
+  const value = test.type === "UnaryExpression" && test.operator === "!" ? test.argument : test;
+  return value.type === "Identifier" ? value : undefined;
+}
+
+/** The parameter test and the IfStatement or ConditionalExpression it decides, when the test is direct. */
+function directTest(identifier: Identifier): { readonly test: Node; readonly selection: Node } | undefined {
+  const parent = parentOf(identifier);
+  const test = parent?.type === "UnaryExpression" && parent.operator === "!" ? parent : identifier;
+  const selection = parentOf(test);
+  return (selection?.type === "IfStatement" || selection?.type === "ConditionalExpression") && selection.test === test
+    ? { test, selection } : undefined;
+}
+
+/** The if statement or conditional expression a single-statement body selects with. */
+function singleStatementSelection(statement: Node | undefined): ESTree.IfStatement | ESTree.ConditionalExpression | null {
+  if (statement?.type === "IfStatement") return statement;
+  const selected = statement?.type === "ReturnStatement" ? statement.argument :
+    statement?.type === "ExpressionStatement" ? statement.expression : null;
+  return selected?.type === "ConditionalExpression" ? selected : null;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION.summary },
+    docs: {
+      description: "Prefer intention-revealing operations over a boolean parameter selecting between actions.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     fixable: "code",
     messages: {
@@ -109,109 +71,70 @@ export default createRule<Options, MessageIds>({
         'Consider separate intention-revealing operations instead of using "{{parameterName}}" to select an action. Preserve required contracts and boolean data.',
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      !context.sourceCode.parserServices?.program
-    )
-      return {};
-    const services = getTypeServices(context);
-    const reported = new Set<TSESTree.Identifier>();
-    function report(identifier: TSESTree.Identifier): void {
-      if (
-        reported.has(identifier) ||
-        !isDirectTest(identifier) ||
-        !isEligibleBooleanSelector(identifier, context.sourceCode, services)
-      )
-        return;
-      const selection = (
-        identifier.parent.type === AST_NODE_TYPES.UnaryExpression
-          ? identifier.parent
-          : identifier
-      ).parent;
-      if (
-        selection.type === AST_NODE_TYPES.ConditionalExpression &&
-        isBooleanDataSelection(
-          selection.consequent,
-          selection.alternate,
-          context.sourceCode,
-          services,
-        )
-      )
-        return;
-      reported.add(identifier);
-      const fix = literalSelectorFix(context.sourceCode, identifier);
-      context.report({
-        node: identifier,
-        messageId: "booleanSelector",
-        data: { parameterName: identifier.name },
-        fix,
-      });
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    // Each tested identifier once, in walk order, as the original's `reported` set keeps it.
+    let candidates = new Set<Identifier>();
+
+    /** Collect the tested parameter when either branch of the selection has a side effect. */
+    function collectEffectfulSelection(test: Node, consequent: Node, alternate: Node): void {
+      if (!hasSideEffect(consequent, context.sourceCode) && !hasSideEffect(alternate, context.sourceCode)) return;
+      const identifier = testIdentifier(test);
+      if (identifier !== undefined && directTest(identifier) !== undefined) candidates.add(identifier);
     }
+
     function inspectSingleStatementBody(owner: FunctionNode): void {
-      if (owner.body?.type !== AST_NODE_TYPES.BlockStatement || owner.body.body.length !== 1 || preservesBlockObjectCallback(owner)) return;
-      const statement = owner.body.body[0];
-      if (statement?.type === AST_NODE_TYPES.IfStatement) {
-        if (statement.alternate === null || (!hasSideEffect(statement.consequent, context.sourceCode) &&
-          !hasSideEffect(statement.alternate, context.sourceCode))) return;
-        const identifier = testIdentifier(statement.test);
-        if (identifier !== undefined) report(identifier);
-        return;
-      }
-      const selected = statement?.type === AST_NODE_TYPES.ReturnStatement ? statement.argument :
-        statement?.type === AST_NODE_TYPES.ExpressionStatement ? statement.expression : undefined;
-      if (selected?.type !== AST_NODE_TYPES.ConditionalExpression || (!hasSideEffect(selected.consequent, context.sourceCode) &&
-        !hasSideEffect(selected.alternate, context.sourceCode))) return;
-      const identifier = testIdentifier(selected.test);
-      if (identifier !== undefined) report(identifier);
+      if (owner.body?.type !== "BlockStatement" || owner.body.body.length !== 1 || preservesBlockObjectCallback(owner)) return;
+      const selection = singleStatementSelection(owner.body.body[0]);
+      if (selection !== null && selection.alternate !== null) collectEffectfulSelection(selection.test, selection.consequent, selection.alternate);
     }
+
+    /** The original's `report` checks, which need types. */
+    function selects(identifier: Identifier, native: NativeTypes): boolean {
+      const sourceCode = context.sourceCode;
+      if (!isEligibleBooleanSelector(identifier, sourceCode, native)) return false;
+      const selection = directTest(identifier)!.selection;
+      return !(selection.type === "ConditionalExpression" &&
+        isBooleanDataSelection(selection.consequent, selection.alternate, sourceCode, native));
+    }
+
     return {
+      before() {
+        tsrs = null;
+        candidates = new Set();
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
       FunctionDeclaration: inspectSingleStatementBody,
       FunctionExpression: inspectSingleStatementBody,
       ArrowFunctionExpression: inspectSingleStatementBody,
       ConditionalExpression(node) {
-        if (node.parent.type !== AST_NODE_TYPES.ArrowFunctionExpression || node.parent.body !== node ||
-          (!hasSideEffect(node.consequent, context.sourceCode) && !hasSideEffect(node.alternate, context.sourceCode))) return;
-        const callable = node.parent;
-        if (
-          (callable.parent.type === AST_NODE_TYPES.CallExpression &&
-            callable.parent.arguments.includes(callable)) ||
-          callable.parent.type === AST_NODE_TYPES.JSXExpressionContainer
-        )
-          return;
-        const identifier = testIdentifier(node.test);
-        if (identifier !== undefined) report(identifier);
+        const callable = parentOf(node);
+        if (callable?.type !== "ArrowFunctionExpression" || callable.body !== node) return;
+        const owner = parentOf(callable);
+        if ((owner?.type === "CallExpression" && owner.arguments.includes(callable)) || owner?.type === "JSXExpressionContainer") return;
+        collectEffectfulSelection(node.test, node.consequent, node.alternate);
+      },
+      "Program:exit"() {
+        if (candidates.size === 0 || tsrs === null) return;
+        const tested = [...candidates];
+        const found = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          return tested.map((identifier) => selects(identifier, native));
+        });
+        if (found === null) return;
+        tested.forEach((identifier, i) => {
+          if (found[i] !== true) return;
+          const fix = literalSelectorFix(context.sourceCode, identifier);
+          context.report({
+            node: identifier,
+            messageId: "booleanSelector",
+            data: { parameterName: identifier.name },
+            ...(fix !== null && { fix }),
+          });
+        });
       },
     };
   },
 });
-
-// Preserve the existing block-only onX object-property blind spot. Names do not
-// establish callback ownership; the unchanged typed contract helper does that.
-function preservesBlockObjectCallback(owner: FunctionNode): boolean {
-  const property = owner.parent;
-  if (property.type !== AST_NODE_TYPES.Property || property.computed) return false;
-  const key = property.key;
-  const name = key.type === AST_NODE_TYPES.Identifier ? key.name :
-    key.type === AST_NODE_TYPES.Literal && typeof key.value === "string" ? key.value : undefined;
-  return name !== undefined && /^on[A-Z]/u.test(name);
-}
-
-function testIdentifier(test: TSESTree.Expression): TSESTree.Identifier | undefined {
-  const value = test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!" ? test.argument : test;
-  return value.type === AST_NODE_TYPES.Identifier ? value : undefined;
-}
-
-function isDirectTest(identifier: TSESTree.Identifier): boolean {
-  const test =
-    identifier.parent.type === AST_NODE_TYPES.UnaryExpression &&
-    identifier.parent.operator === "!"
-      ? identifier.parent
-      : identifier;
-  return (
-    (test.parent.type === AST_NODE_TYPES.IfStatement ||
-      test.parent.type === AST_NODE_TYPES.ConditionalExpression) &&
-    test.parent.test === test
-  );
-}

@@ -426,7 +426,7 @@ def test_pending_safe_fixes_preserve_both_indexes_and_unselected_source(
         _paths: Iterable[str],
         *,
         trusted: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
-        eslint: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
+        typescript: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
     ) -> list[lifecycle.Command]:
         return []
 
@@ -541,11 +541,11 @@ def test_staged_check_routes_additions_renames_and_only_requested_files(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
-        eslint: bool = True,
+        typescript: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
-        assert eslint
+        assert typescript
         assert root == repository.resolve()
         assert not raw
         assert not trusted
@@ -584,11 +584,11 @@ def test_staged_check_uses_repository_relative_hook_paths_from_a_nested_cwd(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
-        eslint: bool = True,
+        typescript: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
-        assert eslint
+        assert typescript
         assert root == repository.resolve()
         assert not raw
         assert not trusted
@@ -661,7 +661,7 @@ def test_staged_routes_refuse_unverifiable_index_flags_before_fix_planning(
         _paths: Iterable[str],
         *,
         trusted: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
-        eslint: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
+        typescript: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
     ) -> list[lifecycle.Command]:
         pytest.fail("unverifiable staged sources must not reach external fix planning")
 
@@ -707,7 +707,7 @@ def test_staged_index_flag_reads_keep_special_filenames_literal(
         _paths: Iterable[str],
         *,
         trusted: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
-        eslint: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
+        typescript: bool = True,  # ruff: ignore[unused-function-argument] -- refusal callbacks retain the existing planner's keyword signature.
     ) -> list[lifecycle.Command]:
         pytest.fail("literal flagged paths must be refused before external fix planning")
 
@@ -745,11 +745,11 @@ def test_explicit_staged_fixes_ignore_unrelated_hidden_index_flags(
     planned: list[tuple[str, ...]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == adopted_git_repo
         assert trusted == (command == "fix")
-        assert eslint
+        assert typescript
         planned.append(tuple(paths))
         return []
 
@@ -940,11 +940,11 @@ def test_staged_check_still_runs_repository_policy_without_source_selections(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
-        eslint: bool = True,
+        typescript: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
-        assert eslint
+        assert typescript
         assert not raw
         assert not trusted
         routed.append((paths, staged))
@@ -1103,11 +1103,11 @@ def test_staged_fixes_preserve_untracked_copies_of_index_deleted_files(
     checked: list[tuple[str, ...]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == repository
         assert trusted == (command == "fix")
-        assert eslint
+        assert typescript
         planned.append(tuple(paths))
         return []
 
@@ -1168,11 +1168,11 @@ def test_deleted_staged_metadata_still_triggers_repository_policy(
     routed: list[tuple[tuple[str, ...], bool | int, bool | int]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == adopted_git_repo
         assert not trusted
-        assert eslint
+        assert typescript
         planned.append(tuple(paths))
         return []
 

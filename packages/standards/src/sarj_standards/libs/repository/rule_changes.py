@@ -20,7 +20,7 @@ from sarj_standards.libs.release.process import (
 )
 from sarj_standards.libs.repository.immutable_git import ImmutableGit, git_argv
 from sarj_standards.libs.repository.rule_dependencies import ModuleFingerprint, RuleDependencies
-from sarj_standards.libs.rules import DefaultLevel
+from sarj_standards.libs.rules import DefaultLevel, RuleEngine, oxlint_ids
 
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ _INVENTORY_PATH: Final = "packages/standards/src/sarj_standards/configs/rule-inv
 _CATALOG_PATH: Final = "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
 _ENGINE_BY_FAMILY: Final = MappingProxyType(
     {
-        "typescript": "eslint",
+        "typescript": RuleEngine.OXLINT.value,
         "iac": "iac",
         "python": "python",
         "sql": "sql",
@@ -41,7 +41,7 @@ _ENGINE_BY_FAMILY: Final = MappingProxyType(
 )
 _RELEASE_TARGET_BY_ENGINE: Final = MappingProxyType(
     {
-        "eslint": "typescript",
+        RuleEngine.OXLINT.value: "typescript",
         "iac": "iac",
         "python": "python",
         "sql": "sql",
@@ -56,12 +56,12 @@ _GIT_SHA_LENGTH: Final = 40
 _ERROR_FIRST_APPROVALS: Final = frozenset(
     {
         "python:no-excessive-cognitive-complexity",
-        "eslint:no-excessive-cognitive-complexity",
-        "eslint:no-known-value-widening",
-        "eslint:no-broad-return-type",
-        "eslint:prefer-typed-reflection",
-        "eslint:no-conditional-empty-object-spread",
-        "eslint:no-reduce-accumulator-copy",
+        "oxlint:no-excessive-cognitive-complexity",
+        "oxlint:no-known-value-widening",
+        "oxlint:no-broad-return-type",
+        "oxlint:prefer-typed-reflection",
+        "oxlint:no-conditional-empty-object-spread",
+        "oxlint:no-reduce-accumulator-copy",
         # Explicit strict DevOps admission: proven persistent private-key creation.
         "iac:no-managed-service-account-key",
         # Explicit strict DevOps admission: proven broad project Owner/Editor grants.
@@ -273,13 +273,8 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
 
     catalog_by_key: dict[str, dict[str, JsonValue]] = {}
     for index, raw in enumerate(catalog_entries, start=1):
-        entry = _object(raw, label=f"rule catalog entry {index}")
+        entry = _catalog_entry(_object(raw, label=f"rule catalog entry {index}"), index=index)
         key = _string(entry, "key")
-        engine = _string(entry, "engine")
-        rule_id = _string(entry, "id")
-        if key != f"{engine}:{rule_id}" or engine not in _RELEASE_TARGET_BY_ENGINE:
-            msg = f"rule catalog entry {index} has inconsistent key/engine/id"
-            raise ValueError(msg)
         if key in catalog_by_key:
             msg = f"rule catalog repeats {key}"
             raise ValueError(msg)
@@ -338,6 +333,17 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
         "catalog": catalog_by_key,
         "implementation_blobs": implementation_blobs,
     }
+
+
+def _catalog_entry(entry: dict[str, JsonValue], *, index: int) -> dict[str, JsonValue]:
+    published_engine = _string(entry, "engine")
+    rule_id = _string(entry, "id")
+    # Catalogs published before Oxlint name the TypeScript engine `eslint`.
+    engine = RuleEngine.OXLINT.value if published_engine == oxlint_ids.LEGACY_SOURCE else published_engine
+    if _string(entry, "key") != f"{published_engine}:{rule_id}" or engine not in _RELEASE_TARGET_BY_ENGINE:
+        msg = f"rule catalog entry {index} has inconsistent key/engine/id"
+        raise ValueError(msg)
+    return {**entry, "engine": engine, "key": f"{engine}:{rule_id}"}
 
 
 def _inventory_by_key(inventory_entries: list[JsonValue]) -> dict[str, dict[str, JsonValue]]:

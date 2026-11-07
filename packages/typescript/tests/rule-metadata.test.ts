@@ -1,30 +1,21 @@
 // vitest: shared-module-graph
 import { describe, expect, it } from "vitest";
 
-import { RULES } from "../src/index.js";
+import { RULES } from "../src/catalog.js";
+import { RULE_DOCUMENTATION } from "../src/docs/index.js";
 import {
-  createRule,
-  documentationWarnings,
   publicDocumentation,
+  ruleSpec,
   type RuleDocumentation,
   type RuleExample,
-} from "../src/rules/_docs.js";
+} from "../src/documentation.js";
+import PLUGIN from "../src/index.js";
 
 const SUMMARY = "Report the representative construct.";
 
 function documentedRule(documentation: RuleDocumentation) {
-  return createRule<readonly unknown[], "message">({
-    name: "representative-rule",
-    documentation,
-    meta: {
-      type: "problem",
-      docs: { description: SUMMARY },
-      schema: [],
-      messages: { message: "Representative diagnostic." },
-    },
-    defaultOptions: [],
-    create: () => ({}),
-  });
+  const meta = { docs: { description: SUMMARY }, schema: [], messages: { message: "Representative diagnostic." } };
+  return { meta, documentation: ruleSpec("representative-rule", meta, documentation) };
 }
 
 function documentation(examples: RuleDocumentation["examples"]): RuleDocumentation {
@@ -38,19 +29,27 @@ function documentation(examples: RuleDocumentation["examples"]): RuleDocumentati
 }
 
 describe("source-owned TypeScript rule metadata", () => {
-  it("attaches a deeply frozen, non-enumerable native spec", () => {
+  it("builds a deeply frozen native spec", () => {
     const rule = documentedRule(documentation([]));
 
     expect(rule.documentation).toMatchObject({
-      engine: "eslint",
-      key: "eslint:representative-rule",
+      engine: "oxlint",
+      key: "oxlint:representative-rule",
       ruleId: "representative-rule",
       messageIds: ["message"],
       optionsSchema: null,
     });
     expect(Object.isFrozen(rule.documentation)).toBe(true);
     expect(Object.isFrozen(rule.documentation?.examples)).toBe(true);
-    expect(Object.keys(rule)).not.toContain("documentation");
+  });
+
+  it("keeps documentation out of the plugin's own rule objects", () => {
+    expect(Object.values(PLUGIN.rules).filter((rule) => "documentation" in rule)).toEqual([]);
+  });
+
+  it("rejects documentation whose summary differs from the rule description", () => {
+    expect(() => ruleSpec("representative-rule", { docs: { description: "Another claim." } }, documentation([])))
+      .toThrow("meta.docs.description must equal the authored documentation summary");
   });
 
   it("keeps examples private unless publication is explicit", () => {
@@ -171,9 +170,14 @@ describe("source-owned TypeScript rule metadata", () => {
   });
 });
 
-describe("warning-first rollout", () => {
-  it("requires source-owned documentation for every published rule", () => {
-    expect(documentationWarnings(RULES)).toEqual([]);
+describe("every shipped rule", () => {
+  it("has a documentation module and no orphaned one", () => {
+    expect(Object.keys(RULE_DOCUMENTATION)).toEqual(Object.keys(PLUGIN.rules));
+  });
+
+  it.each(Object.entries(RULES))("%s documents a public matching and a public non-matching example", (_name, rule) => {
+    const outcomes = new Set(rule.documentation.publicExamples.map((example) => example.outcome));
+    expect(outcomes).toEqual(new Set(["match", "no-match"]));
   });
 });
 

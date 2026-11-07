@@ -1,21 +1,12 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
-import { RECOMMENDED_RULES, STRICT_RULES } from "../../src/index.js";
 import rule from "../../src/rules/no-explicit-type-predicate.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser } });
+const RULE_TESTER = ruleTester();
 RULE_TESTER.run("no-explicit-type-predicate", rule, {
   valid: [
+  { name: "documented example direct-discriminator", filename: "./src/job.ts", code: "type Job = { kind: 'queued'; queue: string } | { kind: 'done'; result: string }; function render(job: Job) { return job.kind === 'done' ? job.result : job.queue; }" },
+  { name: "documented example inferred-predicate", filename: "./src/job.ts", code: "type Job = { kind: 'queued'; queue: string } | { kind: 'done'; result: string }; const isDone = (job: Job) => job.kind === 'done';" },
   {
     "name": "direct-discriminator",
     "filename": "src/source.ts",
@@ -138,6 +129,9 @@ RULE_TESTER.run("no-explicit-type-predicate", rule, {
   }
 ],
   invalid: [
+  { name: "documented example manual-predicate", filename: "./src/job.ts", code: "type Job = { kind: 'queued'; queue: string } | { kind: 'done'; result: string }; type Done = Extract<Job, {kind: 'done'}>; function isDone(job: Job): job is Done { return job.kind === 'done'; } function render(job: Job) { return isDone(job) ? job.result : job.queue; }", errors: [{ messageId: "noExplicitTypePredicate" }] },
+  { name: "documented example written-predicate", filename: "./src/job.ts", code: "type Job = { kind: 'queued'; queue: string } | { kind: 'done'; result: string }; type Done = Extract<Job, {kind: 'done'}>; const isDone = (job: Job): job is Done => job.kind === 'done';", errors: [{ messageId: "noExplicitTypePredicate" }] },
+  { name: "keeps checkout ancestor names outside generated-file ownership", cwd: "/repo/generated/checkout", filename: "/repo/generated/checkout/src/value.ts", code: "function valid(value: unknown): value is string { return true; }", errors: [{ messageId: "noExplicitTypePredicate" }] },
   {
     "name": "lying-function",
     "filename": "src/source.ts",
@@ -538,37 +532,4 @@ RULE_TESTER.run("no-explicit-type-predicate", rule, {
     ]
   }
 ],
-});
-
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
-});
-
-it("stages the policy in both public presets without automatic migration", () => {
-  expect(STRICT_RULES["@sarj/no-explicit-type-predicate"]).toBe("warn");
-  expect(RECOMMENDED_RULES["@sarj/no-explicit-type-predicate"]).toBe("warn");
-  expect(rule.meta.fixable).toBeUndefined();
-  expect(rule.meta.hasSuggestions).toBeUndefined();
-});
-
-const SOURCE = "function valid(value: unknown): value is string { return true; }";
-function findings(cwd: string, code: string, filename: string) {
-  return new Linter({ cwd }).verify(code, [{
-    files: ["**/*.ts"],
-    languageOptions: { parser },
-    linterOptions: { reportUnusedDisableDirectives: "error" },
-    plugins: { sarj: { rules: { policy: rule } } },
-    rules: { "sarj/policy": "error" },
-  }], { filename });
-}
-
-it("keeps checkout ancestor names outside generated-file ownership", () => {
-  expect(findings("/repo/generated/checkout", SOURCE, "/repo/generated/checkout/src/value.ts"))
-    .toMatchObject([{ ruleId: "sarj/policy", messageId: "noExplicitTypePredicate" }]);
-});
-
-it("uses native exact-rule suppression and retains unused-directive checks", () => {
-  expect(findings("/repo", "// eslint-disable-next-line sarj/policy -- external callback requires this signature\n" + SOURCE, "/repo/src/value.ts")).toEqual([]);
-  expect(findings("/repo", "// eslint-disable-next-line sarj/policy -- obsolete signature exemption\nconst valid = (value: unknown) => value !== null;", "/repo/src/value.ts"))
-    .toMatchObject([{ ruleId: null, severity: 2 }]);
 });

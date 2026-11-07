@@ -1,22 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-secret-in-log.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_SECRET_IN_LOG_DOCUMENTATION } from "../../src/rules/no-secret-in-log.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-secret-in-log", rule, {
   valid: [
@@ -54,8 +40,7 @@ RULE_TESTER.run("no-secret-in-log", rule, {
 
     { name: "respects an explicitly redacted property value", code: "logger.info('auth', { token: redactedToken });" },
     { name: "respects a redacted member value under a secret key", code: "logger.info('auth', { token: result.maskedToken });" },
-    { name: "accepts the documented redaction", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[0].files[0].source },
-
+    { name: "accepts the documented redaction", code: "logger.info('auth', { requestId });" },
 
     { code: 'logger.info("usage", { tokenCount });' },
 
@@ -88,7 +73,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
 
     { code: 'console.log("usage", { tokenCount });' },
     { code: 'console.error("user", { userId });' },
-
 
     { code: 'logger.info("santa", { secretSantaName });' },
     { code: 'logger.info("key", { apiKeyLabel });' },
@@ -126,7 +110,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("api key rotated");' },
     { code: 'logger.warn("password reset requested for user");' },
 
-
     { code: 'logger.info("cfg", { apiKey: config.apiKey ? `${config.apiKey.substring(0, 10)}...` : "(missing)" });' },
 
     { code: 'logger.info("auth", { password: mask(password) });' },
@@ -135,15 +118,10 @@ RULE_TESTER.run("no-secret-in-log", rule, {
 
     { code: 'logger.info("auth", { credentials: hasCreds ? "set" : "unset" });' },
 
-
-
     {
       code: 'logEvent("slack.auth", { tokenPrefix });',
       options: [{ logFunctions: ["logEvent"] }],
     },
-
-
-
 
     {
       code: 'logEvent("s", { hasSecret });',
@@ -155,19 +133,13 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("auth", { isTokenStrategy, wasPasswordReset });' },
     { code: "logger.info(hasApiKey);" },
 
-
-
-
     { code: 'logger.info("auth", { hash_secret });' },
-
-
 
     { code: 'logger.info("resp", { id: body.id });' },
     { code: 'logger.info("editor", await editor.text());' },
     { code: 'logger.info("resp", { bodyLength: body.length });' },
     { code: 'logger.info("resp", { status: res.status, issueCount: body.issues.length });' },
     { code: 'logger.info("resp", { payloadId: payload.id });' },
-
 
     { code: 'logger.info("resp", { body: redact(body) });' },
     { code: 'logger.info("resp", { body: sanitize(body) });' },
@@ -197,7 +169,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("resp", { hasBody });' },
     { code: 'logger.info("resp", { isPayload });' },
 
-
     { code: 'logger.info("x", { data });' },
     { code: 'logger.info("x", { input, args, result });' },
     { code: 'logger.info("x", { event, record, item });' },
@@ -209,7 +180,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
 
     { code: 'metrics.record("resp", { body });' },
     { code: "res.send({ body });" },
-
 
     { code: 'logEvent("ashby.response", { body });' },
 
@@ -260,7 +230,7 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       code: 'console.error("request failed", await response.text());',
       errors: [{ messageId: "noRawBodyInLog" }],
     },
-    { name: "reports the documented secret", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSecretInLog" }] },
+    { name: "reports the documented secret", code: "logger.error('auth failed', { token });", errors: [{ messageId: "noSecretInLog" }] },
 
     {
       code: 'logger.error("failed", { token });',
@@ -293,7 +263,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       code: 'logger.info("x", secret);',
       errors: [{ messageId: "noSecretInLog" }],
     },
-
 
     {
       code: 'logger.error("cfg", { secretKey });',
@@ -336,7 +305,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       ],
     },
 
-
     {
       code: 'logger.info("cfg", config.apiSecret);',
       errors: [{ messageId: "noSecretInLog" }],
@@ -350,7 +318,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       errors: [{ messageId: "noSecretInLog" }],
     },
 
-
     {
       code: 'logEvent("slack.auth", { botToken });',
       options: [{ logFunctions: ["logEvent"] }],
@@ -362,10 +329,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       options: [{ loggerNames: ["obs"] }],
       errors: [{ messageId: "noSecretInLog" }],
     },
-
-
-
-
 
     {
       code: 'logger.info("oauth", { issuer_token });',
@@ -393,8 +356,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       filename: "src/auth.test.ts",
       errors: [{ messageId: "noSecretInLog" }],
     },
-
-
 
     {
       code: 'logEvent("ashby.response", { status: res.status, body });',
@@ -468,7 +429,6 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       errors: [{ messageId: "noRawBodyInLog" }, { messageId: "noRawBodyInLog" }],
     },
 
-
     {
       code: 'logger.info("auth", { tokenBody });',
       errors: [{ messageId: "noSecretInLog" }],
@@ -482,36 +442,13 @@ RULE_TESTER.run("no-secret-in-log", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "logged-secret-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/auth.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/auth.ts",
-        "source": "logger[\"error\"]('auth failed', { token });"
-      }
-    ]
-  },
-  {
-    "id": "logged-secret-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/auth.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/auth.ts",
-        "source": "logger[auditDynamicMember]('auth failed', { token });"
-      }
-    ]
-  }
-] } });
+ruleTester().run("no-secret-in-log", rule, {
+  valid: [
+    {"name":"redacted-secret","filename":"src/auth.ts","code":"logger.info('auth', { requestId });"},
+    {"name":"logged-secret-dynamic-member","filename":"src/auth.ts","code":"logger[auditDynamicMember]('auth failed', { token });"},
+  ],
+  invalid: [
+    {"name":"logged-secret","filename":"src/auth.ts","code":"logger.error('auth failed', { token });","errors":1},
+    {"name":"logged-secret-static-member","filename":"src/auth.ts","code":"logger[\"error\"]('auth failed', { token });","errors":1},
+  ],
 });

@@ -1512,7 +1512,7 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
 
     typescript = [item for item in inventory if item["family"] == "typescript"]
     assert typescript
-    assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.ESLINT])
+    assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.OXLINT])
 
 
 def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tmp_path: Path) -> None:
@@ -1549,7 +1549,7 @@ def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tm
 
 @pytest.mark.parametrize("registry_name", ["RULES", "rules"])
 @pytest.mark.parametrize("rule_key", ['"prefer-modern-syntax"', "stepdown"])
-def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
+def test_typescript_rule_names_supports_canonical_and_legacy_registry_names(
     tmp_path: Path, registry_name: str, rule_key: str
 ) -> None:
     index = tmp_path / "packages/typescript/src/index.ts"
@@ -1559,7 +1559,7 @@ def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
         encoding="utf-8",
     )
 
-    assert repository.eslint_rule_names(tmp_path) == [rule_key.strip('"')]
+    assert repository.typescript_rule_names(tmp_path) == [rule_key.strip('"')]
 
 
 def test_hook_runner_accepts_exact_declared_dependency_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

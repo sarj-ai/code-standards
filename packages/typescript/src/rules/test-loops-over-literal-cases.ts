@@ -1,33 +1,21 @@
 /**
  * @fileoverview test-loops-over-literal-cases — a literal case loop hides independently reportable test cases inside one test.
  *
+ * Port of the 18.x `test-loops-over-literal-cases` rule. The rule is
+ * untyped, so the port covers all of it.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type TsVariable } from "../types.js";
+import { directArgumentCall, forEachOwnAstChild, isErasedExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isTestFile } from "../utils/paths.js";
+import { enclosingFunction } from "../utils/stable-value-binding.js";
+import { findVariable } from "../utils/static-string.js";
+import { acceptedTestFrameworkName, type Identifier } from "../utils/test-mock-provenance.js";
 
-import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
-
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { acceptedTestFrameworkName } from "./_test-mock-provenance.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
-
-type MessageIds = "literalCaseLoop";
-type Options = readonly [];
-
-export const TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION = {
-  summary: "Disallow assertions over an inline literal case loop in a test; parameterization reports and names every case independently.",
-  rationale: "A loop is reported as one test, so failures hide the individual case name and may stop later cases from running.",
-  remediation: "Create one named parameterized test or runner-aware subtest for each literal case.",
-  category: "testing",
-  filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**"],
-  limitations: ["Only inline literal for-of cases containing framework assertions are reported. References to setup or parameters owned by the enclosing test, and loops followed by statements in the same or enclosing block, are excluded because they can belong to an ordered scenario. External helper purity is not inferred."],
-  examples: [
-    { id: "parameterized-cases", title: "Use a parameterized test", outcome: "no-match", files: [{ path: "src/parser.test.ts", source: "test.each(['a', 'b'])('parses %s', (value) => { expect(parse(value)).toBe(value); });" }], focusPath: "src/parser.test.ts", expectedCount: 0, public: true },
-    { id: "looped-cases", title: "Do not hide cases in a loop", outcome: "match", files: [{ path: "src/parser.test.ts", source: "test('parses', () => { for (const value of ['a', 'b']) { expect(parse(value)).toBe(value); } });" }], focusPath: "src/parser.test.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "test-loops-over-literal-cases";
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
@@ -37,31 +25,31 @@ const ASSERTION_ROOTS: ReadonlySet<string> = new Set([
   "expect",
   "expectTypeOf",
 ]);
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const FUNCTION_TYPES: ReadonlySet<string> = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 const MIN_CASES = 2;
 
-function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
+function rootIdentifier(callee: Node): Identifier | null {
   callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) return callee;
-  if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
-  if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return rootIdentifier(callee.tag);
+  if (callee.type === "Identifier") return callee;
+  if (callee.type === "MemberExpression") return rootIdentifier(callee.object);
+  if (callee.type === "CallExpression") return rootIdentifier(callee.callee);
+  if (callee.type === "TaggedTemplateExpression") return rootIdentifier(callee.tag);
   return null;
 }
 
-function staticMemberName(member: TSESTree.MemberExpression): string | null {
-  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
-  if (member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string") {
+function staticMemberName(member: ESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === "Identifier") return member.property.name;
+  if (member.computed && member.property.type === "Literal" && typeof member.property.value === "string") {
     return member.property.value;
   }
   return null;
 }
 
-function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
+function isTestBody(node: Node, isFrameworkTest: (identifier: Identifier) => boolean): boolean {
   const call = directArgumentCall(node);
   const root = call === null ? null : rootIdentifier(call.callee);
   return (
@@ -72,51 +60,33 @@ function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.
   );
 }
 
-function isTestCaller(callee: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
+function isTestCaller(callee: Node, isFrameworkTest: (identifier: Identifier) => boolean): boolean {
   callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) return isFrameworkTest(callee);
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+  if (callee.type === "Identifier") return isFrameworkTest(callee);
+  if (callee.type !== "MemberExpression") return false;
   const member = staticMemberName(callee);
   return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object, isFrameworkTest);
 }
 
-function nearestEnclosingFunction(
-  node: TSESTree.Node,
-): TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression | null {
-  for (let current = node.parent; current != null; current = current.parent) {
-    if (FUNCTION_TYPES.has(current.type)) {
-      return current as TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
-    }
-  }
-  return null;
-}
-
-function isStaticCase(node: TSESTree.Node): boolean {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression
-  ) {
-    return isStaticCase(node.expression);
-  }
+function isStaticCase(node: Node): boolean {
+  if (isErasedExpression(node)) return isStaticCase(node.expression);
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return true;
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0;
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       return (node.operator === "+" || node.operator === "-") && isStaticCase(node.argument);
-    case AST_NODE_TYPES.ArrayExpression:
+    case "ArrayExpression":
       return node.elements.every(
-        (element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isStaticCase(element),
+        (element) => element !== null && element.type !== "SpreadElement" && isStaticCase(element),
       );
-    case AST_NODE_TYPES.ObjectExpression:
+    case "ObjectExpression":
       return node.properties.every(
         (property) =>
-          property.type === AST_NODE_TYPES.Property &&
+          property.type === "Property" &&
           !property.computed &&
-          property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
+          (property.value as Node).type !== "AssignmentPattern" &&
           isStaticCase(property.value),
       );
     default:
@@ -124,7 +94,7 @@ function isStaticCase(node: TSESTree.Node): boolean {
   }
 }
 
-function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) => boolean): boolean {
+function walkOwnScope(node: Node, predicate: (current: Node) => boolean): boolean {
   if (predicate(node)) {
     return true;
   }
@@ -133,45 +103,44 @@ function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) =
 }
 
 function isAssertion(
-  node: TSESTree.Node,
-  isFrameworkAssertion: (identifier: TSESTree.Identifier) => boolean,
+  node: Node,
+  isFrameworkAssertion: (identifier: Identifier) => boolean,
 ): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+  if (node.type !== "CallExpression") return false;
   const root = rootIdentifier(node.callee);
   return root !== null && isFrameworkAssertion(root);
 }
 
-function opensSubtest(node: TSESTree.Node, callbackParameters: ReadonlySet<string>): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression) {
+function opensSubtest(node: Node, callbackParameters: ReadonlySet<string>): boolean {
+  if (node.type !== "CallExpression") {
     return false;
   }
   const callee = unwrapExpression(node.callee);
-  return callee.type === AST_NODE_TYPES.MemberExpression &&
+  return callee.type === "MemberExpression" &&
     staticMemberName(callee) === "test" &&
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     callbackParameters.has(callee.object.name) &&
     node.arguments.some(
-      (argument) => argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
+      (argument) => argument.type !== "SpreadElement" && FUNCTION_TYPES.has(argument.type),
     );
 }
 
 const LOOP_CARRIED_CONTROL: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.AssignmentExpression,
-  AST_NODE_TYPES.UpdateExpression,
-  AST_NODE_TYPES.BreakStatement,
-  AST_NODE_TYPES.ContinueStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
+  "AssignmentExpression",
+  "UpdateExpression",
+  "BreakStatement",
+  "ContinueStatement",
+  "ReturnStatement",
+  "ThrowStatement",
 ]);
 
-export default createRule<Options, MessageIds>({
-  name: "test-loops-over-literal-cases",
-  documentation: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Disallow assertions over an inline literal case loop in a test; parameterization reports and names every case independently.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -179,41 +148,43 @@ export default createRule<Options, MessageIds>({
         "This loop asserts over {{count}} inline cases in one test; a thrown assertion may prevent later cases from running. Create one named test or subtest per independent case; use `test.each(...)` or `it.each(...)` where supported.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (!isTestFile(context)) {
-      return {};
-    }
-    const referenceIdentifiers = new WeakMap<NonNullable<ReturnType<typeof ASTUtils.findVariable>>, ReadonlySet<TSESTree.Node>>();
-    const isReference = (variable: NonNullable<ReturnType<typeof ASTUtils.findVariable>>, identifier: TSESTree.Node): boolean => {
+  createOnce(context) {
+    let referenceIdentifiers = new WeakMap<TsVariable, ReadonlySet<Node>>();
+    const isReference = (variable: TsVariable, identifier: Node): boolean => {
       let identifiers = referenceIdentifiers.get(variable);
       if (identifiers === undefined) {
-        identifiers = new Set(variable.references.map((reference) => reference.identifier));
+        identifiers = new Set(variable.references.map((reference) => reference.identifier as Node));
         referenceIdentifiers.set(variable, identifiers);
       }
       return identifiers.has(identifier);
     };
-    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "test", TEST_CALLERS) !== null;
-    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "assertion", ASSERTION_ROOTS) !== null;
+    const isFrameworkTest = (identifier: Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "test", TEST_CALLERS) !== null;
+    const isFrameworkAssertion = (identifier: Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "assertion", ASSERTION_ROOTS) !== null;
     return {
-      ForOfStatement(node: TSESTree.ForOfStatement): void {
-        const enclosing = nearestEnclosingFunction(node);
+      before() {
+        if (!isTestFile({ filename: context.filename, cwd: context.cwd })) return false;
+        referenceIdentifiers = new WeakMap();
+        return undefined;
+      },
+      ForOfStatement(node: ESTree.ForOfStatement): void {
+        const enclosing = enclosingFunction(node);
         if (enclosing === null || !isTestBody(enclosing, isFrameworkTest)) {
           return;
         }
-        for (let current: TSESTree.Node | undefined = node; current !== undefined && current !== enclosing; current = current.parent) {
-          if (current.parent?.type === AST_NODE_TYPES.BlockStatement && current.parent.body.at(-1) !== current) return;
+        for (let current: Node | null = node; current !== null && current !== enclosing; current = parentOf(current)) {
+          const parent = parentOf(current);
+          if (parent?.type === "BlockStatement" && parent.body.at(-1) !== current) return;
         }
         const cases = unwrapExpression(node.right);
         const callbackParameters = new Set(
-          enclosing.params.flatMap((parameter) => parameter.type === AST_NODE_TYPES.Identifier ? [parameter.name] : []),
+          enclosing.params.flatMap((parameter) => parameter.type === "Identifier" ? [parameter.name] : []),
         );
         if (
-          cases.type !== AST_NODE_TYPES.ArrayExpression ||
+          cases.type !== "ArrayExpression" ||
           cases.elements.length < MIN_CASES ||
           !cases.elements.every(
             (element) =>
-              element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isStaticCase(element),
+              element !== null && element.type !== "SpreadElement" && isStaticCase(element),
           ) ||
           !walkOwnScope(node.body, (current) => isAssertion(current, isFrameworkAssertion)) ||
           walkOwnScope(node.body, (current) => opensSubtest(current, callbackParameters)) ||
@@ -222,8 +193,8 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const capturesSetup = walkOwnScope(node.body, (current) => {
-          if (current.type !== AST_NODE_TYPES.Identifier) return false;
-          const variable = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+          if (current.type !== "Identifier") return false;
+          const variable = findVariable(context.sourceCode.getScope(current), current.name);
           if (variable === null || !isReference(variable, current)) return false;
           return variable.defs.some((definition) => {
             const declaration = definition.name;

@@ -1,26 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-discriminated-union.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_DISCRIMINATED_UNION_DOCUMENTATION } from "../../src/rules/prefer-discriminated-union.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-discriminated-union", rule, {
   valid: [
     { name: "does not mistake a symbol key for named status", code: "declare const ok: unique symbol; type Result = { [ok]: boolean; data?: string; error?: Error };" },
     { name: "does not mistake a symbol key for named failure payload", code: "declare const error: unique symbol; type Result = { ok: boolean; [error]?: Error };" },
-    { name: "public no-match example", filename: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].focusPath, code: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/result.ts", code: "type Result = { ok: true; data: string } | { ok: false; error: string };" },
     {
       name: "allows independent all-boolean flag sets",
       code: "interface StateDependencies { data?: boolean; error?: boolean; isValidating?: boolean; isLoading?: boolean }",
@@ -162,7 +150,7 @@ RULE_TESTER.run("prefer-discriminated-union", rule, {
     {name: "preserves exported producer contracts", code: "export {}; export function job(done: boolean): { phase: \"queued\" | \"complete\"; ticket?: string } { return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" }; }", output: null, errors: [{messageId: "preferProducedVariants"}]},
     {name: "preserves producer contract comments", code: "export {}; function job(done: boolean): { phase: \"queued\" | \"complete\"; ticket?: /* owned */ string } { return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" }; }", output: null, errors: [{messageId: "preferProducedVariants"}]},
     {name: "preserves expression payload inference", code: "export {}; function job(done: boolean): { phase: \"queued\" | \"complete\"; ticket?: string } { return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: existingTicket }; }", output: null, errors: [{messageId: "preferProducedVariants"}]},
-    { name: "public match example", filename: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[1].focusPath, code: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferDiscriminatedUnion" }] },
+    { name: "public match example", filename: "src/result.ts", code: "type Result = { ok: boolean; data?: string; error?: string };", errors: [{ messageId: "preferDiscriminatedUnion" }] },
     {
       name: "rejects a direct inline function return shape",
       code: "declare function load(): { ok: boolean; data?: string; error?: string };",

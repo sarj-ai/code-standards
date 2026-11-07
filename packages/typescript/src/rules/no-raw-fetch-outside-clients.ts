@@ -1,39 +1,25 @@
 /**
  * @fileoverview no-raw-fetch-outside-clients — a bare `fetch` outside the client layer opts out of retry, timeout and status handling, and cannot be stubbed.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-fetch-outside-clients.test.ts
+ * Port of the 18.x `no-raw-fetch-outside-clients` rule. The rule is untyped, so the port
+ * covers all of it.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { nativeFetchReference } from "../utils/native-fetch-reference.js";
+import { isScriptFile, isTestFile } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { nativeFetchReference } from "./_native-fetch-reference.js";
+const NAME = "no-raw-fetch-outside-clients";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isScriptFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "rawFetch";
-
-export interface RuleOptions {
+interface RuleOptions {
   /** Regular-expression sources matched against the filename. */
   readonly allow?: readonly string[];
   /** Next.js basePath also configured for prefer-server-actions. */
   readonly basePath?: string;
 }
-
-type Options = readonly [RuleOptions?];
-
-export const NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION = {
-  summary: "Disallow calling the global `fetch` outside the client layer; route outbound HTTP through a client module that owns retry, timeout and status handling.",
-  rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
-  remediation: "Move the request into a client module and call that abstraction from application code.",
-  category: "architecture",
-  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation.", "Effect and pre-signed-transfer exemptions use recognized syntax and naming conventions, not complete React or URL provenance. Those conservative exclusions are recall limitations, not evidence that every excluded request satisfies transport policy.", "Unshadowed native members and bounded stable const aliases or single-property destructuring are recognized. Visible writes, callable escapes, whole-global escapes and mutation capabilities anywhere in the file invalidate that proof, including earlier captures. Known unrelated global member writes and typeof global checks do not. Static constructor members and destructuring projections invalidate the proof; indirect reflection, external monkeypatches and arbitrary forwarding functions are not inferred."],
-  examples: [
-    { id: "client-call", title: "Use a client abstraction", outcome: "no-match", files: [{ path: "src/routes/handler.ts", source: "const response = await billingClient.getInvoice(id);" }], focusPath: "src/routes/handler.ts", expectedCount: 0, public: true },
-    { id: "raw-fetch", title: "Do not call global fetch here", outcome: "match", files: [{ path: "src/routes/handler.ts", source: "const response = await fetch('/api/invoices');" }], focusPath: "src/routes/handler.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
 
 /** Client-layer paths that may own outbound HTTP; test files are exempt separately. */
 const DEFAULT_ALLOW: readonly string[] = [
@@ -78,97 +64,79 @@ const ANALYTICS_SEGMENTS: ReadonlySet<string> = new Set([
 const SERVER_ACTION_SKIP_FILE_RE =
   /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
 
-const NON_REACT_FRAMEWORK_RE =
+export const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
 const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
 
-function isValidBasePath(basePath: string): boolean {
+export function isValidBasePath(basePath: string): boolean {
   return BASE_PATH_RE.test(basePath) &&
     !basePath.split("/").some((segment) => segment === "." || segment === "..");
 }
 
 /** True for a lone `fetch(new URL(...))` / `fetch(new Request(...))`. */
 function isConstructedArgumentHandoff(
-  node: TSESTree.CallExpression,
-  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+  node: ESTree.CallExpression,
+  resolvesToGlobal: (identifier: Node & { name: string }) => boolean,
 ): boolean {
   const [first] = node.arguments;
   return (
     node.arguments.length === 1 &&
     first !== undefined &&
-    first.type === AST_NODE_TYPES.NewExpression &&
-    first.callee.type === AST_NODE_TYPES.Identifier &&
+    first.type === "NewExpression" &&
+    first.callee.type === "Identifier" &&
     (first.callee.name === "URL" || first.callee.name === "Request") &&
     resolvesToGlobal(first.callee)
   );
 }
 
-function effectOwns(node: TSESTree.CallExpression): boolean {
-  const unwrappedNodeCallee = unwrapExpression(node.callee);
-  if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "fetch") return false;
+const EFFECT_HOOKS: ReadonlySet<string> = new Set(["useEffect", "useLayoutEffect"]);
+
+/** True for a non-analytics GET `fetch` inside the callback of the nearest enclosing effect hook. */
+function effectOwns(node: ESTree.CallExpression): boolean {
+  const callee = unwrapExpression(node.callee);
+  if (callee.type !== "Identifier" || callee.name !== "fetch") return false;
   const method = readDirectMethod(node);
-  if (method !== null && method !== "GET") return false;
-
-  const first = node.arguments[0];
-  let url = "";
-  if (first?.type === AST_NODE_TYPES.Literal && typeof first.value === "string") {
-    url = first.value;
-  } else if (first?.type === AST_NODE_TYPES.TemplateLiteral) {
-    url = first.quasis.map((quasi) => quasi.value.cooked).join("");
-  } else if (first?.type === AST_NODE_TYPES.Identifier) {
-    url = first.name;
-  }
-  if (
-    url !== "" &&
-    url
-      .toLowerCase()
-      .split(/[/.]/)
-      .some((segment) => ANALYTICS_SEGMENTS.has(segment))
-  ) {
-    return false;
-  }
-
-  for (
-    let current: TSESTree.Node | null | undefined = node.parent;
-    current != null;
-    current = current.parent
-  ) {
-    if (current.type !== AST_NODE_TYPES.CallExpression) continue;
-    const callee = unwrapExpression(current.callee);
-    const isEffect =
-      (callee.type === AST_NODE_TYPES.Identifier &&
-        (callee.name === "useEffect" || callee.name === "useLayoutEffect")) ||
-      (callee.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        callee.object.name === "React" &&
-        callee.property.type === AST_NODE_TYPES.Identifier &&
-        (callee.property.name === "useEffect" ||
-          callee.property.name === "useLayoutEffect"));
-    if (!isEffect) continue;
+  if ((method !== null && method !== "GET") || isAnalyticsUrl(urlText(node.arguments[0]))) return false;
+  for (let current: Node | null = parentOf(node); current !== null; current = parentOf(current)) {
+    if (current.type !== "CallExpression" || !isEffectHook(unwrapExpression(current.callee))) continue;
     const callback = current.arguments[0];
-    return (
-      callback !== undefined &&
-      callback.type !== AST_NODE_TYPES.SpreadElement &&
-      node.range[0] >= callback.range[0] &&
-      node.range[1] <= callback.range[1]
-    );
+    return callback !== undefined && callback.type !== "SpreadElement" &&
+      node.range[0] >= callback.range[0] && node.range[1] <= callback.range[1];
   }
   return false;
 }
 
-function readDirectMethod(node: TSESTree.CallExpression): string | null {
+/** The literal, template or identifier text a URL argument names, or "". */
+function urlText(node: Node | undefined): string {
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral") return node.quasis.map((quasi) => quasi.value.cooked).join("");
+  return node?.type === "Identifier" ? node.name : "";
+}
+
+function isAnalyticsUrl(url: string): boolean {
+  return url.toLowerCase().split(/[/.]/).some((segment) => ANALYTICS_SEGMENTS.has(segment));
+}
+
+/** `useEffect` / `useLayoutEffect`, bare or as a `React.` member. */
+function isEffectHook(callee: Node): boolean {
+  if (callee.type === "Identifier") return EFFECT_HOOKS.has(callee.name);
+  return callee.type === "MemberExpression" && !callee.computed &&
+    callee.object.type === "Identifier" && callee.object.name === "React" &&
+    callee.property.type === "Identifier" && EFFECT_HOOKS.has(callee.property.name);
+}
+
+function readDirectMethod(node: ESTree.CallExpression): string | null {
   const init = node.arguments[1];
-  if (init?.type !== AST_NODE_TYPES.ObjectExpression) return null;
+  if (init?.type !== "ObjectExpression") return null;
   for (const property of init.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
+    if (property.type !== "Property" || property.computed) continue;
     const key = property.key;
     const isMethod =
-      (key.type === AST_NODE_TYPES.Identifier && key.name === "method") ||
-      (key.type === AST_NODE_TYPES.Literal && key.value === "method");
+      (key.type === "Identifier" && key.name === "method") ||
+      (key.type === "Literal" && key.value === "method");
     if (!isMethod) continue;
-    return property.value.type === AST_NODE_TYPES.Literal &&
+    return property.value.type === "Literal" &&
       typeof property.value.value === "string"
       ? property.value.value.toUpperCase()
       : null;
@@ -176,7 +144,7 @@ function readDirectMethod(node: TSESTree.CallExpression): string | null {
   return null;
 }
 
-function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
+function isPresignedUrlTransfer(node: ESTree.CallExpression): boolean {
   const first = node.arguments[0];
   if (first === undefined) {
     return false;
@@ -185,7 +153,7 @@ function isPresignedUrlTransfer(node: TSESTree.CallExpression): boolean {
   return name !== null && PRESIGNED_URL_NAME_RE.test(name);
 }
 
-function identifierLikeName(node: TSESTree.Node): string | null {
+function identifierLikeName(node: Node): string | null {
   if (node.type === "Identifier") {
     return node.name;
   }
@@ -212,15 +180,39 @@ function compile(patterns: readonly string[]): RegExp[] {
   return compiled;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-raw-fetch-outside-clients",
-  documentation: NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION,
+const DEFAULT_ALLOWED = compile(DEFAULT_ALLOW);
+
+function propertyValue(node: Node | null, name: string): Node | null {
+  if (node?.type !== "ObjectExpression") return null;
+  if (node.properties.some((property) => property.type !== "Property" || property.computed)) return null;
+  for (const property of [...node.properties].reverse()) {
+    if (property.type !== "Property" || property.computed) continue;
+    const key = property.key;
+    const keyName =
+      key.type === "Identifier"
+        ? key.name
+        : key.type === "Literal" && typeof key.value === "string"
+          ? key.value
+          : null;
+    if (keyName !== name) continue;
+    const value = property.value as Node;
+    return value.type === "AssignmentPattern" ||
+      value.type === "ArrayPattern" ||
+      value.type === "ObjectPattern"
+      ? null
+      : value;
+  }
+  return null;
+}
+
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
         "Disallow calling the global `fetch` outside the client layer; route outbound HTTP through a client module that owns retry, timeout and status handling.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -245,77 +237,42 @@ export default createRule<Options, MessageIds>({
         "Raw `fetch()` outside a client module. Route the call through a client (e.g. `clients/*-client.ts`) so it inherits retry, timeout and status handling and stays stubbable in tests.",
     },
   },
-  create(context, [options]) {
-    const filename = context.filename;
+  createOnce(context) {
+    let filename = "";
+    let nonReactFramework = false;
+    let hasUseClientDirective = false;
+    let hasUseServerDirective = false;
+    let importsServerOnly = false;
+    let internalApiPrefixes: string[] = [];
+    // Options arrive per file; recompile the allow list only when it changes.
+    let allowPatterns: readonly string[] = DEFAULT_ALLOW;
+    let allowed = DEFAULT_ALLOWED;
 
-    if (
-      isTestFile(context) ||
-      isScriptFile(context) ||
-      NON_PRODUCTION_TREE_RE.test(filename)
-    ) {
-      return {};
-    }
-
-    const patterns = options?.allow ?? DEFAULT_ALLOW;
-    const allowed = compile(patterns);
-
-    const nonReactFramework = context.sourceCode.ast.body.some(
-      (statement) =>
-        statement.type === AST_NODE_TYPES.ImportDeclaration &&
-        typeof statement.source.value === "string" &&
-        NON_REACT_FRAMEWORK_RE.test(statement.source.value),
-    );
-    const hasUseClientDirective = context.sourceCode.ast.body.some(
-      (statement) =>
-        statement.type === AST_NODE_TYPES.ExpressionStatement &&
-        statement.directive === "use client",
-    );
-    const hasUseServerDirective = context.sourceCode.ast.body.some(
-      (statement) =>
-        statement.type === AST_NODE_TYPES.ExpressionStatement &&
-        statement.directive === "use server",
-    );
-    const importsServerOnly = context.sourceCode.ast.body.some(
-      (statement) =>
-        statement.type === AST_NODE_TYPES.ImportDeclaration &&
-        typeof statement.source.value === "string" &&
-        (statement.source.value === "server-only" || statement.source.value === "next/server"),
-    );
-    const internalApiPrefixes = ["/api"];
-    if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
-      internalApiPrefixes.push(`${options.basePath}/api`);
-    }
-    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(identifier),
-        identifier.name,
-      );
+    function resolvesToGlobal(identifier: Node & { name: string }): boolean {
+      const variable = findVariable(context.sourceCode.getScope(identifier), identifier.name);
       return variable === null || variable.defs.length === 0;
     }
 
-    function resolveNode(node: TSESTree.Node | undefined): TSESTree.Node | null {
-      if (node === undefined) return null;
-      if (node.type !== AST_NODE_TYPES.Identifier) return node;
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(node),
-        node.name,
-      );
+    function resolveNode(node: Node | null | undefined): Node | null {
+      if (node == null) return null;
+      if (node.type !== "Identifier") return node;
+      const variable = findVariable(context.sourceCode.getScope(node), node.name);
       if (variable?.defs.length !== 1) return node;
       const definition = variable.defs[0];
-      return definition?.type === "Variable" && definition.parent.kind === "const" && definition.node.init !== null &&
+      if (definition?.type !== "Variable") return node;
+      const declarator = definition.node as ESTree.VariableDeclarator;
+      const init = declarator.init;
+      return (definition.parent as ESTree.VariableDeclaration).kind === "const" && init !== null &&
         !variable.references.some((reference) => reference.isWrite() && reference.init !== true) &&
-        !(definition.node.init.type === AST_NODE_TYPES.ObjectExpression && variable.references.some((reference) => reference.identifier !== node && reference.init !== true))
-        ? definition.node.init
+        !(init.type === "ObjectExpression" && variable.references.some((reference) => reference.identifier !== node && reference.init !== true))
+        ? init
         : node;
     }
 
-
-
-
-    function serverActionOwns(node: TSESTree.CallExpression): boolean {
+    function serverActionOwns(node: ESTree.CallExpression): boolean {
       const unwrappedNodeCallee = unwrapExpression(node.callee);
       if (
-        unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier ||
+        unwrappedNodeCallee.type !== "Identifier" ||
         unwrappedNodeCallee.name !== "fetch" ||
         !resolvesToGlobal(unwrappedNodeCallee) ||
         !hasUseClientDirective ||
@@ -330,9 +287,9 @@ export default createRule<Options, MessageIds>({
       const init = node.arguments[1];
       if (
         url === undefined ||
-        url.type === AST_NODE_TYPES.SpreadElement ||
+        url.type === "SpreadElement" ||
         init === undefined ||
-        init.type === AST_NODE_TYPES.SpreadElement ||
+        init.type === "SpreadElement" ||
         !isInternalApiUrl(url)
       ) {
         return false;
@@ -340,89 +297,94 @@ export default createRule<Options, MessageIds>({
       return isMutationMethod(propertyValue(resolveNode(init), "method"));
     }
 
-    function isMutationMethod(node: TSESTree.Node | null): boolean {
-      const resolved = resolveNode(node ?? undefined);
-      if (resolved?.type === AST_NODE_TYPES.Literal) {
+    function isMutationMethod(node: Node | null): boolean {
+      const resolved = resolveNode(node);
+      if (resolved?.type === "Literal") {
         return (
           typeof resolved.value === "string" &&
           INTERNAL_MUTATION_METHODS.has(resolved.value.toUpperCase())
         );
       }
-      if (
-        resolved?.type === AST_NODE_TYPES.TemplateLiteral &&
-        resolved.expressions.length === 0
-      ) {
+      if (resolved?.type === "TemplateLiteral" && resolved.expressions.length === 0) {
         return INTERNAL_MUTATION_METHODS.has(
           resolved.quasis.map((quasi) => quasi.value.cooked).join("").toUpperCase(),
         );
       }
-      if (resolved?.type === AST_NODE_TYPES.ConditionalExpression) {
-        return (
-          isMutationMethod(resolved.consequent) ||
-          isMutationMethod(resolved.alternate)
-        );
+      if (resolved?.type === "ConditionalExpression") {
+        return isMutationMethod(resolved.consequent) || isMutationMethod(resolved.alternate);
       }
       return (
-        resolved?.type === AST_NODE_TYPES.LogicalExpression &&
+        resolved?.type === "LogicalExpression" &&
         resolved.operator === "||" &&
         (isMutationMethod(resolved.left) || isMutationMethod(resolved.right))
       );
     }
 
-    function isInternalApiUrl(node: TSESTree.Node | null): boolean {
-      const resolved = resolveNode(node ?? undefined);
-      if (resolved?.type === AST_NODE_TYPES.Literal) {
+    function isInternalApiUrl(node: Node | null): boolean {
+      const resolved = resolveNode(node);
+      if (resolved?.type === "Literal") {
+        const value = resolved.value;
         return (
-          typeof resolved.value === "string" &&
-          internalApiPrefixes.some(
-            (prefix) => resolved.value === prefix || resolved.value.startsWith(`${prefix}/`),
-          )
+          typeof value === "string" &&
+          internalApiPrefixes.some((prefix) => value === prefix || value.startsWith(`${prefix}/`))
         );
       }
-      if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
+      if (resolved?.type === "TemplateLiteral") {
         const prefix = resolved.quasis[0]?.value.cooked;
         return typeof prefix === "string" && internalApiPrefixes.some(
           (apiPrefix) => prefix === apiPrefix || prefix.startsWith(`${apiPrefix}/`),
         );
       }
       return (
-        resolved?.type === AST_NODE_TYPES.BinaryExpression &&
+        resolved?.type === "BinaryExpression" &&
         resolved.operator === "+" &&
         isInternalApiUrl(resolved.left)
       );
     }
 
-    function propertyValue(
-      node: TSESTree.Node | null,
-      name: string,
-    ): TSESTree.Node | null {
-      if (node?.type !== AST_NODE_TYPES.ObjectExpression) return null;
-      if (node.properties.some((property) => property.type !== AST_NODE_TYPES.Property || property.computed)) return null;
-      for (const property of [...node.properties].reverse()) {
-        if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
-        const key = property.key;
-        const keyName =
-          key.type === AST_NODE_TYPES.Identifier
-            ? key.name
-            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-              ? key.value
-              : null;
-        if (keyName !== name) continue;
-        return property.value.type === AST_NODE_TYPES.AssignmentPattern ||
-          property.value.type === AST_NODE_TYPES.ArrayPattern ||
-          property.value.type === AST_NODE_TYPES.ObjectPattern
-          ? null
-          : property.value;
-      }
-      return null;
-    }
-
-    if (allowed.some((re) => re.test(filename))) {
-      return {};
-    }
-
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      before() {
+        filename = context.filename;
+        if (
+          isTestFile({ filename, cwd: context.cwd }) ||
+          isScriptFile({ filename, cwd: context.cwd }) ||
+          NON_PRODUCTION_TREE_RE.test(filename)
+        ) {
+          return false;
+        }
+        const options = context.options[0] as RuleOptions | undefined;
+        const patterns = options?.allow ?? DEFAULT_ALLOW;
+        if (patterns !== allowPatterns) {
+          allowPatterns = patterns;
+          allowed = compile(patterns);
+        }
+        if (allowed.some((re) => re.test(filename))) return false;
+        const body = context.sourceCode.ast.body;
+        nonReactFramework = body.some(
+          (statement) =>
+            statement.type === "ImportDeclaration" &&
+            typeof statement.source.value === "string" &&
+            NON_REACT_FRAMEWORK_RE.test(statement.source.value),
+        );
+        hasUseClientDirective = body.some(
+          (statement) => statement.type === "ExpressionStatement" && statement.directive === "use client",
+        );
+        hasUseServerDirective = body.some(
+          (statement) => statement.type === "ExpressionStatement" && statement.directive === "use server",
+        );
+        importsServerOnly = body.some(
+          (statement) =>
+            statement.type === "ImportDeclaration" &&
+            typeof statement.source.value === "string" &&
+            (statement.source.value === "server-only" || statement.source.value === "next/server"),
+        );
+        internalApiPrefixes = ["/api"];
+        if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
+          internalApiPrefixes.push(`${options.basePath}/api`);
+        }
+        return undefined;
+      },
+      CallExpression(node: ESTree.CallExpression): void {
         if (!nativeFetchReference(unwrapExpression(node.callee), context.sourceCode)) {
           return;
         }

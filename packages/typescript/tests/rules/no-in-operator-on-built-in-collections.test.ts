@@ -1,36 +1,13 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-in-operator-on-built-in-collections.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, {
-  NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION,
-} from "../../src/rules/no-in-operator-on-built-in-collections.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-
-RULE_TESTER.run("no-in-operator-on-built-in-collections", rule, {
+TESTER.run("no-in-operator-on-built-in-collections", rule, typed({
   valid: [
     {
       name: "accepts the documented object narrowing example",
-      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[1]
-        .files[0].source,
+      code: "declare const value: { id: string } | { slug: string }; if ('id' in value) use(value.id);",
     },
     "declare const object: Record<string, unknown>; declare const key: string; if (key in object) use(key);",
     "declare const values: string[]; declare const index: number; if (index in values) use(index);",
@@ -100,8 +77,7 @@ RULE_TESTER.run("no-in-operator-on-built-in-collections", rule, {
     },
     {
       name: "reports the documented Map entry check",
-      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[0]
-        .files[0].source,
+      code: "declare const cache: Map<string, object>; declare const key: string; if (key in cache) use(cache);",
       output: null,
       errors: [{ messageId: "ambiguousCollectionIn" }],
     },
@@ -142,4 +118,4 @@ RULE_TESTER.run("no-in-operator-on-built-in-collections", rule, {
       errors: [{ messageId: "ambiguousCollectionIn" }],
     },
   ],
-});
+}));

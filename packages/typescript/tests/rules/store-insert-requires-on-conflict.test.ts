@@ -1,20 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/store-insert-requires-on-conflict.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION } from "../../src/rules/store-insert-requires-on-conflict.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION = {
+  examples: [
+    { files: [{ source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run(); }" }] },
+    { files: [{ source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?)`).run(); }" }] },
+  ],
+} as const;
 
 RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
   valid: [
@@ -198,7 +193,6 @@ RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
     },
   ],
 });
-
 
 RULE_TESTER.run("store-insert-requires-on-conflict native-decoded SQL", rule, {
   valid: [

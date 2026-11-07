@@ -1,29 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-immutable-module-constant.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
-} from "../../src/rules/prefer-immutable-module-constant.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-immutable-module-constant", rule, {
   valid: [
     "const VALUES = [1, 2, 3]; let alias = VALUES; alias.push(4);",
     "const VALUES = [1, 2, 3]; var alias = VALUES; alias[0] = 4;",
-    PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[0].files[0].source,
+    "const VALUES = [1, 2, 3] as const;",
     "const VALUES = [1, 2, 3] as const satisfies readonly number[];",
     "const VALUES: readonly number[] = [1, 2, 3];",
     "const VALUES: ReadonlyArray<number> = [1, 2, 3];",
@@ -123,7 +108,7 @@ RULE_TESTER.run("prefer-immutable-module-constant", rule, {
       errors: [{ messageId: "preferReadonlyCollection", data: { name: "LOOKUP", kind: "Map" } }],
     },
     {
-      code: PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[1].files[0].source,
+      code: "const VALUES = [1, 2, 3];",
       errors: [{ messageId: "preferAsConst", data: { name: "VALUES" } }],
     },
     {

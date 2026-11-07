@@ -62,7 +62,7 @@ export const catalogSchema = await readGeneratedJson(
 
 export function engineLabel(engine: Engine): string {
   return {
-    eslint: "TypeScript",
+    oxlint: "TypeScript",
     iac: "IaC",
     python: "Python",
     sql: "SQL",

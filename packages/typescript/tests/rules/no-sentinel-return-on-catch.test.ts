@@ -1,22 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-sentinel-return-on-catch.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION } from "../../src/rules/no-sentinel-return-on-catch.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
   valid: [
@@ -31,7 +17,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
 
     { name: "preserves injected fallback named undefined", code: "function run(undefined) { try { return load(); } catch { return undefined; } }" },
     { name: "preserves wrapped lexical fallback named undefined", code: "const undefined = fallback; function run() { try { return load(); } catch { return undefined as Value; } }" },
-    { name: "accepts the documented reported fallback", code: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented reported fallback", code: "function load() { try { return read(); } catch (error) { logger.warn('load failed', error); return null; } }" },
     {
       name: "ignores generated request clients",
       code: "async function request() { try { return await run(); } catch { return undefined; } }",
@@ -223,7 +209,6 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -419,7 +404,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       errors: [{ messageId: "noSentinelReturn" }],
     },
 
-    { name: "reports the documented silent fallback", code: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSentinelReturn" }] },
+    { name: "reports the documented silent fallback", code: "function load() { try { return read(); } catch { return null; } }", errors: [{ messageId: "noSentinelReturn" }] },
     {
       name: "does not exempt a deliberate Error throw when the caught value is ignored",
       code: "function f() { try { throw Error(); } catch (error) { return null; } }",
@@ -490,7 +475,6 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       code: "function d() { try { return risky(); } catch (error) { logAll(items.map((error) => error.id)); return null; } }",
       errors: [{ messageId: "noSentinelReturn" }],
     },
-
 
     {
       name: "does not treat a parse inside a nested callback as safe parsing",
@@ -624,7 +608,6 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       errors: [{ messageId: "noSentinelReturn" }],
     },
 
-
     {
       code: `
         function f() {
@@ -641,23 +624,12 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "reported-fallback-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "no-match",
-    "focusPath": "src/load.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/load.ts",
-        "source": "function load() { try { return read(); } catch (error) { logger[\"warn\"]('load failed', error); return null; } }"
-      }
-    ]
-  }
-] } });
+ruleTester().run("no-sentinel-return-on-catch", rule, {
+  valid: [
+    {"name":"reported-fallback","filename":"src/load.ts","code":"function load() { try { return read(); } catch (error) { logger.warn('load failed', error); return null; } }"},
+    {"name":"reported-fallback-static-member","filename":"src/load.ts","code":"function load() { try { return read(); } catch (error) { logger[\"warn\"]('load failed', error); return null; } }"},
+  ],
+  invalid: [
+    {"name":"silent-fallback","filename":"src/load.ts","code":"function load() { try { return read(); } catch { return null; } }","errors":1},
+  ],
 });

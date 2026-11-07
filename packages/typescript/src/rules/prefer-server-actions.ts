@@ -1,36 +1,24 @@
 /**
  * @fileoverview prefer-server-actions — an internal `/api/*` mutation hand-rolls the transport, types and error path a Server Action gets from the framework.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
+ * Port of the 18.x `prefer-server-actions` rule. The rule is untyped, so
+ * the port covers all of it. The original's per-file directive and import
+ * checks run in `before()`; a non-React framework import, which made every
+ * `CallExpression` visit return early, skips the file there.
  */
 
-import type { NativeRuleContext } from "./_eslint-rule.js";
+import { defineRule, type Context, type ESTree, type Node, type Scope, type TsDefinition, type TsVariable } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isValidBasePath, NON_REACT_FRAMEWORK_RE } from "./no-raw-fetch-outside-clients.js";
 
+const NAME = "prefer-server-actions";
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { unwrapExpression } from "./_unwrap-expression.js";
-import type { Scope } from "@typescript-eslint/utils/ts-eslint";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-
-type MessageIds = "preferServerAction";
-
-export const PREFER_SERVER_ACTIONS_DOCUMENTATION = {
-  summary: "Prefer Next.js Server Actions over same-origin API mutations.",
-  rationale: "Server Actions can remove a hand-written internal API wrapper while retaining typed application calls. Client invocations still cross a network and serialization boundary.",
-  remediation: "Consider a Server Action for application-owned mutations; preserve authorization, input validation and any public API consumers.",
-  category: "architecture",
-  limitations: ["Only statically recognizable /api/ mutations through global fetch or proven Axios imports/instances in use-client modules are reported. Custom wrapper provenance, mutated configuration and unknown option overrides are not inferred; server boundaries and route handlers are excluded."],
-  examples: [
-    { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
-    { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "'use client'; await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-export interface RuleOptions {
+interface RuleOptions {
   readonly basePath?: string;
 }
-type Options = readonly [RuleOptions?];
 
 const MUTATION_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const AXIOS_MUTATION_METHODS: ReadonlySet<string> = new Set(["post", "put", "delete", "patch"]);
@@ -38,84 +26,92 @@ const AXIOS_MUTATION_METHODS: ReadonlySet<string> = new Set(["post", "put", "del
 const SKIP_FILE_REGEX =
   /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|(?:^|\/)app(?:\/.*)?\/route\.[jt]sx?$|(?:^|\/)middleware\.[jt]sx?$|\/pages\/api\/)/;
 
-const NON_REACT_FRAMEWORK_RE =
-  /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
+const LOCAL_AXIOS_FORBIDDEN_OPTIONS: ReadonlySet<string> = new Set(["baseURL", "adapter"]);
 
-const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
+type Ctx = Readonly<Context>;
 
-type Ctx = Readonly<NativeRuleContext<MessageIds, Options>>;
-
-function getScope(
-  context: Ctx,
-  node: TSESTree.Node,
-): Scope.Scope {
+function getScope(context: Ctx, node: Node): Scope {
   return context.sourceCode.getScope(node);
 }
 
 function resolvesToGlobalFetch(
   context: Ctx,
-  identifier: TSESTree.Identifier,
+  identifier: { readonly name: string } & Node,
 ): boolean {
-  let scope: Scope.Scope | null = getScope(context, identifier);
-  while (scope) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable.defs.length === 0;
-    scope = scope.upper;
-  }
-  return true;
+  const variable = findVariable(getScope(context, identifier), identifier.name);
+  return variable === null || variable.defs.length === 0;
 }
 
 function resolveNode(
-  node: TSESTree.Node | null | undefined,
+  node: Node | null | undefined,
   context: Ctx,
-): TSESTree.Node | null {
-  node = node == null ? node : unwrapExpression(node);
-  if (!node) return null;
+): Node | null {
+  if (node === null || node === undefined) return null;
+  node = unwrapExpression(node);
   if (node.type !== "Identifier") return node;
 
-  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const variable = findVariable(getScope(context, node), node.name);
   const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
-  if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return node;
-  if (definition.node.init.type === "ObjectExpression" && variable?.references.some((reference) => reference.identifier !== node && reference.init !== true)) return node;
-  return definition.node.init;
+  if (definition?.type !== "Variable" || (definition.parent as ESTree.VariableDeclaration).kind !== "const") return node;
+  const init = (definition.node as ESTree.VariableDeclarator).init;
+  if (init === null || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return node;
+  if (init.type === "ObjectExpression" && variable?.references.some((reference) => reference.identifier !== node && reference.init !== true)) return node;
+  return init;
 }
 
-function isAxiosClient(node: TSESTree.Node, context: Ctx, seen = new Set<TSESTree.Node>()): boolean {
+/** An unreassigned `axios` default import, or a `const` from `<axios client>.create(<local options>)`, used only for calls. */
+function isAxiosClient(node: Node, context: Ctx, seen = new Set<Node>()): boolean {
   if (node.type !== "Identifier" || seen.has(node)) return false;
   seen.add(node);
-  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const variable = findVariable(getScope(context, node), node.name);
   const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
-  if (definition === undefined || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
-  if (variable?.references.some((reference) => {
-    if (reference.init === true) return false;
-    const identifier = reference.identifier;
-    const parent = identifier.parent;
-    if (parent.type === "CallExpression" && parent.callee === identifier) return false;
-    return parent.type !== "MemberExpression" || parent.object !== identifier || parent.computed ||
-      parent.parent.type !== "CallExpression" || parent.parent.callee !== parent;
-  })) return false;
-  if (definition.type === "ImportBinding") {
-    const declaration = definition.parent;
-    return declaration.type === "ImportDeclaration" && declaration.source.value === "axios" && declaration.importKind !== "type" &&
-      (definition.node.type === "ImportDefaultSpecifier" || (definition.node.type === "ImportSpecifier" && definition.node.importKind !== "type" && (definition.node.imported.type === "Identifier" ? definition.node.imported.name : definition.node.imported.value) === "default"));
-  }
-  if (definition.type !== "Variable" || definition.parent.kind !== "const") return false;
-  const init = definition.node.init;
-  return init?.type === "CallExpression" && init.arguments.length <= 1 && hasLocalAxiosOptions(init.arguments[0], context) && init.callee.type === "MemberExpression" && !init.callee.computed &&
-    init.callee.property.type === "Identifier" && init.callee.property.name === "create" && isAxiosClient(init.callee.object, context, seen);
+  if (variable === null || definition === undefined || !isOnlyCalled(variable)) return false;
+  if (definition.type === "ImportBinding") return isAxiosDefaultImport(definition);
+  if (definition.type !== "Variable" || (definition.parent as ESTree.VariableDeclaration).kind !== "const") return false;
+  const init = (definition.node as ESTree.VariableDeclarator).init;
+  return init?.type === "CallExpression" && isLocalAxiosCreate(init, context, seen);
 }
 
-function hasLocalAxiosOptions(node: TSESTree.Node | undefined, context: Ctx): boolean {
+/** `<axios client>.create()` or `.create(options)` without a base URL or adapter. */
+function isLocalAxiosCreate(call: ESTree.CallExpression, context: Ctx, seen: Set<Node>): boolean {
+  const { callee } = call;
+  return call.arguments.length <= 1 && hasLocalAxiosOptions(call.arguments[0], context) &&
+    callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" &&
+    callee.property.name === "create" && isAxiosClient(callee.object, context, seen);
+}
+
+/** Never reassigned, and every other use calls it (`client()`) or one of its methods (`client.post()`). */
+function isOnlyCalled(variable: TsVariable): boolean {
+  return variable.references.every((reference) => {
+    if (reference.init === true) return true;
+    if (reference.isWrite()) return false;
+    const identifier = reference.identifier;
+    const parent = identifier.parent;
+    if (parent.type === "CallExpression" && parent.callee === identifier) return true;
+    return parent.type === "MemberExpression" && parent.object === identifier && !parent.computed &&
+      parent.parent.type === "CallExpression" && parent.parent.callee === parent;
+  });
+}
+
+function isAxiosDefaultImport(definition: TsDefinition): boolean {
+  const declaration = definition.parent as Node;
+  const specifier = definition.node;
+  if (declaration.type !== "ImportDeclaration" || declaration.source.value !== "axios" || declaration.importKind === "type") return false;
+  if (specifier.type === "ImportDefaultSpecifier") return true;
+  return specifier.type === "ImportSpecifier" && specifier.importKind !== "type" && importSpecifierName(specifier) === "default";
+}
+
+function hasLocalAxiosOptions(node: Node | undefined, context: Ctx): boolean {
   if (node === undefined) return true;
   const options = resolveNode(node, context);
   return options?.type === "ObjectExpression" && options.properties.every((property) =>
     property.type === "Property" && !property.computed && property.kind === "init" &&
-    !["baseURL", "adapter"].includes(property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? String(property.key.value) : "baseURL"),
+    !LOCAL_AXIOS_FORBIDDEN_OPTIONS.has(property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? String(property.key.value) : "baseURL"),
   );
 }
 
 function isApiUrl(
-  node: TSESTree.Node | null | undefined,
+  node: Node | null | undefined,
   context: Ctx,
   apiPrefixes: readonly string[],
 ): boolean {
@@ -140,15 +136,8 @@ function isApiUrl(
   return false;
 }
 
-function isValidBasePath(basePath: string): boolean {
-  return (
-    BASE_PATH_RE.test(basePath) &&
-    !basePath.split("/").some((segment) => segment === "." || segment === "..")
-  );
-}
-
 function isMutationMethod(
-  node: TSESTree.Node | null | undefined,
+  node: Node | null | undefined,
   context: Ctx,
 ): boolean {
   const resolved = resolveNode(node, context);
@@ -184,7 +173,7 @@ function isMutationMethod(
 }
 
 function isFunctionArgument(
-  node: TSESTree.CallExpressionArgument,
+  node: ESTree.Argument,
   context: Ctx,
 ): boolean {
   const resolved = resolveNode(node, context);
@@ -196,7 +185,7 @@ function isFunctionArgument(
   }
   if (node.type !== "Identifier") return false;
 
-  let scope: Scope.Scope | null = getScope(context, node);
+  let scope: Scope | null = getScope(context, node);
   while (scope) {
     const variable = scope.set.get(node.name);
     if (
@@ -210,20 +199,21 @@ function isFunctionArgument(
 }
 
 function getPropertyNode(
-  objNode: TSESTree.Node | null | undefined,
+  objNode: Node | null | undefined,
   propName: string,
-): TSESTree.Node | null {
+): Node | null {
   if (!objNode || objNode.type !== "ObjectExpression") return null;
-  if (objNode.properties.some((property) => property.type === "SpreadElement" || ASTUtils.getPropertyName(property) === null)) return null;
+  if (objNode.properties.some((property) => property.type === "SpreadElement" || getPropertyName(property) === null)) return null;
   for (const prop of [...objNode.properties].reverse()) {
     if (prop.type !== "Property") continue;
-    const keyName = ASTUtils.getPropertyName(prop);
+    const keyName = getPropertyName(prop);
     if (keyName === propName) {
       // Skip destructuring patterns — they're not valid as config values.
+      const valueType: string = prop.value.type;
       if (
-        prop.value.type === "AssignmentPattern" ||
-        prop.value.type === "ArrayPattern" ||
-        prop.value.type === "ObjectPattern"
+        valueType === "AssignmentPattern" ||
+        valueType === "ArrayPattern" ||
+        valueType === "ObjectPattern"
       ) {
         return null;
       }
@@ -233,14 +223,13 @@ function getPropertyNode(
   return null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-server-actions",
-  documentation: PREFER_SERVER_ACTIONS_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "suggestion",
     docs: {
       description: "Prefer Next.js Server Actions over same-origin API mutations.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -259,136 +248,89 @@ export default createRule<Options, MessageIds>({
         "This client mutation targets a same-origin API route. Consider a Server Action to remove the hand-written API wrapper; retain authorization and validation, since the call still crosses a network boundary.",
     },
   },
-  create(context, [options]) {
-    const filename = context.filename.replaceAll("\\", "/");
-    if (SKIP_FILE_REGEX.test(filename)) {
-      return {};
+  createOnce(context) {
+    let apiPrefixes: string[] = [];
+
+    function isMutation(node: ESTree.CallExpression): boolean {
+      const callee = unwrapExpression(node.callee);
+      if (callee.type === "Identifier") {
+        if (callee.name === "fetch" && resolvesToGlobalFetch(context, callee)) return isFetchMutation(node);
+        // Check the arguments before resolving the callee's provenance.
+        return isAxiosConfigMutation(node) && isAxiosClient(callee, context);
+      }
+      if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return false;
+      // Axios method calls require import or instance provenance.
+      const methodName = callee.property.name.toLowerCase();
+      return AXIOS_MUTATION_METHODS.has(methodName) && isAxiosClient(callee.object, context) && isAxiosMethodMutation(node, methodName);
     }
 
-    const isNonReactFramework = context.sourceCode.ast.body.some(
-      (node) =>
-        node.type === "ImportDeclaration" &&
-        typeof node.source.value === "string" &&
-        NON_REACT_FRAMEWORK_RE.test(node.source.value),
-    );
-    const hasUseClientDirective = context.sourceCode.ast.body.some(
-      (node) =>
-        node.type === "ExpressionStatement" &&
-        node.directive === "use client",
-    );
-    const hasUseServerDirective = context.sourceCode.ast.body.some(
-      (node) =>
-        node.type === "ExpressionStatement" &&
-        node.directive === "use server",
-    );
-    const importsServerOnly = context.sourceCode.ast.body.some(
-      (node) =>
-        node.type === "ImportDeclaration" &&
-        typeof node.source.value === "string" &&
-        (node.source.value === "server-only" || node.source.value === "next/server"),
-    );
-
-    if (!hasUseClientDirective || hasUseServerDirective || importsServerOnly) {
-      return {};
+    /** `fetch('/api/orders', { method: 'POST' })`. */
+    function isFetchMutation(node: ESTree.CallExpression): boolean {
+      const [urlArg, initArg] = node.arguments;
+      if (urlArg === undefined || urlArg.type === "SpreadElement" || !isApiUrl(urlArg, context, apiPrefixes)) return false;
+      if (initArg === undefined || initArg.type === "SpreadElement") return false;
+      const methodNode = getPropertyNode(resolveNode(initArg, context), "method");
+      return methodNode !== null && isMutationMethod(methodNode, context);
     }
 
-    const apiPrefixes = ["/api/"];
-    if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
-      apiPrefixes.push(`${options.basePath}/api/`);
-    }
-
-    function isFetchMutation(node: TSESTree.CallExpression): boolean {
+    /** `client.post('/api/orders', body)`, without a callback argument; `methodName` is a lowercase axios mutation method. */
+    function isAxiosMethodMutation(node: ESTree.CallExpression, methodName: string): boolean {
+      const config = node.arguments[methodName === "delete" ? 1 : 2];
+      if (!hasLocalAxiosOptions(config, context)) return false;
       const urlArg = node.arguments[0];
-      if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {
-        const initArg = node.arguments[1];
-        if (initArg && initArg.type !== "SpreadElement") {
-          const resolvedInit = resolveNode(initArg, context);
-          const methodNode = getPropertyNode(resolvedInit, "method");
-          if (methodNode && isMutationMethod(methodNode, context)) {
-            return true;
-          }
-        }
-      }
-      return false;
+      return urlArg !== undefined && urlArg.type !== "SpreadElement" &&
+        !node.arguments.some((arg) => arg.type !== "SpreadElement" && isFunctionArgument(arg, context)) &&
+        isApiUrl(urlArg, context, apiPrefixes);
     }
 
-    function isAxiosMethodMutation(node: TSESTree.CallExpression, method: string): boolean {
-      const methodName = method.toLowerCase();
-      if (AXIOS_MUTATION_METHODS.has(methodName)) {
-        const config = node.arguments[methodName === "delete" ? 1 : 2];
-        if (!hasLocalAxiosOptions(config, context)) return false;
-        const urlArg = node.arguments[0];
-        const hasHandlerArg = node.arguments.some(
-          (arg) =>
-            arg.type !== "SpreadElement" &&
-            isFunctionArgument(arg, context),
-        );
-        if (
-          urlArg &&
-          urlArg.type !== "SpreadElement" &&
-          !hasHandlerArg &&
-          isApiUrl(urlArg, context, apiPrefixes)
-        ) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    function isAxiosConfigMutation(node: TSESTree.CallExpression): boolean {
+    /** `client({ method: 'post', url: '/api/orders' })`. */
+    function isAxiosConfigMutation(node: ESTree.CallExpression): boolean {
       const firstArg = node.arguments[0];
-      if (firstArg && firstArg.type !== "SpreadElement") {
-        const configArg = resolveNode(firstArg, context);
-        if (configArg && configArg.type === "ObjectExpression") {
-          if (!hasLocalAxiosOptions(firstArg, context)) return false;
-          const urlNode = getPropertyNode(configArg, "url");
-          const methodNode = getPropertyNode(configArg, "method");
-          if (
-            urlNode &&
-            isApiUrl(urlNode, context, apiPrefixes) &&
-            methodNode &&
-            isMutationMethod(methodNode, context)
-          ) {
-            return true;
-          }
-        }
-      }
-      return false;
+      if (firstArg === undefined || firstArg.type === "SpreadElement") return false;
+      const configArg = resolveNode(firstArg, context);
+      if (configArg?.type !== "ObjectExpression" || !hasLocalAxiosOptions(firstArg, context)) return false;
+      const urlNode = getPropertyNode(configArg, "url");
+      const methodNode = getPropertyNode(configArg, "method");
+      return urlNode !== null && isApiUrl(urlNode, context, apiPrefixes) && methodNode !== null && isMutationMethod(methodNode, context);
     }
 
     return {
-      CallExpression(node) {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (isNonReactFramework) return;
-        let isMutation = false;
-
-        // 1. Standard fetch('/api/orders', { method: 'POST' })
-        if (
-          unwrappedNodeCallee.type === "Identifier" &&
-          unwrappedNodeCallee.name === "fetch" &&
-          resolvesToGlobalFetch(context, unwrappedNodeCallee)
-        ) {
-          isMutation = isFetchMutation(node);
+      before() {
+        const filename = context.filename.replaceAll("\\", "/");
+        if (SKIP_FILE_REGEX.test(filename)) return false;
+        const body = context.sourceCode.ast.body;
+        const isNonReactFramework = body.some(
+          (node) =>
+            node.type === "ImportDeclaration" &&
+            typeof node.source.value === "string" &&
+            NON_REACT_FRAMEWORK_RE.test(node.source.value),
+        );
+        const hasUseClientDirective = body.some(
+          (node) =>
+            node.type === "ExpressionStatement" &&
+            node.directive === "use client",
+        );
+        const hasUseServerDirective = body.some(
+          (node) =>
+            node.type === "ExpressionStatement" &&
+            node.directive === "use server",
+        );
+        const importsServerOnly = body.some(
+          (node) =>
+            node.type === "ImportDeclaration" &&
+            typeof node.source.value === "string" &&
+            (node.source.value === "server-only" || node.source.value === "next/server"),
+        );
+        if (!hasUseClientDirective || hasUseServerDirective || importsServerOnly || isNonReactFramework) return false;
+        const options = context.options[0] as RuleOptions | undefined;
+        apiPrefixes = ["/api/"];
+        if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
+          apiPrefixes.push(`${options.basePath}/api/`);
         }
-        // Axios method calls require import or instance provenance.
-        else if (
-          unwrappedNodeCallee.type === "MemberExpression" &&
-          unwrappedNodeCallee.property.type === "Identifier" &&
-          !unwrappedNodeCallee.computed && isAxiosClient(unwrappedNodeCallee.object, context)
-        ) {
-          isMutation = isAxiosMethodMutation(node, unwrappedNodeCallee.property.name);
-        }
-        // 3. Direct axios/request call: axios({ method: 'post', url: '/api/orders' })
-        else if (
-          unwrappedNodeCallee.type === "Identifier" &&
-          isAxiosClient(unwrappedNodeCallee, context)
-        ) {
-          isMutation = isAxiosConfigMutation(node);
-        }
-
-        if (isMutation) {
-          context.report({ node, messageId: "preferServerAction" });
-        }
+        return undefined;
+      },
+      CallExpression(node: ESTree.CallExpression) {
+        if (isMutation(node)) context.report({ node, messageId: "preferServerAction" });
       },
     };
   },

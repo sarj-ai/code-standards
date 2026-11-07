@@ -1,158 +1,141 @@
 /**
- * @fileoverview interface-contract-members-private — keep an implementing class's non-contract methods runtime-private.
+ * @fileoverview interface-contract-members-private — methods outside an implemented interface contract use ECMAScript private names.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/interface-contract-members-private.test.ts
+ * Port of the 18.x `interface-contract-members-private` rule. Typed: the
+ * original returns no visitors without type information, so without tsrs (or
+ * when tsrs cannot hold the file) this port reports nothing. Classes with an
+ * `implements` clause are collected during the walk; `Program:exit` asks tsrs
+ * for their contracts' property names, then resolves every fix's member
+ * symbols in one request (`utils/class-private.ts`) and reports.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { NativeRuleContext, TypeServices } from "./_eslint-rule.js";
+import type * as TsrsAst from "tsrs/ast";
 
+import { defineRule, type ESTree } from "../types.js";
+import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import {
+  type ClassNode,
+  convertibleMemberName,
+  isUnobservedPrivateClass,
+  type PrivateMemberFixPlan,
+  privateMemberFixPlan,
+  resolvePrivateMemberFixes,
+} from "../utils/class-private.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
+const NAME = "interface-contract-members-private";
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import * as ts from "typescript";
-
-import { convertibleMemberName, isUnobservedPrivateClass, privateMemberFixes } from "./_class-private.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-
-type MessageIds = "nonContractMemberMustBePrivate";
-type Options = readonly [];
-
-export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
-  summary: "Require methods outside an implemented interface contract to use ECMAScript private names.",
-  rationale: "An implementing class should expose exactly its declared interface while keeping implementation helpers runtime-private.",
-  remediation: "Add the method to the interface when it is public API, or make it `#private` and remove external or inherited access.",
-  category: "architecture",
-  autofix: "safe",
-  limitations: ["Automatic conversion is limited to unused private module/block classes without heritage, decorators, computed members, static execution, or eval; referenced classes remain manual.",
-    "Only concrete classes with an explicit `implements` clause are checked; constructors, static members, protected extension hooks, and overrides are excluded.",
-    "Inherited interface members are resolved by TypeScript. Computed names are excluded because their contract identity is not stable syntax.",
-    "The rule abstains for the whole class when TypeScript cannot resolve any implemented contract, avoiding false positives for missing or unavailable package declarations.",
-    "Referenced classes remain report-only because a public member can have consumers in another source file; the developer must choose whether to extend the interface or privatize it.",
-    "TypeScript-private members are left to prefer-ecmascript-private-members so one concern produces one diagnostic.",
-  ],
-  examples: [
-    {
-      id: "exact-interface-surface",
-      title: "Keep helpers behind the runtime boundary",
-      outcome: "no-match",
-      files: [{ path: "src/store.ts", source: "interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }" }],
-      focusPath: "src/store.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "extra-public-method",
-      title: "Do not grow an undeclared public surface",
-      outcome: "match",
-      files: [{ path: "src/store.ts", source: "interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }" }],
-      focusPath: "src/store.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function reportClass(
-  context: Readonly<NativeRuleContext<MessageIds, Options>>,
-  services: TypeServices,
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-): void {
-  if (owner.abstract) return;
-  const contract = interfaceNames(services, owner);
-  if (contract === null) return;
-  const groups = new Map<string, TSESTree.MethodDefinition[]>();
-  for (const member of owner.body.body) {
-    if (member.type !== AST_NODE_TYPES.MethodDefinition || !candidate(member)) continue;
-    const name = convertibleMemberName(member);
-    if (name === null || contract.has(name)) continue;
-    // Avoid duplicate diagnostics: the dedicated modern-private rule owns this
-    // member and converts it to the same required final form.
-    if (member.accessibility === "private" || member.key.type === AST_NODE_TYPES.PrivateIdentifier) continue;
-    const members = groups.get(name) ?? [];
-    members.push(member);
-    groups.set(name, members);
-  }
-  for (const [name, members] of groups) {
-    const first = members[0];
-    if (first === undefined) continue;
-    context.report({
-      node: first.key,
-      messageId: "nonContractMemberMustBePrivate",
-      data: { name },
-      fix: isUnobservedPrivateClass(context.sourceCode, owner, context.filename) ? (privateMemberFixes(context, services, owner, members, false) ?? null) : null,
-    });
-  }
-}
-
-function candidate(member: TSESTree.MethodDefinition): boolean {
+function candidate(member: ESTree.MethodDefinition): boolean {
   return (
     member.kind !== "constructor" &&
     !member.static &&
     member.accessibility !== "protected" &&
     !member.override &&
     !member.computed &&
-    member.key.type === AST_NODE_TYPES.Identifier &&
+    member.key.type === "Identifier" &&
     member.value.body !== null
   );
 }
 
-function interfaceNames(
-  services: TypeServices,
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-): ReadonlySet<string> | null {
-  const tsOwner = services.esTreeNodeToTSNodeMap.get(owner);
-  if (!ts.isClassDeclaration(tsOwner) && !ts.isClassExpression(tsOwner)) return null;
-  const implemented = tsOwner.heritageClauses?.filter((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword) ?? [];
+/** Property names of every implemented contract, or null without one (or when one is any/unknown). */
+function interfaceNames(native: NativeTypes, owner: ClassNode): ReadonlySet<string> | null {
+  const { ast, checker, sync } = native;
+  const tsOwner = native.node(owner);
+  if (tsOwner === undefined || (!ast.isClassDeclaration(tsOwner) && !ast.isClassExpression(tsOwner))) return null;
+  const clauses: readonly TsrsAst.HeritageClause[] = tsOwner.heritageClauses ?? [];
+  const implemented = clauses.filter((clause) => clause.token === ast.SyntaxKind.ImplementsKeyword);
   if (implemented.length === 0) return null;
-  const checker = services.program.getTypeChecker();
   const names = new Set<string>();
   for (const clause of implemented) {
     for (const contract of clause.types) {
       const type = checker.getTypeAtLocation(contract);
-      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
-      for (const property of checker.getPropertiesOfType(type)) names.add(property.getName());
+      if ((type.flags & (sync.TypeFlags.Any | sync.TypeFlags.Unknown)) !== 0) return null;
+      for (const property of checker.getPropertiesOfType(type)) names.add(property.name);
     }
   }
   return names;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "interface-contract-members-private",
-  documentation: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
+interface Finding {
+  readonly key: ESTree.Node;
+  readonly name: string;
+  readonly plan: PrivateMemberFixPlan | undefined;
+}
+
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
-    docs: { description: "Require methods outside an implemented interface contract to use ECMAScript private names." },
+    docs: {
+      description: "Require methods outside an implemented interface contract to use ECMAScript private names.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       nonContractMemberMustBePrivate:
         "Method `{{name}}` is not part of this class's implemented interface contract; make it `#{{name}}` or declare it in the interface.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let classes: ClassNode[] = [];
+
+    function collect(owner: ClassNode): void {
+      // Without an implements clause interfaceNames returns null; skip those classes without asking tsrs.
+      if (!owner.abstract && (owner.implements?.length ?? 0) > 0) classes.push(owner);
     }
-    if (services === null) return {};
+
+    function findingsOf(native: NativeTypes, owner: ClassNode): Finding[] {
+      const contract = interfaceNames(native, owner);
+      if (contract === null) return [];
+      const groups = new Map<string, ESTree.MethodDefinition[]>();
+      for (const member of owner.body.body) {
+        if (member.type !== "MethodDefinition" || !candidate(member)) continue;
+        const name = convertibleMemberName(member);
+        if (name === null || contract.has(name)) continue;
+        // Avoid duplicate diagnostics: the dedicated modern-private rule owns this
+        // member and converts it to the same required final form.
+        if (member.accessibility === "private" || member.key.type === "PrivateIdentifier") continue;
+        const members = groups.get(name) ?? [];
+        members.push(member);
+        groups.set(name, members);
+      }
+      if (groups.size === 0) return [];
+      const sourceCode = context.sourceCode;
+      const unobserved = isUnobservedPrivateClass(sourceCode, owner, context.filename);
+      return [...groups].flatMap(([name, members]) => {
+        const first = members[0];
+        return first === undefined ? [] : [{ key: first.key, name, plan: unobserved ? privateMemberFixPlan(sourceCode, owner, members, false) : undefined }];
+      });
+    }
+
     return {
-      ClassDeclaration: (node): void => reportClass(context, services, node),
-      ClassExpression: (node): void => reportClass(context, services, node),
+      before() {
+        tsrs = null;
+        classes = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      ClassDeclaration: collect,
+      ClassExpression: collect,
+      "Program:exit"() {
+        if (classes.length === 0 || tsrs === null) return;
+        const resolved = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          const findings = classes.flatMap((owner) => findingsOf(native, owner));
+          return { findings, fixes: resolvePrivateMemberFixes(file, findings.map((finding) => finding.plan)) };
+        });
+        if (resolved === null) return;
+        const { findings, fixes } = resolved;
+        findings.forEach((finding, i) => {
+          const fix = fixes[i];
+          const descriptor = { node: finding.key, messageId: "nonContractMemberMustBePrivate", data: { name: finding.name } };
+          context.report(fix === undefined ? descriptor : { ...descriptor, fix });
+        });
+      },
     };
   },
 });

@@ -1,19 +1,12 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/test-phase-label-comment.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { TEST_PHASE_LABEL_COMMENT_DOCUMENTATION } from "../../src/rules/test-phase-label-comment.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("test-phase-label-comment", rule, {
   valid: [
-    { code: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.examples[0].files[0].source, filename: "widget.test.ts" },
+    { code: "// Then the retry loop would spin forever.\nexpect(run()).toBe(true);", filename: "widget.test.ts" },
     { code: "// Arrange\nconst widget = makeWidget();", filename: "widget.ts" },
     { code: "const values = [\n  // Arrange\n  arrangeValue,\n];", filename: "widget.test.ts" },
     { code: "const value = run(); // Act", filename: "widget.test.ts" },
@@ -39,7 +32,7 @@ RULE_TESTER.run("test-phase-label-comment", rule, {
       errors: [{ messageId: "removeLabel" as const }],
     })),
     {
-      code: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.examples[1].files[0].source,
+      code: "const seed = 1;\n// Arrange\nconst widget = makeWidget();",
       filename: "widget.test.ts",
       output: "const seed = 1;\n\nconst widget = makeWidget();",
       errors: [{ messageId: "removeLabel" }],
@@ -51,8 +44,9 @@ RULE_TESTER.run("test-phase-label-comment", rule, {
       errors: [{ messageId: "removeLabel" }],
     },
     {
+      name: "removes a leading phase label in a test file (distinct filename: Oxlint's RuleTester rejects duplicate code)",
       code: "// Assertions\nexpect(run()).toBe(true);",
-      filename: "widget.test.ts",
+      filename: "assertions.test.ts",
       output: "\nexpect(run()).toBe(true);",
       errors: [{ messageId: "removeLabel" }],
     },

@@ -1,103 +1,67 @@
 /**
  * @fileoverview named-child-schema-type — reuse the complete type of a named child passed to a Zod record.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/named-child-schema-type.test.ts
+ * Port of the 18.x `named-child-schema-type` rule. Same algorithm; the
+ * generated-file gate runs in `before()`, which also resets the per-file Zod
+ * namespaces. Oxlint sets an absent `typeArguments` to `null` where TS-ESTree
+ * leaves it `undefined`; both count as absent here.
  */
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { importSpecifierName } from "./_import-specifier-name.js";
-import { isGeneratedFile } from "./_paths.js";
+import { defineRule, type ESTree, type Identifier, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { forEachOwnAstChild, parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 
-import { isZodModule } from "./_zod.js";
+const NAME = "named-child-schema-type";
 
-type MessageIds = "namedChildType";
-type Options = readonly [];
-const UNRESOLVED_TYPE_NODES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.TSTypeQuery, AST_NODE_TYPES.TSImportType, AST_NODE_TYPES.TSTypeParameter,
-  AST_NODE_TYPES.TSAnyKeyword, AST_NODE_TYPES.TSUnknownKeyword,
+const UNRESOLVED_TYPE_NODES: ReadonlySet<string> = new Set([
+  "TSTypeQuery", "TSImportType", "TSTypeParameter",
+  "TSAnyKeyword", "TSUnknownKeyword",
 ]);
 
-export const NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary: "Reference a named Zod record child's complete schema type instead of repeating its explicit annotation.",
-  rationale: "Repeating a child schema's generic contract creates a second maintained declaration even though the record already uses that child at runtime.",
-  remediation: "Replace only the matching record type argument with `typeof ChildSchema`, or share one explicit named schema type alias between child and record to retain an independently named public contract. Keep the outer annotation required by isolatedDeclarations and every runtime schema operation.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Only direct module-level const z.record calls with two arguments, a ZodRecord annotation, and an earlier local const child with a complete explicit Zod type are inspected.",
-    "The entire generic child annotation must match token for token; input/output, defaults, transforms, readonly modifiers and brands are never compared by output shape alone.",
-    "Bare leaf types, broad ZodType constraints, type queries, imported or unqualified type references, annotation cycles, comments on the repeated argument, mutable bindings and generated files are excluded.",
-    "Import aliases and namespace imports resolve through scope bindings. Independent public contract pins can use one shared named type alias or an exact reasoned suppression; runtime validation and outer annotations are preserved.",
-  ],
-  examples: [
-    { id: "named-child", title: "Reference the named child contract", outcome: "no-match", files: [{ path: "src/record.ts", source: 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());' }], focusPath: "src/record.ts", expectedCount: 0, public: true },
-    { id: "copied-child", title: "Do not repeat the complete child annotation", outcome: "match", files: [{ path: "src/record.ts", source: 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: "a"; b: "b" }>, z.ZodString> = z.record(KeySchema, z.string());' }], focusPath: "src/record.ts", expectedCount: 1, public: true },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\" }> = z.enum([\"a\"]); const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: \"a\" }>, z.ZodString> = z.record(KeySchema, z.string());" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\" }> = z.enum([\"a\"]); const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function isModuleConst(node: TSESTree.VariableDeclarator): boolean {
-  if (node.parent.kind !== "const" || node.id.type !== AST_NODE_TYPES.Identifier) return false;
-  const parent = node.parent.parent;
-  return parent.type === AST_NODE_TYPES.Program ||
-    (parent.type === AST_NODE_TYPES.ExportNamedDeclaration && parent.parent.type === AST_NODE_TYPES.Program);
+function isModuleConst(node: ESTree.VariableDeclarator): boolean {
+  const declaration = parentOf(node) as ESTree.VariableDeclaration;
+  if (declaration.kind !== "const" || node.id.type !== "Identifier") return false;
+  const parent = parentOf(declaration);
+  return parent?.type === "Program" ||
+    (parent?.type === "ExportNamedDeclaration" && parentOf(parent)?.type === "Program");
 }
 
-export default createRule<Options, MessageIds>({
-  name: "named-child-schema-type",
-  documentation: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.summary },
+    docs: { description: "Reference a named Zod record child's complete schema type instead of repeating its explicit annotation.", url: docsUrl(NAME) },
     schema: [],
     messages: { namedChildType: "Use `typeof {{name}}` or one shared named type alias for this exact child contract; keep the outer schema annotation and runtime operations." },
   },
-  defaultOptions: [],
-  create(context) {
-    const source = context.sourceCode;
-    if (isGeneratedFile(context, source.text)) return {};
-    const namespaces = new Set<TSESLint.Scope.Variable>();
-    const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
-      ASTUtils.findVariable(source.getScope(node), node.name);
+  createOnce(context) {
+    let source: SourceCode;
+    let namespaces = new Set<TsVariable>();
+    const bindingOf = (node: Identifier): TsVariable | null =>
+      findVariable(source.getScope(node), node.name);
 
-    function namespaceOf(type: TSESTree.TSTypeReference): TSESLint.Scope.Variable | null {
-      if (type.typeName.type !== AST_NODE_TYPES.TSQualifiedName || type.typeName.left.type !== AST_NODE_TYPES.Identifier) return null;
+    function namespaceOf(type: ESTree.TSTypeReference): TsVariable | null {
+      if (type.typeName.type !== "TSQualifiedName" || type.typeName.left.type !== "Identifier") return null;
       const binding = bindingOf(type.typeName.left);
       return binding !== null && namespaces.has(binding) ? binding : null;
     }
 
-    function closedType(node: TSESTree.Node, namespace: TSESLint.Scope.Variable): boolean {
+    function closedType(node: Node, namespace: TsVariable): boolean {
       if (UNRESOLVED_TYPE_NODES.has(node.type)) return false;
-      if (node.type === AST_NODE_TYPES.TSTypeReference && namespaceOf(node) !== namespace) return false;
+      if (node.type === "TSTypeReference" && namespaceOf(node) !== namespace) return false;
       return !forEachOwnAstChild(node, (child) => !closedType(child, namespace));
     }
 
-    function inspectChild(argument: TSESTree.Node, repeated: TSESTree.TypeNode, namespace: TSESLint.Scope.Variable, parent: TSESTree.VariableDeclarator): void {
-      if (argument.type !== AST_NODE_TYPES.Identifier || repeated.type !== AST_NODE_TYPES.TSTypeReference || repeated.typeArguments === undefined) return;
-      if (repeated.typeName.type !== AST_NODE_TYPES.TSQualifiedName || /^(?:ZodType|ZodSchema|ZodTypeAny)$/u.test(repeated.typeName.right.name)) return;
-      const variable = bindingOf(argument);
-      const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
-      if (definition?.type !== "Variable" || !isModuleConst(definition.node)) return;
-      const child = definition.node;
-      if (child.id.type !== AST_NODE_TYPES.Identifier || child.init === null || child.range[0] >= parent.range[0]) return;
-      const annotation = child.id.typeAnnotation?.typeAnnotation;
-      if (annotation === undefined || factoryNamespace(child.init) !== namespace || !closedType(annotation, namespace)) return;
-      if (source.getCommentsInside(repeated).length > 0 || source.getCommentsBefore(repeated).length > 0) return;
-      const expected = source.getTokens(annotation);
-      const actual = source.getTokens(repeated);
-      if (expected.length !== actual.length || expected.some((token, index) => token.type !== actual[index]?.type || token.value !== actual[index]?.value)) return;
+    function inspectChild(argument: Node, repeated: ESTree.TSType, namespace: TsVariable, parent: ESTree.VariableDeclarator): void {
+      if (argument.type !== "Identifier" || repeated.type !== "TSTypeReference" || (repeated.typeArguments === undefined || repeated.typeArguments === null)) return;
+      if (repeated.typeName.type !== "TSQualifiedName" || /^(?:ZodType|ZodSchema|ZodTypeAny)$/u.test(repeated.typeName.right.name)) return;
+      const annotation = earlierChildAnnotation(argument, namespace, parent);
+      if (annotation === null || source.getCommentsInside(repeated).length > 0 || source.getCommentsBefore(repeated).length > 0) return;
+      if (!sameTokens(annotation, repeated)) return;
       context.report({
         node: repeated,
         messageId: "namedChildType",
@@ -106,33 +70,71 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function factoryNamespace(expression: TSESTree.Node): TSESLint.Scope.Variable | null {
-      if (expression.type !== AST_NODE_TYPES.CallExpression || expression.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+    /** The closed explicit annotation of a module schema `argument` names, declared above `parent` from the same namespace. */
+    function earlierChildAnnotation(argument: Identifier, namespace: TsVariable, parent: ESTree.VariableDeclarator): ESTree.TSType | null {
+      const variable = bindingOf(argument);
+      const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+      if (definition?.type !== "Variable" || !isModuleConst(definition.node as ESTree.VariableDeclarator)) return null;
+      const child = definition.node as ESTree.VariableDeclarator;
+      if (child.id.type !== "Identifier" || child.init === null || child.range[0] >= parent.range[0]) return null;
+      const annotation = child.id.typeAnnotation?.typeAnnotation;
+      if (annotation === undefined || factoryNamespace(child.init) !== namespace || !closedType(annotation, namespace)) return null;
+      return annotation;
+    }
+
+    function sameTokens(expected: Node, actual: Node): boolean {
+      const expectedTokens = source.getTokens(expected);
+      const actualTokens = source.getTokens(actual);
+      return expectedTokens.length === actualTokens.length && expectedTokens.every((token, index) =>
+        token.type === actualTokens[index]?.type && token.value === actualTokens[index]?.value);
+    }
+
+    function factoryNamespace(expression: Node): TsVariable | null {
+      if (expression.type !== "CallExpression" || expression.callee.type !== "MemberExpression") return null;
       const object = expression.callee.object;
-      return object.type === AST_NODE_TYPES.Identifier ? bindingOf(object) : factoryNamespace(object);
+      return object.type === "Identifier" ? bindingOf(object) : factoryNamespace(object);
+    }
+
+    /** `const X: z.ZodRecord<K, V> = z.record(k, v)` at module level, both from one Zod namespace. */
+    function annotatedRecord(node: ESTree.VariableDeclarator) {
+      const call = node.init;
+      if (call?.type !== "CallExpression" || call.arguments.length !== 2 || !isModuleConst(node) || node.id.type !== "Identifier") return null;
+      const { callee } = call;
+      if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier" || getPropertyName(callee) !== "record") return null;
+      const annotation = zodRecordAnnotation(node.id.typeAnnotation?.typeAnnotation);
+      if (annotation === null || bindingOf(callee.object) !== annotation.namespace) return null;
+      return { call, ...annotation };
+    }
+
+    /** `z.ZodRecord<K, V>` and the Zod namespace binding it is qualified by. */
+    function zodRecordAnnotation(annotation: ESTree.TSType | undefined) {
+      if (annotation?.type !== "TSTypeReference" || annotation.typeName.type !== "TSQualifiedName" || annotation.typeName.right.name !== "ZodRecord") return null;
+      const namespace = namespaceOf(annotation);
+      if (namespace === null || annotation.typeArguments?.params.length !== 2) return null;
+      return { namespace, typeArguments: annotation.typeArguments.params };
     }
 
     return {
-      ImportDeclaration(node): void {
+      before(): boolean | void {
+        source = context.sourceCode;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, source.text)) return false;
+        namespaces = new Set<TsVariable>();
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (node.importKind === "type" || !isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type !== AST_NODE_TYPES.ImportNamespaceSpecifier &&
-            (specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind === "type" || importSpecifierName(specifier) !== "z")) continue;
+          if (specifier.type !== "ImportNamespaceSpecifier" &&
+            (specifier.type !== "ImportSpecifier" || specifier.importKind === "type" || importSpecifierName(specifier) !== "z")) continue;
           const binding = bindingOf(specifier.local);
           if (binding !== null) namespaces.add(binding);
         }
       },
-      VariableDeclarator(node): void {
-        if (!isModuleConst(node) || node.id.type !== AST_NODE_TYPES.Identifier || node.init?.type !== AST_NODE_TYPES.CallExpression) return;
-        const call = node.init;
-        if (call.arguments.length !== 2 || call.callee.type !== AST_NODE_TYPES.MemberExpression || call.callee.object.type !== AST_NODE_TYPES.Identifier || ASTUtils.getPropertyName(call.callee) !== "record") return;
-        const annotation = node.id.typeAnnotation?.typeAnnotation;
-        if (annotation?.type !== AST_NODE_TYPES.TSTypeReference || annotation.typeName.type !== AST_NODE_TYPES.TSQualifiedName || annotation.typeName.right.name !== "ZodRecord") return;
-        const namespace = namespaceOf(annotation);
-        if (namespace === null || bindingOf(call.callee.object) !== namespace || annotation.typeArguments?.params.length !== 2) return;
-        for (const [index, argument] of call.arguments.entries()) {
-          const repeated = annotation.typeArguments.params[index];
-          if (repeated !== undefined) inspectChild(argument, repeated, namespace, node);
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
+        const record = annotatedRecord(node);
+        if (record === null) return;
+        for (const [index, argument] of record.call.arguments.entries()) {
+          const repeated = record.typeArguments[index];
+          if (repeated !== undefined) inspectChild(argument, repeated, record.namespace, node);
         }
       },
     };

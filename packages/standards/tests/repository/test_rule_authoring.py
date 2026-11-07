@@ -70,22 +70,42 @@ def test_apply_creates_authored_files_and_registers_atomically(tmp_path: Path) -
         )
 
 
-def test_eslint_scaffold_uses_screaming_snake_case_documentation_constant(tmp_path: Path) -> None:
+def test_oxlint_scaffold_writes_a_create_once_rule_its_documentation_and_tests(tmp_path: Path) -> None:
     plan = rule_authoring.plan_new(
         tmp_path,
-        RuleSelector.parse("eslint:prefer-explicit-clock"),
+        RuleSelector.parse("oxlint:prefer-explicit-clock"),
         category="testing",
         summary="Tests should receive an explicit clock.",
     )
 
-    implementation = plan.files[0][1]
-    test = plan.files[1][1]
-    assert "export const PREFER_EXPLICIT_CLOCK_DOCUMENTATION =" in implementation
-    assert "description: PREFER_EXPLICIT_CLOCK_DOCUMENTATION.summary" in implementation
-    assert "documentation: PREFER_EXPLICIT_CLOCK_DOCUMENTATION" in implementation
-    assert "verifyRuleExamples(rule)" in test
-    assert 'defaultLevel: "warning"' in implementation
-    assert "preferExplicitClockDocumentation" not in implementation + test
+    assert [path.relative_to(tmp_path).as_posix() for path, _ in plan.files] == [
+        "packages/typescript/src/rules/prefer-explicit-clock.ts",
+        "packages/typescript/src/docs/prefer-explicit-clock.ts",
+        "packages/typescript/tests/rules/prefer-explicit-clock.test.ts",
+    ]
+    implementation, documentation, test = (source for _, source in plan.files)
+    assert "createOnce()" in implementation
+    assert "url: docsUrl(NAME)" in implementation
+    assert "export const PREFER_EXPLICIT_CLOCK_DOCUMENTATION =" in documentation
+    assert 'defaultLevel: "warning"' in documentation
+    assert 'ruleTester().run("prefer-explicit-clock", rule' in test
+    assert 'verifyRuleExamples(RULES["prefer-explicit-clock"])' in test
+    assert "eslint" not in implementation + documentation + test
+    assert "preferExplicitClockDocumentation" not in implementation + documentation + test
+
+
+def test_oxlint_registration_adds_the_rule_and_its_documentation(tmp_path: Path) -> None:
+    plan = rule_authoring.plan_new(
+        tmp_path, RuleSelector.parse("oxlint:prefer-explicit-clock"), category="testing", summary="Use a clock."
+    )
+    rule_authoring.apply(plan, tmp_path)
+
+    index = (tmp_path / "packages/typescript/src/index.ts").read_text()
+    docs = (tmp_path / "packages/typescript/src/docs/index.ts").read_text()
+    assert 'import preferExplicitClock from "./rules/prefer-explicit-clock.js";' in index
+    assert '"prefer-explicit-clock": preferExplicitClock,' in index
+    assert 'import { PREFER_EXPLICIT_CLOCK_DOCUMENTATION } from "./prefer-explicit-clock.js";' in docs
+    assert '"prefer-explicit-clock": PREFER_EXPLICIT_CLOCK_DOCUMENTATION,' in docs
 
 
 def test_apply_refuses_a_concurrently_created_target(tmp_path: Path) -> None:
@@ -376,7 +396,7 @@ def test_generated_native_test_helper_uses_the_public_analyzer() -> None:
     assert verify_native_rule(NoDunderAll, analyze) == len(spec.examples)
 
 
-@pytest.mark.parametrize("engine", ["python", "eslint"])
+@pytest.mark.parametrize("engine", ["python", "oxlint"])
 def test_registration_rejects_colliding_generated_identifiers(tmp_path: Path, engine: str) -> None:
     first = rule_authoring.plan_new(
         tmp_path, RuleSelector.parse(f"{engine}:foo1"), category="correctness", summary="First detector."

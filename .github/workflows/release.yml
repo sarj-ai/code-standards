@@ -843,7 +843,7 @@ jobs:
       - name: Install the rule authoring parser
         if: steps.reuse.outputs.reused != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
-      - name: Build the plugin for native ESLint integration tests
+      - name: Build the plugin for native Oxlint integration tests
         if: steps.reuse.outputs.reused != 'true'
         run: npm --prefix ../typescript run build
       - name: Install the manifest formatter

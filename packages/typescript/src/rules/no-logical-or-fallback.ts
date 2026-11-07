@@ -1,122 +1,213 @@
 /**
  * @fileoverview no-logical-or-fallback — distinguish missing values from empty strings and zero.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-logical-or-fallback.test.ts
+ * Port of the 18.x `no-logical-or-fallback` rule. Typed: it needs type
+ * information and `strictNullChecks`; without either it skips the file, as the
+ * original returns no visitors without a program.
+ *
+ * Types come from tsrs (`tsrsServices`). The walk only collects `||`
+ * candidates; `Program:exit` resolves them all at once, so tsrs answers a file
+ * in a few batched requests. Each left-hand type is reduced to a `Member` view,
+ * which one decision function reads; the two `ts-api-utils` checks are inlined.
  */
 
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { isBigIntLiteralType, isBooleanLiteralType } from "ts-api-utils";
-import ts from "typescript";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import type { TsrsFile, TsrsServices, TsrsSymbol, TsrsType, TsrsTypeFlags } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { getTypeServices, type TypeServices, type TypeScriptSourceCode } from "./_eslint-rule.js";
-import { isGeneratedFile } from "./_paths.js";
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
-
-const PRIMITIVE_FLAGS = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.BooleanLike;
+const NAME = "no-logical-or-fallback";
 const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "window", "self"]);
 
-export const NO_LOGICAL_OR_FALLBACK_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Use nullish defaults or explicit falsy-value checks instead of logical OR fallbacks.",
-  rationale: "Logical OR falls back for empty strings, zero and false as well as missing values. This hides which values should actually receive a default.",
-  remediation: "Use ?? for null or undefined. If an empty string, zero or false needs special handling, test that condition explicitly and preserve the intended behavior.",
-  category: "correctness",
-  autofix: "none",
-  limitations: [
-    "Requires TypeScript type information and strict null checks. Reports non-nullable string, number or bigint value fallbacks, including branded primitives and mixed primitive unions. Nullable inputs, including nullable booleans, remain owned by @typescript-eslint/prefer-nullish-coalescing; both rules are enabled in the managed strict config.",
-    "Preserves non-nullable boolean aggregation, conditions, negations, left-hand && guards, and calls to the native unshadowed Boolean constructor, including erased TypeScript wrappers and globalThis/window/self access. Constant truthiness stays with no-unnecessary-condition. Unknown, any, unresolved generic, object-only and generated inputs are excluded. Strings and comments are never scanned as code.",
-    "No automatic replacement is offered: replacing || with ?? would change empty-string or zero behavior. Non-nullable ||= expressions remain outside this companion rule.",
-  ],
-  references: ["https://typescript-eslint.io/rules/prefer-nullish-coalescing/"],
-  examples: [
-    { id: "logical-or-title", title: "Do not hide empty-string fallback behavior", outcome: "match", files: [{ path: "src/title.ts", source: 'export function title(value: string) { return value.trim() || "Untitled"; }' }], focusPath: "src/title.ts", expectedCount: 1, public: true },
-    { id: "explicit-empty-title", title: "Preserve an intentional empty-string default", outcome: "no-match", files: [{ path: "src/title.ts", source: 'export function title(value: string) { const trimmed = value.trim(); return trimmed === "" ? "Untitled" : trimmed; }' }], focusPath: "src/title.ts", expectedCount: 0, public: true },
-    { id: "boolean-aggregation", title: "Keep boolean OR", outcome: "no-match", files: [{ path: "src/access.ts", source: 'export function allowed(isAdmin: boolean, isOwner: boolean) { return isAdmin || isOwner; }' }], focusPath: "src/access.ts", expectedCount: 0, public: false },
-  ],
-} as const satisfies RuleDocumentation;
+// View of a type: string/number/bigint/boolean-like, string/number/bigint-like, type parameter.
+const PRIMITIVE = 1;
+const FALLBACK = 2;
+const TYPE_PARAMETER = 4;
 
-export default createRule<[], "logicalOrFallback">({
-  name: "no-logical-or-fallback",
-  documentation: NO_LOGICAL_OR_FALLBACK_DOCUMENTATION,
+interface Member {
+  readonly bits: number;
+  /** Truthiness of a string, number, boolean or bigint literal; undefined otherwise. */
+  readonly truth: boolean | undefined;
+  /** Members of an intersection. */
+  readonly parts: readonly Member[] | undefined;
+}
+
+function primitivePart(member: Member): Member | undefined {
+  if ((member.bits & PRIMITIVE) !== 0) return member;
+  if (member.parts === undefined || member.parts.some((part) => (part.bits & TYPE_PARAMETER) !== 0)) return undefined;
+  return member.parts.find((part) => (part.bits & PRIMITIVE) !== 0);
+}
+
+/** The original's check on the left-hand type, given its union members (or the type itself). */
+function fallbackType(members: readonly Member[]): boolean {
+  const parts = members.map(primitivePart);
+  if (parts.some((part) => part === undefined) || !parts.some((part) => part !== undefined && (part.bits & FALLBACK) !== 0)) return false;
+  const truthiness = parts.map((part) => part?.truth);
+  return !(truthiness.every((value) => value === true) || truthiness.every((value) => value === false));
+}
+
+/** A call callee that may be the native `Boolean`: the identifier, or the global receiver of `<receiver>.Boolean`. */
+interface BooleanCallee {
+  readonly identifier: ESTree.IdentifierReference | null;
+  readonly receiver: ESTree.IdentifierReference | null;
+}
+
+interface Candidate {
+  readonly node: ESTree.LogicalExpression;
+  /** Set when the expression is the first argument of a call that may be the native `Boolean`. */
+  readonly callee: BooleanCallee | null;
+}
+
+function bitsOf(flags: number, table: { readonly primitive: number; readonly fallback: number; readonly typeParameter: number }): number {
+  return ((flags & table.primitive) !== 0 ? PRIMITIVE : 0) | ((flags & table.fallback) !== 0 ? FALLBACK : 0) |
+    ((flags & table.typeParameter) !== 0 ? TYPE_PARAMETER : 0);
+}
+
+/** Left-hand union members (or the type itself) for every node, in at most three batched tsrs requests. */
+function tsrsMembers(file: TsrsFile, nodes: readonly Node[]): (readonly Member[] | undefined)[] {
+  const table = tsrsTable(file.flags);
+  const types = file.typesOf(nodes);
+  const unions = [...new Set(types.flatMap((type) => type?.isUnionType() === true ? [type] : []))];
+  const unionMembers = file.batch(unions.map((union) => union.getTypes.gen()));
+  const membersOf = new Map(unions.map((union, i) => [union, unionMembers[i] ?? []]));
+  const views = types.map((type) => type === undefined ? undefined : membersOf.get(type) ?? [type]);
+  // primitivePart reads an intersection's members only when the intersection itself is not primitive.
+  const intersections = [...new Set(views.flat().flatMap((type) =>
+    type !== undefined && (type.flags & table.primitive) === 0 && type.isIntersectionType() ? [type] : []))];
+  const intersectionParts = file.batch(intersections.map((intersection) => intersection.getTypes.gen()));
+  const partsOf = new Map(intersections.map((intersection, i) => [intersection, intersectionParts[i] ?? []]));
+  const leaf = (type: TsrsType): Member => ({ bits: bitsOf(type.flags, table), truth: truth(type), parts: undefined });
+
+  function truth(type: TsrsType): boolean | undefined {
+    if (type.isStringLiteralType() || type.isNumberLiteralType()) return Boolean(type.value);
+    // TypeScript names boolean literals by intrinsicName; tsrs leaves it unset and gives the value.
+    if ((type.flags & table.booleanLiteral) !== 0) return type.value === true;
+    if ((type.flags & table.bigIntLiteral) !== 0) return BigInt(type.value) !== 0n;
+    return undefined;
+  }
+  return views.map((view) => view?.map((type) => ({ ...leaf(type), parts: partsOf.get(type)?.map(leaf) })));
+}
+
+// tsrs numbers flags as TypeScript 7 does.
+function tsrsTable(flags: TsrsTypeFlags) {
+  return {
+    primitive: flags.StringLike | flags.NumberLike | flags.BigIntLike | flags.BooleanLike,
+    fallback: flags.StringLike | flags.NumberLike | flags.BigIntLike,
+    typeParameter: flags.TypeParameter,
+    booleanLiteral: flags.BooleanLiteral,
+    bigIntLiteral: flags.BigIntLiteral,
+  };
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: NO_LOGICAL_OR_FALLBACK_DOCUMENTATION.summary },
+    docs: {
+      description: "Use nullish defaults or explicit falsy-value checks instead of logical OR fallbacks.",
+      url: docsUrl(NAME),
+    },
     schema: [],
-    messages: { logicalOrFallback: "Use ?? for a missing-value default. If an empty string, zero or false should trigger this fallback, test that condition explicitly; replacing || blindly changes behavior." },
+    messages: {
+      logicalOrFallback:
+        "Use ?? for a missing-value default. If an empty string, zero or false should trigger this fallback, test that condition explicitly; replacing || blindly changes behavior.",
+    },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
-    const services = getTypeServices(context);
-    const checker = services.program.getTypeChecker();
-    const options = services.program.getCompilerOptions();
-    if (!(options.strictNullChecks ?? options.strict ?? false)) return {};
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: Candidate[] = [];
+
+    /** True or false when the context alone decides; a callee when the native `Boolean` check decides. */
+    function booleanContext(node: Node): boolean | BooleanCallee {
+      let current = outerExpression(node);
+      for (let parent = parentOf(current); parent !== null; parent = parentOf(current)) {
+        switch (parent.type) {
+          case "LogicalExpression":
+            if (parent.operator === "&&" && parent.left === current) return true;
+            current = outerExpression(parent);
+            continue;
+          case "IfStatement":
+          case "WhileStatement":
+          case "DoWhileStatement":
+          case "ForStatement":
+          case "ConditionalExpression":
+            return parent.test === current;
+          case "UnaryExpression":
+            return parent.operator === "!";
+          case "CallExpression":
+            return parent.arguments[0] === current && (booleanCallee(parent.callee) ?? false);
+          default:
+            return false;
+        }
+      }
+      return false;
+    }
+
+    /** The untyped half of the original's `nativeBoolean`; the symbol check waits for `Program:exit`. */
+    function booleanCallee(node: Node): BooleanCallee | null {
+      const callee = unwrapExpression(node);
+      if (callee.type === "Identifier" && callee.name === "Boolean" && !shadowed(callee)) {
+        return { identifier: callee as ESTree.IdentifierReference, receiver: null };
+      }
+      if (callee.type === "MemberExpression" && getPropertyName(callee) === "Boolean") {
+        const receiver = unwrapExpression(callee.object);
+        if (receiver.type !== "Identifier" || !GLOBAL_RECEIVERS.has(receiver.name) || shadowed(receiver)) return null;
+        return { identifier: null, receiver: receiver as ESTree.IdentifierReference };
+      }
+      return null;
+    }
+
+    function shadowed(node: Node & { readonly name: string }): boolean {
+      return (findVariable(context.sourceCode.getScope(node), node.name)?.defs.length ?? 0) !== 0;
+    }
+
+    /** Whether each candidate reports. */
+    function resolve(file: TsrsFile): boolean[] {
+      const members = tsrsMembers(file, candidates.map((candidate) => candidate.node.left));
+      const typed = members.map((view) => view !== undefined && fallbackType(view));
+      // Only candidates the type check keeps need the native Boolean check.
+      const pending = candidates.flatMap((candidate, i) => typed[i] === true && candidate.callee !== null ? [i] : []);
+      const identifiers = pending.flatMap((i) => candidates[i]!.callee!.identifier ?? []);
+      const receivers = pending.flatMap((i) => candidates[i]!.callee!.receiver ?? []);
+      const identifierSymbols = file.symbolsOf(identifiers);
+      const receiverTypes = file.typesOf(receivers);
+      const present = receiverTypes.filter((type) => type !== undefined);
+      const properties = file.batch(present.map((type) => type.getProperty.gen("Boolean")));
+      const symbolOf = new Map<Node, TsrsSymbol | undefined>();
+      identifiers.forEach((node, i) => symbolOf.set(node, identifierSymbols[i]));
+      let next = 0;
+      receivers.forEach((node, i) => symbolOf.set(node, receiverTypes[i] === undefined ? undefined : properties[next++]));
+      for (const i of pending) {
+        const callee = candidates[i]!.callee!;
+        if (file.isDefaultLibrarySymbol(symbolOf.get((callee.identifier ?? callee.receiver)!))) typed[i] = false;
+      }
+      return typed;
+    }
+
     return {
-      LogicalExpression(node): void {
-        if (node.operator !== "||" || booleanContext(node, context.sourceCode, services)) return;
-        const type = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.left));
-        const members = (type.isUnion() ? type.types : [type]).map(primitivePart);
-        if (members.some(member => member === undefined) ||
-          !members.some(member => member !== undefined && (member.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike)) !== 0)) return;
-        const truthiness = members.map(member => member === undefined ? undefined : literalTruthiness(member));
-        if (truthiness.every(value => value === true) || truthiness.every(value => value === false)) return;
-        context.report({ node, messageId: "logicalOrFallback" });
+      before() {
+        tsrs = null;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        const options = tsrs?.compilerOptions;
+        return options !== undefined && Boolean(options.strictNullChecks ?? options.strict ?? false);
+      },
+      LogicalExpression(node) {
+        if (node.operator !== "||") return;
+        const owner = booleanContext(node);
+        if (owner !== true) candidates.push({ node, callee: owner === false ? null : owner });
+      },
+      "Program:exit"() {
+        if (tsrs === null || candidates.length === 0) return;
+        const found = tsrs.run(resolve);
+        if (found === null) return;
+        candidates.forEach((candidate, i) => {
+          if (found[i] === true) context.report({ node: candidate.node, messageId: "logicalOrFallback" });
+        });
       },
     };
   },
 });
-
-function primitivePart(type: ts.Type): ts.Type | undefined {
-  if ((type.flags & PRIMITIVE_FLAGS) !== 0) return type;
-  if (!type.isIntersection() || type.types.some(member => (member.flags & ts.TypeFlags.TypeParameter) !== 0)) return undefined;
-  return type.types.find(member => (member.flags & PRIMITIVE_FLAGS) !== 0);
-}
-
-function literalTruthiness(type: ts.Type): boolean | undefined {
-  if (type.isStringLiteral() || type.isNumberLiteral()) return Boolean(type.value);
-  if (isBooleanLiteralType(type)) return type.intrinsicName === "true";
-  if (isBigIntLiteralType(type)) return type.value.base10Value !== "0";
-  return undefined;
-}
-
-function booleanContext(node: TSESTree.Node, source: TypeScriptSourceCode, services: TypeServices): boolean {
-  let current = outerExpression(node);
-  while (current.parent !== undefined) {
-    const parent = current.parent;
-    switch (parent.type) {
-      case AST_NODE_TYPES.LogicalExpression:
-        if (parent.operator === "&&" && parent.left === current) return true;
-        current = outerExpression(parent);
-        continue;
-      case AST_NODE_TYPES.IfStatement:
-      case AST_NODE_TYPES.WhileStatement:
-      case AST_NODE_TYPES.DoWhileStatement:
-      case AST_NODE_TYPES.ForStatement:
-      case AST_NODE_TYPES.ConditionalExpression:
-        return parent.test === current;
-      case AST_NODE_TYPES.UnaryExpression:
-        return parent.operator === "!";
-      case AST_NODE_TYPES.CallExpression:
-        return parent.arguments[0] === current && nativeBoolean(parent.callee, source, services);
-      default:
-        return false;
-    }
-  }
-  return false;
-}
-
-function nativeBoolean(node: TSESTree.Node, source: TypeScriptSourceCode, services: TypeServices): boolean {
-  const callee = unwrapExpression(node);
-  const checker = services.program.getTypeChecker();
-  let symbol: ts.Symbol | undefined;
-  if (callee.type === AST_NODE_TYPES.Identifier && callee.name === "Boolean" && !ASTUtils.findVariable(source.getScope(callee), callee.name)?.defs.length) {
-    symbol = checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(callee));
-  } else if (callee.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(callee) === "Boolean") {
-    const receiver = unwrapExpression(callee.object);
-    if (receiver.type !== AST_NODE_TYPES.Identifier || !GLOBAL_RECEIVERS.has(receiver.name) || ASTUtils.findVariable(source.getScope(receiver), receiver.name)?.defs.length) return false;
-    symbol = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(receiver)).getProperty("Boolean");
-  }
-  return symbol?.declarations !== undefined && symbol.declarations.length > 0 &&
-    symbol.declarations.every(declaration => services.program.isSourceFileDefaultLibrary(declaration.getSourceFile()));
-}

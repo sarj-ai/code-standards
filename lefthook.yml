@@ -29,11 +29,11 @@ pre-commit:
         landed outside the allowed locations, or a generated strict config
         drifted from its packaged source. Fix the reported path and retry.
 
-    authored-eslint-fixes:
+    authored-oxlint-fixes:
       priority: 4
-      run: uv run --no-config --project packages/standards --frozen python .github/scripts/fix-staged-eslint.py
+      run: uv run --no-config --project packages/standards --frozen python .github/scripts/fix-staged-oxlint.py
       fail_text: >-
-        Authored ESLint fixes require review or a reported failure needs repair.
+        Authored Oxlint fixes require review or a reported failure needs repair.
         Review and stage source changes before retrying.
     standards:
       priority: 5

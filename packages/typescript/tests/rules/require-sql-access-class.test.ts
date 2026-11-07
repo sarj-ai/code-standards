@@ -1,26 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-sql-access-class.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION,
-} from "../../src/rules/require-sql-access-class.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, sourceType: "module" },
-});
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("require-sql-access-class", rule, {
   valid: [
     { name: "does not classify a Map lookup as SQL", code: "const db = new Map(); function lookup(key) { return db.get(key); }" },
     { name: "does not classify URL query parsing as SQL", code: "const query = new URLSearchParams(); query.get('id');" },
-    REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION.examples[0].files[0].source,
+    "export class UserRepository { constructor(private readonly db: Database.Database) {} find(id: string) { return this.db.prepare('SELECT id FROM user WHERE id = ?').get(id); } }",
     "export class D1Repository { constructor(readonly env: { DB: D1Database }) {} find() { return this.env.DB.prepare('SELECT 1').first(); } }",
     "export class AssignedRepository { readonly database: Database.Database; constructor(connection: Database.Database) { this.database = connection; } find() { return this.database.prepare('SELECT 1').get(); } }",
     "export class KyselyRepository { constructor(readonly db: Kysely<Database>) {} find() { return this.db.selectFrom('user').selectAll().executeTakeFirst(); } }",
@@ -35,7 +23,7 @@ RULE_TESTER.run("require-sql-access-class", rule, {
   ],
   invalid: [
     {
-      code: REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION.examples[1].files[0].source,
+      code: "export function find(database: Database.Database, id: string) { return database.prepare('SELECT id FROM user WHERE id = ?').get(id); }",
       errors: [{ messageId: "moveSqlIntoClass" }],
     },
     {

@@ -1,19 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-schema-for-api-payload.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION } from "../../src/rules/prefer-schema-for-api-payload.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
-
-RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
+ruleTester().run("prefer-schema-for-api-payload", rule, {
   valid: [
     {
       name: "validates payloads fetched through a destructured native alias",
@@ -34,7 +23,7 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
     { name: "untyped response name alone does not establish provenance", code: "async function render(response) { const value = await response.json(); return value.id; }" },
     { name: "arbitrary model json is not a network response", code: "function render(model) { const value = model.json(); return value.id; }" },
     { name: "shadowed JSON parser is not native JSON", code: "function render(JSON) { const value = JSON.parse(raw); return value.id; }" },
-    { name: "public no-match example", filename: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[0].focusPath, code: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public no-match example", filename: "src/client.ts", code: "import { z } from 'zod';\nconst UserSchema = z.object({ id: z.string() });\nasync function load(response: Response) { const body = UserSchema.parse(await response.json()); return body.id; }" },
     {
       name: "allows integration scripts to inspect the real transport payload",
       filename: "/repo/scripts/e2e-scenario.mjs",
@@ -99,7 +88,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
       code: "async function f(r: Response) { return (await r.json()).safeParse(); }",
     },
 
-
     {
       code: "async function f(r: Response) { let data = await r.json(); data = ZUser.parse(data); return data.name; }",
     },
@@ -122,7 +110,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
     {
       code: "async function f(r: Response) { const body = await r.json(); while (accepts(body) && ready) { return body.value; } }",
     },
-
 
     {
       code: "async function f(req: Request) { const { cacheTag } = await req.json(); if (typeof cacheTag !== 'string') { return new Response(null, { status: 400 }); } return cacheTag; }",
@@ -147,7 +134,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
       code: "async function f(r: Response) { const body = await r.json(); assertIdentifier(body.id); return coerceCount(body.count); }",
     },
 
-
     {
       code: "async function f(r: Response) { const e = await r.json().catch(() => ({})); return e; }",
     },
@@ -158,7 +144,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
     {
       code: "async function f(r: Response) { const d = await r.json().then(ZUser.safeParse); return d.success; }",
     },
-
 
     { code: "const raw = JSON.parse(text); const data = Schema.parse(raw); use(data.foo);" },
     { code: "const data = Schema.parse(JSON.parse(text)); use(data.foo);" },
@@ -206,6 +191,7 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
       name: "allows a field used inside its proven primitive branch",
       code: "async function f(r: Response) { const body = await r.json(); return typeof body.id === 'string' ? body.id.trim() : null; }",
     },
+    { name: "documented example unvalidated-payload-dynamic-member", filename: "src/client.ts", code: "async function load(response: Response) { const body = await response[auditDynamicMember](); return body[auditDynamicMember]; }" },
   ],
   invalid: [
     {
@@ -231,7 +217,7 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
     { name: "conditional validation does not validate the following path", code: "async function f(r: Response) { const body = await r.json(); if (isPayload(body)) consume(body); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
     { name: "validation in a deferred function does not dominate outer reads", code: "async function f(r: Response) { const body = await r.json(); const check = () => validatePayload(body); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
     { name: "an ignored predicate result does not validate a payload", code: "async function f(r: Response) { const body = await r.json(); isPayload(body); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
-    { name: "public match example", filename: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[1].focusPath, code: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "unparsedJsonAccess" }] },
+    { name: "public match example", filename: "src/client.ts", code: "async function load(response: Response) { const body = await response.json(); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
 
     {
       code: "async function f(res: Response) { const body = await res.json(); return body.id; }",
@@ -377,7 +363,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
 
-
     {
       code: "async function f(r: Response) { const body = await r.json(); if (typeof body.id !== 'string') { throw new Error('bad'); } return body.email; }",
       errors: [{ messageId: "unparsedJsonAccess" }],
@@ -423,39 +408,6 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
       code: "async function f(res: Response) { if (!res.ok) { const error = await res.json(); toast(error.message); } }",
       errors: [{ messageId: "unparsedJsonAccess" }],
     },
+    { name: "documented example unvalidated-payload-static-member", filename: "src/client.ts", code: "async function load(response: Response) { const body = await response[\"json\"](); return body[\"id\"]; }", errors: [{ messageId: "unparsedJsonAccess" }] },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "unvalidated-payload-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/client.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/client.ts",
-        "source": "async function load(response: Response) { const body = await response[\"json\"](); return body[\"id\"]; }"
-      }
-    ]
-  },
-  {
-    "id": "unvalidated-payload-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/client.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/client.ts",
-        "source": "async function load(response: Response) { const body = await response[auditDynamicMember](); return body[auditDynamicMember]; }"
-      }
-    ]
-  }
-] } });
 });

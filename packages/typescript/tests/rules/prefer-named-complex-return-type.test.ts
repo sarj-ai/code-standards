@@ -1,18 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-named-complex-return-type.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION,
-} from "../../src/rules/prefer-named-complex-return-type.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
+  examples: [
+    { files: [{ source: "type ClaimResult = { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string }; export function claim(): ClaimResult { return { state: 'idle' }; }" }] },
+    { files: [{ source: "export function claim(): { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string } { return { state: 'idle' }; }" }] },
+  ],
+} as const;
 
 RULE_TESTER.run("prefer-named-complex-return-type", rule, {
   valid: [

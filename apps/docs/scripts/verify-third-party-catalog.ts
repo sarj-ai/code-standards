@@ -251,7 +251,7 @@ async function verifyDist(ruleCounts: Map<string, number>) {
     ),
     "Third party Rules must be closed by default outside its active routes",
   );
-  const engineIds = ["python", "eslint", "iac", "sql", "text"];
+  const engineIds = ["python", "oxlint", "iac", "sql", "text"];
   assert.deepEqual(
     [...rulesIndex.matchAll(/data-sidebar-engine="([^"]+)"/gu)].map(
       (match) => match[1],

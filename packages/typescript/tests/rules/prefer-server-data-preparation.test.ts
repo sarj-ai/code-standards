@@ -1,20 +1,10 @@
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
 import rule from "../../src/rules/prefer-server-data-preparation.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import { FIXTURES, ruleTester, typed, untyped } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const TESTER = ruleTester({ cwd: join(FIXTURES, "minimal-consumer") });
 
-const PARSER_OPTIONS = { projectService: { allowDefaultProject: ["*.tsx"], defaultProject: "tsconfig.json" }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "minimal-consumer"), ecmaFeatures: { jsx: true } };
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: PARSER_OPTIONS } });
 const CLIENT = "'use client'; ";
 const VIEW = "export function View({ rows }: { rows: readonly { language: string; enabled: boolean }[] }) { const languages = rows.map(row => row.language); return <select onChange={event => console.log(event.currentTarget.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }";
 const CASE = CLIENT + VIEW;
@@ -26,7 +16,7 @@ const RANGE_OPTIONS = Object.entries(TIME_RANGES)
   .map(([value, { label }]) => ({ label, value }));
 `;
 
-TESTER.run("prefer-server-data-preparation", rule, {
+TESTER.run("prefer-server-data-preparation", rule, typed({
   valid: [
     {"name": "Captured values prevent array-output preparation", "filename": "probe.tsx", "code": "'use client'; import {useState} from 'react'; declare const suffix: string; export function PreparationReview({ rows }: { rows: readonly { code: string; name: string; values: readonly string[] }[] }) { const [choice, setChoice] = useState(''); const prepared = rows.map(row => [row.code, suffix]); return <button onClick={() => setChoice('next')}>{choice}:{prepared.length}</button>; }"},
     {"name": "Opaque iterable spreads remain outside array projection support", "filename": "probe.tsx", "code": "'use client'; import {useState} from 'react';  export function PreparationReview({ rows }: { rows: readonly { code: string; name: string; values: readonly string[] }[] }) { const [choice, setChoice] = useState(''); const prepared = rows.map(row => [row.code, ...row.values]); return <button onClick={() => setChoice('next')}>{choice}:{prepared.length}</button>; }"},
@@ -110,25 +100,19 @@ TESTER.run("prefer-server-data-preparation", rule, {
     { name: "conditional data projection", filename: "probe.tsx", code: CASE.replace("row => row.language", "row => row.enabled ? row.language : ''"), errors: [{ messageId: "prepareData" }] },
     { name: "logical projection", filename: "probe.tsx", code: CASE.replace("row => row.language", "row => row.language || ''"), errors: [{ messageId: "prepareData" }] },
   ],
-});
+}));
 
-it("executes documented examples", async () => { await verifyRuleExamples(rule); });
+TESTER.run("executes documented examples", rule, typed({
+  valid: [{ name: "prepared-values", filename: "src/options.tsx", code: "'use client'; import { useState } from 'react'; export function Options({ languages }: { languages: readonly string[] }) { const [selected, setSelected] = useState(''); return <select value={selected} onChange={event => setSelected(event.target.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }" }],
+  invalid: [{ name: "client-projection", filename: "src/options.tsx", code: "'use client'; import { useState } from 'react'; export function Options({ rows }: { rows: readonly { language: string }[] }) { const [selected, setSelected] = useState(''); const languages = rows.map(row => row.language); return <select value={selected} onChange={event => setSelected(event.target.value)}>{languages.map(language => <option key={language}>{language}</option>)}</select>; }", errors: [{ messageId: "prepareData" }] }],
+}));
 
-it("abstains without native type services", () => {
-  const linter = new Linter();
-  const result = linter.verify(CASE, [{ files: ["**/*.tsx"], languageOptions: { parser }, plugins: { sarj: { rules: { "prefer-server-data-preparation": rule } } }, rules: { "sarj/prefer-server-data-preparation": "warn" } }], { filename: "view.tsx" });
-  expect(result).toEqual([]);
-});
+TESTER.run("abstains without native type services", rule, untyped({
+  valid: [{ name: "no types", filename: "view.tsx", code: CASE }],
+  invalid: [],
+}));
 
-it("does not rewrite a server boundary and converges", () => {
-  const linter = new Linter({ cwd: PARSER_OPTIONS.tsconfigRootDir });
-  const configuration = [{ files: ["**/*.tsx"], languageOptions: { parser, parserOptions: PARSER_OPTIONS }, plugins: { sarj: { rules: { "prefer-server-data-preparation": rule } } }, rules: { "sarj/prefer-server-data-preparation": "warn" as const } }];
-  const filename = join(PARSER_OPTIONS.tsconfigRootDir, "probe.tsx");
-  const first = linter.verifyAndFix(CASE, configuration, { filename });
-  expect(first.output).toBe(CASE);
-  expect(first.fixed).toBe(false);
-  expect(first.messages.map(message => message.messageId)).toEqual(["prepareData"]);
-  expect(linter.verifyAndFix(first.output, configuration, { filename })).toEqual(first);
-  const suppressed = "/* eslint-disable sarj/prefer-server-data-preparation -- input changes in a client producer */\n" + CASE;
-  expect(linter.verify(suppressed, configuration, { filename })).toEqual([]);
-});
+TESTER.run("does not rewrite a server boundary", rule, typed({
+  valid: [],
+  invalid: [{ name: "no fix", filename: "probe.tsx", code: CASE, output: null, errors: [{ messageId: "prepareData" }] }],
+}));

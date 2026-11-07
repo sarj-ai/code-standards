@@ -1,25 +1,21 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-import { Linter } from "eslint";
-import zodPlugin from "eslint-plugin-zod";
+import { expect, it } from "vitest";
 import { z } from "zod";
 
-import rule, {
-  NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION,
-} from "../../src/rules/no-impossible-zod-literal-bounds.js";
+import rule from "../../src/rules/no-impossible-zod-literal-bounds.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-});
 const PRODUCTION = "src/schema.ts";
 const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
+
+const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
+  examples: [
+    { files: [{ path: "src/schema.ts", source: 'import { z } from "zod"; const S = z.number().gte(3).lte(3);' }] },
+    { files: [{ path: "src/schema.ts", source: 'import { z } from "zod"; const S = z.number().min(5).max(4);' }] },
+  ],
+} as const;
 
 RULE_TESTER.run("modern Zod integer and length domains", rule, {
   valid: [
@@ -367,71 +363,25 @@ RULE_TESTER.run("no-impossible-zod-literal-bounds", rule, {
   ],
 });
 
-it("assigns integer gaps and real contradictions to different owners", () => {
-  const linter = new Linter();
-  const config = [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { zod: zodPlugin, sarj: { rules: { bounds: rule } } },
-      rules: { "zod/no-conflicting-checks": "error", "sarj/bounds": "error" },
-    },
-  ] as const;
-  const gap = linter.verify(
-    withZod("const S = z.number().int().gt(0).lt(1);"),
-    config,
-    PRODUCTION,
-  );
-  const contradiction = linter.verify(
-    withZod("const S = z.number().int().min(5).max(4);"),
-    config,
-    PRODUCTION,
-  );
-  expect(gap.map(({ ruleId }) => ruleId)).toEqual(["sarj/bounds"]);
-  expect(contradiction.map(({ ruleId }) => ruleId)).toEqual([
-    "zod/no-conflicting-checks",
-  ]);
+RULE_TESTER.run("assigns integer gaps and real contradictions to different owners", rule, {
+  valid: [{ name: "leaves a real integer contradiction to eslint-plugin-zod (only the @sarj side runs under Oxlint)", filename: PRODUCTION, code: withZod("const S = z.number().int().min(5).max(4);") }],
+  invalid: [{ name: "owns an integer gap with no integer in range (only the @sarj side runs under Oxlint)", filename: PRODUCTION, code: withZod("const S = z.number().int().gt(0).lt(1);"), errors: [{ messageId: "impossibleBounds" }] }],
 });
 
-it("keeps upstream contradictions and new native-domain gaps under one owner", () => {
-  const config = [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { zod: zodPlugin, sarj: { rules: { bounds: rule } } },
-      rules: {
-        "zod/no-conflicting-checks": "error",
-        "sarj/bounds": ["error", { delegateRealContradictions: true }],
-      },
-    },
-  ] as const;
-  for (const expression of [
-    "z.number().min(5).max(4)",
-    "z.string().min(5).max(4)",
-    "z.int().min(5).max(4)",
-  ]) {
-    const findings = new Linter().verify(
-      withZod(`const S=${expression};`),
-      config,
-      PRODUCTION,
-    );
-    expect(findings.map(({ ruleId }) => ruleId)).toEqual([
-      "zod/no-conflicting-checks",
-    ]);
-  }
-  for (const expression of [
-    "z.int().gt(0).lt(1)",
-    "z.int32().min(2147483648)",
-    "z.uint32().max(-1)",
-    "z.string().min(.2).max(.8)",
-  ]) {
-    const findings = new Linter().verify(
-      withZod(`const S=${expression};`),
-      config,
-      PRODUCTION,
-    );
-    expect(findings.map(({ ruleId }) => ruleId)).toEqual(["sarj/bounds"]);
-  }
+RULE_TESTER.run("keeps upstream contradictions and new native-domain gaps under one owner", rule, {
+  valid: ["z.number().min(5).max(4)", "z.string().min(5).max(4)", "z.int().min(5).max(4)"].map((expression) => ({
+    filename: PRODUCTION,
+    code: withZod(`const S=${expression};`),
+    options: [{ delegateRealContradictions: true }],
+  })),
+  invalid: ["z.int().gt(0).lt(1)", "z.int32().min(2147483648)", "z.uint32().max(-1)", "z.string().min(.2).max(.8)"].map(
+    (expression) => ({
+      filename: PRODUCTION,
+      code: withZod(`const S=${expression};`),
+      options: [{ delegateRealContradictions: true }],
+      errors: [{ messageId: "impossibleBounds" }],
+    }),
+  ),
 });
 
 it("matches native Zod integer formats and length domains", () => {

@@ -1,163 +1,77 @@
 /**
  * @fileoverview prefer-named-callback-domain — prefer named literal domains in public callback contracts.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-callback-domain.test.ts
+ * Port of the 18.x `prefer-named-callback-domain` rule. Untyped. Oxlint
+ * sets an absent parameter `typeAnnotation` to `null` where TS-ESTree leaves it
+ * `undefined`; both mean "no annotation" here.
  */
 
-import type { NativeRuleListener } from "./_eslint-rule.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { existingTypeAliasFix } from "../utils/existing-type-alias-fix.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
 
+const NAME = "prefer-named-callback-domain";
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { existingTypeAliasFix } from "./_existing-type-alias-fix.js";
-
-type MessageIds = "nameCallbackDomain";
-type Options = [];
-
-export const PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION = {
-  summary:
-    "Name literal-union domains used by callbacks in exported contracts.",
-  rationale:
-    "An inline callback domain hides a reusable vocabulary at the point where callers and implementations must agree.",
-  remediation:
-    "Extract the literal union to a named type and use that type in the callback parameter.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Only callback types nested in an exported type alias or exported interface are reported.",
-    "Automatic fixes only reuse one existing exported nongeneric alias with exactly matching primitive literal-union tokens and the same lexical binding. Missing, ambiguous, shadowed or commented aliases remain manual.",
-  ],
-  examples: [
-    {
-      id: "named-domain",
-      title: "Name the callback domain",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/options.ts",
-          source:
-            "export type Boundary = 'seeded' | 'queued'; export interface Options { done?: (boundary: Boundary) => void; }",
-        },
-      ],
-      focusPath: "src/options.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "inline-domain",
-      title: "Do not inline a public callback domain",
-      outcome: "match",
-      files: [
-        {
-          path: "src/options.ts",
-          source:
-            "export interface Options { done?: (boundary: 'seeded' | 'queued') => void; }",
-        },
-      ],
-      focusPath: "src/options.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing authored domain alias",
-      outcome: "match",
-      files: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export type Boundary = 'seeded' | 'queued'; export interface Options { done?: (boundary: 'seeded' | 'queued') => void; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export type Boundary = 'seeded' | 'queued'; export interface Options { done?: (boundary: Boundary) => void; }",
-        },
-      ],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function isLiteralUnion(node: TSESTree.TypeNode): boolean {
+function isLiteralUnion(node: ESTree.TSType): boolean {
   return (
-    node.type === AST_NODE_TYPES.TSUnionType &&
-    node.types.length >= 2 &&
-    node.types.every((part) => part.type === AST_NODE_TYPES.TSLiteralType)
+    node.type === "TSUnionType" && node.types.length >= 2 && node.types.every((part) => part.type === "TSLiteralType")
   );
 }
 
-function exportedContract(node: TSESTree.Node): boolean {
-  let current: TSESTree.Node | undefined = node;
-  while (current !== undefined) {
-    if (
-      current.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-      current.type === AST_NODE_TYPES.TSInterfaceDeclaration
-    )
-      return current.parent.type === AST_NODE_TYPES.ExportNamedDeclaration;
-    if (current.type === AST_NODE_TYPES.Program) return false;
-    current = current.parent ?? undefined;
+function exportedContract(node: Node): boolean {
+  let current: Node | null = node;
+  while (current !== null) {
+    if (current.type === "TSTypeAliasDeclaration" || current.type === "TSInterfaceDeclaration")
+      return parentOf(current)?.type === "ExportNamedDeclaration";
+    if (current.type === "Program") return false;
+    current = parentOf(current);
   }
   return false;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-named-callback-domain",
-  documentation: PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
-      description:
-        "Name literal-union domains used by callbacks in exported contracts.",
+      description: "Name literal-union domains used by callbacks in exported contracts.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
-      nameCallbackDomain:
-        "Extract this inline callback literal union to a named domain type.",
+      nameCallbackDomain: "Extract this inline callback literal union to a named domain type.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    )
-      return {};
+  createOnce(context) {
+    let sourceCode: SourceCode;
     return {
-      TSFunctionType(node): void {
+      before() {
+        sourceCode = context.sourceCode;
+        const file = { filename: context.filename, cwd: context.cwd };
+        return !(isTestFile(file) || isGeneratedFile(file, sourceCode.text));
+      },
+      TSFunctionType(node) {
         if (!exportedContract(node)) return;
         for (const parameter of node.params) {
-          if (
-            parameter.type !== AST_NODE_TYPES.TSParameterProperty &&
-            parameter.typeAnnotation !== undefined &&
-            isLiteralUnion(parameter.typeAnnotation.typeAnnotation)
-          ) {
-            const annotation = parameter.typeAnnotation.typeAnnotation;
-            const name = existingTypeAliasFix(context.sourceCode, annotation);
-            context.report({
-              node: annotation,
-              messageId: "nameCallbackDomain",
-              fix:
-                name === null
-                  ? null
-                  : (fixer) =>
-                      fixer.replaceText(
-                        annotation,
-                        name +
-                          context.sourceCode
-                            .getText(annotation)
-                            .replace(/[^\r\n]/gu, ""),
-                      ),
-            });
+          const typeAnnotation = (parameter as { typeAnnotation?: ESTree.TSTypeAnnotation | null }).typeAnnotation;
+          if (parameter.type === "TSParameterProperty" || typeAnnotation == null) continue;
+          const annotation = typeAnnotation.typeAnnotation;
+          if (!isLiteralUnion(annotation)) continue;
+          const name = existingTypeAliasFix(sourceCode, annotation);
+          if (name === null) {
+            context.report({ node: annotation, messageId: "nameCallbackDomain" });
+            continue;
           }
+          context.report({
+            node: annotation,
+            messageId: "nameCallbackDomain",
+            fix: (fixer) =>
+              fixer.replaceText(annotation, name + sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")),
+          });
         }
       },
-    } satisfies NativeRuleListener;
+    };
   },
 });

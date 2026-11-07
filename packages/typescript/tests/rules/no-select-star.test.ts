@@ -1,25 +1,16 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-select-star.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_SELECT_STAR_DOCUMENTATION } from "../../src/rules/no-select-star.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const DOCUMENTED_QUERIES = {
+  "explicit-projection": "db.prepare(`SELECT id, status FROM runs`).all();",
+  "wildcard-projection": "db.prepare(`SELECT * FROM runs`).all();",
+} as const;
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
-
-function documentedQuery(id: "explicit-projection" | "wildcard-projection"): string {
-  const example = NO_SELECT_STAR_DOCUMENTATION.examples.find((entry) => entry.id === id);
-  if (example === undefined) throw new Error(`Missing documented query example ${id}.`);
-  return example.files[0].source;
+function documentedQuery(id: keyof typeof DOCUMENTED_QUERIES): string {
+  return DOCUMENTED_QUERIES[id];
 }
 
 RULE_TESTER.run("no-select-star", rule, {
@@ -184,7 +175,6 @@ RULE_TESTER.run("no-select-star", rule, {
   ],
 });
 
-
 RULE_TESTER.run("no-select-star native-decoded SQL", rule, {
   valid: [
     { name: "native escaped-comment", code: "db.query(\"SEL\\x45CT id FROM runs /* SELECT * FROM runs */\");" },
@@ -199,5 +189,18 @@ RULE_TESTER.run("no-select-star native-decoded SQL", rule, {
     { name: "native hex", code: "db.query(\"SEL\\x45CT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
     { name: "native concatenated", code: "db.query(\"SEL\"+\"ECT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
     { name: "native joined", code: "db.query([\"SEL\"+\"ECT * FROM runs\"].join(\" \"));", errors: [{ messageId: "noSelectStar" }] },
+  ],
+});
+
+RULE_TESTER.run("no-select-star documented autofix", rule, {
+  valid: [],
+  invalid: [
+    {
+      name: "safe-autofix documented example (port-only: the original never offers this fix under Oxlint)",
+      filename: "src/literal-rows.ts",
+      code: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT * FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n",
+      output: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n",
+      errors: [{ messageId: "noSelectStar" }],
+    },
   ],
 });

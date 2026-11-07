@@ -1,127 +1,172 @@
 /**
- * @fileoverview no-redundant-local-alias — Pass the original local into an object field instead of creating a single-use rename.
+ * @fileoverview no-redundant-local-alias — pass the original local into an object field instead of creating a single-use rename.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-local-alias.test.ts
+ * Port of the 18.x `no-redundant-local-alias` rule. Same algorithm;
+ * generated files are skipped and the module-syntax flag is computed in
+ * `before()`. Optional fields (`typeAnnotation`, `typeParameters`,
+ * `returnType`) are `null` in TypeScript files and absent in JavaScript, so
+ * those checks accept both.
  */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { Fix, Fixer } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type Node, type Scope, type SourceCode, type TsVariable } from "../types.js";
+import { tsVariable } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
+import { hasIdentifierNamed } from "../utils/unused-private-binding.js";
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+const NAME = "no-redundant-local-alias";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-import { hasIdentifierNamed } from "./_unused-private-binding.js";
+type ReportFix = (fixer: Fixer) => Fix[];
 
-export const NO_REDUNDANT_LOCAL_ALIAS_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Pass the original local into an object field instead of creating a single-use rename.",
-  rationale: "An unannotated alias used only by its matching object field adds a second name without adding a contract.",
-  remediation: "Write the object property with the original binding, then remove the redundant alias. Keep annotations, captured snapshots and independently useful names.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Checks an unannotated local const alias of a stable parameter or earlier const. Its single read must be a shorthand property in the same function scope. Module exports, imported bindings, captures, reassignment, positional uses and typed aliases are preserved.",
-    "Safe fixes are limited to a plain module-scope function with one explicitly intrinsic-primitive parameter and exactly a const alias followed by a returned object containing that sole shorthand field. The source binding must remain the same at the returned field. Generics, return annotations, optional/default parameters, destructuring, overloads, comments, eval, async/generator functions and the special __proto__ key remain manual. Other diagnostics require review.",
-  ],
-  examples: [
-    { id: "redundant-alias", title: "The property already supplies the name", outcome: "match", files: [{ path: "src/request.ts", source: "function request(value: string) { const accountId = value; return { accountId }; }" }], focusPath: "src/request.ts", expectedCount: 1, public: true },
-    { id: "direct-property", title: "Use the original binding", outcome: "no-match", files: [{ path: "src/request.ts", source: "function request(value: string) { return { accountId: value }; }" }], focusPath: "src/request.ts", expectedCount: 0, public: true },
-    { id: "closed-primitive-parameter-alias", scenarioId: "closed-primitive-parameter-alias", title: "The closed primitive return preserves the data-field contract", outcome: "match", files: [{ path: "src/request.ts", source: "export {};\nfunction request(value: string) {\n  const accountId = value;\n  return { accountId };\n}\n" }], fixedFiles: [{ path: "src/request.ts", source: "export {};\nfunction request(value: string) {\n\n  return { accountId: value };\n}\n" }], focusPath: "src/request.ts", expectedCount: 1, public: true },
-    { id: "closed-primitive-parameter-alias-fixed", scenarioId: "closed-primitive-parameter-alias", title: "The direct data field needs no local alias", outcome: "no-match", files: [{ path: "src/request.ts", source: "export {};\nfunction request(value: string) {\n\n  return { accountId: value };\n}\n" }], focusPath: "src/request.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
-function stableSource(variable: TSESLint.Scope.Variable, alias: TSESTree.VariableDeclarator): boolean {
+function stableSource(variable: TsVariable, alias: ESTree.VariableDeclarator): boolean {
   const definition = variable.defs[0];
   if (variable.defs.length !== 1 || definition === undefined || variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
   return definition.type === "Parameter" || (
-    definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
-    definition.node.parent.kind === "const" && definition.node.init !== null &&
+    definition.node.type === "VariableDeclarator" &&
+    (parentOf(definition.node) as ESTree.VariableDeclaration).kind === "const" && definition.node.init !== null &&
     definition.node.range[1] < alias.range[0]
   );
 }
 
-const PRIMITIVE_PARAMETERS: ReadonlySet<TSESTree.Node["type"]> = new Set([
-  AST_NODE_TYPES.TSStringKeyword, AST_NODE_TYPES.TSNumberKeyword, AST_NODE_TYPES.TSBooleanKeyword,
-  AST_NODE_TYPES.TSBigIntKeyword, AST_NODE_TYPES.TSSymbolKeyword,
+const PRIMITIVE_PARAMETERS: ReadonlySet<string> = new Set([
+  "TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword",
+  "TSBigIntKeyword", "TSSymbolKeyword",
 ]);
 
+const LINE_ENDING_RE = /\r\n|[\r\n\u2028\u2029]/gu;
+
+type Identifier = Extract<Node, { type: "Identifier" }>;
+
 function closedPrimitiveReturnFix(
-  sourceCode: TypeScriptSourceCode,
-  node: TSESTree.VariableDeclarator,
-  property: TSESTree.Property,
-  source: TSESLint.Scope.Variable,
-  target: TSESLint.Scope.Variable,
-): NativeReportFix | null {
-  const statement = node.parent;
-  const body = statement.parent;
-  if (body.type !== AST_NODE_TYPES.BlockStatement) return null;
-  const owner = body.parent;
-  if (owner.type !== AST_NODE_TYPES.FunctionDeclaration || owner.parent.type !== AST_NODE_TYPES.Program ||
-    owner.id === null || owner.async || owner.generator || owner.typeParameters !== undefined || owner.returnType !== undefined ||
-    owner.params.length !== 1 || body.body.length !== 2 || body.body[0] !== statement ||
-    node.id.type !== AST_NODE_TYPES.Identifier || node.id.name === "__proto__" || node.init?.type !== AST_NODE_TYPES.Identifier ||
-    sourceCode.getCommentsInside(owner).length !== 0 || hasIdentifierNamed(sourceCode.ast, "eval")) return null;
+  sourceCode: SourceCode,
+  node: ESTree.VariableDeclarator,
+  property: ESTree.ObjectProperty,
+  source: TsVariable,
+  target: TsVariable,
+): ReportFix | null {
+  const statement = parentOf(node) as ESTree.VariableDeclaration;
+  const closed = closedOwner(statement);
+  if (closed === null || node.id.type !== "Identifier" || node.id.name === "__proto__" || node.init?.type !== "Identifier" ||
+    sourceCode.getCommentsInside(closed.owner).length !== 0 || hasIdentifierNamed(sourceCode, "eval")) return null;
+  const { owner, body } = closed;
   const parameter = owner.params[0];
-  const returned = body.body[1];
-  if (parameter?.type !== AST_NODE_TYPES.Identifier || parameter.optional === true || parameter.typeAnnotation === undefined ||
-    !PRIMITIVE_PARAMETERS.has(parameter.typeAnnotation.typeAnnotation.type) ||
-    returned?.type !== AST_NODE_TYPES.ReturnStatement || returned.argument !== property.parent ||
-    property.parent.type !== AST_NODE_TYPES.ObjectExpression || property.parent.properties.length !== 1 ||
-    ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name) !== source ||
-    ASTUtils.findVariable(sourceCode.getScope(property), node.init.name) !== source ||
-    source.references.some(reference => reference.isTypeReference) || target.references.some(reference => reference.isTypeReference)) return null;
-  const name = owner.id.name;
-  const bindings = sourceCode.getDeclaredVariables(owner).filter(binding => binding.name === name);
-  if (bindings.length !== 1 || bindings[0]?.defs.length !== 1 || bindings[0].defs[0]?.node !== owner ||
-    bindings[0].references.some(reference => reference.isTypeReference)) return null;
+  if (parameter?.type !== "Identifier" || !isRequiredPrimitive(parameter) || !returnsOnly(body, property) ||
+    !renamesParameter(sourceCode, { parameter, init: node.init, property, source, target }) ||
+    !hasUniqueFunctionBinding(sourceCode, owner)) return null;
   const span: readonly [number, number] = [body.range[0] + 1, statement.range[1]];
   const boundaries = sourceCode.text.slice(...span).replace(/[^\r\n\u2028\u2029]/gu, "");
-  const neighbor = Math.max(0, span[0] - 1);
-  const before = sourceCode.text.slice(neighbor, span[1] + 1).match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
-  const after = (sourceCode.text.slice(neighbor, span[0]) + boundaries + sourceCode.text.slice(span[1], span[1] + 1))
-    .match(/\r\n|[\r\n\u2028\u2029]/gu) ?? [];
-  if (before.length !== after.length || before.some((ending, index) => ending !== after[index])) return null;
+  if (!keepsLineEndings(sourceCode.text, span, boundaries)) return null;
   const key = sourceCode.getText(property.key);
   const value = sourceCode.getText(node.init);
-  return fixer => [fixer.replaceTextRange([...(span)], boundaries), fixer.replaceText(property, `${key}: ${value}`)];
+  return fixer => [fixer.replaceTextRange([...span], boundaries), fixer.replaceText(property, `${key}: ${value}`)];
 }
 
-export default createRule<[], "redundantAlias">({
-  name: "no-redundant-local-alias",
-  documentation: NO_REDUNDANT_LOCAL_ALIAS_DOCUMENTATION,
+/** The alias statement opens a non-generic, untyped-return, single-parameter top-level function of two statements. */
+function closedOwner(statement: ESTree.VariableDeclaration): { owner: ESTree.Function & { id: Identifier }; body: ESTree.BlockStatement } | null {
+  const body = parentOf(statement);
+  if (body?.type !== "BlockStatement") return null;
+  const owner = parentOf(body);
+  if (owner?.type !== "FunctionDeclaration" || parentOf(owner)?.type !== "Program" || owner.id === null ||
+    owner.async || owner.generator || owner.typeParameters != null || owner.returnType != null) return null;
+  return owner.params.length === 1 && body.body.length === 2 && body.body[0] === statement ? { owner: owner as ESTree.Function & { id: Identifier }, body } : null;
+}
+
+function isRequiredPrimitive(parameter: Identifier): boolean {
+  return (parameter as { optional?: boolean }).optional !== true &&
+    parameter.typeAnnotation != null && PRIMITIVE_PARAMETERS.has(parameter.typeAnnotation.typeAnnotation.type);
+}
+
+/** The parameter and the alias initializer both bind `source`, and neither binding is used as a type. */
+function renamesParameter(sourceCode: SourceCode, alias: {
+  readonly parameter: Identifier;
+  readonly init: Identifier;
+  readonly property: ESTree.ObjectProperty;
+  readonly source: TsVariable;
+  readonly target: TsVariable;
+}): boolean {
+  const { parameter, init, property, source, target } = alias;
+  return findVariable(sourceCode.getScope(parameter), parameter.name) === source &&
+    findVariable(sourceCode.getScope(property), init.name) === source &&
+    !source.references.some(reference => reference.isTypeReference) && !target.references.some(reference => reference.isTypeReference);
+}
+
+/** The second statement returns the object literal whose only member is `property`. */
+function returnsOnly(body: ESTree.BlockStatement, property: ESTree.ObjectProperty): boolean {
+  const returned = body.body[1];
+  const object = parentOf(property);
+  return returned?.type === "ReturnStatement" && returned.argument === object &&
+    object?.type === "ObjectExpression" && object.properties.length === 1;
+}
+
+/** The function name has one value binding, declared only by `owner`, with no type references. */
+function hasUniqueFunctionBinding(sourceCode: SourceCode, owner: ESTree.Function & { id: Identifier }): boolean {
+  const name = owner.id.name;
+  const bindings = sourceCode.getDeclaredVariables(owner).filter(binding => binding.name === name);
+  const binding = bindings[0];
+  return bindings.length === 1 && binding !== undefined && binding.defs.length === 1 && binding.defs[0]?.node === owner &&
+    !tsVariable(binding).references.some(reference => reference.isTypeReference);
+}
+
+/** Removing `span` keeps every line ending, including the characters on either side. */
+function keepsLineEndings(text: string, span: readonly [number, number], boundaries: string): boolean {
+  const neighbor = Math.max(0, span[0] - 1);
+  const before = text.slice(neighbor, span[1] + 1).match(LINE_ENDING_RE) ?? [];
+  const after = (text.slice(neighbor, span[0]) + boundaries + text.slice(span[1], span[1] + 1)).match(LINE_ENDING_RE) ?? [];
+  return before.length === after.length && before.every((ending, index) => ending === after[index]);
+}
+
+/** The lone shorthand `{ alias }` object property that is the alias's only read, in the alias's own function. */
+function shorthandFieldRead(target: TsVariable, variableScope: Scope): ESTree.ObjectProperty | null {
+  const reads = target.references.filter(reference => reference.isRead());
+  const read = reads[0];
+  if (reads.length !== 1 || read === undefined || target.references.some(reference => reference.isWrite() && !reference.init) ||
+    read.from.variableScope !== variableScope) return null;
+  const property = parentOf(read.identifier);
+  if (property?.type !== "Property" || !property.shorthand || property.value !== read.identifier ||
+    parentOf(property)?.type !== "ObjectExpression" || property.computed || property.method || property.kind !== "init") return null;
+  return property as ESTree.ObjectProperty;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: NO_REDUNDANT_LOCAL_ALIAS_DOCUMENTATION.summary },
+    docs: {
+      description: "Pass the original local into an object field instead of creating a single-use rename.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: { redundantAlias: "This alias is read only by its matching object field; pass `{{source}}` directly as `{{target}}: {{source}}`." },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    const hasModuleSyntax = context.sourceCode.ast.body.some(candidate => candidate.type === AST_NODE_TYPES.ImportDeclaration ||
-      candidate.type === AST_NODE_TYPES.ExportNamedDeclaration || candidate.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
-      candidate.type === AST_NODE_TYPES.ExportAllDeclaration);
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let hasModuleSyntax = false;
     return {
-      VariableDeclarator(node): void {
-        if (node.parent.kind !== "const" || node.parent.declarations.length !== 1 ||
-          node.id.type !== AST_NODE_TYPES.Identifier || node.id.typeAnnotation !== undefined ||
-          node.init?.type !== AST_NODE_TYPES.Identifier) return;
-        const scope = context.sourceCode.getScope(node);
+      before(): boolean | void {
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        sourceCode = context.sourceCode;
+        hasModuleSyntax = sourceCode.ast.body.some(candidate => candidate.type === "ImportDeclaration" ||
+          candidate.type === "ExportNamedDeclaration" || candidate.type === "ExportDefaultDeclaration" ||
+          candidate.type === "ExportAllDeclaration");
+      },
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
+        const declaration = parentOf(node) as ESTree.VariableDeclaration;
+        if (declaration.kind !== "const" || declaration.declarations.length !== 1 ||
+          node.id.type !== "Identifier" || node.id.typeAnnotation != null ||
+          node.init?.type !== "Identifier") return;
+        const scope = sourceCode.getScope(node);
         if (scope.variableScope.type !== "function") return;
-        const target = ASTUtils.findVariable(scope, node.id.name);
-        const source = ASTUtils.findVariable(scope, node.init.name);
+        const target = findVariable(scope, node.id.name);
+        const source = findVariable(scope, node.init.name);
         if (target === null || source === null || !stableSource(source, node)) return;
-        const reads = target.references.filter(reference => reference.isRead());
-        if (reads.length !== 1 || target.references.some(reference => reference.isWrite() && !reference.init)) return;
-        const read = reads[0];
-        if (read === undefined || read.from.variableScope !== scope.variableScope) return;
-        const property = read.identifier.parent;
-        if (property.type !== AST_NODE_TYPES.Property || !property.shorthand || property.value !== read.identifier ||
-          property.parent.type !== AST_NODE_TYPES.ObjectExpression || property.computed || property.method || property.kind !== "init") return;
-        context.report({ node, messageId: "redundantAlias", fix: hasModuleSyntax ? closedPrimitiveReturnFix(context.sourceCode, node, property, source, target) : null, data: { source: node.init.name, target: node.id.name } });
+        const property = shorthandFieldRead(target, scope.variableScope);
+        if (property === null) return;
+        const fix = hasModuleSyntax ? closedPrimitiveReturnFix(sourceCode, node, property, source, target) : null;
+        context.report({ node, messageId: "redundantAlias", ...(fix !== null && { fix }), data: { source: node.init.name, target: node.id.name } });
       },
     };
   },

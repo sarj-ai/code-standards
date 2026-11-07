@@ -1,57 +1,23 @@
 /**
  * @fileoverview prefer-logical-tailwind-utilities — statically proven UI policy violations receive actionable diagnostics.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-logical-tailwind-utilities.test.ts
+ * Port of the 18.x `prefer-logical-tailwind-utilities` rule. The rule is
+ * untyped, so the port covers all of it.
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { defineRule } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { attributeText } from "../utils/jsx-accessibility.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
+import { classTokens, tailwindVariantPrefix } from "../utils/tailwind.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { attributeText } from "./_jsx-accessibility.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
-import { classTokens, tailwindVariantPrefix } from "./_tailwind.js";
+interface Options {
+  readonly enabled?: boolean;
+  readonly checkInsets?: boolean;
+  readonly allowUtilities?: readonly string[];
+}
 
-type Options = readonly [
-  {
-    readonly enabled?: boolean;
-    readonly checkInsets?: boolean;
-    readonly allowUtilities?: readonly string[];
-  }?,
-];
-
-export const PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION = {
-  summary:
-    "Prefer logical Tailwind utilities in explicitly opted-in bidirectional interfaces.",
-  rationale:
-    "Physical spacing and alignment remain on the same side when reading direction changes, producing incorrectly mirrored interfaces.",
-  remediation:
-    "Use the suggested logical utility; retain intentional physical geometry through allowUtilities or a scoped rule override.",
-  category: "correctness",
-  limitations: [
-    "Shared presets set enabled:false. Enable this rule only in scopes that support bidirectional layout. Standalone rule activation opts in. Insets require checkInsets:true; explicit rtl:/ltr: variants are exempt. No autofix changes physical coordinates.",
-    "Only effective complete static JSX className values are inspected. Dynamic compositions, CSS, class factories and identifier references are not inferred. Tests, stories, fixtures and generated files are excluded.",
-  ],
-  examples: [
-    {
-      id: "physical-spacing",
-      title: "Mirror layout spacing",
-      outcome: "match",
-      files: [{ path: "src/layout.tsx", source: '<div className="ml-2" />' }],
-      focusPath: "src/layout.tsx",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "logical-spacing",
-      title: "Use direction-aware spacing",
-      outcome: "no-match",
-      files: [{ path: "src/layout.tsx", source: '<div className="ms-2" />' }],
-      focusPath: "src/layout.tsx",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "prefer-logical-tailwind-utilities";
 
 const PREFIXES: Readonly<Record<string, string>> = {
   ml: "ms",
@@ -76,15 +42,17 @@ const EXACT: Readonly<Record<string, string>> = {
   "clear-right": "clear-end",
 };
 
-const INSET_PREFIXES: Readonly<Record<string, string>> = {
-  ...PREFIXES,
-  left: "start",
-  right: "end",
-};
+const PREFIX_ENTRIES: readonly (readonly [string, string])[] = Object.entries(PREFIXES);
+const INSET_PREFIX_ENTRIES: readonly (readonly [string, string])[] = [
+  ...PREFIX_ENTRIES,
+  ["left", "start"],
+  ["right", "end"],
+];
+const DIRECTION_VARIANT_RE = /(?:^|:)(?:rtl|ltr):/u;
 
 function replacementFor(token: string, checkInsets: boolean): string | null {
   const variant = tailwindVariantPrefix(token);
-  if (/(?:^|:)(?:rtl|ltr):/u.test(variant)) return null;
+  if (DIRECTION_VARIANT_RE.test(variant)) return null;
   const raw = token.slice(variant.length);
   const prefix = raw.startsWith("!") ? "!" : "";
   const suffix = raw.endsWith("!") ? "!" : "";
@@ -92,8 +60,7 @@ function replacementFor(token: string, checkInsets: boolean): string | null {
   const sign = signed.startsWith("-") ? "-" : "";
   const base = signed.slice(sign.length);
   let logical = EXACT[base];
-  const mappings = checkInsets ? INSET_PREFIXES : PREFIXES;
-  for (const [physical, replacement] of Object.entries(mappings)) {
+  for (const [physical, replacement] of checkInsets ? INSET_PREFIX_ENTRIES : PREFIX_ENTRIES) {
     if (base === physical || base.startsWith(`${physical}-`)) {
       logical = replacement + base.slice(physical.length);
       break;
@@ -104,14 +71,13 @@ function replacementFor(token: string, checkInsets: boolean): string | null {
     : variant + prefix + sign + logical + suffix;
 }
 
-export default createRule<Options, "physicalUtility">({
-  name: "prefer-logical-tailwind-utilities",
-  documentation: PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{ enabled: true, checkInsets: false, allowUtilities: [] }],
     type: "suggestion",
     docs: {
-      description: PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION.summary,
+      description: "Prefer logical Tailwind utilities in explicitly opted-in bidirectional interfaces.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -133,22 +99,27 @@ export default createRule<Options, "physicalUtility">({
         "Use '{{replacement}}' instead of '{{utility}}' in this bidirectional UI, or explicitly allow intentional physical placement.",
     },
   },
-  create(context, [options]) {
-    if (
-      options?.enabled === false ||
-      isGeneratedFile(context, context.sourceCode.text) ||
-      isTestFile(context) ||
-      isStoryFile(context)
-    )
-      return {};
+  createOnce(context) {
+    let options: Options | undefined;
     return {
-      JSXOpeningElement(node): void {
+      before() {
+        options = context.options[0] as Options | undefined;
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (
+          options?.enabled === false ||
+          isGeneratedFile(file, context.sourceCode.text) ||
+          isTestFile(file) ||
+          isStoryFile(file)
+        ) return false;
+        return undefined;
+      },
+      JSXOpeningElement(node) {
         const value = attributeText(node, "className");
         if (value === null) return;
         const attribute = node.attributes.findLast(
           (entry) =>
-            entry.type === AST_NODE_TYPES.JSXAttribute &&
-            entry.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            entry.type === "JSXAttribute" &&
+            entry.name.type === "JSXIdentifier" &&
             entry.name.name === "className",
         );
         if (attribute === undefined) return;

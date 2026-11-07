@@ -1,240 +1,103 @@
 /**
  * @fileoverview prefer-nullish-filter-predicate — `filter(Boolean)` does not narrow a nullish union even when every retained value is provably truthy.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nullish-filter-predicate.test.ts
+ * Port of the 18.x `prefer-nullish-filter-predicate` rule. Typed: the
+ * original returns no visitors without type information, so without tsrs (or
+ * when tsrs cannot hold the file) this port reports nothing. The walk collects
+ * `filter(Boolean)` calls; `Program:exit` asks tsrs for their filter symbols
+ * and receiver types in one batched request, then checks each candidate.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { NativeRuleContext, TypeServices, NativeReportFix, NativeSuggestions } from "./_eslint-rule.js";
+import type { Symbol as TsSymbol, Type } from "tsrs/sync";
 
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
+const NAME = "prefer-nullish-filter-predicate";
+const SUMMARY =
+  "Prefer an explicit nullish predicate when `filter(Boolean)` removes only nullish values but does not narrow the result type.";
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { unwrapExpression } from "./_unwrap-expression.js";
-import ts from "typescript";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-
-type MessageIds = "preferNullishPredicate" | "replaceBoolean";
-type Options = readonly [];
-
-export const PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION = {
-  summary:
-    "Prefer an explicit nullish predicate when `filter(Boolean)` removes only nullish values but does not narrow the result type.",
-  rationale:
-    "An explicit nullish predicate preserves the same runtime elements while letting TypeScript remove `null` and `undefined` from the result.",
-  remediation:
-    "Replace `filter(Boolean)` with `filter((value) => value !== null && value !== undefined)`.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "Automatic fixes require a fresh literal array in the source's sole top-level const initializer or expression, with no imports, preceding callouts, or source prototype mutation; other reports retain a suggestion.",
-    "Browser HTMLAllCollection/document.all and its structural supertypes are excluded because the browser can expose a falsy object.",
-    "The receiver must resolve to the built-in Array or ReadonlyArray filter method.",
-    "Broad primitive types, falsy literals, any, unknown, generics, intersections, custom filters, and shadowed Boolean bindings are excluded.",
-  ],
-  examples: [
-    {
-      id: "explicit-nullish-predicate",
-      title: "Nullish filtering narrows the result",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/users.ts",
-          source:
-            "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter((user) => user !== null && user !== undefined);",
-        },
-      ],
-      focusPath: "src/users.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "boolean-nullish-filter",
-      title: "Boolean filtering loses nullish narrowing",
-      outcome: "match",
-      files: [
-        {
-          path: "src/users.ts",
-          source: "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter(Boolean);",
-        },
-      ],
-      focusPath: "src/users.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "const present = [{ id: 'kept' }, null].filter(Boolean);" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-      expectedDiagnostics: [{
-        messageId: "preferNullishPredicate",
-        message: "This built-in array contains only nullish or provably truthy values, so `filter(Boolean)` preserves runtime values but loses nullish narrowing. Use an explicit nullish predicate.",
-        location: { line: 1, column: 47, end: { line: 1, column: 54 } },
-        automaticFix: true,
-        suggestions: [{
-          messageId: "replaceBoolean",
-          output: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);",
-        }],
-      }],
-    },
-    {
-      id: "nonfresh-suggestion-only",
-      title: "Suggest a nullish predicate without assuming a fresh receiver",
-      outcome: "match",
-      files: [{ path: "src/users.ts", source: "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter(Boolean);" }],
-      focusPath: "src/users.ts",
-      expectedCount: 1,
-      expectedDiagnostics: [{
-        messageId: "preferNullishPredicate",
-        message: "This built-in array contains only nullish or provably truthy values, so `filter(Boolean)` preserves runtime values but loses nullish narrowing. Use an explicit nullish predicate.",
-        location: { line: 2, column: 30, end: { line: 2, column: 37 } },
-        automaticFix: false,
-        suggestions: [{
-          messageId: "replaceBoolean",
-          output: "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter((value) => value !== null && value !== undefined);",
-        }],
-      }],
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function isUnshadowedBoolean(
-  node: TSESTree.Identifier,
-  context: NativeRuleContext<MessageIds, Options>,
-): boolean {
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-  return variable === null || variable.defs.length === 0;
+interface Candidate {
+  readonly node: ESTree.CallExpression;
+  readonly callee: ESTree.MemberExpression;
+  readonly callback: ESTree.IdentifierReference;
 }
 
-function isBuiltinArrayFilter(
-  node: TSESTree.MemberExpression,
-  services: TypeServices,
-): boolean {
-  const checker = services.program.getTypeChecker();
-  const property = services.esTreeNodeToTSNodeMap.get(node.property);
-  const symbol = checker.getSymbolAtLocation(property) ??
-    checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.object)).getProperty("filter");
-  return symbol?.declarations?.some((declaration) => {
-    const owner = declaration.parent;
-    return (
-      ts.isInterfaceDeclaration(owner) &&
-      (owner.name.text === "Array" || owner.name.text === "ReadonlyArray") &&
-      services.program.isSourceFileDefaultLibrary(owner.getSourceFile())
-    );
+/** Whether a declaration of `filter` is a member of the default library's Array or ReadonlyArray interface. */
+function isBuiltinArrayFilter(native: NativeTypes, symbol: TsSymbol | undefined): boolean {
+  const kinds = native.ast.SyntaxKind;
+  return symbol?.declarations.some((declaration) => {
+    const owner = declaration.resolve()?.parent;
+    if (owner === undefined || owner.kind !== kinds.InterfaceDeclaration) return false;
+    const name = (owner as unknown as { readonly name: { readonly text: string } }).name.text;
+    return (name === "Array" || name === "ReadonlyArray") &&
+      native.program.getSourceFileMetadataByPath(declaration.path)?.isDefaultLibrary === true;
   }) ?? false;
 }
 
-function arrayElementType(
-  node: TSESTree.Expression,
-  services: TypeServices,
-): ts.Type | null {
-  const checker = services.program.getTypeChecker();
-  const receiver = services.esTreeNodeToTSNodeMap.get(node);
-  return checker.getIndexTypeOfType(checker.getTypeAtLocation(receiver), ts.IndexKind.Number) ?? null;
+interface TruthContext {
+  readonly native: NativeTypes;
+  readonly falsyBrowserObject: Type | null;
+  readonly primitives: readonly Type[];
 }
 
-const NULLISH_FLAGS = ts.TypeFlags.Null | ts.TypeFlags.Undefined;
-const UNKNOWN_FLAGS =
-  ts.TypeFlags.Any |
-  ts.TypeFlags.Unknown |
-  ts.TypeFlags.TypeParameter |
-  ts.TypeFlags.Intersection |
-  ts.TypeFlags.Enum |
-  ts.TypeFlags.EnumLiteral;
-
-function isNullishPlusTruthy(type: ts.Type, checker: ts.TypeChecker, falsyBrowserObject: ts.Type | null): boolean {
-  const members = type.isUnion() ? type.types : [type];
+function isNullishPlusTruthy(type: Type, truth: TruthContext): boolean {
+  const flags = truth.native.sync.TypeFlags;
+  const members = type.isUnionType() ? type.getTypes() : [type];
   let sawNullish = false;
   for (const member of members) {
-    if ((member.flags & NULLISH_FLAGS) !== 0) {
+    if ((member.flags & (flags.Null | flags.Undefined)) !== 0) {
       sawNullish = true;
-    } else if ((member.flags & ts.TypeFlags.Never) === 0 && !isProvablyTruthy(member, checker, falsyBrowserObject)) {
+    } else if ((member.flags & flags.Never) === 0 && !isProvablyTruthy(member, truth)) {
       return false;
     }
   }
   return sawNullish;
 }
 
-function isProvablyTruthy(type: ts.Type, checker: ts.TypeChecker, falsyBrowserObject: ts.Type | null): boolean {
-  if ((type.flags & UNKNOWN_FLAGS) !== 0) return false;
-  if ((type.flags & ts.TypeFlags.Object) !== 0) {
-    if (falsyBrowserObject !== null && checker.isTypeAssignableTo(falsyBrowserObject, type)) return false;
-    return ![
-      checker.getStringType(),
-      checker.getNumberType(),
-      checker.getBigIntType(),
-      checker.getBooleanType(),
-    ].some((primitive) => checker.isTypeAssignableTo(primitive, type));
+function isProvablyTruthy(type: Type, truth: TruthContext): boolean {
+  const flags = truth.native.sync.TypeFlags;
+  const checker = truth.native.checker;
+  const unknown = flags.Any | flags.Unknown | flags.TypeParameter | flags.Intersection | flags.Enum | flags.EnumLiteral;
+  if ((type.flags & unknown) !== 0) return false;
+  if ((type.flags & flags.Object) !== 0) {
+    if (truth.falsyBrowserObject !== null && checker.isTypeAssignableTo(truth.falsyBrowserObject, type)) return false;
+    return !truth.primitives.some((primitive) => checker.isTypeAssignableTo(primitive, type));
   }
-  if ((type.flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return true;
-  if ((type.flags & ts.TypeFlags.BooleanLiteral) !== 0) {
-    return (type as ts.Type & { readonly intrinsicName?: string }).intrinsicName === "true";
-  }
-  if ((type.flags & ts.TypeFlags.StringLiteral) !== 0) {
-    return (type as ts.StringLiteralType).value.length > 0;
-  }
-  if ((type.flags & ts.TypeFlags.NumberLiteral) !== 0) {
-    const value = (type as ts.NumberLiteralType).value;
+  if ((type.flags & (flags.ESSymbol | flags.UniqueESSymbol)) !== 0) return true;
+  // TypeScript names boolean literals by intrinsicName; tsrs gives the value.
+  if ((type.flags & flags.BooleanLiteral) !== 0) return (type as Type & { readonly value: unknown }).value === true;
+  if ((type.flags & flags.StringLiteral) !== 0) return String((type as Type & { readonly value: unknown }).value).length > 0;
+  if ((type.flags & flags.NumberLiteral) !== 0) {
+    const value = Number((type as Type & { readonly value: unknown }).value);
     return value !== 0 && !Number.isNaN(value);
   }
-  if ((type.flags & ts.TypeFlags.BigIntLiteral) !== 0) {
-    return (type as ts.BigIntLiteralType).value.base10Value !== "0";
+  if ((type.flags & flags.BigIntLiteral) !== 0) {
+    return BigInt(String((type as Type & { readonly value: unknown }).value)) !== 0n;
   }
   return false;
 }
 
-function availableParameterName(
-  node: TSESTree.CallExpression,
-  context: NativeRuleContext<MessageIds, Options>,
-): string {
-  for (const name of ["value", "item", "element", "candidate"] as const) {
-    if (ASTUtils.findVariable(context.sourceCode.getScope(node), name) === null) return name;
-  }
-  let suffix = 1;
-  while (ASTUtils.findVariable(context.sourceCode.getScope(node), `value${String(suffix)}`) !== null) suffix += 1;
-  return `value${String(suffix)}`;
-}
-
-function hasFreshArrayReceiver(
-  node: TSESTree.CallExpression,
-  receiver: TSESTree.Expression,
-  context: NativeRuleContext<MessageIds, Options>,
-): boolean {
-  if (receiver.type !== AST_NODE_TYPES.ArrayExpression || !isLiteralValue(receiver)) return false;
-  const statements = context.sourceCode.ast.body;
-  if (statements.length !== 1) return false;
-  const statement = statements[0];
-  if (statement?.type === AST_NODE_TYPES.ExpressionStatement) return statement.expression === node;
-  return statement?.type === AST_NODE_TYPES.VariableDeclaration &&
-    statement.kind === "const" && statement.declarations.length === 1 &&
-    statement.declarations[0]?.id.type === AST_NODE_TYPES.Identifier &&
-    statement.declarations[0]?.init === node;
-}
-
-function isLiteralValue(node: TSESTree.Node): boolean {
-  if (node.type === AST_NODE_TYPES.Literal) return !("regex" in node);
-  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+function isLiteralValue(node: Node): boolean {
+  if (node.type === "Literal") return !("regex" in node);
+  if (node.type === "ArrayExpression") {
     return node.elements.every((element) => element !== null && isLiteralValue(element));
   }
-  return node.type === AST_NODE_TYPES.ObjectExpression && node.properties.every((property) =>
-    property.type === AST_NODE_TYPES.Property && !property.computed && !property.method &&
+  return node.type === "ObjectExpression" && node.properties.every((property) =>
+    property.type === "Property" && !property.computed && !property.method &&
     property.kind === "init" && isLiteralValue(property.value),
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-nullish-filter-predicate",
-  documentation: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.summary },
+    docs: { description: SUMMARY, url: docsUrl(NAME) },
     hasSuggestions: true,
     fixable: "code",
     schema: [],
@@ -244,61 +107,103 @@ export default createRule<Options, MessageIds>({
       replaceBoolean: "Replace `Boolean` with an explicit nullish predicate.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
-    }
-    if (services === null) return {};
-    const program = services.program;
-    const checker = program.getTypeChecker();
-    const browserCollection = checker.resolveName("HTMLAllCollection", undefined, ts.SymbolFlags.Type, false);
-    const falsyBrowserObject = browserCollection?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) === true
-      ? checker.getDeclaredTypeOfSymbol(browserCollection) : null;
-    return {
-      CallExpression(node): void {
-        const callee = unwrapExpression(node.callee);
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: Candidate[] = [];
 
+    function isUnshadowedBoolean(node: ESTree.IdentifierReference): boolean {
+      const variable = findVariable(context.sourceCode.getScope(node), node.name);
+      return variable === null || variable.defs.length === 0;
+    }
+
+    function report({ node, callee, callback }: Candidate): void {
+      const parameter = availableParameterName(node);
+      const undefinedBinding = findVariable(context.sourceCode.getScope(node), "undefined");
+      const undefinedCheck = (undefinedBinding?.defs.length ?? 0) > 0 ? `typeof ${parameter} !== "undefined"` : `${parameter} !== undefined`;
+      const replacement = `(${parameter}) => ${parameter} !== null && ${undefinedCheck}`;
+      context.report({
+        node: callback,
+        messageId: "preferNullishPredicate",
+        ...(hasFreshArrayReceiver(node, callee.object) && { fix: (fixer) => fixer.replaceText(callback, replacement) }),
+        suggest: [{ messageId: "replaceBoolean", fix: (fixer) => fixer.replaceText(callback, replacement) }],
+      });
+    }
+
+    function hasFreshArrayReceiver(node: ESTree.CallExpression, receiver: Node): boolean {
+      if (receiver.type !== "ArrayExpression" || !isLiteralValue(receiver)) return false;
+      const statements = context.sourceCode.ast.body;
+      if (statements.length !== 1) return false;
+      const statement = statements[0];
+      if (statement?.type === "ExpressionStatement") return statement.expression === node;
+      return statement?.type === "VariableDeclaration" &&
+        statement.kind === "const" && statement.declarations.length === 1 &&
+        statement.declarations[0]?.id.type === "Identifier" &&
+        statement.declarations[0]?.init === node;
+    }
+
+    function availableParameterName(node: Node): string {
+      const scope = context.sourceCode.getScope(node);
+      for (const name of ["value", "item", "element", "candidate"] as const) {
+        if (findVariable(scope, name) === null) return name;
+      }
+      let suffix = 1;
+      while (findVariable(scope, `value${String(suffix)}`) !== null) suffix += 1;
+      return `value${String(suffix)}`;
+    }
+
+    function resolve(native: NativeTypes): boolean[] {
+      const { checker, file } = native;
+      const symbols = file.symbolsOf(candidates.map((candidate) => candidate.callee.property)) as (TsSymbol | undefined)[];
+      const receivers = file.typesOf(candidates.map((candidate) => candidate.callee.object)) as (Type | undefined)[];
+      const builtin = candidates.map((_, i) =>
+        isBuiltinArrayFilter(native, symbols[i] ?? receivers[i]?.getProperty("filter")));
+      if (!builtin.includes(true)) return builtin;
+      const typeFlag = native.sync.SymbolFlags.Type;
+      const browserCollection = checker.resolveName("HTMLAllCollection", typeFlag, undefined, false);
+      const falsyBrowserObject = browserCollection?.declarations.some((declaration) =>
+        native.program.getSourceFileMetadataByPath(declaration.path)?.isDefaultLibrary === true) === true
+        ? checker.getDeclaredTypeOfSymbol(browserCollection) : null;
+      const truth: TruthContext = {
+        native,
+        falsyBrowserObject,
+        primitives: [checker.getStringType(), checker.getNumberType(), checker.getBigIntType(), checker.getBooleanType()],
+      };
+      return builtin.map((isBuiltin, i) => {
+        const receiver = receivers[i];
+        if (!isBuiltin || receiver === undefined) return false;
+        const elementType = checker.getIndexTypeOfType(receiver, native.sync.IndexKind.Number);
+        return elementType !== undefined && isNullishPlusTruthy(elementType, truth);
+      });
+    }
+
+    return {
+      before() {
+        tsrs = null;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      CallExpression(node) {
+        const callee = unwrapExpression(node.callee);
         const callback = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (
           node.arguments.length !== 1 ||
-          callback?.type !== AST_NODE_TYPES.Identifier ||
+          callback?.type !== "Identifier" ||
           callback.name !== "Boolean" ||
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          ASTUtils.getPropertyName(callee) === null ||
-          (ASTUtils.getPropertyName(callee) ?? "") !== "filter" ||
-          !isUnshadowedBoolean(callback, context) ||
-          !isBuiltinArrayFilter(callee, services)
+          callee.type !== "MemberExpression" ||
+          getPropertyName(callee) !== "filter" ||
+          !isUnshadowedBoolean(callback as ESTree.IdentifierReference)
         ) return;
-        const elementType = arrayElementType(callee.object, services);
-        if (elementType === null || !isNullishPlusTruthy(elementType, checker, falsyBrowserObject)) return;
-        const parameter = availableParameterName(node, context);
-        const undefinedBinding = ASTUtils.findVariable(context.sourceCode.getScope(node), "undefined");
-        const undefinedCheck = (undefinedBinding?.defs.length ?? 0) > 0 ? `typeof ${parameter} !== "undefined"` : `${parameter} !== undefined`;
-        const replacement = `(${parameter}) => ${parameter} !== null && ${undefinedCheck}`;
-        const report: {
-          readonly node: TSESTree.Identifier;
-          readonly messageId: MessageIds;
-          fix?: NativeReportFix;
-          suggest?: NativeSuggestions<MessageIds>;
-        } = {
-          node: callback,
-          messageId: "preferNullishPredicate",
-        };
-        if (hasFreshArrayReceiver(node, callee.object, context)) {
-          report.fix = (fixer) => fixer.replaceText(callback, replacement);
-        }
-        report.suggest = [
-          {
-            messageId: "replaceBoolean",
-            fix: (fixer) => fixer.replaceText(callback, replacement),
-          },
-        ];
-        context.report(report);
+        candidates.push({ node, callee, callback: callback as ESTree.IdentifierReference });
+      },
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const found = tsrs.run((file) => resolve(nativeTypes(file)));
+        if (found === null) return;
+        candidates.forEach((candidate, i) => {
+          if (found[i] === true) report(candidate);
+        });
       },
     };
   },

@@ -1,23 +1,13 @@
-import { join } from "node:path";
+import rule from "../../src/rules/no-invalid-zod-custom-parse.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, { NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION } from "../../src/rules/no-invalid-zod-custom-parse.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
 const IMPORT = 'import {z} from "zod";';
 
-TESTER.run("no-invalid-zod-custom-parse", rule, {
+TESTER.run("no-invalid-zod-custom-parse", rule, typed({
   valid: [
-    { name: "public real validator", code: NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "public real validator", code: 'import { z } from "zod"; const value = z.custom<string>(value => typeof value === "string").parse(1);' },
     ...[
       ["honest unknown accepts any input", 'z.custom<unknown>().parse(1);'],
       ["any is left to the existing unsafe owners", 'z.custom<any>().parse(1);'],
@@ -61,10 +51,9 @@ TESTER.run("no-invalid-zod-custom-parse", rule, {
     { name: "named factory mutation invalidates API identity", code: 'import {custom} from "zod";custom=adapter;custom<string>().parse(1);' },
     { name: "exported native capability can escape", code: IMPORT+'export {z};z.custom<string>().parse(1);' },
     { name: "generated sources retain their owner", filename: "custom.generated.ts", code: IMPORT+'z.custom<string>().parse(1);' },
-    { name: "exact suppression", code: IMPORT+'\n// eslint-disable-next-line @rule-tester/no-invalid-zod-custom-parse -- externally validated wire carrier\nz.custom<string>().parse(1);' },
   ],
   invalid: [
-    { name: "public unchecked incompatible parse", code: NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "incompatibleCustomParse" }] },
+    { name: "public unchecked incompatible parse", code: 'import { z } from "zod"; const value = z.custom<string>().parse(1);', errors: [{ messageId: "incompatibleCustomParse" }] },
     ...[
       ["wrong number carrier", 'z.custom<number>().parse("bad");'],
       ["wrong boolean carrier", 'z.custom<boolean>().parse(0);'],
@@ -93,9 +82,8 @@ TESTER.run("no-invalid-zod-custom-parse", rule, {
     ].map(([name,code])=>({name,code,errors:[{messageId:"incompatibleCustomParse" as const}]})),
     { name: "real contracts inside tests stay checked", filename: "custom.test.ts", code: IMPORT+'z.custom<string>().parse(1);', errors: [{ messageId: "incompatibleCustomParse" }] },
   ],
-});
+}));
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("no-invalid-zod-custom-parse without a program", rule, {
-  valid: [IMPORT+'z.custom<string>().parse(1);'], invalid: [],
+TESTER.run("no-invalid-zod-custom-parse without a program", rule, {
+  valid: [{ code: IMPORT+'z.custom<string>().parse(1);', settings: { sarj: { typeAware: false } } }], invalid: [],
 });

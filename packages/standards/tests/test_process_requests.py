@@ -11,13 +11,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
-from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.devops_tools import NativeTool, checked_runtime_tool
 from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, analyze_external, process_request, run_process
 from sarj_standards.libs.linting.process import (
     OutputLimitError,
     ProcessCancelledError,
-    ProcessCapabilities,
     ProcessOutput,
     ProcessRequest,
     RequestExecutor,
@@ -127,59 +125,6 @@ def test_request_repr_keeps_policy_summaries_without_captured_private_data(tmp_p
         assert private not in rendered
     assert "timeout_seconds=7" in rendered
     assert "max_stdout_bytes=128" in rendered
-
-
-@pytest.mark.parametrize(("incoming_offset", "expected_offset"), [(-30, -30), (30, 0), (None, 0)])
-def test_eslint_composes_absolute_deadlines_and_preserves_other_request_policies(
-    tmp_path: Path, incoming_offset: int | None, expected_offset: int
-) -> None:
-    aggregate = time.monotonic() + 300
-    request = ProcessRequest(
-        (sys.executable,),
-        tmp_path,
-        {"PLANNED_VALUE": "retained"},
-        timeout_seconds=7,
-        deadline=None if incoming_offset is None else aggregate + incoming_offset,
-        input_bytes=b"retained input",
-        max_input_bytes=128,
-        max_stdout_bytes=256,
-        max_stderr_bytes=64,
-    )
-    seen: list[ProcessRequest] = []
-
-    def record(actual: ProcessRequest) -> ProcessOutput:
-        seen.append(actual)
-        return ProcessOutput(0, "retained output", "")
-
-    result = external._execute_eslint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verify nested deadline composition at the actual ESLint policy wrapper.
-        RequestExecutor(record, ProcessCapabilities()), request, deadline=aggregate
-    )
-
-    assert result.stdout == "retained output"
-    assert len(seen) == 1
-    forwarded = seen[0]
-    assert forwarded.deadline == aggregate + expected_offset
-    assert forwarded.timeout_seconds == 7
-    assert (forwarded.argv, forwarded.cwd, forwarded.input_bytes) == (request.argv, request.cwd, request.input_bytes)
-    assert (forwarded.max_input_bytes, forwarded.max_stdout_bytes, forwarded.max_stderr_bytes) == (128, 256, 64)
-    assert forwarded.environment["PLANNED_VALUE"] == "retained"
-    assert "NODE_OPTIONS" in forwarded.environment
-
-
-def test_eslint_real_process_obeys_a_stricter_incoming_deadline(tmp_path: Path) -> None:
-    request = process_request(
-        (sys.executable, "-c", "import time; time.sleep(10)"),
-        cwd=tmp_path,
-        timeout_seconds=2,
-        deadline=time.monotonic() + 0.05,
-    )
-
-    with pytest.raises(subprocess.TimeoutExpired) as failure:
-        external._execute_eslint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- a real child must retain the incoming deadline after ESLint's larger aggregate budget is applied.
-            DEFAULT_EXECUTOR, request, deadline=time.monotonic() + 300
-        )
-
-    assert 0 <= failure.value.timeout <= 0.05
 
 
 @pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))

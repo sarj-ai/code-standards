@@ -1,82 +1,47 @@
 /**
- * @fileoverview no-excess-jsx-props — compare known runtime keys with a resolved component contract.
+ * @fileoverview no-excess-jsx-props — report statically known fields spread outside a resolved component props contract.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-excess-jsx-props.test.ts
+ * Port of the 18.x `no-excess-jsx-props` rule. Typed: without tsrs types
+ * it reports nothing, as the original returns no visitors without a program.
+ * The walk collects single-spread private elements; their proofs run against
+ * tsrs in `Program:exit`, as the original's do. Where the original maps a
+ * TypeScript node back to ESTree, the port finds the ESTree node with the same
+ * range (`getNodeByRangeIndex`, then up its parents).
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeServices, TypeScriptSourceCode } from "./_eslint-rule.js";
+import type { ElementAccessExpression, Expression, Identifier, Node as TsNode, PropertyAccessExpression, SourceFile } from "tsrs/ast";
+import type { Signature, Symbol as TsSymbol, Type } from "tsrs/sync";
 
+import { defineRule, type ESTree, type Node, type Scope, type SourceCode, type TsReference, type TsVariable } from "../types.js";
+import { outerExpression, parentOf } from "../utils/ast.js";
+import { declarationNode, nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { closedObjectContract } from "../utils/closed-object-contract.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { constInitializer, unassertedValue } from "../utils/native-const-value.js";
+import { ordinaryObjectEffects } from "../utils/ordinary-object-effects.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { directEval, exportedSymbols } from "../utils/private-scalar-consumer.js";
+import { returnedOperands, scalarParameterView, scalarType } from "../utils/scalar-parameter-view.js";
+import { stableValueBinding, typeOnlyReference } from "../utils/stable-value-binding.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
-
-import { currentNativeSource } from "./_checked-native-source.js";
-import { closedObjectContract } from "./_closed-object-contract.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { constInitializer, unassertedValue } from "./_native-const-value.js";
-import { ordinaryObjectEffects } from "./_ordinary-object-effects.js";
-import { isGeneratedFile } from "./_paths.js";
-import { directEval, exportedSymbols } from "./_private-scalar-consumer.js";
-import { RETURNED_OPERANDS, scalarParameterView, scalarType } from "./_scalar-parameter-view.js";
-import { stableValueBinding, typeOnlyReference } from "./_stable-value-binding.js";
-import { outerExpression } from "./_unwrap-expression.js";
-
-const EXAMPLE_TSCONFIG = { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler","jsx":"react-jsx"}}' } as const;
-const EXAMPLE_JSX = { path: "jsx.d.ts", source: 'declare module "react/jsx-runtime" { export namespace JSX { interface Element {} interface IntrinsicElements {span: {children?: unknown}} } }' } as const;
-
-export const NO_EXCESS_JSX_PROPS_DOCUMENTATION = {
-  summary: "Report statically known fields spread outside a resolved component props contract.",
-  rationale: "A spread can forward unrelated data even when structural typing accepts the larger object. Changing its annotation does not remove runtime fields.",
-  remediation: "Forward the declared fields explicitly or review the receiving contract. A projection changes object identity and allocations; this rule never constructs one automatically.",
-  category: "maintainability",
-  defaultLevel: "warning",
-  autofix: "none",
-  limitations: [
-    "The created JSX value must initialize a private actual const binding. Only unused values or same-function-scope fixed reads of already proven consumed scalar props are supported. Enclosing invocations must have no runtime argument or arguments-object dependency, async/generator suspension, or unproved captured values. Unused simple arguments and captured scalar data reuse the existing provenance proof; destructured/default/rest arguments remain unsupported. Exported, returned, aliased, captured, aggregated or forwarded elements, whole-props access, opaque calls, type observations and writes abstain. A caller can mutate production React props after creation even when development React freezes them; initial source provenance alone is insufficient. This restriction intentionally excludes ordinary exported and rendered elements until their consumers can be proved.",
-    "The rule abstains when the receiving or calling project runtime dependency context contains a known ordinary Object-prototype effect or exposure, native eval/Function capabilities, any explicit call, constructor or tagged-template invocation, for-of or for-in iteration, an ambient or uninitialized value declaration or a declaration-file value read, an unresolved lexical value (including a shorthand or a type-only name used as a value), an erased const-enum value without a runtime binding proof, an opaque globalThis member, an implicit this/super/module-metadata capability, an extracted reflective method, or a member-write target not proven to be a fresh unrelated object/array literal. Callable and class metadata writes, including through erased const aliases, abstain: runtime metadata can observe omitted fields even when it is absent from the native JSX contract. Native shorthand value symbols preserve global capability identity instead of trusting a newly created property symbol. Property keys, control-flow labels, intrinsic JSX names and erased type positions do not evaluate lexical values; their missing symbols or Any types do not alone veto a finding. Native ESM imports/re-exports and literal dynamic imports are followed in both dependency and known-importer directions, including other dependencies of those importers and resolved bare path aliases; whole-clause import type/export type forms are skipped. Import-equals and other loader forms are unsupported. Per-specifier type imports/exports retain their runtime edges when native verbatimModuleSyntax emit keeps an empty import/export. Unresolved runtime imports and declaration-only or external-library runtime imports abstain. Literal dynamic imports retain their module-resolution proof. External code outside the analyzed project context and standard library implementations remain opaque; standard ordinary Object built-ins are assumed. Connected runtime dependency contexts beyond 128 files or const-alias proofs beyond 64 steps abstain. Safe reflective code may therefore be excluded. This finite known-effect exclusion does not prove universal prototype pristineness.",
-    "Requires parser-owned TypeScript information, a strict module implementation, a complete Object base, a self-closing identifier tag with one plain object-literal spread and no other attributes, and one nongeneric implemented synchronous arrow receiver with a resolved finite props surface. Sibling attributes or children could override the proven source values. Unknown, opaque, union, overloaded, generic, intrinsic and class receivers are excluded.",
-    "Mapped types, index signatures, namespace/value-derived contracts, unresolved inherited or computed receiver keys, nonliteral computed source keys, nested spreads, accessors and explicit __proto__ keys are excluded. Source type properties alone do not prove enumerable own runtime keys. key, ref, React's __self/__source development metadata and TypeScript's hyphenated JSX attribute names are preserved.",
-    "Native member lookup includes inherited, optional, readonly and implicit Object capabilities. The rule reports runtime keys outside the contract; it does not infer unused component fields, demand smaller public APIs, or erase producer type information.",
-    "Runtime alias references require active native checking of each reached local implementation, with no located syntax or semantic errors. Checking disabled by noCheck or native-shaped TypeScript suppression directives is unavailable evidence. JavaScript, declaration/default/external-library files, foreign SourceFile objects and project-reference programs are unsupported for this alias proof. Importer indexing does not request full semantic checks; reached files reuse the parser-owned Program's diagnostic caches. Unlocated/global diagnostics are not treated as a clean project or as proof of runtime binding presence. Namespace value reads, including merged and const-enum-only namespace carriers, abstain because a ValueModule symbol can survive erased runtime output without a native error. Pure type namespaces and nonambient namespace declaration names remain non-value positions; explicit ambient namespace declarations retain their existing exclusion. A non-import-alias value declared in another source also abstains: inclusion in the type Program does not establish that a script/global implementation executes or that an ambient binding is supplied as a data property. Native standard global identities retain their existing assumptions.",
-    "Requires a single returned view made from intrinsic JSX, literals and scalar parameter reads/operators. JSX objects may be rendered as children or returned branches, but cannot be operands of scalar coercions or intrinsic attribute values. Free runtime values, helper calls, callbacks, object-valued consumed fields, custom tags, rest/spread, reflection and dynamic access prevent a finding; indirect element.props aliases cannot be inferred safe. Every inspected or destructured root field must be an own source-literal key; an omitted field could invoke an inherited getter. Bound/read source values require concrete scalar types without undefined, Any or unknown and runtime primitive provenance: literals, operators/templates with proven primitive operands, proven conditional tests and branches, or local immutable const initializers after removing assertions. Direct own fields of a same-file const object literal are supported only when every object reference is a fixed field value in a direct object initializer, inline JSX spread, JSX expression or local binding, with no direct eval. Mutation, accessors, method receivers, dynamic keys, reflection, whole-object aliases and exports abstain. Opaque calls, getters, parameters, mutable bindings and imported source values abstain even when annotated as scalars. Unproven source paths beyond 64 expressions abstain as an analysis resource limit. Only successful value proofs are memoized. An alias or assertion cannot turn an object into a primitive; undefined can activate runtime defaults. Opaque HOC and declaration-file signatures remain unsupported.",
-    "The actual tag must resolve through immutable identifier aliases to a const arrow initializer. Constructible ordinary functions, mutable, member, proxy, call-produced and asserted receiver values are excluded even when their callable type resembles a known implementation; inherited runtime metadata can change ordinary function dispatch. Exactly one actual parameter and no explicit this parameter are supported.",
-    "Reached files containing actual JSX additionally require their compiler-owned implicit runtime import and the native module symbol's declaration owners. Known non-declaration runtime implementations are unsupported even when their bodies have no ordinary Object effects: a custom factory can reinterpret forwarded fields. External declaration files and owned top-level ambient module declarations in declaration files retain the explicit standard-React library assumption; those declarations do not prove the actual runtime JavaScript identity. Missing or ambiguous internal import metadata, missing native symbols, foreign owners and local nonambient declaration-module sources abstain. Non-JSX dependencies do not acquire a runtime edge merely because the compiler records an unused synthetic JSX import. Runtime rebinding outside the compiler-visible module context remains opaque, not validated by this proof.",
-    "Requires target ES2015 or newer, explicit native ES-module output and the standard React automatic JSX runtime (react-jsx or react-jsxdev). Downlevel arrows become constructible functions; CommonJS exports remain mutable. Preserve/classic JSX, custom factories, namespaces, import sources and per-file JSX directives are unsupported. Imported library implementations and cross-project source redirects are opaque; relative imports within this program remain supported.",
-  ],
-  references: ["https://github.com/jsx-eslint/eslint-plugin-react/blob/master/docs/rules/jsx-props-no-spreading.md"],
-  examples: [
-    { id: "excess-runtime-field", title: "An unrelated field is forwarded at runtime", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar {...{ displayName: 'Ada', email: 'ada@example.test' }} />;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "explicit-fields", title: "Forward only the declared field", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar displayName='Ada' />;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
-    { id: "asserted-source-alias", scenarioId: "source-provenance", title: "An asserted alias can still observe forwarded data", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; let element: any; const opaque = {toString() {return element.props.email;}}; const name = opaque as unknown as string; const Avatar = ({displayName}: {displayName: string}) => <span>{`${displayName}`}</span>; element = <Avatar {...{displayName: name, email: 'needed'}}/>;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
-    { id: "literal-source-alias", scenarioId: "source-provenance", title: "A proven primitive alias preserves the finding", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const name = 'Ada'; const Avatar = ({displayName}: {displayName: string}) => <span>{`${displayName}`}</span>; const element = <Avatar {...{displayName: name, email: 'unused'}}/>;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "inherited-runtime-hook", scenarioId: "prototype-effects", title: "An inherited runtime hook can observe forwarded data", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; let element: any; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; element = <Avatar {...{displayName: 'Ada', email: 'needed'}}/>; Object.defineProperty(Object.prototype, 'ref', {configurable: true, get() {Object.defineProperty(this, 'children', {configurable: true, value: element.props.email}); return null;}});" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
-    { id: "unrelated-runtime-object", scenarioId: "prototype-effects", title: "An unrelated own-property write preserves the finding", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const target = {ref: null}; target.ref = null; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; const element = <Avatar {...{displayName: 'Ada', email: 'unused'}}/>;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "erased-callable-metadata", scenarioId: "callable-metadata", title: "Runtime metadata can observe an omitted field", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const target = {ref: 0}; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; (Avatar as unknown as {defaultProps: {email: string}}).defaultProps = {get email() {target.ref = 1; return 'fallback';}}; const element = <Avatar {...{displayName: 'Ada', email: 'needed'}}/>; const observation = target.ref; export {observation};" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
-    { id: "unrelated-object-metadata", scenarioId: "callable-metadata", title: "An unrelated data object's metadata preserves the finding", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const settings = {defaultProps: {email: 'fallback'}}; settings.defaultProps = {email: 'updated'}; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; const element = <Avatar {...{displayName: 'Ada', email: 'unused'}}/>;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "consumed-scalar-inspection", scenarioId: "created-value", title: "A private element exposes only its consumed scalar", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; const element = <Avatar {...{displayName: 'Ada', email: 'unused'}}/>; const summary = {displayName: (element as {props: {displayName: string}}).props.displayName}; export {summary};" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "opaque-element-consumer", scenarioId: "created-value", title: "An opaque consumer can observe or mutate element props", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; declare function inspect(value: unknown): void; const Avatar = ({displayName}: {displayName: string}) => <span>{displayName}</span>; const element = <Avatar {...{displayName: 'Ada', email: 'needed'}}/>; inspect(element);" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
-
+const NAME = "no-excess-jsx-props";
 const RESERVED_PROPS: ReadonlySet<string> = new Set(["key", "ref", "__self", "__source"]);
-const ESM_MODULES: ReadonlySet<ts.ModuleKind> = new Set([ts.ModuleKind.ES2015, ts.ModuleKind.ES2020, ts.ModuleKind.ES2022, ts.ModuleKind.ESNext]);
 const JSX_DIRECTIVE = /@jsx(?:ImportSource|Runtime|Frag)?(?:\s|$)/iu;
 const MAX_VALUE_DEPTH = 64;
-const PRIMITIVE_OPERATORS: ReadonlySet<ts.SyntaxKind> = new Set([
-  ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken, ts.SyntaxKind.AsteriskAsteriskToken,
-  ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
-  ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
-  ts.SyntaxKind.AmpersandToken, ts.SyntaxKind.BarToken, ts.SyntaxKind.CaretToken, ts.SyntaxKind.LessThanLessThanToken, ts.SyntaxKind.GreaterThanGreaterThanToken, ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
-]);
-function plainLiteralFields(node: TSESTree.ObjectExpression): Map<string, TSESTree.Property> | null {
-  const fields = new Map<string, TSESTree.Property>();
+// TypeScript 6's ScriptTarget.ES5; TypeScript 7 dropped the member but keeps ES2015 = 2.
+const ES5_TARGET = 1;
+
+type Property = ESTree.ObjectProperty;
+
+function plainLiteralFields(node: ESTree.ObjectExpression): Map<string, Property> | null {
+  const fields = new Map<string, Property>();
   for (const property of node.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.kind !== "init") return null;
+    if (property.type !== "Property" || property.kind !== "init") return null;
     const key = property.key;
     let name: string;
-    if (!property.computed && key.type === AST_NODE_TYPES.Identifier) name = key.name;
-    else if (key.type === AST_NODE_TYPES.Literal && (typeof key.value === "string" || typeof key.value === "number")) name = String(key.value);
+    if (!property.computed && key.type === "Identifier") name = key.name;
+    else if (key.type === "Literal" && (typeof key.value === "string" || typeof key.value === "number")) name = String(key.value);
     else return null;
     if (name === "__proto__") return null;
     fields.set(name, property);
@@ -84,192 +49,319 @@ function plainLiteralFields(node: TSESTree.ObjectExpression): Map<string, TSESTr
   return fields;
 }
 
-function literalFields(node: TSESTree.ObjectExpression): ReadonlyMap<string, TSESTree.Property> | null {
+function literalFields(node: ESTree.ObjectExpression): ReadonlyMap<string, Property> | null {
   const fields = plainLiteralFields(node);
   if (fields) for (const name of fields.keys()) if (RESERVED_PROPS.has(name) || name.includes("-")) fields.delete(name);
   return fields;
 }
 
+function signatureDeclaration(native: NativeTypes, signature: Signature): TsNode | undefined {
+  return signature.declaration === undefined ? undefined : declarationNode(native, signature.declaration);
+}
+
 /** A declared finite surface alone cannot establish that a wrapper ignores extras. */
-function receiverReads(signature: ts.Signature, checker: ts.TypeChecker): ReadonlySet<string> | null {
-  const declaration = signature.getDeclaration();
-  if (!declaration || !ts.isArrowFunction(declaration) || declaration.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) || signature.thisParameter || declaration.parameters.length !== 1) return null;
+function receiverReads(native: NativeTypes, signature: Signature): ReadonlySet<string> | null {
+  const { ast } = native;
+  const declaration = signatureDeclaration(native, signature);
+  if (!declaration || !ast.isArrowFunction(declaration) || declaration.modifiers?.some((modifier) => modifier.kind === ast.SyntaxKind.AsyncKeyword) ||
+    signature.thisParameter || declaration.parameters.length !== 1) return null;
   const parameter = declaration.parameters[0];
-  return parameter ? scalarParameterView(parameter, declaration.body, checker) : null;
+  return parameter ? scalarParameterView(native, parameter, declaration.body) : null;
 }
 
-function stableReceiver(tag: ts.JsxTagNameExpression, signature: ts.Signature, checker: ts.TypeChecker, program: ts.Program, overrides: WeakMap<ts.SourceFile, boolean>): boolean {
-  if (!ts.isIdentifier(tag)) return false;
-  const initializer = immutableInitializer(tag, checker);
-  if (!initializer || initializer !== signature.getDeclaration() || !ts.isArrowFunction(initializer)) return false;
-  return supportedImplementation(initializer.getSourceFile(), tag.getSourceFile(), program, overrides);
+function stableReceiver(native: NativeTypes, tag: TsNode, signature: Signature, overrides: Map<string, boolean>): boolean {
+  const { ast } = native;
+  if (!ast.isIdentifier(tag)) return false;
+  const initializer = immutableInitializer(native, tag);
+  if (!initializer || initializer !== signatureDeclaration(native, signature) || !ast.isArrowFunction(initializer)) return false;
+  return supportedImplementation(native, initializer.getSourceFile(), tag.getSourceFile(), overrides);
 }
 
-function immutableInitializer(tag: ts.Identifier, checker: ts.TypeChecker): ts.Expression | undefined {
-  let symbol = checker.getSymbolAtLocation(tag);
-  const seen = new Set<ts.Symbol>();
-  while (symbol && !seen.has(symbol)) {
-    seen.add(symbol);
-    if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+function immutableInitializer(native: NativeTypes, tag: TsNode): Expression | undefined {
+  const { ast, checker, sync } = native;
+  let symbol: TsSymbol | undefined = checker.getSymbolAtLocation(tag);
+  const seen = new Set<number>();
+  while (symbol && !seen.has(symbol.id)) {
+    seen.add(symbol.id);
+    if ((symbol.flags & sync.SymbolFlags.Alias) !== 0) {
       symbol = checker.getAliasedSymbol(symbol);
       continue;
     }
-    const initializer = constInitializer(symbol.valueDeclaration);
-    if (!initializer || !ts.isIdentifier(initializer)) return initializer;
+    const declaration = symbol.valueDeclaration && declarationNode(native, symbol.valueDeclaration);
+    const initializer = constInitializer(ast, declaration);
+    if (!initializer || !ast.isIdentifier(initializer)) return initializer;
     symbol = checker.getSymbolAtLocation(initializer);
   }
   return undefined;
 }
 
-function supportedImplementation(source: ts.SourceFile, caller: ts.SourceFile, program: ts.Program, overrides: WeakMap<ts.SourceFile, boolean>): boolean {
-  if (!ts.isExternalModule(source) || source.impliedNodeFormat === ts.ModuleKind.CommonJS || program.isSourceFileFromExternalLibrary(source)) return false;
+function supportedImplementation(native: NativeTypes, source: SourceFile, caller: SourceFile, overrides: Map<string, boolean>): boolean {
+  const { ast, program, sync } = native;
+  if (!ast.isExternalModule(source) || impliedNodeFormat(native, source) === sync.ModuleKind.CommonJS ||
+    program.isSourceFileFromExternalLibrary(source)) return false;
   if (source === caller) return true;
-  if (program.getProjectReferences()?.length) return false;
-  if (!overrides.has(source)) overrides.set(source, (ts.getLeadingCommentRanges(source.text, 0) ?? []).some((range) => JSX_DIRECTIVE.test(source.text.slice(range.pos, range.end))));
-  return !overrides.get(source);
+  if (projectReferences(native)) return false;
+  if (!overrides.has(source.path)) {
+    overrides.set(source.path, (ast.getLeadingCommentRanges(source.text, 0) ?? []).some((range) => JSX_DIRECTIVE.test(source.text.slice(range.pos, range.end))));
+  }
+  return !overrides.get(source.path);
 }
 
-function supportedJSX(options: ts.CompilerOptions, comments: readonly TSESTree.Comment[]): boolean {
-  return (options.target ?? ts.ScriptTarget.ES5) >= ts.ScriptTarget.ES2015 &&
-    ESM_MODULES.has(options.module ?? ts.ModuleKind.None) &&
-    (options.jsx === ts.JsxEmit.ReactJSX || options.jsx === ts.JsxEmit.ReactJSXDev) &&
+/**
+ * TypeScript 6's `sourceFile.impliedNodeFormat`: set by extension (.mts/.cts and their JS and
+ * declaration forms), otherwise read from package.json only under node16/nodenext resolution or
+ * inside node_modules, and undefined elsewhere. TypeScript 7 always records a format, so its
+ * metadata is consulted only where TypeScript 6 would have looked it up.
+ */
+function impliedNodeFormat(native: NativeTypes, source: SourceFile): number | undefined {
+  const { sync } = native;
+  const name = source.fileName;
+  if (/\.(?:d\.mts|mts|mjs)$/u.test(name)) return sync.ModuleKind.ESNext;
+  if (/\.(?:d\.cts|cts|cjs)$/u.test(name)) return sync.ModuleKind.CommonJS;
+  const options = native.program.getCompilerOptions();
+  const resolution = options.moduleResolution ?? (options.module === sync.ModuleKind.NodeNext ? sync.ModuleResolutionKind.NodeNext
+    : options.module !== undefined && options.module >= sync.ModuleKind.Node16 && options.module < sync.ModuleKind.NodeNext ? sync.ModuleResolutionKind.Node16
+      : undefined);
+  const lookup = (resolution !== undefined && resolution >= sync.ModuleResolutionKind.Node16 && resolution <= sync.ModuleResolutionKind.NodeNext) ||
+    /[\\/]node_modules[\\/]/u.test(name);
+  return lookup ? native.program.getSourceFileMetadataByPath(source.path)?.impliedNodeFormat : undefined;
+}
+
+function projectReferences(native: NativeTypes): boolean {
+  const project = native.program.getProject() as unknown as { readonly parsedCommandLine?: { readonly projectReferences?: readonly unknown[] } };
+  return (project.parsedCommandLine?.projectReferences?.length ?? 0) > 0;
+}
+
+function supportedJSX(native: NativeTypes, comments: readonly { readonly value: string }[]): boolean {
+  const { sync } = native;
+  const options = native.program.getCompilerOptions();
+  const modules: ReadonlySet<number> = new Set([sync.ModuleKind.ES2015, sync.ModuleKind.ES2020, sync.ModuleKind.ES2022, sync.ModuleKind.ESNext]);
+  return (options.target ?? ES5_TARGET) >= native.ast.ScriptTarget.ES2015 &&
+    modules.has(options.module ?? sync.ModuleKind.None) &&
+    (options.jsx === sync.JsxEmit.ReactJSX || options.jsx === sync.JsxEmit.ReactJSXDev) &&
     !options.jsxFactory && !options.reactNamespace && (!options.jsxImportSource || options.jsxImportSource === "react") &&
     !comments.some((comment) => JSX_DIRECTIVE.test(comment.value));
 }
 
-function receivingContract(opening: TSESTree.JSXOpeningElement, services: TypeServices, checker: ts.TypeChecker, contracts: WeakMap<ts.Type, boolean>): { tag: ts.JsxTagNameExpression; signature: ts.Signature; props: ts.Type } | null {
-  const native = services.esTreeNodeToTSNodeMap.get(opening);
-  if (!ts.isJsxOpeningElement(native) && !ts.isJsxSelfClosingElement(native)) return null;
-  const receiver = checker.getTypeAtLocation(native.tagName);
-  const signatures = checker.getSignaturesOfType(receiver, ts.SignatureKind.Call);
+interface ReceivingContract {
+  readonly tag: TsNode;
+  readonly signature: Signature;
+  readonly props: Type;
+}
+
+function receivingContract(native: NativeTypes, opening: ESTree.JSXOpeningElement, contracts: Map<Type, boolean>): ReceivingContract | null {
+  const { ast, checker, sync } = native;
+  const element = native.node(opening);
+  if (!element || (!ast.isJsxOpeningElement(element) && !ast.isJsxSelfClosingElement(element))) return null;
+  const receiver = checker.getTypeAtLocation(element.tagName);
+  const signatures = checker.getSignaturesOfType(receiver, sync.SignatureKind.Call);
   const signature = signatures[0];
-  if (receiver.isUnion() || signatures.length !== 1 || !signature || signature.typeParameters?.length) return null;
-  const props = checker.getContextualType(native.attributes);
+  if (receiver.isUnionType() || signatures.length !== 1 || !signature || signature.typeParameters?.length) return null;
+  const props = checker.getContextualType(element.attributes);
   if (!props) return null;
-  if (!contracts.has(props)) contracts.set(props, closedObjectContract(props, checker));
-  return contracts.get(props) ? { tag: native.tagName, signature, props } : null;
+  if (!contracts.has(props)) contracts.set(props, closedObjectContract(native, props));
+  return contracts.get(props) ? { tag: element.tagName, signature, props } : null;
 }
 
 interface PrimitiveProof {
-  readonly checker: ts.TypeChecker;
-  readonly services: TypeServices;
-  readonly sourceCode: TypeScriptSourceCode;
-  readonly exports: ReadonlySet<ts.Symbol>;
-  readonly values: WeakSet<ts.Node>;
-  readonly objects: WeakMap<ts.Symbol, ReadonlyMap<string, TSESTree.Property> | null>;
-  readonly invocations: WeakMap<TSESLint.Scope.Scope, boolean>;
+  readonly native: NativeTypes;
+  readonly sourceCode: SourceCode;
+  readonly exports: ReadonlySet<number>;
+  readonly values: Set<TsNode>;
+  readonly objects: Map<number, ReadonlyMap<string, Property> | null>;
+  readonly invocations: Map<Scope, boolean>;
+  readonly primitiveOperators: ReadonlySet<number>;
 }
 
-function ownScalarReads(fields: ReadonlyMap<string, TSESTree.Property>, reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
+function primitiveOperators(native: NativeTypes): ReadonlySet<number> {
+  const k = native.ast.SyntaxKind;
+  return new Set([
+    k.PlusToken, k.MinusToken, k.AsteriskToken, k.SlashToken, k.PercentToken, k.AsteriskAsteriskToken,
+    k.LessThanToken, k.LessThanEqualsToken, k.GreaterThanToken, k.GreaterThanEqualsToken,
+    k.EqualsEqualsEqualsToken, k.ExclamationEqualsEqualsToken, k.EqualsEqualsToken, k.ExclamationEqualsToken,
+    k.AmpersandToken, k.BarToken, k.CaretToken, k.LessThanLessThanToken, k.GreaterThanGreaterThanToken, k.GreaterThanGreaterThanGreaterThanToken,
+  ]);
+}
+
+/** The spread's read fields are primitives, the element stays closed, and neither module patches Object. */
+function closedSpread({ declaration, fields }: Candidate, opening: ESTree.JSXOpeningElement, contract: ReceivingContract,
+  reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
+  const { native } = proof;
+  if (!ownScalarReads(fields, reads, proof) || !closedElementValue(opening, declaration, fields, reads, proof)) return false;
+  const implementation = signatureDeclaration(native, contract.signature);
+  return implementation !== undefined && !ordinaryObjectEffects(native, contract.tag.getSourceFile()) &&
+    !ordinaryObjectEffects(native, implementation.getSourceFile());
+}
+
+function ownScalarReads(fields: ReadonlyMap<string, Property>, reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
   for (const key of reads) {
     const field = fields.get(key);
     if (!field) return false;
-    if (!primitiveValue(proof.services.esTreeNodeToTSNodeMap.get(field.value), proof, new Set())) return false;
+    const value = proof.native.node(field.value);
+    if (!value || !primitiveValue(value, proof, new Set())) return false;
   }
   return true;
 }
 
 /** Scalar annotations cannot witness the runtime value of an asserted alias or getter. */
-function primitiveValue(node: ts.Node, proof: PrimitiveProof, active: Set<ts.Node>): boolean {
-  const value = unassertedValue(node);
+function primitiveValue(node: TsNode, proof: PrimitiveProof, active: Set<TsNode>): boolean {
+  const value = unassertedValue(proof.native.ast, node);
   if (proof.values.has(value)) return true;
   if (active.has(value) || active.size >= MAX_VALUE_DEPTH) return false;
   active.add(value);
-  const result = scalarType(proof.checker.getTypeAtLocation(value), false) && primitiveResult(value, proof, active);
+  const result = scalarType(proof.native, proof.native.checker.getTypeAtLocation(value), false) && primitiveResult(value, proof, active);
   active.delete(value);
   // A failed proof may depend on the current depth or active path, so never cache it.
   if (result) proof.values.add(value);
   return result;
 }
 
-function primitiveResult(value: ts.Node, proof: PrimitiveProof, active: Set<ts.Node>): boolean {
-  if (ts.isStringLiteralLike(value) || ts.isNumericLiteral(value) || ts.isBigIntLiteral(value) ||
-    value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword || value.kind === ts.SyntaxKind.NullKeyword) return true;
-  if (ts.isTemplateExpression(value)) return value.templateSpans.every((span) => primitiveValue(span.expression, proof, active));
-  if (ts.isTypeOfExpression(value)) return primitiveValue(value.expression, proof, active);
-  if (ts.isPrefixUnaryExpression(value)) return (value.operator === ts.SyntaxKind.PlusToken || value.operator === ts.SyntaxKind.MinusToken ||
-    value.operator === ts.SyntaxKind.ExclamationToken || value.operator === ts.SyntaxKind.TildeToken) && primitiveValue(value.operand, proof, active);
-  if (ts.isConditionalExpression(value)) return primitiveValue(value.condition, proof, active) &&
-    primitiveValue(value.whenTrue, proof, active) && primitiveValue(value.whenFalse, proof, active);
-  if (ts.isBinaryExpression(value)) {
-    return (PRIMITIVE_OPERATORS.has(value.operatorToken.kind) || RETURNED_OPERANDS.has(value.operatorToken.kind) || value.operatorToken.kind === ts.SyntaxKind.CommaToken) &&
-      primitiveValue(value.left, proof, active) && primitiveValue(value.right, proof, active);
+function primitiveResult(value: TsNode, proof: PrimitiveProof, active: Set<TsNode>): boolean {
+  const { ast } = proof.native;
+  if (primitiveLiteral(ast, value)) return true;
+  if (ast.isPropertyAccessExpression(value) || ast.isElementAccessExpression(value)) return primitiveMember(value, proof, active);
+  if (ast.isIdentifier(value)) return primitiveIdentifier(value, proof, active);
+  const operands = primitiveOperands(value, proof);
+  return operands !== null && operands.every((operand) => primitiveValue(operand, proof, active));
+}
+
+function primitiveLiteral(ast: NativeTypes["ast"], value: TsNode): boolean {
+  const k = ast.SyntaxKind;
+  return ast.isStringLiteralLikeNode(value) || ast.isNumericLiteral(value) || ast.isBigIntLiteral(value) ||
+    value.kind === k.TrueKeyword || value.kind === k.FalseKeyword || value.kind === k.NullKeyword;
+}
+
+/** The operands of a primitive-producing operator, or null for any other expression. */
+function primitiveOperands(value: TsNode, proof: PrimitiveProof): readonly TsNode[] | null {
+  const { ast } = proof.native;
+  const k = ast.SyntaxKind;
+  if (ast.isTemplateExpression(value)) return value.templateSpans.map((span) => span.expression);
+  if (ast.isTypeOfExpression(value)) return [value.expression];
+  if (ast.isPrefixUnaryExpression(value)) {
+    const operator = value.operator;
+    return operator === k.PlusToken || operator === k.MinusToken || operator === k.ExclamationToken || operator === k.TildeToken
+      ? [value.operand] : null;
   }
-  if (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)) return primitiveMember(value, proof, active);
-  if (!ts.isIdentifier(value)) return false;
+  if (ast.isConditionalExpression(value)) return [value.condition, value.whenTrue, value.whenFalse];
+  if (!ast.isBinaryExpression(value)) return null;
+  const operator = value.operatorToken.kind;
+  return proof.primitiveOperators.has(operator) || returnedOperands(ast).has(operator) || operator === k.CommaToken
+    ? [value.left, value.right] : null;
+}
+
+function primitiveIdentifier(value: Identifier, proof: PrimitiveProof, active: Set<TsNode>): boolean {
+  const { ast, checker, sync } = proof.native;
   // Follow one local const edge so intermediate values share the same memoized proof.
-  const symbol = ts.isShorthandPropertyAssignment(value.parent)
-    ? proof.checker.getShorthandAssignmentValueSymbol(value.parent) : proof.checker.getSymbolAtLocation(value);
-  const initializer = symbol && (symbol.flags & ts.SymbolFlags.Alias) === 0 ? constInitializer(symbol.valueDeclaration) : undefined;
+  const symbol = ast.isShorthandPropertyAssignment(value.parent)
+    ? checker.getShorthandAssignmentValueSymbol(value.parent) : checker.getSymbolAtLocation(value);
+  const declaration = symbol && (symbol.flags & sync.SymbolFlags.Alias) === 0 && symbol.valueDeclaration
+    ? declarationNode(proof.native, symbol.valueDeclaration) : undefined;
+  const initializer = constInitializer(ast, declaration);
   return initializer !== undefined && initializer.getSourceFile() === value.getSourceFile() && primitiveValue(initializer, proof, active);
 }
 
 /** A const binding alone does not prevent its object's fields being mutated or exposed. */
-function primitiveMember(node: ts.PropertyAccessExpression | ts.ElementAccessExpression, proof: PrimitiveProof, active: Set<ts.Node>): boolean {
-  if (!ts.isIdentifier(node.expression)) return false;
-  const key = ts.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression &&
-    (ts.isStringLiteralLike(node.argumentExpression) || ts.isNumericLiteral(node.argumentExpression)) ? node.argumentExpression.text : undefined;
-  const symbol = proof.checker.getSymbolAtLocation(node.expression);
-  if (!symbol || key === undefined || (symbol.flags & ts.SymbolFlags.Alias) !== 0) return false;
-  if (!proof.objects.has(symbol)) proof.objects.set(symbol, localObjectFields(symbol, node.getSourceFile(), proof));
-  const field = proof.objects.get(symbol)?.get(key);
-  return field !== undefined && primitiveValue(proof.services.esTreeNodeToTSNodeMap.get(field.value), proof, active);
+function primitiveMember(node: TsNode, proof: PrimitiveProof, active: Set<TsNode>): boolean {
+  const { ast, checker, sync } = proof.native;
+  if (!ast.isPropertyAccessExpression(node) && !ast.isElementAccessExpression(node)) return false;
+  if (!ast.isIdentifier(node.expression)) return false;
+  const key = accessKey(ast, node);
+  const symbol = checker.getSymbolAtLocation(node.expression);
+  if (!symbol || key === undefined || (symbol.flags & sync.SymbolFlags.Alias) !== 0) return false;
+  if (!proof.objects.has(symbol.id)) proof.objects.set(symbol.id, localObjectFields(symbol, node.getSourceFile(), proof));
+  const field = proof.objects.get(symbol.id)?.get(key);
+  const value = field && proof.native.node(field.value);
+  return value !== undefined && primitiveValue(value, proof, active);
 }
 
-function localObjectFields(symbol: ts.Symbol, source: ts.SourceFile, proof: PrimitiveProof): ReadonlyMap<string, TSESTree.Property> | null {
-  const native = symbol.valueDeclaration;
-  const initial = constInitializer(native);
-  const initializer = initial && unassertedValue(initial);
-  if (!native || native.getSourceFile() !== source || !initializer || !ts.isObjectLiteralExpression(initializer)) return null;
-  const declaration = proof.services.tsNodeToESTreeNodeMap.get(native);
-  const literal = proof.services.tsNodeToESTreeNodeMap.get(initializer);
-  if (declaration.type !== AST_NODE_TYPES.VariableDeclarator || declaration.parent.kind !== "const" || declaration.id.type !== AST_NODE_TYPES.Identifier || literal.type !== AST_NODE_TYPES.ObjectExpression ||
-    declaration.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) return null;
+function accessKey(ast: NativeTypes["ast"], node: PropertyAccessExpression | ElementAccessExpression): string | undefined {
+  if (ast.isPropertyAccessExpression(node)) return ast.isIdentifier(node.name) ? node.name.text : undefined;
+  const argument = node.argumentExpression;
+  return argument && (ast.isStringLiteralLikeNode(argument) || ast.isNumericLiteral(argument)) ? argument.text : undefined;
+}
+
+function localObjectFields(symbol: TsSymbol, source: SourceFile, proof: PrimitiveProof): ReadonlyMap<string, Property> | null {
+  const local = localObjectLiteral(symbol, source, proof);
+  if (local === null) return null;
+  const { declaration, literal } = local;
+  const list = parentOf(declaration);
+  if (list?.type !== "VariableDeclaration" || list.kind !== "const" || declaration.id.type !== "Identifier" ||
+    parentOf(list)?.type === "ExportNamedDeclaration") return null;
   const fields = plainLiteralFields(literal);
-  const binding = proof.sourceCode.getDeclaredVariables(declaration).find((variable) => variable.defs.some((definition) => definition.type === "Variable" && definition.node === declaration));
+  const binding = declaratorBinding(proof.sourceCode, declaration);
   if (!fields || !binding || binding.defs.length !== 1 || !stableValueBinding(binding, (reference) => {
     if (!reference.isReadOnly() || reference.isTypeReference) return false;
-    const member = reference.identifier.parent;
-    return member.type === AST_NODE_TYPES.MemberExpression && member.object === reference.identifier && readonlyFieldValue(member, fields);
+    const member = parentOf(reference.identifier);
+    return member?.type === "MemberExpression" && member.object === reference.identifier && readonlyFieldValue(member, fields);
   })) return null;
   return fields;
 }
 
-function staticMemberKey(member: TSESTree.MemberExpression): string | undefined {
+/** The same-file declarator whose const initializer is an object literal. */
+function localObjectLiteral(symbol: TsSymbol, source: SourceFile, proof: PrimitiveProof):
+  { readonly declaration: ESTree.VariableDeclarator; readonly literal: ESTree.ObjectExpression } | null {
+  const { ast } = proof.native;
+  const handle = symbol.valueDeclaration;
+  // A declaration in another file fails the same-file check below; never fetch that file.
+  if (!handle || handle.path !== source.path) return null;
+  const declarationNative = declarationNode(proof.native, handle);
+  const initial = constInitializer(ast, declarationNative);
+  const initializer = initial && unassertedValue(ast, initial);
+  if (!declarationNative || declarationNative.getSourceFile() !== source || !initializer || !ast.isObjectLiteralExpression(initializer)) return null;
+  const declaration = proof.native.esTreeNode(declarationNative);
+  const literal = proof.native.esTreeNode(initializer);
+  return declaration?.type === "VariableDeclarator" && literal?.type === "ObjectExpression" ? { declaration, literal } : null;
+}
+
+function declaratorBinding(sourceCode: SourceCode, declaration: ESTree.VariableDeclarator): TsVariable | undefined {
+  return sourceCode.getDeclaredVariables(declaration).find((variable) =>
+    variable.defs.some((definition) => definition.type === "Variable" && definition.node === declaration)) as TsVariable | undefined;
+}
+
+function staticMemberKey(member: ESTree.MemberExpression): string | undefined {
   const property = member.property;
-  return !member.computed && property.type === AST_NODE_TYPES.Identifier ? property.name :
-    property.type === AST_NODE_TYPES.Literal && (typeof property.value === "string" || typeof property.value === "number") ? String(property.value) : undefined;
+  return !member.computed && property.type === "Identifier" ? property.name :
+    property.type === "Literal" && (typeof property.value === "string" || typeof property.value === "number") ? String(property.value) : undefined;
 }
 
 /** Only direct own-field values in data/JSX/local bindings are initially supported. */
-function readonlyFieldValue(member: TSESTree.MemberExpression, fields: ReadonlyMap<string, TSESTree.Property>): boolean {
+function readonlyFieldValue(member: ESTree.MemberExpression, fields: ReadonlyMap<string, Property>): boolean {
   const key = staticMemberKey(member);
   if (key === undefined || !fields.has(key)) return false;
-  const parent = member.parent;
-  if (parent.type === AST_NODE_TYPES.Property && parent.value === member && parent.parent.type === AST_NODE_TYPES.ObjectExpression) {
-    const object = parent.parent;
-    const owner = object.parent;
-    return (owner.type === AST_NODE_TYPES.JSXSpreadAttribute && owner.argument === object) ||
-      (owner.type === AST_NODE_TYPES.VariableDeclarator && owner.init === object);
+  const parent = parentOf(member);
+  if (parent === null) return false;
+  const object = parent.type === "Property" && parent.value === member ? parentOf(parent) : null;
+  if (object?.type === "ObjectExpression") {
+    const owner = parentOf(object);
+    return owner !== null && ((owner.type === "JSXSpreadAttribute" && owner.argument === object) || initializes(owner, object));
   }
-  return (parent.type === AST_NODE_TYPES.JSXExpressionContainer && parent.expression === member) ||
-    (parent.type === AST_NODE_TYPES.VariableDeclarator && parent.init === member);
+  return (parent.type === "JSXExpressionContainer" && parent.expression === member) || initializes(parent, member);
+}
+
+function initializes(owner: Node, value: Node): boolean {
+  return owner.type === "VariableDeclarator" && owner.init === value;
 }
 
 /** An escaping or unbound element cannot satisfy the later closed-value proof. */
-function privateElementDeclaration(opening: TSESTree.JSXOpeningElement): TSESTree.VariableDeclarator | null {
-  const value = outerExpression(opening.parent);
-  const declaration = value.parent;
-  return declaration.type === AST_NODE_TYPES.VariableDeclarator && declaration.init === value && declaration.id.type === AST_NODE_TYPES.Identifier &&
-    declaration.parent.kind === "const" && declaration.parent.parent.type !== AST_NODE_TYPES.ExportNamedDeclaration ? declaration : null;
+function privateElementDeclaration(opening: ESTree.JSXOpeningElement): ESTree.VariableDeclarator | null {
+  const element = parentOf(opening);
+  if (element === null) return null;
+  const value = outerExpression(element);
+  const declaration = parentOf(value);
+  if (declaration?.type !== "VariableDeclarator" || declaration.init !== value || declaration.id.type !== "Identifier") return null;
+  const list = parentOf(declaration);
+  return list?.type === "VariableDeclaration" && list.kind === "const" && parentOf(list)?.type !== "ExportNamedDeclaration" ? declaration : null;
 }
 
 /** Only unused private const elements or fixed consumed scalar inspections are closed. */
-function closedElementValue(opening: TSESTree.JSXOpeningElement, declaration: TSESTree.VariableDeclarator, fields: ReadonlyMap<string, TSESTree.Property>, reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
-  if (!closedInvocation(opening, proof) || !constInitializer(proof.services.esTreeNodeToTSNodeMap.get(declaration))) return false;
-  const binding = proof.sourceCode.getDeclaredVariables(declaration).find((variable) => variable.defs.some((definition) => definition.type === "Variable" && definition.node === declaration));
-  const symbol = proof.checker.getSymbolAtLocation(proof.services.esTreeNodeToTSNodeMap.get(declaration.id));
-  if (!symbol || proof.exports.has(symbol)) return false;
+function closedElementValue(opening: ESTree.JSXOpeningElement, declaration: ESTree.VariableDeclarator, fields: ReadonlyMap<string, Property>,
+  reads: ReadonlySet<string>, proof: PrimitiveProof): boolean {
+  const { ast, checker } = proof.native;
+  if (!closedInvocation(opening, proof) || !constInitializer(ast, proof.native.node(declaration))) return false;
+  const binding = declaratorBinding(proof.sourceCode, declaration);
+  const id = proof.native.node(declaration.id);
+  const symbol = id && checker.getSymbolAtLocation(id);
+  if (!symbol || proof.exports.has(symbol.id)) return false;
   return binding !== undefined && binding.defs.length === 1 && stableValueBinding(binding, (reference) => {
     if (!reference.isReadOnly() || reference.isTypeReference || reference.from.variableScope !== binding.scope.variableScope) return false;
     return consumedElementRead(reference.identifier, fields, reads);
@@ -277,109 +369,138 @@ function closedElementValue(opening: TSESTree.JSXOpeningElement, declaration: TS
 }
 
 /** An argument or captured object can invoke a getter before element creation. */
-function closedInvocation(node: TSESTree.Node, proof: PrimitiveProof): boolean {
-  for (let scope: TSESLint.Scope.Scope | null = proof.sourceCode.getScope(node); scope; scope = scope.upper) {
+function closedInvocation(node: Node, proof: PrimitiveProof): boolean {
+  for (let scope: Scope | null = proof.sourceCode.getScope(node); scope; scope = scope.upper) {
     if (scope.type !== "function") continue;
     let closed = proof.invocations.get(scope);
-    if (closed === undefined) { closed = independentInvocation(scope, proof); proof.invocations.set(scope, closed); }
+    if (closed === undefined) {
+      closed = independentInvocation(scope, proof);
+      proof.invocations.set(scope, closed);
+    }
     if (!closed) return false;
   }
   return true;
 }
 
-function independentInvocation(scope: TSESLint.Scope.Scope, proof: PrimitiveProof): boolean {
+function independentInvocation(scope: Scope, proof: PrimitiveProof): boolean {
   const block = scope.block;
-  if (block.type !== AST_NODE_TYPES.ArrowFunctionExpression && block.type !== AST_NODE_TYPES.FunctionDeclaration && block.type !== AST_NODE_TYPES.FunctionExpression) return false;
-  if (block.async || block.generator || scope.set.get("arguments")?.references.some((reference) => !typeOnlyReference(reference))) return false;
+  if (block.type !== "ArrowFunctionExpression" && block.type !== "FunctionDeclaration" && block.type !== "FunctionExpression") return false;
+  const argumentsBinding = scope.set.get("arguments");
+  if (block.async || block.generator ||
+    argumentsBinding?.references.some((reference) => !typeOnlyReference(reference as TsReference))) return false;
   for (const parameter of block.params) {
-    if (parameter.type !== AST_NODE_TYPES.Identifier || parameter.name === "this") return false;
+    if (parameter.type !== "Identifier" || parameter.name === "this") return false;
     const binding = scope.set.get(parameter.name);
-    if (!binding || binding.references.some((reference) => !typeOnlyReference(reference))) return false;
+    if (!binding || binding.references.some((reference) => !typeOnlyReference(reference as TsReference))) return false;
   }
-  return scope.through.every((reference) => {
+  return scope.through.every((entry) => {
+    const reference = entry as TsReference;
     if (typeOnlyReference(reference)) return true;
     const value = outerExpression(reference.identifier);
-    const parent = value.parent;
-    const read = parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === value ? parent : value;
-    return primitiveValue(proof.services.esTreeNodeToTSNodeMap.get(read), proof, new Set());
+    const parent = parentOf(value);
+    const read = parent?.type === "MemberExpression" && parent.object === value ? parent : value;
+    const native = proof.native.node(read);
+    return native !== undefined && primitiveValue(native, proof, new Set());
   });
 }
 
 /** A scalar field read exposes its value without exposing the element or props object. */
-function consumedElementRead(node: TSESTree.Identifier | TSESTree.JSXIdentifier, fields: ReadonlyMap<string, TSESTree.Property>, reads: ReadonlySet<string>): boolean {
+function consumedElementRead(node: Node, fields: ReadonlyMap<string, Property>, reads: ReadonlySet<string>): boolean {
   const identifier = outerExpression(node);
-  const props = identifier.parent;
-  if (!props || props.type !== AST_NODE_TYPES.MemberExpression || props.object !== identifier || props.optional || staticMemberKey(props) !== "props") return false;
-  const member = props.parent;
-  if (member.type !== AST_NODE_TYPES.MemberExpression || member.object !== props || member.optional) return false;
+  const props = parentOf(identifier);
+  if (!props || props.type !== "MemberExpression" || props.object !== identifier || props.optional || staticMemberKey(props) !== "props") return false;
+  const member = parentOf(props);
+  if (member?.type !== "MemberExpression" || member.object !== props || member.optional) return false;
   const key = staticMemberKey(member);
   return key !== undefined && reads.has(key) && readonlyFieldValue(member, fields);
 }
 
-export default createRule<[], "excess">({
-  name: "no-excess-jsx-props",
-  documentation: NO_EXCESS_JSX_PROPS_DOCUMENTATION,
+function closedObjectType(native: NativeTypes): boolean {
+  const { checker, sync } = native;
+  const object = checker.resolveName("Object", sync.SymbolFlags.Type, undefined, false);
+  return object !== undefined && closedObjectContract(native, checker.getDeclaredTypeOfSymbol(object));
+}
+
+interface Candidate {
+  readonly node: ESTree.JSXSpreadAttribute;
+  readonly declaration: ESTree.VariableDeclarator;
+  readonly fields: ReadonlyMap<string, Property>;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: NO_EXCESS_JSX_PROPS_DOCUMENTATION.summary },
+    docs: { description: "Report statically known fields spread outside a resolved component props contract.", url: docsUrl(NAME) },
     schema: [],
-    messages: { excess: "This spread forwards fields outside the receiving component's declared contract: {{fields}}. Forward the needed fields explicitly or review the contract; an annotation alone does not remove runtime fields." },
+    messages: {
+      excess: "This spread forwards fields outside the receiving component's declared contract: {{fields}}. Forward the needed fields explicitly or review the contract; an annotation alone does not remove runtime fields.",
+    },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    let services: TypeServices | undefined;
-    let objectContract: boolean | undefined;
-    const contracts = new WeakMap<ts.Type, boolean>();
-    const receivers = new WeakMap<ts.Signature, ReadonlySet<string> | null>();
-    const overrides = new WeakMap<ts.SourceFile, boolean>();
-    let proof: PrimitiveProof | undefined;
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
     let dynamic = false;
-    const candidates: { readonly node: TSESTree.JSXSpreadAttribute; readonly declaration: TSESTree.VariableDeclarator; readonly fields: ReadonlyMap<string, TSESTree.Property> }[] = [];
-    let standardJSX: boolean | undefined;
-    const evaluate = (node: TSESTree.JSXSpreadAttribute, declaration: TSESTree.VariableDeclarator, fields: ReadonlyMap<string, TSESTree.Property>): void => {
-      const keys = [...fields.keys()];
-      const opening = node.parent;
-      services ??= getTypeServices(context);
-      standardJSX ??= supportedJSX(services.program.getCompilerOptions(), context.sourceCode.getAllComments());
-      if (!standardJSX) return;
-      const checker = services.program.getTypeChecker();
-      if (objectContract === undefined) {
-        const object = checker.resolveName("Object", undefined, ts.SymbolFlags.Type, false);
-        objectContract = object !== undefined && closedObjectContract(checker.getDeclaredTypeOfSymbol(object), checker);
-      }
-      if (!objectContract) return;
-      const contract = receivingContract(opening, services, checker, contracts);
-      if (!contract) return;
-      const excess = keys.filter((key) => checker.getPropertyOfType(contract.props, key) === undefined).sort();
-      if (!excess.length || !stableReceiver(contract.tag, contract.signature, checker, services.program, overrides)) return;
-      const signature = contract.signature;
-      if (!receivers.has(signature)) receivers.set(signature, receiverReads(signature, checker));
-      const reads = receivers.get(signature);
-      proof ??= { checker, services, sourceCode: context.sourceCode,
-        exports: exportedSymbols(services.esTreeNodeToTSNodeMap.get(context.sourceCode.ast), checker), values: new WeakSet(), objects: new WeakMap(), invocations: new WeakMap() };
-      if (!reads || !ownScalarReads(fields, reads, proof) || !closedElementValue(opening, declaration, fields, reads, proof)) return;
-      const implementation = signature.getDeclaration();
-      if (!implementation || ordinaryObjectEffects(services.program, contract.tag.getSourceFile()) || ordinaryObjectEffects(services.program, implementation.getSourceFile())) return;
-      context.report({ node, messageId: "excess", data: { fields: excess.join(", ") } });
-    };
+    let candidates: Candidate[] = [];
+
+    /** The original's per-file `evaluate`, against tsrs; returns the excess fields to report, or null. */
+    function evaluator(native: NativeTypes) {
+      const { checker } = native;
+      const sourceCode = context.sourceCode;
+      let objectContract: boolean | undefined;
+      let standardJSX: boolean | undefined;
+      let proof: PrimitiveProof | undefined;
+      const contracts = new Map<Type, boolean>();
+      const receivers = new Map<Signature, ReadonlySet<string> | null>();
+      const overrides = new Map<string, boolean>();
+      return (candidate: Candidate): string | null => {
+        const opening = parentOf(candidate.node) as ESTree.JSXOpeningElement;
+        standardJSX ??= supportedJSX(native, sourceCode.getAllComments());
+        if (!standardJSX) return null;
+        objectContract ??= closedObjectType(native);
+        if (!objectContract) return null;
+        const contract = receivingContract(native, opening, contracts);
+        if (!contract) return null;
+        const excess = [...candidate.fields.keys()].filter((key) => checker.getPropertyOfType(contract.props, key) === undefined).sort();
+        if (!excess.length || !stableReceiver(native, contract.tag, contract.signature, overrides)) return null;
+        const signature = contract.signature;
+        if (!receivers.has(signature)) receivers.set(signature, receiverReads(native, signature));
+        const reads = receivers.get(signature);
+        proof ??= { native, sourceCode, exports: exportedSymbols(native, native.source), values: new Set(), objects: new Map(),
+          invocations: new Map(), primitiveOperators: primitiveOperators(native) };
+        return reads && closedSpread(candidate, opening, contract, reads, proof) ? excess.join(", ") : null;
+      };
+    }
+
     return {
-      JSXSpreadAttribute(node): void {
-        if (node.argument.type !== AST_NODE_TYPES.ObjectExpression) return;
-        const opening = node.parent;
-        if (!opening.selfClosing || opening.attributes.length !== 1 || opening.name.type !== AST_NODE_TYPES.JSXIdentifier || /^[a-z]/u.test(opening.name.name)) return;
+      before() {
+        tsrs = null;
+        dynamic = false;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      JSXSpreadAttribute(node) {
+        if (node.argument.type !== "ObjectExpression") return;
+        const opening = parentOf(node);
+        if (opening?.type !== "JSXOpeningElement" || !opening.selfClosing || opening.attributes.length !== 1 ||
+          opening.name.type !== "JSXIdentifier" || /^[a-z]/u.test(opening.name.name)) return;
         const declaration = privateElementDeclaration(opening);
         if (!declaration) return;
         const fields = literalFields(node.argument);
         if (!fields?.size) return;
         candidates.push({ node, declaration, fields });
       },
-      CallExpression(node): void { if (directEval(node)) dynamic = true; },
-      "Program:exit"(): void {
-        if (!candidates.length || dynamic) return;
-        services = getTypeServices(context);
-        if (!currentNativeSource(context.sourceCode, services)) return;
-        for (const {node, declaration, fields} of candidates) evaluate(node, declaration, fields);
+      CallExpression(node) {
+        if (directEval(node)) dynamic = true;
+      },
+      "Program:exit"() {
+        if (!candidates.length || dynamic || tsrs === null) return;
+        const excess = tsrs.run((file) => candidates.map(evaluator(nativeTypes(file))));
+        if (excess === null) return;
+        candidates.forEach(({ node }, i) => {
+          const fields = excess[i];
+          if (fields !== null && fields !== undefined) context.report({ node, messageId: "excess", data: { fields } });
+        });
       },
     };
   },

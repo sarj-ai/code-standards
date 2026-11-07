@@ -1,22 +1,17 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, {
-  REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
-} from "../../src/rules/require-fetch-timeout.js";
+import rule from "../../src/rules/require-fetch-timeout.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const RULE_TESTER = ruleTester();
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
+  examples: [
+    { files: [{ source: "await fetch(url, { signal: AbortSignal.timeout(5000) });" }] },
+    { files: [{ source: "await fetch('https://api.example.com/items');" }] },
+  ],
+} as const;
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
   valid: [
@@ -153,7 +148,8 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
         "/repo/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx",
     },
     {
-      name: "accepts AbortSignal.timeout",
+      name: "accepts AbortSignal.timeout (distinct filename: Oxlint's RuleTester rejects duplicate code)",
+      filename: "src/timeout.ts",
       code: "await fetch(url, { signal: AbortSignal.timeout(5000) });",
     },
     {

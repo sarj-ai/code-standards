@@ -1,278 +1,152 @@
 /**
  * @fileoverview no-json-stringify-object-equality — JSON serialization is not structural object equality.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts
+ * Port of the 18.x `no-json-stringify-object-equality` rule. Syntax
+ * decides most comparisons in the walk. When it cannot, and tsrs is available,
+ * the comparison waits for `Program:exit`, where tsrs types the serialized
+ * values; without tsrs (or when tsrs cannot hold the file) the original's
+ * untyped array check decides instead.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
-
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
-
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import type { TsrsFile, TsrsServices, TsrsSymbol, TsrsType, TsrsTypeFlags } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 import { existingDomainComparisonFix } from "./_existing-domain-comparison-fix.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
 
-type MessageIds = "serializedObjectEquality";
-type Options = readonly [];
+const NAME = "no-json-stringify-object-equality";
 
-export const NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary: "Do not use JSON serialization as structural object equality.",
-  rationale:
-    "JSON text equality depends on property insertion order and serialization behavior, so semantically equal objects can compare unequal and distinct values can collapse together.",
-  remediation:
-    "Compare an explicit domain projection structurally, or use a reviewed canonical serializer when JSON semantics are required.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: [
-    "Only direct binary comparisons between two unshadowed global JSON.stringify calls, including stable const destructured aliases of that global, are checked.",
-    "Primitive-only arrays are excluded when TypeScript can prove their element types.",
-    "Mutable, defaulted, reassigned, transitive and unknown aliases, stored serialization results, custom JSON objects, tests, generated files, and equality hidden inside helper calls are excluded.",
-    "Automatic fixes only reuse an already called private ordinary comparator in a complete comment-free two-declaration module. Its two inline record parameter types must contain the same ordered unique string fields, including an already-authored own non-callable string toJSON field; its sole return compares every corresponding field with strict equality and conjunction. The sole export is an ordinary zero-argument function explicitly returning boolean[], whose sole returned array contains the existing comparator call and one direct strict JSON comparison of fresh literal records with those exact ordered fields and primitive string values. Imports, ambient declarations, callbacks, computed/spread/getter properties, prototype-related keys, type parameters and all other expressions remain manual.",
-    "The own primitive toJSON data field is required in every literal and is never introduced by the fix: it prevents an inherited Object.prototype.toJSON hook from changing serialization. The direct unshadowed JSON.stringify intrinsic must retain its standard behavior; no new helper, field, import or domain name is chosen.",
-  ],
-  examples: [
-    {
-      id: "domain-comparator",
-      title: "Use an explicit structural comparator",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/compare.ts",
-          source:
-            "type RecordState = { id: string; state: string };\nfunction sameRecord(actual: RecordState, expected: RecordState): boolean { return actual.id === expected.id && actual.state === expected.state; }\nconst same = sameRecord({ id: '1', state: 'ready' }, { state: 'ready', id: '1' });",
-        },
-      ],
-      focusPath: "src/compare.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "serialized-object-equality",
-      title: "Do not compare object serialization",
-      outcome: "match",
-      files: [
-        {
-          path: "src/compare.ts",
-          source:
-            "const same = JSON.stringify({ id: '1', state: 'ready' }) === JSON.stringify({ state: 'ready', id: '1' });",
-        },
-      ],
-      focusPath: "src/compare.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing comparator for an exact string record domain",
-      outcome: "match",
-      files: [
-        {
-          path: "src/compare.ts",
-          source:
-            "function sameShape(a: { id: string; state: string; toJSON: string }, b: { id: string; state: string; toJSON: string }): boolean { return a.id === b.id && a.state === b.state && a.toJSON === b.toJSON; }\nexport function choices(): boolean[] { return [sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '1', state: 'ready', toJSON: 'data' }), JSON.stringify({ id: '1', state: 'ready', toJSON: 'data' }) === JSON.stringify({ id: '2', state: 'ready', toJSON: 'data' })]; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/compare.ts",
-          source:
-            "function sameShape(a: { id: string; state: string; toJSON: string }, b: { id: string; state: string; toJSON: string }): boolean { return a.id === b.id && a.state === b.state && a.toJSON === b.toJSON; }\nexport function choices(): boolean[] { return [sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '1', state: 'ready', toJSON: 'data' }), sameShape({ id: '1', state: 'ready', toJSON: 'data' }, { id: '2', state: 'ready', toJSON: 'data' })]; }",
-        },
-      ],
-      focusPath: "src/compare.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+type Expression = ESTree.Expression;
 
-const EQUALITY_OPERATORS: ReadonlySet<string> = new Set([
-  "!=",
-  "!==",
-  "==",
-  "===",
-]);
-const PRIMITIVE_FLAGS =
-  ts.TypeFlags.BigIntLike |
-  ts.TypeFlags.BooleanLike |
-  ts.TypeFlags.ESSymbolLike |
-  ts.TypeFlags.Never |
-  ts.TypeFlags.Null |
-  ts.TypeFlags.NumberLike |
-  ts.TypeFlags.StringLike |
-  ts.TypeFlags.Undefined |
-  ts.TypeFlags.Void;
+const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["!=", "!==", "==", "==="]);
 
-function unwrapComparisonExpression(
-  node: TSESTree.Expression,
-): TSESTree.Expression {
+function unwrapComparisonExpression(node: Node): Node {
   let current = unwrapExpression(node);
-  while (current.type === AST_NODE_TYPES.ChainExpression) {
-    current = unwrapExpression(current.expression);
-  }
+  while (current.type === "ChainExpression") current = unwrapExpression(current.expression);
   return current;
 }
 
-function jsonStringifyArgument(
-  node: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): TSESTree.Expression | null {
+function jsonStringifyArgument(node: Node, sourceCode: SourceCode): Expression | null {
   const expression = unwrapComparisonExpression(node);
-  if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  if (
-    expression.callee.type === AST_NODE_TYPES.Super ||
-    !isJsonStringify(expression.callee, sourceCode)
-  )
-    return null;
+  if (expression.type !== "CallExpression") return null;
+  if (expression.callee.type === "Super" || !isJsonStringify(expression.callee, sourceCode)) return null;
   const argument = expression.arguments[0];
-  return argument !== undefined &&
-    argument.type !== AST_NODE_TYPES.SpreadElement
-    ? argument
-    : null;
+  return argument !== undefined && argument.type !== "SpreadElement" ? argument : null;
 }
 
-function isJsonStringify(
-  node: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): boolean {
+function isJsonStringify(node: Node, sourceCode: SourceCode): boolean {
   const expression = unwrapComparisonExpression(node);
-  if (expression.type === AST_NODE_TYPES.MemberExpression) {
-    return (
-      ASTUtils.getPropertyName(expression) === "stringify" &&
-      expression.object.type !== AST_NODE_TYPES.Super &&
-      isGlobalJson(expression.object, sourceCode)
-    );
+  if (expression.type === "MemberExpression") {
+    return getPropertyName(expression) === "stringify" && expression.object.type !== "Super" &&
+      isGlobalJson(expression.object, sourceCode);
   }
-  if (expression.type !== AST_NODE_TYPES.Identifier) return false;
-  const binding = ASTUtils.findVariable(
-    sourceCode.getScope(expression),
-    expression.name,
-  );
-  if (
-    binding === null ||
-    binding.defs.length !== 1 ||
-    binding.references.some(
-      (reference) => reference.isWrite() && reference.init !== true,
-    )
-  )
-    return false;
+  if (expression.type !== "Identifier") return false;
+  const binding = findVariable(sourceCode.getScope(expression), expression.name);
+  if (binding === null || binding.defs.length !== 1 ||
+    binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
   const [definition] = binding.defs;
-  if (
-    definition?.type !== "Variable" ||
-    definition.parent.kind !== "const" ||
-    definition.node.id.type !== AST_NODE_TYPES.ObjectPattern ||
-    definition.node.init === null ||
-    !isGlobalJson(definition.node.init, sourceCode)
-  )
-    return false;
-  return definition.node.id.properties.some(
-    (property) =>
-      property.type === AST_NODE_TYPES.Property &&
-      ASTUtils.getPropertyName(property) === "stringify" &&
-      property.value.type === AST_NODE_TYPES.Identifier &&
-      ASTUtils.findVariable(
-        sourceCode.getScope(property.value),
-        property.value.name,
-      ) === binding,
-  );
+  if (definition?.type !== "Variable") return false;
+  const declarator = definition.node as ESTree.VariableDeclarator;
+  const declaration = definition.parent as ESTree.VariableDeclaration | null;
+  if (declaration?.kind !== "const" || declarator.id.type !== "ObjectPattern" || declarator.init === null ||
+    !isGlobalJson(declarator.init, sourceCode)) return false;
+  return declarator.id.properties.some((property) =>
+    property.type === "Property" && getPropertyName(property) === "stringify" &&
+    property.value.type === "Identifier" &&
+    findVariable(sourceCode.getScope(property.value), property.value.name) === binding);
 }
 
-function isGlobalJson(
-  node: TSESTree.Expression,
-  sourceCode: Readonly<TypeScriptSourceCode>,
-): boolean {
+function isGlobalJson(node: Node, sourceCode: SourceCode): boolean {
   const expression = unwrapComparisonExpression(node);
-  if (
-    expression.type !== AST_NODE_TYPES.Identifier ||
-    expression.name !== "JSON"
-  )
-    return false;
-  const binding = ASTUtils.findVariable(
-    sourceCode.getScope(expression),
-    expression.name,
-  );
+  if (expression.type !== "Identifier" || expression.name !== "JSON") return false;
+  const binding = findVariable(sourceCode.getScope(expression), expression.name);
   return binding === null || binding.defs.length === 0;
 }
 
-function typeMayContainObject(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if (type.isUnionOrIntersection()) {
-    return type.types.some((member) => typeMayContainObject(member, checker));
-  }
-  if ((type.flags & PRIMITIVE_FLAGS) !== 0) return false;
-  if (
-    (type.flags &
-      (ts.TypeFlags.Any |
-        ts.TypeFlags.Unknown |
-        ts.TypeFlags.TypeParameter)) !==
-    0
-  ) {
-    return true;
-  }
-  if (checker.isArrayType(type) || checker.isTupleType(type)) {
-    const elements = checker.getTypeArguments(type as ts.TypeReference);
-    return elements.some((element) => typeMayContainObject(element, checker));
-  }
-  const symbolName = type.getSymbol()?.getName();
-  if (
-    (symbolName === "Array" || symbolName === "ReadonlyArray") &&
-    (type.flags & ts.TypeFlags.Object) !== 0
-  ) {
-    const elements = checker.getTypeArguments(type as ts.TypeReference);
-    return (
-      elements.length === 0 ||
-      elements.some((element) => typeMayContainObject(element, checker))
-    );
-  }
-  return true;
-}
-
-function syntaxMayContainObject(node: TSESTree.Expression): boolean | null {
+function syntaxMayContainObject(node: Node): boolean | null {
   const expression = unwrapComparisonExpression(node);
-  if (expression.type === AST_NODE_TYPES.ObjectExpression) return true;
-  if (expression.type === AST_NODE_TYPES.Literal) return "regex" in expression;
-  if (
-    expression.type === AST_NODE_TYPES.TemplateLiteral ||
-    expression.type === AST_NODE_TYPES.UnaryExpression
-  )
-    return false;
-  if (expression.type !== AST_NODE_TYPES.ArrayExpression) return null;
+  if (expression.type === "ObjectExpression") return true;
+  if (expression.type === "Literal") return "regex" in expression;
+  if (expression.type === "TemplateLiteral" || expression.type === "UnaryExpression") return false;
+  if (expression.type !== "ArrayExpression") return null;
   let unknown = false;
   for (const element of expression.elements) {
     if (element === null) continue;
-    const result =
-      element.type === AST_NODE_TYPES.SpreadElement
-        ? null
-        : syntaxMayContainObject(element);
+    const result = element.type === "SpreadElement" ? null : syntaxMayContainObject(element);
     if (result === true) return true;
     if (result === null) unknown = true;
   }
   return unknown ? null : false;
 }
 
-function untypedArrayMayContainObject(node: TSESTree.ArrayExpression): boolean {
+function untypedArrayMayContainObject(node: ESTree.ArrayExpression): boolean {
   return node.elements.some((element) => {
-    if (element === null || element.type === AST_NODE_TYPES.SpreadElement)
-      return false;
+    if (element === null || element.type === "SpreadElement") return false;
     const value = unwrapComparisonExpression(element);
-    return value.type === AST_NODE_TYPES.ArrayExpression
-      ? untypedArrayMayContainObject(value)
-      : syntaxMayContainObject(value) !== false;
+    return value.type === "ArrayExpression" ? untypedArrayMayContainObject(value) : syntaxMayContainObject(value) !== false;
   });
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-json-stringify-object-equality",
-  documentation: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION,
+function untypedMayContainObject(node: Node): boolean {
+  const syntax = syntaxMayContainObject(node);
+  if (syntax !== null) return syntax;
+  const expression = unwrapComparisonExpression(node);
+  return expression.type === "ArrayExpression" && untypedArrayMayContainObject(expression);
+}
+
+// The tsrs checker and type methods this rule needs beyond the shared `TsrsChecker` view.
+interface Checker {
+  isArrayType(type: TsrsType): boolean;
+  isTupleType(type: TsrsType): boolean;
+  getTypeArguments(type: TsrsType): readonly TsrsType[];
+}
+interface Type extends TsrsType {
+  getSymbol(): TsrsSymbol | undefined;
+}
+
+/**
+ * The original's `typeMayContainObject`, on tsrs. The original recurses
+ * without a guard and overflows the stack on a recursive type such as
+ * `type Json = null | string | Json[] | { [key: string]: Json }`; here a type
+ * already being checked adds nothing, so it counts as object-free.
+ */
+function typeMayContainObject(type: TsrsType, checker: Checker, flags: TsrsTypeFlags, active = new Set<number>()): boolean {
+  if (active.has(type.id)) return false;
+  active.add(type.id);
+  try {
+    const recurse = (member: TsrsType): boolean => typeMayContainObject(member, checker, flags, active);
+    const primitive = flags.BigIntLike | flags.BooleanLike | flags.ESSymbolLike | flags.Never | flags.Null |
+      flags.NumberLike | flags.StringLike | flags.Undefined | flags.Void;
+    if (type.isUnionType() || type.isIntersectionType()) return (type.getTypes() ?? []).some(recurse);
+    if ((type.flags & primitive) !== 0) return false;
+    if ((type.flags & (flags.Any | flags.Unknown | flags.TypeParameter)) !== 0) return true;
+    if (checker.isArrayType(type) || checker.isTupleType(type)) return checker.getTypeArguments(type).some(recurse);
+    const symbolName = (type as Type).getSymbol()?.name;
+    if ((symbolName === "Array" || symbolName === "ReadonlyArray") && (type.flags & flags.Object) !== 0) {
+      const elements = checker.getTypeArguments(type);
+      return elements.length === 0 || elements.some(recurse);
+    }
+    return true;
+  } finally {
+    active.delete(type.id);
+  }
+}
+
+interface Pending {
+  readonly node: ESTree.BinaryExpression;
+  readonly left: Expression;
+  readonly right: Expression;
+}
+
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Do not use JSON serialization as structural object equality.",
+      description: "Do not use JSON serialization as structural object equality.",
+      url: docsUrl(NAME),
     },
     schema: [],
     fixable: "code",
@@ -281,49 +155,64 @@ export default createRule<Options, MessageIds>({
         "`JSON.stringify` compares serialization details, not object structure. Compare an explicit domain projection or use reviewed canonical serialization.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const sourceCode = context.sourceCode;
-    if (isTestFile(context) || isGeneratedFile(context, sourceCode.text)) {
-      return {};
-    }
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
-    }
-    const checker = services?.program.getTypeChecker();
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let pending: Pending[] = [];
 
-    function mayContainObject(node: TSESTree.Expression): boolean {
-      const syntax = syntaxMayContainObject(node);
-      if (syntax !== null) return syntax;
-      if (services === null || checker === undefined) {
-        const expression = unwrapComparisonExpression(node);
-        return (
-          expression.type === AST_NODE_TYPES.ArrayExpression &&
-          untypedArrayMayContainObject(expression)
-        );
-      }
-      const type = checker.getTypeAtLocation(
-        services.esTreeNodeToTSNodeMap.get(node),
-      );
-      return typeMayContainObject(type, checker);
+    function report(node: ESTree.BinaryExpression): void {
+      const fix = existingDomainComparisonFix(context.sourceCode, node);
+      context.report({ node, messageId: "serializedObjectEquality", ...(fix !== null && { fix }) });
+    }
+
+    /** Typed `mayContainObject` for every pending comparison; types are fetched in one request. */
+    function resolveWithTsrs(file: TsrsFile): boolean[] {
+      const flags = file.flags;
+      const nodes = pending.flatMap(({ left, right }) => [left, right]);
+      const types = file.typesOf(nodes);
+      const checker = file.checker as unknown as Checker;
+      const contains = (node: Expression, i: number): boolean => {
+        const syntax = syntaxMayContainObject(node);
+        if (syntax !== null) return syntax;
+        const type = types[i];
+        // No tsrs node at this range: the original's checker would type the node; treat it as unknown.
+        return type === undefined || typeMayContainObject(type, checker, flags);
+      };
+      return pending.map(({ left, right }, i) => contains(left, 2 * i) || contains(right, 2 * i + 1));
     }
 
     return {
-      BinaryExpression(node): void {
+      before() {
+        tsrs = null;
+        pending = [];
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return undefined;
+      },
+      BinaryExpression(node) {
         if (!EQUALITY_OPERATORS.has(node.operator)) return;
-        if (node.left.type === AST_NODE_TYPES.PrivateIdentifier) return;
+        if ((node.left as Node).type === "PrivateIdentifier") return;
+        const sourceCode = context.sourceCode;
         const left = jsonStringifyArgument(node.left, sourceCode);
-        const right = jsonStringifyArgument(node.right, sourceCode);
+        const right = left === null ? null : jsonStringifyArgument(node.right, sourceCode);
         if (left === null || right === null) return;
-        if (!mayContainObject(left) && !mayContainObject(right)) return;
-        const fix = existingDomainComparisonFix(sourceCode, node);
-        context.report({
-          node,
-          messageId: "serializedObjectEquality",
-          fix,
+        const leftSyntax = syntaxMayContainObject(left);
+        const rightSyntax = syntaxMayContainObject(right);
+        if (leftSyntax === true || rightSyntax === true) return report(node);
+        if (leftSyntax === false && rightSyntax === false) return;
+        if (tsrs !== null) {
+          pending.push({ node, left, right });
+          return;
+        }
+        if (untypedMayContainObject(left) || untypedMayContainObject(right)) report(node);
+      },
+      "Program:exit"() {
+        if (pending.length === 0 || tsrs === null) return;
+        // No program holds the file, or tsrs failed: the original's untyped check decides.
+        const found = tsrs.run(resolveWithTsrs) ??
+          pending.map(({ left, right }) => untypedMayContainObject(left) || untypedMayContainObject(right));
+        pending.forEach((item, i) => {
+          if (found[i] === true) report(item.node);
         });
       },
     };

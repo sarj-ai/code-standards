@@ -1,208 +1,212 @@
 /**
  * @fileoverview no-broad-return-type — Report explicit broad return annotations that erase a known return value.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-broad-return-type.test.ts
+ * Port of the 18.x `no-broad-return-type` rule. Typed: the original
+ * returns no visitors without a program. Types come from tsrs only; when
+ * `tsrsServices` is null `before()` skips the file.
+ *
+ * The walk records, per function with a return annotation and no type
+ * parameters, the annotation and every returned value (expression bodies and
+ * `return` arguments of that function, not nested ones), as the original's
+ * frame stack does. `Program:exit` then asks tsrs, in a few batched requests,
+ * which annotations are broad and what the returned values of those functions
+ * are, and reports the frames the original would.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import type { TsrsFile, TsrsRequest, TsrsServices, TsrsSymbol, TsrsType, TsrsTypeFlags } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
+import { retainsNamedTypeUses } from "../utils/type-binding.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
+const NAME = "no-broad-return-type";
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
-import { retainsNamedTypeUses } from "./_type-binding.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-import { isGeneratedFile } from "./_paths.js";
+type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function;
 
-export const NO_BROAD_RETURN_TYPE_DOCUMENTATION = {
-  summary:
-    "Report explicit broad return annotations that erase a known return value.",
-  rationale:
-    "An unknown, object, or unknown-valued dictionary return hides fields that the implementation already knows.",
-  remediation:
-    "Return the existing domain type or retain the inferred return contract. Keep unknown at unparsed input boundaries.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Requires TypeScript type information and an implemented function with an explicit return annotation. Checks unknown, object, and unknown-valued index-only dictionaries, including aliases and Promise results.",
-    "Unparsed unknown/any values, generics, empty object literals, and declaration-only signatures are excluded. Parameter contracts are not inferred from names. Intentional opaque return boundaries require an explained local suppression. Automatic fixes remove the annotation only from an unused private function declaration in a module or block; referenced and public contracts remain manual.",
-  ],
-  examples: [
-    {
-      id: "before",
-      title: "Preserve the explicit contract",
-      outcome: "match",
-      files: [
-        {
-          path: "src/example.ts",
-          source:
-            "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Record<string, unknown> { return invoice; }",
-        },
-      ],
-      focusPath: "src/example.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "after",
-      title: "Use the direct contract",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/example.ts",
-          source:
-            "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Invoice { return invoice; }",
-        },
-      ],
-      focusPath: "src/example.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; function request(value: { id: string }): unknown { return value; }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function request(value: { id: string }) { return value; }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-type FunctionNode =
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression;
-interface ReturnFrame {
+interface Frame {
   readonly node: FunctionNode;
-  readonly annotation: TSESTree.TSTypeAnnotation | undefined;
-  known: boolean;
-  opaque: boolean;
+  /** The return annotation, when the function has one and no type parameters; broadness waits for types. */
+  readonly annotation: ESTree.TSTypeAnnotation | null;
+  readonly values: Node[];
 }
 
-function isBroad(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if ((type.flags & (ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive)) !== 0)
-    return true;
-  const indexes = checker.getIndexInfosOfType(type);
-  return (
-    indexes.length > 0 &&
-    type.getProperties().length === 0 &&
-    indexes.every((index) => (index.type.flags & ts.TypeFlags.Unknown) !== 0)
-  );
+interface TypeChecker {
+  readonly getAwaitedType: { gen(type: TsrsType): TsrsRequest<TsrsType | undefined> };
+  readonly getIndexInfosOfType: { gen(type: TsrsType): TsrsRequest<readonly { readonly valueType: TsrsType }[]> };
+  readonly getPropertiesOfType: { gen(type: TsrsType): TsrsRequest<readonly TsrsSymbol[]> };
 }
 
-function hasKnownContract(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if (type.isUnion())
-    return type.types.every((part) => hasKnownContract(part, checker));
-  const excluded =
-    ts.TypeFlags.Any |
-    ts.TypeFlags.Unknown |
-    ts.TypeFlags.Never |
-    ts.TypeFlags.TypeParameter |
-    ts.TypeFlags.Conditional |
-    ts.TypeFlags.IndexedAccess |
-    ts.TypeFlags.Substitution |
-    ts.TypeFlags.Null |
-    ts.TypeFlags.Undefined |
-    ts.TypeFlags.Void;
-  if ((type.flags & excluded) !== 0 || isBroad(type, checker)) return false;
-  return (
-    (type.flags & ts.TypeFlags.Object) === 0 || type.getProperties().length > 0
-  );
+/** What the original's checks read from a type besides its flags, fetched in batches. */
+interface TypeFacts {
+  readonly members: Map<TsrsType, readonly TsrsType[]>;
+  readonly indexValueFlags: Map<TsrsType, readonly number[]>;
+  readonly propertyCount: Map<TsrsType, number>;
 }
 
-function isOpaque(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if (type.isUnion()) return type.types.some((part) => isOpaque(part, checker));
-  return (
-    (type.flags &
-      (ts.TypeFlags.Any |
-        ts.TypeFlags.Unknown |
-        ts.TypeFlags.TypeParameter |
-        ts.TypeFlags.Conditional |
-        ts.TypeFlags.IndexedAccess |
-        ts.TypeFlags.Substitution)) !==
-      0 || isBroad(type, checker)
-  );
+function isBroad(type: TsrsType, facts: TypeFacts, flags: TsrsTypeFlags): boolean {
+  if ((type.flags & (flags.Unknown | flags.NonPrimitive)) !== 0) return true;
+  const indexes = facts.indexValueFlags.get(type) ?? [];
+  return indexes.length > 0 && facts.propertyCount.get(type) === 0 && indexes.every((index) => (index & flags.Unknown) !== 0);
 }
 
-export default createRule<[], "avoid">({
-  name: "no-broad-return-type",
-  documentation: NO_BROAD_RETURN_TYPE_DOCUMENTATION,
+function hasKnownContract(type: TsrsType, facts: TypeFacts, flags: TsrsTypeFlags): boolean {
+  const members = facts.members.get(type);
+  if (members !== undefined) return members.every((part) => hasKnownContract(part, facts, flags));
+  const excluded = flags.Any | flags.Unknown | flags.Never | flags.TypeParameter | flags.Conditional | flags.IndexedAccess |
+    flags.Substitution | flags.Null | flags.Undefined | flags.Void;
+  if ((type.flags & excluded) !== 0 || isBroad(type, facts, flags)) return false;
+  return (type.flags & flags.Object) === 0 || (facts.propertyCount.get(type) ?? 0) > 0;
+}
+
+function isOpaque(type: TsrsType, facts: TypeFacts, flags: TsrsTypeFlags): boolean {
+  const members = facts.members.get(type);
+  if (members !== undefined) return members.some((part) => isOpaque(part, facts, flags));
+  return (type.flags & (flags.Any | flags.Unknown | flags.TypeParameter | flags.Conditional | flags.IndexedAccess |
+    flags.Substitution)) !== 0 || isBroad(type, facts, flags);
+}
+
+/** The original's `valueType` for many nodes: the node's type, awaited unless it is a type parameter. */
+function valueTypes(file: TsrsFile, flags: TsrsTypeFlags, nodes: readonly Node[]): (TsrsType | undefined)[] {
+  const checker = file.checker as unknown as TypeChecker;
+  // A type reference without type arguments shares its range with its name, whose type is not the referenced type.
+  const mapped = nodes.map((node) => node.type === "TSTypeReference" ? file.outerTsNode(node) : file.tsNode(node));
+  const present = mapped.filter((node) => node !== undefined);
+  const found = present.length === 0 ? [] : file.checker.getTypeAtLocation(present);
+  let next = 0;
+  const types = mapped.map((node) => node === undefined ? undefined : found[next++]);
+  const awaitable = [...new Set(types.flatMap((type) => type !== undefined && (type.flags & flags.TypeParameter) === 0 ? [type] : []))];
+  const awaited = file.batch(awaitable.map((type) => checker.getAwaitedType.gen(type)));
+  const awaitedOf = new Map(awaitable.map((type, i) => [type, awaited[i] ?? type]));
+  return types.map((type) => type === undefined ? undefined : awaitedOf.get(type) ?? type);
+}
+
+/** Union members, index signatures and property counts for the types (and union members) the checks read. */
+function typeFacts(file: TsrsFile, flags: TsrsTypeFlags, roots: readonly TsrsType[], withMembers: boolean): TypeFacts {
+  const checker = file.checker as unknown as TypeChecker;
+  const facts: TypeFacts = { members: new Map(), indexValueFlags: new Map(), propertyCount: new Map() };
+  let leaves = [...new Set(roots)];
+  if (withMembers) {
+    const unions = leaves.filter((type) => type.isUnionType());
+    const members = file.batch(unions.map((union) => union.getTypes.gen()));
+    unions.forEach((union, i) => facts.members.set(union, members[i] ?? []));
+    leaves = [...new Set([...leaves.filter((type) => !type.isUnionType()), ...unions.flatMap((union) => facts.members.get(union) ?? [])])];
+  }
+  // isBroad decides by flags first; only the others need their index signatures.
+  const indexed = leaves.filter((type) => (type.flags & (flags.Unknown | flags.NonPrimitive)) === 0);
+  const infos = file.batch(indexed.map((type) => checker.getIndexInfosOfType.gen(type)));
+  indexed.forEach((type, i) => facts.indexValueFlags.set(type, (infos[i] ?? []).map((info) => info.valueType.flags)));
+  // Property counts matter for an all-unknown index signature (isBroad) and for object types (hasKnownContract).
+  const counted = indexed.filter((type) => {
+    const indexes = facts.indexValueFlags.get(type) ?? [];
+    return (withMembers && (type.flags & flags.Object) !== 0) ||
+      (indexes.length > 0 && indexes.every((index) => (index & flags.Unknown) !== 0));
+  });
+  const properties = file.batch(counted.map((type) => checker.getPropertiesOfType.gen(type)));
+  counted.forEach((type, i) => facts.propertyCount.set(type, properties[i]?.length ?? 0));
+  return facts;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: NO_BROAD_RETURN_TYPE_DOCUMENTATION.summary },
+    docs: {
+      description: "Report explicit broad return annotations that erase a known return value.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       avoid:
         "This return annotation erases a known value's contract. Return the domain type or retain inference; preserve unknown only at an intentional opaque boundary.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    if (
-      !context.sourceCode.parserServices?.program ||
-      !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
-    )
-      return {};
-    const services = getTypeServices(context);
-    if (!services.program) return {};
-    const checker = services.program.getTypeChecker();
-    const frames: ReturnFrame[] = [];
-    const valueType = (node: TSESTree.Node): ts.Type => {
-      const type = checker.getTypeAtLocation(
-        services.esTreeNodeToTSNodeMap.get(node),
-      );
-      return (type.flags & ts.TypeFlags.TypeParameter) !== 0
-        ? type
-        : (checker.getAwaitedType(type) ?? type);
-    };
-    const inspectReturn = (value: TSESTree.Expression): void => {
-      const frame = frames.at(-1);
-      if (!frame?.annotation) return;
-      const type = valueType(value);
-      frame.known ||= hasKnownContract(type, checker);
-      frame.opaque ||= isOpaque(type, checker);
-    };
-    const enter = (node: FunctionNode): void => {
-      const annotation = node.returnType;
-      frames.push({
-        node,
-        annotation:
-          !node.typeParameters &&
-          annotation &&
-          isBroad(valueType(annotation.typeAnnotation), checker)
-            ? annotation
-            : undefined,
-        known: false,
-        opaque: false,
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let tsrs: TsrsServices | null = null;
+    let stack: Frame[] = [];
+    let annotated: Frame[] = [];
+
+    function enter(node: FunctionNode): void {
+      const annotation = node.typeParameters == null ? node.returnType ?? null : null;
+      const frame: Frame = { node, annotation, values: [] };
+      stack.push(frame);
+      if (annotation !== null) annotated.push(frame);
+      if (node.body && node.body.type !== "BlockStatement") frame.values.push(node.body);
+    }
+
+    function leave(): void {
+      stack.pop();
+    }
+
+    function report(frame: Frame): void {
+      const annotation = frame.annotation!;
+      const node = frame.node;
+      const canFix = node.type === "FunctionDeclaration" && node.id !== null &&
+        isUnusedPrivateBinding(sourceCode, node, node.id, context.filename) &&
+        sourceCode.getCommentsInside(annotation).length === 0 &&
+        retainsNamedTypeUses(sourceCode, annotation);
+      context.report({
+        node: annotation,
+        messageId: "avoid",
+        ...(canFix && { fix: (fixer) => fixer.replaceText(annotation, sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) }),
       });
-      if (node.body && node.body.type !== AST_NODE_TYPES.BlockStatement)
-        inspectReturn(node.body);
-    };
-    const leave = (): void => {
-      const frame = frames.pop();
-      if (frame?.annotation && frame.known && !frame.opaque) {
-        const annotation = frame.annotation;
-        const node = frame.node;
-        const canFix = node.type === AST_NODE_TYPES.FunctionDeclaration && node.id !== null &&
-          isUnusedPrivateBinding(context.sourceCode, node, node.id, context.filename) &&
-          context.sourceCode.getCommentsInside(annotation).length === 0 &&
-          retainsNamedTypeUses(context.sourceCode, annotation);
-        context.report({ node: annotation, messageId: "avoid", fix: canFix ? (fixer) => fixer.replaceText(annotation, context.sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) : null });
-      }
-    };
+    }
+
+    function resolve(file: TsrsFile): Frame[] {
+      const flags = file.flags;
+      const annotationTypes = valueTypes(file, flags, annotated.map((frame) => frame.annotation!.typeAnnotation));
+      const present = annotationTypes.filter((type) => type !== undefined);
+      const annotationFacts = typeFacts(file, flags, present, false);
+      // Frames without returned values can never be known, so they need no value types.
+      const broad = annotated.filter((frame, i) => {
+        const type = annotationTypes[i];
+        return type !== undefined && frame.values.length > 0 && isBroad(type, annotationFacts, flags);
+      });
+      const values = broad.flatMap((frame) => frame.values);
+      const types = valueTypes(file, flags, values);
+      const facts = typeFacts(file, flags, types.filter((type) => type !== undefined), true);
+      let next = 0;
+      return broad.filter((frame) => {
+        let known = false;
+        let opaque = false;
+        for (let i = 0; i < frame.values.length; i++) {
+          const type = types[next++];
+          // The original calls getTypeAtLocation on every value; a node tsrs cannot map has no type to read.
+          if (type === undefined) continue;
+          known ||= hasKnownContract(type, facts, flags);
+          opaque ||= isOpaque(type, facts, flags);
+        }
+        return known && !opaque;
+      });
+    }
+
     return {
+      before() {
+        sourceCode = context.sourceCode;
+        tsrs = null;
+        stack = [];
+        annotated = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
       FunctionDeclaration: enter,
       FunctionExpression: enter,
       ArrowFunctionExpression: enter,
       "FunctionDeclaration:exit": leave,
       "FunctionExpression:exit": leave,
       "ArrowFunctionExpression:exit": leave,
-      ReturnStatement(node): void {
-        if (node.argument) inspectReturn(node.argument);
+      ReturnStatement(node) {
+        const frame = stack.at(-1);
+        if (node.argument && frame?.annotation) frame.values.push(node.argument);
+      },
+      "Program:exit"() {
+        if (annotated.length === 0 || tsrs === null) return;
+        const reported = tsrs.run(resolve);
+        if (reported === null) return;
+        reported.forEach(report);
       },
     };
   },

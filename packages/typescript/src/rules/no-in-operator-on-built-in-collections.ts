@@ -1,23 +1,22 @@
 /**
- * @fileoverview no-in-operator-on-built-in-collections — distinguish collection membership from object property lookup.
+ * @fileoverview no-in-operator-on-built-in-collections — do not use `in` to test entries in built-in Map and Set collections.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-in-operator-on-built-in-collections.test.ts
+ * Port of the 18.x `no-in-operator-on-built-in-collections` rule. Typed:
+ * without tsrs types it reports nothing, as the original returns no visitors
+ * without type services. The walk collects `in` expressions; `Program:exit`
+ * asks tsrs for their right-hand types in one batched request.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeServices } from "./_eslint-rule.js";
+import type { Type } from "tsrs/sync";
 
-
-
-import { type TSESTree } from "@typescript-eslint/utils";
-import * as ts from "typescript";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+import { defineRule, type ESTree } from "../types.js";
+import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 import { collectionPropertyFix } from "./_collection-property-fix.js";
 
-type MessageIds = "ambiguousCollectionIn";
-type Options = readonly [];
+const NAME = "no-in-operator-on-built-in-collections";
 
 const COLLECTION_NAMES: ReadonlySet<string> = new Set([
   "Map",
@@ -28,125 +27,26 @@ const COLLECTION_NAMES: ReadonlySet<string> = new Set([
   "WeakSet",
 ]);
 
-export const NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION = {
-  summary:
-    "Do not use the `in` operator to test entries in built-in Map and Set collections.",
-  rationale:
-    "The `in` operator checks properties on the collection object and its prototype, while `.has()` checks stored entries. The similar spelling can silently test the wrong namespace.",
-  remediation:
-    "Use `collection.has(key)` for entry membership. Use `Reflect.has(collection, property)` when prototype-aware property lookup or Proxy `has` behavior is intentional.",
-  category: "correctness",
-  since: "15.17.14",
-  autofix: "safe",
-  limitations: [
-    "The receiver type must resolve directly to a default-library Map, ReadonlyMap, WeakMap, Set, ReadonlySet, or WeakSet declaration; type aliases, unions, intersections, type parameters, subclasses, structural lookalikes, any, unknown, and generated files are excluded.",
-    "Automatic fixes use Reflect.has only for a sole exported ordinary function with an explicit boolean return annotation and a literal-string property check on its single direct collection parameter, with no comments, other statements, source callouts or shadowed Reflect. This preserves existing property semantics and Proxy has-traps; inferred or explicit type predicates and other cases remain manual, and .has() is never inferred.",
-    "Plain objects, arrays, TypeScript object-shape narrowing, private-brand checks, and for-in statements are not checked.",
-  ],
-  examples: [
-    {
-      id: "map-entry-membership",
-      title: "Use Map.has for entry membership",
-      outcome: "match",
-      files: [
-        {
-          path: "src/cache.ts",
-          source:
-            "declare const cache: Map<string, object>; declare const key: string; if (key in cache) use(cache);",
-        },
-      ],
-      focusPath: "src/cache.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "object-property-narrowing",
-      title: "Preserve ordinary object property narrowing",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/cache.ts",
-          source:
-            "declare const value: { id: string } | { slug: string }; if ('id' in value) use(value.id);",
-        },
-      ],
-      focusPath: "src/cache.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven source-owned correction",
-      outcome: "match",
-      files: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export function hasSize(cache: Map<string, object>): boolean { return 'size' in cache; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            "export function hasSize(cache: Map<string, object>): boolean { return Reflect.has(cache, 'size'); }",
-        },
-      ],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function isDefaultLibraryCollection(
-  node: TSESTree.Expression,
-  services: TypeServices,
-): boolean {
-  const checker = services.program.getTypeChecker();
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  const type = checker.getTypeAtLocation(tsNode);
-  if (
-    (type.flags &
-      (ts.TypeFlags.Any |
-        ts.TypeFlags.Unknown |
-        ts.TypeFlags.Never |
-        ts.TypeFlags.TypeParameter |
-        ts.TypeFlags.Union |
-        ts.TypeFlags.Intersection)) !==
-    0
-  ) {
-    return false;
-  }
-  return isDefaultLibraryCollectionSymbol(type.getSymbol(), services);
-}
-
-function isDefaultLibraryCollectionSymbol(
-  symbol: ts.Symbol | undefined,
-  services: TypeServices,
-): boolean {
+function isDefaultLibraryCollection(native: NativeTypes, type: Type | undefined): boolean {
+  if (type === undefined) return false;
+  const flags = native.sync.TypeFlags;
+  if ((type.flags & (flags.Any | flags.Unknown | flags.Never | flags.TypeParameter | flags.Union | flags.Intersection)) !== 0) return false;
+  const symbol = type.getSymbol();
   if (symbol === undefined || !COLLECTION_NAMES.has(symbol.name)) return false;
-  const declarations = symbol.declarations ?? [];
-  return (
-    declarations.length > 0 &&
-    declarations.every((declaration) =>
-      services.program.isSourceFileDefaultLibrary(declaration.getSourceFile()),
-    ) &&
-    declarations.some(
-      (declaration) =>
-        ts.isInterfaceDeclaration(declaration) &&
-        declaration.name.text === symbol.name,
-    )
-  );
+  const declarations = symbol.declarations;
+  // An interface declaration of the symbol carries the symbol's own name.
+  return declarations.length > 0 &&
+    declarations.every((declaration) => native.program.getSourceFileMetadataByPath(declaration.path)?.isDefaultLibrary === true) &&
+    declarations.some((declaration) => declaration.kind === native.ast.SyntaxKind.InterfaceDeclaration);
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-in-operator-on-built-in-collections",
-  documentation: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
     docs: {
-      description: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.summary,
+      description: "Do not use the `in` operator to test entries in built-in Map and Set collections.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -154,28 +54,34 @@ export default createRule<Options, MessageIds>({
         "`in` checks properties on this collection object, not stored entries. Use `.has()` for entry membership or `Reflect.has()` for intentional property lookup.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: TypeServices | null;
-    try {
-      services = getTypeServices(context);
-    } catch {
-      services = null;
-    }
-    if (services === null) return {};
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let candidates: ESTree.BinaryExpression[] = [];
     return {
-      BinaryExpression(node): void {
-        if (
-          node.operator !== "in" ||
-          !isDefaultLibraryCollection(node.right, services)
-        ) {
-          return;
-        }
-        context.report({
-          node,
-          messageId: "ambiguousCollectionIn",
-          fix: collectionPropertyFix(context.sourceCode, node),
+      before() {
+        tsrs = null;
+        candidates = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return tsrs !== null;
+      },
+      BinaryExpression(node) {
+        if (node.operator === "in") candidates.push(node);
+      },
+      "Program:exit"() {
+        if (candidates.length === 0 || tsrs === null) return;
+        const found = tsrs.run((file) => {
+          const native = nativeTypes(file);
+          const types = native.file.typesOf(candidates.map((node) => node.right)) as (Type | undefined)[];
+          return types.map((type) => isDefaultLibraryCollection(native, type));
+        });
+        if (found === null) return;
+        candidates.forEach((node, i) => {
+          if (found[i] !== true) return;
+          const fix = collectionPropertyFix(context.sourceCode, node);
+          context.report(fix === null
+            ? { node, messageId: "ambiguousCollectionIn" }
+            : { node, messageId: "ambiguousCollectionIn", fix });
         });
       },
     };

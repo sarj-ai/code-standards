@@ -22,17 +22,13 @@ from sarj_standards.libs.rules import DefaultLevel, RuleEngine, RuleId, RuleSele
 _INVENTORY_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json")
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _LEDGER_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-ledger.json")
-_ESLINT_MANAGED_PATHS: Final = (
+_TYPESCRIPT_MANAGED_PATHS: Final = (
     Path("packages/typescript/src/index.ts"),
-    Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts"),
-    Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
-    Path("packages/standards/src/sarj_standards/configs/eslint.strict.d.mts"),
-    Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs"),
-    Path("packages/standards/src/sarj_standards/configs/eslint.application.d.mts"),
+    Path("packages/standards/src/sarj_standards/configs/oxlint.strict.mts"),
 )
 _ENGINE_BY_FAMILY: Final = MappingProxyType(
     {
-        "typescript": RuleEngine.ESLINT,
+        "typescript": RuleEngine.OXLINT,
         "iac": RuleEngine.IAC,
         "python": RuleEngine.PYTHON,
         "sql": RuleEngine.SQL,
@@ -79,7 +75,7 @@ def _set_warning(
     levels = {str(selector): level}
     if already_staged and typescript is None:
         typescript = rule_catalog_artifact.typescript_specs(repository)
-    elif not already_staged and selector.engine is RuleEngine.ESLINT:
+    elif not already_staged and selector.engine is RuleEngine.OXLINT:
         typescript = None
     derived_current = _derived_current(repository, levels, typescript) if already_staged else False
     if already_staged and derived_current:
@@ -92,7 +88,7 @@ def _set_warning(
             message=_warning_drift_message(selector, warning=warning, already_staged=already_staged),
         )
 
-    managed = (_INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_ESLINT_MANAGED_PATHS)
+    managed = (_INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_TYPESCRIPT_MANAGED_PATHS)
     if python_rule_descriptors.enabled(repository):
         managed = (*managed, python_rule_descriptors.DESCRIPTOR_PATH)
     paths = (edit.path, *(repository / path for path in managed))
@@ -192,5 +188,5 @@ def _synchronize(
     if not config_generation.sync_warning_levels(
         repository, check=False, writer=mutation.write_text
     ):  # pragma: no cover - writer returns true.
-        msg = "could not synchronize ESLint warning levels"
+        msg = "could not synchronize TypeScript warning levels"
         raise RuntimeError(msg)

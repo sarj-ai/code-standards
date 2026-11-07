@@ -26,13 +26,9 @@ type JsonObject = dict[str, JsonValue]
 
 
 _PACKAGES: Final[dict[str, tuple[str, str]]] = {
-    "eslint": ("eslint", "eslint"),
-    "biome": ("@biomejs/biome", "biome"),
-    "prettier": ("prettier", "prettier"),
+    "oxfmt": ("oxfmt", "oxfmt"),
 }
-_ESLINT_ARGUMENT_COUNT: Final = 11
-_PRETTIER_ARGUMENT_COUNT: Final = 4
-_BIOME_CONFIG_ARGUMENT_COUNT: Final = 5
+_OXFMT_ARGUMENT_COUNT: Final = 2
 _PRIVATE_DIRECTORY_MODE: Final = 0o700
 _PRIVATE_PAYLOAD_MODE: Final = 0o600
 _MAX_SOURCE = 64 * 1024 * 1024
@@ -158,7 +154,7 @@ class _LocalEntrypoint:
 
 @dataclass(frozen=True, slots=True)
 class _Invocation:
-    tool: Literal["eslint", "biome", "prettier"]
+    tool: Literal["oxfmt"]
     node: Path
     entrypoint: Path
     cwd: Path
@@ -267,10 +263,10 @@ def _is_list(value: JsonValue) -> TypeGuard[list[JsonValue]]:
     return isinstance(value, list)
 
 
-def _tool(value: JsonValue) -> Literal["eslint", "biome", "prettier"]:
+def _tool(value: JsonValue) -> Literal["oxfmt"]:
     rendered = _text(value)
     match rendered:
-        case "eslint" | "biome" | "prettier":
+        case "oxfmt":
             return rendered
         case _:
             _fail("native bridge tool is not approved")
@@ -515,39 +511,16 @@ def _arguments(invocation: _Invocation) -> dict[str, HashedFileRecord]:
     tool, args, cwd = invocation.tool, invocation.args, invocation.cwd
     configs: dict[str, HashedFileRecord] = {}
     match tool:
-        case "eslint":
+        case "oxfmt":
             _require(
-                condition=len(args) == _ESLINT_ARGUMENT_COUNT
-                and args[0] == "--config"
-                and args[2:9]
-                == ("--fix-dry-run", "--fix-type", "directive", "--format", "json", "--no-cache", "--stdin")
-                and args[9] == "--stdin-filename",
-                message="ESLint argv must be exact directive-only stdin mode",
+                condition=len(args) == _OXFMT_ARGUMENT_COUNT
+                and args[0].startswith("--config=")
+                and args[1].startswith("--stdin-filepath="),
+                message="oxfmt argv must be exact stdin-to-stdout mode",
             )
-            config = _regular_input(args[1])
+            config = _regular_input(args[0].removeprefix("--config="))
             configs[str(config.path)] = config.proof
-            _stdin_path(args[10], cwd)
-        case "prettier":
-            _require(
-                condition=len(args) == _PRETTIER_ARGUMENT_COUNT
-                and args[0] == "--config"
-                and args[2] == "--stdin-filepath",
-                message="Prettier argv must be exact stdin-to-stdout mode",
-            )
-            config = _regular_input(args[1])
-            configs[str(config.path)] = config.proof
-            _stdin_path(args[3], cwd)
-        case "biome":
-            _require(
-                condition=len(args) in {3, _BIOME_CONFIG_ARGUMENT_COUNT}
-                and args[:2] == ("format", "--stdin-file-path"),
-                message="Biome argv must be exact stdin-to-stdout mode",
-            )
-            _stdin_path(args[2], cwd)
-            if len(args) == _BIOME_CONFIG_ARGUMENT_COUNT:
-                _require(condition=args[3] == "--config-path", message="unknown Biome formatter option")
-                config = _regular_input(args[4])
-                configs[str(config.path)] = config.proof
+            _stdin_path(args[1].removeprefix("--stdin-filepath="), cwd)
     return configs
 
 

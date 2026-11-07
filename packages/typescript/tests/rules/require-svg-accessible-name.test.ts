@@ -1,18 +1,8 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/require-svg-accessible-name.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true } } },
-  defaultFilenames: { ts: "/repo/src/action.ts", tsx: "/repo/src/action.tsx" },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 
 RULE_TESTER.run("require-svg-accessible-name", rule, {
   valid: [

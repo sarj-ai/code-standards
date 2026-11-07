@@ -67,7 +67,7 @@ def run(
     paths: Sequence[str],
     *,
     trusted: bool = False,
-    eslint: bool = True,
+    typescript: bool = True,
     machine_output: bool = False,
     default_scope: bool = False,
 ) -> FixResult:
@@ -81,8 +81,8 @@ def run(
     originals = {path: path.read_bytes() for path in targets}
     fix_paths(root, selection.native, policy=policy)
     commands = [
-        _with_local_eslint(command, root)
-        for command in lifecycle.selected_format_commands(root, selected, trusted=trusted, eslint=eslint)
+        _with_local_oxlint(command, root)
+        for command in lifecycle.selected_format_commands(root, selected, trusted=trusted, typescript=typescript)
     ]
     status = 0
     for command in commands:
@@ -96,12 +96,12 @@ def run(
     return FixResult(status, tuple(path for path, original in originals.items() if path.read_bytes() != original))
 
 
-def _with_local_eslint(command: Command, root: Path) -> Command:
-    from .external import local_node_binary_argv  # ruff: ignore[import-outside-top-level] -- the checking adapter imports lifecycle at module load; resolve its local binary only for ESLint fix commands.
+def _with_local_oxlint(command: Command, root: Path) -> Command:
+    from .external import local_node_binary_argv  # ruff: ignore[import-outside-top-level] -- the checking adapter imports lifecycle at module load; resolve its local binary only for Oxlint fix commands.
 
-    if "eslint" not in command.argv:
+    if "oxlint" not in command.argv:
         return command
-    argv = local_node_binary_argv("eslint", command.argv, command.cwd, root)
+    argv = local_node_binary_argv("oxlint", command.argv, command.cwd, root)
     return command if argv is None else replace(command, argv=argv)
 
 
@@ -116,7 +116,7 @@ def _selection(root: Path, paths: Sequence[str], *, policy: Policy, default_scop
     grouped = runner.group_format_paths([str(root / path) for path in paths], policy=policy, python_roots=python_roots)
     python = tuple(grouped.python)
     native_other = (*grouped.sql, *grouped.iac, *grouped.text)
-    if default_scope and adopted is not None and set(adopted.configs) == {"eslint"}:
+    if default_scope and adopted is not None and set(adopted.configs) == set(manifest.TYPESCRIPT_CONFIGS):
         native_other = ()
     return _Selection(
         tuple(

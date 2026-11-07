@@ -613,7 +613,7 @@ jobs:
 
       # The global root selects the adopted repository for every command.
       # Install the root adoption's locked JS toolchain so this job neither asks
-      # npx to download an unpinned ESLint nor accidentally tests network state.
+      # npx to download an unpinned linter nor accidentally tests network state.
       - if: needs.changes.outputs.reviewed-static != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Reuse successful reviewed static analysis
@@ -687,7 +687,7 @@ jobs:
         run: uv sync --locked --dev
       - if: needs.changes.outputs.reviewed-wheels != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
-      - name: Build the plugin for native ESLint integration tests
+      - name: Build the plugin for native Oxlint integration tests
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: npm --prefix ../typescript run build
       - name: Install the locked documentation formatter dependencies
@@ -892,7 +892,7 @@ jobs:
       - name: Install the rule authoring parser
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
-      - name: Build the plugin for native ESLint integration tests
+      - name: Build the plugin for native Oxlint integration tests
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix packages/typescript run build
       - name: Install the locked documentation formatter dependencies

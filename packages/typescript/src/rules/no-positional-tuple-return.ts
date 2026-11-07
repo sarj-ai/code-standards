@@ -1,128 +1,30 @@
 /**
  * @fileoverview no-positional-tuple-return — a positional tuple return names its fields only at the call site, so call sites disagree.
  *
+ * Port of the 18.x `no-positional-tuple-return` rule. The rule is
+ * untyped. The original compares absent `returnType`/`typeAnnotation` fields
+ * to `undefined`; Oxlint gives null there, so under Oxlint the original skips
+ * every inferred tuple `return` and throws on an exported `declare function`
+ * without a return type. This port accepts null and undefined, which matches
+ * the original under ESLint.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
  */
 
-import type { TypeScriptSourceCode } from "./_eslint-rule.js";
-
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isPresent } from "../utils/is-present.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
 import { labeledTupleObjectFix } from "./_labeled-tuple-object-fix.js";
 
-type MessageIds = "noPositionalTupleReturn";
-type Options = readonly [];
-interface TypeAliases {
-  get(identifier: TSESTree.Identifier): TSESTree.TypeNode | undefined;
-}
-type FunctionNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.TSEmptyBodyFunctionExpression;
+const NAME = "no-positional-tuple-return";
 
-export const NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION = {
-  summary:
-    "Disallow returning a multi-field tuple from a named function; return a named object so call sites cannot mismatch slots.",
-  rationale:
-    "Tuple fields are identified only by position, so reordering can preserve types while changing meaning.",
-  remediation: "Return an object whose property names describe each value.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Declared or syntax-proven multi-field tuple returns on named functions and public type surfaces are inspected; anonymous inline callbacks and syntax-proven TanStack Query key factories are excluded.",
-    "Automatic edits only migrate a private zero-argument ordinary helper returning two labeled primitive literal fields, with one exported zero-argument ordinary caller that immediately destructures those same names and returns the already declared matching public object contract. The complete module must contain only those two functions without comments or other references. Existing labels and the public object type supply every field name; primitive evaluation order and fresh public results are retained. This subset assumes the canonical Array iterator. Public tuple APIs, aliases, callbacks, defaults, generics, rest/optional fields, unsafe property names and other callers remain manual.",
-  ],
-  examples: [
-    {
-      id: "named-object-return",
-      title: "Return named fields",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/download.ts",
-          source:
-            "export function download(): { body: string; status: number } { return impl(); }",
-        },
-      ],
-      focusPath: "src/download.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "tuple-return",
-      title: "Do not expose positional fields",
-      outcome: "match",
-      files: [
-        {
-          path: "src/download.ts",
-          source:
-            "export function download(): [string, number] { return impl(); }",
-        },
-      ],
-      focusPath: "src/download.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "query-key-outer-const",
-      scenarioId: "query-key-const-anchor",
-      title: "Inherit the query-key anchor const context",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/keys.ts",
-          source:
-            "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const } as const;",
-        },
-      ],
-      focusPath: "src/keys.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "mutable-query-key-object",
-      scenarioId: "query-key-const-anchor",
-      title: "Keep a mutable tuple-return object checked",
-      outcome: "match",
-      files: [
-        {
-          path: "src/keys.ts",
-          source:
-            "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const };",
-        },
-      ],
-      focusPath: "src/keys.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Reuse the existing named result contract",
-      outcome: "match",
-      files: [
-        {
-          path: "src/download.ts",
-          source:
-            "function download(): [body: string, status: number] { return ['ok', 200]; }\nexport function run(): { body: string; status: number } { const [body, status] = download(); return { body, status }; }",
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/download.ts",
-          source:
-            "function download(): { body: string; status: number } { return { body: 'ok', status: 200 }; }\nexport function run(): { body: string; status: number } { const { body, status } = download(); return { body, status }; }",
-        },
-      ],
-      focusPath: "src/download.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+interface TypeAliases {
+  get(identifier: ESTree.IdentifierReference): Node | undefined;
+}
+type FunctionNode = ESTree.Function | ESTree.ArrowFunctionExpression;
 
 const MIN_ELEMENTS = 2;
 
@@ -134,130 +36,106 @@ const AWAITABLE_TYPES: ReadonlySet<string> = new Set([
   "Readonly",
 ]);
 
-function staticMemberName(key: TSESTree.PropertyName): string | null {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") {
+function staticMemberName(key: Node): string | null {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") {
     return key.value;
   }
   return null;
 }
 
+function isConstReference(node: Node): boolean {
+  return (
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
+    node.typeName.name === "const"
+  );
+}
+
 /** The first boundary tuple in a return annotation, unwrapping transparent wrappers and unions. */
 function tupleReturnType(
-  node: TSESTree.TypeNode,
+  node: Node,
   aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
-): TSESTree.TSTupleType | null {
-  if (node.type === AST_NODE_TYPES.TSTupleType) {
-    return node;
+): ESTree.TSTupleType | null {
+  switch (node.type) {
+    case "TSTupleType": return node;
+    case "TSTypeReference": return referencedTuple(node, aliases, resolving);
+    case "TSTypeOperator":
+      return node.operator === "readonly" ? tupleReturnType(node.typeAnnotation, aliases, resolving) : null;
+    case "TSUnionType":
+    case "TSIntersectionType":
+      for (const member of node.types) {
+        const tuple = tupleReturnType(member, aliases, resolving);
+        if (tuple !== null) return tuple;
+      }
+      return null;
+    default: return null;
   }
-  if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
-    AWAITABLE_TYPES.has(node.typeName.name)
-  ) {
+}
+
+/** The tuple behind an awaitable wrapper's type argument or a local type alias. */
+function referencedTuple(
+  node: ESTree.TSTypeReference,
+  aliases: TypeAliases,
+  resolving: ReadonlySet<string>,
+): ESTree.TSTupleType | null {
+  if (node.typeName.type !== "Identifier") return null;
+  const name = node.typeName.name;
+  if (AWAITABLE_TYPES.has(name)) {
     const argument = node.typeArguments?.params.at(0);
-    return argument === undefined
-      ? null
-      : tupleReturnType(argument, aliases, resolving);
+    return argument === undefined ? null : tupleReturnType(argument, aliases, resolving);
   }
-  if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
-    !resolving.has(node.typeName.name)
-  ) {
-    const target = aliases.get(node.typeName);
-    if (target !== undefined)
-      return tupleReturnType(
-        target,
-        aliases,
-        new Set([...resolving, node.typeName.name]),
-      );
-  }
-  if (
-    node.type === AST_NODE_TYPES.TSTypeOperator &&
-    node.operator === "readonly"
-  ) {
-    return node.typeAnnotation === undefined
-      ? null
-      : tupleReturnType(node.typeAnnotation, aliases, resolving);
-  }
-  if (
-    node.type === AST_NODE_TYPES.TSUnionType ||
-    node.type === AST_NODE_TYPES.TSIntersectionType
-  ) {
-    for (const member of node.types) {
-      const tuple = tupleReturnType(member, aliases, resolving);
-      if (tuple !== null) return tuple;
-    }
-  }
-  return null;
+  const target = resolving.has(name) ? undefined : aliases.get(node.typeName);
+  return target === undefined ? null : tupleReturnType(target, aliases, new Set([...resolving, name]));
 }
 
 function tupleExpression(
-  node: TSESTree.Expression,
+  node: Node,
   aliases: TypeAliases,
-): TSESTree.ArrayExpression | null {
-  if (
-    node.type !== AST_NODE_TYPES.TSAsExpression &&
-    node.type !== AST_NODE_TYPES.TSSatisfiesExpression
-  ) {
+): ESTree.ArrayExpression | null {
+  if (node.type !== "TSAsExpression" && node.type !== "TSSatisfiesExpression") {
     return null;
   }
   if (
-    node.expression.type !== AST_NODE_TYPES.ArrayExpression ||
+    node.expression.type !== "ArrayExpression" ||
     node.expression.elements.length < MIN_ELEMENTS
   ) {
     return null;
   }
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression &&
-    node.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeAnnotation.typeName.type === AST_NODE_TYPES.Identifier &&
-    node.typeAnnotation.typeName.name === "const"
-  )
+  if (node.type === "TSAsExpression" && isConstReference(node.typeAnnotation))
     return node.expression;
   return tupleReturnType(node.typeAnnotation, aliases) === null
     ? null
     : node.expression;
 }
 
-/** The declared name of a function-ish node, or null for an anonymous one. */
-function functionName(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
-    if (node.id !== null) return node.id.name;
-    return node.parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration
-      ? "default"
-      : null;
-  }
+/** The outermost `as`, `satisfies` or `!` wrapper around `node`, or `node` itself. */
+function outermostWrapper(node: Node): Node {
   let wrapped = node;
-  while (
-    (wrapped.parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSNonNullExpression) &&
-    wrapped.parent.expression === wrapped
-  ) {
-    wrapped = wrapped.parent;
+  for (let parent = parentOf(wrapped); parent !== null; parent = parentOf(wrapped)) {
+    if ((parent.type !== "TSAsExpression" && parent.type !== "TSSatisfiesExpression" &&
+      parent.type !== "TSNonNullExpression") || parent.expression !== wrapped) break;
+    wrapped = parent;
   }
-  const parent = wrapped.parent;
-  if (parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration)
-    return "default";
-  if (
-    parent?.type === AST_NODE_TYPES.VariableDeclarator &&
-    parent.id.type === AST_NODE_TYPES.Identifier
-  ) {
-    return parent.id.name;
+  return wrapped;
+}
+
+/** The declared name of a function-ish node, or null for an anonymous one. */
+function functionName(node: Node): string | null {
+  if (node.type === "FunctionDeclaration") {
+    return node.id?.name ?? (parentOf(node)?.type === "ExportDefaultDeclaration" ? "default" : null);
   }
-  if (
-    (parent?.type === AST_NODE_TYPES.MethodDefinition ||
-      parent?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
-      parent?.type === AST_NODE_TYPES.PropertyDefinition ||
-      parent?.type === AST_NODE_TYPES.Property) &&
-    parent.key.type === AST_NODE_TYPES.Identifier
-  ) {
-    return parent.key.name;
+  const parent = parentOf(outermostWrapper(node));
+  switch (parent?.type) {
+    case "ExportDefaultDeclaration": return "default";
+    case "VariableDeclarator": return parent.id.type === "Identifier" ? parent.id.name : null;
+    case "MethodDefinition":
+    case "TSAbstractMethodDefinition":
+    case "PropertyDefinition":
+    case "Property": return parent.key.type === "Identifier" ? parent.key.name : null;
+    default: return null;
   }
-  return null;
 }
 
 /**
@@ -268,71 +146,63 @@ function functionName(node: TSESTree.Node): string | null {
  * supplies its const context; an explicit inner assertion is also supported.
  */
 function isQueryKeyFactory(node: FunctionNode): boolean {
-  let wrapped: TSESTree.Node = node;
-  while (
-    (wrapped.parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSNonNullExpression) &&
-    wrapped.parent.expression === wrapped
-  )
-    wrapped = wrapped.parent;
-  const property = wrapped.parent;
-  if (property?.type !== AST_NODE_TYPES.Property || property.value !== wrapped)
+  const wrapped = outermostWrapper(node);
+  const property = parentOf(wrapped);
+  if (property?.type !== "Property" || property.value !== wrapped)
     return false;
-  const object = property.parent;
-  if (object.type !== AST_NODE_TYPES.ObjectExpression) return false;
-  const assertion = object.parent;
+  const object = parentOf(property);
+  return object?.type === "ObjectExpression" && isConstKeysObject(object) && hasConstAllKey(object);
+}
+
+/** `const *Keys = { ... } as const`. */
+function isConstKeysObject(object: ESTree.ObjectExpression): boolean {
+  const assertion = parentOf(object);
   if (
-    assertion.type !== AST_NODE_TYPES.TSAsExpression ||
+    assertion?.type !== "TSAsExpression" ||
     assertion.expression !== object ||
-    assertion.typeAnnotation.type !== AST_NODE_TYPES.TSTypeReference ||
-    assertion.typeAnnotation.typeName.type !== AST_NODE_TYPES.Identifier ||
-    assertion.typeAnnotation.typeName.name !== "const"
+    !isConstReference(assertion.typeAnnotation)
   )
     return false;
-  const declarator = assertion.parent;
-  if (
-    declarator.type !== AST_NODE_TYPES.VariableDeclarator ||
-    declarator.id.type !== AST_NODE_TYPES.Identifier ||
-    !/Keys$/i.test(declarator.id.name) ||
-    declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
-    declarator.parent.kind !== "const"
-  )
-    return false;
+  const declarator = parentOf(assertion);
+  const declaration = declarator === null ? null : parentOf(declarator);
+  return declarator?.type === "VariableDeclarator" &&
+    declarator.id.type === "Identifier" &&
+    /Keys$/i.test(declarator.id.name) &&
+    declaration?.type === "VariableDeclaration" &&
+    declaration.kind === "const";
+}
+
+/** An `all` property holding an array literal, frozen by the outer or its own `as const`. */
+function hasConstAllKey(object: ESTree.ObjectExpression): boolean {
   return object.properties.some((candidate) => {
     if (
-      candidate.type !== AST_NODE_TYPES.Property ||
+      candidate.type !== "Property" ||
       staticMemberName(candidate.key) !== "all"
     )
       return false;
-    if (candidate.value.type === AST_NODE_TYPES.ArrayExpression)
+    if (candidate.value.type === "ArrayExpression")
       return !candidate.computed;
     return (
-      candidate.value.type === AST_NODE_TYPES.TSAsExpression &&
-      candidate.value.expression.type === AST_NODE_TYPES.ArrayExpression &&
-      candidate.value.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
-      candidate.value.typeAnnotation.typeName.type ===
-        AST_NODE_TYPES.Identifier &&
-      candidate.value.typeAnnotation.typeName.name === "const"
+      candidate.value.type === "TSAsExpression" &&
+      candidate.value.expression.type === "ArrayExpression" &&
+      isConstReference(candidate.value.typeAnnotation)
     );
   });
 }
 
-function specifierExportedNames(
-  program: TSESTree.Program,
-): ReadonlySet<string> {
+function specifierExportedNames(program: ESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
     if (
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      statement.declaration == null &&
-      statement.source == null &&
+      statement.type === "ExportNamedDeclaration" &&
+      statement.declaration === null &&
+      statement.source === null &&
       statement.exportKind !== "type"
     ) {
       for (const specifier of statement.specifiers) {
         if (
           specifier.exportKind !== "type" &&
-          specifier.local.type === AST_NODE_TYPES.Identifier
+          specifier.local.type === "Identifier"
         ) {
           names.add(specifier.local.name);
         }
@@ -340,15 +210,15 @@ function specifierExportedNames(
       continue;
     }
     if (
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-      statement.declaration.type === AST_NODE_TYPES.Identifier
+      statement.type === "ExportDefaultDeclaration" &&
+      statement.declaration.type === "Identifier"
     ) {
       names.add(statement.declaration.name);
       continue;
     }
     if (
-      statement.type === AST_NODE_TYPES.TSExportAssignment &&
-      statement.expression.type === AST_NODE_TYPES.Identifier
+      statement.type === "TSExportAssignment" &&
+      statement.expression.type === "Identifier"
     ) {
       names.add(statement.expression.name);
     }
@@ -356,41 +226,36 @@ function specifierExportedNames(
   return names;
 }
 
-function exportedTypeNames(program: TSESTree.Program): ReadonlySet<string> {
+function exportedTypeNames(program: ESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
     if (
-      statement.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
-      statement.source !== null
+      statement.type === "ExportDefaultDeclaration" &&
+      (statement.declaration.type === "TSInterfaceDeclaration" ||
+        (statement.declaration as Node).type === "TSTypeAliasDeclaration")
     )
+      names.add((statement.declaration as ESTree.TSInterfaceDeclaration).id.name);
+    if (statement.type !== "ExportNamedDeclaration" || statement.source !== null)
       continue;
     if (
-      statement.declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      statement.declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
+      statement.declaration?.type === "TSInterfaceDeclaration" ||
+      statement.declaration?.type === "TSTypeAliasDeclaration"
     )
       names.add(statement.declaration.id.name);
     for (const specifier of statement.specifiers)
-      names.add(specifier.local.name);
-  }
-  for (const statement of program.body) {
-    if (
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-      (statement.declaration.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-        statement.declaration.type === AST_NODE_TYPES.TSTypeAliasDeclaration)
-    )
-      names.add(statement.declaration.id.name);
+      names.add((specifier.local as { name: string }).name);
   }
   return names;
 }
 
-function typeAliases(sourceCode: TypeScriptSourceCode): TypeAliases {
-  const aliases = new Map<string, TSESTree.TSTypeAliasDeclaration>();
+function typeAliases(sourceCode: SourceCode): TypeAliases {
+  const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
   for (const statement of sourceCode.ast.body) {
     const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      statement.type === "ExportNamedDeclaration"
         ? statement.declaration
         : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
+    if (declaration?.type === "TSTypeAliasDeclaration") {
       aliases.set(declaration.id.name, declaration);
     }
   }
@@ -398,7 +263,7 @@ function typeAliases(sourceCode: TypeScriptSourceCode): TypeAliases {
     get(identifier) {
       const declaration = aliases.get(identifier.name);
       if (declaration === undefined) return undefined;
-      const binding = ASTUtils.findVariable(
+      const binding = findVariable(
         sourceCode.getScope(identifier),
         identifier.name,
       );
@@ -410,15 +275,15 @@ function typeAliases(sourceCode: TypeScriptSourceCode): TypeAliases {
 }
 
 function callableReturnType(
-  node: TSESTree.TypeNode,
+  node: Node,
   aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
-): TSESTree.TypeNode | null {
-  if (node.type === AST_NODE_TYPES.TSFunctionType)
+): Node | null {
+  if (node.type === "TSFunctionType")
     return node.returnType?.typeAnnotation ?? null;
   if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
     !resolving.has(node.typeName.name)
   ) {
     const target = aliases.get(node.typeName);
@@ -434,17 +299,17 @@ function callableReturnType(
 }
 
 function publiclyReachableTypeNames(
-  program: TSESTree.Program,
+  program: ESTree.Program,
   exported: ReadonlySet<string>,
 ): ReadonlySet<string> {
   const names = new Set(exported);
-  const interfaces = new Map<string, readonly TSESTree.TSInterfaceHeritage[]>();
+  const interfaces = new Map<string, readonly ESTree.TSInterfaceHeritage[]>();
   for (const statement of program.body) {
     const declaration =
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      statement.type === "ExportNamedDeclaration"
         ? statement.declaration
         : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+    if (declaration?.type === "TSInterfaceDeclaration") {
       interfaces.set(declaration.id.name, declaration.extends);
     }
   }
@@ -453,7 +318,7 @@ function publiclyReachableTypeNames(
     for (const name of [...names]) {
       for (const heritage of interfaces.get(name) ?? []) {
         if (
-          heritage.expression.type === AST_NODE_TYPES.Identifier &&
+          heritage.expression.type === "Identifier" &&
           !names.has(heritage.expression.name)
         ) {
           names.add(heritage.expression.name);
@@ -466,164 +331,89 @@ function publiclyReachableTypeNames(
   return names;
 }
 
-function owningInterface(
-  node: TSESTree.Node,
-): TSESTree.TSInterfaceDeclaration | null {
-  for (
-    let current = node.parent;
-    current !== undefined;
-    current = current.parent
-  ) {
-    if (current.type === AST_NODE_TYPES.TSInterfaceDeclaration) return current;
-    if (current.type === AST_NODE_TYPES.Program) return null;
+function owningInterface(node: Node): ESTree.TSInterfaceDeclaration | null {
+  for (let current = parentOf(node); current !== null; current = parentOf(current)) {
+    if (current.type === "TSInterfaceDeclaration") return current;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
-function owningTypeAlias(
-  node: TSESTree.Node,
-): TSESTree.TSTypeAliasDeclaration | null {
-  for (
-    let current = node.parent;
-    current !== undefined;
-    current = current.parent
-  ) {
-    if (current.type === AST_NODE_TYPES.TSTypeAliasDeclaration) return current;
-    if (current.type === AST_NODE_TYPES.Program) return null;
-  }
-  return null;
-}
-
-function owningClass(
-  node: TSESTree.Node,
-): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
-  for (
-    let current = node.parent;
-    current !== undefined;
-    current = current.parent
-  ) {
-    if (
-      current.type === AST_NODE_TYPES.ClassDeclaration ||
-      current.type === AST_NODE_TYPES.ClassExpression
-    ) {
+function owningClass(node: Node): ESTree.Class | null {
+  for (let current = parentOf(node); current !== null; current = parentOf(current)) {
+    if (current.type === "ClassDeclaration" || current.type === "ClassExpression") {
       return current;
     }
-    if (current.type === AST_NODE_TYPES.Program) return null;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
 function isExportedClass(
-  node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  node: ESTree.Class,
   specifierExports: ReadonlySet<string>,
 ): boolean {
+  const parent = parentOf(node);
   if (
-    node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration
+    parent?.type === "ExportNamedDeclaration" ||
+    parent?.type === "ExportDefaultDeclaration"
   )
     return true;
-  if (node.type === AST_NODE_TYPES.ClassDeclaration) {
+  if (node.type === "ClassDeclaration") {
     return (
       node.id !== null &&
-      node.parent.type === AST_NODE_TYPES.Program &&
+      parent?.type === "Program" &&
       specifierExports.has(node.id.name)
     );
   }
-  if (
-    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
-    node.parent.id.type === AST_NODE_TYPES.Identifier
-  )
-    return specifierExports.has(node.parent.id.name) || isInlineExported(node);
-  return false;
+  return parent?.type === "VariableDeclarator" && parent.id.type === "Identifier" &&
+    (specifierExports.has(parent.id.name) || isInlineExported(parent));
 }
 
-/**
- * True when an ancestor statement carries the `export` keyword inline —
- * `export function f`, `export const f =`, `export default function f`.
- */
-function isInlineExported(node: TSESTree.Node): boolean {
-  if (moduleScopeBindingName(node) === null) return false;
-  for (
-    let current: TSESTree.Node | undefined | null = node;
-    current != null;
-    current = current.parent
-  ) {
-    const parent = current.parent;
-    if (
-      parent?.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-      parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration
-    ) {
-      return true;
-    }
-  }
-  return false;
+/** `export const C = class {}` at module scope; a namespace's `export` does not count. */
+function isInlineExported(declarator: ESTree.VariableDeclarator): boolean {
+  const declaration = parentOf(declarator);
+  const exported = declaration === null ? null : parentOf(declaration);
+  return exported?.type === "ExportNamedDeclaration" && parentOf(exported)?.type === "Program";
 }
 
-function moduleScopeBindingName(node: TSESTree.Node): string | null {
-  let current: TSESTree.Node = node;
-  while (
-    current.parent != null &&
-    current.parent.type !== AST_NODE_TYPES.Program
-  ) {
-    current = current.parent;
-  }
-  if (current.parent?.type !== AST_NODE_TYPES.Program) return null;
-  let topLevel: TSESTree.Node | null = current;
-  if (
-    current.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    current.type === AST_NODE_TYPES.ExportDefaultDeclaration
-  )
-    topLevel = current.declaration;
-  if (topLevel === null) return null;
-  if (topLevel.type === AST_NODE_TYPES.FunctionDeclaration) {
-    if (topLevel !== node) return null;
-    return (
-      topLevel.id?.name ??
-      (current.type === AST_NODE_TYPES.ExportDefaultDeclaration
-        ? "default"
-        : null)
-    );
-  }
-  if (
-    (topLevel.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      topLevel.type === AST_NODE_TYPES.FunctionExpression) &&
-    topLevel === node &&
-    current.type === AST_NODE_TYPES.ExportDefaultDeclaration
-  )
-    return "default";
-  if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
-    return classBindingName(
-      topLevel,
-      node,
-      current.type === AST_NODE_TYPES.ExportDefaultDeclaration,
-    );
-  }
-  if (topLevel.type === AST_NODE_TYPES.VariableDeclaration) {
-    return variableBindingName(topLevel, node);
+function isExportedInterface(
+  node: ESTree.TSInterfaceDeclaration,
+  exports: ReadonlySet<string>,
+): boolean {
+  const parent = parentOf(node);
+  return (
+    parent?.type === "ExportNamedDeclaration" ||
+    parent?.type === "ExportDefaultDeclaration" ||
+    (parent?.type === "Program" && exports.has(node.id.name))
+  );
+}
+
+/** The name of the exported interface or type alias that owns a type member, or null. */
+function exportedTypeOwner(node: Node, typeExports: ReadonlySet<string>): string | null {
+  const owner = owningInterface(node);
+  const alias = owningTypeAlias(node);
+  const exported = (owner !== null && isExportedInterface(owner, typeExports)) ||
+    (alias !== null && typeExports.has(alias.id.name));
+  return exported ? (owner ?? alias)?.id.name ?? null : null;
+}
+
+function owningTypeAlias(node: Node): ESTree.TSTypeAliasDeclaration | null {
+  for (let current = parentOf(node); current !== null; current = parentOf(current)) {
+    if (current.type === "TSTypeAliasDeclaration") return current;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
-function isExportedInterface(
-  node: TSESTree.TSInterfaceDeclaration,
-  exports: ReadonlySet<string>,
-): boolean {
-  return (
-    node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
-    (node.parent.type === AST_NODE_TYPES.Program && exports.has(node.id.name))
-  );
-}
-
-export default createRule<Options, MessageIds>({
-  name: "no-positional-tuple-return",
-  documentation: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Disallow returning a multi-field tuple from a named function; return a named object so call sites cannot mismatch slots.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -631,18 +421,14 @@ export default createRule<Options, MessageIds>({
         "`{{name}}` returns a {{count}}-field tuple, so callers depend on positional slots that can be reordered silently. Return a named object instead.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    const specifierExports = specifierExportedNames(context.sourceCode.ast);
-    const typeExports = publiclyReachableTypeNames(
-      context.sourceCode.ast,
-      exportedTypeNames(context.sourceCode.ast),
-    );
-    const aliases = typeAliases(context.sourceCode);
-    const reportedFunctions = new WeakSet<FunctionNode>();
+  createOnce(context) {
+    let specifierExports: ReadonlySet<string> = new Set();
+    let typeExports: ReadonlySet<string> = new Set();
+    let aliases: TypeAliases = { get: () => undefined };
+    let reportedFunctions = new WeakSet<FunctionNode>();
     const functionStack: FunctionNode[] = [];
-    const report = (annotation: TSESTree.TypeNode, name: string): void => {
+
+    const report = (annotation: Node, name: string): void => {
       const tuple = tupleReturnType(annotation, aliases);
       if (tuple === null || tuple.elementTypes.length < MIN_ELEMENTS) return;
       const fix = labeledTupleObjectFix(context.sourceCode, annotation);
@@ -650,13 +436,10 @@ export default createRule<Options, MessageIds>({
         node: annotation,
         messageId: "noPositionalTupleReturn",
         data: { name, count: String(tuple.elementTypes.length) },
-        fix,
+        ...(fix !== null && { fix }),
       });
     };
-    const reportExpression = (
-      node: FunctionNode,
-      expression: TSESTree.Expression,
-    ): void => {
+    const reportExpression = (node: FunctionNode, expression: Node): void => {
       if (reportedFunctions.has(node)) return;
       const tuple = tupleExpression(expression, aliases);
       const name = functionName(node);
@@ -672,15 +455,11 @@ export default createRule<Options, MessageIds>({
       functionStack.push(node);
       check(node);
     };
-
     const check = (node: FunctionNode): void => {
       if (isQueryKeyFactory(node)) return;
       const annotation = node.returnType?.typeAnnotation;
-      if (annotation === undefined) {
-        if (
-          node.type === AST_NODE_TYPES.ArrowFunctionExpression &&
-          node.expression
-        ) {
+      if (!isPresent(annotation)) {
+        if (node.type === "ArrowFunctionExpression" && node.expression) {
           reportExpression(node, node.body);
         }
         return;
@@ -695,6 +474,16 @@ export default createRule<Options, MessageIds>({
       functionStack.pop();
     };
     return {
+      before() {
+        const sourceCode = context.sourceCode;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)) return false;
+        specifierExports = specifierExportedNames(sourceCode.ast);
+        typeExports = publiclyReachableTypeNames(sourceCode.ast, exportedTypeNames(sourceCode.ast));
+        aliases = typeAliases(sourceCode);
+        reportedFunctions = new WeakSet<FunctionNode>();
+        functionStack.length = 0;
+        return undefined;
+      },
       FunctionDeclaration: enterFunction,
       "FunctionDeclaration:exit": exitFunction,
       FunctionExpression: enterFunction,
@@ -703,79 +492,58 @@ export default createRule<Options, MessageIds>({
       "ArrowFunctionExpression:exit": exitFunction,
       TSEmptyBodyFunctionExpression: enterFunction,
       "TSEmptyBodyFunctionExpression:exit": exitFunction,
-      ReturnStatement(node): void {
+      ReturnStatement(node: ESTree.ReturnStatement): void {
         const owner = functionStack.at(-1);
         if (
           owner === undefined ||
-          owner.returnType !== undefined ||
+          isPresent(owner.returnType) ||
           node.argument === null
         )
           return;
         reportExpression(owner, node.argument);
       },
-      TSDeclareFunction(node): void {
+      TSDeclareFunction(node: ESTree.Function): void {
+        const parent = parentOf(node);
         if (
           node.id === null ||
-          node.returnType === undefined ||
-          (node.parent.type !== AST_NODE_TYPES.ExportNamedDeclaration &&
-            node.parent.type !== AST_NODE_TYPES.ExportDefaultDeclaration &&
+          !isPresent(node.returnType) ||
+          (parent?.type !== "ExportNamedDeclaration" &&
+            parent?.type !== "ExportDefaultDeclaration" &&
             !specifierExports.has(node.id.name))
         )
           return;
         report(node.returnType.typeAnnotation, node.id.name);
       },
-      TSCallSignatureDeclaration(node): void {
+      TSCallSignatureDeclaration(node: ESTree.TSCallSignatureDeclaration): void {
         const owner = owningInterface(node);
         if (
           owner === null ||
           !isExportedInterface(owner, typeExports) ||
-          node.returnType === undefined
+          !isPresent(node.returnType)
         )
           return;
         report(node.returnType.typeAnnotation, `${owner.id.name}.call`);
       },
-      TSMethodSignature(node): void {
-        const owner = owningInterface(node);
-        const alias = owningTypeAlias(node);
+      TSMethodSignature(node: ESTree.TSMethodSignature): void {
+        const owner = exportedTypeOwner(node, typeExports);
         const memberName = staticMemberName(node.key);
-        if (
-          ((owner === null || !isExportedInterface(owner, typeExports)) &&
-            (alias === null || !typeExports.has(alias.id.name))) ||
-          node.returnType === undefined ||
-          memberName === null
-        )
-          return;
-        report(
-          node.returnType.typeAnnotation,
-          `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`,
-        );
+        if (owner === null || !isPresent(node.returnType) || memberName === null) return;
+        report(node.returnType.typeAnnotation, `${owner}.${memberName}`);
       },
-      TSTypeAliasDeclaration(node): void {
+      TSTypeAliasDeclaration(node: ESTree.TSTypeAliasDeclaration): void {
         if (!typeExports.has(node.id.name)) return;
         const returnType = callableReturnType(node.typeAnnotation, aliases);
         if (returnType !== null) report(returnType, node.id.name);
       },
-      TSPropertySignature(node): void {
-        const owner = owningInterface(node);
-        const alias = owningTypeAlias(node);
+      TSPropertySignature(node: ESTree.TSPropertySignature): void {
+        const owner = exportedTypeOwner(node, typeExports);
         const annotation = node.typeAnnotation?.typeAnnotation;
         const memberName = staticMemberName(node.key);
-        if (
-          ((owner === null || !isExportedInterface(owner, typeExports)) &&
-            (alias === null || !typeExports.has(alias.id.name))) ||
-          memberName === null ||
-          annotation === undefined
-        )
-          return;
+        if (owner === null || memberName === null || !isPresent(annotation)) return;
         const returnType = callableReturnType(annotation, aliases);
-        if (returnType !== null) {
-          report(
-            returnType,
-            `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`,
-          );
-        }
+        if (returnType !== null) report(returnType, `${owner}.${memberName}`);
       },
-      PropertyDefinition(node): void {
+      PropertyDefinition(node: ESTree.PropertyDefinition): void {
         if (
           node.accessibility === "private" ||
           node.accessibility === "protected"
@@ -786,79 +554,16 @@ export default createRule<Options, MessageIds>({
         if (
           owner === null ||
           !isExportedClass(owner, specifierExports) ||
-          annotation === undefined
+          !isPresent(annotation)
         )
           return;
         const returnType = callableReturnType(annotation, aliases);
         if (returnType !== null) {
           const name =
-            node.key.type === AST_NODE_TYPES.Identifier
-              ? node.key.name
-              : "property";
+            node.key.type === "Identifier" ? node.key.name : "property";
           report(returnType, name);
         }
       },
     };
   },
 });
-
-function variableBindingName(
-  topLevel: TSESTree.VariableDeclaration,
-  node: TSESTree.Node,
-): string | null {
-  for (const declarator of topLevel.declarations) {
-    let initializer = declarator.init;
-    while (
-      initializer?.type === AST_NODE_TYPES.TSAsExpression ||
-      initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      initializer?.type === AST_NODE_TYPES.TSNonNullExpression
-    )
-      initializer = initializer.expression;
-    if (
-      declarator.id.type === AST_NODE_TYPES.Identifier &&
-      initializer === node
-    )
-      return declarator.id.name;
-    if (
-      declarator.id.type === AST_NODE_TYPES.Identifier &&
-      (initializer?.type === AST_NODE_TYPES.ClassExpression ||
-        initializer?.type === AST_NODE_TYPES.ObjectExpression)
-    ) {
-      if (ownsMemberValue(initializer, node)) return declarator.id.name;
-    }
-  }
-  return null;
-}
-
-function classBindingName(
-  topLevel: TSESTree.ClassDeclaration,
-  node: TSESTree.Node,
-  defaultExport: boolean,
-): string | null {
-  let owner: TSESTree.Node | undefined = node.parent;
-  while (owner != null && owner.parent !== topLevel.body) owner = owner.parent;
-  return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-    owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
-    owner?.type === AST_NODE_TYPES.PropertyDefinition) &&
-    owner.value === node
-    ? (topLevel.id?.name ?? (defaultExport ? "default" : null))
-    : null;
-}
-
-function ownsMemberValue(
-  initializer: TSESTree.ClassExpression | TSESTree.ObjectExpression,
-  node: TSESTree.Node,
-): boolean {
-  let owner: TSESTree.Node | undefined = node.parent;
-  const container =
-    initializer.type === AST_NODE_TYPES.ClassExpression
-      ? initializer.body
-      : initializer;
-  while (owner != null && owner.parent !== container) owner = owner.parent;
-  return (
-    (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-      owner?.type === AST_NODE_TYPES.PropertyDefinition ||
-      owner?.type === AST_NODE_TYPES.Property) &&
-    owner.value === node
-  );
-}

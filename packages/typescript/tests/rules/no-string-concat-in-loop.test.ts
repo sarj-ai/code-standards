@@ -1,22 +1,12 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-string-concat-in-loop.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION,
-} from "../../src/rules/no-string-concat-in-loop.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const JOIN_FRAGMENTS_EXAMPLE =
+  'const parts = []; for (const item of items) { parts.push(item); } const output = parts.join("");';
+const REBUILD_STRING_EXAMPLE = "let output = ''; for (const item of items) { output = `${output}${item}`; }";
 
 RULE_TESTER.run("no-string-concat-in-loop", rule, {
   valid: [
@@ -72,7 +62,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
     },
     {
       name: "allows collecting parts and joining after the loop",
-      code: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.examples[0].files[0].source,
+      code: JOIN_FRAGMENTS_EXAMPLE,
     },
     {
       name: "allows a statically tiny loop",
@@ -124,7 +114,6 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-
 
     {
       code: `
@@ -392,7 +381,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
     },
     {
       name: "reports a template-literal rebuild in a loop",
-      code: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.examples[1].files[0].source,
+      code: REBUILD_STRING_EXAMPLE,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
     {
@@ -537,7 +526,6 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
 
-
     {
       code: `
         for (const row of rows) {
@@ -550,7 +538,6 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-
 
     {
       code: `

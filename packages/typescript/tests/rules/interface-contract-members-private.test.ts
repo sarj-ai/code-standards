@@ -1,31 +1,14 @@
-import { join } from "node:path";
+import rule from "../../src/rules/interface-contract-members-private.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const RUNTIME_PRIVATE_EXAMPLE = "interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }";
+const EXTRA_METHOD_EXAMPLE = "interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }";
 
-import rule, {
-  INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
-} from "../../src/rules/interface-contract-members-private.js";
+const RULE_TESTER = ruleTester({ cwd: FIXTURES });
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
-
-RULE_TESTER.run("interface-contract-members-private", rule, {
+RULE_TESTER.run("interface-contract-members-private", rule, typed({
   valid: [
-    INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION.examples[0].files[0].source,
+    RUNTIME_PRIVATE_EXAMPLE,
     "class Standalone { helper() {} }",
     "interface Base { load(): void } interface Store extends Base {} class DiskStore implements Store { load() {} }",
     "interface Store { readonly value: number } class DiskStore implements Store { get value() { return 1; } }",
@@ -45,7 +28,7 @@ RULE_TESTER.run("interface-contract-members-private", rule, {
     { name: "preserves implicit static instance registration", code: "export {}; interface Store { load(): void } class DiskStore implements Store { static { register(new this()); } load() {} read() {} }", output: null, errors: [{ messageId: "nonContractMemberMustBePrivate" }] },
     {
       name: "reports the documented extra method without choosing its public API",
-      code: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION.examples[1].files[0].source,
+      code: EXTRA_METHOD_EXAMPLE,
       output: null,
       errors: [{ messageId: "nonContractMemberMustBePrivate", data: { name: "read" } }],
     },
@@ -80,4 +63,9 @@ RULE_TESTER.run("interface-contract-members-private", rule, {
       errors: [{ messageId: "nonContractMemberMustBePrivate", data: { name: "helper" } }],
     },
   ],
+}));
+
+RULE_TESTER.run("interface-contract-members-private without types", rule, {
+  valid: [{ name: "reports nothing without type information, like the original's empty visitors", code: EXTRA_METHOD_EXAMPLE, settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });

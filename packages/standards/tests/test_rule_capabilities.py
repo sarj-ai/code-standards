@@ -12,7 +12,7 @@ from sarj_standards.libs.rules.capabilities import TypeScriptRuleSpec
 
 def _spec() -> TypeScriptRuleSpec:
     return TypeScriptRuleSpec(
-        engine=RuleEngine.ESLINT,
+        engine=RuleEngine.OXLINT,
         rule_id=RuleId("capability-probe"),
         code=None,
         summary="Describe native rule prerequisites.",
@@ -55,5 +55,5 @@ def test_runtime_imports_are_unique_and_nonempty(imports: tuple[str, ...]) -> No
 
 
 def test_capability_adapters_require_their_native_engine() -> None:
-    with pytest.raises(ValueError, match="ESLint engine"):
+    with pytest.raises(ValueError, match="Oxlint engine"):
         replace(_spec(), engine=RuleEngine.PYTHON)

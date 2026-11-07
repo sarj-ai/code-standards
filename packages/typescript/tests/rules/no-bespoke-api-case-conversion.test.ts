@@ -1,19 +1,57 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-bespoke-api-case-conversion.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION,
-} from "../../src/rules/no-bespoke-api-case-conversion.js";
+const NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION = {
+  defaultLevel: "warning",
+  summary:
+    "Review direct snake_case/camelCase mirror mappings on explicitly API-typed adapter values.",
+  rationale:
+    "Duplicating wire-name translation can drift from an API client contract. When the SDK owns application-facing names, centralizing conversion avoids maintaining another mirror by hand.",
+  remediation:
+    "Move wire-name ownership and case conversion into the generated SDK/model layer; keep application adapters on the generated typed surface.",
+  category: "architecture",
+  autofix: "none",
+  limitations: [
+    "Only adapter/adapters files and receivers explicitly annotated with a scope-resolved type imported from an API/client/SDK/contract/generated module are checked. Unrelated imports, local type shadows, reassigned receivers and inferred receiver types are excluded.",
+    "Only object properties that directly translate the same identifier between snake_case and lowerCamelCase are reported.",
+    "Quoted/computed protocol keys, generated/vendor code, tests, fixtures, and indirect conversions are intentionally excluded.",
+  ],
+  examples: [
+    {
+      id: "generated-client-surface",
+      title: "Use the generated client's application-facing property names",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/user-adapter.ts",
+          source:
+            "import type { User } from './generated-client';\nconst toUser = (raw: User) => ({ displayName: raw.displayName });",
+        },
+      ],
+      focusPath: "src/user-adapter.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "bespoke-wire-case-conversion",
+      title: "Do not reproduce SDK case conversion in an application adapter",
+      outcome: "match",
+      files: [
+        {
+          path: "src/user-adapter.ts",
+          source:
+            "import type { User } from './api-contract';\nconst toUser = (raw: User) => ({ displayName: raw.display_name });",
+        },
+      ],
+      focusPath: "src/user-adapter.ts",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const;
 
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 const ERROR = { messageId: "noBespokeApiCaseConversion" as const };
 const adapter = (body: string): string =>
   `import type { Contract } from "./api-contract";\n${body}`;
@@ -96,36 +134,11 @@ RULE_TESTER.run("no-bespoke-api-case-conversion", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "bespoke-wire-case-conversion-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/user-adapter.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/user-adapter.ts",
-        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[\"display_name\"] });"
-      }
-    ]
-  },
-  {
-    "id": "bespoke-wire-case-conversion-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/user-adapter.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/user-adapter.ts",
-        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[auditDynamicMember] });"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("preserves outcomes for static member access and unknown member keys", rule, {
+  valid: [
+    {"name": "bespoke-wire-case-conversion-dynamic-member: Unknown member access does not establish API identity", "filename": "src/user-adapter.ts", "code": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[auditDynamicMember] });"},
+  ],
+  invalid: [
+    {"name": "bespoke-wire-case-conversion-static-member: Static member access preserves the rule outcome", "filename": "src/user-adapter.ts", "code": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[\"display_name\"] });", "errors": 1},
+  ],
 });

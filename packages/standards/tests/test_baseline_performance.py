@@ -53,7 +53,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
 
     def eslint(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         assert "capabilities" in kwargs
-        assert kwargs["capabilities"] == frozenset({"eslint"})
+        assert kwargs["capabilities"] == frozenset({"typescript"})
         calls.append("eslint")
         ready.wait()
         issues = (ExecutionIssue("eslint", "execution-failure", "unavailable"),) if failed else ()
@@ -63,7 +63,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
             )
             for rule, letter in [
                 ("@sarj/require-pascal-case-zod-schema-name", "a"),
-                ("unicorn/prefer-iterator-helpers", "b"),
+                ("unicorn/prefer-at", "b"),
                 ("unselected", "c"),
             ]
         )
@@ -88,7 +88,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
             "--rule",
             "eslint:@sarj/require-pascal-case-zod-schema-name",
             "--rule",
-            "eslint:unicorn/prefer-iterator-helpers",
+            "eslint:unicorn/prefer-at",
         ]
     )
     assert sorted(calls) == ["eslint", "native"]
@@ -114,7 +114,7 @@ def test_combining_eslint_scans_still_rejects_unknown_custom_selectors(tmp_path:
                 "--rule",
                 "eslint:@sarj/not-a-rule",
                 "--rule",
-                "eslint:unicorn/prefer-iterator-helpers",
+                "eslint:unicorn/prefer-at",
             ]
         )
         == 2

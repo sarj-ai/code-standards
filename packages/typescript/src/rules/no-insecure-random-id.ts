@@ -1,85 +1,17 @@
 /**
  * @fileoverview no-insecure-random-id — `Math.random()` is predictable, so an id, token or key built from it is guessable.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-insecure-random-id.test.ts
+ * Port of the 18.x `no-insecure-random-id` rule. Untyped.
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { existingUuidProviderFix } from "../utils/existing-uuid-provider-fix.js";
+import { isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
-import { existingUuidProviderFix } from "./_existing-uuid-provider-fix.js";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isTestFile } from "./_paths.js";
-
-type MessageIds = "insecureRandomId";
-type Options = readonly [];
-
-export const NO_INSECURE_RANDOM_ID_DOCUMENTATION = {
-  summary:
-    "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
-  rationale:
-    "Math.random is predictable and lacks the entropy required for security-sensitive values.",
-  remediation:
-    "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
-  category: "security",
-  autofix: "safe",
-  limitations: [
-    "Names select security-sensitive bindings heuristically; they do not prove sensitivity. Sampling in unrelated bindings or branch tests, locally shadowed Math objects, ambiguous identifiers and test files are excluded. This is not interprocedural data-flow analysis. Automatic fixes cover only an exact RFC v4 x/y recipe in a closed module with explicit string APIs and an already-used bound crypto.randomUUID provider. Canonical unmodified Web Crypto, Math, String, RegExp, Number and Function.bind are assumed; the entropy upgrade intentionally changes random traces. Other recipes and providers remain manual.",
-  ],
-  examples: [
-    {
-      id: "cryptographic-id",
-      title: "Use the Web Crypto API",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/session.ts",
-          source: "const sessionToken = crypto.randomUUID();",
-        },
-      ],
-      focusPath: "src/session.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "predictable-token",
-      title: "Do not derive a token from Math.random",
-      outcome: "match",
-      files: [
-        {
-          path: "src/session.ts",
-          source: "const sessionToken = Math.random();",
-        },
-      ],
-      focusPath: "src/session.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "existing-native-provider",
-      title: "Use the existing provider for the exact v4 recipe",
-      outcome: "match",
-      files: [
-        {
-          path: "src/ids.ts",
-          source:
-            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const uuidDigit = Math.random() * 16 | 0; return (c === 'x' ? uuidDigit : (uuidDigit & 3) | 8).toString(16); }); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
-        },
-      ],
-      focusPath: "src/ids.ts",
-      expectedCount: 1,
-      fixedFiles: [
-        {
-          path: "src/ids.ts",
-          source:
-            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return nativeUuid(); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
-        },
-      ],
-      public: false,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-insecure-random-id";
 
 const STRONG_SECURITY_WORDS: ReadonlySet<string> = new Set([
   "apikey",
@@ -117,91 +49,77 @@ function nameWords(name: string): string[] {
     .map((word) => word.toLowerCase());
 }
 
-/**
- * Returns true if `node` is a `Math.random()` CallExpression.
- */
-function isMathRandomCall(
-  node: TSESTree.Node,
-) {
-  if (node.type !== "CallExpression") {
-    return false;
-  }
+/** Returns true if `node` is a `Math.random()` CallExpression. */
+function isMathRandomCall(node: ESTree.CallExpression): boolean {
   const callee = unwrapExpression(node.callee);
-  if (callee.type !== "MemberExpression") {
-    return false;
-  }
+  if (callee.type !== "MemberExpression") return false;
   const object = unwrapExpression(callee.object);
-  return (
-    object.type === "Identifier" &&
-    object.name === "Math" &&
-    ASTUtils.getPropertyName(callee) === "random"
-  );
+  return object.type === "Identifier" && object.name === "Math" && getPropertyName(callee) === "random";
 }
 
+/** Statements and function boundaries end the search for a name. */
+const NAME_BOUNDARIES: ReadonlySet<string> = new Set([
+  "ExpressionStatement",
+  "IfStatement",
+  "ForStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
 /** Finds the nearest binding or property name without leaving its value. */
-function findEnclosingNames(node: TSESTree.Node): string[] {
+function findEnclosingNames(node: Node): string[] {
   const names: string[] = [];
   let directBinding = true;
-  let current: TSESTree.Node = node;
-  let parent = current.parent;
-
-  while (parent) {
+  for (let current: Node = node, parent = parentOf(node); parent !== null; current = parent, parent = parentOf(current)) {
     if (parent.type === "VariableDeclarator" && parent.init === current) {
       appendDirectBindingName(parent.id, directBinding, names);
       return names;
     }
-
-    if (
-      (parent.type === "Property" || parent.type === "PropertyDefinition") &&
-      parent.value === current
-    ) {
-      appendPropertyName(parent, names);
-      directBinding = false;
-    }
-
-    if (parent.type === "AssignmentExpression" && parent.right === current) {
-      appendAssignedName(parent, directBinding, names);
-    }
-
-    if (
-      parent.type === "ObjectExpression" ||
-      parent.type === "ArrayExpression"
-    ) {
-      directBinding = false;
-    }
-
     if (parent.type === "FunctionDeclaration") {
       appendDirectBindingName(parent.id, directBinding, names);
       return names;
     }
-
-    if (
-      parent.type === "ExpressionStatement" ||
-      parent.type === "IfStatement" ||
-      parent.type === "ForStatement" ||
-      parent.type === "WhileStatement" ||
-      parent.type === "DoWhileStatement" ||
-      parent.type === "FunctionExpression" ||
-      parent.type === "ArrowFunctionExpression"
-    ) {
-      return names;
-    }
-
-    current = parent;
-    parent = current.parent;
+    if (NAME_BOUNDARIES.has(parent.type)) return names;
+    directBinding = appendStepName(parent, current, directBinding, names);
   }
-
   return names;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-insecure-random-id",
-  documentation: NO_INSECURE_RANDOM_ID_DOCUMENTATION,
+/** Records the name `parent` gives `child`; returns whether the value still is the bound value itself. */
+function appendStepName(parent: Node, child: Node, directBinding: boolean, names: string[]): boolean {
+  if ((parent.type === "Property" || parent.type === "PropertyDefinition") && parent.value === child) {
+    appendPropertyName(parent as ESTree.ObjectProperty | ESTree.PropertyDefinition, names);
+    return false;
+  }
+  if (parent.type === "AssignmentExpression" && parent.right === child && directBinding) appendAssignedName(parent, names);
+  return directBinding && parent.type !== "ObjectExpression" && parent.type !== "ArrayExpression";
+}
+
+function appendPropertyName(property: ESTree.ObjectProperty | ESTree.PropertyDefinition, names: string[]): void {
+  const key = property.key;
+  if (!property.computed && key.type === "Identifier") names.push(key.name);
+  if (key.type === "Literal" && typeof key.value === "string") names.push(key.value);
+}
+
+function appendAssignedName(assignment: ESTree.AssignmentExpression, names: string[]): void {
+  const left = assignment.left;
+  const name = left.type === "Identifier" ? left.name : left.type === "MemberExpression" ? getPropertyName(left) : null;
+  if (name !== null) names.push(name);
+}
+
+function appendDirectBindingName(id: Node | null, directBinding: boolean, names: string[]): void {
+  if (directBinding && id?.type === "Identifier") names.push(id.name);
+}
+
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
+      url: docsUrl(NAME),
     },
     fixable: "code",
     schema: [],
@@ -210,66 +128,20 @@ export default createRule<Options, MessageIds>({
         "`Math.random()` is not cryptographically secure and is predictable; do not use it to generate IDs, tokens, or secrets. Use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context)) {
-      return {};
-    }
+  createOnce(context) {
+    let sourceCode: SourceCode;
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (!isMathRandomCall(node)) {
-          return;
-        }
-        if (
-          (ASTUtils.findVariable(context.sourceCode.getScope(node), "Math")
-            ?.defs.length ?? 0) > 0
-        )
-          return;
-
-        const names = findEnclosingNames(node);
-
-        if (names.some(isStrongSecurityName)) {
-          context.report({
-            node,
-            messageId: "insecureRandomId",
-            fix: existingUuidProviderFix(context.sourceCode, node, "recipe"),
-          });
-        }
+      before() {
+        sourceCode = context.sourceCode;
+        return !isTestFile({ filename: context.filename, cwd: context.cwd });
+      },
+      CallExpression(node) {
+        if (!isMathRandomCall(node)) return;
+        if ((findVariable(sourceCode.getScope(node), "Math")?.defs.length ?? 0) > 0) return;
+        if (!findEnclosingNames(node).some(isStrongSecurityName)) return;
+        const fix = existingUuidProviderFix(sourceCode, node, "recipe");
+        context.report(fix === null ? { node, messageId: "insecureRandomId" } : { node, messageId: "insecureRandomId", fix });
       },
     };
   },
 });
-
-function appendPropertyName(
-  property: TSESTree.Property | TSESTree.PropertyDefinition,
-  names: string[],
-): void {
-  const key = property.key;
-  if (!property.computed && key.type === "Identifier") names.push(key.name);
-  if (key.type === "Literal" && typeof key.value === "string")
-    names.push(key.value);
-}
-
-function appendAssignedName(
-  assignment: TSESTree.AssignmentExpression,
-  directBinding: boolean,
-  names: string[],
-): void {
-  if (directBinding && assignment.left.type === "Identifier")
-    names.push(assignment.left.name);
-  if (
-    directBinding &&
-    assignment.left.type === "MemberExpression" &&
-    ASTUtils.getPropertyName(assignment.left) !== null
-  ) {
-    names.push(ASTUtils.getPropertyName(assignment.left) ?? "");
-  }
-}
-
-function appendDirectBindingName(
-  id: TSESTree.Node | null,
-  directBinding: boolean,
-  names: string[],
-): void {
-  if (directBinding && id?.type === "Identifier") names.push(id.name);
-}

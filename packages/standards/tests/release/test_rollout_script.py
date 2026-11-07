@@ -19,6 +19,7 @@ from sarj_standards.libs.adoption import (
     scaffold as adoption_scaffold,
     service as adoption_service,
 )
+from sarj_standards.libs.linting import oxlint_directives
 from sarj_standards.libs.release import retirement, rollout
 
 from .fakes import FakeRolloutRunner as FakeRunner
@@ -69,62 +70,134 @@ def test_unavailable_process_groups_retain_original_runner(
 
 def _legacy_eslint_consumer(root: Path, destination: str) -> Path:
     primary = root / destination
-    primary.mkdir(parents=True, exist_ok=True)
+    (primary / "src").mkdir(parents=True, exist_ok=True)
     (root / "package.json").write_text('{"name":"consumer","private":true}\n', encoding="utf-8")
-    (primary / "eslint.strict.mjs").write_bytes((CONFIGS_DIR / "eslint.strict.mjs").read_bytes())
+    (primary / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    (primary / "eslint.config.mjs").write_text(
+        'import strict from "./eslint.strict.mjs";\n\nexport default [...strict];\n', encoding="utf-8"
+    )
+    (primary / "src/index.ts").write_text(_LEGACY_DIRECTIVE, encoding="utf-8")
     (root / MANIFEST).write_text(
-        adoption_manifest.Manifest("7.1.0", ("eslint",), ".", destination, hook_manager="none").render(),
+        adoption_manifest.Manifest("7.1.0", ("typescript",), ".", destination, hook_manager="none").render(),
         encoding="utf-8",
     )
     return primary
 
 
+_LEGACY_DIRECTIVE = (
+    "// eslint-disable-next-line unicorn/no-array-from-fill -- the fixture keeps one rule ID to migrate\n"
+    "export const VALUES = Array.from({ length: 2 }).fill(0);\n"
+)
+
+
 @pytest.mark.parametrize("destination", [".", "typescript"])
-def test_managed_eslint_declaration_can_be_created_without_allowing_other_source(
+def test_typescript_migration_admits_only_its_predicted_rewrites_and_deletions(
     tmp_path: Path, destination: str
 ) -> None:
     _legacy_eslint_consumer(tmp_path, destination)
-    for relative in ("application.d.mts", "src/eslint.strict.d.mts"):
-        authored = tmp_path / relative
-        authored.parent.mkdir(parents=True, exist_ok=True)
-        authored.write_text("export declare const authored: unique symbol;\n", encoding="utf-8")
     allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
-    declaration = (Path(destination) / "eslint.strict.d.mts").as_posix()
+    prefix = "" if destination == "." else f"{destination}/"
 
-    rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
+    migration = rollout.expected_typescript_migration(tmp_path, allowed)
 
-    for protected in ("application.d.mts", "src/eslint.strict.d.mts"):
+    assert migration.deletions >= {f"{prefix}eslint.strict.mjs", f"{prefix}eslint.config.mjs"}
+    assert migration.rewrites == {
+        f"{prefix}src/index.ts": _LEGACY_DIRECTIVE.replace("unicorn/", "unicorn-js/").encode("utf-8")
+    }
+    assert migration.formats == destination
+    assert migration.regenerates_baseline
+    with pytest.raises(rollout.RolloutError, match="requires controller"):
+        rollout.expected_typescript_migration(tmp_path, allowed, target_version="0.0.1")
+    for protected in (f"{prefix}eslint.strict.d.mts", f"{prefix}src/other.ts"):
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
 
 
-@pytest.mark.parametrize("existing", [False, True])
-def test_only_producer_owned_legacy_mirrors_can_receive_declarations(tmp_path: Path, *, existing: bool) -> None:
-    primary = _legacy_eslint_consumer(tmp_path, "typescript")
-    for relative in ("apps/mirror", "apps/custom", "tests/fixtures/mirror"):
-        directory = tmp_path / relative
-        directory.mkdir(parents=True)
-        contents = (
-            (primary / "eslint.strict.mjs").read_bytes() if relative != "apps/custom" else b"export default [];\n"
-        )
-        (directory / "eslint.strict.mjs").write_bytes(contents)
-    (tmp_path / "apps/custom/eslint.strict.d.mts").write_text("authored declaration\n", encoding="utf-8")
-    declaration = "apps/mirror/eslint.strict.d.mts"
-    if existing:
-        (tmp_path / declaration).write_text("stale declaration\n", encoding="utf-8")
-    allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+def test_typescript_migration_is_not_predicted_for_a_disabled_capability(tmp_path: Path) -> None:
+    _legacy_eslint_consumer(tmp_path, ".")
+    (tmp_path / MANIFEST).write_text(
+        adoption_manifest.Manifest(
+            "7.1.0", (), ".", ".", hook_manager="none", disabled_capabilities=("typescript",)
+        ).render(),
+        encoding="utf-8",
+    )
 
-    rollout.reject_unsafe_diff((MANIFEST, declaration), allowed_paths=allowed)
+    assert rollout.expected_typescript_migration(tmp_path, frozenset()) == rollout.TypescriptMigration()
 
-    for protected in ("apps/custom/eslint.strict.d.mts", "tests/fixtures/mirror/eslint.strict.d.mts"):
-        with pytest.raises(rollout.RolloutError, match="protected paths"):
-            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+def _formatted(relative: str, source: bytes) -> bytes:
+    assert relative.startswith("web/")
+    return source.replace(b"  ", b" ")
+
+
+@pytest.mark.parametrize(
+    ("relative", "current", "proved"),
+    [
+        pytest.param("web/src/rewritten.ts", b"rewritten  ", True, id="exact-rewrite"),
+        pytest.param("web/src/rewritten.ts", b"rewritten ", True, id="formatted-rewrite"),
+        pytest.param("web/README.md", b"base ", True, id="formatted-base"),
+        pytest.param("web/README.md", b"base  extra", False, id="unformatted-change"),
+        pytest.param("web/src/new.ts", b"created", False, id="no-base"),
+        pytest.param("other/README.md", b"base ", False, id="outside-formatted-root"),
+    ],
+)
+def test_typescript_migration_proof_accepts_only_canonical_postimages(
+    relative: str, current: bytes, *, proved: bool
+) -> None:
+    expected = rollout.TypescriptMigration({"web/src/rewritten.ts": b"rewritten  "}, formats="web")
+    bases = {"web/README.md": b"base  ", "other/README.md": b"base  "}
+
+    def base(paths: Sequence[str]) -> Mapping[str, bytes]:
+        assert "web/src/rewritten.ts" not in paths
+        assert "other/README.md" not in paths
+        return {path: bases[path] for path in paths if path in bases}
+
+    result = rollout.prove_typescript_migration(
+        (relative,), expected, read=lambda _path: current, base=base, format_source=_formatted
+    )
+
+    assert result == ({relative: current} if proved else {})
+
+
+def test_typescript_migration_proof_without_seeding_admits_only_exact_rewrites() -> None:
+    expected = rollout.TypescriptMigration({"web/src/rewritten.ts": b"rewritten  "})
+
+    def unexpected_format(relative: str, source: bytes) -> bytes:
+        pytest.fail(f"formatted {relative} without a seeded oxfmt config: {source!r}")
+
+    proved = rollout.prove_typescript_migration(
+        ("web/src/rewritten.ts", "web/README.md"),
+        expected,
+        read=lambda path: b"rewritten  " if path.endswith(".ts") else b"base ",
+        base=lambda paths: dict.fromkeys(paths, b"base  "),
+        format_source=unexpected_format,
+    )
+
+    assert proved == {"web/src/rewritten.ts": b"rewritten  "}
+
+
+def test_typescript_migration_validation_follows_a_later_directive_cleanup(tmp_path: Path) -> None:
+    source = tmp_path / "index.ts"
+    source.write_bytes(b"cleaned\n")
+    proved = {"index.ts": b"migrated\n"}
+
+    with pytest.raises(rollout.RolloutError, match="canonical TypeScript migration postimage"):
+        rollout.validate_typescript_migration(tmp_path, proved)
+    cleanup = {"index.ts": oxlint_directives.SourcePostimage(b"migrated\n", b"cleaned\n", 0o644)}
+    assert rollout.validate_typescript_migration(tmp_path, proved, cleanup) == frozenset({"index.ts"})
+
+
+def test_typescript_migration_admits_a_predicted_deletion_only_once_the_file_is_gone(tmp_path: Path) -> None:
+    (tmp_path / "eslint.strict.mjs").write_text("export default [{ rules: {} }];\n", encoding="utf-8")
+    deletions = frozenset({"eslint.strict.mjs", "eslint.config.mjs"})
+
+    assert rollout.validate_typescript_migration(tmp_path, {}, deletions=deletions) == {"eslint.config.mjs"}
 
 
 @pytest.mark.parametrize("destination", [".", "typescript"])
 def test_managed_syncpack_companion_is_allowed_without_allowing_local_source(tmp_path: Path, destination: str) -> None:
     _legacy_eslint_consumer(tmp_path, destination)
-    plan = adoption_service.plan_sync(tmp_path, configs=("eslint",), typescript_dest=destination)
+    plan = adoption_service.plan_sync(tmp_path, configs=("typescript",), typescript_dest=destination)
     companions = tuple(
         target.destination.relative_to(tmp_path).as_posix()
         for target in plan.targets
@@ -140,22 +213,44 @@ def test_managed_syncpack_companion_is_allowed_without_allowing_local_source(tmp
             rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
 
 
-@pytest.mark.parametrize("mode", ["typed", "unselected"])
-def test_declarations_are_protected_without_a_legacy_eslint_producer(tmp_path: Path, mode: str) -> None:
-    primary = _legacy_eslint_consumer(tmp_path, ".")
-    if mode == "typed":
-        (primary / "eslint.strict.mjs").unlink()
-        (primary / "eslint.strict.ts").write_bytes((CONFIGS_DIR / "eslint.strict.ts").read_bytes())
-    else:
-        (tmp_path / MANIFEST).write_text(
-            adoption_manifest.Manifest("7.1.0", ("ruff",), ".", ".", hook_manager="none").render(),
-            encoding="utf-8",
-        )
-    (primary / "eslint.strict.d.mts").write_text("authored declaration\n", encoding="utf-8")
+def test_typescript_root_files_are_managed_only_in_the_adopted_root(tmp_path: Path) -> None:
+    _legacy_eslint_consumer(tmp_path, "web")
     allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
 
-    with pytest.raises(rollout.RolloutError, match="protected paths"):
-        rollout.reject_unsafe_diff((MANIFEST, "eslint.strict.d.mts"), allowed_paths=allowed)
+    rollout.reject_unsafe_diff(
+        (MANIFEST, "web/tsconfig.json", "web/biome.json", "web/eslint-suppressions.json", "web/oxfmt.config.mts"),
+        allowed_paths=allowed,
+    )
+    for protected in ("packages/app/tsconfig.json", "packages/app/biome.json", "tsconfig.json"):
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, protected), allowed_paths=allowed)
+
+
+def test_predicted_typescript_migration_deletions_are_the_only_other_deletions() -> None:
+    deletions = rollout.MANAGED_DELETIONS | {"eslint.strict.mjs"}
+    status = (0, " D eslint.strict.mjs\0")
+    committed = [(0, ""), (0, "eslint.strict.mjs\n"), (0, "eslint.strict.mjs\0")]
+
+    assert rollout.changed_paths(Path("repo"), FakeRunner([status]), deletions=deletions) == ("eslint.strict.mjs",)
+    assert rollout.committed_paths(Path("repo"), "main", FakeRunner(committed), deletions=deletions) == (
+        "eslint.strict.mjs",
+    )
+    with pytest.raises(rollout.RolloutError, match="delete or rename"):
+        rollout.changed_paths(Path("repo"), FakeRunner([status]))
+
+
+def test_retired_oxlint_suppressions_are_removed_like_eslint_ones(tmp_path: Path) -> None:
+    source = tmp_path / "src/index.ts"
+    source.parent.mkdir()
+    source.write_text(
+        f"// oxlint-disable-next-line {rollout.RETIRED_SARJ_RULES[0]}, eqeqeq -- legacy\nconst x = 1;\n",
+        encoding="utf-8",
+    )
+
+    changed = rollout.remove_retired_lint_suppressions(tmp_path, FakeRunner([(0, "src/index.ts\0")]))
+
+    assert changed == frozenset({"src/index.ts"})
+    assert source.read_text(encoding="utf-8") == "// oxlint-disable-next-line eqeqeq -- legacy\nconst x = 1;\n"
 
 
 def registry_entry(index: int) -> str:
@@ -245,7 +340,7 @@ class TestRegistry:
             rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12"),
         )
 
-        assert selected == ("eslint:@sarj/new-rule", "react-doctor:*")
+        assert selected == ("oxlint:@sarj/new-rule", "react-doctor:*")
 
     def test_unchanged_react_doctor_policy_does_not_rebaseline(self) -> None:
         policy = rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12")
@@ -285,6 +380,13 @@ class TestRegistry:
                 "iac:no-environment-conditional",
                 id="ledger-renamed-selector",
             ),
+            pytest.param("eslint:@sarj/new-rule", "oxlint:@sarj/new-rule", id="eslint-era-sarj-selector"),
+            pytest.param("oxlint:@sarj/new-rule", "oxlint:@sarj/new-rule", id="oxlint-sarj-selector"),
+            pytest.param(
+                "eslint:@typescript-eslint/no-explicit-any",
+                "oxlint:typescript/no-explicit-any",
+                id="eslint-era-third-party-selector",
+            ),
         ],
     )
     def test_rollout_canonicalizes_catalogued_historical_baseline_selectors(
@@ -314,6 +416,20 @@ class TestRegistry:
     def test_rollout_omits_ledger_removed_baseline_selectors(self, configured: str) -> None:
         selected = rollout.rollout_baseline_rules(
             rollout.Consumer("one", "example/one", "main", ("true",), baseline_rules=(configured,)),
+            rollout.ReactDoctorPolicy(None, None),
+            rollout.ReactDoctorPolicy(None, None),
+        )
+        assert selected == ()
+
+    def test_rollout_omits_eslint_rules_oxlint_does_not_run(self) -> None:
+        selected = rollout.rollout_baseline_rules(
+            rollout.Consumer(
+                "one",
+                "example/one",
+                "main",
+                ("true",),
+                baseline_rules=("eslint:@typescript-eslint/naming-convention",),
+            ),
             rollout.ReactDoctorPolicy(None, None),
             rollout.ReactDoctorPolicy(None, None),
         )
@@ -676,7 +792,7 @@ def test_canonical_typescript_companions_can_roll_out_without_changing_local_con
     original = b'import strict from "./syncpack.strict.mts";\nexport default { ...strict, versionGroups: [] };\n'
     local.write_bytes(original)
 
-    result = adoption_service.apply_sync(adoption_service.plan_sync(project, configs=("eslint",)), force=True)
+    result = adoption_service.apply_sync(adoption_service.plan_sync(project, configs=("typescript",)), force=True)
     assert result.status == 0
     names = ("doctor.config.json", "syncpack.strict.mts")
     paths = tuple((project / name).relative_to(tmp_path).as_posix() for name in names)
@@ -875,12 +991,12 @@ class TestSafety:
         source = tmp_path / "apps/web/src/index.ts"
         source.parent.mkdir(parents=True)
         source.write_text(
-            f"/* eslint-disable no-console, {rollout.RETIRED_ESLINT_SELECTORS[1]}, eqeqeq -- legacy */\nconst x = 1;\n",
+            f"/* eslint-disable no-console, {rollout.RETIRED_SARJ_RULES[1]}, eqeqeq -- legacy */\nconst x = 1;\n",
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "apps/web/src/index.ts\0")])
 
-        changed = rollout.remove_retired_eslint_suppressions(tmp_path, runner)
+        changed = rollout.remove_retired_lint_suppressions(tmp_path, runner)
 
         assert changed == frozenset({"apps/web/src/index.ts"})
         assert source.read_text(encoding="utf-8") == (

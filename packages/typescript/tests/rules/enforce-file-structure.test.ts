@@ -1,15 +1,7 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/enforce-file-structure.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { ENFORCE_FILE_STRUCTURE_DOCUMENTATION } from "../../src/rules/enforce-file-structure.js";
-
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 const NON_ACTION_FILENAME = "src/components/some-component.ts";
 const ACTION_FILENAME = "src/actions/create-user.ts";
@@ -19,7 +11,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
 
     {
       filename: NON_ACTION_FILENAME,
-      code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[0].files[0].source,
+      code: "import { z } from 'zod';\nexport const schema = z.string();",
     },
 
     {
@@ -44,9 +36,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
     },
 
-
-
-
     {
       filename: "apps/web/components/booking/actions/BookingActionsDropdown.tsx",
       code: `
@@ -58,7 +47,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
     },
 
-
     {
       filename: "packages/features/booking-audit/lib/actions/CreatedAuditActionService.ts",
       code: `
@@ -67,7 +55,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         }
       `,
     },
-
 
     {
       filename: "app/dashboard/actions.ts",
@@ -94,7 +81,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
     },
 
-
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -102,9 +88,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         type T = { a: number };
       `,
     },
-
-
-
 
     {
       filename: NON_ACTION_FILENAME,
@@ -116,8 +99,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
     },
 
-
-
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -125,7 +106,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         const TEMPLATE = '<div></div>';
       `,
     },
-
 
     {
       filename: NON_ACTION_FILENAME,
@@ -135,7 +115,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
     },
 
-
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -144,7 +123,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         function origin(): Point { return { x: 0, y: 0 }; }
       `,
     },
-
 
     {
       filename: "src/_namespaces/ts.ts",
@@ -178,7 +156,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       filename: "src/lib/redaction.ts",
       code: `export function redact(s: string) { return s; }`,
     },
-
 
     {
       filename: "/repo/src/lib/integration/__tests__/token-validation.test.ts",
@@ -242,7 +219,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
 
     {
       filename: NON_ACTION_FILENAME,
-      code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[1].files[0].source,
+      code: "export const x = 1;\nimport { z } from 'zod';",
       errors: [{ messageId: "importsFirst" }],
     },
 
@@ -264,7 +241,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       errors: [{ messageId: "importsFirst" }],
     },
 
-
     {
       filename: ACTION_FILENAME,
       code: `
@@ -274,7 +250,6 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "useServerDirective" }],
     },
-
 
     {
       filename: NON_ACTION_FILENAME,

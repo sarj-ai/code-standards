@@ -1,15 +1,24 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-jwt-lifetime.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { REQUIRE_JWT_LIFETIME_DOCUMENTATION } from "../../src/rules/require-jwt-lifetime.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser } });
+const REQUIRE_JWT_LIFETIME_DOCUMENTATION = {
+  defaultLevel: "warning",
+  summary: "Require an expiration claim or a maximum token age when returning a verified JWT.",
+  rationale: "JOSE validates exp when present but does not require it by default, so otherwise valid tokens without an expiration may remain accepted indefinitely.",
+  remediation: "Set requiredClaims: ['exp'] or a finite maxTokenAge in jwtVerify options. Keep issuer and audience checks appropriate to the protocol.",
+  category: "security",
+  references: ["https://github.com/panva/jose/blob/main/docs/jwt/verify/interfaces/JWTVerifyOptions.md"],
+  limitations: [
+    "Checks direct return or concise-arrow-return calls, including await, to runtime ESM-import-proven jose jwtVerify with absent options or a literal options object lacking both lifetime controls. Aliased imports and namespace imports are resolved lexically.",
+    "Opaque options, spreads, local claim validation before return, custom verifiers, generated files and tests are excluded. Existing native jose validation is assumed. No automatic protocol policy is invented.",
+  ],
+  examples: [
+    { id: "optional-expiration", title: "A signature alone does not require expiration", outcome: "match", files: [{ path: "auth.ts", source: "import { jwtVerify } from 'jose'; function verify(token, key) { return jwtVerify(token, key); }" }], focusPath: "auth.ts", expectedCount: 1, public: true },
+    { id: "required-expiration", title: "Require the expiration claim", outcome: "no-match", files: [{ path: "auth.ts", source: "import { jwtVerify } from 'jose'; function verify(token, key) { return jwtVerify(token, key, { requiredClaims: ['exp'] }); }" }], focusPath: "auth.ts", expectedCount: 0, public: true },
+  ],
+} as const;
+const TESTER = ruleTester();
 TESTER.run("require-jwt-lifetime", rule, {
   valid: [
     REQUIRE_JWT_LIFETIME_DOCUMENTATION.examples[1].files[0].source,

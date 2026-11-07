@@ -1,176 +1,57 @@
 /**
  * @fileoverview no-redundant-optional-array-default — an outer array default already accepts undefined input.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts
+ * Port of the 18.x `no-redundant-optional-array-default` rule. Same
+ * algorithm; the test-file and generated-file gates run in `before()`, which
+ * also resets the per-file import bindings.
  */
 
-import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { importSpecifierName } from "../utils/import-specifier-name.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
+import { isZodModule } from "../utils/zod.js";
 import { privateLegacyArrayDefaultFix } from "./_private-legacy-array-default-fix.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { isZodModule } from "./_zod.js";
 
-type MessageIds = "redundantOptionalArrayDefault";
-type Options = readonly [];
+const NAME = "no-redundant-optional-array-default";
 
-export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
-  summary: "Remove `.optional()` immediately inside a Zod array default.",
-  rationale:
-    "An outer default already accepts undefined array input, so the inner optional wrapper adds no state or fallback behavior.",
-  remediation:
-    "Keep the array default and remove the immediately preceding `.optional()` call.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Only syntactically local Zod array chains with adjacent `.optional().default(...)` calls are checked.",
-    "Imports must name the official zod package or its subpaths; relative modules and unproven npm aliases are excluded.",
-    "String, scalar, tuple, set, record, aliased, composed, and dynamically constructed schemas are excluded.",
-    "The reversed `.default(...).optional()` order is preserved because its outer optional can return undefined instead of the default.",
-    "Defaults must be literal arrays or synchronous functions returning one literal array; dynamic or undefined fallbacks are excluded because Zod 3 reparses the fallback.",
-    "Automatic fixes require a whole module containing only one explicit zod/v3 namespace import and one unused unannotated private const with exact z.array(z.string()).optional().default([]). Other findings remain manual: exported introspection and supported Zod 4 constructor hooks observe the removed wrapper.",
-    "Calls containing comments are excluded so the fix never deletes authored context.",
-    "Test and generated files are excluded.",
-  ],
-  examples: [
-    {
-      id: "array-default",
-      title: "Default an omitted list directly",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/schema.ts",
-          source:
-            'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "optional-array-default",
-      title: "Do not wrap a defaulted list in a redundant optional",
-      outcome: "match",
-      files: [
-        {
-          path: "src/schema.ts",
-          source:
-            'import { z } from "zod"; const Items = z.array(z.string()).optional().default([]);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 1,
-      public: true,
-    },
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
-    {
-      id: "unrelated-relative-builder",
-      title: "Preserve an unrelated builder in a directory named zod",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/my-zod/index.ts",
-          source:
-            'export const z = { string: () => "string", array: (_element: string) => ({ optional: () => ({ default: (value: readonly string[]) => ({ value, optional: true }) }), default: (value: readonly string[]) => ({ value, optional: false }) }) };',
-        },
-        {
-          path: "src/schema.ts",
-          source:
-            'import { z } from "./my-zod/index.js"; export const Items = z.array(z.string()).optional().default([]);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 0,
-      public: true,
-      scenarioId: "module-identity",
-    },
-    {
-      id: "official-zod-subpath-array",
-      title: "Official Zod subpaths retain the finding for manual review",
-      outcome: "match",
-      files: [
-        {
-          path: "src/schema.ts",
-          source:
-            'import { array, string } from "zod/v4"; const Items = array(string()).optional().default([]);',
-        },
-      ],
-      focusPath: "src/schema.ts",
-      expectedCount: 1,
-      public: true,
-      scenarioId: "module-identity",
-    },
-    {
-      id: "safe-autofix",
-      title: "Remove a private legacy wrapper without constructor observers",
-      outcome: "match",
-      files: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default([]);',
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/autofix-example.ts",
-          source:
-            'import { z } from "zod/v3"; const Items = z.array(z.string()).default([]);',
-        },
-      ],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function importedName(specifier: TSESTree.ImportSpecifier): string | null {
-  return specifier.imported.type === AST_NODE_TYPES.Identifier
-    ? specifier.imported.name
-    : typeof specifier.imported.value === "string"
-      ? specifier.imported.value
-      : null;
-}
-
-function hasArrayFallback(node: TSESTree.CallExpression): boolean {
+function hasArrayFallback(node: ESTree.CallExpression): boolean {
   const argument = node.arguments[0];
   if (node.arguments.length !== 1 || argument === undefined) return false;
   const value = unwrapExpression(argument);
-  if (value.type === AST_NODE_TYPES.ArrayExpression) return true;
+  if (value.type === "ArrayExpression") return true;
   if (
-    (value.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      value.type !== AST_NODE_TYPES.FunctionExpression) ||
+    (value.type !== "ArrowFunctionExpression" &&
+      value.type !== "FunctionExpression") ||
     value.async ||
     value.generator
   )
     return false;
-  if (value.body.type !== AST_NODE_TYPES.BlockStatement) {
-    return unwrapExpression(value.body).type === AST_NODE_TYPES.ArrayExpression;
+  // A function expression always has a body; `null` is only typed for declarations.
+  if (value.body === null) return false;
+  if (value.body.type !== "BlockStatement") {
+    return unwrapExpression(value.body).type === "ArrayExpression";
   }
   const statement = value.body.body[0];
   return (
     value.body.body.length === 1 &&
-    statement?.type === AST_NODE_TYPES.ReturnStatement &&
+    statement?.type === "ReturnStatement" &&
     statement.argument !== null &&
-    unwrapExpression(statement.argument).type === AST_NODE_TYPES.ArrayExpression
+    unwrapExpression(statement.argument).type === "ArrayExpression"
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-redundant-optional-array-default",
-  documentation: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
         "Remove `.optional()` immediately inside a Zod array default.",
+      url: docsUrl(NAME),
     },
     fixable: "code",
     schema: [],
@@ -179,140 +60,90 @@ export default createRule<Options, MessageIds>({
         "This array's outer `.default()` already handles undefined input. Remove the redundant inner `.optional()`.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const sourceCode = context.sourceCode;
-    if (isTestFile(context) || isGeneratedFile(context, sourceCode.getText())) {
-      return {};
-    }
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let namespaces = new Set<string>();
+    let arrayConstructors = new Set<string>();
+    let importBindings = new Map<string, Identifier>();
 
-    const namespaces = new Set<string>();
-    const arrayConstructors = new Set<string>();
-    const importBindings = new Map<string, TSESTree.Identifier>();
-
-    function resolvesToTrackedImport(node: TSESTree.Identifier): boolean {
+    function resolvesToTrackedImport(node: Identifier): boolean {
       const binding = importBindings.get(node.name);
-      if (binding === undefined) return false;
-      let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find(
-          (candidate) => candidate.name === node.name,
-        );
-        if (variable !== undefined) {
-          return variable.defs.some(
-            (definition) => definition.name === binding,
-          );
-        }
-        scope = scope.upper;
-      }
-      return false;
+      return binding !== undefined &&
+        findVariable(sourceCode.getScope(node), node.name)?.defs.some((definition) => definition.name === binding) === true;
     }
 
-    function isArraySchemaExpression(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const callee = unwrapExpression(node.callee);
-      const calleeReceiver =
-        callee.type === AST_NODE_TYPES.MemberExpression
-          ? unwrapExpression(callee.object)
-          : callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        return (
-          arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee)
-        );
-      }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const method = ASTUtils.getPropertyName(callee);
-      if (
-        method === "array" &&
-        (calleeReceiver.type === AST_NODE_TYPES.Identifier
-          ? namespaces.has(calleeReceiver.name) &&
-            resolvesToTrackedImport(calleeReceiver)
-          : isZodSchemaExpression(calleeReceiver))
-      ) {
-        return true;
-      }
-      return isArraySchemaExpression(calleeReceiver);
+    function isTrackedNamespace(node: Node): boolean {
+      return node.type === "Identifier" && namespaces.has(node.name) && resolvesToTrackedImport(node);
     }
 
-    function isZodSchemaExpression(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+    function isArraySchemaExpression(node: Node): boolean {
+      if (node.type !== "CallExpression") return false;
       const callee = unwrapExpression(node.callee);
-      const calleeReceiver =
-        callee.type === AST_NODE_TYPES.MemberExpression
-          ? unwrapExpression(callee.object)
-          : callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        return resolvesToTrackedImport(callee);
-      }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      if (
-        calleeReceiver.type === AST_NODE_TYPES.Identifier &&
-        namespaces.has(calleeReceiver.name) &&
-        resolvesToTrackedImport(calleeReceiver)
-      ) {
-        return true;
-      }
-      return isZodSchemaExpression(calleeReceiver);
+      if (callee.type === "Identifier") return arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee);
+      if (callee.type !== "MemberExpression") return false;
+      const receiver = unwrapExpression(callee.object);
+      const arrayFactory = getPropertyName(callee) === "array" &&
+        (receiver.type === "Identifier" ? isTrackedNamespace(receiver) : isZodSchemaExpression(receiver));
+      return arrayFactory || isArraySchemaExpression(receiver);
+    }
+
+    function isZodSchemaExpression(node: Node): boolean {
+      if (node.type !== "CallExpression") return false;
+      const callee = unwrapExpression(node.callee);
+      if (callee.type === "Identifier") return resolvesToTrackedImport(callee);
+      if (callee.type !== "MemberExpression") return false;
+      const receiver = unwrapExpression(callee.object);
+      return isTrackedNamespace(receiver) || isZodSchemaExpression(receiver);
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      before(): boolean | void {
+        sourceCode = context.sourceCode;
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, sourceCode.text)) {
+          return false;
+        }
+        namespaces = new Set<string>();
+        arrayConstructors = new Set<string>();
+        importBindings = new Map<string, Identifier>();
+      },
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier"
           ) {
             namespaces.add(specifier.local.name);
             importBindings.set(specifier.local.name, specifier.local);
             continue;
           }
-          const imported = importedName(specifier);
-          if (imported === "z") {
-            namespaces.add(specifier.local.name);
-            importBindings.set(specifier.local.name, specifier.local);
-          } else if (imported === "array") {
-            arrayConstructors.add(specifier.local.name);
-            importBindings.set(specifier.local.name, specifier.local);
-          } else if (imported !== null) {
-            importBindings.set(specifier.local.name, specifier.local);
-          }
+          const imported = importSpecifierName(specifier);
+          if (imported === "z") namespaces.add(specifier.local.name);
+          else if (imported === "array") arrayConstructors.add(specifier.local.name);
+          importBindings.set(specifier.local.name, specifier.local);
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const defaultCallee = unwrapExpression(node.callee);
-
-        const defaultCalleeReceiver =
-          defaultCallee.type === AST_NODE_TYPES.MemberExpression
-            ? unwrapExpression(defaultCallee.object)
-            : defaultCallee;
-        if (
-          defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          ASTUtils.getPropertyName(defaultCallee) !== "default" ||
-          !hasArrayFallback(node) ||
-          defaultCalleeReceiver.type !== AST_NODE_TYPES.CallExpression
-        ) {
-          return;
-        }
-        const optionalCall = defaultCalleeReceiver;
+        if (defaultCallee.type !== "MemberExpression" || getPropertyName(defaultCallee) !== "default" || !hasArrayFallback(node)) return;
+        const optionalCall = unwrapExpression(defaultCallee.object);
+        if (optionalCall.type !== "CallExpression") return;
         const optionalCallee = unwrapExpression(optionalCall.callee);
-        const optionalCalleeReceiver =
-          optionalCallee.type === AST_NODE_TYPES.MemberExpression
-            ? unwrapExpression(optionalCallee.object)
-            : optionalCallee;
         if (
-          optionalCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          ASTUtils.getPropertyName(optionalCallee) !== "optional" ||
+          optionalCallee.type !== "MemberExpression" ||
+          getPropertyName(optionalCallee) !== "optional" ||
           optionalCall.arguments.length !== 0 ||
-          !isArraySchemaExpression(optionalCalleeReceiver) ||
+          !isArraySchemaExpression(unwrapExpression(optionalCallee.object)) ||
           sourceCode.getCommentsInside(optionalCall).length > 0
         ) {
           return;
         }
+        const fix = privateLegacyArrayDefaultFix(sourceCode, node, context.filename);
         context.report({
           node: optionalCall,
           messageId: "redundantOptionalArrayDefault",
-          fix: privateLegacyArrayDefaultFix(sourceCode, node, context.filename),
+          ...(fix !== null && { fix }),
         });
       },
     };

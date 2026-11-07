@@ -1,19 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/prefer-millisecond-control-duration-schema.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
-} from "../../src/rules/prefer-millisecond-control-duration-schema.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 const ERROR = { messageId: "preferMilliseconds" as const };
 const zod = (code: string): string => `import { z } from "zod";\n${code}`;
 
@@ -26,8 +15,8 @@ RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
     { name: "does not infer an unknown schema alias", code: zod("const Schema = z.object({ timeoutSeconds: customSchema });") },
     {
       name: "accepts the documented millisecond field",
-      filename: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[0].focusPath,
-      code: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[0].files[0].source,
+      filename: "src/request.ts",
+      code: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1000).max(300000).default(30000) });",
     },
     { code: zod("const Schema = z.object({ timeout_ms: z.number() });") },
     { code: zod("const Schema = z.object({ retryIntervalMs: z.number() });") },
@@ -71,8 +60,8 @@ RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
     { name: "supports quoted direct strict object factory imports", code: 'import { "strictObject" as shape, "number" as numeric } from "zod/v4"; const Schema = shape({ timeout_seconds: numeric() });', errors: [ERROR] },
     {
       name: "reports the documented seconds field",
-      filename: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[1].focusPath,
-      code: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[1].files[0].source,
+      filename: "src/request.ts",
+      code: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1).max(300).default(30) });",
       errors: [ERROR],
     },
     {
@@ -103,36 +92,20 @@ RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "second-timeout-schema-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/request.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/request.ts",
-        "source": "import { z } from 'zod';\nexport const RequestSchema = z[\"object\"]({ timeout_seconds: z[\"number\"]()[\"int\"]()[\"min\"](1)[\"max\"](300)[\"default\"](30) });"
-      }
-    ]
-  },
-  {
-    "id": "second-timeout-schema-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/request.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/request.ts",
-        "source": "import { z } from 'zod';\nexport const RequestSchema = z[auditDynamicMember]({ timeout_seconds: z[auditDynamicMember]()[auditDynamicMember]()[auditDynamicMember](1)[auditDynamicMember](300)[auditDynamicMember](30) });"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("prefer-millisecond-control-duration-schema examples", rule, {
+  valid: [
+    {
+      name: "second-timeout-schema-dynamic-member: Unknown member access does not establish API identity",
+      filename: "src/request.ts",
+      code: "import { z } from 'zod';\nexport const RequestSchema = z[auditDynamicMember]({ timeout_seconds: z[auditDynamicMember]()[auditDynamicMember]()[auditDynamicMember](1)[auditDynamicMember](300)[auditDynamicMember](30) });",
+    },
+  ],
+  invalid: [
+    {
+      name: "second-timeout-schema-static-member: Static member access preserves the rule outcome",
+      filename: "src/request.ts",
+      code: "import { z } from 'zod';\nexport const RequestSchema = z[\"object\"]({ timeout_seconds: z[\"number\"]()[\"int\"]()[\"min\"](1)[\"max\"](300)[\"default\"](30) });",
+      errors: [ERROR],
+    },
+  ],
 });

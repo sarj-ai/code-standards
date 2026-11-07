@@ -13,12 +13,12 @@ import pytest
 from sarj_standards import __version__
 from sarj_standards.libs.adoption.lifecycle import Command
 from sarj_standards.libs.adoption.manifest import Manifest
-from sarj_standards.libs.linting import eslint_directives
+from sarj_standards.libs.linting import oxlint_directives
 from sarj_standards.libs.release import rollout
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Mapping, Sequence
 
 
 _BEFORE = b"// eslint-disable-next-line no-console\nexport const VALUE = 1;\n"
@@ -73,16 +73,16 @@ def _repository(root: Path, *, object_format: str = "sha1") -> _RepositoryFixtur
     source = root / "literal[glob].ts"
     source.write_bytes(_BEFORE)
     source.chmod(0o640)
-    manifest = Manifest(__version__, ("eslint",), ".", ".")
+    manifest = Manifest(__version__, ("typescript",), ".", ".")
     (root / ".sarj-standards.toml").write_text(manifest.render(), encoding="utf-8")
     _git(root, "add", "--all")
     _git(root, "commit", "-qm", "fixture base")
     return _RepositoryFixture(source, _git(root, "rev-parse", "HEAD").decode().strip())
 
 
-def _proof(source: Path) -> Mapping[str, eslint_directives.SourcePostimage]:
+def _proof(source: Path) -> Mapping[str, oxlint_directives.SourcePostimage]:
     return MappingProxyType(
-        {source.name: eslint_directives.SourcePostimage(_BEFORE, _AFTER, stat.S_IMODE(source.stat().st_mode))}
+        {source.name: oxlint_directives.SourcePostimage(_BEFORE, _AFTER, stat.S_IMODE(source.stat().st_mode))}
     )
 
 
@@ -122,7 +122,7 @@ def test_same_allowed_path_cannot_hide_an_unplanned_source_or_mode_change(tmp_pa
     before_index = (tmp_path / ".git/index").read_bytes()
     before_head = _git(tmp_path, "rev-parse", "HEAD")
 
-    with pytest.raises(rollout.RolloutError, match="immutable native ESLint directive postimage"):
+    with pytest.raises(rollout.RolloutError, match="immutable native Oxlint directive postimage"):
         rollout.amend_safe_changes(
             tmp_path,
             _Runner(),
@@ -191,26 +191,28 @@ def test_installer_body_changes_cannot_be_laundered_by_a_later_native_directive_
     changed_before = _BEFORE.replace(b"VALUE", b"RENAMED")
     changed_after = _AFTER.replace(b"VALUE", b"RENAMED")
     source.write_bytes(changed_before)
-    expected = MappingProxyType({source.name: eslint_directives.SourcePostimage(changed_before, changed_after, 0o640)})
+    expected = MappingProxyType({source.name: oxlint_directives.SourcePostimage(changed_before, changed_after, 0o640)})
 
     def canonical_plan(
         root: Path,
         paths: Sequence[str],
         *,
         run: Callable[[Command], subprocess.CompletedProcess[str]],
-    ) -> Mapping[str, eslint_directives.SourcePostimage]:
+        owned: Collection[str] = (),
+    ) -> Mapping[str, oxlint_directives.SourcePostimage]:
+        assert all(isinstance(path, str) for path in owned)
         assert root == tmp_path
         assert tuple(paths) == (source.name,)
         assert callable(run)
         return expected
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- supply only the native-plan protocol to test immutable Git-base rejection before any source write; the native planner has a separate actual ESLint fixture.
-        eslint_directives, "plan", canonical_plan
+        oxlint_directives, "plan", canonical_plan
     )
     before_index = (tmp_path / ".git/index").read_bytes()
 
     with pytest.raises(rollout.RolloutError, match="committed source differs"):
-        rollout.prepare_unused_eslint_directives(
+        rollout.prepare_unused_oxlint_directives(
             tmp_path,
             _Runner(),
             (),
@@ -221,6 +223,46 @@ def test_installer_body_changes_cannot_be_laundered_by_a_later_native_directive_
 
     assert source.read_bytes() == changed_before
     assert (tmp_path / ".git/index").read_bytes() == before_index
+
+
+@pytest.mark.parametrize("proven", [True, False])
+def test_directive_plan_on_a_migrated_source_starts_from_its_proven_update_postimage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, proven: bool
+) -> None:
+    fixture = _repository(tmp_path)
+    source, base = fixture.source, fixture.base_sha
+    migrated_before = _BEFORE.replace(b"no-console", b"typescript/no-explicit-any")
+    source.write_bytes(migrated_before)
+    expected = MappingProxyType({source.name: oxlint_directives.SourcePostimage(migrated_before, _AFTER, 0o640)})
+
+    def canonical_plan(
+        root: Path,
+        paths: Sequence[str],
+        *,
+        run: Callable[[Command], subprocess.CompletedProcess[str]],
+        owned: Collection[str] = (),
+    ) -> Mapping[str, oxlint_directives.SourcePostimage]:
+        assert all(isinstance(path, str) for path in owned)
+        assert (root, tuple(paths), callable(run)) == (tmp_path, (source.name,), True)
+        return expected
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- supply only the native-plan protocol; the update postimage proof is what is under test.
+        oxlint_directives, "plan", canonical_plan
+    )
+    planned = MappingProxyType({source.name: migrated_before if proven else _BEFORE})
+
+    def prepare() -> Mapping[str, oxlint_directives.SourcePostimage]:
+        return rollout.prepare_unused_oxlint_directives(
+            tmp_path, _Runner(), (), environment={}, version=__version__, base_sha=base, update_postimages=planned
+        )
+
+    if not proven:
+        with pytest.raises(rollout.RolloutError, match="proven update postimage"):
+            prepare()
+        assert source.read_bytes() == migrated_before
+        return
+    assert prepare() == expected
+    assert source.read_bytes() == _AFTER
 
 
 class _EnvironmentRunner(_Runner):
@@ -267,16 +309,18 @@ def test_initial_native_callback_filters_output_overrides_without_mutating_the_s
         paths: Sequence[str],
         *,
         run: Callable[[Command], subprocess.CompletedProcess[str]],
-    ) -> Mapping[str, eslint_directives.SourcePostimage]:
+        owned: Collection[str] = (),
+    ) -> Mapping[str, oxlint_directives.SourcePostimage]:
+        assert all(isinstance(path, str) for path in owned)
         assert root == tmp_path
         assert tuple(paths) == (source.name,)
         assert run(Command("observe environment", ("fixture-native",), root)).returncode == 0
         return MappingProxyType({})
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the supplied native callback environment; actual ESLint/formatter execution has a separate native proof and file transactions are not intercepted.
-        eslint_directives, "plan", observe_callback
+        oxlint_directives, "plan", observe_callback
     )
-    planned = rollout.prepare_unused_eslint_directives(
+    planned = rollout.prepare_unused_oxlint_directives(
         tmp_path, runner, (), environment=supplied, version=__version__, base_sha=base
     )
 

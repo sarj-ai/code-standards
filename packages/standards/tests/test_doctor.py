@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 def test_doctor_has_no_legacy_profile_library_policy_exclusions(tmp_path: Path, profile: manifest.Profile) -> None:
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),
-        configs=("ruff", "eslint"),
+        configs=("ruff", "typescript"),
         python_dest=".",
         typescript_dest=".",
         hook_manager="none",

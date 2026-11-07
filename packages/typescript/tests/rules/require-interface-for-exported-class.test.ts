@@ -1,20 +1,64 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-interface-for-exported-class.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION,
-} from "../../src/rules/require-interface-for-exported-class.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, sourceType: "module" },
-});
+const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
+  examples: [
+    {
+      id: "implemented-store-contract",
+      title: "Export behavior through a focused contract",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/artifact-store.ts",
+          source:
+            "export interface ArtifactStorage { read(id: string): Promise<Uint8Array>; } export class ArtifactStore implements ArtifactStorage { async read(id: string) { return new Uint8Array(); } }",
+        },
+      ],
+      focusPath: "src/artifact-store.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "concrete-only-store",
+      title: "Do not export behavior only through a concrete class",
+      outcome: "match",
+      files: [
+        {
+          path: "src/artifact-store.ts",
+          source:
+            "export class ArtifactStore { async read(id: string) { return new Uint8Array(); } }",
+        },
+      ],
+      focusPath: "src/artifact-store.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "The existing factory already names the service contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+    },
+  ],
+} as const;
 
 RULE_TESTER.run("require-interface-for-exported-class", rule, {
   valid: [

@@ -1,12 +1,11 @@
-/**
- * @fileoverview _existing-domain-comparison-fix — reuse a closed-domain comparator.
- */
+/** @fileoverview _existing-domain-comparison-fix — reuse a closed-domain comparator. */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { Fixer } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Node, SourceCode } from "../types.js";
+import { isPresent } from "../utils/is-present.js";
+import { findVariable } from "../utils/static-string.js";
+import { plainFunctionBody } from "./_closed-module.js";
 
 const UNSAFE_FIELDS: ReadonlySet<string> = new Set([
   "__proto__",
@@ -14,11 +13,13 @@ const UNSAFE_FIELDS: ReadonlySet<string> = new Set([
   "prototype",
 ]);
 
+type Expression = ESTree.Expression;
+
 /** Reuse an already exercised comparator for a closed string-literal record domain. */
 export function existingDomainComparisonFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  comparison: TSESTree.BinaryExpression,
-): NativeReportFix | null {
+  sourceCode: SourceCode,
+  comparison: ESTree.BinaryExpression,
+): ((fixer: Fixer) => ReturnType<Fixer["replaceText"]>) | null {
   if (
     comparison.operator !== "===" ||
     sourceCode.ast.body.length !== 2 ||
@@ -27,11 +28,10 @@ export function existingDomainComparisonFix(
     return null;
   const [comparator, exported] = sourceCode.ast.body;
   if (
-    comparator?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(comparator) ||
-    comparator.id === null ||
-    exported?.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
+    comparator?.type !== "FunctionDeclaration" || !isOrdinary(comparator) ||
+    exported?.type !== "ExportNamedDeclaration" ||
     exported.exportKind !== "value" ||
-    exported.declaration?.type !== AST_NODE_TYPES.FunctionDeclaration || !isOrdinary(exported.declaration)
+    exported.declaration?.type !== "FunctionDeclaration" || !isOrdinary(exported.declaration)
   )
     return null;
   const fields = comparatorFields(comparator);
@@ -40,7 +40,7 @@ export function existingDomainComparisonFix(
     return null;
   const existing = elements[0];
   if (
-    existing?.type !== AST_NODE_TYPES.CallExpression ||
+    existing?.type !== "CallExpression" ||
     !isComparatorCall(sourceCode, existing, comparator, fields)
   )
     return null;
@@ -55,29 +55,19 @@ export function existingDomainComparisonFix(
     );
 }
 
-function isOrdinary(
-  node: TSESTree.FunctionDeclaration,
-): boolean {
-  return (
-    node.id !== null &&
-    !node.declare &&
-    !node.async &&
-    !node.generator &&
-    node.typeParameters === undefined &&
-    node.body.body.length === 1
-  );
+/** A named plain function with a one-statement body. */
+function isOrdinary(node: ESTree.Function): boolean {
+  return node.id !== null && plainFunctionBody(node)?.length === 1;
 }
 
-function comparatorFields(
-  node: TSESTree.FunctionDeclaration,
-): readonly string[] | null {
+function comparatorFields(node: ESTree.Function): readonly string[] | null {
   const [left, right] = node.params;
   if (
     node.params.length !== 2 ||
-    left?.type !== AST_NODE_TYPES.Identifier ||
-    right?.type !== AST_NODE_TYPES.Identifier ||
+    left?.type !== "Identifier" ||
+    right?.type !== "Identifier" ||
     left.name === right.name ||
-    node.returnType?.typeAnnotation.type !== AST_NODE_TYPES.TSBooleanKeyword
+    node.returnType?.typeAnnotation.type !== "TSBooleanKeyword"
   )
     return null;
   const fields = parameterFields(left);
@@ -89,9 +79,9 @@ function comparatorFields(
     fields.some((field, index) => otherFields[index] !== field)
   )
     return null;
-  const returned = node.body.body[0];
+  const returned = node.body?.body[0];
   if (
-    returned?.type !== AST_NODE_TYPES.ReturnStatement ||
+    returned?.type !== "ReturnStatement" ||
     returned.argument === null
   )
     return null;
@@ -104,20 +94,17 @@ function comparatorFields(
     : null;
 }
 
-function parameterFields(
-  parameter: TSESTree.Identifier,
-): readonly string[] | null {
+function parameterFields(parameter: ESTree.BindingIdentifier): readonly string[] | null {
   const annotation = parameter.typeAnnotation?.typeAnnotation;
-  if (parameter.optional || annotation?.type !== AST_NODE_TYPES.TSTypeLiteral)
+  if (parameter.optional || annotation?.type !== "TSTypeLiteral")
     return null;
   const fields: string[] = [];
   for (const member of annotation.members) {
     if (
-      member.type !== AST_NODE_TYPES.TSPropertySignature ||
+      member.type !== "TSPropertySignature" ||
       member.computed ||
       member.optional ||
-      member.typeAnnotation?.typeAnnotation.type !==
-        AST_NODE_TYPES.TSStringKeyword
+      member.typeAnnotation?.typeAnnotation.type !== "TSStringKeyword"
     )
       return null;
     const name = fieldName(member.key);
@@ -128,23 +115,20 @@ function parameterFields(
   return fields.includes("toJSON") && fields.length > 1 ? fields : null;
 }
 
-function fieldName(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) return node.name;
-  return node.type === AST_NODE_TYPES.Literal && typeof node.value === "string"
+function fieldName(node: Node): string | null {
+  if (node.type === "Identifier") return node.name;
+  return node.type === "Literal" && typeof node.value === "string"
     ? node.value
     : null;
 }
 
-function conjunctions(expression: TSESTree.Expression): TSESTree.Expression[] {
-  const checks: TSESTree.Expression[] = [];
+function conjunctions(expression: Expression): Expression[] {
+  const checks: Expression[] = [];
   const pending = [expression];
   while (pending.length > 0) {
     const current = pending.pop();
     if (current === undefined) continue;
-    if (
-      current.type === AST_NODE_TYPES.LogicalExpression &&
-      current.operator === "&&"
-    ) {
+    if (current.type === "LogicalExpression" && current.operator === "&&") {
       pending.push(current.right, current.left);
     } else checks.push(current);
   }
@@ -152,58 +136,45 @@ function conjunctions(expression: TSESTree.Expression): TSESTree.Expression[] {
 }
 
 function correspondingFields(
-  node: TSESTree.Expression,
-  left: TSESTree.Identifier,
-  right: TSESTree.Identifier,
+  node: Expression,
+  left: ESTree.BindingIdentifier,
+  right: ESTree.BindingIdentifier,
   field: string | undefined,
 ): boolean {
   return (
-    node.type === AST_NODE_TYPES.BinaryExpression &&
+    node.type === "BinaryExpression" &&
     node.operator === "===" &&
     memberOf(node.left, left, field) &&
     memberOf(node.right, right, field)
   );
 }
 
-function memberOf(
-  node: TSESTree.Node,
-  parameter: TSESTree.Identifier,
-  field: string | undefined,
-): boolean {
+function memberOf(node: Node, parameter: ESTree.BindingIdentifier, field: string | undefined): boolean {
   return (
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
     !node.computed &&
     !node.optional &&
-    node.object.type === AST_NODE_TYPES.Identifier &&
+    node.object.type === "Identifier" &&
     node.object.name === parameter.name &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
+    node.property.type === "Identifier" &&
     node.property.name === field
   );
 }
 
-function callerElements(
-  node: TSESTree.FunctionDeclaration,
-): TSESTree.Expression[] | null {
+function callerElements(node: ESTree.Function): Expression[] | null {
   if (
     node.params.length !== 0 ||
-    node.returnType?.typeAnnotation.type !== AST_NODE_TYPES.TSArrayType ||
-    node.returnType.typeAnnotation.elementType.type !==
-      AST_NODE_TYPES.TSBooleanKeyword
+    node.returnType?.typeAnnotation.type !== "TSArrayType" ||
+    node.returnType.typeAnnotation.elementType.type !== "TSBooleanKeyword"
   )
     return null;
-  const returned = node.body.body[0];
-  const array =
-    returned?.type === AST_NODE_TYPES.ReturnStatement
-      ? returned.argument
-      : null;
-  if (
-    array?.type !== AST_NODE_TYPES.ArrayExpression ||
-    array.elements.length !== 2
-  )
+  const returned = node.body?.body[0];
+  const array = returned?.type === "ReturnStatement" ? returned.argument : null;
+  if (array?.type !== "ArrayExpression" || array.elements.length !== 2)
     return null;
-  const elements: TSESTree.Expression[] = [];
+  const elements: Expression[] = [];
   for (const element of array.elements) {
-    if (element === null || element.type === AST_NODE_TYPES.SpreadElement)
+    if (element === null || element.type === "SpreadElement")
       return null;
     elements.push(element);
   }
@@ -211,22 +182,19 @@ function callerElements(
 }
 
 function isComparatorCall(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  call: TSESTree.CallExpression,
-  comparator: TSESTree.FunctionDeclaration,
+  sourceCode: SourceCode,
+  call: ESTree.CallExpression,
+  comparator: ESTree.Function,
   fields: readonly string[],
 ): boolean {
   if (
     call.optional ||
-    call.typeArguments !== undefined ||
-    call.callee.type !== AST_NODE_TYPES.Identifier ||
+    isPresent(call.typeArguments) ||
+    call.callee.type !== "Identifier" ||
     call.arguments.length !== 2
   )
     return false;
-  const binding = ASTUtils.findVariable(
-    sourceCode.getScope(call),
-    call.callee.name,
-  );
+  const binding = findVariable(sourceCode.getScope(call), call.callee.name);
   return (
     binding?.defs.length === 1 &&
     binding.defs[0]?.node === comparator &&
@@ -234,50 +202,47 @@ function isComparatorCall(
   );
 }
 
-function literalRecord(
-  node: TSESTree.Node,
-  fields: readonly string[],
-): boolean {
+function literalRecord(node: Node, fields: readonly string[]): boolean {
   return (
-    node.type === AST_NODE_TYPES.ObjectExpression &&
+    node.type === "ObjectExpression" &&
     node.properties.length === fields.length &&
     node.properties.every(
       (property, index) =>
-        property.type === AST_NODE_TYPES.Property &&
+        property.type === "Property" &&
         !property.computed &&
         !property.method &&
         !property.shorthand &&
         property.kind === "init" &&
         fieldName(property.key) === fields[index] &&
-        property.value.type === AST_NODE_TYPES.Literal &&
+        property.value.type === "Literal" &&
         typeof property.value.value === "string",
     )
   );
 }
 
 function serializedLiteral(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  node: Node,
   fields: readonly string[],
-): TSESTree.ObjectExpression | null {
+): ESTree.ObjectExpression | null {
   if (
-    node.type !== AST_NODE_TYPES.CallExpression ||
+    node.type !== "CallExpression" ||
     node.optional ||
-    node.typeArguments !== undefined ||
+    isPresent(node.typeArguments) ||
     node.arguments.length !== 1 ||
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.type !== "MemberExpression" ||
     node.callee.computed ||
     node.callee.optional ||
-    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.object.type !== "Identifier" ||
     node.callee.object.name !== "JSON" ||
-    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.property.type !== "Identifier" ||
     node.callee.property.name !== "stringify"
   )
     return null;
-  const binding = ASTUtils.findVariable(sourceCode.getScope(node), "JSON");
+  const binding = findVariable(sourceCode.getScope(node), "JSON");
   const argument = node.arguments[0];
   return (binding === null || binding.defs.length === 0) &&
-    argument?.type === AST_NODE_TYPES.ObjectExpression &&
+    argument?.type === "ObjectExpression" &&
     literalRecord(argument, fields)
     ? argument
     : null;

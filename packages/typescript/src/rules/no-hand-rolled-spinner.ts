@@ -1,29 +1,16 @@
 /**
- * @fileoverview no-hand-rolled-spinner — border-ring loading indicators should use the design-system spinner.
+ * @fileoverview no-hand-rolled-spinner — keep loading spinners in the design system.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-spinner.test.ts
+ * Port of the 18.x `no-hand-rolled-spinner` rule. The rule is untyped, so
+ * the port covers all of it.
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
+import { tailwindBase, tailwindVariantPrefix } from "../utils/tailwind.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
-import { tailwindBase, tailwindVariantPrefix } from "./_tailwind.js";
-
-type MessageIds = "handRolledSpinner";
-type Options = readonly [];
-
-export const NO_HAND_ROLLED_SPINNER_DOCUMENTATION = {
-  summary: "Disallow intrinsic elements styled as Tailwind border-ring spinners outside the design-system implementation.",
-  rationale: "One-off loading indicators duplicate a shared primitive and let accessibility and styling diverge.",
-  remediation: "Render the design-system Spinner component instead.",
-  category: "maintainability",
-  limitations: ["Only effective static className values on div and span elements are inspected; Tailwind utilities are combined only when they are unprefixed or share one exact variant context, while a later spread makes the value unknown. Tests, stories, generated files, and the design-system implementation are excluded."],
-  examples: [
-    { id: "design-system-spinner", title: "Use the shared spinner", outcome: "no-match", files: [{ path: "src/loading-state.tsx", source: '<Spinner className="size-4" />' }], focusPath: "src/loading-state.tsx", expectedCount: 0, public: true },
-    { id: "border-ring-spinner", title: "Do not rebuild a spinner", outcome: "match", files: [{ path: "src/loading-state.tsx", source: '<div className="size-4 animate-spin rounded-full border-2 border-t-transparent" />' }], focusPath: "src/loading-state.tsx", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-hand-rolled-spinner";
 
 const DESIGN_SYSTEM_PATH = /(?:^|[/\\])components[/\\]ui[/\\]/u;
 const DIRECTIONAL_BORDER = /^border-([trblsexy])-(.+)$/u;
@@ -77,21 +64,21 @@ function hasSpinnerInVariant(classes: readonly TailwindClass[], variant: string)
     effective.some(isContrastingEdge);
 }
 
-function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
+function staticClassName(attribute: ESTree.JSXAttribute): string | null {
   const value = attribute.value;
-  if (value?.type === AST_NODE_TYPES.Literal && typeof value.value === "string") {
+  if (value?.type === "Literal" && typeof value.value === "string") {
     return value.value;
   }
   if (
-    value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    value.expression.type === AST_NODE_TYPES.Literal &&
+    value?.type === "JSXExpressionContainer" &&
+    value.expression.type === "Literal" &&
     typeof value.expression.value === "string"
   ) {
     return value.expression.value;
   }
   if (
-    value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    value.expression.type === AST_NODE_TYPES.TemplateLiteral &&
+    value?.type === "JSXExpressionContainer" &&
+    value.expression.type === "TemplateLiteral" &&
     value.expression.expressions.length === 0
   ) {
     return value.expression.quasis[0]?.value.cooked ?? null;
@@ -99,14 +86,13 @@ function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
   return null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-hand-rolled-spinner",
-  documentation: NO_HAND_ROLLED_SPINNER_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Disallow intrinsic elements styled as Tailwind border-ring spinners outside the design-system implementation.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -114,33 +100,28 @@ export default createRule<Options, MessageIds>({
         "Use the design-system Spinner component instead of rebuilding a border-ring spinner with utility classes.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      DESIGN_SYSTEM_PATH.test(context.filename) ||
-      isTestFile(context) ||
-      isStoryFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    ) {
-      return {};
-    }
-
+  createOnce(context) {
     return {
-      JSXOpeningElement(node): void {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
         if (
-          node.name.type !== AST_NODE_TYPES.JSXIdentifier ||
-          (node.name.name !== "div" && node.name.name !== "span")
-        ) {
-          return;
-        }
-        const classNameAttribute = node.attributes.toReversed().find(
+          DESIGN_SYSTEM_PATH.test(context.filename) ||
+          isTestFile(file) ||
+          isStoryFile(file) ||
+          isGeneratedFile(file, context.sourceCode.text)
+        ) return false;
+        return undefined;
+      },
+      JSXOpeningElement(node) {
+        if (node.name.type !== "JSXIdentifier" || (node.name.name !== "div" && node.name.name !== "span")) return;
+        const classNameAttribute = node.attributes.findLast(
           (attribute) =>
-            attribute.type === AST_NODE_TYPES.JSXSpreadAttribute ||
-            (attribute.type === AST_NODE_TYPES.JSXAttribute &&
-            attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            attribute.type === "JSXSpreadAttribute" ||
+            (attribute.type === "JSXAttribute" &&
+            attribute.name.type === "JSXIdentifier" &&
             attribute.name.name === "className"),
         );
-        if (classNameAttribute?.type !== AST_NODE_TYPES.JSXAttribute) return;
+        if (classNameAttribute?.type !== "JSXAttribute") return;
         const className = staticClassName(classNameAttribute);
         if (className === null) return;
         const classes = className.split(/\s+/u).filter(Boolean).map((token) => ({

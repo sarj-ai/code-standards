@@ -12,6 +12,7 @@ import yaml
 from sarj_standards.libs.adoption import lifecycle, manifest, packagemanager, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager, YarnVariant
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from tests.oxlint_project import MODULES
 
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) ->
 def test_npm_keeps_the_nested_form_with_resolved_root_references() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.typescript_peers()["eslint"]}
     assert "$" not in json.dumps(overrides.as_document())
 
 
@@ -93,31 +94,23 @@ def test_pnpm_gets_a_flat_selector_for_its_workspace_policy() -> None:
     assert "eslint-plugin-react>eslint" in overrides.entries
 
 
-def test_yarn_gets_resolved_overrides_and_one_tested_typescript_eslint_identity() -> None:
+def test_yarn_gets_the_resolved_overrides_as_resolutions() -> None:
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
-    expected_identity = manifest.eslint_yarn_identity_pins()
-    assert overrides.entries == {
-        "eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"],
-        **expected_identity,
-    }
+    assert overrides.entries == {"eslint-plugin-react/eslint": manifest.typescript_peers()["eslint"]}
     assert "$" not in json.dumps(overrides.as_document())
 
 
-def test_mature_typescript_eslint_identity_pins_are_not_age_gate_exceptions() -> None:
-    approvals = manifest.eslint_age_gate_preapprovals()
-    identity_pins = manifest.eslint_yarn_identity_pins()
+def test_only_the_internal_plugin_is_an_age_gate_exception() -> None:
+    approvals = manifest.typescript_age_gate_preapprovals()
 
-    assert approvals == {"@sarj/eslint-plugin": manifest.eslint_peers()["@sarj/eslint-plugin"]}
-    assert "typescript-eslint" in identity_pins
-    assert "@typescript-eslint/parser" in identity_pins
-    assert not approvals.keys() & identity_pins.keys()
+    assert approvals == {"@sarj/eslint-plugin": manifest.typescript_peers()["@sarj/eslint-plugin"]}
 
 
 def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
     overrides = packagemanager.overrides_for(PackageManager.BUN)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides.entries == {"eslint": manifest.typescript_peers()["eslint"]}
 
 
 @pytest.mark.parametrize(
@@ -392,6 +385,73 @@ def test_lifecycle_install_preserves_the_yarn_dialect(tmp_path: Path) -> None:
     assert commands[0].argv == ("yarn", "install", "--no-immutable", "--mode=skip-build")
 
 
+def _prepared_install(root: Path, client: PackageManager, yarn: YarnVariant = YarnVariant.CLASSIC) -> lifecycle.Command:
+    ecosystems = scaffold.Ecosystems(
+        False, True, typescript_root=root, typescript_install_root=root, client=client, yarn=yarn
+    )
+    (command,) = lifecycle.install_commands(root, ecosystems, hook_manager="none", include_devops=False)
+    assert command.prepare is not None
+    with command.prepare(command) as prepared:
+        return prepared
+
+
+def test_pnpm_installs_exempt_exactly_the_managed_versions_on_the_command_line(tmp_path: Path) -> None:
+    policy = (
+        "minimumReleaseAge: 20160\n"
+        "minimumReleaseAgeExclude:\n  - glob@14.0.3\n"
+        "trustPolicy: no-downgrade\n"
+        "trustPolicyExclude:\n  - semver@6.3.1\n"
+    )
+    (tmp_path / "pnpm-workspace.yaml").write_text(policy, encoding="utf-8")
+    tsrs = manifest.typescript_peers()["tsrs"]
+
+    prepared = _prepared_install(tmp_path, PackageManager.PNPM)
+
+    exemptions = [part for part in prepared.argv if part.startswith("--config.")]
+    managed = manifest.typescript_installed_versions()
+    # An inline list replaces the workspace's own, so the authored entries come first.
+    assert exemptions == [
+        *(f"--config.minimumReleaseAgeExclude={entry}" for entry in ("glob@14.0.3", *managed)),
+        *(f"--config.trustPolicyExclude={entry}" for entry in ("semver@6.3.1", *managed)),
+    ]
+    assert f"tsrs@{tsrs}" in managed
+    assert f"@tsrs/linux-x64-gnu@{tsrs}" in managed
+    assert "@typescript/typescript6@6.0.2" in managed
+    assert (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8") == policy
+
+
+def test_yarn_berry_installs_preapprove_the_managed_versions_in_the_environment(tmp_path: Path) -> None:
+    policy = 'npmMinimalAgeGate: 3d\nnpmPreapprovedPackages:\n  - "body-parser@2.4.0"\n'
+    (tmp_path / ".yarnrc.yml").write_text(policy, encoding="utf-8")
+
+    prepared = _prepared_install(tmp_path, PackageManager.YARN, YarnVariant.BERRY)
+
+    assert prepared.argv == ("yarn", "install", "--no-immutable", "--mode=skip-build")
+    approved = ",".join(("body-parser@2.4.0", *manifest.typescript_installed_versions()))
+    assert prepared.environment == (("YARN_NPM_PREAPPROVED_PACKAGES", approved),)
+    assert (tmp_path / ".yarnrc.yml").read_text(encoding="utf-8") == policy
+
+
+def test_npm_installs_carry_no_policy_exemption(tmp_path: Path) -> None:
+    prepared = _prepared_install(tmp_path, PackageManager.NPM)
+
+    assert prepared.argv == packagemanager.install_argv(PackageManager.NPM)
+    assert prepared.environment == ()
+
+
+def test_platform_packages_match_what_each_locked_peer_installs() -> None:
+    parsed: object = json.loads(manifest.PEERS_JSON.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- untyped stdlib boundary
+    declared = manifest.table_field(manifest.as_table(parsed), "platformPackages")
+    for name, pin in manifest.typescript_peers().items():
+        package_json = MODULES / name / "package.json"
+        if not package_json.is_file():
+            continue
+        installed: object = json.loads(package_json.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        optional = manifest.table_field(manifest.as_table(installed), "optionalDependencies")
+        assert sorted(optional) == declared.get(name, []), name
+        assert all(version == pin for version in optional.values()), name
+
+
 def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
     assert "--ignore-workspace" not in packagemanager.install_argv(PackageManager.PNPM, workspace=True)
     assert "--ignore-workspace" in packagemanager.install_argv(PackageManager.PNPM)
@@ -463,52 +523,8 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     written = manifest.as_table(parsed)
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
-    assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
-    expected_identity = {
-        name: version
-        for name, version in manifest.eslint_age_gate_preapprovals().items()
-        if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
-    }
-    assert {name: resolutions[name] for name in expected_identity} == expected_identity
+    assert resolutions == {"eslint-plugin-react/eslint": manifest.typescript_peers()["eslint"]}
     assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
-
-
-def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(tmp_path: Path) -> None:
-    child = tmp_path / "packages" / "client"
-    child.mkdir(parents=True)
-    _project(
-        tmp_path,
-        "yarn.lock",
-        {
-            "name": "web",
-            "packageManager": "yarn@4.15.0",
-            "workspaces": ["packages/*"],
-        },
-    )
-    child_package = {
-        "name": "client",
-        "devDependencies": {
-            "@typescript-eslint/parser": "^8.67.0",
-            "typescript-eslint": "^8.67.0",
-        },
-    }
-    (child / "package.json").write_text(json.dumps(child_package), encoding="utf-8")
-    (child / "eslint.config.js").write_text(
-        'import strict from "../../eslint.strict.mjs";\n'
-        'import tseslint from "typescript-eslint";\n'
-        "export default [...strict, ...tseslint.configs.strictTypeChecked];\n",
-        encoding="utf-8",
-    )
-
-    proc = _cli("init", "--dest", str(tmp_path))
-
-    assert proc.returncode == 0, proc.stderr
-    root: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
-    resolutions = manifest.table_field(manifest.as_table(root), "resolutions")
-    identity_pins = manifest.eslint_yarn_identity_pins()
-    assert resolutions["typescript-eslint"] == identity_pins["typescript-eslint"]
-    assert resolutions["@typescript-eslint/parser"] == identity_pins["@typescript-eslint/parser"]
-    assert json.loads((child / "package.json").read_text(encoding="utf-8")) == child_package
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
@@ -520,7 +536,7 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
-    assert overrides == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides == {"eslint": manifest.typescript_peers()["eslint"]}
 
 
 def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides(tmp_path: Path) -> None:
@@ -537,7 +553,7 @@ def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     react = manifest.table_field(overrides, "eslint-plugin-react")
     assert react["."] == "$eslint-plugin-react"
-    assert react["eslint"] == manifest.eslint_peers()["eslint"]
+    assert react["eslint"] == manifest.typescript_peers()["eslint"]
 
 
 def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(tmp_path: Path) -> None:
@@ -590,7 +606,7 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before_package
     assert (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8") == before_workspace
-    assert "already pins the tested ESLint peers and pnpm overrides" in second.stdout
+    assert "already pins the tested TypeScript peers and pnpm overrides" in second.stdout
 
 
 def test_doctor_rejects_obsolete_package_json_pnpm_overrides(tmp_path: Path) -> None:

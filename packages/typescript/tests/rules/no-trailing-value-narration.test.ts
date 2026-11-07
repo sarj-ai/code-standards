@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-trailing-value-narration.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_TRAILING_VALUE_NARRATION_DOCUMENTATION,
-} from "../../src/rules/no-trailing-value-narration.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-trailing-value-narration", rule, {
   valid: [
@@ -34,7 +25,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     { code: "const backoff = 2 * 60; // doubles per attempt, capped by the gateway" },
     {
       name: "allows a unit annotation that also explains a domain constraint",
-      code: NO_TRAILING_VALUE_NARRATION_DOCUMENTATION.examples[0].files[0].source,
+      code: "const timeout = 5 * 60; // 5 minutes for cold starts",
     },
     {
       name: "allows a comment when any stated number is absent from the code",
@@ -65,16 +56,16 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     },
   ],
   invalid: [
-    { name: "recognizes the unit on a direct assignment member", code: "settings.delayMs = 5; // 5 milliseconds", output: "settings.delayMs = 5;", errors: [{ messageId: "deleteNarration", suggestions: 1 }] },
+    { name: "recognizes the unit on a direct assignment member", code: "settings.delayMs = 5; // 5 milliseconds", output: "settings.delayMs = 5;", errors: [{ messageId: "deleteNarration", suggestions: [{ messageId: "removeNarration", output: "settings.delayMs = 5;" }] }] },
     {
       name: "does not borrow another declaration's unit for deletion",
       code: "const unrelatedMs = 0; const retries = 5; // 5 retries",
-      errors: [{ messageId: "narratesValue", suggestions: 0 }],
+      errors: [{ messageId: "narratesValue", suggestions: [] }],
     },
     {
       name: "uses the attached property name for deletion",
       code: "const options = { unrelatedMs: 0, retries: 5, // 5 retries\n};",
-      errors: [{ messageId: "narratesValue", suggestions: 0 }],
+      errors: [{ messageId: "narratesValue", suggestions: [] }],
     },
     {
       name: "unit-bearing constant advice only asks to delete the narration",
@@ -95,7 +86,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     {
       name: "short unit-bearing constant advice only asks to delete the narration",
       code: "const POLL_MS = 3; // 3 ms", output: "const POLL_MS = 3;",
-      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
+      errors: [{ messageId: "deleteNarration", suggestions: [{ messageId: "removeNarration", output: "const POLL_MS = 3;" }] }],
     },
     {
       name: "preserves CRLF after deleting trailing block narration",
@@ -117,20 +108,20 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
       name: "does not suggest deleting a block comment followed by code",
       code: "const POLL_MS = 3; /* 3 ms */ next();",
       output: null,
-      errors: [{ messageId: "deleteNarration", suggestions: 0 }],
+      errors: [{ messageId: "deleteNarration", suggestions: [] }],
     },
     {
       code: "const payload = {\n  value: 60, // 60 seconds\n};",
       output: null,
-      errors: [{ messageId: "narratesValue", suggestions: 0 }],
+      errors: [{ messageId: "narratesValue", suggestions: [] }],
     },
     {
-      code: NO_TRAILING_VALUE_NARRATION_DOCUMENTATION.examples[1].files[0].source,
+      code: "const staleTime = 5 * 60 * 1000; // 5 minutes",
       errors: [{ messageId: "narratesValue" }],
     },
     {
       code: "export const COOKIE_MAX_AGE_SECONDS = 90; // 90 seconds", output: "export const COOKIE_MAX_AGE_SECONDS = 90;",
-      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
+      errors: [{ messageId: "deleteNarration", suggestions: [{ messageId: "removeNarration", output: "export const COOKIE_MAX_AGE_SECONDS = 90;" }] }],
     },
     {
       code: "const options = { gcTime: 1000 * 60 * 60 * 24 }; // 24 hours",
@@ -142,7 +133,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     },
     {
       code: "const announcementTimeoutSec = 5; // 5 seconds", output: "const announcementTimeoutSec = 5;",
-      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
+      errors: [{ messageId: "deleteNarration", suggestions: [{ messageId: "removeNarration", output: "const announcementTimeoutSec = 5;" }] }],
     },
     {
       code: "function configure() {\n  const timeout = 5 * 60; // 5 minutes\n}",

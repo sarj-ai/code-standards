@@ -1,4 +1,9 @@
-/** @fileoverview _is-framework-entrypoint — recognize framework-owned paths and runtime export contracts. */
+/**
+ * @fileoverview _is-framework-entrypoint — recognize framework-owned paths and runtime export contracts.
+ *
+ * Verbatim port of the 18.x `_is-framework-entrypoint.ts` helper (only
+ * sole-export-matches-filename uses it); it never imported ESLint.
+ */
 import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 

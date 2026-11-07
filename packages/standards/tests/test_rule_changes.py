@@ -73,7 +73,7 @@ def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> 
 def _write_revision(root: Path, rules: list[dict[str, JsonValue]], message: str) -> str:
     inventory_rules = [
         {
-            "family": "typescript" if rule["engine"] == "eslint" else rule["engine"],
+            "family": "typescript" if rule["engine"] in {"eslint", "oxlint"} else rule["engine"],
             "id": rule["id"],
             "code": rule["code"],
             "source": rule["source"],
@@ -212,6 +212,22 @@ def test_change_set_digest_is_stable_for_repeated_comparisons(repository: Path) 
 
     assert first["changeSetDigest"] == second["changeSetDigest"]
     assert len(first["changeSetDigest"]) == 64
+
+
+def test_changes_reads_eslint_era_catalog_keys_as_oxlint_selectors(repository: Path) -> None:
+    def typescript_rule(engine: str) -> dict[str, JsonValue]:
+        return {**_rule("sample"), "key": f"{engine}:sample", "engine": engine}
+
+    before = _write_revision(repository, [typescript_rule("eslint")], "eslint-era catalog")
+    after = _write_revision(repository, [typescript_rule("oxlint")], "oxlint catalog")
+
+    result = rule_changes.compare(repository, before=before, after=after)
+
+    assert result["changes"] == []
+    edited = _write_revision(repository, [{**typescript_rule("oxlint"), "summary": "Changed"}], "edit")
+    changed = rule_changes.compare(repository, before=before, after=edited)
+    assert [(item["kind"], item["key"]) for item in changed["changes"]] == [("implementation-changed", "oxlint:sample")]
+    assert changed["changes"][0]["releaseTarget"] == "typescript"
 
 
 def test_changes_detects_source_only_implementation_change(repository: Path) -> None:
@@ -401,28 +417,28 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
 @pytest.mark.parametrize(
     ("engine", "rule_id", "level", "expected_status"),
     [
-        ("eslint", "no-reduce-accumulator-copy", "error", 0),
-        ("eslint", "no-reduce-accumulator-copy", "off", 1),
+        ("oxlint", "no-reduce-accumulator-copy", "error", 0),
+        ("oxlint", "no-reduce-accumulator-copy", "off", 1),
         ("python", "no-reduce-accumulator-copy", "error", 1),
-        ("eslint", "no-reduce-accumulator-copy-extra", "error", 1),
-        ("eslint", "no-known-value-widening", "error", 0),
-        ("eslint", "no-broad-return-type", "error", 0),
-        ("eslint", "no-broad-return-type", "off", 1),
+        ("oxlint", "no-reduce-accumulator-copy-extra", "error", 1),
+        ("oxlint", "no-known-value-widening", "error", 0),
+        ("oxlint", "no-broad-return-type", "error", 0),
+        ("oxlint", "no-broad-return-type", "off", 1),
         ("python", "no-broad-return-type", "error", 1),
-        ("eslint", "no-broad-return-type-extra", "error", 1),
-        ("eslint", "prefer-typed-reflection", "error", 0),
-        ("eslint", "prefer-typed-reflection", "off", 1),
+        ("oxlint", "no-broad-return-type-extra", "error", 1),
+        ("oxlint", "prefer-typed-reflection", "error", 0),
+        ("oxlint", "prefer-typed-reflection", "off", 1),
         ("python", "prefer-typed-reflection", "error", 1),
-        ("eslint", "prefer-typed-reflection-extra", "error", 1),
-        ("eslint", "no-conditional-empty-object-spread", "error", 0),
-        ("eslint", "no-conditional-empty-object-spread", "off", 1),
+        ("oxlint", "prefer-typed-reflection-extra", "error", 1),
+        ("oxlint", "no-conditional-empty-object-spread", "error", 0),
+        ("oxlint", "no-conditional-empty-object-spread", "off", 1),
         ("python", "no-conditional-empty-object-spread", "error", 1),
-        ("eslint", "no-conditional-empty-object-spread-extra", "error", 1),
-        ("eslint", "no-known-value-widening", "off", 1),
+        ("oxlint", "no-conditional-empty-object-spread-extra", "error", 1),
+        ("oxlint", "no-known-value-widening", "off", 1),
         ("python", "no-known-value-widening", "error", 1),
-        ("eslint", "no-known-value-widening-extra", "error", 1),
+        ("oxlint", "no-known-value-widening-extra", "error", 1),
         ("python", "no-excessive-cognitive-complexity", "error", 0),
-        ("eslint", "no-excessive-cognitive-complexity", "error", 0),
+        ("oxlint", "no-excessive-cognitive-complexity", "error", 0),
         ("python", "no-excessive-cognitive-complexity", "off", 1),
         ("sql", "no-excessive-cognitive-complexity", "error", 1),
         ("python", "no-excessive-cognitive-complexity-extra", "error", 1),
@@ -433,24 +449,24 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("sql", "no-analytical-queries-in-transactional-db-extra", "error", 1),
         ("python", "no-async-client-in-constructor", "error", 0),
         ("python", "no-async-client-in-constructor", "off", 1),
-        ("eslint", "no-async-client-in-constructor", "error", 1),
+        ("oxlint", "no-async-client-in-constructor", "error", 1),
         ("python", "no-async-client-in-constructor-extra", "error", 1),
         ("python", "no-async-client-in-Constructor", "error", 1),
         ("python", "service-singleton-delegates-to-bulk", "error", 0),
         ("python", "service-singleton-delegates-to-bulk", "off", 1),
-        ("eslint", "service-singleton-delegates-to-bulk", "error", 1),
+        ("oxlint", "service-singleton-delegates-to-bulk", "error", 1),
         ("python", "service-singleton-delegates-to-bulk-extra", "error", 1),
         ("python", "no-dynamic-builtins", "error", 0),
         ("python", "no-dynamic-builtins", "off", 1),
-        ("eslint", "no-dynamic-builtins", "error", 1),
+        ("oxlint", "no-dynamic-builtins", "error", 1),
         ("python", "no-dynamic-builtins-extra", "error", 1),
         ("python", "no-shared-mutable-default", "error", 0),
         ("python", "no-shared-mutable-default", "off", 1),
-        ("eslint", "no-shared-mutable-default", "error", 1),
+        ("oxlint", "no-shared-mutable-default", "error", 1),
         ("python", "no-shared-mutable-default-extra", "error", 1),
         ("python", "no-sys-path-mutation", "error", 0),
         ("python", "no-sys-path-mutation", "off", 1),
-        ("eslint", "no-sys-path-mutation", "error", 1),
+        ("oxlint", "no-sys-path-mutation", "error", 1),
         ("python", "no-sys-path-mutation-extra", "error", 1),
     ],
 )
@@ -520,7 +536,7 @@ def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
     assert not captured.err
     assert selector in captured.out
 
-    wrong_engine = "eslint" if engine == "python" else "python"
+    wrong_engine = "oxlint" if engine == "python" else "python"
     foreign_key = f"{wrong_engine}:{rule_id}"
     foreign = {**_rule(rule_id, level="error"), "key": foreign_key, "engine": wrong_engine}
     similarly_named_key = f"{engine}:{rule_id}-heuristic"
@@ -734,8 +750,8 @@ def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository:
     )
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.ts",
         test="packages/typescript/tests/alpha.test.ts",
     )
@@ -835,8 +851,8 @@ def installed_rule_comparison_compiler(repository: Path) -> None:
 def test_commonjs_runtime_dependency_ownership(repository: Path, case: str, source: str, tracks_helper: bool) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -859,7 +875,7 @@ def test_commonjs_runtime_dependency_ownership(repository: Path, case: str, sour
     assert before_output == "false"
     assert after_output == ("true" if runtime_changes else "false")
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == (["eslint:alpha"] if tracks_helper else [])
+    assert result["changedSelectors"] == (["oxlint:alpha"] if tracks_helper else [])
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -868,8 +884,8 @@ def test_commonjs_runtime_dependency_ownership(repository: Path, case: str, sour
 def test_javascript_extensions_use_native_parser_kind(repository: Path, suffix: str) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source=f"packages/typescript/src/alpha{suffix}",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -903,8 +919,8 @@ def test_javascript_bytes_match_native_decoding(
 ) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source=f"packages/typescript/src/alpha{suffix}",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -931,7 +947,7 @@ def test_javascript_bytes_match_native_decoding(
     _git(repository, "commit", "-m", "immutable JavaScript byte change")
     after = _git(repository, "rev-parse", "HEAD")
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert result["changedSelectors"] == ["oxlint:alpha"]
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -940,8 +956,8 @@ def test_javascript_bytes_match_native_decoding(
 def test_commonjs_literal_closure_tracks_transitive_owner(repository: Path, owner: str) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -965,7 +981,7 @@ def test_commonjs_literal_closure_tracks_transitive_owner(repository: Path, owne
     after = _git(repository, "rev-parse", "HEAD")
     assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert result["changedSelectors"] == ["oxlint:alpha"]
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -973,8 +989,8 @@ def test_commonjs_literal_closure_tracks_transitive_owner(repository: Path, owne
 def test_commonjs_missing_literal_dependency_fails_actual_gate(repository: Path) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -999,8 +1015,8 @@ def test_commonjs_explicit_code_target_uses_runtime_file_not_typescript_substitu
 ) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -1025,7 +1041,7 @@ def test_commonjs_explicit_code_target_uses_runtime_file_not_typescript_substitu
         "true" if positive else "false"
     )
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == (["eslint:alpha"] if positive else [])
+    assert result["changedSelectors"] == (["oxlint:alpha"] if positive else [])
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -1034,8 +1050,8 @@ def test_commonjs_explicit_code_target_uses_runtime_file_not_typescript_substitu
 def test_commonjs_supported_explicit_code_extensions_track_exact_native_target(repository: Path, suffix: str) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -1064,7 +1080,7 @@ def test_commonjs_supported_explicit_code_extensions_track_exact_native_target(r
     after = _git(repository, "rev-parse", "HEAD")
     assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert result["changedSelectors"] == ["oxlint:alpha"]
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -1076,8 +1092,8 @@ def test_literal_runtime_json_dependency_tracks_immutable_leaf(
 ) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source=f"packages/typescript/src/alpha{suffix}",
         test=f"packages/typescript/tests/alpha.test{suffix}",
     )
@@ -1103,7 +1119,7 @@ def test_literal_runtime_json_dependency_tracks_immutable_leaf(
     after = _git(repository, "rev-parse", "HEAD")
     assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
     result = rule_changes.compare(repository, before=before, after=after)
-    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert result["changedSelectors"] == ["oxlint:alpha"]
     assert rule_changes.compare(repository, before=before, after=after) == result
 
 
@@ -1112,8 +1128,8 @@ def test_literal_runtime_json_dependency_tracks_immutable_leaf(
 def test_reachable_json_leaves_share_bounded_immutable_batches(repository: Path, leaf_count: int) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -1150,7 +1166,7 @@ def test_reachable_json_leaves_share_bounded_immutable_batches(repository: Path,
         return run_binary_process(argv, cwd=cwd, input_bytes=input_bytes)
 
     result = rule_changes.compare(repository, before=before, after=after, binary_runner=runner)
-    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert result["changedSelectors"] == ["oxlint:alpha"]
     assert rule_changes.compare(repository, before=before, after=after) == result
     batches = [payload for argv, payload in calls if "cat-file" in argv]
     assert len(batches) == 3  # One unchanged code/artifact batch, then one data-leaf batch per revision.
@@ -1164,8 +1180,8 @@ def test_reachable_json_leaves_share_bounded_immutable_batches(repository: Path,
 def test_exact_json_leaf_preserves_immutable_boundary_failures(repository: Path, case: str) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -1205,8 +1221,8 @@ def test_exact_json_leaf_preserves_immutable_boundary_failures(repository: Path,
 def test_json_leaf_requires_actual_immutable_byte_identity(repository: Path) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.cjs",
         test="packages/typescript/tests/alpha.test.cjs",
     )
@@ -1360,8 +1376,8 @@ def _rule_comparison_parser_fixture_pins(repository: Path) -> _ParserFixturePins
 def test_rule_comparison_attests_the_declared_authoring_parser(repository: Path, case: str) -> None:
     entry = _rule("alpha")
     entry.update(
-        key="eslint:alpha",
-        engine="eslint",
+        key="oxlint:alpha",
+        engine="oxlint",
         source="packages/typescript/src/alpha.ts",
         test="packages/typescript/tests/alpha.test.ts",
     )
@@ -1375,7 +1391,7 @@ def test_rule_comparison_attests_the_declared_authoring_parser(repository: Path,
     _change_rule_comparison_parser_metadata(repository, case)
     if case == "matching":
         result = rule_changes.compare(repository, before=before, after=after)
-        assert result["changedSelectors"] == ["eslint:alpha"]
+        assert result["changedSelectors"] == ["oxlint:alpha"]
         assert rule_changes.compare(repository, before=before, after=after) == result
     else:
         with pytest.raises(ValueError, match="rule comparison requires"):

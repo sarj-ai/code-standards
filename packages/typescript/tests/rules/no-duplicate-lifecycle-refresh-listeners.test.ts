@@ -1,20 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-duplicate-lifecycle-refresh-listeners.js";
+import { RuleTester } from "./_tester.js";
 
-import rule, { NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION } from "../../src/rules/no-duplicate-lifecycle-refresh-listeners.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
-
-RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
+new RuleTester({ eslintCompat: true, languageOptions: { parserOptions: { lang: "ts" } } }).run("no-duplicate-lifecycle-refresh-listeners", rule, {
   valid: [
     { name: "honors static computed removals with template event names", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window["addEventListener"](`focus`, refresh); window["removeEventListener"](`focus`, refresh); document["addEventListener"](`visibilitychange`, refresh);' },
     { name: "keeps interpolated lifecycle event names opaque", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`${focusEvent}`, refresh); document.addEventListener(`visibilitychange`, refresh);' },
@@ -23,7 +11,7 @@ RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
     { name: "reassigned function declaration loses callback provenance", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); function refresh() { router.refresh(); } refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
     { name: "reassigned callback is not proven to refresh", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); let refresh = () => router.refresh(); refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
     { name: "reassigned router is not proven Next transport", code: 'import { useRouter } from "next/navigation"; let router = useRouter(); router = cache; const refresh = () => router.refresh(); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
-    { name: "accepts the documented single signal", code: NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented single signal", code: "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(\"focus\", refresh);" },
     { name: "allows different callbacks", code: `window.addEventListener("focus", onFocus); document.addEventListener("visibilitychange", onVisibility);` },
     { name: "allows a shared analytics callback", code: `const trackActivation = () => analytics.track("activate"); window.addEventListener("focus", trackActivation); document.addEventListener("visibilitychange", trackActivation);` },
     { name: "allows a shared general callback", code: `function updateTitle() { document.title = title(); } window.addEventListener("focus", updateTitle); document.addEventListener("visibilitychange", updateTitle);` },
@@ -37,13 +25,14 @@ RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
     { name: "allows listeners on a shadowed window", code: `import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); function run(window) { window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh); }` },
     { name: "allows listeners on a shadowed document", code: `import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); function run(document) { window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh); }` },
     { name: "ignores removeEventListener cleanup", code: `window.addEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh);` },
+    { name: "documented example duplicate-lifecycle-signals-dynamic-member", filename: "src/refresh.ts", code: "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[auditDynamicMember](); window[auditDynamicMember](\"focus\", refresh); document[auditDynamicMember](\"visibilitychange\", refresh);" },
   ],
   invalid: [
     { name: "retains no-substitution lifecycle event names", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`focus`, refresh); document.addEventListener(`visibilitychange`, refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
     { name: "retains lifecycle event names through const assertions", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(("focus" as const), refresh); document.addEventListener(("visibilitychange" as const), refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
     { name: "recognizes static computed browser and refresh methods", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router["refresh"](); window["addEventListener"]("focus", refresh); document["addEventListener"]("visibilitychange", refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
 
-    { name: "reports the documented duplicate lifecycle callback", code: NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "duplicateLifecycleRefresh" }] },
+    { name: "reports the documented duplicate lifecycle callback", code: "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(\"focus\", refresh); document.addEventListener(\"visibilitychange\", refresh);", errors: [{ messageId: "duplicateLifecycleRefresh" }] },
     {
       name: "reports listeners nested in one effect callback",
       code: `import { useRouter } from "next/navigation"; function Component() { const router = useRouter(); useEffect(() => { const refresh = () => router.refresh(); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh); return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); }; }, []); }`,
@@ -59,39 +48,6 @@ RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
       code: `import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener("focus", refresh); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh); document.addEventListener("visibilitychange", refresh);`,
       errors: [{ messageId: "duplicateLifecycleRefresh" }],
     },
+    { name: "documented example duplicate-lifecycle-signals-static-member", filename: "src/refresh.ts", code: "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[\"refresh\"](); window[\"addEventListener\"](\"focus\", refresh); document[\"addEventListener\"](\"visibilitychange\", refresh);", errors: [{ messageId: "duplicateLifecycleRefresh" }] },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "duplicate-lifecycle-signals-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/refresh.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/refresh.ts",
-        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[\"refresh\"](); window[\"addEventListener\"](\"focus\", refresh); document[\"addEventListener\"](\"visibilitychange\", refresh);"
-      }
-    ]
-  },
-  {
-    "id": "duplicate-lifecycle-signals-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/refresh.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/refresh.ts",
-        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[auditDynamicMember](); window[auditDynamicMember](\"focus\", refresh); document[auditDynamicMember](\"visibilitychange\", refresh);"
-      }
-    ]
-  }
-] } });
 });

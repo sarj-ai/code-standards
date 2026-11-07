@@ -24,16 +24,16 @@ SELECTORS: Final = frozenset(
         "python:no-statically-truthy-assertion",
         "python:async-mock-call-without-await-assertion",
         "python:production-derived-test-cases",
-        "eslint:duplicate-test-body",
-        "eslint:no-duplicate-test-case",
-        "eslint:no-tautological-expect",
-        "eslint:no-bare-return-from-test-catch",
-        "eslint:source-coupled-test",
-        "eslint:iac-source-coupled-test",
+        "oxlint:duplicate-test-body",
+        "oxlint:no-duplicate-test-case",
+        "oxlint:no-tautological-expect",
+        "oxlint:no-bare-return-from-test-catch",
+        "oxlint:source-coupled-test",
+        "oxlint:iac-source-coupled-test",
     )
 )
-ESLINT_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"}) | frozenset(
-    selector.native_rule_id for selector in SELECTORS if selector.engine is RuleEngine.ESLINT
+UPSTREAM_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"}) | frozenset(
+    selector.native_rule_id for selector in SELECTORS if selector.engine is RuleEngine.OXLINT
 )
 
 

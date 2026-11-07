@@ -1,157 +1,182 @@
 /**
  * @fileoverview prefer-switch-for-repeated-equality — long equality dispatch chains obscure a finite set of cases.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-switch-for-repeated-equality.test.ts
+ * Port of the 18.x `prefer-switch-for-repeated-equality` rule. Reports
+ * without types; types only gate the autofix of a chain without a final else
+ * (the discriminant must have an open type). Those chains wait for
+ * `Program:exit`, where tsrs types every discriminant in a few batched
+ * requests. Without tsrs such a chain is reported without a fix, as the
+ * original does without type information.
  */
 
-import { getTypeServices } from "./_eslint-rule.js";
-import type { TypeScriptSourceCode, TypeServices } from "./_eslint-rule.js";
+import { defineRule, type ESTree, type Node, type Scope, type SourceCode } from "../types.js";
+import { forEachOwnAstChild } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { findVariable } from "../utils/static-string.js";
+import type { TsrsFile, TsrsServices } from "../utils/tsrs-services.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 
+const NAME = "prefer-switch-for-repeated-equality";
 
+type Expression = ESTree.Expression | ESTree.PrivateIdentifier;
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+interface SwitchCase {
+  readonly value: Expression;
+  readonly branch: ESTree.Statement;
+}
 
-import ts from "typescript";
+interface Chain {
+  readonly discriminant: Expression;
+  readonly cases: readonly SwitchCase[];
+  readonly fallback: ESTree.Statement | null;
+}
 
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-
-type MessageIds = "preferSwitch";
-type Options = [];
-
-export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
-  defaultLevel: "error",
-  summary: "Prefer switch over long if/else-if chains that compare one value for strict equality.",
-  rationale: "A switch makes finite dispatch cases visually uniform and easier to extend without duplicating the discriminant.",
-  remediation: "Replace three or more strict-equality branches over the same discriminant with a switch; keep if statements for ranges, guards, and heterogeneous predicates.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Only direct if/else-if chains with at least three strict-equality tests are reported.",
-    "The discriminant must be a resolved lexical variable or parameter; unresolved globals, calls, getters, and indexed reads are excluded. Automatic conversion requires terminating compared branches and an explicit final else or type-proven open discriminant, preserving branch scopes and excluding comments, break statements, and function declarations.",
-    "Case values must be primitive literals. Member references and named constants are excluded because evaluating them can observe getters or mutate the selector. Generated sources are excluded.",
-    "The rule deliberately ignores compound predicates, loose equality, ranges, and chains that compare different discriminants.",
-  ],
-  examples: [
-    { id: "switch-dispatch", title: "Make finite dispatch explicit", outcome: "no-match", files: [{ path: "src/render.ts", source: "function render(kind: string) { switch (kind) { case 'a': return 'alpha'; case 'b': return 'beta'; case 'c': return 'gamma'; default: return 'unknown'; } }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
-    { id: "repeated-equality", title: "Avoid repeating the discriminant", outcome: "match", files: [{ path: "src/render.ts", source: "function render(kind: string) { if (kind === 'a') return 'alpha'; else if (kind === 'b') return 'beta'; else if (kind === 'c') return 'gamma'; return 'unknown'; }" }], focusPath: "src/render.ts", expectedCount: 1, public: true },
-    { id: "escaped-middle", scenarioId: "native-discriminant", title: "Use native identifier identity", outcome: "match", files: [{ path: "src/dispatch.ts", source: "function probe(kind){if(kind==='a')return 1;else if(\\u006bind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" }], focusPath: "src/dispatch.ts", expectedCount: 1, public: true },
-    { id: "different-discriminants", scenarioId: "native-discriminant", title: "Use native identifier identity", outcome: "no-match", files: [{ path: "src/dispatch.ts", source: "function probe(kind){const other=\"other\";if(kind==='a')return 1;else if(other==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" }], focusPath: "src/dispatch.ts", expectedCount: 0, public: true },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "function probe(kind: string) { if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; return 0; }" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "function probe(kind: string) { switch (kind) {\ncase 'a': { return 1; }\ncase 'b': { return 2; }\ncase 'c': { return 3; }\n} return 0; }" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function discriminantName(
-  test: TSESTree.Expression,
-): string | null {
-  if (test.type !== AST_NODE_TYPES.BinaryExpression || test.operator !== "===") return null;
+function discriminantName(test: Node): string | null {
+  if (test.type !== "BinaryExpression" || test.operator !== "===") return null;
   const leftIsCase = isCaseValue(test.left);
   const rightIsCase = isCaseValue(test.right);
   if (leftIsCase === rightIsCase) return null;
   const discriminant = leftIsCase ? test.right : test.left;
-  return discriminant.type === AST_NODE_TYPES.Identifier ? discriminant.name : null;
+  return discriminant.type === "Identifier" ? discriminant.name : null;
 }
 
-function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
-  return node.type === AST_NODE_TYPES.Literal && !("regex" in node);
+function isCaseValue(node: Expression): boolean {
+  return node.type === "Literal" && !("regex" in node && node.regex !== undefined && node.regex !== null);
 }
 
-function switchText(node: TSESTree.IfStatement, sourceCode: Readonly<TypeScriptSourceCode>, services: TypeServices | null): string | null {
+/** The chain the fix would convert, or null when comments, break statements or function declarations rule it out. */
+function convertibleChain(node: ESTree.IfStatement, sourceCode: SourceCode): Chain | null {
   if (sourceCode.getCommentsInside(node).length > 0 || hasUnsafeSwitchControl(node)) return null;
-  const chain = switchCases(node);
-  if (chain === null || (chain.fallback === null && !hasOpenDiscriminant(chain.discriminant, services))) return null;
-  const chunks = chain.cases.map(({ value, branch }) =>
-    `case ${sourceCode.getText(value)}: ${branch.type === AST_NODE_TYPES.BlockStatement ? sourceCode.getText(branch) : `{ ${sourceCode.getText(branch)} }`}`);
-  const fallback = chain.fallback;
-  if (fallback !== null) chunks.push(`default: ${fallback.type === AST_NODE_TYPES.BlockStatement ? sourceCode.getText(fallback) : `{ ${sourceCode.getText(fallback)} }`}`);
+  return switchCases(node);
+}
+
+function switchText(chain: Chain, sourceCode: SourceCode): string {
+  const block = (branch: ESTree.Statement): string =>
+    branch.type === "BlockStatement" ? sourceCode.getText(branch) : `{ ${sourceCode.getText(branch)} }`;
+  const chunks = chain.cases.map(({ value, branch }) => `case ${sourceCode.getText(value)}: ${block(branch)}`);
+  if (chain.fallback !== null) chunks.push(`default: ${block(chain.fallback)}`);
   return `switch (${sourceCode.getText(chain.discriminant)}) {\n${chunks.join("\n")}\n}`;
 }
 
-function switchCases(node: TSESTree.IfStatement) {
-  if (node.test.type !== AST_NODE_TYPES.BinaryExpression) return null;
-  const discriminant = isCaseValue(node.test.left) ? node.test.right : node.test.left as TSESTree.Expression;
-  const cases: { readonly value: TSESTree.Expression | TSESTree.PrivateIdentifier; readonly branch: TSESTree.Statement }[] = [];
+function switchCases(node: ESTree.IfStatement): Chain | null {
+  if (node.test.type !== "BinaryExpression") return null;
+  const discriminant = isCaseValue(node.test.left) ? node.test.right : node.test.left;
+  const cases: SwitchCase[] = [];
   let current = node;
   while (true) {
-    if (current.test.type !== AST_NODE_TYPES.BinaryExpression || !terminatesBranch(current.consequent)) return null;
+    if (current.test.type !== "BinaryExpression" || !terminatesBranch(current.consequent)) return null;
     const test = current.test;
     const value = isCaseValue(test.left) ? test.left : test.right;
     cases.push({ value, branch: current.consequent });
-    if (current.alternate?.type !== AST_NODE_TYPES.IfStatement) return { discriminant, cases, fallback: current.alternate };
-    current = current.alternate;
+    const alternate = current.alternate;
+    if (alternate?.type !== "IfStatement") return { discriminant, cases, fallback: alternate };
+    current = alternate;
   }
 }
 
-function terminatesBranch(statement: TSESTree.Statement | undefined): boolean {
+function terminatesBranch(statement: ESTree.Statement | undefined): boolean {
   if (statement === undefined) return false;
-  if (statement.type === AST_NODE_TYPES.ReturnStatement || statement.type === AST_NODE_TYPES.ThrowStatement ||
-    statement.type === AST_NODE_TYPES.ContinueStatement) return true;
-  if (statement.type === AST_NODE_TYPES.BlockStatement) return terminatesBranch(statement.body.at(-1));
-  return statement.type === AST_NODE_TYPES.IfStatement && statement.alternate !== null &&
+  if (statement.type === "ReturnStatement" || statement.type === "ThrowStatement" ||
+    statement.type === "ContinueStatement") return true;
+  if (statement.type === "BlockStatement") return terminatesBranch(statement.body.at(-1));
+  return statement.type === "IfStatement" && statement.alternate !== null &&
     terminatesBranch(statement.consequent) && terminatesBranch(statement.alternate);
 }
 
-function hasUnsafeSwitchControl(node: TSESTree.Node): boolean {
-  return node.type === AST_NODE_TYPES.BreakStatement || node.type === AST_NODE_TYPES.FunctionDeclaration ||
+function hasUnsafeSwitchControl(node: Node): boolean {
+  return node.type === "BreakStatement" || node.type === "FunctionDeclaration" ||
     forEachOwnAstChild(node, hasUnsafeSwitchControl);
 }
 
-function hasOpenDiscriminant(node: TSESTree.Expression, services: TypeServices | null): boolean {
-  if (services === null) return false;
-  const type = services.program.getTypeChecker().getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node));
-  const openFlags = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.BigInt | ts.TypeFlags.ESSymbol;
-  return (type.isUnion() ? type.types : [type]).some((part) => (part.flags & openFlags) !== 0);
+/** Whether each discriminant's type (or one of its union members) is open, in at most two tsrs requests. */
+function openDiscriminants(file: TsrsFile, nodes: readonly Node[]): boolean[] {
+  const flags = file.flags;
+  const openFlags = flags.Any | flags.Unknown | flags.String | flags.Number | flags.BigInt | flags.ESSymbol;
+  const types = file.typesOf(nodes);
+  const unions = [...new Set(types.filter((type) => type !== undefined).filter((type) => type.isUnionType()))];
+  const members = file.batch(unions.map((union) => union.getTypes.gen()));
+  const membersOf = new Map(unions.map((union, i) => [union, members[i] ?? []]));
+  return types.map((type) => type !== undefined &&
+    (membersOf.get(type) ?? [type]).some((part) => (part.flags & openFlags) !== 0));
 }
 
-export default createRule<Options, MessageIds>({
-  name: "prefer-switch-for-repeated-equality",
-  documentation: PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION,
+/** How many `else if` links compare `discriminant`, or 0 when one of them compares something else. */
+function chainLength(node: ESTree.IfStatement, discriminant: string): number {
+  let count = 1;
+  for (let current = node.alternate; current?.type === "IfStatement"; current = current.alternate) {
+    if (discriminantName(current.test) !== discriminant) return 0;
+    count += 1;
+  }
+  return count;
+}
+
+/** A single parameter or variable declaration outside the global scope. */
+function isLocalBinding(scope: Scope, name: string): boolean {
+  const binding = findVariable(scope, name);
+  if (binding === null || binding.defs.length !== 1 || binding.scope.type === "global") return false;
+  const [definition] = binding.defs;
+  return definition?.type === "Parameter" || definition?.type === "Variable";
+}
+
+interface Pending {
+  readonly node: ESTree.IfStatement;
+  readonly discriminant: string;
+  readonly chain: Chain;
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Prefer switch over long if/else-if chains that compare one value for strict equality." },
+    docs: {
+      description: "Prefer switch over long if/else-if chains that compare one value for strict equality.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       preferSwitch: "This if/else-if chain repeatedly compares `{{discriminant}}`; use a switch for the finite cases.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context, context.sourceCode.text)) return {};
-    let services: TypeServices | null;
-    try { services = getTypeServices(context); } catch { services = null; }
+  createOnce(context) {
+    let tsrs: TsrsServices | null = null;
+    let pending: Pending[] = [];
+
+    function report(node: ESTree.IfStatement, discriminant: string, replacement: string | null): void {
+      context.report({
+        node, messageId: "preferSwitch", data: { discriminant },
+        ...(replacement !== null && { fix: (fixer) => fixer.replaceText(node, replacement) }),
+      });
+    }
+
     return {
-      IfStatement(node): void {
-        if (node.parent.type === AST_NODE_TYPES.IfStatement && node.parent.alternate === node) return;
+      before() {
+        tsrs = null;
+        pending = [];
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text)) return false;
+        tsrs = tsrsServices(context);
+        return undefined;
+      },
+      IfStatement(node) {
+        const parent = node.parent;
+        if (parent.type === "IfStatement" && parent.alternate === node) return;
         const first = discriminantName(node.test);
         if (first === null) return;
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), first);
-        if (binding === null || binding.defs.length !== 1 || binding.scope.type === "global") return;
-        const [definition] = binding.defs;
-        if (definition?.type !== "Parameter" && definition?.type !== "Variable") return;
-        let count = 1;
-        let current = node.alternate;
-        while (current?.type === AST_NODE_TYPES.IfStatement) {
-          if (discriminantName(current.test) !== first) return;
-          count += 1;
-          current = current.alternate;
-        }
-        if (count >= 3) {
-          const replacement = switchText(node, context.sourceCode, services);
-          context.report({
-            node, messageId: "preferSwitch", data: { discriminant: first },
-            fix: replacement === null ? null : (fixer) => fixer.replaceText(node, replacement),
-          });
-        }
+        if (chainLength(node, first) < 3 || !isLocalBinding(context.sourceCode.getScope(node), first)) return;
+        const sourceCode = context.sourceCode;
+        const chain = convertibleChain(node, sourceCode);
+        if (chain === null) return report(node, first, null);
+        if (chain.fallback !== null) return report(node, first, switchText(chain, sourceCode));
+        // Without a final else, only an open discriminant type keeps the switch's unmatched path the same.
+        if (tsrs === null) return report(node, first, null);
+        pending.push({ node, discriminant: first, chain });
+      },
+      "Program:exit"() {
+        if (pending.length === 0 || tsrs === null) return;
+        const open = tsrs.run((file) => openDiscriminants(file, pending.map((item) => item.chain.discriminant))) ?? [];
+        const sourceCode = context.sourceCode;
+        pending.forEach((item, i) =>
+          report(item.node, item.discriminant, open[i] === true ? switchText(item.chain, sourceCode) : null));
       },
     };
   },

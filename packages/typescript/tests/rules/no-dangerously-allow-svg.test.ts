@@ -1,16 +1,60 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import rule from "../../src/rules/no-dangerously-allow-svg.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION } from "../../src/rules/no-dangerously-allow-svg.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
+  examples: [
+    {
+      id: "svg-disabled",
+      title: "Keep active SVG delivery disabled",
+      outcome: "no-match",
+      files: [{ path: "next.config.mjs", source: "export default { images: { dangerouslyAllowSVG: false } };\n" }],
+      focusPath: "next.config.mjs",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "svg-enabled",
+      title: "SVG opt-in requires explicit hardening under this policy",
+      outcome: "match",
+      files: [{ path: "next.config.mjs", source: "export default { images: { dangerouslyAllowSVG: true } };\n" }],
+      focusPath: "next.config.mjs",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Disable SVG delivery to satisfy this policy",
+      outcome: "match",
+      files: [{ path: "next.config.ts", source: "export default { images: { dangerouslyAllowSVG: true } };" }],
+      fixedFiles: [{ path: "next.config.ts", source: "export default { images: { dangerouslyAllowSVG: false } };" }],
+      focusPath: "next.config.ts",
+      expectedCount: 1,
+    },
+    {
+      id: "svg-explicit-hardening",
+      scenarioId: "explicit-hardening",
+      title: "Allow SVG delivery with explicit hardening",
+      outcome: "no-match",
+      files: [{ path: "next.config.mjs", source: "export default { images: { dangerouslyAllowSVG: true, contentDispositionType: \"attachment\", contentSecurityPolicy: \"script-src 'none'; sandbox;\" } };\n" }],
+      focusPath: "next.config.mjs",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "svg-unsafe-first-directive",
+      scenarioId: "explicit-hardening",
+      title: "A later duplicate cannot replace the effective policy",
+      outcome: "match",
+      files: [{ path: "next.config.mjs", source: "export default { images: { dangerouslyAllowSVG: true, contentDispositionType: \"attachment\", contentSecurityPolicy: \"script-src 'unsafe-inline'; script-src 'none'; sandbox;\" } };\n" }],
+      focusPath: "next.config.mjs",
+      expectedCount: 1,
+      public: true,
+    },
+  ],
+} as const;
 
 function svgConfig(policy: string, enabled = true): string {
   return `export default {images:{dangerouslyAllowSVG:${enabled},contentSecurityPolicy:${JSON.stringify(policy)}}};`;
@@ -18,6 +62,8 @@ function svgConfig(policy: string, enabled = true): string {
 
 RULE_TESTER.run("no-dangerously-allow-svg", rule, {
   valid: [
+    { name: "preserves a safe-first policy", filename: "./next.config.mjs", code: svgConfig("script-src 'none'; script-src 'unsafe-inline'; sandbox; sandbox allow-scripts;") },
+    { name: "converges after disabling an unsafe-first opt-in (the matching invalid case's fixed config lints clean)", filename: "./next.config.mjs", code: svgConfig("script-src 'unsafe-inline'; script-src 'none'; sandbox;", false) },
     ...[
       "script-src 'none'; script-src https://example.com; sandbox;",
       "script-src 'none'; sandbox; sandbox allow-scripts;",
@@ -96,18 +142,4 @@ RULE_TESTER.run("no-dangerously-allow-svg", rule, {
     },
     { filename: "next.config.mjs", code: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION.examples[4].files[0].source, output: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION.examples[4].files[0].source.replace("dangerouslyAllowSVG: true", "dangerouslyAllowSVG: false"), errors: [{ messageId: "noDangerouslyAllowSvg" }] },
   ],
-});
-
-it("preserves safe-first policies and converges after disabling an unsafe-first opt-in", () => {
-  const linter = new Linter();
-  const config = {
-    plugins: { local: { rules: { svg: rule as never } } },
-    rules: { "local/svg": "error" },
-  } as never;
-  const hardened = svgConfig("script-src 'none'; script-src 'unsafe-inline'; sandbox; sandbox allow-scripts;");
-  expect(linter.verifyAndFix(hardened, config, "next.config.mjs")).toEqual({ fixed: false, messages: [], output: hardened });
-  const unsafe = svgConfig("script-src 'unsafe-inline'; script-src 'none'; sandbox;");
-  const fixed = linter.verifyAndFix(unsafe, config, "next.config.mjs");
-  expect(fixed).toEqual({ fixed: true, messages: [], output: svgConfig("script-src 'unsafe-inline'; script-src 'none'; sandbox;", false) });
-  expect(linter.verifyAndFix(fixed.output, config, "next.config.mjs")).toEqual({ fixed: false, messages: [], output: fixed.output });
 });

@@ -55,7 +55,7 @@ def _prepared_fixture(root: Path) -> _PreparedFixture:
     _write_receipt(fixture)
     (root / ".sarj-standards.toml").write_text(
         Manifest(
-            adopted_version(), ("eslint",), ".", ".", prepared_targets=(PreparedTarget("example", "deploy.yaml"),)
+            adopted_version(), ("typescript",), ".", ".", prepared_targets=(PreparedTarget("example", "deploy.yaml"),)
         ).render(),
         encoding="utf-8",
     )
@@ -142,7 +142,7 @@ def test_public_cli_api_prepared_analysis_is_paired_and_repeat_stable(
         assert document["conclusion"] == "passed"
     elif mixed_deferred:
         assert len(coverage) == 1
-        assert coverage[0]["source"] == "eslint"
+        assert coverage[0]["source"] == "oxlint"
         assert coverage[0]["disposition"] == "failed"
         assert document["completion"] == "partial"
         assert document["conclusion"] == "inconclusive"

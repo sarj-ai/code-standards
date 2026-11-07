@@ -142,9 +142,19 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         pytest.param(".sarj-standards.toml", {"standards", "docs"}, id="bundle-manifest"),
         pytest.param("packages/standards/uv.lock", {"standards", "docs", "mobile"}, id="runner-dependencies"),
         pytest.param(
-            "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
+            "packages/standards/src/sarj_standards/configs/oxlint.strict.mts",
             {"typescript", "standards", "docs", "codeql-javascript-typescript"},
-            id="eslint-consumer-config",
+            id="oxlint-consumer-config",
+        ),
+        pytest.param(
+            "packages/standards/oxlint.config.mts",
+            {"typescript", "standards", "docs", "mobile", "codeql-javascript-typescript"},
+            id="standards-oxlint-config",
+        ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/repository/rule_imports.mts",
+            {"typescript", "standards", "docs", "mobile", "codeql-javascript-typescript"},
+            id="standards-typescript-helper",
         ),
         pytest.param("new-package/source.py", SCOPES, id="unknown-owner"),
         pytest.param(

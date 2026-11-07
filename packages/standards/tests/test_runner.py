@@ -50,6 +50,16 @@ def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
     assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
 
 
+def test_package_manager_lockfiles_do_not_route_to_iac(tmp_path: Path) -> None:
+    values = tmp_path / "values.yaml"
+    values.write_text("key: value\n", encoding="utf-8")
+    for name in ("pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "npm-shrinkwrap.json"):
+        (tmp_path / name).write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]).iac == [str(values)]
+    assert runner.group_paths([str(tmp_path / "pnpm-lock.yaml")]).iac == []
+
+
 def test_json_variable_files_route_to_iac_without_routing_other_json(tmp_path: Path) -> None:
     variables = tmp_path / "dev.tfvars.json"
     variables.write_text('{"enabled": true}\n', encoding="utf-8")

@@ -21,8 +21,11 @@ class FileEdit:
     after: str
 
 
+TYPESCRIPT_DOCS_REGISTRY = Path("packages/typescript/src/docs/index.ts")
+
+
 def registry_path(root: Path, engine: RuleEngine) -> Path:
-    if engine is RuleEngine.ESLINT:
+    if engine is RuleEngine.OXLINT:
         return root / "packages/typescript/src/index.ts"
     if engine is RuleEngine.TEXT:
         return root / "packages/standards/src/sarj_standards/libs/linting/text_rules/_registry.py"
@@ -36,33 +39,49 @@ def plan(
     slug = str(selector.rule_id)
     name = "".join(part.capitalize() for part in slug.split("-"))
     registry = registry_path(root, selector.engine)
-    before = registry.read_bytes() if registry.is_file() else None
-    if selector.engine is RuleEngine.ESLINT:
-        source = before.decode() if before is not None else "const RULES = {\n};\n"
-        anchor = "const RULES = {\n"
-        if source.count(anchor) != 1:
-            msg = "ESLint registry must contain one RULES object"
-            raise ValueError(msg)
+    if selector.engine is RuleEngine.OXLINT:
         binding = name[0].lower() + name[1:]
-        if re.search(rf"\b(?:import|const|let|class|function)\s+{re.escape(binding)}\b", source):
-            msg = f"generated rule binding {binding} is already in use; choose a distinct rule ID"
-            raise ValueError(msg)
-        source = f'import {binding} from "./rules/{slug}.js";\n' + source.replace(
-            anchor, anchor + f'  "{slug}": {binding},\n', 1
+        documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
+        return (
+            _typescript_entry(
+                registry, "const RULES = {\n", slug, binding, f'import {binding} from "./rules/{slug}.js";'
+            ),
+            _typescript_entry(
+                root / TYPESCRIPT_DOCS_REGISTRY,
+                "export const RULE_DOCUMENTATION = {\n",
+                slug,
+                documentation,
+                f'import {{ {documentation} }} from "./{slug}.js";',
+            ),
+            _reserve(root, selector, code, reserved),
         )
-    else:
-        source = (
-            before.decode()
-            if before is not None
-            else "from types import MappingProxyType\n\nREGISTRY = MappingProxyType({\n})\n"
-        )
-        module = (
-            "sarj_standards.libs.linting.text_rules"
-            if selector.engine is RuleEngine.TEXT
-            else f"sarj_{selector.engine.value}_lint.rules"
-        )
-        source = _native(source, module, slug.replace("-", "_"), name)
+    before = registry.read_bytes() if registry.is_file() else None
+    source = (
+        before.decode()
+        if before is not None
+        else "from types import MappingProxyType\n\nREGISTRY = MappingProxyType({\n})\n"
+    )
+    module = (
+        "sarj_standards.libs.linting.text_rules"
+        if selector.engine is RuleEngine.TEXT
+        else f"sarj_{selector.engine.value}_lint.rules"
+    )
+    source = _native(source, module, slug.replace("-", "_"), name)
     return FileEdit(registry, before, source), _reserve(root, selector, code, reserved)
+
+
+# Add one rule to a generated TypeScript index; `generate-index.ts` later restores its order.
+def _typescript_entry(registry: Path, anchor: str, slug: str, binding: str, statement: str) -> FileEdit:
+    before = registry.read_bytes() if registry.is_file() else None
+    source = before.decode() if before is not None else f"{anchor}}};\n"
+    if source.count(anchor) != 1:
+        msg = f"{registry.name} must contain one `{anchor.strip()}` object"
+        raise ValueError(msg)
+    if re.search(rf"\b(?:import|const|let|class|function)\s+(?:\{{\s*)?{re.escape(binding)}\b", source):
+        msg = f"generated rule binding {binding} is already in use; choose a distinct rule ID"
+        raise ValueError(msg)
+    rendered = f"{statement}\n" + source.replace(anchor, anchor + f'  "{slug}": {binding},\n', 1)
+    return FileEdit(registry, before, rendered)
 
 
 def _native(source: str, module: str, snake: str, name: str) -> str:
@@ -106,7 +125,7 @@ def _reserve(root: Path, selector: RuleSelector, code: str | None, reserved: fro
         for value in retired
         if (entry := as_table(value)).get("kind") in {family, "code"} and isinstance(entry.get("id"), str)
     }
-    historical_id = f"@sarj/{identifier}" if selector.engine is RuleEngine.ESLINT else identifier
+    historical_id = f"@sarj/{identifier}" if selector.engine is RuleEngine.OXLINT else identifier
     if identifier in list_field(rules, family) or historical_id in retired_ids:
         msg = f"rule identity is already reserved: {selector}"
         raise ValueError(msg)
@@ -158,7 +177,7 @@ class _RegistryImport:
 
 
 def live_codes(root: Path, engine: RuleEngine) -> frozenset[str]:
-    if engine is RuleEngine.ESLINT:
+    if engine is RuleEngine.OXLINT:
         return frozenset()
     registry = registry_path(root, engine)
     codes: set[str] = _registered_codes(root, engine, registry) if registry.is_file() else set()

@@ -6,7 +6,6 @@ from dataclasses import replace
 import json
 import os
 import sys
-import time
 import tokenize
 from typing import TYPE_CHECKING, Unpack
 
@@ -18,7 +17,6 @@ from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
 
 from sarj_standards import api
 from sarj_standards.cli.main import main
-from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection
 from sarj_standards.libs.adoption.manifest import (
     ExclusionOverride,
     Manifest,
@@ -59,7 +57,7 @@ from sarj_standards.libs.diagnostics import (
     to_text,
 )
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting import analysis as analysis_module, external as external_module
+from sarj_standards.libs.linting import analysis as analysis_module, external as external_module, oxlint
 from sarj_standards.libs.linting.analysis import analyze as analyze_paths, normalize_native, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
@@ -72,7 +70,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_standards.libs.linting.process import ProcessRequest
-    from tests.call_contracts import EslintSelectionOptions, ExternalAnalyzeOptions
+    from tests.call_contracts import ExternalAnalyzeOptions, OxlintSelectionOptions
 
 
 def test_source_document_preserves_byte_offsets_and_utf16_columns(tmp_path: Path) -> None:
@@ -842,7 +840,7 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
     assert not called
 
 
-def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
+def test_raw_scoped_oxlint_analysis_does_not_run_unselected_external_tools(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     source = tmp_path / "app.ts"
@@ -860,10 +858,10 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
         external=True,
         trust=TrustMode.TRUSTED,
         mode=api.AnalysisMode.RAW,
-        rules=["eslint:prefer-ecmascript-private-members"],
+        rules=["oxlint:prefer-ecmascript-private-members"],
     )
 
-    assert captured == [frozenset({"eslint"})]
+    assert captured == [frozenset({"typescript"})]
 
 
 def test_skipped_python_type_check_is_reported_as_not_requested_coverage(
@@ -891,36 +889,38 @@ def test_skipped_python_type_check_is_reported_as_not_requested_coverage(
     ]
 
 
-def test_skipped_eslint_is_reported_as_not_requested_coverage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_skipped_typescript_is_reported_as_not_requested_coverage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    adopted = Manifest(version="1.2.3", configs=("eslint",), python_dest=".", typescript_dest=".")
+    adopted = Manifest(version="1.2.3", configs=("typescript",), python_dest=".", typescript_dest=".")
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
     def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
-        captured.append(kwargs.get("eslint"))
+        captured.append(kwargs.get("typescript"))
         return ()
 
     monkeypatch.setattr(api, "analyze_external", analyze_external)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
 
-    report = api.Standards(tmp_path).analyze(["app.ts"], external=True, trust=TrustMode.TRUSTED, eslint=False)
+    report = api.Standards(tmp_path).analyze(["app.ts"], external=True, trust=TrustMode.TRUSTED, typescript=False)
 
     assert captured == [False]
     assert [(notice.source, notice.reason, notice.disposition) for notice in report.coverage] == [
-        ("eslint", "ESLint is left to the repository's own CI", CoverageDisposition.NOT_REQUESTED)
+        ("oxlint", "Oxlint is left to the repository's own CI", CoverageDisposition.NOT_REQUESTED)
     ]
 
 
-def test_eslint_runs_by_default_without_a_coverage_notice(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_typescript_runs_by_default_without_a_coverage_notice(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    adopted = Manifest(version="1.2.3", configs=("eslint",), python_dest=".", typescript_dest=".")
+    adopted = Manifest(version="1.2.3", configs=("typescript",), python_dest=".", typescript_dest=".")
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
     def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
-        captured.append(kwargs.get("eslint"))
+        captured.append(kwargs.get("typescript"))
         return ()
 
     monkeypatch.setattr(api, "analyze_external", analyze_external)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
@@ -928,57 +928,37 @@ def test_eslint_runs_by_default_without_a_coverage_notice(monkeypatch: pytest.Mo
     report = api.Standards(tmp_path).analyze(["app.ts"], external=True, trust=TrustMode.TRUSTED)
 
     assert captured == [True]
-    assert all(notice.source != "eslint" for notice in report.coverage)
+    assert all(notice.source != "oxlint" for notice in report.coverage)
 
 
-@pytest.mark.parametrize(("pass_on_unpruned", "expected"), [(False, False), (True, True)])
-def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_process(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    *,
-    pass_on_unpruned: bool,
-    expected: bool,
+@pytest.mark.parametrize("pass_on_unpruned", [False, True])
+def test_standards_analysis_forwards_scoped_rules_and_suppression_policy_to_oxlint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, pass_on_unpruned: bool
 ) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    seen: list[tuple[str, ...]] = []
+    (tmp_path / "oxlint.config.mts").write_text("export default {};\n", encoding="utf-8")
+    binaries = tmp_path / "node_modules" / ".bin"
+    binaries.mkdir(parents=True)
+    for name in ("oxlint", "tsrs-lint"):
+        (binaries / name).touch()
+    overlays: list[str] = []
 
-    def select_commands(
-        _root: Path, _paths: Iterable[str], **_kwargs: Unpack[EslintSelectionOptions]
-    ) -> EslintSelection:
-        return EslintSelection((Command("eslint", ("npx", "eslint", "--", str(source)), tmp_path),), 0)
-
-    def local_argv(argv: Sequence[str], _project: Path, _root: Path) -> tuple[str, ...]:
-        return tuple(argv)
-
-    def run_eslint(request: ProcessRequest) -> external_module.ProcessOutput:
-        argv, cwd = request.argv, request.cwd
-        assert request.deadline is not None
-        assert 0 < request.deadline - time.monotonic() <= 300
-        assert cwd == tmp_path
-        seen.append(tuple(argv))
-        return external_module.ProcessOutput(
-            0,
-            json.dumps([{"filePath": str(source), "messages": []}]),
-            "",
-        )
-
-    def installed_eslint(_project: Path, _root: Path) -> None:
-        return None
+    def run_oxlint(request: ProcessRequest) -> external_module.ProcessOutput:
+        argv = list(request.argv)
+        assert request.cwd == tmp_path
+        assert argv[0] == str(binaries / "oxlint")
+        assert "--type-check" not in argv
+        overlays.append((request.cwd / argv[argv.index("-c") + 1]).read_text(encoding="utf-8"))
+        stale = {
+            "message": "There are suppressions that do not occur anymore.",
+            "severity": "error",
+            "filename": "oxlint-suppressions.json",
+        }
+        return external_module.ProcessOutput(1, json.dumps({"diagnostics": [stale], "number_of_files": 1}), "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
-        external_module, "select_eslint_commands", select_commands
-    )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
-        external_module, "_local_eslint_argv", local_argv
-    )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
-        external_module,
-        "_missing_eslint_issue",
-        installed_eslint,
-    )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
-        external_module.DEFAULT_EXECUTOR, "run", run_eslint
+        external_module.DEFAULT_EXECUTOR, "run", run_oxlint
     )
 
     report = api.Standards(tmp_path).analyze(
@@ -986,15 +966,15 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
         external=True,
         trust=TrustMode.TRUSTED,
         mode=api.AnalysisMode.RAW,
-        rules=["eslint:prefer-ecmascript-private-members"],
-        pass_on_unpruned_eslint_suppressions=pass_on_unpruned,
+        rules=["oxlint:prefer-ecmascript-private-members"],
+        pass_on_unpruned_suppressions=pass_on_unpruned,
     )
 
     assert report.issues == ()
-    assert len(seen) == 1
-    request = as_table(parse_json(seen[0][2]))
-    assert request["passOnUnpruned"] is expected
-    assert request["rules"] == ["prefer-ecmascript-private-members"]
+    assert not report.diagnostics
+    (overlay,) = overlays
+    payload = as_table(parse_json(overlay[overlay.index("createSelectedConfig(") + 21 : overlay.rindex(")")]))
+    assert payload["rules"] == ["@sarj/prefer-ecmascript-private-members"]
 
 
 def test_fix_rejects_overlapping_edits() -> None:
@@ -1454,7 +1434,7 @@ def test_standards_analyze_never_reports_selected_typescript_as_clean(tmp_path: 
     assert report.completion is Completion.PARTIAL
     assert report.conclusion is Conclusion.INCONCLUSIVE
     assert not report.issues
-    assert report.coverage[0].source == "eslint"
+    assert report.coverage[0].source == "oxlint"
     assert report.coverage[0].file_count == 1
     assert report.exit_code == 2
 
@@ -1481,7 +1461,7 @@ def test_external_analysis_never_reports_unsupported_explicit_file_as_clean(tmp_
     assert report.exit_code == 2
 
 
-def test_external_analysis_reports_explicitly_disabled_eslint_coverage(tmp_path: Path) -> None:
+def test_external_analysis_reports_explicitly_disabled_typescript_coverage(tmp_path: Path) -> None:
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(api.__version__, (), ".", ".", hook_manager="none").render(),
         encoding="utf-8",
@@ -1492,7 +1472,7 @@ def test_external_analysis_reports_explicitly_disabled_eslint_coverage(tmp_path:
 
     assert report.completion is Completion.COMPLETE
     assert report.conclusion is Conclusion.PASSED
-    assert report.coverage[0].source == "eslint"
+    assert report.coverage[0].source == "oxlint"
     assert report.coverage[0].disposition is CoverageDisposition.NOT_REQUESTED
     assert report.coverage[0].file_count == 1
 
@@ -1518,7 +1498,7 @@ def test_standards_analyze_preserves_native_findings_when_typescript_is_uncovere
 
     assert report.completion is Completion.PARTIAL
     assert any(item.code == "SARJ012" for item in report.diagnostics)
-    assert report.coverage[0].source == "eslint"
+    assert report.coverage[0].source == "oxlint"
     assert report.exit_code == 2
 
 
@@ -1804,9 +1784,9 @@ def test_python_non_roundtripping_encoding_keeps_finding_without_invented_offset
     assert not report.issues
 
 
-@pytest.mark.parametrize(("eslint", "expected"), [(False, []), (True, ["eslint"])])
-def test_eslint_can_be_left_to_repository_ci_while_react_doctor_still_runs(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, eslint: bool, expected: list[str]
+@pytest.mark.parametrize(("typescript", "expected"), [(False, []), (True, ["oxlint"])])
+def test_typescript_can_be_left_to_repository_ci_while_react_doctor_still_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, typescript: bool, expected: list[str]
 ) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
@@ -1814,25 +1794,25 @@ def test_eslint_can_be_left_to_repository_ci_while_react_doctor_still_runs(
     react_doctor: list[bool] = []
 
     def select_commands(
-        _root: Path, _paths: Iterable[str], **_kwargs: Unpack[EslintSelectionOptions]
-    ) -> EslintSelection:
-        selected.append("eslint")
-        return EslintSelection((), 0)
+        _root: Path, _paths: Iterable[str], **_kwargs: Unpack[OxlintSelectionOptions]
+    ) -> oxlint.OxlintSelection:
+        selected.append("oxlint")
+        return oxlint.OxlintSelection((), 0)
 
     def select_react_doctor(
         _root: Path, *, enabled: bool, has_typescript: bool, capabilities: frozenset[str] | None
     ) -> None:
         react_doctor.append(enabled and has_typescript and capabilities is None)
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts ESLint project selection
-        external_module, "select_eslint_commands", select_commands
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts Oxlint project selection
+        oxlint, "select_oxlint_commands", select_commands
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observes React Doctor selection
         external_module, "_selected_react_doctor_projects", select_react_doctor
     )
 
     external_module.analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, include_react_doctor=True, eslint=eslint
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, include_react_doctor=True, typescript=typescript
     )
 
     assert selected == expected

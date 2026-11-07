@@ -1,16 +1,8 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { NO_JSON_STRINGIFY_ERROR_DOCUMENTATION } from "../../src/rules/no-json-stringify-error.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+import rule from "../../src/rules/no-json-stringify-error.js";
+import { ruleTester } from "./_tester.js";
 
 it("native Node DOMException serialization omits diagnostic fields", () => {
   const error = new DOMException("cancelled", "AbortError");
@@ -19,11 +11,10 @@ it("native Node DOMException serialization omits diagnostic fields", () => {
   expect(serialize({ name: error.name, message: error.message })).toBe('{"name":"AbortError","message":"cancelled"}');
 });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+const DOCUMENTED_EXPLICIT_ERROR_MESSAGE = "try { f(); } catch (err) { JSON.stringify({ error: err instanceof Error ? err.message : String(err) }); }";
+const DOCUMENTED_STRINGIFIED_ERROR = "try { f(); } catch (err) { JSON.stringify({ error: err }); }";
+
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-json-stringify-error", rule, {
   valid: [
@@ -48,7 +39,7 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
     { name: "preserves a DOMException prototype serializer hook", code: "DOMException.prototype.toJSON = () => ({ message: 'retained' }); JSON.stringify(new DOMException('cancelled'));" },
     { name: "preserves an explicitly replaced serializer for DOMException", code: "JSON.stringify = value => value.message; JSON.stringify(new DOMException('cancelled'));" },
     { name: "does not treat a reassigned catch binding as a proven error", code: "try { f(); } catch (err) { err = { status: 'failed' }; JSON.stringify(err); }" },
-    { name: "allows the documented explicit error field", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[0].files[0].source },
+    { name: "allows the documented explicit error field", code: DOCUMENTED_EXPLICIT_ERROR_MESSAGE },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
     {
       name: "allows a conventional short name without Error provenance",
@@ -198,9 +189,10 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
 
     { name: "reports native DOMException serialization", code: "JSON.stringify(new DOMException('cancelled', 'AbortError'));", errors: [{ messageId: "noJsonStringifyError" }] },
     { name: "reports a stable local DOMException inside a payload", code: "const error = new DOMException('cancelled', 'AbortError'); JSON.stringify({ error });", errors: [{ messageId: "noJsonStringifyError" }] },
-    { name: "reports the documented Error payload", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "reports the documented Error payload", code: DOCUMENTED_STRINGIFIED_ERROR, errors: [{ messageId: "noJsonStringifyError" }] },
     {
-      name: "reports a catch binding nested in an object literal",
+      name: "reports a catch binding nested in an object literal (own filename: same code as the documented Error payload)",
+      filename: "nested-catch-binding.ts",
       code: "try { f(); } catch (err) { JSON.stringify({ error: err }); }",
       errors: [{ messageId: "noJsonStringifyError" }],
     },
@@ -248,40 +240,14 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
   ],
 });
 
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "stringified-error-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/report.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/report.ts",
-        "source": "try { f(); } catch (err) { JSON[\"stringify\"]({ error: err }); }"
-      }
-    ]
-  },
-  {
-    "id": "stringified-error-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/report.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/report.ts",
-        "source": "try { f(); } catch (err) { JSON[auditDynamicMember]({ error: err }); }"
-      }
-    ]
-  }
-] } });
+RULE_TESTER.run("preserves outcomes for static member access and unknown member keys", rule, {
+  valid: [
+    { name: "documented example stringified-error-dynamic-member", filename: "src/report.ts", code: "try { f(); } catch (err) { JSON[auditDynamicMember]({ error: err }); }" },
+  ],
+  invalid: [
+    { name: "documented example stringified-error-static-member", filename: "src/report.ts", code: "try { f(); } catch (err) { JSON[\"stringify\"]({ error: err }); }", errors: [{ messageId: "noJsonStringifyError" }] },
+  ],
 });
-
 
 RULE_TESTER.run("no-json-stringify-error native binding provenance", rule, {
   valid: [
@@ -300,7 +266,6 @@ RULE_TESTER.run("no-json-stringify-error native binding provenance", rule, {
     { name: "initializer-constructor-scope", code: "function probe(){const value=new Error(\"lost\");{class Error{};return JSON.stringify(value);}}\nconsole.log(probe());", errors: [{ messageId: "noJsonStringifyError" }] },
   ],
 });
-
 
 const NATIVE_WRITE_VALID_CASES: readonly (readonly [string, string, number])[] = [
   ["duplicate-hook-last-callable", "const result=JSON.stringify({error:new Error('lost'),toJSON:42,toJSON(){return {message:'kept'};}});", 0],
@@ -487,5 +452,5 @@ const NATIVE_WRITE_INVALID_CASES: readonly (readonly [string, string, number])[]
 
 RULE_TESTER.run("no-json-stringify-error explicit native write and static property provenance", rule, {
   valid: NATIVE_WRITE_VALID_CASES.map(([name, code]) => ({ name, code, filename: "src/native.js" })),
-  invalid: NATIVE_WRITE_INVALID_CASES.map(([name, code, count]) => ({ name, code, filename: "src/native.js", errors: Array.from({ length: count }, () => ({ messageId: "noJsonStringifyError" as const })) })),
+  invalid: NATIVE_WRITE_INVALID_CASES.map(([name, code, count], index) => ({ name: NATIVE_WRITE_INVALID_CASES.findIndex(([, other]) => other === code) === index ? name : `${name} (own filename: Oxlint rejects repeated code)`, code, filename: NATIVE_WRITE_INVALID_CASES.findIndex(([, other]) => other === code) === index ? "src/native.js" : `src/native-${index}.js`, errors: Array.from({ length: count }, () => ({ messageId: "noJsonStringifyError" as const })) })),
 });

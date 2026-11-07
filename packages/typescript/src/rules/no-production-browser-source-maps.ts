@@ -1,90 +1,45 @@
 /**
- * @fileoverview no-production-browser-source-maps — public source maps disclose shipped application source.
+ * @fileoverview no-production-browser-source-maps — Next.js production browser source maps expose application source.
+ *
+ * Port of the 18.x `no-production-browser-source-maps` rule. Same
+ * algorithm; the filename gate runs in `before()`.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-production-browser-source-maps.test.ts
  */
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { canAutofixNextConfigLiteral, exportedNextConfigProperty } from "./_exported-next-config-property.js";
+import { defineRule } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { canAutofixNextConfigLiteral, exportedNextConfigProperty } from "../utils/exported-next-config-property.js";
 
-type MessageIds = "noProductionBrowserSourceMaps";
-type Options = readonly [];
-
+const NAME = "no-production-browser-source-maps";
 const NEXT_CONFIG_RE = /(?:^|\/)next\.config\.[cm]?[jt]s$/;
 
-export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
-  summary: "Next.js production browser source maps expose application source",
-  rationale:
-    "Next.js production browser source maps publish original client source and implementation details to every browser that can load the deployment.",
-  remediation:
-    "Leave productionBrowserSourceMaps disabled and upload private source maps directly to the error-monitoring service during the build.",
-  category: "security",
-  autofix: "safe",
-  limitations: [
-    "Automatic boolean changes are withheld when the module contains explicit TypeScript or JSDoc contracts; those contracts can constrain an aliased property to literal true. Plain objects and as const inference remain fixable.",
-    "Only a literal true in the effective property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, dynamic computed keys and mutations are not inferred.",
-  ],
-  examples: [
-    {
-      id: "private-source-maps",
-      title: "Keep browser source maps private",
-      outcome: "no-match",
-      files: [{ path: "next.config.mjs", source: "export default { productionBrowserSourceMaps: false };\n" }],
-      focusPath: "next.config.mjs",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "public-source-maps",
-      title: "Do not publish production browser source maps",
-      outcome: "match",
-      files: [{ path: "next.config.mjs", source: "export default { productionBrowserSourceMaps: true };\n" }],
-      focusPath: "next.config.mjs",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Apply the proven automatic correction",
-      outcome: "match",
-      files: [{ path: "next.config.ts", source: "export default { productionBrowserSourceMaps: true };" }],
-      fixedFiles: [{ path: "next.config.ts", source: "export default { productionBrowserSourceMaps: false };" }],
-      focusPath: "next.config.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-export default createRule<Options, MessageIds>({
-  name: "no-production-browser-source-maps",
-  documentation: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     fixable: "code",
-    docs: { description: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION.summary },
+    docs: { description: "Next.js production browser source maps expose application source", url: docsUrl(NAME) },
     schema: [],
     messages: {
       noProductionBrowserSourceMaps:
         "Do not publish production browser source maps. Upload private maps to your monitoring service instead.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (!NEXT_CONFIG_RE.test(context.filename.replaceAll("\\", "/"))) return {};
+  createOnce(context) {
     return {
+      before(): boolean | void {
+        if (!NEXT_CONFIG_RE.test(context.filename.replaceAll("\\", "/"))) return false;
+      },
       "Program:exit"(): void {
-        const node = exportedNextConfigProperty(context.sourceCode, ["productionBrowserSourceMaps"]);
-        if (
-          node !== null &&
-          node.value.type === "Literal" &&
-          node.value.value === true
-        ) {
-          context.report({
-            node,
-            messageId: "noProductionBrowserSourceMaps",
-            fix: canAutofixNextConfigLiteral(context.sourceCode) ? (fixer) => fixer.replaceText(node.value, "false") : null,
-          });
-        }
+        const { sourceCode } = context;
+        const node = exportedNextConfigProperty(sourceCode, ["productionBrowserSourceMaps"]);
+        if (node === null || node.value.type !== "Literal" || node.value.value !== true) return;
+        const value = node.value;
+        context.report({
+          node,
+          messageId: "noProductionBrowserSourceMaps",
+          ...(canAutofixNextConfigLiteral(sourceCode) && { fix: (fixer) => fixer.replaceText(value, "false") }),
+        });
       },
     };
   },

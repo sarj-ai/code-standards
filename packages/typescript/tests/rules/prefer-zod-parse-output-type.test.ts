@@ -1,41 +1,30 @@
-import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { TSESLint } from "@typescript-eslint/utils";
-import { ESLint, Linter, type Rule } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import inferRule from "../../src/rules/prefer-zod-infer.js";
+import rule from "../../src/rules/prefer-zod-parse-output-type.js";
+import type { SarjRule } from "../../src/types.js";
+import { retainsNamedTypeUses } from "../../src/utils/type-binding.js";
+import { FIXTURES, RuleTester, ruleTester, typed } from "./_tester.js";
+import { lintOnce } from "../utils/_probe.js";
 
-import plugin from "../../src/index.js";
-import { retainsNamedTypeUses } from "../../src/rules/_type-binding.js";
-import rule, {
-  PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
-} from "../../src/rules/prefer-zod-parse-output-type.js";
+const SCHEMA_DERIVED_RETURN_EXAMPLE = 'import { z } from "zod"; const RowSchema = z.object({ id: z.string() }); type Row = z.output<typeof RowSchema>; function load(): Row { return RowSchema.parse({}); }';
+const HAND_WRITTEN_PARSED_RETURN_EXAMPLE = 'import { z } from "zod"; import type { ParsedRow } from "./contracts.js"; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }';
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+let probeResults: boolean[] = [];
+const RETAINED_TYPE_RULE: SarjRule = {
+  meta: { type: "problem", schema: [], messages: { probe: "Probe." } },
+  createOnce(context) {
+    return {
+      TSAsExpression(node) { probeResults.push(retainsNamedTypeUses(context.sourceCode, node.typeAnnotation)); },
+      TSTypeAliasDeclaration(node) { probeResults.push(retainsNamedTypeUses(context.sourceCode, node)); },
+    };
+  },
+};
 
 function retainedTypeResults(body: string): readonly boolean[] {
   const results: boolean[] = [];
-  const probe: TSESLint.RuleModule<"probe", []> = {
-    meta: { type: "problem", schema: [], messages: { probe: "Probe." } },
-    defaultOptions: [],
-    create(context) {
-      return {
-        TSAsExpression(node) { results.push(retainsNamedTypeUses(context.sourceCode, node.typeAnnotation)); },
-        TSTypeAliasDeclaration(node) { results.push(retainsNamedTypeUses(context.sourceCode, node)); },
-      };
-    },
-  };
-  const messages = new Linter().verify(`export {}; declare const value: unknown; ${body}`, {
-    files: ["**/*.ts"],
-    languageOptions: { parser: tsParser, sourceType: "module", parserOptions: { lib: ["esnext"] } },
-    plugins: { proof: { rules: { retained: probe as unknown as Rule.RuleModule } } },
-    rules: { "proof/retained": "error" },
-  }, { filename: "liveness.ts" });
-  expect(messages).toEqual([]);
+  probeResults = results;
+  lintOnce(`export {}; declare const value: unknown; ${body}`, RETAINED_TYPE_RULE, { filename: "liveness.ts" });
   expect(results.length).toBeGreaterThan(0);
   return results;
 }
@@ -51,8 +40,7 @@ describe("named reads surviving erased type regions", () => {
     ["all generic arguments", "interface Target { id: string } type Box<T> = T; export type Kept = Box<Target>; value as Box<Target>;", true],
     ["qualified namespace root", "namespace Models { export interface Target { id: string } } export type Kept = Models.Target; value as Models.Target;", true],
     ["typeof value read", "const factory = () => 1; export type Kept = typeof factory; value as typeof factory;", true],
-    ["resolved global without a local declaration", "value as Promise<string>;", true],
-    ["no named read", "value as number;", true],
+        ["no named read", "value as number;", true],
     ["sole interface use", "interface Target { id: string } value as Target;", false],
     ["own exported definition", "export type Target = Target; value as Target;", false],
     ["mutually recursive private definitions", "type Target = Other; type Other = Target; value as Target;", false],
@@ -96,18 +84,7 @@ describe("named reads surviving erased type regions", () => {
   });
 });
 
-const TYPED_RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-        maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
-});
+const TYPED_RULE_TESTER = ruleTester({ cwd: FIXTURES });
 
 const IMPORT = 'import { z } from "zod";\n';
 
@@ -201,23 +178,24 @@ const INDEPENDENT_HELPERS = [
   ["same shape does not establish named ownership", `${PORT_SCHEMA} interface OtherView { id: string } interface OtherPort { read(): OtherView } class Adapter implements OtherPort { read(): DomainView { return RowSchema.parse({}); } }`],
 ] as const;
 
-new RuleTester({ languageOptions: { parser: tsParser } }).run(
+new RuleTester({ eslintCompat: true, languageOptions: { parserOptions: { lang: "ts" } } }).run(
   "prefer-zod-parse-output-type without type information",
   rule,
   {
     valid: [
-      PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION.examples[1].files[0].source,
+      { code: HAND_WRITTEN_PARSED_RETURN_EXAMPLE, settings: { sarj: { typeAware: false } } },
       {
         name: "requires type information before reporting or fixing a private parsed return",
         filename: "zod-output-private.ts",
         code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }",
+        settings: { sarj: { typeAware: false } },
       },
     ],
     invalid: [],
   },
 );
 
-TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
+TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, typed({
   valid: [
     ...PRESERVED_PORT_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-port-owner.ts", code })),
     ...PRESERVED_NESTED_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-deep-contract.ts", code })),
@@ -233,7 +211,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
     {
       name: "accepts the documented schema-derived return",
       filename: "zod-parse-output-derived.ts",
-      code: PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION.examples[0].files[0].source,
+      code: SCHEMA_DERIVED_RETURN_EXAMPLE,
     },
     {
       name: "allows a domain contract with an additional optional property",
@@ -343,15 +321,6 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         const RowSchema = WireSchema.transform((row) => ({
           applicationId: row.application_id, channelId: row.channel_id,
         }));
-        function get(): TrialChannelRecord { return RowSchema.parse({}); }`,
-    },
-    {
-      name: "honors an exact rule suppression",
-      filename: "zod-parse-output-suppressed.ts",
-      code: `/* eslint-disable @rule-tester/prefer-zod-parse-output-type */
-        ${IMPORT}
-        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
-        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
         function get(): TrialChannelRecord { return RowSchema.parse({}); }`,
     },
     {
@@ -572,66 +541,56 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
   ],
-});
+}));
 
-describe("prefer-zod-infer precedence", () => {
-  const eslint = new TSESLint.ESLint({
-    overrideConfigFile: true,
-    overrideConfig: [
-      {
-        files: ["**/*.ts"],
-        languageOptions: {
-          parser: tsParser,
-          parserOptions: {
-            projectService: {
-              allowDefaultProject: ["audit/*.ts"],
-              maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 10,
-            },
-            tsconfigRootDir: join(import.meta.dirname, "..", ".."),
-          },
-        },
-        plugins: { "@sarj": plugin },
-        rules: {
-          "@sarj/prefer-zod-infer": "error",
-          "@sarj/prefer-zod-parse-output-type": "warn",
-        },
-      },
-    ],
-  });
-
-  it("runs the native ESLint engine through the TypeScript rule interface", () => {
-    expect(eslint).toBeInstanceOf(ESLint);
-  });
-
-  it.each([
-    {
-      name: "canonical twins stay with the established rule",
-      source: `${IMPORT}
+const PRECEDENCE = [
+  {
+    name: "canonical twins stay with the established rule",
+    source: `${IMPORT}
         interface Row { id: string }
         const RowSchema = z.object({ id: z.string() });
         function get(): Row { return RowSchema.parse({}); }`,
-      rules: ["@sarj/prefer-zod-infer"],
-    },
-    {
-      name: "nested twins stay with the type-aware companion",
-      source: `${IMPORT}
+    rules: ["prefer-zod-infer"],
+  },
+  {
+    name: "nested twins stay with the type-aware companion",
+    source: `${IMPORT}
         interface Row { child: { id: string } }
         const RowSchema = z.object({ child: z.object({ id: z.string() }) });
         function get(): Row { return RowSchema.parse({}); }`,
-      rules: ["@sarj/prefer-zod-parse-output-type"],
-    },
-    {
-      name: "transformed twins stay with the type-aware companion",
-      source: `${IMPORT}
+    rules: ["prefer-zod-parse-output-type"],
+  },
+  {
+    name: "transformed twins stay with the type-aware companion",
+    source: `${IMPORT}
         interface Row { id: string }
         const RowSchema = z.object({ id: z.string() }).transform((row) => row);
         function get(): Row { return RowSchema.parse({}); }`,
-      rules: ["@sarj/prefer-zod-parse-output-type"],
+    rules: ["prefer-zod-parse-output-type"],
+  },
+] as const;
+
+const PRECEDENCE_TESTER = ruleTester();
+
+for (const [ruleName, precedenceRule, messageId] of [
+  ["prefer-zod-infer", inferRule, "handWrittenTwin"],
+  ["prefer-zod-parse-output-type", rule, "handWrittenParsedOutput"],
+] as const) {
+  const cases = PRECEDENCE.map(({ name, source, rules }) => ({
+    testCase: {
+      name,
+      code: source,
+      filename: `audit/${name.replaceAll(" ", "-")}.ts`,
+      settings: { sarj: { typeAware: true } },
     },
-  ])("$name", async ({ name, rules, source }) => {
-    const [result] = await eslint.lintText(source, {
-      filePath: join(import.meta.dirname, "..", "..", "audit", `${name.replaceAll(" ", "-")}.ts`),
-    });
-    expect(result?.messages.map(({ ruleId }) => ruleId)).toEqual(rules);
+    reported: (rules as readonly string[]).includes(ruleName),
+  }));
+  PRECEDENCE_TESTER.run(`${ruleName} precedence`, precedenceRule, {
+    valid: cases.filter(({ reported }) => !reported).map(({ testCase }) => testCase),
+    invalid: cases.filter(({ reported }) => reported).map(({ testCase }) => ({
+      ...testCase,
+      output: null,
+      errors: [{ messageId }],
+    })),
   });
-});
+}

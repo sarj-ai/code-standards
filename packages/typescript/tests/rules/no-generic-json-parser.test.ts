@@ -1,19 +1,12 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-generic-json-parser.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_GENERIC_JSON_PARSER_DOCUMENTATION } from "../../src/rules/no-generic-json-parser.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser } });
+const TESTER = ruleTester();
 
 TESTER.run("no-generic-json-parser", rule, {
   valid: [
-    NO_GENERIC_JSON_PARSER_DOCUMENTATION.examples[1].files[0].source,
+    "import { z } from 'zod'; function load(raw: unknown) { const result = z.object({ id: z.string() }).safeParse(raw); if (!result.success) return; return result.data.id; }",
     { name: "opaque JSON forwarding", code: "import { z } from 'zod'; function load(raw) { return z.json().parse(raw); }" },
     { name: "Promise chaining is not a payload field read", code: "import { z } from 'zod'; z.json().parseAsync(raw).then(forward);" },
     { name: "dynamic dictionary index", code: "import { z } from 'zod'; const body = z.record(z.string(), z.string()).parse(raw); consume(body[key]);" },
@@ -22,11 +15,11 @@ TESTER.run("no-generic-json-parser", rule, {
     { name: "custom refining schema", code: "import { z } from 'zod'; const Schema = z.unknown().transform(decode); const body = Schema.parse(raw); consume(body.version);" },
     { name: "type-only import", code: "import type { z } from 'zod'; const body = z.json().parse(raw); consume(body.version);" },
     { name: "mutable alias is unresolved", code: "import { z } from 'zod'; let body = z.json().parse(raw); body = validated; consume(body.version);" },
-    { name: "generated artifact", filename: "src/generated/parser.ts", code: NO_GENERIC_JSON_PARSER_DOCUMENTATION.examples[0].files[0].source },
-    { name: "local suppression", code: "import { z } from 'zod';\n// eslint-disable-next-line @rule-tester/no-generic-json-parser -- compatibility parser has a separate contract\nconst body = z.record(z.string(), z.unknown()).parse(raw); consume(body.version);" },
+    { name: "generated artifact", filename: "src/generated/parser.ts", code: "import { z } from 'zod'; function load(raw: unknown) { const result = z.record(z.string(), z.unknown()).safeParse(raw); if (!result.success) return; return result.data.id; }" },
   ],
   invalid: [
-    { code: NO_GENERIC_JSON_PARSER_DOCUMENTATION.examples[0].files[0].source, errors: [{ messageId: "genericParser" }] },
+    { name: "local suppression (reported: Oxlint's RuleTester ignores disable directives)", code: "import { z } from 'zod';\n// eslint-disable-next-line @rule-tester/no-generic-json-parser -- compatibility parser has a separate contract\nconst body = z.record(z.string(), z.unknown()).parse(raw); consume(body.version);", errors: [{ messageId: "genericParser" }] },
+    { code: "import { z } from 'zod'; function load(raw: unknown) { const result = z.record(z.string(), z.unknown()).safeParse(raw); if (!result.success) return; return result.data.id; }", errors: [{ messageId: "genericParser" }] },
     ...[
       ["direct unknown parser", "import { z } from 'zod'; consume(z.unknown().parse(raw).version);"],
       ["direct JSON parser", "import { z } from 'zod'; consume(z.json().parse(raw)['version']);"],

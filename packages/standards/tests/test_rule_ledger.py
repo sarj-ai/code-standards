@@ -43,7 +43,7 @@ def _is_live(shipped: ledger.Ledger, kind: str, identifier: str) -> bool:
     match kind:
         case ledger.CODE:
             return any(identifier in codes for codes in shipped.codes.values())
-        case ledger.ESLINT:
+        case ledger.OXLINT:
             return identifier.removeprefix("@sarj/") in shipped.rules.get(kind, ())
         case _:
             return identifier in shipped.rules.get(kind, ())

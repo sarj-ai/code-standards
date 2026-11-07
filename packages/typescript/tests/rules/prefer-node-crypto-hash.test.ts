@@ -1,17 +1,11 @@
 import { createHash, hash } from "node:crypto";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import rule, { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "../../src/rules/prefer-node-crypto-hash.js";
+import rule from "../../src/rules/prefer-node-crypto-hash.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, sourceType: "module" } });
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-node-crypto-hash", rule, {
   valid: [
@@ -30,7 +24,7 @@ RULE_TESTER.run("prefer-node-crypto-hash", rule, {
     { name: "keeps synchronized ESM namespaces after CommonJS mutation", code: 'import * as crypto from "node:crypto"; require("crypto").createHash = custom; require("node:module").syncBuiltinESMExports(); crypto.createHash("sha256").update(value).digest("hex");' },
     { name: "keeps synchronization through a later initialized module binding", code: 'import { createHash } from "node:crypto"; function digest() { require("crypto").createHash = custom; module.syncBuiltinESMExports(); return createHash("sha256").update(value).digest("hex"); } const module = process.getBuiltinModule("module"); digest();' },
     { name: "keeps non-const namespace loads outside the proof boundary", code: 'var crypto = require("node:crypto"); var crypto; crypto.createHash("sha256").update(value).digest("hex");' },
-    { name: "keeps a replaced native module member's custom contract", code: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[3].files[0].source },
+    { name: "keeps a replaced native module member's custom contract", code: "const crypto = require('node:crypto'); crypto.createHash = () => ({ update() { return this; }, digest() { return 'custom'; } }); export const digest = crypto.createHash('sha256').update('value').digest('hex');" },
     { name: "keeps replacement through an erased namespace wrapper", code: 'const crypto = require("node:crypto"); (crypto as Custom).createHash = custom; crypto.createHash("sha256").update(value).digest("hex");' },
     { name: "keeps a namespace that escapes through an alias", code: 'const crypto = require("node:crypto"); const alias = crypto; alias.createHash = custom; crypto.createHash("sha256").update(value).digest("hex");' },
     { name: "keeps namespace mutations through Object.assign", code: 'const crypto = require("node:crypto"); Object.assign(crypto, { createHash: custom }); crypto.createHash("sha256").update(value).digest("hex");' },
@@ -44,7 +38,7 @@ RULE_TESTER.run("prefer-node-crypto-hash", rule, {
     { name: "keeps incremental hashing with a literal template algorithm", code: 'import { createHash } from "node:crypto"; createHash(`sha256`).update(first).update(second).digest("hex");' },
     { name: "keeps shadowed constructors outside native provenance", code: 'import { createHash } from "node:crypto"; function digest(createHash) { return createHash(("sha256" as const)).update(value).digest("hex"); }' },
 
-    PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[0].files[0].source,
+    "import { hash } from 'node:crypto'; export const digest = hash('sha256', 'value', 'hex');",
     "import { createHash } from 'node:crypto'; const digest = createHash('sha256').update(first).update(second).digest('hex');",
     "import { createHash } from 'node:crypto'; const stream = createHash('sha256'); stream.write(value);",
     "import { createHash } from 'node:crypto'; createHash(algorithm).update(value).digest('hex');",
@@ -70,7 +64,7 @@ RULE_TESTER.run("prefer-node-crypto-hash", rule, {
     { name: "retains the named default import spelling", code: 'import { default as crypto } from "node:crypto"; crypto.createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
     { name: "retains type-only default namespace queries", code: 'import * as crypto from "node:crypto"; type Crypto = typeof crypto.default; require("crypto").createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
     { name: "retains separate type-space declarations", code: 'const crypto = require("node:crypto"); interface crypto { metadata: string } crypto.createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
-    { name: "retains an unchanged native namespace", code: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[2].files[0].source, errors: [{ messageId: "preferNodeCryptoHash" }] },
+    { name: "retains an unchanged native namespace", code: "const crypto = require('node:crypto'); export const digest = crypto.createHash('sha256').update('value').digest('hex');", errors: [{ messageId: "preferNodeCryptoHash" }] },
     { name: "retains a namespace with other native method calls", code: 'const crypto = require("node:crypto"); const value = crypto.randomBytes(16); crypto.createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
     { name: "retains harmless inherited inspection calls", code: 'const crypto = require("node:crypto"); crypto.hasOwnProperty("createHash"); crypto.createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
     { name: "retains type-only namespace references", code: 'import * as crypto from "node:crypto"; type Crypto = typeof crypto; crypto.createHash("sha256").update(value).digest("hex");', errors: [{ messageId: "preferNodeCryptoHash" }] },
@@ -104,7 +98,7 @@ RULE_TESTER.run("prefer-node-crypto-hash", rule, {
     { name: "retains a literal algorithm through a const assertion", code: 'import { createHash } from "node:crypto"; createHash(("sha256" as const)).update(value).digest(("hex" as const));', errors: [{ messageId: "preferNodeCryptoHash" }] },
 
     {
-      code: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[1].files[0].source,
+      code: "import { createHash } from 'node:crypto'; export const digest = createHash('sha256').update('value').digest('hex');",
       errors: [{ messageId: "preferNodeCryptoHash" }],
     },
     {

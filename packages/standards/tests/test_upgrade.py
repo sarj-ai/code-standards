@@ -6,14 +6,27 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import json
 from pathlib import Path
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
+from repo_standards.core.canonical import scope_digest
+from repo_standards.policy_sarj import SarjPolicy
+from repo_standards.repository import RepositoryAnalysisRequest, analyze_repository, parse_manifest_bytes
 import yaml
 
 from sarj_standards._meta import CONFIGS_DIR
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
+from sarj_standards.libs.adoption import (
+    doctor,
+    launcher,
+    lifecycle,
+    manifest,
+    repository_baseline,
+    scaffold,
+    transaction,
+    upgrade,
+)
 from sarj_standards.libs.diagnostics import baseline
 from sarj_standards.libs.json_boundary import parse_json
 
@@ -352,7 +365,7 @@ def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Pat
     assert baseline_path.read_text(encoding="utf-8") == late_edit
 
 
-def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) -> None:
+def test_upgrade_migrates_the_root_eslint_config_and_keeps_nested_eslint_projects(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text(
@@ -364,14 +377,79 @@ def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) ->
     (nested / "package.json").write_text('{"name":"legacy"}\n', encoding="utf-8")
     consumer_config = nested / "eslint.config.mjs"
     consumer_config.write_text("export default [];\n", encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("typescript",), ".", ".", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     plan = upgrade.build_plan(tmp_path)
 
-    assert (CONFIGS_DIR / "eslint.strict.d.mts", tmp_path / "eslint.strict.d.mts") in plan.config_writes
+    assert (CONFIGS_DIR / "oxlint.strict.mts", tmp_path / "oxlint.strict.mts") in plan.config_writes
+    assert {tmp_path / "eslint.config.mjs", tmp_path / "eslint.strict.mjs"} <= set(plan.scaffold_plan.deletes)
+    assert tmp_path / "oxlint.config.mts" in {path for path, _contents in plan.scaffold_plan.writes}
     assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
+    assert consumer_config not in plan.scaffold_plan.deletes
     assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
+
+
+@pytest.mark.parametrize("committed", [False, True], ids=["untracked", "accepted-finding-on-deleted-config"])
+def test_upgrade_drops_the_repo_standards_artifact_entry_of_the_deleted_eslint_preset(
+    tmp_path: Path, *, committed: bool
+) -> None:
+    (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text(
+        'import strict from "./eslint.strict.mjs";\nexport default strict;\n', encoding="utf-8"
+    )
+    (tmp_path / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "tool.mjs").write_text("export {};\n", encoding="utf-8")
+    (tmp_path / "tool.ts").write_text("export {};\n", encoding="utf-8")
+    repository_manifest = tmp_path / ".repo-standards" / "repository.toml"
+    repository_manifest.parent.mkdir()
+    tool_artifact = '[[javascript.artifacts]]\npath = "tool.mjs"\nkind = "generated"\nsource = "tool.ts"\nreason = "Reviewed tool"\n'
+    header = (
+        'enabled_rules = ["repository/artifacts/untyped-javascript"]\nrepository_id = "workspace"\ncomponents = []\n\n'
+    )
+    repository_manifest.write_text(
+        f"{header}{tool_artifact}\n"
+        '[[javascript.artifacts]]\npath = "eslint.strict.mjs"\nkind = "generated"\n'
+        'source = ".sarj-standards.toml"\nreason = "Canonical ESLint runtime policy."\n',
+        encoding="utf-8",
+    )
+    baseline = tmp_path / repository_baseline.PATH
+    scope = scope_digest(parse_manifest_bytes(repository_manifest.read_bytes()))
+    baseline.write_text(
+        json.dumps(
+            {
+                "fingerprints": ["f" * 64],
+                "policy": "sarj",
+                "policy_version": SarjPolicy.policy_version,
+                "repository_id": "workspace",
+                "schema_version": 2,
+                "scope_digest": scope,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    adopted = manifest.Manifest("0.0.1", ("typescript",), ".", ".", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    accepted = baseline.read_text(encoding="utf-8")
+    if committed:
+        _commit(tmp_path)
+        report = analyze_repository(RepositoryAnalysisRequest(root=tmp_path))
+        (retired,) = (item.fingerprint for item in report.diagnostics if item.path == "eslint.config.mjs")
+        baseline.write_text(accepted.replace('"' + "f" * 64 + '"', f'"{retired}",\n    "' + "f" * 64 + '"'))
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert tmp_path / "eslint.strict.mjs" in plan.scaffold_plan.deletes
+    writes = plan.scaffold_plan.writes
+    retained = f"{header}{tool_artifact}"
+    assert [contents for path, contents in writes if path == repository_manifest] == [retained]
+    rescoped = scope_digest(parse_manifest_bytes(retained.encode()))
+    assert [contents for path, contents in writes if path == baseline] == [accepted.replace(scope, rescoped)]
+    dropped = "dropped 1 accepted repository finding(s) on files the Oxlint migration deletes"
+    assert (dropped in plan.scaffold_plan.notes) is committed
 
 
 @pytest.mark.parametrize("current", [False, True])
@@ -381,24 +459,22 @@ def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path,
     fixture = tmp_path / "tests" / "fixtures" / "legacy"
     for project in (primary, mirror, fixture):
         project.mkdir(parents=True)
-        (project / "eslint.strict.mjs").write_bytes(
-            (CONFIGS_DIR / "eslint.strict.mjs").read_bytes() if current else b"export default [];\n"
+        (project / "oxlint.strict.mts").write_bytes(
+            (CONFIGS_DIR / "oxlint.strict.mts").read_bytes() if current else b"export default {};\n"
         )
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("typescript",), ".", "apps/dashboard", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     plan = upgrade.build_plan(tmp_path)
     targets = {target for _source, target in plan.config_writes}
 
-    assert (primary / "eslint.strict.mjs" in targets) is not current
-    assert (mirror / "eslint.strict.mjs" in targets) is not current
-    assert fixture / "eslint.strict.mjs" not in targets
-    assert primary / "eslint.strict.d.mts" in targets
-    assert mirror / "eslint.strict.d.mts" in targets
-    assert fixture / "eslint.strict.d.mts" not in targets
+    assert (primary / "oxlint.strict.mts" in targets) is not current
+    assert (mirror / "oxlint.strict.mts" in targets) is not current
+    assert fixture / "oxlint.strict.mts" not in targets
+    assert primary / "oxfmt.strict.mts" in targets
     assert mirror / "doctor.config.json" not in targets
 
 
@@ -413,7 +489,7 @@ def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: 
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("typescript",), ".", "apps/dashboard", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     targets = {target for _source, target in upgrade.build_plan(tmp_path).config_writes}
@@ -682,29 +758,12 @@ def test_upgrade_advances_an_existing_package_age_preapproval_for_the_tested_plu
     updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
 
     assert [update.path for update in updates] == [policy]
-    approvals = manifest.eslint_age_gate_preapprovals()
+    approvals = manifest.typescript_age_gate_preapprovals()
     approvals["@sarj/eslint-plugin"] = "15.10.0"
     assert updates[0].packages == tuple(sorted(approvals))
     assert updates[0].contents == f"{heading}:\n" + "".join(
         f'  - "{name}@{version}"\n' for name, version in sorted(approvals.items())
     )
-
-
-def test_upgrade_retires_mature_typescript_eslint_age_exceptions_but_keeps_other_entries(tmp_path: Path) -> None:
-    policy = tmp_path / ".yarnrc.yml"
-    policy.write_text(
-        'npmPreapprovedPackages:\n  - "unrelated@1.2.3"\n'
-        '  - "@typescript-eslint/parser@8.68.0"\n'
-        '  - "@sarj/eslint-plugin@15.24.0"\n',
-        encoding="utf-8",
-    )
-
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.24.0"})
-
-    assert '"unrelated@1.2.3"' in update.contents
-    assert '"@sarj/eslint-plugin@15.24.0"' in update.contents
-    assert "@typescript-eslint/parser" not in update.contents
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.24.0"}).contents == update.contents
 
 
 def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the_gate(tmp_path: Path) -> None:
@@ -720,37 +779,15 @@ def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the
     [exclude] = [line for line in update.contents.splitlines() if line.startswith("min-release-age-exclude=")]
     values = exclude.partition("=")[2].split(",")
     assert values[0] == "unrelated"
-    assert set(values[1:]) == {"@typescript-eslint/parser", *manifest.eslint_age_gate_preapprovals()}
+    assert set(values[1:]) == {"@typescript-eslint/parser", *manifest.typescript_age_gate_preapprovals()}
     assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
-
-
-@pytest.mark.parametrize("heading", ["minimumReleaseAgeExclude", "npmPreapprovedPackages"])
-def test_upgrade_preserves_exact_current_parser_approval_and_retires_old_versions(heading: str) -> None:
-    name = "@typescript-eslint/parser"
-    current = manifest.eslint_yarn_identity_pins()[name]
-    original = (
-        "minimumReleaseAge: 20160\n"
-        "minimumReleaseAgeStrict: true\n"
-        f"{heading}:\n"
-        f'  - "{name}@{current}" # reviewed current toolchain\n'
-        f'  - "{name}@8.67.0"\n'
-        '  - "unrelated@1.2.3"\n'
-    )
-
-    updated = doctor.rewrite_version_pins(original, {}).contents
-
-    assert f'  - "{name}@{current}" # reviewed current toolchain\n' in updated
-    assert '"unrelated@1.2.3"' in updated
-    assert "8.67.0" not in updated
-    assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in updated
-    assert doctor.rewrite_version_pins(updated, {}).contents == updated
 
 
 def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_path: Path) -> None:
     policy = tmp_path / "pnpm-workspace.yaml"
     policy.write_text(
         "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nminimumReleaseAgeExclude:\n"
-        '  - "unrelated@1.2.3" # retained\n  - "@typescript-eslint/utils@8.67.0"\n',
+        '  - "unrelated@1.2.3" # retained\n  - "@sarj/eslint-plugin@15.10.0"\n',
         encoding="utf-8",
     )
 
@@ -758,7 +795,7 @@ def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_pat
 
     assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in update.contents
     assert '  - "unrelated@1.2.3" # retained\n' in update.contents
-    assert "8.67.0" not in update.contents
+    assert "15.10.0" not in update.contents
     assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
 
 
@@ -878,10 +915,10 @@ def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
 
 
 def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> None:
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("typescript",), ".", ".", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     package = tmp_path / "package.json"
-    current = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    current = manifest.typescript_peers()["@sarj/eslint-plugin"]
     old = f"{current.split('.')[0]}.0.0"
     package.write_text(
         json.dumps(
@@ -905,7 +942,12 @@ def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> 
     dev_dependencies = manifest.table_field(data, "devDependencies")
     assert "@sarj/eslint-plugin" not in dev_dependencies
     assert dev_dependencies["test-tool"] == "4.5.6"
-    assert manifest.table_field(data, "scripts") == {"custom": "keep this"}
+    assert manifest.table_field(data, "scripts") == {
+        "custom": "keep this",
+        "lint": "OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint oxlint",
+        "format": "oxfmt",
+        "format:check": "oxfmt --check",
+    }
     assert package not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
     assert package.read_text(encoding="utf-8") == updated
@@ -1188,7 +1230,7 @@ def test_update_uses_enabled_explicit_typescript_destination_with_independent_pr
     projects = _independent_javascript_projects(tmp_path)
     deploy, docs = projects.deploy, projects.docs
     adopted = manifest.Manifest(
-        version="0.0.1", configs=("eslint",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
+        version="0.0.1", configs=("typescript",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
 
@@ -1197,7 +1239,7 @@ def test_update_uses_enabled_explicit_typescript_destination_with_independent_pr
     assert plan.ecosystems.typescript_root == docs
     assert plan.scaffold_plan.ecosystems.typescript_root == docs
     assert not plan.scaffold_plan.errors
-    assert any(target == docs / "eslint.strict.ts" for _source, target in plan.config_writes)
+    assert any(target == docs / "oxlint.strict.mts" for _source, target in plan.config_writes)
     assert all(not target.is_relative_to(deploy) for _source, target in plan.config_writes)
 
 
@@ -1219,7 +1261,7 @@ def test_disabled_typescript_upgrade_still_refreshes_existing_owned_package_pins
     assert upgrade.apply(plan, install=False) == 0
     updated = manifest.as_table(parse_json(package.read_text()))
     dependencies = manifest.table_field(updated, "devDependencies")
-    assert dependencies["@sarj/eslint-plugin"] == manifest.eslint_peers()["@sarj/eslint-plugin"]
+    assert dependencies["@sarj/eslint-plugin"] == manifest.typescript_peers()["@sarj/eslint-plugin"]
     assert parse_json((deploy / "package.json").read_text()) == original_deploy
     assert not (docs / "eslint.strict.mjs").exists()
     assert not (deploy / "eslint.strict.mjs").exists()
@@ -1401,7 +1443,7 @@ def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
     assert status == 0
     assert len(observed_policies) == 1
     [rewritten] = observed_policies
-    approvals = manifest.eslint_age_gate_preapprovals()
+    approvals = manifest.typescript_age_gate_preapprovals()
     if versioned:
         assert all(f'"{name}@{version}"' in rewritten for name, version in approvals.items())
     else:
@@ -1438,7 +1480,7 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
 
     assert status == 0
     assert len(observed_packages) == 1
-    assert manifest.eslint_peers()["@sarj/eslint-plugin"] in observed_packages[0]
+    assert manifest.typescript_peers()["@sarj/eslint-plugin"] in observed_packages[0]
 
 
 def test_update_preserves_existing_nested_eslint_projects_during_schema_migration(tmp_path: Path) -> None:
@@ -1691,7 +1733,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
             "forced missing dependency",
             "doctor.python.legacy-in-project-tool",
         ),
-        doctor.Finding(doctor.Level.DRIFT, "eslint.config.mjs", "forced broken wiring", "doctor.eslint.wiring"),
+        doctor.Finding(doctor.Level.DRIFT, "oxlint.config.mts", "forced broken wiring", "doctor.typescript.wiring"),
     ]
 
     def diagnose(_root: Path) -> list[doctor.Finding]:
@@ -1708,7 +1750,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
 @pytest.mark.parametrize(
     "finding_id",
     [
-        "doctor.eslint.shadowed-config",
+        "doctor.typescript.shadowed-config",
         "doctor.precommit.rev",
         "doctor.pyright.deprecated",
         "doctor.ruff.authority",
@@ -1908,7 +1950,7 @@ def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
         doctor.Level.DRIFT,
         "package.json: eslint",
         "expected exact tested peer",
-        "doctor.eslint.peer",
+        "doctor.typescript.peer",
         "run `sarj-standards update`",
     )
 
@@ -1926,7 +1968,7 @@ def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
     assert "already matches standards" not in output
     assert "bundle current:" in output
     assert "doctor found 1 configuration drift" in output
-    assert "drift: doctor.eslint.peer package.json: eslint" in output
+    assert "drift: doctor.typescript.peer package.json: eslint" in output
     assert "fix: run `sarj-standards update`" in output
 
 
@@ -2227,3 +2269,14 @@ def test_upgrade_surfaces_incomplete_rollback(monkeypatch: pytest.MonkeyPatch, t
 
     with pytest.raises(OSError, match=r"upgrade recovery incomplete.*changed concurrently"):
         upgrade.apply(plan, install=False)
+
+
+def _commit(root: Path) -> None:
+    identity = ("-c", "user.name=Standards Test", "-c", "user.email=standards-test@example.invalid")
+    subprocess.run(("git", "init", "--quiet"), cwd=root, check=True)
+    subprocess.run(("git", "add", "."), cwd=root, check=True)
+    subprocess.run(
+        ("git", *identity, "-c", "commit.gpgsign=false", "commit", "--quiet", "--no-verify", "-m", "fixture"),
+        cwd=root,
+        check=True,
+    )

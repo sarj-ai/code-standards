@@ -1,16 +1,17 @@
 /**
- * @fileoverview require-sql-access-class — database I/O belongs to an injected repository or store.
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-sql-access-class.test.ts
+ * @fileoverview require-sql-access-class — keep SQL reads and writes inside an injected-dependency class.
+ *
+ * Port of the 18.x `require-sql-access-class` rule. The rule is untyped,
+ * so the port covers all of it.
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isGeneratedFile, isTestFile } from "./_paths.js";
-
-type MessageIds = "moveSqlIntoClass";
-type Options = [];
+const NAME = "require-sql-access-class";
 
 /** Operations that execute immediately when called on a database receiver. */
 const DIRECT_EXECUTION_METHODS: ReadonlySet<string> = new Set([
@@ -70,59 +71,13 @@ const MODEL_EXECUTION_METHODS: ReadonlySet<string> = new Set([
   "upsert",
 ]);
 
-const DATABASE_NAMES = /^(?:db|database|connection|pool|prisma|query|transaction|tx)$/iu;
+const NON_DATABASE_CONSTRUCTORS: ReadonlySet<string> = new Set(["Map", "WeakMap", "URLSearchParams"]);
 
-export const REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION = {
-  defaultLevel: "warning",
-  summary: "Keep SQL reads and writes inside a class that receives its database dependency.",
-  rationale:
-    "An injected repository class is the preferred ownership boundary for database access under this architectural policy; free functions can also express explicit dependencies.",
-  remediation:
-    "Move the query into a repository or store class and inject the pool, connection, transaction, or typed database binding through its constructor.",
-  category: "architecture",
-  limitations: [
-    "The rule recognizes conventional database receiver names, Cloudflare DB bindings, direct pool.query calls, explicit query-builder terminals, and Prisma-style model delegates; unusually named or heavily aliased clients require architectural review.",
-    "Query construction without a recognized execution terminal is intentionally not reported.",
-    "Stable local Map, WeakMap, and URLSearchParams instances are excluded. Other conventional receiver names are heuristics, not proof of a database API.",
-    "Constructor injection inherited from a base class or transformed through a wrapper is not inferred by this syntax-only rule.",
-  ],
-  examples: [
-    {
-      id: "injected-repository",
-      title: "Own queries in an injected repository",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/user-repository.ts",
-          source:
-            "export class UserRepository { constructor(private readonly db: Database.Database) {} find(id: string) { return this.db.prepare('SELECT id FROM user WHERE id = ?').get(id); } }",
-        },
-      ],
-      focusPath: "src/user-repository.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "free-query",
-      title: "Do not execute SQL in a free function",
-      outcome: "match",
-      files: [
-        {
-          path: "src/users.ts",
-          source:
-            "export function find(database: Database.Database, id: string) { return database.prepare('SELECT id FROM user WHERE id = ?').get(id); }",
-        },
-      ],
-      focusPath: "src/users.ts",
-      expectedCount: 1,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const DATABASE_NAMES = /^(?:db|database|connection|pool|prisma|query|transaction|tx)$/iu;
 
 function isDatabaseOperation(
   method: string,
-  receiver: TSESTree.Expression,
+  receiver: Node,
 ): boolean {
   if (DIRECT_EXECUTION_METHODS.has(method) && databaseReceiver(receiver))
     return true;
@@ -134,132 +89,124 @@ function isDatabaseOperation(
   return BUILDER_SHORT_TERMINALS.has(method) && expressionCallsBuilder(receiver);
 }
 
-function databaseReceiver(node: TSESTree.Expression): boolean {
-      node = unwrapExpression(node);
-  if (node.type === AST_NODE_TYPES.Identifier)
+function databaseReceiver(node: Node): boolean {
+  node = unwrapExpression(node);
+  if (node.type === "Identifier")
     return DATABASE_NAMES.test(node.name);
-  if (node.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const name = ASTUtils.getPropertyName(node);
+  if (node.type !== "MemberExpression") return false;
+  const name = getPropertyName(node);
   return name === "DB" || (name !== null && DATABASE_NAMES.test(name));
 }
 
-function databaseRootMember(node: TSESTree.Expression): string | null {
+function databaseRootMember(node: Node): string | null {
   let current = node;
   for (;;) {
     current = unwrapExpression(current);
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return null;
       current = current.callee.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.object.type === AST_NODE_TYPES.ThisExpression)
-        return ASTUtils.getPropertyName(current);
+    if (current.type === "MemberExpression") {
+      if (current.object.type === "ThisExpression")
+        return getPropertyName(current);
       current = current.object;
       continue;
     }
-    return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
+    return current.type === "Identifier" ? current.name : null;
   }
 }
 
-function expressionHasDatabaseMarker(node: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = node;
+function expressionHasDatabaseMarker(node: Node): boolean {
+  let current: Node = node;
   for (;;) {
     current = unwrapExpression(current);
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return false;
       current = current.callee.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      const name = ASTUtils.getPropertyName(current);
+    if (current.type === "MemberExpression") {
+      const name = getPropertyName(current);
       if (name === "DB" || (name !== null && DATABASE_NAMES.test(name)))
         return true;
       current = current.object;
       continue;
     }
-    return current.type === AST_NODE_TYPES.Identifier && DATABASE_NAMES.test(current.name);
+    return current.type === "Identifier" && DATABASE_NAMES.test(current.name);
   }
 }
 
-function expressionCallsBuilder(node: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = node;
+function expressionCallsBuilder(node: Node): boolean {
+  let current: Node = node;
   for (;;) {
     current = unwrapExpression(current);
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const name = ASTUtils.getPropertyName(current.callee);
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return false;
+      const name = getPropertyName(current.callee);
       if (name !== null && BUILDER_METHODS.has(name)) return true;
       current = current.callee.object;
       continue;
     }
-    if (current.type !== AST_NODE_TYPES.MemberExpression) return false;
+    if (current.type !== "MemberExpression") return false;
     current = current.object;
   }
 }
 
-function owningClass(
-  node: TSESTree.Node,
-): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
-  let current = node.parent;
-  while (current != null) {
-    if (
-      current.type === AST_NODE_TYPES.ClassDeclaration ||
-      current.type === AST_NODE_TYPES.ClassExpression
-    )
-      return current;
-    current = current.parent;
+function owningClass(node: Node): ESTree.Class | null {
+  for (let current = parentOf(node); current !== null; current = parentOf(current)) {
+    if (current.type === "ClassDeclaration" || current.type === "ClassExpression") return current;
   }
   return null;
 }
 
 function injectedMembers(
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  owner: ESTree.Class,
 ): ReadonlySet<string> {
   const injected = new Set<string>();
   const constructor = owner.body.body.find(
     (member) =>
-      member.type === AST_NODE_TYPES.MethodDefinition &&
+      member.type === "MethodDefinition" &&
       member.kind === "constructor",
   );
-  if (constructor?.type !== AST_NODE_TYPES.MethodDefinition) return injected;
+  if (constructor?.type !== "MethodDefinition") return injected;
   const parameters = new Set<string>();
   for (const parameter of constructor.value.params) {
     for (const name of parameterNames(parameter)) parameters.add(name);
-    if (parameter.type !== AST_NODE_TYPES.TSParameterProperty) continue;
-    const value = parameter.parameter.type === AST_NODE_TYPES.AssignmentPattern
+    if (parameter.type !== "TSParameterProperty") continue;
+    const value = parameter.parameter.type === "AssignmentPattern"
       ? parameter.parameter.left
       : parameter.parameter;
-    if (value.type === AST_NODE_TYPES.Identifier) injected.add(value.name);
+    if (value.type === "Identifier") injected.add(value.name);
   }
   const body = constructor.value.body;
   if (body === null) return injected;
-  function collectInjectedMember(statement: TSESTree.Statement): void {
+  function collectInjectedMember(statement: ESTree.Statement): void {
     if (
-      statement.type !== AST_NODE_TYPES.ExpressionStatement ||
-      statement.expression.type !== AST_NODE_TYPES.AssignmentExpression ||
+      statement.type !== "ExpressionStatement" ||
+      statement.expression.type !== "AssignmentExpression" ||
       statement.expression.operator !== "="
     ) return;
     const { left, right } = statement.expression;
-    if (left.type !== AST_NODE_TYPES.MemberExpression) return;
+    if (left.type !== "MemberExpression") return;
     const target = thisRootMember(left);
     if (target === null) return;
-    const source = right.type === AST_NODE_TYPES.Identifier
+    const source = right.type === "Identifier"
       ? right.name
-      : right.type === AST_NODE_TYPES.MemberExpression &&
-        right.object.type === AST_NODE_TYPES.Identifier
+      : right.type === "MemberExpression" &&
+        right.object.type === "Identifier"
         ? right.object.name
         : null;
     if (source !== null && parameters.has(source)) injected.add(target);
@@ -269,46 +216,45 @@ function injectedMembers(
   return injected;
 }
 
-function thisRootMember(node: TSESTree.Expression): string | null {
+function thisRootMember(node: Node): string | null {
   let current = node;
   let root: string | null = null;
-  while (current.type === AST_NODE_TYPES.MemberExpression) {
-    const name = ASTUtils.getPropertyName(current);
+  while (current.type === "MemberExpression") {
+    const name = getPropertyName(current);
     if (name === null) return null;
     root = name;
     current = current.object;
   }
-  return current.type === AST_NODE_TYPES.ThisExpression ? root : null;
+  return current.type === "ThisExpression" ? root : null;
 }
 
-function parameterNames(parameter: TSESTree.Parameter): ReadonlySet<string> {
+function parameterNames(parameter: ESTree.ParamPattern): ReadonlySet<string> {
   let value = parameter;
-  if (value.type === AST_NODE_TYPES.TSParameterProperty) value = value.parameter;
-  if (value.type === AST_NODE_TYPES.AssignmentPattern) value = value.left;
-  if (value.type === AST_NODE_TYPES.Identifier) return new Set([value.name]);
-  if (value.type !== AST_NODE_TYPES.ObjectPattern) return new Set();
+  if (value.type === "TSParameterProperty") value = value.parameter;
+  if (value.type === "AssignmentPattern") value = value.left;
+  if (value.type === "Identifier") return new Set([value.name]);
+  if (value.type !== "ObjectPattern") return new Set();
   return new Set(
     value.properties.flatMap((property) => {
-      if (property.type === AST_NODE_TYPES.RestElement)
-        return property.argument.type === AST_NODE_TYPES.Identifier
+      if (property.type === "RestElement")
+        return property.argument.type === "Identifier"
           ? [property.argument.name]
           : [];
-      const target = property.value.type === AST_NODE_TYPES.AssignmentPattern
+      const target = property.value.type === "AssignmentPattern"
         ? property.value.left
         : property.value;
-      return target.type === AST_NODE_TYPES.Identifier ? [target.name] : [];
+      return target.type === "Identifier" ? [target.name] : [];
     }),
   );
 }
 
-export default createRule<Options, MessageIds>({
-  name: "require-sql-access-class",
-  documentation: REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
       description:
         "Keep SQL reads and writes inside a class that receives its database dependency.",
+      url: docsUrl(NAME),
     },
     schema: [],
     messages: {
@@ -316,44 +262,38 @@ export default createRule<Options, MessageIds>({
         "Move this database operation into a repository or store class with an injected connection or pool.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, context.sourceCode.text)
-    )
-      return {};
-    function knownNonDatabase(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
-      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+  createOnce(context) {
+    function knownNonDatabase(node: Node, seen = new Set<Node>()): boolean {
       if (seen.has(node)) return false;
       seen.add(node);
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+      if (node.type === "Identifier") {
+        const binding = findVariable(context.sourceCode.getScope(node), node.name);
         if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
         const definition = binding.defs[0];
-        return definition?.type === "Variable" && definition.node.init !== null && knownNonDatabase(definition.node.init, seen);
+        if (definition?.type !== "Variable") return false;
+        const init = (definition.node as ESTree.VariableDeclarator).init;
+        return init !== null && knownNonDatabase(init, seen);
       }
-      return node.type === AST_NODE_TYPES.NewExpression && unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier &&
-        ["Map", "WeakMap", "URLSearchParams"].includes(unwrappedNodeCallee.name) &&
-        (ASTUtils.findVariable(context.sourceCode.getScope(unwrappedNodeCallee), unwrappedNodeCallee.name)?.defs.length ?? 0) === 0;
+      if (node.type !== "NewExpression") return false;
+      const callee = unwrapExpression(node.callee);
+      return callee.type === "Identifier" && NON_DATABASE_CONSTRUCTORS.has(callee.name) &&
+        (findVariable(context.sourceCode.getScope(callee), callee.name)?.defs.length ?? 0) === 0;
     }
     return {
+      before() {
+        const file = { filename: context.filename, cwd: context.cwd };
+        if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
+        return undefined;
+      },
       CallExpression(node): void {
-        const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (
-          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression
-        )
-          return;
-        const method = ASTUtils.getPropertyName(unwrappedNodeCallee);
-        if (knownNonDatabase(unwrappedNodeCallee.object)) return;
-        if (
-          method === null ||
-          !isDatabaseOperation(method, unwrappedNodeCallee.object)
-        )
-          return;
+        const callee = unwrapExpression(node.callee);
+        if (callee.type !== "MemberExpression") return;
+        const method = getPropertyName(callee);
+        // The syntactic test runs first: the scope lookup is the expensive check.
+        if (method === null || !isDatabaseOperation(method, callee.object) || knownNonDatabase(callee.object)) return;
         const owner = owningClass(node);
         if (owner !== null) {
-          const root = databaseRootMember(unwrappedNodeCallee.object);
+          const root = databaseRootMember(callee.object);
           if (root !== null && injectedMembers(owner).has(root)) return;
         }
         context.report({ node, messageId: "moveSqlIntoClass" });

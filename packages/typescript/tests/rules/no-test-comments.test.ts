@@ -1,21 +1,52 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import rule from "../../src/rules/no-test-comments.js";
+import { ruleTester, withDefaults } from "./_tester.js";
 
-import rule, { NO_TEST_COMMENTS_DOCUMENTATION } from "../../src/rules/no-test-comments.js";
+const TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser }, defaultFilenames: { ts: "src/request.test.ts", tsx: "src/request.test.tsx" } });
+const CONVERGENCE_LINES = [
+  [
+    "/* @__NO_SIDE_EFFECTS__ */ function fixture() { return 1; }",
+    "const value = /* @__PURE__ */ fixture(); // Explain this call",
+    "void import(/* @vite-ignore */ path);",
+    "void import(/* webpackIgnore: true */ path);",
+    "// Explain this assertion",
+    "expect(value).toBe(1);",
+    "",
+  ],
+  [
+    "/* @__NO_SIDE_EFFECTS__ */ function fixture() { return 1; }",
+    "const value = /* @__PURE__ */ fixture(); // Explain this call",
+    "// pragma: allowlist-nextline-secret -- fixture target",
+    "const secret = 'fixture-value'; // Explain this target",
+    "const sameLine = 'fixture'; // pragma: whitelist-secret -- fixture value",
+    "void import(/* @vite-ignore */ path);",
+    "void import(/* webpackIgnore: true */ path);",
+    "// Explain this assertion",
+    "expect(value).toBe(1);",
+    "",
+  ],
+] as const;
+const CONVERGENCE_NAMES = [
+  "preserves behavioral annotations while removing prose and converges for",
+  "preserves scanner pragmas and behavioral annotations while fixing prose for",
+] as const;
+const CONVERGENCE = CONVERGENCE_LINES.flatMap((lines, index) => ["\n", "\r\n"].map(ending => ({
+  name: `${CONVERGENCE_NAMES[index]} ${JSON.stringify(ending)}`,
+  code: lines.join(ending),
+  output: lines.map(line => line === "// Explain this assertion" ? "" : line.replace(" // Explain this call", "").replace(" // Explain this target", "")).join(ending),
+  errorCount: lines.filter(line => line.includes("// Explain")).length,
+})));
+const CONVERGENCE_INVALID = CONVERGENCE.map(({ name, code, output, errorCount }) => ({
+  name, code, output, errors: Array.from({ length: errorCount }, () => ({ messageId: "testComment" as const })),
+}));
+const CONVERGENCE_VALID = CONVERGENCE.map(({ name, output }) => ({ name: `${name} (fixed output)`, code: output }));
 
-TESTER.run("no-test-comments", rule, {
+const CASES = {
   valid: [
+    ...CONVERGENCE_VALID,
     {"name": "adjacent legal markers share their complete backend notice", "filename": "src/grouped-notice.test.ts", "code": "// Copyright first holder\n// Copyright second holder\n// Terms remain part of the same notice\nexport const legalValue = 1;"},
-    NO_TEST_COMMENTS_DOCUMENTATION.examples[1].files[0].source,
+    "expect(result.status).toBe(409);",
     { name: "production prose", filename: "src/request.ts", code: "// Preserve the wire contract\nconst value = 1;" },
     { name: "production implementation with ambiguous basename", filename: "src/rules/source-coupled-test.ts", code: "// This module implements a test-quality rule\nexport const value = 1;" },
     { name: "production token validation in integration directory", filename: "products/platform/apps/web/src/lib/integration/token-validation.ts", code: "export const token = source; // Preserve the source token for validation\n" },
@@ -80,9 +111,10 @@ TESTER.run("no-test-comments", rule, {
       "/* webpackMode: \"lazy-once\", webpackChunkName: \"test-chunk\" */",
       "// webpackIgnore: true"
     ].map(code => ({ name: `retains behavioral directive ${code}`, code })),
-    { name: "local suppression", code: "// eslint-disable-next-line @rule-tester/no-test-comments -- legal review requires this exact rationale\n// Retained contractual explanation\nexpect(run()).toBe(true);" },
   ],
   invalid: [
+    { name: "local suppression is still reported (Oxlint's RuleTester ignores disable directives; valid under ESLint)", code: "// eslint-disable-next-line @rule-tester/no-test-comments -- legal review requires this exact rationale\n// Retained contractual explanation\nexpect(run()).toBe(true);", output: "// eslint-disable-next-line @rule-tester/no-test-comments -- legal review requires this exact rationale\n\nexpect(run()).toBe(true);", errors: [{ messageId: "testComment" }] },
+    ...CONVERGENCE_INVALID,
     {"name": "frontend legal clusters retain every manual diagnostic", "filename": "src/grouped-notice.test.tsx", "code": "// Copyright first frontend holder\n// Copyright second frontend holder\n// Terms remain comments in frontend tests\nexport const legalView = <span/>;", "errors": [{"messageId": "testComment"}, {"messageId": "testComment"}, {"messageId": "testComment"}], "output": null},
     ...["\n", "\r\n", "\r", "\u2028", "\u2029"].map(ending => ({
       name: "inline multiline prose retains its exact terminator " + JSON.stringify(ending),
@@ -143,67 +175,6 @@ TESTER.run("no-test-comments", rule, {
     { name: "trailing comment removes adjacent padding", code: "expect(value).toBe(1);  // Check the value\n", output: "expect(value).toBe(1);\n", errors: [{ messageId: "testComment" }] },
     { name: "ambiguous test basename with actual runner import", filename: "src/request-test.ts", code: "import { test } from 'vitest';\n// Check the request\ntest('request', run);", output: "import { test } from 'vitest';\n\ntest('request', run);", errors: [{ messageId: "testComment" }] },
   ],
-});
+};
 
-
-it.each(["\n", "\r\n"])("preserves behavioral annotations while removing prose and converges for %s", ending => {
-  const lines = [
-    "/* @__NO_SIDE_EFFECTS__ */ function fixture() { return 1; }",
-    "const value = /* @__PURE__ */ fixture(); // Explain this call",
-    "void import(/* @vite-ignore */ path);",
-    "void import(/* webpackIgnore: true */ path);",
-    "// Explain this assertion",
-    "expect(value).toBe(1);",
-    "",
-  ];
-  const source = lines.join(ending);
-  const expected = lines.map(line => line === "// Explain this assertion" ? "" : line.replace(" // Explain this call", "")).join(ending);
-  const configuration: Linter.Config = {
-    files: ["**/*.ts"],
-    languageOptions: { parser },
-    plugins: { local: { rules: { "no-test-comments": rule } } },
-    rules: { "local/no-test-comments": "error" },
-  };
-  const linter = new Linter();
-  const first = linter.verifyAndFix(source, configuration, { filename: "src/request.test.ts" });
-  expect(first.fixed).toBe(true);
-  expect(first.output).toBe(expected);
-  expect(first.messages).toEqual([]);
-  const second = linter.verifyAndFix(first.output, configuration, { filename: "src/request.test.ts" });
-  expect(second.fixed).toBe(false);
-  expect(second.output).toBe(expected);
-  expect(second.messages).toEqual([]);
-});
-
-
-it.each(["\n", "\r\n"])("preserves scanner pragmas and behavioral annotations while fixing prose for %s", ending => {
-  const lines = [
-    "/* @__NO_SIDE_EFFECTS__ */ function fixture() { return 1; }",
-    "const value = /* @__PURE__ */ fixture(); // Explain this call",
-    "// pragma: allowlist-nextline-secret -- fixture target",
-    "const secret = 'fixture-value'; // Explain this target",
-    "const sameLine = 'fixture'; // pragma: whitelist-secret -- fixture value",
-    "void import(/* @vite-ignore */ path);",
-    "void import(/* webpackIgnore: true */ path);",
-    "// Explain this assertion",
-    "expect(value).toBe(1);",
-    "",
-  ];
-  const source = lines.join(ending);
-  const expected = lines.map(line => line === "// Explain this assertion" ? "" : line.replace(" // Explain this call", "").replace(" // Explain this target", "")).join(ending);
-  const configuration: Linter.Config = {
-    files: ["**/*.ts"],
-    languageOptions: { parser },
-    plugins: { local: { rules: { "no-test-comments": rule } } },
-    rules: { "local/no-test-comments": "error" },
-  };
-  const linter = new Linter();
-  const first = linter.verifyAndFix(source, configuration, { filename: "src/request.test.ts" });
-  expect(first.fixed).toBe(true);
-  expect(first.output).toBe(expected);
-  expect(first.messages).toEqual([]);
-  const second = linter.verifyAndFix(first.output, configuration, { filename: "src/request.test.ts" });
-  expect(second.fixed).toBe(false);
-  expect(second.output).toBe(expected);
-  expect(second.messages).toEqual([]);
-});
+TESTER.run("no-test-comments", rule, withDefaults({ filename: "src/request.test.ts" }, CASES));

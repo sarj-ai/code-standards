@@ -1,31 +1,22 @@
-import { join } from "node:path";
+import rule from "../../src/rules/require-assert-never.js";
+import { FIXTURES, RuleTester, ruleTester, typed } from "./_tester.js";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+const RULE_TESTER = ruleTester({ cwd: FIXTURES });
 
-import rule, {
-  REQUIRE_ASSERT_NEVER_DOCUMENTATION,
-} from "../../src/rules/require-assert-never.js";
+const ASSERT_NEVER_DEFAULT_EXAMPLE =
+  "function assertNever(value: never): never { throw new Error(`Unexpected kind: ${String(value)}`); }\ndeclare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }";
+const EMPTY_DEFAULT_EXAMPLE = "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: }";
+const SAFE_AUTOFIX_EXAMPLE =
+  "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: break; } return 0; }";
+const SAFE_AUTOFIX_FIXED_EXAMPLE =
+  "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: assertNever(kind); break; } return 0; }";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+new RuleTester({ eslintCompat: true, languageOptions: { parserOptions: { lang: "ts" } } }).run("require-assert-never without type information", rule, {
+  valid: [{ name: "reports nothing without types", code: EMPTY_DEFAULT_EXAMPLE, settings: { sarj: { typeAware: false } } }],
+  invalid: [],
 });
 
-RULE_TESTER.run("require-assert-never", rule, {
+RULE_TESTER.run("require-assert-never", rule, typed({
   valid: [
     {
       name: "does not treat one union-valued case as covering every possible value",
@@ -37,7 +28,7 @@ RULE_TESTER.run("require-assert-never", rule, {
     },
     {
       name: "accepts the documented exhaustive default",
-      code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[0].files[0].source,
+      code: ASSERT_NEVER_DEFAULT_EXAMPLE,
     },
     {
       name: "allows a switch with no default",
@@ -227,10 +218,10 @@ RULE_TESTER.run("require-assert-never", rule, {
   invalid: [
     {
       name: "reuses only the existing no-op never guard",
-      code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[2].files[0].source,
+      code: SAFE_AUTOFIX_EXAMPLE,
       errors: [{ messageId: "missingAssertNever" }],
       output:
-        REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[2].fixedFiles[0].source,
+        SAFE_AUTOFIX_FIXED_EXAMPLE,
     },
     {
       name: "retains singleton literal case aliases",
@@ -240,7 +231,7 @@ RULE_TESTER.run("require-assert-never", rule, {
     },
     {
       name: "reports the documented empty default",
-      code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[1].files[0].source,
+      code: EMPTY_DEFAULT_EXAMPLE,
       errors: [{ messageId: "missingAssertNever" }],
       output: null,
     },
@@ -321,4 +312,4 @@ RULE_TESTER.run("require-assert-never", rule, {
       output: null,
     },
   ],
-});
+}));

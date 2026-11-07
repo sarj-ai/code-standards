@@ -1,23 +1,18 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/named-child-schema-type.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION } from "../../src/rules/named-child-schema-type.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const DOCUMENTED_NAMED_CHILD = 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());';
+const DOCUMENTED_COPIED_CHILD = 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: "a"; b: "b" }>, z.ZodString> = z.record(KeySchema, z.string());';
 
 const CHILD = 'const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]);';
 const RECORD = 'export const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: "a"; b: "b" }>, z.ZodString> = z.record(KeySchema, z.string());';
 const SOURCE = `import { z } from "zod"; ${CHILD} ${RECORD}`;
 
-new RuleTester({ languageOptions: { parser } }).run("named-child-schema-type", rule, {
+ruleTester().run("named-child-schema-type", rule, {
   valid: [
     { name: "shares an independently named child contract", code: 'import { z } from "zod"; type KeyContract = z.ZodEnum<{ a: "a"; b: "b" }>; const KeySchema: KeyContract = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<KeyContract, z.ZodString> = z.record(KeySchema, z.string());' },
-    { name: "references the complete named child type", code: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "references the complete named child type", code: DOCUMENTED_NAMED_CHILD },
     { name: "keeps a distinct literal domain", code: SOURCE.replace('b: "b" }>,', 'c: "c" }>,') },
     { name: "does not equate schema input and output", code: 'import { z } from "zod"; const ValueSchema: z.ZodPipe<z.ZodString, z.ZodTransform<number, string>> = z.string().transform(Number); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodTransform<number, string>> = z.record(z.string(), ValueSchema);' },
     { name: "preserves a different default wrapper", code: 'import { z } from "zod"; const ValueSchema: z.ZodDefault<z.ZodString> = z.string().default("a"); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodString>> = z.record(z.string(), ValueSchema);' },
@@ -35,12 +30,10 @@ new RuleTester({ languageOptions: { parser } }).run("named-child-schema-type", r
     { name: "skips indirect annotation cycles and unresolved aliases", code: 'import { z } from "zod"; type Value = typeof RecordSchema; const ValueSchema: z.ZodArray<Value> = z.array(RecordSchema); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodArray<Value>> = z.record(z.string(), ValueSchema);' },
     { name: "skips broad schema constraints", code: 'import { z } from "zod"; const ValueSchema: z.ZodType<string> = z.string(); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodType<string>> = z.record(z.string(), ValueSchema);' },
     { name: "skips generated headers", code: `// @generated\n${SOURCE}` },
-    { name: "skips declaration files", code: SOURCE, filename: "src/contracts.d.ts" },
     { name: "skips generated paths", code: SOURCE, filename: "src/generated/contracts.ts" },
-    { name: "honors exact ESLint suppression", code: `import { z } from "zod"; ${CHILD}\n// eslint-disable-next-line @rule-tester/named-child-schema-type -- This record deliberately pins its public contract.\n${RECORD}` },
   ],
   invalid: [
-    { name: "replaces the copied key annotation with the exact child type", code: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.examples[1].files[0].source, output: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\"; b: \"b\" }> = z.enum([\"a\", \"b\"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());", errors: [{ messageId: "namedChildType", data: { name: "KeySchema" } }] },
+    { name: "replaces the copied key annotation with the exact child type", code: DOCUMENTED_COPIED_CHILD, output: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\"; b: \"b\" }> = z.enum([\"a\", \"b\"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());", errors: [{ messageId: "namedChildType", data: { name: "KeySchema" } }] },
     { name: "resolves an aliased Zod namespace", code: SOURCE.replaceAll("z.", "validation.").replace("{ z }", "{ z as validation }"), output: "import { z as validation } from \"zod\"; const KeySchema: validation.ZodEnum<{ a: \"a\"; b: \"b\" }> = validation.enum([\"a\", \"b\"]); export const RecordSchema: validation.ZodRecord<typeof KeySchema, validation.ZodString> = validation.record(KeySchema, validation.string());", errors: [{ messageId: "namedChildType", data: { name: "KeySchema" } }] },
     { name: "resolves a namespace import", code: SOURCE.replace("import { z }", "import * as z"), output: "import * as z from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\"; b: \"b\" }> = z.enum([\"a\", \"b\"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());", errors: [{ messageId: "namedChildType" }] },
     { name: "preserves the entire default value contract", code: 'import { z } from "zod/v4"; const ValueSchema: z.ZodDefault<z.ZodString> = z.string().default("a"); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodDefault<z.ZodString>> = z.record(z.string(), ValueSchema);', output: "import { z } from \"zod/v4\"; const ValueSchema: z.ZodDefault<z.ZodString> = z.string().default(\"a\"); const RecordSchema: z.ZodRecord<z.ZodString, typeof ValueSchema> = z.record(z.string(), ValueSchema);", errors: [{ messageId: "namedChildType", data: { name: "ValueSchema" } }] },

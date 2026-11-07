@@ -1,240 +1,164 @@
 /**
  * @fileoverview no-growing-array-spread-in-loop — review repeated copies of a growing local array in loops.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-growing-array-spread-in-loop.test.ts
+ * The rule needs a TypeScript program to prove the copied binding and the loop
+ * input are arrays. tsrs (`tsrsServices`) provides one when type-aware linting
+ * is on; otherwise `before()` skips the file, as the original returns no
+ * visitors without `parserServices.program`. The type-aware check comes first,
+ * so untyped runs skip the generated-file check and whole-tree `eval` scan the
+ * original runs before it (neither can change the result).
+ *
+ * The walk applies every untyped condition and keeps the assignments that pass;
+ * `Program:exit` asks whether both bindings are arrays in one batch, after the
+ * original's whole-tree `eval` scan, which only files with candidates now pay
+ * for. The original checks are pure, so their order does not change the
+ * reports.
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { enclosingFunction, stableConstInitializer, typeOnlyReference } from "../utils/stable-value-binding.js";
+import { findVariable } from "../utils/static-string.js";
+import { type TsrsFile, tsrsServices, type TsrsServices } from "../utils/tsrs-services.js";
+import { hasIdentifierNamed } from "../utils/unused-private-binding.js";
 
-import { getTypeServices } from "./_eslint-rule.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
-import {
-  enclosingFunction,
-  stableConstInitializer,
-  typeOnlyReference,
-} from "./_stable-value-binding.js";
-import { hasIdentifierNamed } from "./_unused-private-binding.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+type Identifier = Extract<Node, { type: "Identifier" }>;
 
-export const NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION = {
-  summary:
-    "Review repeated prefix copies of a growing fresh local array inside a loop.",
-  rationale:
-    "Repeatedly copying all accumulated elements can make append collection quadratic in the output size.",
-  remediation:
-    "Append into a fresh locally owned output when snapshot and observation semantics permit it.",
-  category: "performance",
-  defaultLevel: "warning",
-  requiresTypeInformation: true,
-  references: [
-    "https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-reduce-accumulator-copy.ts",
-  ],
-  limitations: [
-    "Initially checks a native-array for-of loop with a straight-line append-only body, a fresh local empty array outside that loop, a prefix spread followed by a definite element, and no other writes or observations across the loop.",
-    "Inputs initially come from parameters, imports or declarations, optionally through plain const aliases. Locally literal-, property- and call-produced inputs are excluded while their bounds remain unproved. Retained snapshots, escaping arrays, resets, nested function references and object spreads remain outside this rule. Existing Unicorn concat-loop coverage and reducer copy analysis keep their own owners.",
-    "A finding requests performance review; it is not a measured speedup claim. Corrections remain manual.",
-  ],
-  examples: [
-    {
-      id: "copy-prefix",
-      title: "Repeated spread copies the accumulated rows",
-      outcome: "match",
-      files: [
-        {
-          path: "src/rows.ts",
-          source:
-            "export function collect(input: string[]) { let rows: string[] = []; for (const row of input) { rows = [...rows, row]; } return rows; }",
-        },
-      ],
-      focusPath: "src/rows.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "append-rows",
-      title: "Append into a fresh unobserved output",
-      outcome: "no-match",
-      files: [
-        {
-          path: "src/rows.ts",
-          source:
-            "export function collect(input: string[]) { const rows: string[] = []; for (const row of input) { rows.push(row); } return rows; }",
-        },
-      ],
-      focusPath: "src/rows.ts",
-      expectedCount: 0,
-      public: true,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-function nearestLoop(node: TSESTree.Node): TSESTree.Node | null {
+function nearestLoop(node: Node): Node | null {
   const owner = enclosingFunction(node);
-  for (
-    let current = node.parent;
-    current !== undefined && current !== owner;
-    current = current.parent
-  ) {
-    if (
-      current.type === AST_NODE_TYPES.ForOfStatement ||
-      current.type === AST_NODE_TYPES.ForInStatement ||
-      current.type === AST_NODE_TYPES.ForStatement ||
-      current.type === AST_NODE_TYPES.WhileStatement ||
-      current.type === AST_NODE_TYPES.DoWhileStatement
-    )
-      return current;
+  for (let current = parentOf(node); current !== null && current !== owner; current = parentOf(current)) {
+    if (current.type === "ForOfStatement" || current.type === "ForInStatement" || current.type === "ForStatement" ||
+      current.type === "WhileStatement" || current.type === "DoWhileStatement") return current;
   }
   return null;
 }
 
-export default createRule<[], "copy">({
-  name: "no-growing-array-spread-in-loop",
-  documentation: NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION,
+interface PrefixCopy {
+  readonly left: Identifier;
+  readonly prefix: ESTree.SpreadElement;
+  readonly copied: Identifier;
+}
+
+/** `name = [...copied, item, ...]`: one leading spread followed by plain elements. */
+function prefixCopy(node: ESTree.AssignmentExpression): PrefixCopy | null {
+  if (node.operator !== "=" || node.left.type !== "Identifier") return null;
+  const value = unwrapExpression(node.right);
+  if (value.type !== "ArrayExpression" || value.elements.length < 2) return null;
+  const prefix = value.elements[0];
+  if (prefix?.type !== "SpreadElement" ||
+    value.elements.slice(1).some((element) => element === null || element.type === "SpreadElement")) return null;
+  const copied = unwrapExpression(prefix.argument);
+  return copied.type === "Identifier" ? { left: node.left, prefix, copied } : null;
+}
+
+/** A private `let name = []` declarator. */
+function emptyLetArray(definition: Node | undefined): ESTree.VariableDeclarator | null {
+  if (definition?.type !== "VariableDeclarator") return null;
+  const declaration = parentOf(definition) as ESTree.VariableDeclaration;
+  return definition.id.type === "Identifier" && declaration.kind === "let" &&
+    parentOf(declaration)?.type !== "ExportNamedDeclaration" &&
+    definition.init?.type === "ArrayExpression" && definition.init.elements.length === 0 ? definition : null;
+}
+
+function soleStatement(body: ESTree.Statement): Node | undefined {
+  if (body.type !== "BlockStatement") return body;
+  return body.body.length === 1 ? body.body[0] : undefined;
+}
+
+/** Only the loop writes the array, and it is read only after the loop in the same function. */
+function onlyGrownHere(variable: TsVariable, { left, copied }: PrefixCopy, definition: Node, loop: Node): boolean {
+  const owner = enclosingFunction(definition);
+  return variable.references.every((reference) => {
+    if (reference.init === true || typeOnlyReference(reference)) return true;
+    if (reference.isWrite()) return reference.identifier === left;
+    if (reference.identifier === copied) return true;
+    const parent = parentOf(reference.identifier);
+    return parent?.type !== "ExportSpecifier" && parent?.type !== "ExportDefaultDeclaration" &&
+      reference.identifier.range[0] >= loop.range[1] && enclosingFunction(reference.identifier) === owner;
+  });
+}
+
+export default defineRule({
   meta: {
     type: "suggestion",
     docs: {
-      description: NO_GROWING_ARRAY_SPREAD_IN_LOOP_DOCUMENTATION.summary,
+      description: "Review repeated prefix copies of a growing fresh local array inside a loop.",
+      url: docsUrl("no-growing-array-spread-in-loop"),
     },
     schema: [],
     messages: {
       copy: "This loop copies the growing array prefix. Consider appending into its fresh local output; preserve retained snapshots and observations.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (
-      isGeneratedFile(context, context.sourceCode.text) ||
-      hasIdentifierNamed(context.sourceCode.ast, "eval") ||
-      !context.sourceCode.parserServices?.program ||
-      !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
-    )
-      return {};
-    const services = getTypeServices(context);
-    if (services.program === null) return {};
-    const checker = services.program.getTypeChecker();
-    function inputHasUnknownExtent(
-      node: TSESTree.Node,
-      seen = new Set<TSESTree.Node>(),
-    ): boolean {
-      if (node.type !== AST_NODE_TYPES.Identifier || seen.has(node))
-        return false;
+  createOnce(context) {
+    let sourceCode: SourceCode;
+    let tsrs: TsrsServices | null = null;
+    /** Reports that wait for `left` and `right` to be arrays. */
+    let candidates: { readonly prefix: Node; readonly left: Node; readonly right: Node }[] = [];
+
+    /** Whether each node's type is an array, in one tsrs batch. */
+    function areArrays(file: TsrsFile, nodes: readonly Node[]): boolean[] {
+      const types = file.typesOf(nodes);
+      const present = types.filter((type) => type !== undefined);
+      const arrays = file.batch(present.map((type) => file.checker.isArrayType.gen(type)));
+      let next = 0;
+      // A node tsrs cannot map has no type, as the checker's error type is no array.
+      return types.map((type) => type !== undefined && arrays[next++] === true);
+    }
+
+    function check(node: ESTree.AssignmentExpression): void {
+      const copy = prefixCopy(node);
+      if (copy === null) return;
+      const { left, prefix, copied } = copy;
+      const variable = findVariable(sourceCode.getScope(left), left.name);
+      if (variable === null || variable.defs.length !== 1 || variable.scope.type === "global" ||
+        findVariable(sourceCode.getScope(copied), copied.name) !== variable) return;
+      const definition = emptyLetArray(variable.defs[0]?.node);
+      const loop = definition === null ? null : growthLoop(node, definition);
+      if (definition !== null && loop !== null && onlyGrownHere(variable, copy, definition, loop)) {
+        candidates.push({ prefix, left, right: loop.right });
+      }
+    }
+
+    /** The later `for...of` over an input of unknown extent whose only statement is this assignment. */
+    function growthLoop(node: ESTree.AssignmentExpression, definition: Node): ESTree.ForOfStatement | null {
+      const loop = nearestLoop(node);
+      if (loop?.type !== "ForOfStatement" || definition.range[1] >= loop.range[0]) return null;
+      const body = soleStatement(loop.body);
+      return body?.type === "ExpressionStatement" && body.expression === node && inputHasUnknownExtent(loop.right) &&
+        loop.right.type !== "ArrayExpression" ? loop : null;
+    }
+
+    function inputHasUnknownExtent(node: Node, seen = new Set<Node>()): boolean {
+      if (node.type !== "Identifier" || seen.has(node)) return false;
       seen.add(node);
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(node),
-        node.name,
-      );
+      const variable = findVariable(sourceCode.getScope(node), node.name);
       if (variable === null || variable.defs.length !== 1) return false;
       const definition = variable.defs[0];
-      if (
-        definition?.type === "Parameter" ||
-        definition?.type === "ImportBinding"
-      )
-        return true;
-      const local = stableConstInitializer(context.sourceCode, node);
+      if (definition?.type === "Parameter" || definition?.type === "ImportBinding") return true;
+      const local = stableConstInitializer(sourceCode, node);
       if (local !== null) return inputHasUnknownExtent(local.value, seen);
-      return (
-        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
-        definition.node.init === null
-      );
+      return definition?.node.type === "VariableDeclarator" && definition.node.init === null;
     }
+
     return {
-      AssignmentExpression(node: TSESTree.AssignmentExpression): void {
-        if (
-          node.operator !== "=" ||
-          node.left.type !== AST_NODE_TYPES.Identifier
-        )
-          return;
-        const value = unwrapExpression(node.right);
-        if (
-          value.type !== AST_NODE_TYPES.ArrayExpression ||
-          value.elements.length < 2
-        )
-          return;
-        const prefix = value.elements[0];
-        if (
-          prefix?.type !== AST_NODE_TYPES.SpreadElement ||
-          value.elements
-            .slice(1)
-            .some(
-              (element) =>
-                element === null ||
-                element.type === AST_NODE_TYPES.SpreadElement,
-            )
-        )
-          return;
-        const copied = unwrapExpression(prefix.argument);
-        if (copied.type !== AST_NODE_TYPES.Identifier) return;
-        const variable = ASTUtils.findVariable(
-          context.sourceCode.getScope(node.left),
-          node.left.name,
-        );
-        if (
-          variable === null ||
-          variable.defs.length !== 1 ||
-          variable.scope.type === "global" ||
-          ASTUtils.findVariable(
-            context.sourceCode.getScope(copied),
-            copied.name,
-          ) !== variable
-        )
-          return;
-        const definition = variable.defs[0]?.node;
-        const loop = nearestLoop(node);
-        if (
-          definition?.type !== AST_NODE_TYPES.VariableDeclarator ||
-          definition.id.type !== AST_NODE_TYPES.Identifier ||
-          definition.parent.kind !== "let" ||
-          definition.parent.parent.type ===
-            AST_NODE_TYPES.ExportNamedDeclaration ||
-          definition.init?.type !== AST_NODE_TYPES.ArrayExpression ||
-          definition.init.elements.length !== 0 ||
-          loop?.type !== AST_NODE_TYPES.ForOfStatement ||
-          definition.range[1] >= loop.range[0] ||
-          !checker.isArrayType(
-            checker.getTypeAtLocation(
-              services.esTreeNodeToTSNodeMap.get(node.left),
-            ),
-          )
-        )
-          return;
-        const body =
-          loop.body.type === AST_NODE_TYPES.BlockStatement
-            ? loop.body.body.length === 1
-              ? loop.body.body[0]
-              : undefined
-            : loop.body;
-        if (
-          body?.type !== AST_NODE_TYPES.ExpressionStatement ||
-          body.expression !== node ||
-          !inputHasUnknownExtent(loop.right) ||
-          !checker.isArrayType(
-            checker.getTypeAtLocation(
-              services.esTreeNodeToTSNodeMap.get(loop.right),
-            ),
-          ) ||
-          loop.right.type === AST_NODE_TYPES.ArrayExpression
-        )
-          return;
-        const owner = enclosingFunction(definition);
-        const owned = variable.references.every((reference) => {
-          if (reference.init === true || typeOnlyReference(reference))
-            return true;
-          if (reference.isWrite()) return reference.identifier === node.left;
-          if (reference.identifier === copied) return true;
-          return (
-            reference.identifier.parent.type !==
-              AST_NODE_TYPES.ExportSpecifier &&
-            reference.identifier.parent.type !==
-              AST_NODE_TYPES.ExportDefaultDeclaration &&
-            reference.identifier.range[0] >= loop.range[1] &&
-            enclosingFunction(reference.identifier) === owner
-          );
+      before(): boolean {
+        candidates = [];
+        tsrs = tsrsServices(context);
+        if (tsrs === null) return false;
+        sourceCode = context.sourceCode;
+        return !isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text);
+      },
+      AssignmentExpression: check,
+      "Program:exit"() {
+        // The original skips files that mention `eval`; only files with candidates need the whole-tree scan.
+        if (tsrs === null || candidates.length === 0 || hasIdentifierNamed(sourceCode, "eval")) return;
+        const arrays = tsrs.run((file) => areArrays(file, candidates.flatMap((candidate) => [candidate.left, candidate.right])));
+        if (arrays === null) return;
+        candidates.forEach((candidate, i) => {
+          if (arrays[2 * i] === true && arrays[2 * i + 1] === true) context.report({ node: candidate.prefix, messageId: "copy" });
         });
-        if (owned) context.report({ node: prefix, messageId: "copy" });
       },
     };
   },

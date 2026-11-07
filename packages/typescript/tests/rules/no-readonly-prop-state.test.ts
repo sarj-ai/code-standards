@@ -1,25 +1,15 @@
 import { join } from "node:path";
 
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
 import rule from "../../src/rules/no-readonly-prop-state.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+import { FIXTURES, ruleTester, typed, untyped } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+const TESTER = ruleTester({ cwd: join(FIXTURES, "minimal-consumer") });
 
-const PARSER_OPTIONS = { projectService: { allowDefaultProject: ["*.tsx"], defaultProject: "tsconfig.json" }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "minimal-consumer"), ecmaFeatures: { jsx: true } };
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: PARSER_OPTIONS } });
 const PREFIX = "import { useState } from 'react'; ";
 const VIEW = "export function View({ status }: { status: string }) { const [value, setValue] = useState(status); return <p>{value}</p>; }";
 const CASE = PREFIX + VIEW;
 
-TESTER.run("no-readonly-prop-state", rule, {
+TESTER.run("no-readonly-prop-state", rule, typed({
   valid: [
     {"name": "Unknown computed member writes exclude namespace hooks", "filename": "probe.tsx", "code": "import R from 'react'; import {snapshot} from './snapshot-adapter'; export function StateReview({ seed }: { seed: string }) { const key: string = opaqueKey; R[key] = snapshot; const [saved] = R.useState(() => seed);  return <output data-review=\"9\">{saved}</output>; }"},
     {"name": "Destructuring can replace an imported hook member", "filename": "probe.tsx", "code": "import R from 'react'; import {snapshot} from './snapshot-adapter'; export function StateReview({ seed }: { seed: string }) { ({hook: R.useState} = {hook: snapshot}); const [saved] = R.useState(() => seed);  return <output data-review=\"9\">{saved}</output>; }"},
@@ -98,26 +88,25 @@ TESTER.run("no-readonly-prop-state", rule, {
     { name: "erased wrappers", filename: "probe.tsx", code: CASE.replace("useState(status)", "(useState((status as string)!) as [string, (value: string) => void])"), errors: [{ messageId: "readonlyPropState" }] },
     { name: "type query does not update state", filename: "probe.tsx", code: CASE.replace("return <p>", "type Updater = typeof setValue; return <p>"), errors: [{ messageId: "readonlyPropState" }] },
   ],
-});
+}));
 
-it("executes documented examples", async () => { await verifyRuleExamples(rule); });
+TESTER.run("executes documented examples", rule, typed({
+  valid: [
+    { name: "documented example after", filename: "src/status.tsx", code: "export function Status({ status }: { status: string }) { return <p>{status}</p>; }" },
+  ],
+  invalid: [
+    { name: "documented example before", filename: "src/status.tsx", code: "import { useState } from 'react'; export function Status({ status }: { status: string }) { const [savedStatus] = useState(status); return <p>{savedStatus}</p>; }", errors: [{ messageId: "readonlyPropState" }] },
+  ],
+}));
 
-it("keeps lifecycle changes manual and respects an explicit suppression", () => {
-  const source = CASE.replace("useState(status)", "useState(() => status)");
-  const linter = new Linter();
-  const configuration = [{ files: ["**/*.tsx"], languageOptions: { parser }, plugins: { sarj: { rules: { "no-readonly-prop-state": rule } } }, rules: { "sarj/no-readonly-prop-state": "warn" as const } }];
-  const first = linter.verifyAndFix(source, configuration, { filename: "probe.tsx" });
-  expect(first.fixed).toBe(false);
-  expect(first.output).toBe(source);
-  expect(first.messages.map(message => message.messageId)).toEqual(["readonlyPropState"]);
-  const second = linter.verifyAndFix(first.output, configuration, { filename: "probe.tsx" });
-  expect(second).toEqual(first);
-  const suppressed = "/* eslint-disable sarj/no-readonly-prop-state -- intentional mount snapshot */\n" + source;
-  expect(linter.verify(suppressed, configuration, { filename: "probe.tsx" })).toEqual([]);
-});
+TESTER.run("keeps lifecycle changes manual", rule, typed({
+  valid: [],
+  invalid: [
+    { name: "lazy prop copy has no fix (disable-comment half not ported: Oxlint RuleTester ignores directives)", filename: "probe.tsx", code: CASE.replace("useState(status)", "useState(() => status)"), output: null, errors: [{ messageId: "readonlyPropState" }] },
+  ],
+}));
 
-it("abstains for eager inputs without type information", () => {
-  const linter = new Linter();
-  const configuration = [{ files: ["**/*.tsx"], languageOptions: { parser }, plugins: { sarj: { rules: { "no-readonly-prop-state": rule } } }, rules: { "sarj/no-readonly-prop-state": "warn" as const } }];
-  expect(linter.verify(CASE, configuration, { filename: "probe.tsx" })).toEqual([]);
-});
+TESTER.run("abstains for eager inputs without type information", rule, untyped({
+  valid: [{ name: "eager prop copy without types", filename: "probe.tsx", code: CASE }],
+  invalid: [],
+}));

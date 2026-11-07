@@ -1,17 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/no-server-env-in-client-component.js";
+import { ruleTester } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
-});
+const RULE_TESTER = ruleTester({ lang: "tsx" });
 
 RULE_TESTER.run("no-server-env-in-client-component", rule, {
   valid: [

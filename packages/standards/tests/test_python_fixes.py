@@ -287,12 +287,12 @@ def test_staged_fix_respects_index_selection(tmp_path: Path, monkeypatch: pytest
     ],
     ids=("large-typescript", "large-yaml", "undecodable-python", "unowned-python"),
 )
-def test_eslint_only_default_fix_preserves_python_ownership(
+def test_typescript_only_default_fix_preserves_python_ownership(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, data: bytes
 ) -> None:
     (tmp_path / "owned.ts").write_text("export const owned = 1;\n")
     (tmp_path / "package.json").write_text('{"name":"example","private":true}\n')
-    adopted = replace(MANIFEST, configs=("eslint",))
+    adopted = replace(MANIFEST, configs=("typescript",))
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render())
     path = tmp_path / name
     path.write_bytes(data)

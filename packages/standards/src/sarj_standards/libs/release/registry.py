@@ -204,17 +204,17 @@ def lint_config_requirements(root: Path) -> tuple[RegistryRequirement, ...]:
             raise ValueError(msg)
         requirements.append(RegistryRequirement("pypi", match["name"], match["version"]))
 
-    peers_path = resolved / "packages/standards/src/sarj_standards/configs/eslint.peers.json"
+    peers_path = resolved / "packages/standards/src/sarj_standards/configs/typescript.peers.json"
     try:
         peers_value: object = parse_json(peers_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read compatibility-bundle peers {peers_path}: {exc}"
         raise ValueError(msg) from exc
-    peers = string_object_dict(peers_value, label="ESLint peer manifest").get("peers")
+    peers = string_object_dict(peers_value, label="TypeScript peer manifest").get("peers")
     if not is_object_dict(peers):
         msg = f"{peers_path} has no peers object"
         raise ValueError(msg)
-    plugin_version = string_object_dict(peers, label="ESLint peers").get("@sarj/eslint-plugin")
+    plugin_version = string_object_dict(peers, label="TypeScript peers").get("@sarj/eslint-plugin")
     if not isinstance(plugin_version, str) or not plugin_version:
         msg = f"{peers_path} has no exact @sarj/eslint-plugin version"
         raise ValueError(msg)

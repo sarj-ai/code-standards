@@ -1,23 +1,11 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-redundant-optional-array-default.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION,
-} from "../../src/rules/no-redundant-optional-array-default.js";
+const DOCUMENTED_ARRAY_DEFAULT = 'import { z } from "zod"; const Items = z.array(z.string()).default([]);';
+const DOCUMENTED_OPTIONAL_ARRAY_DEFAULT = 'import { z } from "zod"; const Items = z.array(z.string()).optional().default([]);';
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const RULE_TESTER = ruleTester();
 const PRODUCTION = "src/schema.ts";
 
 RULE_TESTER.run("no-redundant-optional-array-default", rule, {
@@ -70,8 +58,7 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "accepts the documented array default",
       filename: PRODUCTION,
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[0]
-        .files[0].source,
+      code: DOCUMENTED_ARRAY_DEFAULT,
     },
     {
       name: "does not touch string defaults",
@@ -89,8 +76,8 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
       code: 'import { z } from "zod"; const Items = z.array(z.string()).default([]).optional();',
     },
     {
-      name: "allows an array default without optional",
-      filename: PRODUCTION,
+      name: "allows an array default without optional (own filename: same code as the documented example)",
+      filename: "src/schema-default.ts",
       code: 'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
     },
     {
@@ -126,14 +113,12 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "ignores test files",
       filename: "src/schema.test.ts",
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
-        .files[0].source,
+      code: DOCUMENTED_OPTIONAL_ARRAY_DEFAULT,
     },
     {
       name: "ignores generated files",
       filename: "src/generated/schema.ts",
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
-        .files[0].source,
+      code: DOCUMENTED_OPTIONAL_ARRAY_DEFAULT,
     },
   ],
   invalid: [
@@ -199,8 +184,7 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "reports the documented Zod 4 chain without suppressing constructor hooks",
       filename: PRODUCTION,
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
-        .files[0].source,
+      code: DOCUMENTED_OPTIONAL_ARRAY_DEFAULT,
       output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },

@@ -144,7 +144,7 @@
           ],
           "repeatable": false,
           "required": false,
-          "summary": "the directory that owns the npm lockfile (default: detected); new ESLint entrypoints use TypeScript"
+          "summary": "the directory that owns the npm lockfile (default: detected); it receives oxlint.config.mts"
         },
         {
           "choices": [],
@@ -227,7 +227,6 @@
           "choices": [
             "checkov",
             "detekt",
-            "eslint",
             "ktlint",
             "markdownlint",
             "mobile-security",
@@ -237,6 +236,7 @@
             "swiftformat",
             "swiftlint",
             "taplo",
+            "typescript",
             "yamllint",
             "zizmor"
           ],
@@ -408,7 +408,7 @@
           ],
           "repeatable": false,
           "required": false,
-          "summary": "allow executable repository ESLint configuration (generated hooks and CI set this explicitly)"
+          "summary": "allow executable repository Oxlint and oxfmt configuration (generated hooks and CI set this explicitly)"
         },
         {
           "choices": [],
@@ -437,11 +437,11 @@
           "kind": "option",
           "metavar": null,
           "names": [
-            "--skip-eslint"
+            "--skip-typescript"
           ],
           "repeatable": false,
           "required": false,
-          "summary": "leave ESLint to the repository's own required CI; configs stay managed and React Doctor still runs"
+          "summary": "leave Oxlint, oxfmt and the tsrs type check to the repository's own required CI; configs stay managed and React Doctor still runs"
         },
         {
           "choices": [],
@@ -530,7 +530,7 @@
         "check"
       ],
       "summary": "run the complete quality gate or check selected paths or custom rules",
-      "usage": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--fix] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]"
+      "usage": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-typescript] [--staged] [--fix] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]"
     },
     {
       "commands": [],
@@ -685,7 +685,7 @@
           ],
           "repeatable": false,
           "required": false,
-          "summary": "allow repository ESLint configuration to execute"
+          "summary": "allow repository Oxlint and oxfmt configuration to execute"
         },
         {
           "choices": [],
@@ -1489,7 +1489,6 @@
               "choices": [
                 "checkov",
                 "detekt",
-                "eslint",
                 "ktlint",
                 "markdownlint",
                 "mobile-security",
@@ -1499,6 +1498,7 @@
                 "swiftformat",
                 "swiftlint",
                 "taplo",
+                "typescript",
                 "yamllint",
                 "zizmor"
               ],
@@ -1540,7 +1540,7 @@
             "show",
             "peers"
           ],
-          "summary": "show tested ESLint peer dependencies and install command",
+          "summary": "show tested TypeScript toolchain peer dependencies and install command",
           "usage": "code-standards show peers [-h]"
         },
         {
@@ -3089,7 +3089,7 @@
                   ],
                   "repeatable": false,
                   "required": false,
-                  "summary": "allow executable repository ESLint configuration"
+                  "summary": "allow executable repository Oxlint and oxfmt configuration"
                 },
                 {
                   "choices": [],
@@ -3361,6 +3361,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v8.208.8).",
-  "version": "8.208.8"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.0.0).",
+  "version": "9.0.0"
 }

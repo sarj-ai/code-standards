@@ -3,11 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import] -- compiles the bundled TypeScript preset without evaluating its input.
 from typing import TYPE_CHECKING, Final
 
-from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards._meta import CONFIGS_DIR, OXLINT_STRICT
 from sarj_standards.libs.linting import library_policy
 from sarj_standards.libs.repository import rule_catalog_artifact
 from sarj_standards.libs.rules import RuleEngine
@@ -18,22 +16,14 @@ if TYPE_CHECKING:
 
 
 _RUFF_APPLICATION: Final = CONFIGS_DIR / "ruff.application.toml"
-_ESLINT_APPLICATION: Final = CONFIGS_DIR / "eslint.application.mjs"
 _RUFF_ALIAS: Final = '# Compatibility alias; all repositories use the same policy.\nextend = "ruff.strict.toml"\n'
-_ESLINT_ALIAS: Final = '// Compatibility alias; all repositories use the same policy.\nexport { createConfig, default } from "./eslint.strict.mjs";\n'
-_ESLINT_DECLARATION_ALIAS: Final = _ESLINT_ALIAS + 'export type { ConfigOptions } from "./eslint.strict.mjs";\n'
 _RUFF_MARKER: Final = "[lint.per-file-ignores]"
-_ESLINT_MARKER: Final = "          paths: [\n"
-_ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
-_ESLINT_CONFIG_END: Final = "\n  ] as unknown as Linter.Config[];\n}\n\nconst config: Linter.Config[] = createConfig();\nexport default config;\n"
+_OXLINT_POLICY: Final = re.compile(
+    r"(?ms)^// BEGIN GENERATED LIBRARY POLICY\n.*?^// END GENERATED LIBRARY POLICY\n",
+)
 _RULE_CATALOG: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
-_ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts")
-_ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs")
+_OXLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/oxlint.strict.mts")
 _TYPESCRIPT_PRESET: Final = Path("packages/typescript/src/index.ts")
-_ADVISORY_START: Final = "const ADVISORY_RULES = [\n"
-_ADVISORY_END: Final = "] as const;"
-_PRESET_POLICY_START: Final = "const RULE_POLICY = {\n"
-_PRESET_POLICY_END: Final = "} as const satisfies PresetPolicy;"
 _RULE_LEVEL = re.compile(r'(?m)^(?P<prefix>\s+"@sarj/(?P<rule>[a-z0-9-]+)":\s*)(?P<array>(?:\[\s*)?)"(?:warn|error)"')
 
 
@@ -54,90 +44,41 @@ def _python_bans() -> Mapping[str, str]:
     return library_policy.python_banned_api()
 
 
-def render_eslint_strict(standard: str | None = None) -> str:
+def render_oxlint_strict(standard: str | None = None) -> str:
     if standard is None:
-        standard = (CONFIGS_DIR / "eslint.strict.ts").read_text(encoding="utf-8")
-    standard = _without_generated_policy(standard)
-    bans = _typescript_bans()
-    entries = "".join(f"            {json.dumps(dict(entry), sort_keys=True)},\n" for entry in bans)
-    addition = f"            // BEGIN GENERATED LIBRARY POLICY\n{entries}            // END GENERATED LIBRARY POLICY\n"
-    if _ESLINT_MARKER not in standard:
-        msg = "eslint.strict.ts is missing the no-restricted-imports generation marker"
+        standard = OXLINT_STRICT.read_text(encoding="utf-8")
+    if len(_OXLINT_POLICY.findall(standard)) != 1:
+        msg = "oxlint.strict.mts needs exactly one GENERATED LIBRARY POLICY block"
         raise ValueError(msg)
-    with_paths = standard.replace(_ESLINT_MARKER, _ESLINT_MARKER + addition, 1)
+    bans = _typescript_bans()
     patterns = [
-        {
-            "group": [f"{name}/*"],
-            "message": entry.get("message", "Use the preferred library."),
-        }
+        {"group": [f"{name}/*"], "message": entry.get("message", "Use the preferred library.")}
         for entry in bans
         if isinstance(name := entry.get("name"), str)
     ]
-    pattern_lines = "".join(f"            {json.dumps(pattern, sort_keys=True)},\n" for pattern in patterns)
-    pattern_block = (
-        f'          patterns: [{{"group": ["*/index", "*/index.ts"]}},\n'
-        f"            // BEGIN GENERATED LIBRARY POLICY\n{pattern_lines}            // END GENERATED LIBRARY POLICY\n"
-        "          ],\n"
+    block = (
+        "// BEGIN GENERATED LIBRARY POLICY\n"
+        f"{_constant('LIBRARY_IMPORT_PATHS', bans)}"
+        f"{_constant('LIBRARY_IMPORT_PATTERNS', patterns)}"
+        f"{_constant('LIBRARY_LOADS', _typescript_runtime_bans())}"
+        "// END GENERATED LIBRARY POLICY\n"
     )
-    if _ESLINT_PATTERNS_MARKER not in with_paths:
-        msg = "eslint.strict.ts is missing the no-restricted-imports patterns generation marker"
-        raise ValueError(msg)
-    with_static_policy = with_paths.replace(_ESLINT_PATTERNS_MARKER, pattern_block, 1)
-    runtime_policy = json.dumps(_typescript_runtime_bans(), indent=2, sort_keys=True)
-    indented_runtime_policy = runtime_policy.replace("\n", "\n          ")
-    application_block = (
-        "  // BEGIN GENERATED LIBRARY POLICY\n"
-        "\n  {\n"
-        '    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}"],\n'
-        "    rules: {\n"
-        '      "@sarj/no-restricted-library-load": [\n'
-        '        "error",\n'
-        f"        {{ libraries: {indented_runtime_policy} }},\n"
-        "      ],\n"
-        '      "@sarj/prefer-native-random-uuid": "error",\n'
-        '      "@sarj/prefer-shadcn-primitives": "error",\n'
-        "    },\n"
-        "  },\n"
-        "\n  {\n"
-        "    files: [\n"
-        '      "**/*.{test,spec,e2e}.{js,jsx,ts,tsx}",\n'
-        '      "**/test/**",\n'
-        '      "**/tests/**",\n'
-        '      "**/__tests__/**",\n'
-        '      "**/fixtures/**",\n'
-        '      "**/e2e/**",\n'
-        '      "**/e2e-apps/**",\n'
-        '      "**/perf-regression/**",\n'
-        '      "**/components/ui/**",\n'
-        '      "**/components/design-system/**",\n'
-        "    ],\n"
-        "    rules: {\n"
-        '      "@sarj/prefer-shadcn-primitives": "off",\n'
-        "    },\n"
-        "  },\n"
-        "  // END GENERATED LIBRARY POLICY\n"
-    )
-    if _ESLINT_CONFIG_END not in with_static_policy:
-        msg = "eslint.strict.ts is missing its library-rule generation marker"
-        raise ValueError(msg)
-    return with_static_policy.replace(
-        _ESLINT_CONFIG_END,
-        application_block + _ESLINT_CONFIG_END,
-        1,
-    )
+    return _OXLINT_POLICY.sub(lambda _: block, standard, count=1)
+
+
+def _constant(name: str, entries: Sequence[Mapping[str, str | Sequence[str]]]) -> str:
+    lines = "".join(f"  {json.dumps(dict(entry), sort_keys=True)},\n" for entry in entries)
+    return f"const {name} = [\n{lines}];\n"
 
 
 def _without_generated_policy(source: str) -> str:
     source = re.sub(
-        r"(?m)^[ \t]*(?:#|//) BEGIN GENERATED LIBRARY POLICY\n.*?^[ \t]*(?:#|//) END GENERATED LIBRARY POLICY\n",
+        r"(?m)^[ \t]*# BEGIN GENERATED LIBRARY POLICY\n.*?^[ \t]*# END GENERATED LIBRARY POLICY\n",
         "",
         source,
         flags=re.DOTALL,
     )
-    source = source.replace("\n\n[lint.per-file-ignores]", "\n[lint.per-file-ignores]")
-    for prefix in ('"*/index", "*/index.ts"', '{"group": ["*/index", "*/index.ts"]}'):
-        source = source.replace(f"          patterns: [{prefix},\n          ],\n", _ESLINT_PATTERNS_MARKER)
-    return source
+    return source.replace("\n\n[lint.per-file-ignores]", "\n[lint.per-file-ignores]")
 
 
 def _typescript_bans() -> Sequence[Mapping[str, str]]:
@@ -167,12 +108,8 @@ def generated_configs() -> Mapping[Path, str]:
     ruff = render_ruff_strict()
     configs = {
         CONFIGS_DIR / "ruff.strict.toml": ruff,
-        CONFIGS_DIR / "eslint.strict.ts": (typed := render_eslint_strict()),
-        CONFIGS_DIR / "eslint.strict.mjs": render_legacy_eslint(typed),
-        CONFIGS_DIR / "eslint.strict.d.mts": render_eslint_declaration(typed),
+        OXLINT_STRICT: render_oxlint_strict(),
         _RUFF_APPLICATION: _RUFF_ALIAS,
-        _ESLINT_APPLICATION: _ESLINT_ALIAS,
-        CONFIGS_DIR / "eslint.application.d.mts": _ESLINT_DECLARATION_ALIAS,
     }
     repository = CONFIGS_DIR.parents[4]
     if (repository / _TYPESCRIPT_PRESET).is_file():
@@ -188,23 +125,12 @@ def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
     warnings = frozenset(
         str(selector.rule_id)
         for selector in rule_catalog_artifact.warning_selectors(repository / _RULE_CATALOG)
-        if selector.engine is RuleEngine.ESLINT
+        if selector.engine is RuleEngine.OXLINT
     )
 
-    preset_path = repository / _TYPESCRIPT_PRESET
-    strict_path = repository / _ESLINT_STRICT
-    preset = preset_path.read_text(encoding="utf-8")
+    strict_path = repository / _OXLINT_STRICT
     strict = strict_path.read_text(encoding="utf-8")
-    rendered_preset = _render_typescript_preset(preset, warnings)
-    rendered_strict = _render_rule_levels(strict, warnings, label="eslint.strict.ts")
-    return {
-        preset_path: rendered_preset,
-        strict_path: rendered_strict,
-        strict_path.with_suffix(".mjs"): render_legacy_eslint(rendered_strict),
-        strict_path.with_suffix(".d.mts"): render_eslint_declaration(rendered_strict),
-        repository / _ESLINT_APPLICATION_REPO: _ESLINT_ALIAS,
-        (repository / _ESLINT_APPLICATION_REPO).with_suffix(".d.mts"): _ESLINT_DECLARATION_ALIAS,
-    }
+    return {strict_path: _render_rule_levels(strict, warnings)}
 
 
 def sync_warning_levels(repository: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
@@ -219,37 +145,11 @@ def sync_warning_levels(repository: Path, *, check: bool, writer: Callable[[Path
     return True
 
 
-def _render_typescript_preset(source: str, warnings: frozenset[str]) -> str:
-    if _PRESET_POLICY_START in source or _PRESET_POLICY_END in source:
-        return _render_policy_levels(source, warnings)
-    if source.count(_ADVISORY_START) != 1 or source.count(_ADVISORY_END) < 1:
-        msg = "TypeScript preset is missing the advisory-rule generation markers"
-        raise ValueError(msg)
-    start = source.index(_ADVISORY_START) + len(_ADVISORY_START)
-    end = source.index(_ADVISORY_END, start)
-    advisory = "".join(f'  "@sarj/{name}",\n' for name in sorted(warnings))
-    with_advisory = source[:start] + advisory + source[end:]
-    return _render_rule_levels(with_advisory, warnings, label="TypeScript presets")
-
-
-def _render_policy_levels(source: str, warnings: frozenset[str]) -> str:
-    if source.count(_PRESET_POLICY_START) != 1 or source.count(_PRESET_POLICY_END) != 1 or _ADVISORY_START in source:
-        msg = "TypeScript preset has an ambiguous or incomplete policy table"
-        raise ValueError(msg)
-    start = source.index(_PRESET_POLICY_START) + len(_PRESET_POLICY_START)
-    end = source.index(_PRESET_POLICY_END)
-    if end < start:
-        msg = "TypeScript preset policy table closes before its declaration"
-        raise ValueError(msg)
-    policy = _render_rule_levels(source[start:end], warnings, label="TypeScript policy")
-    return source[:start] + policy + source[end:]
-
-
-def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) -> str:
+def _render_rule_levels(source: str, warnings: frozenset[str]) -> str:
     configured = {match.group("rule") for match in _RULE_LEVEL.finditer(source)}
     missing = sorted(warnings - configured)
     if missing:
-        msg = f"{label} is missing warning-stage ESLint rules: {', '.join(missing)}"
+        msg = f"oxlint.strict.mts is missing warning-stage Oxlint rules: {', '.join(missing)}"
         raise ValueError(msg)
 
     def replace(match: re.Match[str]) -> str:
@@ -261,7 +161,7 @@ def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) ->
 
 def sync(*, check: bool) -> bool:
     repository = CONFIGS_DIR.parents[4]
-    warning_levels_are_managed = (repository / _RULE_CATALOG).is_file() and (repository / _TYPESCRIPT_PRESET).is_file()
+    warning_levels_are_managed = (repository / _RULE_CATALOG).is_file() and (repository / _OXLINT_STRICT).is_file()
     if warning_levels_are_managed and not sync_warning_levels(repository, check=check):
         return False
     expected = generated_configs()
@@ -272,47 +172,3 @@ def sync(*, check: bool) -> bool:
     for path, contents in expected.items():
         path.write_text(contents, encoding="utf-8")
     return True
-
-
-def render_legacy_eslint(source: str) -> str:
-    return _compile_eslint(source, declaration=False)
-
-
-def render_eslint_declaration(source: str) -> str:
-    return _compile_eslint(source, declaration=True)
-
-
-def _compile_eslint(source: str, *, declaration: bool) -> str:
-    node = shutil.which("node")
-    if node is None:
-        msg = "Node.js is required to compile the legacy ESLint preset"
-        raise RuntimeError(msg)
-    command = (node, str(Path(__file__).parents[2] / "configs" / "compile-eslint.mts"))
-    if declaration:
-        repository = CONFIGS_DIR.parents[4]
-        if not (repository / _TYPESCRIPT_PRESET).is_file():
-            working_directory = Path.cwd()
-            repository = next(
-                (
-                    parent
-                    for parent in (working_directory, *working_directory.parents)
-                    if (parent / _TYPESCRIPT_PRESET).is_file()
-                ),
-                working_directory,
-            )
-        compiler = repository / "packages/typescript/node_modules/typescript/lib/typescript.js"
-        if not compiler.is_file():
-            msg = (
-                "ESLint declaration generation requires the producer's locked TypeScript compiler; run repository setup"
-            )
-            raise RuntimeError(msg)
-        command += ("--declaration", str(compiler.resolve()))
-    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed bundled compiler; input is parsed, never evaluated.
-        command,
-        input=source,
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=30,
-    )
-    return result.stdout

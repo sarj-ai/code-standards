@@ -59,64 +59,23 @@ def test_sync_service_reports_current_config_as_ok_without_rewriting(tmp_path: P
     assert plan.targets[0].destination.stat().st_mtime_ns == before
 
 
-def test_new_eslint_sync_uses_typescript_without_creating_javascript(tmp_path: Path) -> None:
-    plan = plan_sync(tmp_path, configs=("eslint",))
+def test_typescript_sync_writes_the_oxlint_preset_and_its_companions(tmp_path: Path) -> None:
+    plan = plan_sync(tmp_path, configs=("typescript",))
     first = apply_sync(plan)
-    preset = tmp_path / "eslint.strict.ts"
+    preset = tmp_path / "oxlint.strict.mts"
     before = preset.read_bytes()
-    repeated = apply_sync(plan_sync(tmp_path, configs=("eslint",)), force=True)
+    repeated = apply_sync(plan_sync(tmp_path, configs=("typescript",)), force=True)
 
     assert first.status == 0
-    assert preset.is_file()
-    assert not (tmp_path / "eslint.strict.mjs").exists()
+    assert {target.name: target.destination.name for target in plan.targets} == {
+        "typescript": "oxlint.strict.mts",
+        "oxfmt": "oxfmt.strict.mts",
+        "react-doctor": "doctor.config.json",
+        "syncpack": "syncpack.strict.mts",
+    }
+    assert not list(tmp_path.glob("eslint.*"))
     assert repeated.count(SyncOutcome.WRITTEN) == 0
     assert preset.read_bytes() == before
-
-
-def test_eslint_sync_preserves_existing_legacy_loader_and_prefers_explicit_typescript(tmp_path: Path) -> None:
-    legacy = tmp_path / "eslint.strict.mjs"
-    legacy.write_text("export default [];\n", encoding="utf-8")
-    old_plan = plan_sync(tmp_path, configs=("eslint",))
-    assert old_plan.targets[0].destination == legacy
-    apply_sync(old_plan, force=True)
-
-    typed = tmp_path / "eslint.strict.ts"
-    typed.write_bytes(legacy.read_bytes())
-    new_plan = plan_sync(tmp_path, configs=("eslint",))
-    assert new_plan.targets[0].destination == typed
-    assert apply_sync(new_plan).status == 0
-    assert legacy.read_bytes() == typed.read_bytes()
-
-
-@pytest.mark.parametrize("suffix", ["ts", "mjs"])
-def test_eslint_sync_updates_the_active_preset_when_both_formats_exist(tmp_path: Path, suffix: str) -> None:
-    for name in ("eslint.strict.ts", "eslint.strict.mjs"):
-        (tmp_path / name).write_text("stale\n", encoding="utf-8")
-    (tmp_path / "eslint.config.ts").write_text(
-        f'export {{ default }} from "./eslint.strict.{suffix}";\n', encoding="utf-8"
-    )
-    plan = plan_sync(tmp_path, configs=("eslint",))
-
-    assert plan.targets[0].destination == tmp_path / f"eslint.strict.{suffix}"
-    assert apply_sync(plan, force=True).status == 0
-    assert plan.targets[0].destination.read_text(encoding="utf-8") != "stale\n"
-
-
-@pytest.mark.parametrize("suffix", ["ts", "mjs"])
-def test_eslint_sync_preserves_a_nested_import_of_the_missing_root_preset(tmp_path: Path, suffix: str) -> None:
-    child = tmp_path / "packages/client"
-    child.mkdir(parents=True)
-    (child / "eslint.config.ts").write_text(
-        f'export {{ default }} from "../../eslint.strict.{suffix}";\n', encoding="utf-8"
-    )
-    dependency = tmp_path / "node_modules"
-    dependency.mkdir()
-    (dependency / "eslint.config.ts").write_text('export { default } from "../eslint.strict.ts";\n', encoding="utf-8")
-
-    plan = plan_sync(tmp_path, configs=("eslint",))
-
-    assert plan.targets[0].destination == tmp_path / f"eslint.strict.{suffix}"
-    assert apply_sync(plan).status == 0
 
 
 def test_sync_service_routes_mobile_configs_to_their_language_roots(tmp_path: Path) -> None:
@@ -316,7 +275,7 @@ def test_repeated_setup_does_not_discover_disabled_independent_typescript_projec
     assert plan.scaffold.ecosystems.python_root == tmp_path
     assert not plan.scaffold.ecosystems.typescript
     assert plan.scaffold.ecosystems.typescript_root is None
-    assert all(command.label != "ESLint peers" for command in plan.install_commands)
+    assert all(command.label != "TypeScript peers" for command in plan.install_commands)
     assert apply_init(plan, install=False).status == 0
     assert adoption.read_bytes() == original_manifest
     assert {path: path.read_bytes() for path in originals} == originals
@@ -337,7 +296,7 @@ def test_repeated_setup_reuses_enabled_typescript_owner_among_independent_projec
     siblings = {project / "package.json": (project / "package.json").read_bytes() for project in projects[:-1]}
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),
-        configs=("eslint",),
+        configs=("typescript",),
         python_dest=".",
         typescript_dest="packages/typescript",
         hook_manager="none",
@@ -349,10 +308,10 @@ def test_repeated_setup_reuses_enabled_typescript_owner_among_independent_projec
     assert not plan.scaffold.errors
     assert plan.scaffold.ecosystems.typescript_root == owner
     assert plan.sync is not None
-    assert any(target.destination == owner / "eslint.strict.ts" for target in plan.sync.targets)
-    assert any(command.label == "ESLint peers" and command.cwd == owner for command in plan.install_commands)
+    assert any(target.destination == owner / "oxlint.strict.mts" for target in plan.sync.targets)
+    assert any(command.label == "TypeScript peers" and command.cwd == owner for command in plan.install_commands)
     assert apply_init(plan, install=False).status == 0
-    assert (owner / "eslint.strict.ts").is_file()
+    assert (owner / "oxlint.strict.mts").is_file()
     assert {path: path.read_bytes() for path in siblings} == siblings
     assert all({path.name for path in project.iterdir()} == {"package.json"} for project in projects[:-1])
 
@@ -362,7 +321,7 @@ def test_repeated_setup_explicit_typescript_destination_can_change_owner(tmp_pat
     owner = projects[1]
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),
-        configs=("eslint",),
+        configs=("typescript",),
         python_dest=".",
         typescript_dest="packages/typescript",
         hook_manager="none",
@@ -377,8 +336,8 @@ def test_repeated_setup_explicit_typescript_destination_can_change_owner(tmp_pat
     current = manifest.load(tmp_path)
     assert current is not None
     assert current.typescript_dest == "apps/docs"
-    assert (owner / "eslint.strict.ts").is_file()
-    assert not (projects[-1] / "eslint.strict.ts").exists()
+    assert (owner / "oxlint.strict.mts").is_file()
+    assert not (projects[-1] / "oxlint.strict.mts").exists()
 
 
 def test_setup_explicitly_enabled_typescript_keeps_existing_discovery_and_override(tmp_path: Path) -> None:
@@ -392,20 +351,20 @@ def test_setup_explicitly_enabled_typescript_keeps_existing_discovery_and_overri
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
-    ambiguous = plan_init(tmp_path, configs=("eslint",))
+    ambiguous = plan_init(tmp_path, configs=("typescript",))
 
     assert any("multiple independent TypeScript roots" in error for error in ambiguous.scaffold.errors)
     assert ambiguous.sync is None
     assert ambiguous.install_commands == ()
 
-    selected = plan_init(tmp_path, configs=("eslint",), typescript_dest="apps/docs")
+    selected = plan_init(tmp_path, configs=("typescript",), typescript_dest="apps/docs")
 
     assert not selected.scaffold.errors
     assert selected.scaffold.ecosystems.typescript_root == projects[1]
     assert apply_init(selected, install=False).status == 0
     current = manifest.load(tmp_path)
     assert current is not None
-    assert current.configs == ("eslint",)
+    assert current.configs == ("typescript",)
     assert current.typescript_dest == "apps/docs"
 
 
@@ -413,7 +372,7 @@ def test_fresh_setup_still_rejects_independent_typescript_roots(tmp_path: Path) 
     projects = _independent_typescript_projects(tmp_path)
     originals = {project / "package.json": (project / "package.json").read_bytes() for project in projects}
 
-    plan = plan_init(tmp_path, configs=("eslint",), hook_manager="none")
+    plan = plan_init(tmp_path, configs=("typescript",), hook_manager="none")
 
     assert any("multiple independent TypeScript roots" in error for error in plan.scaffold.errors)
     assert plan.sync is None

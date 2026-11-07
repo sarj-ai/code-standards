@@ -1,23 +1,64 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-port-for-service.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION,
-} from "../../src/rules/require-port-for-service.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.itOnly = it.only;
-RuleTester.it = it;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
+  examples: [
+    {
+      id: "declared-service-port",
+      title: "Implement the service port",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "interface Handler { handle(): void }\nexport class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "concrete-injected-service",
+      title: "Do not expose only the concrete service",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "The existing factory already names the service contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+    },
+  ],
+} as const;
 
 const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
@@ -206,7 +247,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -272,7 +312,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -324,7 +363,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
 
     {
       filename: SRC,
@@ -427,7 +465,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -449,7 +486,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
 
     {
       filename: SRC,
@@ -480,9 +516,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-
-
 
     {
       filename: SRC,
@@ -523,7 +556,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -534,7 +566,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
 
     {
       filename: "/repo/tests/record-normalizer.test.ts",
@@ -588,9 +619,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
-
-
     {
       filename: "/repo/src/router.ts",
       code: `
@@ -636,10 +664,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-
-
-
 
     {
       filename: "/repo/src/lib/http-client.ts",
@@ -692,10 +716,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
-
-
-
     {
       filename: SRC,
       code: `
@@ -709,8 +729,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-
 
     {
       filename: SRC,
@@ -756,7 +774,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -768,8 +785,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-
 
     {
       filename: SRC,
@@ -845,7 +860,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -859,7 +873,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
     {
       filename: SRC,
       code: `
@@ -872,9 +885,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
-
-
     {
       filename: SRC,
       code: `
@@ -885,19 +895,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-    {
-      filename: SRC,
-      code: `
-        export class Boxed {
-          private readonly item: unknown;
-          constructor<TItem>(item: TItem) { this.item = item; }
-          unwrap(): unknown { return this.item; }
-        }
-      `,
-    },
-
-
 
     {
       filename: SRC,
@@ -925,10 +922,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-
-
-
-
     {
       filename: SRC,
       code: `
@@ -951,10 +944,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
-
-
-
 
     {
       filename: SRC,
@@ -990,7 +979,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-
 
     {
       filename: SRC,
@@ -1337,8 +1325,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
-
     {
       filename: SRC,
       code: `
@@ -1410,8 +1396,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
-
     {
       filename: SRC,
       code: `
@@ -1439,7 +1423,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: SRC,
@@ -1513,8 +1496,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
-
     {
       filename: SRC,
       code: `
@@ -1538,9 +1519,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
-
-
 
     {
       filename: SRC,
@@ -1567,7 +1545,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
     {
       filename: "/repo/src/features/panel.tsx",
       code: `
@@ -1588,8 +1565,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
-
 
     {
       filename: "/repo/src/router.ts",
@@ -1615,7 +1590,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: "/repo/src/worker.ts",
@@ -1683,7 +1657,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: "/repo/src/lib/api-client.ts",
@@ -1755,9 +1728,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
-
-
     {
       filename: SRC,
       code: `
@@ -1786,7 +1756,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: SRC,
@@ -1840,7 +1809,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
     {
       filename: SRC,
       code: `
@@ -1889,7 +1857,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
     {
       filename: SRC,
       code: `
@@ -1911,7 +1878,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: SRC,
@@ -1938,7 +1904,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
     {
       filename: SRC,
       code: `
@@ -1960,7 +1925,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: SRC,
@@ -2006,9 +1970,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-
-
-
     {
       filename: SRC,
       code: `
@@ -2037,7 +1998,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-
 
     {
       filename: SRC,

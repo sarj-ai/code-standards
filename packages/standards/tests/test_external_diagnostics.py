@@ -24,7 +24,6 @@ from sarj_standards.libs.linting.external import (
     analyze_external,
     parse_basedpyright,
     parse_deptry,
-    parse_eslint,
     parse_ktlint,
     parse_mobsfscan,
     parse_react_doctor,
@@ -34,8 +33,7 @@ from sarj_standards.libs.linting.external import (
     parse_swiftformat,
     parse_swiftlint,
 )
-from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessRequest, RequestExecutor, ToolResolution
-from sarj_standards.libs.linting.runner import GroupedPaths
+from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessRequest, ToolResolution
 from tests.process_fakes import FakeProcessExecutor
 
 
@@ -80,54 +78,6 @@ def _write_controlled_project_analyzer(project: Path, tool: str) -> Path:
     )
     executable.chmod(0o700)
     return marker
-
-
-def _eslint_files(argv: Sequence[str]) -> Sequence[str]:
-    boundary = max(index for index, value in enumerate(argv) if value == "--") + 1
-    return argv[boundary:]
-
-
-def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
-    return json.dumps([{"filePath": str((cwd / value).resolve()), "messages": []} for value in _eslint_files(argv)])
-
-
-def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
-    command = ("npx", "eslint", "--", "app.ts")
-
-    strict = external_module._eslint_json_argv(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
-    scoped_baseline = external_module._eslint_json_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
-        command, pass_on_unpruned_suppressions=True
-    )
-
-    assert "--pass-on-unpruned-suppressions" not in strict
-    assert scoped_baseline.count("--pass-on-unpruned-suppressions") == 1
-    assert scoped_baseline.index("--pass-on-unpruned-suppressions") < scoped_baseline.index("--")
-
-
-def test_eslint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> None:
-    source = tmp_path / "src" / "ignored.ts"
-    source.parent.mkdir()
-    source.write_text("export const ignored = true;\n", encoding="utf-8")
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text('export default [{ ignores: ["src/ignored.ts"] }];\n', encoding="utf-8")
-
-    def ignored(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert "--no-warn-ignored" in argv
-        assert cwd == tmp_path
-        return ProcessOutput(0, "[]", "")
-
-    reports = analyze_external(
-        [str(source)],
-        root=tmp_path,
-        trust=TrustMode.TRUSTED,
-        runner=FakeProcessExecutor(ignored),
-        capabilities=frozenset({"eslint"}),
-    )
-
-    assert len(reports) == 1
-    assert reports[0].completion is Completion.FAILED
-    assert reports[0].issues[0].kind == "coverage-missing"
-    assert reports[0].file_count == 1
 
 
 def test_parse_deptry_normalizes_selected_rules_as_warnings(tmp_path: Path) -> None:
@@ -264,237 +214,6 @@ def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None
     )
 
     assert reports == ()
-
-
-@pytest.mark.parametrize("select_directories", [False, True])
-@pytest.mark.parametrize(
-    ("separate_configs", "expected_counts", "expected_projects"),
-    [(False, [252], [{"alpha", "beta"}]), (True, [251, 1], [{"alpha"}, {"beta"}])],
-)
-def test_eslint_batches_preserve_every_file_and_configuration_owner(
-    tmp_path: Path,
-    select_directories: bool,
-    separate_configs: bool,
-    expected_counts: list[int],
-    expected_projects: list[set[str]],
-) -> None:
-    for project in ("apps/alpha", "apps/beta"):
-        directory = tmp_path / project
-        directory.mkdir(parents=True)
-        (directory / "tsconfig.json").write_text("{}\n", encoding="utf-8")
-        if separate_configs:
-            (directory / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    paths = [*(f"apps/alpha/item-{index:03}.ts" for index in range(251)), "apps/beta/item.ts"]
-    for relative in paths:
-        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-    calls: list[tuple[Path, tuple[str, ...]]] = []
-    expected_cwds = {tmp_path / "apps/alpha", tmp_path / "apps/beta"} if separate_configs else {tmp_path}
-
-    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert cwd in expected_cwds
-        calls.append((cwd, tuple(argv)))
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
-
-    selection = ["apps/alpha", "apps/beta"] if select_directories else paths
-    reports = analyze_external(
-        selection,
-        root=tmp_path,
-        trust=TrustMode.TRUSTED,
-        runner=FakeProcessExecutor(run),
-        capabilities=frozenset({"eslint"}),
-        grouped=GroupedPaths(typescript=selection),
-    )
-
-    selected = [[(cwd / file).relative_to(tmp_path).as_posix() for file in _eslint_files(argv)] for cwd, argv in calls]
-    assert sorted(file for batch in selected for file in batch) == sorted(paths)
-    assert list(map(len, selected)) == expected_counts
-    assert [{Path(file).parts[1] for file in batch} for batch in selected] == expected_projects
-    assert len({report.invocation_id for report in reports}) == len(expected_counts)
-    assert [report.file_count for report in reports] == expected_counts
-    assert all(report.completion is Completion.COMPLETE for report in reports)
-
-
-@pytest.mark.parametrize("platform", ["linux", "win32"])
-def test_eslint_large_batches_are_bounded_by_encoded_arguments(monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- check both platform encodings without a platform-specific runtime.
-        sys, "platform", platform
-    )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise an explicit portable command-line bound.
-        external_module, "_ESLINT_ARGV_BUDGET", 24 * 1024
-    )
-    prefix = ("eslint", "--")
-    paths = tuple(f"src/{'unicode-λ-' * 20}{index}.ts" for index in range(1_200))
-    batches = external_module._eslint_path_batches(prefix, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_path_batches contract directly with controlled fixture data.
-    assert tuple(path for batch in batches for path in batch) == paths
-    encoding = "utf-16-le" if platform == "win32" else "utf-8"
-    assert all(len(batch) <= 1_000 for batch in batches)
-    assert all(
-        sum(len(value.encode(encoding)) + 2 for value in (*prefix, *batch)) + 8 * 1024 <= 24 * 1024 for batch in batches
-    )
-    with pytest.raises(ValueError, match="command-line budget"):
-        external_module._eslint_path_batches(prefix, ("x" * (24 * 1024),))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_path_batches contract directly with controlled fixture data.
-
-
-def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise a multi-batch failure without a thousand fixture files.
-        external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
-    )
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    paths = [f"item-{index:03}.ts" for index in range(251)]
-    for relative in paths:
-        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-
-    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        files = argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]
-        if len(files) == 1:
-            return ProcessOutput(2, "", "FATAL ERROR: Reached heap limit")
-        payload = [
-            {
-                "filePath": str(cwd / files[0]),
-                "messages": [
-                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
-                ],
-            }
-        ]
-        return ProcessOutput(1, json.dumps(payload), "")
-
-    reports = analyze_external(
-        paths,
-        root=tmp_path,
-        trust=TrustMode.TRUSTED,
-        runner=FakeProcessExecutor(run),
-        capabilities=frozenset({"eslint"}),
-    )
-
-    assert len(reports) == 2
-    assert len(reports[0].diagnostics) == 1
-    assert reports[1].completion is Completion.FAILED
-    assert reports[1].issues
-
-
-def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    paths = [f"item-{index:03}.ts" for index in range(251)]
-    for relative in paths:
-        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-    elapsed = 0.0
-    calls = 0
-    monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-
-    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal calls, elapsed
-        assert "eslint" in argv
-        assert cwd == tmp_path
-        calls += 1
-        elapsed = 301.0
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
-
-    reports = analyze_external(
-        paths,
-        root=tmp_path,
-        trust=TrustMode.TRUSTED,
-        runner=FakeProcessExecutor(run),
-        capabilities=frozenset({"eslint"}),
-    )
-
-    assert calls == 1
-    assert reports[-1].completion is Completion.FAILED
-    assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
-
-
-@pytest.mark.parametrize("finding_count", [0, 1])
-def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, finding_count: int
-) -> None:
-    source = tmp_path / "app.ts"
-    source.write_text("alert('hello');\n", encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    elapsed = 0.0
-    monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-
-    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal elapsed
-        assert "eslint" in argv
-        assert cwd == tmp_path
-        elapsed = 301.0
-        payload = [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
-                ][:finding_count],
-            }
-        ]
-        return ProcessOutput(finding_count, json.dumps(payload), "")
-
-    reports = analyze_external(
-        [str(source)],
-        root=tmp_path,
-        trust=TrustMode.TRUSTED,
-        runner=FakeProcessExecutor(run),
-        capabilities=frozenset({"eslint"}),
-    )
-
-    assert len(reports[0].diagnostics) == finding_count
-    assert reports[-1].completion is Completion.FAILED
-    assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
-
-
-@pytest.mark.usefixtures("_fixed_host_memory")
-@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
-def test_eslint_batches_pass_only_remaining_time_to_subprocess(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, decorated: bool
-) -> None:
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- keep two transport calls to verify deadline sharing.
-        external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
-    )
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    binary = tmp_path / "node_modules" / ".bin" / "eslint"
-    binary.parent.mkdir(parents=True)
-    binary.touch()
-    paths = [f"item-{index:03}.ts" for index in range(251)]
-    for relative in paths:
-        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-    elapsed = 0.0
-    timeouts: list[float] = []
-    monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-
-    def run(request: ProcessRequest) -> ProcessOutput:
-        nonlocal elapsed
-        argv, cwd, environment = request.argv, request.cwd, request.environment
-        assert Path(argv[0]).name == "node"
-        assert Path(argv[1]).name == "eslint-selected-rules.mts"
-        assert json.loads(argv[2])["full"] is True
-        assert cwd == tmp_path
-        assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
-        assert request.deadline is not None
-        timeouts.append(request.deadline - time.monotonic())
-        elapsed += 125.0
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
-
-    monkeypatch.setattr(external_module, "_run_process", run)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-    runner = (
-        RequestExecutor(external_module.DEFAULT_EXECUTOR.run, external_module.DEFAULT_EXECUTOR.capabilities)
-        if decorated
-        else None
-    )
-    reports = analyze_external(
-        paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}), runner=runner
-    )
-
-    assert timeouts == [300.0, 175.0]
-    assert all(report.completion is Completion.COMPLETE for report in reports)
-
-
-def test_eslint_subprocess_obeys_remaining_timeout(tmp_path: Path) -> None:
-    with pytest.raises(subprocess.TimeoutExpired) as caught:
-        external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _run_eslint_process contract directly with controlled fixture data.
-            (sys.executable, "-c", "import time; time.sleep(10)"), cwd=tmp_path, timeout_seconds=0.05
-        )
-    assert caught.value.timeout == pytest.approx(0.05)
 
 
 def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
@@ -1205,7 +924,7 @@ def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path
             "schemaVersion": 3,
             "mode": "full",
             "reactDetected": True,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "directory": str(tmp_path),
             "diff": None,
@@ -1253,7 +972,7 @@ def test_react_doctor_rejects_empty_project_coverage(tmp_path: Path) -> None:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "error": None,
@@ -1268,7 +987,7 @@ def test_react_doctor_accepts_empty_staged_report_without_analyzable_sources(tmp
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "diagnostics": [],
@@ -1291,7 +1010,7 @@ def test_react_doctor_rejects_empty_report_with_top_level_diagnostics(tmp_path: 
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "diagnostics": [
@@ -1319,7 +1038,7 @@ def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Pat
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "reactDetected": True,
             "baselineDegraded": False,
@@ -1361,7 +1080,7 @@ def test_react_doctor_accepts_omitted_false_baseline_degraded_metadata(tmp_path:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "reactDetected": True,
             "projects": [
@@ -1385,7 +1104,7 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [{"directory": str(tmp_path), "complete": False}],
             "skippedProjects": [],
@@ -1423,7 +1142,7 @@ def test_react_doctor_incomplete_context_preserves_unreported_coverage(tmp_path:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [{"directory": str(tmp_path), "complete": False}],
             "error": None,
@@ -1440,7 +1159,7 @@ def _react_coverage_payload(root: Path, coverage: dict[str, JsonValue]) -> str:
     return json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "reactDetected": True,
             "projects": [
@@ -1512,10 +1231,10 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
         root=tmp_path,
         trust=TrustMode.SAFE,
         runner=FakeProcessExecutor(runner),
-        capabilities=frozenset({"eslint"}),
+        capabilities=frozenset({"typescript"}),
         include_react_doctor=True,
         react_doctor_full_scan=True,
-        eslint=False,
+        typescript=False,
     )
 
     report = next(item for item in reports if item.name == "react-doctor")
@@ -1549,7 +1268,7 @@ def test_react_doctor_fails_closed_on_degraded_coverage(
 ) -> None:
     payload = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "projects": [{"directory": str(tmp_path), "complete": True}],
         "skippedProjects": [],
@@ -1565,7 +1284,7 @@ def test_react_doctor_protocol_rejects_coerced_schema_types(tmp_path: Path) -> N
     payload = json.dumps(
         {
             "schemaVersion": "3",
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "skippedProjects": [],
@@ -1581,7 +1300,7 @@ def test_react_doctor_protocol_rejects_boolean_coordinates(tmp_path: Path) -> No
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.typescript_peers()["react-doctor"],
             "ok": True,
             "projects": [
                 {
@@ -1640,7 +1359,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
         (project / "package.json").write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
     adopted = manifest.Manifest(
         "5.13.5",
-        ("eslint",),
+        ("typescript",),
         ".",
         ".",
         doctor_excluded_paths=("demos/**",),
@@ -1651,7 +1370,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
         tmp_path,
         enabled=True,
         has_typescript=True,
-        capabilities=frozenset({"eslint"}),
+        capabilities=frozenset({"typescript"}),
     )
 
     assert selection == (tmp_path, (included.resolve(),))
@@ -1673,7 +1392,7 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_na
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -1749,7 +1468,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
                 {
                     "schemaVersion": 3,
                     "mode": "diff",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "diff": {
@@ -1858,7 +1577,7 @@ def _degraded_react_doctor_output(base: str) -> ProcessOutput:
             {
                 "schemaVersion": 3,
                 "mode": "diff",
-                "version": manifest.eslint_peers()["react-doctor"],
+                "version": manifest.typescript_peers()["react-doctor"],
                 "ok": True,
                 "baselineDegraded": True,
                 "diff": {"baseBranch": base, "changedFileCount": 1},
@@ -2240,7 +1959,7 @@ def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -2429,7 +2148,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
                 {
                     "schemaVersion": 3,
                     "mode": "diff",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "diff": {"baseBranch": reported_base, "changedFileCount": reported_count},
@@ -2480,7 +2199,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2534,7 +2253,7 @@ def test_react_doctor_rejects_empty_staged_scope_with_candidate_or_unsafe_path(
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2572,7 +2291,7 @@ def test_react_doctor_empty_staged_scope_fails_closed_when_git_diff_fails(tmp_pa
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2613,7 +2332,7 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "projects": [],
@@ -2678,7 +2397,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": is_full,
                     "projects": [
@@ -2738,7 +2457,7 @@ def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> N
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [{"directory": str(project), "complete": True}],
@@ -2777,7 +2496,7 @@ def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [{"directory": str(project), "complete": False}],
@@ -2834,7 +2553,7 @@ def test_react_doctor_staged_fallback_failures_remain_blocking(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [
@@ -2893,7 +2612,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.typescript_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -3076,37 +2795,6 @@ def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytes
     assert environment["LC_ALL"] == "C"
 
 
-@pytest.mark.parametrize("memory_gib", [8, 16])
-def test_only_eslint_receives_the_bounded_node_heap_limit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    memory_gib: int,
-) -> None:
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test controls the host budget without allocating memory
-        external_module, "_physical_memory_bytes", lambda: memory_gib * 1024**3
-    )
-    limit = tmp_path / "memory.max"
-    limit.write_text("max\n")
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- this process-isolation test covers an unconstrained host
-        external_module, "_cgroup_memory_limit_files", lambda: [limit]
-    )
-    monkeypatch.setenv("NODE_OPTIONS", "--require=/tmp/untrusted-preload.cjs")
-    command = (
-        sys.executable,
-        "-c",
-        "import os; print(os.environ.get('NODE_OPTIONS', 'missing'))",
-    )
-
-    generic = external_module.run_process(command, cwd=tmp_path)
-    eslint = external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _run_eslint_process contract directly with controlled fixture data.
-        command,
-        cwd=tmp_path,
-    )
-
-    assert generic.stdout.strip() == "missing"
-    assert eslint.stdout.strip() == f"--max-old-space-size={8192 if memory_gib >= 12 else 4096}"
-
-
 def test_external_analyzers_prefer_the_isolated_python_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3123,198 +2811,6 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
 
     assert external_module._analyzer_executable("basedpyright") == str(tmp_path / "bin" / "basedpyright")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _analyzer_executable contract directly with controlled fixture data.
     assert calls == [("basedpyright", str(tmp_path / "bin"))]
-
-
-@pytest.mark.parametrize(
-    ("argv", "expected"),
-    [
-        pytest.param(
-            ("npm", "exec", "--offline", "--", "eslint", "--", "app.ts"),
-            (
-                "npm",
-                "exec",
-                "--offline",
-                "--",
-                "eslint",
-                "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ESLINT_FORMATTER contract directly with controlled fixture data.
-                "--no-warn-ignored",
-                "--no-cache",
-                "--",
-                "app.ts",
-            ),
-            id="npm-package-manager-delimiter",
-        ),
-        pytest.param(
-            ("pnpm", "exec", "eslint", "--", "app.ts"),
-            (
-                "pnpm",
-                "exec",
-                "eslint",
-                "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ESLINT_FORMATTER contract directly with controlled fixture data.
-                "--no-warn-ignored",
-                "--no-cache",
-                "--",
-                "app.ts",
-            ),
-            id="pnpm-local-exec",
-        ),
-    ],
-)
-def test_eslint_json_flags_follow_the_executable_not_the_package_manager_delimiter(
-    argv: tuple[str, ...], expected: tuple[str, ...]
-) -> None:
-    assert external_module._eslint_json_argv(argv) == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
-    assert external_module._argv_file_count(argv) == 1  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _argv_file_count contract directly with controlled fixture data.
-
-
-def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
-    source = tmp_path / "app.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "fatal": True,
-                        "severity": 2,
-                        "message": "parser could not load",
-                        "line": 1,
-                        "column": 1,
-                    }
-                ],
-            }
-        ]
-    )
-
-    def fatal(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        return ProcessOutput(1, payload, "")
-
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(fatal))
-
-    assert len(reports) == 1
-    assert reports[0].completion is Completion.FAILED
-    assert reports[0].issues
-    assert not reports[0].diagnostics
-
-
-def test_missing_local_eslint_fails_before_package_manager_execution(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    source = tmp_path / "app.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-
-    def forbidden(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        pytest.fail("the package manager ran without a local ESLint installation")
-
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module.DEFAULT_EXECUTOR, "run", FakeProcessExecutor(forbidden).run
-    )
-
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED)
-
-    assert len(reports) == 1
-    assert reports[0].completion is Completion.FAILED
-    assert reports[0].issues[0].kind == "missing-dependency"
-    assert "node_modules/.bin/eslint is missing" in reports[0].issues[0].message
-    assert "code-standards setup" in reports[0].issues[0].message
-
-
-def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    root = tmp_path / "workspace" / "app"
-    root.mkdir(parents=True)
-    source = root / "app.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    (root / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (root / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (root / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    binary = tmp_path / "node_modules" / ".bin" / "eslint"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("", encoding="utf-8")
-    called: list[tuple[str, ...]] = []
-
-    def successful(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd = request.argv, request.cwd
-        assert request.deadline is not None
-        assert 0 < request.deadline - time.monotonic() <= 300
-        called.append(tuple(argv))
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
-
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module.DEFAULT_EXECUTOR, "run", successful
-    )
-
-    reports = analyze_external([str(source)], root=root, trust=TrustMode.TRUSTED)
-
-    assert called
-    assert Path(called[0][0]).name == "node"
-    assert Path(called[0][1]).name == "eslint-selected-rules.mts"
-    assert json.loads(called[0][2])["full"] is True
-    assert reports[0].completion is Completion.COMPLETE
-
-
-def test_eslint_empty_output_preserves_package_manager_stderr(tmp_path: Path) -> None:
-    source = tmp_path / "app.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-
-    def missing(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        return ProcessOutput(1, "", "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found")
-
-    reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(missing)
-    )
-
-    assert len(reports) == 1
-    issue = reports[0].issues[0]
-    assert issue.kind == "tool-failure"
-    assert issue.exit_code == 1
-    assert issue.message == "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found"
-    assert "JSONDecodeError" not in issue.message
-
-
-def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tmp_path: Path) -> None:
-    source = tmp_path / "app.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-
-    def broken(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        return ProcessOutput(1, "not-json", "eslint could not load its local configuration")
-
-    reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(broken)
-    )
-
-    issue = reports[0].issues[0]
-    assert issue.kind == "protocol-mismatch"
-    assert issue.message == "eslint could not load its local configuration"
-    assert "JSONDecodeError" not in issue.message
 
 
 @pytest.mark.parametrize(
@@ -3664,130 +3160,6 @@ def test_basedpyright_accepts_range_ending_at_trailing_newline_eof(tmp_path: Pat
     assert finding.location.region.end.byte_offset == len("value = 1\n")
 
 
-def test_eslint_without_end_location_keeps_a_truthful_point(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": "prefer-const",
-                        "severity": 2,
-                        "message": "use const",
-                        "line": 1,
-                        "column": 1,
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.location.position is not None
-    assert finding.location.region is None
-    assert finding.severity is Severity.ERROR
-
-
-def test_eslint_line_zero_keeps_a_truthful_path_level_diagnostic(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": "configuration-rule",
-                        "severity": 2,
-                        "message": "project-level diagnostic",
-                        "line": 0,
-                        "column": 1,
-                        "endLine": 0,
-                        "endColumn": 1,
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.location.path == "example.ts"
-    assert finding.location.position is None
-    assert finding.location.region is None
-
-
-def test_eslint_ignored_file_warning_without_position_is_path_level(tmp_path: Path) -> None:
-    source = tmp_path / "next-env.d.ts"
-    source.write_text("// generated\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": None,
-                        "fatal": False,
-                        "severity": 1,
-                        "message": "File ignored because of a matching ignore pattern.",
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.code == "eslint/file"
-    assert finding.location.path == "next-env.d.ts"
-    assert finding.location.position is None
-
-
-def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-
-    def forbidden(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        pytest.fail("safe mode executed repository code")
-
-    reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(forbidden)
-    )
-
-    assert len(reports) == 1
-    assert reports[0].completion is Completion.FAILED
-    assert reports[0].issues[0].kind == "trust-required"
-
-
-def test_string_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-
-    def forbidden(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-        *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
-    ) -> ProcessOutput:
-        pytest.fail("string safe mode executed repository code")
-
-    reports = analyze_external([str(source)], root=tmp_path, trust="safe", runner=FakeProcessExecutor(forbidden))
-
-    assert reports[0].issues[0].kind == "trust-required"
-
-
 def test_signal_terminated_tool_is_an_execution_failure(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
@@ -3850,23 +3222,6 @@ def test_basedpyright_parser_rejects_unknown_severity(tmp_path: Path) -> None:
         parse_basedpyright(payload, root=tmp_path)
 
 
-@pytest.mark.parametrize(("severity", "message"), [(99, "bad severity"), (True, "bad")], ids=("unknown", "boolean"))
-def test_eslint_parser_rejects_invalid_severity(tmp_path: Path, severity: int | bool, message: str) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [{"severity": severity, "message": message, "line": 1, "column": 1}],
-            }
-        ]
-    )
-
-    with pytest.raises(ValueError, match="severity"):
-        parse_eslint(payload, root=tmp_path)
-
-
 def test_external_process_output_is_bounded(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3925,22 +3280,6 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
     assert "<redacted>" in messages
     assert "./src/config" in messages
     assert "https://docs.example.com/remediation" in messages
-
-
-def test_eslint_rejects_boolean_coordinates(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [{"severity": 2, "message": "bad", "line": True, "column": True}],
-            }
-        ]
-    )
-
-    with pytest.raises(TypeError, match="invalid boolean coordinates"):
-        parse_eslint(payload, root=tmp_path)
 
 
 @pytest.mark.parametrize("filename", ["example.py", "example.pyi"], ids=("implementation", "stub"))
@@ -4026,7 +3365,7 @@ def test_local_project_analyzer_requires_explicit_trust(tmp_path: Path, tool: st
         runner=None,
         capabilities=frozenset({"pyright" if tool == "basedpyright" else "deptry"}),
         include_react_doctor=False,
-        eslint=False,
+        typescript=False,
     )
 
     assert len(reports) == 1
@@ -4104,7 +3443,7 @@ def test_parent_analyzer_preserves_resolution_and_other_tool_findings(
         trust=TrustMode.SAFE,
         runner=FakeProcessExecutor(runner, capabilities=ProcessCapabilities(resolution)),
         capabilities=frozenset({"ruff", "pyright"}),
-        eslint=False,
+        typescript=False,
     )
 
     assert [report.name for report in reports] == ["ruff", "basedpyright"]
@@ -4381,7 +3720,7 @@ def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path)
         pytest.param(32, "unknown\n", {"memory.max": "max"}, 4096, id="malformed-cgroup"),
     ],
 )
-def test_eslint_heap_respects_host_and_process_container_limits(
+def test_node_heap_respects_host_and_process_container_limits(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     *,
@@ -4412,7 +3751,7 @@ def test_eslint_heap_respects_host_and_process_container_limits(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- root and nested limits all belong to the fixture
         external_module, "_CGROUP_MEMORY_LIMIT_FILES", (root / "memory.max", root / "memory/memory.limit_in_bytes")
     )
-    assert external_module._eslint_node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_node_options contract directly with controlled fixture data.
+    assert external_module._node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _node_options contract directly with controlled fixture data.
 
 
 @pytest.mark.parametrize("unused", [False, True], ids=("declared-used", "seeded-unused"))
@@ -4818,7 +4157,7 @@ def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
     project.mkdir(parents=True)
     package = project / "package.json"
     package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
-    adopted = manifest.Manifest("8.79.0", ("eslint",), python_dest="python", typescript_dest="apps/web")
+    adopted = manifest.Manifest("8.79.0", ("typescript",), python_dest="python", typescript_dest="apps/web")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     native_calls: list[tuple[str, ...]] = []
     # The pinned native serializer omits reactDetected and baselineDegraded
@@ -4835,7 +4174,7 @@ def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
             "fixedCount": 0,
             "baseTotalCount": 0,
         },
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "directory": str(project),
         "diff": {"baseBranch": base, "changedFileCount": 1, "isCurrentChanges": False},
@@ -4915,13 +4254,13 @@ def test_react_doctor_rejects_invalid_common_ancestor_proof(
     package = project / "package.json"
     package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
     (tmp_path / manifest.MANIFEST_NAME).write_text(
-        manifest.Manifest("8.79.0", ("eslint",), python_dest="python", typescript_dest="apps/web").render(),
+        manifest.Manifest("8.79.0", ("typescript",), python_dest="python", typescript_dest="apps/web").render(),
         encoding="utf-8",
     )
     seen: list[tuple[str, ...]] = []
     payload: dict[str, JsonValue] = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.typescript_peers()["react-doctor"],
         "ok": True,
         "diff": {"baseBranch": base, "changedFileCount": 1, "isCurrentChanges": False},
         "projects": [],
@@ -4957,3 +4296,28 @@ def test_react_doctor_rejects_invalid_common_ancestor_proof(
     assert reports[0].completion is Completion.FAILED
     assert "no analyzed projects" in reports[0].issues[0].message
     assert ("git", "merge-base", base, "HEAD") in seen
+
+
+_parked_suppressions = external_module._without_oxlint_suppressions  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal React Doctor parking contract directly.
+
+
+def test_react_doctor_parking_never_clobbers_a_suppressions_file_written_meanwhile(tmp_path: Path) -> None:
+    ledger = tmp_path / "oxlint-suppressions.json"
+    ledger.write_text("{}", encoding="utf-8")
+
+    with _parked_suppressions([tmp_path]):
+        assert not ledger.exists()
+        ledger.write_text('{"src/a.ts": {}}', encoding="utf-8")
+
+    assert ledger.read_text(encoding="utf-8") == '{"src/a.ts": {}}'
+
+
+def test_react_doctor_parking_restores_the_suppressions_file(tmp_path: Path) -> None:
+    ledger = tmp_path / "oxlint-suppressions.json"
+    ledger.write_text("{}", encoding="utf-8")
+
+    with _parked_suppressions([tmp_path]):
+        assert not ledger.exists()
+
+    assert ledger.read_text(encoding="utf-8") == "{}"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["oxlint-suppressions.json"]

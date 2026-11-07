@@ -1,37 +1,18 @@
 /**
  * @fileoverview no-select-star — `SELECT *` over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-select-star.test.ts
+ * Port of the 18.x `no-select-star` rule. Untyped.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import type { FixFn, VisitorWithHooks } from "@oxlint/plugins";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
+import { defineRule, type Node } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "../utils/paths.js";
+import { createSqlListener, stripSqlNoise } from "../utils/sql.js";
 import { ownedSqlProjectionFix } from "./_owned-sql-projection-fix.js";
-import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
-import { createSqlListener, stripSqlNoise } from "./_sql.js";
 
-type MessageIds = "noSelectStar";
-type Options = readonly [];
-
-export const NO_SELECT_STAR_DOCUMENTATION = {
-  summary: "Prefer explicit column projections over SELECT * in embedded SQL.",
-  rationale: "Wildcard projections couple row shape and query cost to unrelated schema changes.",
-  remediation: "List every required column explicitly in the projection.",
-  category: "correctness",
-  autofix: "safe",
-  limitations: ["Only statically visible embedded SQL is checked; quoted strings (including PostgreSQL dollar strings), comments, function arguments such as COUNT(*), and stars inside EXISTS are excluded. Escaped ordinary strings, brackets, and backticks are handled conservatively. This is a bounded lexical scan, not a complete SQL parser.", "Autofix only expands a complete single-row integer VALUES query with authored quoted column names, directly consumed by a fresh default pg Client in a closed source-owned function. Other projections remain manual."],
-  examples: [
-    { id: "safe-autofix", scenarioId: "owned-literal-projection", title: "Expand the authored columns of an owned literal relation", outcome: "match", files: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT * FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], fixedFiles: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], focusPath: "src/literal-rows.ts", expectedCount: 1, public: true },
-    { id: "owned-literal-explicit-projection", scenarioId: "owned-literal-projection", title: "Preserve the explicit authored literal columns", outcome: "no-match", files: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], focusPath: "src/literal-rows.ts", expectedCount: 0, public: true },
-    { id: "explicit-projection", title: "Select the required columns", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id, status FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
-    { id: "wildcard-projection", title: "Do not select every column", outcome: "match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT * FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
-    { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "db.query(\"SEL\\u0045CT * FROM runs\");" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
-    { id: "decoded-comment-data", scenarioId: "native-decoded-sql", title: "Ignore native-decoded comment data", outcome: "no-match", files: [{ path: "src/page.ts", source: "db.query(\"SEL\\x45CT id FROM runs /* SELECT * FROM runs */\");" }], focusPath: "src/page.ts", expectedCount: 0, public: true },
-    {"id": "wrapped-exists-outer-wildcard", "scenarioId": "projection-owner", "title": "The outer projection still selects every column", "outcome": "match", "files": [{"path": "src/queries.ts", "source": "db.query(\"SELECT EXISTS((SELECT * FROM jobs)), * FROM runs\");"}], "focusPath": "src/queries.ts", "expectedCount": 1, "public": true},
-    {"id": "quoted-column-arithmetic", "scenarioId": "projection-owner", "title": "Quoted arithmetic operands are not wildcards", "outcome": "no-match", "files": [{"path": "src/queries.ts", "source": "db.query(\"SELECT \\\"units\\\" * \\\"price\\\" AS total FROM entries\");"}], "focusPath": "src/queries.ts", "expectedCount": 0, "public": true},
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-select-star";
 
 /** A real SQL query shape, so prose containing the bare word "from" isn't matched. */
 const QUERY_SELECT = /\bSELECT\b/i;
@@ -39,6 +20,7 @@ const QUERY_FROM = /\bFROM\b/i;
 const SQL_TOKEN = /[A-Za-z_\u0080-\u{10FFFF}][A-Za-z0-9_$\u0080-\u{10FFFF}]*|\d+(?:\.\d+)?|\.[ \t\r\n\f\v]*\[(?:[^\]]|\]\])*\]|[-+*/<>=~!@#%^&|\x60?]+|[(),.;]/gu;
 const ASCII_WORD = /^[A-Za-z_]+$/u;
 const AMBIGUOUS_QUOTING = /[\x60[\]\\]/u;
+const STRICT_SUFFIX_QUOTING = /[\x60[\]\\?]/u;
 const CONSERVATIVE_SELECT = /\bSELECT\b/gi;
 const CONSERVATIVE_FROM = /FROM\b/iy;
 const ASCII_IDENTIFIER_CHARACTER = /[A-Za-z0-9_]/u;
@@ -75,11 +57,11 @@ function hasQueryShape(sql: string): boolean {
 }
 
 /** Track projection ownership at each SELECT depth in one token pass. */
-function hasRealSelectStar(sql: string, original = sql, conservativeSource = sql): boolean {
-  const conservative = AMBIGUOUS_QUOTING.test(original)
+function hasRealSelectStar(sql: string, original: string, conservativeSource: string | null): boolean {
+  const conservative = conservativeSource !== null
     ? { source: conservativeSource, selects: [...conservativeSource.matchAll(CONSERVATIVE_SELECT)].map((match) => ({ offset: match.index, allowsStar: selectAllowsStar(conservativeSource, match.index) })) }
     : undefined;
-  const strictSuffix = /[\x60[\]\\?]/u.test(original);
+  const strictSuffix = STRICT_SUFFIX_QUOTING.test(original);
   const projections = new Map<number, Projection>();
   const existsScopes = new Set<number>();
   let depth = 0;
@@ -139,7 +121,6 @@ function observeProjection(sql: string, match: RegExpExecArray, previous: string
   }
 }
 
-
 /** Preserve established match boundaries when bracket/backtick syntax has multiple dialect meanings. */
 function conservativeProjectionStar(query: ConservativeSql, offset: number): boolean {
   const { source, selects } = query;
@@ -183,15 +164,12 @@ function endsProjection(sql: string, offset: number): boolean {
   return PROJECTION_END.test(sql);
 }
 
-
-export default createRule<Options, MessageIds>({
-  name: "no-select-star",
-  documentation: NO_SELECT_STAR_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Prefer explicit column projections over SELECT * in embedded SQL.",
+      description: "Prefer explicit column projections over SELECT * in embedded SQL.",
+      url: docsUrl(NAME),
     },
     schema: [],
     fixable: "code",
@@ -200,18 +178,24 @@ export default createRule<Options, MessageIds>({
         "`SELECT *` over-fetches and leaves the row shape implicit — a new or reordered column silently changes what this query returns. List the columns explicitly.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    if (isTestFile(context)) {
-      return {};
-    }
-    return createSqlListener((sql: string, node: TSESTree.Node, original: string): void => {
+  createOnce(context): VisitorWithHooks {
+    const listener = createSqlListener((sql: string, node: Node, original: string): void => {
       if (!hasQueryShape(sql)) return;
-      const conservativeSource = AMBIGUOUS_QUOTING.test(original) ? stripSqlNoise(original) : sql;
+      const conservativeSource = AMBIGUOUS_QUOTING.test(original) ? stripSqlNoise(original) : null;
       if (!hasRealSelectStar(sql, original, conservativeSource)) return;
-      const excluded = isGeneratedFile(context, context.sourceCode.text, ["externalTree"]) ||
-        isTestFile(context, ["fixtureTree"]) || isStoryFile(context, ["storyTree"]) || isScriptFile(context);
-      context.report({ node, messageId: "noSelectStar", fix: excluded ? null : ownedSqlProjectionFix(context.sourceCode, node, original) });
+      const file = { filename: context.filename, cwd: context.cwd };
+      const sourceCode = context.sourceCode;
+      const excluded = isGeneratedFile(file, sourceCode.text, ["externalTree"]) ||
+        isTestFile(file, ["fixtureTree"]) || isStoryFile(file, ["storyTree"]) || isScriptFile(file);
+      const fix: FixFn | null = excluded ? null : ownedSqlProjectionFix(sourceCode, node, original);
+      context.report(fix === null ? { node, messageId: "noSelectStar" } : { node, messageId: "noSelectStar", fix });
     }, { preserveQuotedTokens: true });
+    return {
+      ...listener,
+      before() {
+        listener.before();
+        return !isTestFile({ filename: context.filename, cwd: context.cwd });
+      },
+    };
   },
 });

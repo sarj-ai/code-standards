@@ -15,6 +15,12 @@ Use `maintain rules new`/`prepare` for new rules; `verify` checks examples/tests
 without changing severity. Keep metadata, registration, versions and artifacts
 atomic. Run `make verify` with pinned native tools and a private non-Git temp root.
 
+TypeScript rules are Oxlint `createOnce` plugin rules in
+`packages/typescript/src/rules/<id>.ts`, with documentation and executable
+examples in `src/docs/<id>.ts` and Oxlint RuleTester cases in
+`tests/rules/<id>.test.ts`. Run `node scripts/oxlint/generate-index.ts` after
+adding or removing one; `verify` runs the examples through Oxlint.
+
 Evaluate immutable corpora without silent repinning: labeled bad/near-miss cases,
 live hits or disclosed unbiased samples, TP/FP/FN/TN, duplicates and blind spots.
 Use `run_isolated_corpora`; check affected suppressions/severity/precedence/malformed

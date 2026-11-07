@@ -422,7 +422,7 @@ def test_evaluate_rejects_unknown_selector(tmp_path: Path, capsys: pytest.Captur
         ("sql:no-select-star", ("sql", "sarj-sql-lint")),
         ("iac:no-comment-cruft", ("iac", "sarj-iac-lint")),
         ("text:no-comment-cruft", ("text", "sarj-text-lint")),
-        ("eslint:no-explicit-any", ("eslint",)),
+        ("oxlint:no-explicit-any", ("oxlint", "eslint")),
         ("checkov:CKV_AWS_20", ("checkov",)),
         ("zizmor:dangerous-triggers", ("zizmor",)),
     ],

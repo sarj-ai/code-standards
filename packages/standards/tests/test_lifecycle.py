@@ -14,9 +14,8 @@ import pytest
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
-from sarj_standards.libs.adoption.packagemanager import PackageManager
 from sarj_standards.libs.diagnostics import Completion, TrustMode
-from sarj_standards.libs.linting import eslint_directives, external
+from sarj_standards.libs.linting import external, oxlint_directives
 
 
 if TYPE_CHECKING:
@@ -32,17 +31,17 @@ def _unexpected_directive_command(command: lifecycle.Command) -> subprocess.Comp
 def test_empty_directive_plan_needs_no_platform_or_repository_access(tmp_path: Path) -> None:
     missing_repository = tmp_path / "not-created"
 
-    assert eslint_directives.plan(missing_repository, (), run=_unexpected_directive_command) == {}
+    assert oxlint_directives.plan(missing_repository, (), run=_unexpected_directive_command) == {}
     assert not missing_repository.exists()
 
 
 def test_directive_planner_checks_the_actual_host_platform_before_repository_access(tmp_path: Path) -> None:
     missing_repository = tmp_path / "not-created"
 
-    assert eslint_directives.SUPPORTS_DIRECTIVE_REWRITES is (os.name == "posix")
+    assert oxlint_directives.SUPPORTS_DIRECTIVE_REWRITES is (os.name == "posix")
     if os.name != "posix":
         with pytest.raises(ValueError, match="require POSIX ownership and private-file permission checks"):
-            eslint_directives.plan(missing_repository, ("source.ts",), run=_unexpected_directive_command)
+            oxlint_directives.plan(missing_repository, ("source.ts",), run=_unexpected_directive_command)
         assert not missing_repository.exists()
 
 
@@ -79,13 +78,17 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     assert tmp_path in {command.cwd for command in commands}
 
 
-def test_verification_disables_eslint_cache(tmp_path: Path) -> None:
+def test_verification_type_checks_with_the_local_tsrs_lint(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    tsrs_lint = tmp_path / "node_modules" / ".bin" / "tsrs-lint"
+    tsrs_lint.parent.mkdir(parents=True)
+    tsrs_lint.touch()
     ecosystems = scaffold.Ecosystems(False, True, typescript_root=tmp_path)
 
     [command] = lifecycle.verification_commands(ecosystems)
 
-    assert "--no-cache" in command.argv
+    assert command.argv[-2:] == ("oxlint", "--type-check")
+    assert dict(command.environment) == {"OXLINT_TSGOLINT_PATH": str(tsrs_lint), "SARJ_TYPE_AWARE": "1"}
 
 
 def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_path: Path) -> None:
@@ -120,7 +123,7 @@ def test_fix_routes_to_the_adopted_nested_typescript_destination(
     (tmp_path / ".sarj-standards.toml").write_text(
         manifest.Manifest(
             version=distribution_version("code-standards"),
-            configs=("eslint",),
+            configs=("typescript",),
             python_dest=".",
             typescript_dest="apps/web",
         ).render(),
@@ -141,7 +144,10 @@ def test_fix_routes_to_the_adopted_nested_typescript_destination(
     monkeypatch.setattr(lifecycle, "execute", capture)  # sarj-noqa: SARJ445 -- intercepts installation process routing
 
     assert cli.main(["--root", str(tmp_path), "fix"]) == 0
-    assert [command.cwd for command in planned] == [web]
+    assert [(command.label, command.cwd) for command in planned] == [
+        ("Oxlint (selected: apps/web)", web),
+        ("Oxlint unused directives", tmp_path),
+    ]
 
 
 def test_selected_fix_routes_only_the_requested_python_and_typescript_files(tmp_path: Path) -> None:
@@ -719,276 +725,3 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(
     assert completed.returncode == 0
     assert hook.stat().st_mode == original_mode
     assert f"pre-commit=={distribution_version('pre-commit')}" in capture.read_text(encoding="utf-8")
-
-
-def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:
-    project = tmp_path / "web"
-    project.mkdir()
-    (project / "package.json").write_text(
-        json.dumps({"packageManager": "pnpm@10.0.0"}),
-        encoding="utf-8",
-    )
-    source = project / "src"
-    source.mkdir()
-    first = source / "name with spaces.ts"
-    second = source / "component.tsx"
-    first.write_text("export const value = 1;\n", encoding="utf-8")
-    second.write_text("export const Component = () => null;\n", encoding="utf-8")
-
-    commands = lifecycle.staged_eslint_commands(
-        tmp_path,
-        [str(second), "web/src/name with spaces.ts", str(first)],
-    )
-
-    assert len(commands) == 1
-    assert commands[0].cwd == project
-    assert commands[0].argv == (
-        "pnpm",
-        "exec",
-        "eslint",
-        "--",
-        "src/component.tsx",
-        "src/name with spaces.ts",
-    )
-
-
-def test_staged_eslint_omits_deletions_symlinks_and_unrelated_paths(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    source = tmp_path / "source.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    symlink = tmp_path / "linked.ts"
-    symlink.symlink_to(source)
-    outside = tmp_path.parent / "outside.ts"
-    outside.write_text("export const outside = 1;\n", encoding="utf-8")
-
-    commands = lifecycle.staged_eslint_commands(
-        tmp_path,
-        ["deleted.ts", "README.md", str(symlink), str(outside), "source.ts"],
-    )
-
-    assert len(commands) == 1
-    assert commands[0].argv == (
-        "npm",
-        "exec",
-        "--offline",
-        "--",
-        "eslint",
-        "--",
-        "source.ts",
-    )
-    assert lifecycle.staged_eslint_commands(tmp_path, [str(symlink)]) == []
-
-
-def test_staged_eslint_skips_detection_when_no_javascript_or_typescript_exists(tmp_path: Path) -> None:
-    # Keep Markdown-only commits fast: ecosystem discovery can walk a large repository.
-    markdown = tmp_path / "README.md"
-    markdown.write_text("# Project\n", encoding="utf-8")
-
-    commands = lifecycle.staged_eslint_commands(tmp_path, [str(markdown)])
-
-    assert commands == []
-
-
-def test_selected_eslint_accepts_source_directories_and_ignores_generated_trees(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    source = tmp_path / "src"
-    source.mkdir()
-    (source / "component.ts").write_text("export const value = 1;\n", encoding="utf-8")
-    generated = tmp_path / "build"
-    generated.mkdir()
-    (generated / "ignored.ts").write_text("invalid !!\n", encoding="utf-8")
-
-    commands = lifecycle.selected_eslint_commands(tmp_path, ["src", "build"])
-
-    assert len(commands) == 1
-    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", "src")
-
-
-@pytest.mark.parametrize("agent_root", [".agents", ".claude"])
-def test_selected_eslint_excludes_skill_payloads_but_keeps_agent_tools(tmp_path: Path, agent_root: str) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    skill = tmp_path / agent_root / "skills" / "sarj-build" / "shared" / "helper.ts"
-    skill.parent.mkdir(parents=True)
-    skill.write_text("export const template = true;\n", encoding="utf-8")
-    tool = tmp_path / agent_root / "tools" / "render.ts"
-    tool.parent.mkdir(parents=True)
-    tool.write_text("export const render = true;\n", encoding="utf-8")
-
-    directory_selection = lifecycle.select_eslint_commands(tmp_path, ["."], label="analysis")
-    explicit_selection = lifecycle.select_eslint_commands(tmp_path, [str(skill), str(tool)], label="analysis")
-
-    assert len(directory_selection.commands) == 1
-    assert directory_selection.commands[0].argv[-1] == f"{agent_root}/tools/render.ts"
-    assert directory_selection.unowned_count == 0
-    assert len(explicit_selection.commands) == 1
-    assert explicit_selection.commands[0].argv[-1] == f"{agent_root}/tools/render.ts"
-    assert explicit_selection.unowned_count == 0
-
-
-def test_selected_eslint_excludes_nested_skill_payloads(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    skill = tmp_path / "workspace" / "sample" / ".agents" / "skills" / "shared" / "template.ts"
-    skill.parent.mkdir(parents=True)
-    skill.write_text("export const template = true;\n", encoding="utf-8")
-    source = tmp_path / "workspace" / "sample" / "app.ts"
-    source.write_text("export const app = true;\n", encoding="utf-8")
-
-    directory_selection = lifecycle.select_eslint_commands(tmp_path, ["."], label="analysis")
-    explicit_selection = lifecycle.select_eslint_commands(tmp_path, [str(skill)], label="analysis")
-
-    assert len(directory_selection.commands) == 1
-    assert directory_selection.commands[0].argv[-1] == "workspace/sample/app.ts"
-    assert explicit_selection == lifecycle.EslintSelection((), 0)
-
-
-def test_selected_eslint_partitions_sibling_projects_without_dropping_files(tmp_path: Path) -> None:
-    selected: list[str] = []
-    for name in ("a", "b"):
-        project = tmp_path / name
-        project.mkdir()
-        (project / "package.json").write_text("{}\n", encoding="utf-8")
-        (project / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
-        source = project / "app.ts"
-        source.write_text("export const value = 1;\n", encoding="utf-8")
-        selected.append(str(source))
-
-    commands = lifecycle.selected_eslint_commands(tmp_path, selected, label="analysis")
-
-    assert [command.cwd for command in commands] == [tmp_path / "a", tmp_path / "b"]
-    assert all(command.argv[-1] == "app.ts" for command in commands)
-
-
-def test_eslint_selection_keeps_owned_projects_when_other_files_are_unowned(tmp_path: Path) -> None:
-    project = tmp_path / "apps" / "web"
-    project.mkdir(parents=True)
-    (project / "package.json").write_text("{}\n", encoding="utf-8")
-    (project / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    owned = project / "app.ts"
-    owned.write_text("export const value = 1;\n", encoding="utf-8")
-    unowned = tmp_path / "tool.ts"
-    unowned.write_text("export const tool = 1;\n", encoding="utf-8")
-
-    selection = lifecycle.select_eslint_commands(
-        tmp_path,
-        [str(owned), str(unowned)],
-        label="analysis",
-    )
-
-    assert len(selection.commands) == 1
-    assert selection.commands[0].cwd == project
-    assert selection.unowned_count == 1
-
-
-@pytest.mark.parametrize("suffix", ["js", "cjs", "mjs", "ts", "mts", "cts"])
-def test_eslint_selection_routes_root_scripts_to_the_adopted_nested_project(tmp_path: Path, suffix: str) -> None:
-    (tmp_path / "package.json").write_text('{"name":"root"}\n', encoding="utf-8")
-    project = tmp_path / "typescript"
-    project.mkdir()
-    (project / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
-    (project / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (project / f"eslint.config.{suffix}").write_text("export default [];\n", encoding="utf-8")
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    source = scripts / "release.mjs"
-    source.write_text("export const release = true;\n", encoding="utf-8")
-    adopted = manifest.Manifest(
-        "5.6.8",
-        ("eslint", "markdownlint", "taplo", "yamllint"),
-        ".",
-        "typescript",
-    )
-    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
-
-    selection = lifecycle.select_eslint_commands(tmp_path, [str(source)], label="analysis")
-
-    assert selection.unowned_count == 0
-    assert len(selection.commands) == 1
-    assert selection.commands[0].cwd == project
-    assert selection.commands[0].argv == (
-        "npm",
-        "exec",
-        "--offline",
-        "--",
-        "eslint",
-        "--config",
-        f"eslint.config.{suffix}",
-        "--",
-        "../scripts/release.mjs",
-    )
-
-
-@pytest.mark.parametrize("root_has_package", [False, True])
-def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
-    tmp_path: Path, *, root_has_package: bool
-) -> None:
-    if root_has_package:
-        (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    project = tmp_path / "apps" / "web"
-    project.mkdir(parents=True)
-    (project / "package.json").write_text("{}\n", encoding="utf-8")
-    (project / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
-    (project / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    (project / "app.ts").write_text("export const value = 1;\n", encoding="utf-8")
-
-    commands = lifecycle.selected_eslint_commands(tmp_path, ["."], label="analysis")
-
-    assert len(commands) == 1
-    assert commands[0].cwd == project
-    assert commands[0].argv[:7] == ("npm", "exec", "--offline", "--", "eslint", "--config", "eslint.config.mjs")
-    assert set(commands[0].argv[8:]) == {"app.ts"}
-
-
-def test_staged_eslint_excludes_globally_ignored_config_modules(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    source = tmp_path / "source.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    ignored = (
-        "eslint.config.js",
-        "eslint.config.cjs",
-        "eslint.config.mjs",
-        "eslint.config.ts",
-        "eslint.config.mts",
-        "eslint.config.cts",
-        "eslint.strict.mjs",
-        "eslint.strict.ts",
-        "syncpack.strict.mts",
-    )
-    for name in ignored:
-        (tmp_path / name).write_text("export default [];\n", encoding="utf-8")
-
-    commands = lifecycle.staged_eslint_commands(tmp_path, [str(source), *ignored])
-
-    assert commands[0].argv == (
-        "npm",
-        "exec",
-        "--offline",
-        "--",
-        "eslint",
-        "--config",
-        "eslint.config.js",
-        "--",
-        "source.ts",
-    )
-    assert lifecycle.staged_eslint_commands(tmp_path, ignored) == []
-
-
-def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    names = [f"module{suffix}" for suffix in (".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx")]
-    for name in names:
-        (tmp_path / name).write_text("export const value = 1;\n", encoding="utf-8")
-
-    commands = lifecycle.staged_eslint_commands(tmp_path, names)
-
-    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", *names)
-
-
-def test_staged_eslint_uses_npm_by_default(tmp_path: Path) -> None:
-    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
-    source = tmp_path / "source.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-
-    command = lifecycle.staged_eslint_commands(tmp_path, ["source.ts"])[0]
-
-    assert scaffold.detect(tmp_path).client is PackageManager.NPM
-    assert command.argv[:5] == ("npm", "exec", "--offline", "--", "eslint")

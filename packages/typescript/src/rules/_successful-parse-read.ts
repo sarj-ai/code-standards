@@ -1,105 +1,60 @@
 /**
  * @fileoverview _successful-parse-read — prove a successful parser result dominates a payload read.
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import type { ESTree, Node } from "../types.js";
+import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { getPropertyName } from "../utils/static-string.js";
 
-type ParseOrigin = (node: TSESTree.Node) => TSESTree.CallExpression | null;
+type ParseOrigin = (node: Node) => ESTree.CallExpression | null;
 
 /** Only explicit branches and same-function return/throw guards establish success. */
-export function successfulParseRead(
-  read: TSESTree.Node,
-  call: TSESTree.CallExpression,
-  origin: ParseOrigin,
-): boolean {
-  for (let current = read; current.parent != null; current = current.parent) {
-    const parent = current.parent;
+export function successfulParseRead(read: Node, call: ESTree.CallExpression, origin: ParseOrigin): boolean {
+  for (let current = read, parent = parentOf(current); parent !== null; current = parent, parent = parentOf(current)) {
     if (
-      parent.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      parent.type === AST_NODE_TYPES.FunctionExpression ||
-      parent.type === AST_NODE_TYPES.FunctionDeclaration
-    )
-      return false;
-    if (
-      successfulBranch(parent, current, call, origin) ||
-      successfulGuardBefore(parent, current, call, origin)
-    )
-      return true;
+      parent.type === "ArrowFunctionExpression" ||
+      parent.type === "FunctionExpression" ||
+      parent.type === "FunctionDeclaration"
+    ) return false;
+    if (successfulBranch(parent, current, call, origin) || successfulGuardBefore(parent, current, call, origin)) return true;
   }
   return false;
 }
 
-function successfulBranch(
-  parent: TSESTree.Node,
-  read: TSESTree.Node,
-  call: TSESTree.CallExpression,
-  origin: ParseOrigin,
-): boolean {
-  if (
-    parent.type !== AST_NODE_TYPES.IfStatement &&
-    parent.type !== AST_NODE_TYPES.ConditionalExpression
-  )
-    return false;
+function successfulBranch(parent: Node, read: Node, call: ESTree.CallExpression, origin: ParseOrigin): boolean {
+  if (parent.type !== "IfStatement" && parent.type !== "ConditionalExpression") return false;
   const polarity = successPolarity(parent.test, call, origin);
-  return (
-    (polarity === true && parent.consequent === read) ||
-    (polarity === false && parent.alternate === read)
-  );
+  return (polarity === true && parent.consequent === read) || (polarity === false && parent.alternate === read);
 }
 
-function successfulGuardBefore(
-  parent: TSESTree.Node,
-  read: TSESTree.Node,
-  call: TSESTree.CallExpression,
-  origin: ParseOrigin,
-): boolean {
-  if (parent.type !== AST_NODE_TYPES.BlockStatement) return false;
-  const position = parent.body.findIndex((statement) => statement === read);
+function successfulGuardBefore(parent: Node, read: Node, call: ESTree.CallExpression, origin: ParseOrigin): boolean {
+  if (parent.type !== "BlockStatement") return false;
+  const body = parent.body as readonly Node[];
+  const position = body.findIndex((statement) => statement === read);
   if (position < 0) return false;
-  return parent.body.slice(0, position).some((statement) => {
-    if (statement.type !== AST_NODE_TYPES.IfStatement) return false;
+  return body.slice(0, position).some((statement) => {
+    if (statement.type !== "IfStatement") return false;
     const polarity = successPolarity(statement.test, call, origin);
-    return (
-      (polarity === false && abrupt(statement.consequent)) ||
-      (polarity === true && abrupt(statement.alternate))
-    );
+    return (polarity === false && abrupt(statement.consequent)) || (polarity === true && abrupt(statement.alternate));
   });
 }
 
-function successPolarity(
-  node: TSESTree.Node,
-  call: TSESTree.CallExpression,
-  origin: ParseOrigin,
-): boolean | null {
+function successPolarity(node: Node, call: ESTree.CallExpression, origin: ParseOrigin): boolean | null {
   node = unwrapExpression(node);
-  if (node.type === AST_NODE_TYPES.UnaryExpression && node.operator === "!") {
+  if (node.type === "UnaryExpression" && node.operator === "!") {
     const value = successPolarity(node.argument, call, origin);
     return value === null ? null : !value;
   }
-  if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(node) === "success" &&
-    origin(node.object) === call
-  )
-    return true;
-  if (
-    node.type !== AST_NODE_TYPES.BinaryExpression ||
-    !["===", "!=="].includes(node.operator)
-  )
-    return null;
+  if (node.type === "MemberExpression" && getPropertyName(node) === "success" && origin(node.object) === call) return true;
+  return node.type === "BinaryExpression" ? comparisonPolarity(node, call, origin) : null;
+}
+
+/** `result.success === true`, `false !== result.success` and the like. */
+function comparisonPolarity(node: ESTree.BinaryExpression | ESTree.PrivateInExpression, call: ESTree.CallExpression, origin: ParseOrigin): boolean | null {
+  if (node.operator !== "===" && node.operator !== "!==") return null;
   const left = unwrapExpression(node.left);
   const right = unwrapExpression(node.right);
-  const literal =
-    right.type === AST_NODE_TYPES.Literal
-      ? right
-      : left.type === AST_NODE_TYPES.Literal
-        ? left
-        : null;
+  const literal = right.type === "Literal" ? right : left.type === "Literal" ? left : null;
   if (literal?.value !== true && literal?.value !== false) return null;
   const value = successPolarity(literal === right ? left : right, call, origin);
   if (value === null) return null;
@@ -107,14 +62,10 @@ function successPolarity(
   return node.operator === "===" ? equal : !equal;
 }
 
-function abrupt(node: TSESTree.Statement | null): boolean {
+function abrupt(node: Node | null): boolean {
   if (node === null) return false;
-  if (
-    node.type === AST_NODE_TYPES.ReturnStatement ||
-    node.type === AST_NODE_TYPES.ThrowStatement
-  )
-    return true;
-  if (node.type !== AST_NODE_TYPES.BlockStatement) return false;
-  const last = node.body.at(-1);
+  if (node.type === "ReturnStatement" || node.type === "ThrowStatement") return true;
+  if (node.type !== "BlockStatement") return false;
+  const last = (node.body as readonly Node[]).at(-1);
   return last !== undefined && abrupt(last);
 }

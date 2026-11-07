@@ -1,27 +1,21 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/require-pascal-case-zod-schema-name.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION,
-} from "../../src/rules/require-pascal-case-zod-schema-name.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 const zod = (code: string): string => `import { z } from "zod"; ${code}`;
 const ERROR = { messageId: "requirePascalSchema" as const };
 
 RULE_TESTER.run("require-pascal-case-zod-schema-name", rule, {
   valid: [
     {
+      name: "documented example screaming-schema-name-dynamic-member: unknown member access does not establish API identity",
+      filename: "src/user.ts",
+      code: "import { z } from 'zod';\nexport const USER_SCHEMA = z[auditDynamicMember]({ id: z[auditDynamicMember]() });",
+    },
+    {
       name: "accepts the documented PascalCase schema contract",
-      code: REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION.examples[0].files[0].source,
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({ id: z.string() });",
     },
     { code: zod("const UserSchema = z.object({ name: z.string() });") },
     { code: zod("const URLSchema = z.url();") },
@@ -85,8 +79,14 @@ RULE_TESTER.run("require-pascal-case-zod-schema-name", rule, {
   ],
   invalid: [
     {
+      name: "documented example screaming-schema-name-static-member: static member access preserves the outcome",
+      filename: "src/user.ts",
+      code: "import { z } from 'zod';\nexport const USER_SCHEMA = z[\"object\"]({ id: z[\"string\"]() });",
+      errors: [ERROR],
+    },
+    {
       name: "reports the documented screaming-snake schema name",
-      code: REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION.examples[1].files[0].source,
+      code: "import { z } from 'zod';\nexport const USER_SCHEMA = z.object({ id: z.string() });",
       errors: [ERROR],
     },
     { code: zod("const userSchema = z.object({});"), output: "import { z } from \"zod\"; const UserSchema = z.object({});", errors: [ERROR] },
@@ -130,38 +130,4 @@ RULE_TESTER.run("require-pascal-case-zod-schema-name", rule, {
       errors: [ERROR],
     },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "screaming-schema-name-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/user.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/user.ts",
-        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = z[\"object\"]({ id: z[\"string\"]() });"
-      }
-    ]
-  },
-  {
-    "id": "screaming-schema-name-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/user.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/user.ts",
-        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = z[auditDynamicMember]({ id: z[auditDynamicMember]() });"
-      }
-    ]
-  }
-] } });
 });

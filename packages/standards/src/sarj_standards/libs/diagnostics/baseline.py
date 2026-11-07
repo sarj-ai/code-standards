@@ -252,7 +252,15 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 def is_baselineable(diagnostic: Diagnostic) -> bool:
     if "non-baselineable" in diagnostic.tags:
         return False
-    if diagnostic.source == "shfmt" and diagnostic.rule_id == "format" and diagnostic.severity.value == "error":
+    # Formatter findings cover whole files: a baselined one would stop formatting the file.
+    if (
+        diagnostic.source in {"shfmt", "oxfmt"}
+        and diagnostic.rule_id == "format"
+        and diagnostic.severity.value == "error"
+    ):
+        return False
+    # A baselined tsconfig error would switch type checking off for the whole project.
+    if diagnostic.rule_id == "tsc/tsconfig-error":
         return False
     return not (
         diagnostic.source == "repo-standards"

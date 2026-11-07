@@ -1,103 +1,24 @@
 /**
  * @fileoverview no-long-comment — catch only unusually large, unstructured JSDoc blocks.
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
+ *
+ * Port of the 18.x `no-long-comment` rule. The rule is untyped, so the
+ * port covers all of it.
  */
 
-import type { TypeScriptSourceCode } from "./_eslint-rule.js";
+import type { Comment } from "@oxlint/plugins";
 
-
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { jsdocDecorationFix } from "./_jsdoc-decoration-fix.js";
+import { defineRule, type Node, type SourceCode } from "../types.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { jsdocDecorationFix } from "../utils/jsdoc-decoration-fix.js";
 import {
   documentsTypedFunction,
   hasDocumentationStructure,
   hasTechnicalAnchor,
   proseGroups,
   sentenceUnits,
-} from "./_prose-budget.js";
+} from "../utils/prose-budget.js";
 
-type MessageIds = "tooLong";
-type Options = readonly [];
-
-const DECORATED_COMMENT = [
-  "/**",
-  " * The reader accepts data. The reader checks format. The reader preserves ordering. The reader buffers records. The reader closes cleanly.",
-  " * ++++++++",
-  " * The writer accepts batches. The writer records progress. The writer flushes changes. The writer closes cleanly.",
-  " */",
-  "const value = 1;",
-].join("\n");
-
-export const NO_LONG_COMMENT_DOCUMENTATION = {
-  summary: "Flag unusually large unstructured JSDoc blocks in implementation code.",
-  rationale: "Large narrative comments become stale and obscure the local facts that belong beside the code.",
-  remediation: "Keep only durable local constraints and express the remaining behavior in code.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: [
-    "Only JSDoc blocks are inspected; structured API docs, tests, scripts, generated files, and versioned dependencies are excluded.",
-    "Safe fixes blank only interior plus-only decoration when the retained prose gains actual paragraph structure. All prose bytes, comment markers and line endings remain; directives, licenses, examples, literal-output/prompt/credential contexts, Markdown structure and ambiguous comments remain for review.",
-  ],
-  examples: [
-    {
-      id: "structured-jsdoc",
-      title: "Paragraphs separate a component's durable constraints",
-      outcome: "no-match",
-      files: [{
-        path: "src/composer.ts",
-        source: [
-          "/**",
-          " * Shared composer.",
-          " *",
-          " * It serves the room. It serves task comments. It stays visually calm. It accepts attachments.",
-          " *",
-          " * The `tone` prop supplies task styling. The `leadingTools` prop supplies controls.",
-          " * The parent owns uploads. The component owns focus.",
-          " */",
-          "",
-          "export const Composer = forwardRef(function Composer() { return null; });",
-        ].join("\n"),
-      }],
-      focusPath: "src/composer.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "prose-wall",
-      title: "One paragraph narrates a chart's design history",
-      outcome: "match",
-      files: [{
-        path: "src/chart.ts",
-        source: `/**
- * The ports chart shows arrivals and departures across the network.
- * It was originally a line chart, but the lines crossed too often.
- * Bars make adjacent ports easier to compare at a glance.
- * The axis starts at zero so visual differences stay proportional.
- * A single series uses the site navy for brand consistency.
- * Empty ports use a neutral ink so missing traffic remains visible.
- * Tooltip values repeat the units shown on the vertical axis.
- * The chart intentionally keeps labels horizontal on wide screens.
- */
-export function PortBars() { return null; }`,
-      }],
-      focusPath: "src/chart.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-decoration",
-      title: "Remove a decorative divider while retaining both prose paragraphs",
-      outcome: "match",
-      files: [{ path: "src/reader.ts", source: DECORATED_COMMENT }],
-      fixedFiles: [{ path: "src/reader.ts", source: DECORATED_COMMENT.replace("++++++++", "") }],
-      focusPath: "src/reader.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-long-comment";
 
 const EXCESSIVE_SENTENCE_COUNT = 8;
 const EXCESSIVE_WORD_COUNT = 120;
@@ -105,66 +26,64 @@ const PROSE_WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
 const VERSIONED_DEPENDENCY_TREE_RE =
   /(?:^|\/)lib\/[^/]*-?v?\d+\.\d+(?:\.\d+)?[^/]*\//iu;
 
-function documentsTypeOrMember(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  comment: TSESTree.Comment,
-): boolean {
+const DOCUMENTED_DECLARATIONS: ReadonlySet<string> = new Set([
+  "TSInterfaceDeclaration",
+  "TSTypeAliasDeclaration",
+  "ClassDeclaration",
+  "MethodDefinition",
+  "TSMethodSignature",
+  "TSPropertySignature",
+]);
+
+function documentsTypeOrMember(sourceCode: Readonly<SourceCode>, comment: Comment): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
-  let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
-    if (
-      node.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      node.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-      node.type === AST_NODE_TYPES.ClassDeclaration ||
-      node.type === AST_NODE_TYPES.MethodDefinition ||
-      node.type === AST_NODE_TYPES.TSMethodSignature ||
-      node.type === AST_NODE_TYPES.TSPropertySignature
-    ) return true;
+  let node: Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== "Program") {
+    if (DOCUMENTED_DECLARATIONS.has(node.type)) return true;
     node = node.parent;
   }
   return false;
 }
 
-function wordUnits(text: string): number {
-  return text.match(PROSE_WORD_RE)?.length ?? 0;
+function isExcessive(text: string): boolean {
+  return sentenceUnits(text) >= EXCESSIVE_SENTENCE_COUNT || (text.match(PROSE_WORD_RE)?.length ?? 0) >= EXCESSIVE_WORD_COUNT;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-long-comment",
-  documentation: NO_LONG_COMMENT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Flag unusually large unstructured JSDoc blocks in implementation code." },
+    docs: {
+      description: "Flag unusually large unstructured JSDoc blocks in implementation code.",
+      url: docsUrl(NAME),
+    },
     schema: [],
     messages: {
       tooLong: "Comment is an unusually large prose block — keep the local facts and clarify the code itself.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const normalizedFilename = context.filename.replaceAll("\\", "/");
-    if (VERSIONED_DEPENDENCY_TREE_RE.test(normalizedFilename)) return {};
+  createOnce(context) {
     return {
+      before() {
+        if (VERSIONED_DEPENDENCY_TREE_RE.test(context.filename.replaceAll("\\", "/"))) return false;
+        return undefined;
+      },
       Program(): void {
-        for (const group of proseGroups(context, context.sourceCode)) {
+        const sourceCode = context.sourceCode;
+        for (const group of proseGroups({ filename: context.filename, cwd: context.cwd }, sourceCode)) {
           if (
             group.comment.type !== "Block" ||
             !group.comment.value.startsWith("*") ||
             group.hasTypedTags ||
+            !isExcessive(group.text) ||
             hasDocumentationStructure(group.text) ||
             hasTechnicalAnchor(group.text) ||
-            documentsTypedFunction(context.sourceCode, group.comment) ||
-            documentsTypeOrMember(context.sourceCode, group.comment) ||
-            sentenceUnits(group.text) < EXCESSIVE_SENTENCE_COUNT &&
-            wordUnits(group.text) < EXCESSIVE_WORD_COUNT
+            documentsTypedFunction(sourceCode, group.comment) ||
+            documentsTypeOrMember(sourceCode, group.comment)
           ) continue;
-          context.report({
-            node: group.comment,
-            messageId: "tooLong",
-            fix: jsdocDecorationFix(context.sourceCode, group.comment, hasDocumentationStructure),
-          });
+          const fix = jsdocDecorationFix(sourceCode, group.comment, hasDocumentationStructure);
+          context.report({ node: group.comment, messageId: "tooLong", ...(fix !== null && { fix }) });
         }
       },
     };

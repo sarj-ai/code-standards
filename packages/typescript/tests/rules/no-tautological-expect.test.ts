@@ -1,28 +1,10 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import rule, {
-  NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
-} from "../../src/rules/no-tautological-expect.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
-});
+import rule from "../../src/rules/no-tautological-expect.js";
+import { ruleTester } from "./_tester.js";
 
 const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 
-RULE_TESTER.run("no-tautological-expect", rule, {
+ruleTester().run("no-tautological-expect", rule, {
   valid: [
     ...([
       ["keeps independent result bindings", "const before=operation(); const after=operation(); expect(before).toBe(after);"],
@@ -60,7 +42,6 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       ["keeps shadowed message assertion bindings unproven", "import {expect} from 'vitest'; function contract(expect) {expect(true, 'ready').toBe(true);}"],
       ["retains captured snapshot state", "import {expect} from 'vitest'; const before = read(); act(); expect(before, 'captured').toEqual(read());"],
     ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE})),
-    { name: "preserves exact-code explained suppression for a setup assertion", filename: TEST_FILE, code: "// eslint-disable-next-line @rule-tester/no-tautological-expect -- assertion extension contract is under test\nexpect(false).not.toBeTruthy();" },
     { name: "keeps failing literal assertions after unwrapping", filename: TEST_FILE, code: 'expect((false as const)).toBe((true as const));' },
     { name: "preserves structural identity checks after unwrapping", filename: TEST_FILE, code: 'expect(([] as const)).toBe(([] as const));' },
     { name: "keeps asserted dynamic results opaque", filename: TEST_FILE, code: 'expect((read() as boolean)).toBe((true as const));' },
@@ -123,7 +104,7 @@ RULE_TESTER.run("no-tautological-expect", rule, {
     {
       name: "allows a produced value compared with a literal",
       filename: TEST_FILE,
-      code: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION.examples[0].files[0].source,
+      code: "it('adds', () => { expect(add(1, 1)).toBe(2); });",
     },
     {
       name: "allows a literal compared with a produced value",
@@ -210,8 +191,10 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       filename: "/repo/src/parser.ts",
       code: "export const check = () => expect(true).toBe(true);",
     },
+    { name: "literal-only-assertion-dynamic-member", filename: "src/add.test.ts", code: "it('works', () => { expect(true)[auditDynamicMember](true); });" },
   ],
   invalid: [
+    { name: "preserves exact-code explained suppression for a setup assertion (reported: Oxlint's RuleTester ignores disable directives)", filename: TEST_FILE, code: "// eslint-disable-next-line @rule-tester/no-tautological-expect -- assertion extension contract is under test\nexpect(false).not.toBeTruthy();", errors: [{ messageId: "tautologicalMatcher" }] },
     ...([
       ["reports self identity of a produced result", "const result=operation(); expect(result).toBe(result);"],
       ["reports self identity of a produced object", "const result={value:read()}; expect(result).toBe(result);"],
@@ -269,7 +252,7 @@ RULE_TESTER.run("no-tautological-expect", rule, {
     {
       name: "reports an identical boolean comparison",
       filename: TEST_FILE,
-      code: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION.examples[1].files[0].source,
+      code: "it('works', () => { expect(true).toBe(true); });",
       errors: [{ messageId: "tautologicalComparison" }],
     },
     {
@@ -361,39 +344,6 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       code: "it('works', () => { expect(true).toBe(true); });",
       errors: [{ messageId: "tautologicalComparison" }],
     },
+    { name: "literal-only-assertion-static-member", filename: "src/add.test.ts", code: "it('works', () => { expect(true)[\"toBe\"](true); });", errors: [{ messageId: "tautologicalComparison" }] },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "literal-only-assertion-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/add.test.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/add.test.ts",
-        "source": "it('works', () => { expect(true)[\"toBe\"](true); });"
-      }
-    ]
-  },
-  {
-    "id": "literal-only-assertion-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/add.test.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/add.test.ts",
-        "source": "it('works', () => { expect(true)[auditDynamicMember](true); });"
-      }
-    ]
-  }
-] } });
 });

@@ -1,15 +1,11 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-restated-comment.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_RESTATED_COMMENT_DOCUMENTATION } from "../../src/rules/no-restated-comment.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const REASON_COMMENT_EXAMPLE = "// Serialize key only after validation.\nconst key = serialize(input);";
+const RESTATED_COMMENT_EXAMPLE = "// Serialize key\nconst key = serialize(input);";
 
 RULE_TESTER.run("no-restated-comment", rule, {
   valid: [
@@ -35,7 +31,7 @@ RULE_TESTER.run("no-restated-comment", rule, {
     { name: "ignores template text as evidence", code: "// serialized values\nrecord(`serialized values`);" },
     { name: "ignores inline comment text as evidence", code: "// payload key\nconst result = transform(input /* payload key */);" },
     { name: "ignores a trailing block comment as evidence", code: "// issue path length\nreturn fn(value); /* issue path length */" },
-    { name: "accepts the documented reason comment", code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented reason comment", code: REASON_COMMENT_EXAMPLE },
     { name: "accepts the result of the deletion suggestion", code: "const key = serialize(input);" },
 
     {
@@ -60,7 +56,6 @@ RULE_TESTER.run("no-restated-comment", rule, {
     { code: "// serialize key:\nconst key = serialize(k);\nreturn null;" },
     { code: "// serialize *key*\nconst key = serialize(k);\nreturn null;" },
 
-
     { code: "// no issues with confirmPassword\nreturn payload.issues.every(hasNoConfirmPassword);" },
 
     { code: "// why we do this at all\n// serialize key\nconst key = serialize(k);\nreturn null;" },
@@ -75,8 +70,6 @@ RULE_TESTER.run("no-restated-comment", rule, {
       name: "keeps a block comment because only one-line labels are in scope",
       code: "/* cached page data */\nconst pageData = getCachedPageData();\nreturn null;",
     },
-
-
 
     {
       code: "// $ZodString\nz.string() satisfies z.core.$ZodString;\nz.number() satisfies z.core.$ZodNumber;",
@@ -94,7 +87,6 @@ RULE_TESTER.run("no-restated-comment", rule, {
 
     { code: "// تحديث المفتاح\nconst key = serialize(k);\nreturn null;" },
 
-
     { code: "// increment the counter\ncounter += 1;\nreturn null;" },
 
     {
@@ -111,13 +103,13 @@ RULE_TESTER.run("no-restated-comment", rule, {
       name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
       code: "// Serialize key\nconst key = serialize(input);".replaceAll("\n", ending),
       output: "\nconst key = serialize(input);".replaceAll("\n", ending),
-      errors: [{ messageId: "restatesLineBelow" as const, suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" as const, suggestions: [{ messageId: "deleteComment" as const, output: "const key = serialize(input);" }] }],
     })),
-    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", output: "\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
+    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", output: "\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const key = serialize(input);\ntype Payload = typeof other;" }] }] },
     {
       name: "uses identifiers inside template interpolations but not template text",
       code: "// serialized values\nreturn `${serializeValues(input)}`;", output: "\nreturn `${serializeValues(input)}`;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "return `${serializeValues(input)}`;" }] }],
     },
     {
       name: "does not treat a preceding trailing comment as a paragraph",
@@ -132,8 +124,9 @@ RULE_TESTER.run("no-restated-comment", rule, {
       errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const key = serialize(input); // trace" }] }],
     },
     {
-      name: "automatically deletes a redundant whole-line comment",
-      code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[1].files[0].source,
+      name: "automatically deletes a redundant whole-line comment (distinct filename: Oxlint's RuleTester rejects duplicate code)",
+      filename: "src/autofix-example.ts",
+      code: RESTATED_COMMENT_EXAMPLE,
       output: "\nconst key = serialize(input);",
       errors: [
         {
@@ -149,11 +142,11 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
     {
       code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;", output: "\nconst [key] = serialize(_k);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const [key] = serialize(_k);\nreturn null;" }] }],
     },
     {
       code: "// issue path length\nconst issues = sortByPathLength(error.issues);\nreturn null;", output: "\nconst issues = sortByPathLength(error.issues);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const issues = sortByPathLength(error.issues);\nreturn null;" }] }],
     },
     {
       name: "preserves CRLF while deleting an indented comment line",
@@ -173,18 +166,17 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
     {
       code: "// Get the cached page data\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;", output: "\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const pageData = pageKey ? getCache().data : undefined;\nreturn null;" }] }],
     },
-
 
     {
       code: "// serialized values\nconst out = serializeValues(input);\nreturn null;", output: "\nconst out = serializeValues(input);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const out = serializeValues(input);\nreturn null;" }] }],
     },
     {
       name: "reports a restatement at the eight-word budget",
       code: "// cached page data result output value item record\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;", output: "\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;" }] }],
     },
   ],
 });

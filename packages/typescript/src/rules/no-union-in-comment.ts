@@ -1,101 +1,64 @@
 /**
  * @fileoverview no-union-in-comment — a comment listing a field's allowed strings has written a union type the compiler never gets to enforce.
  *
+ * Port of the 18.x `no-union-in-comment` rule. The comment scan is
+ * unchanged. The original compared a missing `typeParameters` to
+ * `undefined`, which Oxlint's `null` never matches; the port checks `null`,
+ * which restores the ESLint fix.
+ *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-union-in-comment.test.ts
  */
 
-import type { TypeScriptSourceCode, NativeReportFix } from "./_eslint-rule.js";
+import type { Comment, FixFn, Token } from "@oxlint/plugins";
 
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
+import { forEachOwnAstChild, parentOf } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isGeneratedFile } from "../utils/paths.js";
+import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
-
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
-import { isGeneratedFile } from "./_paths.js";
-import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
-
-type MessageIds = "unionInComment";
-type Options = readonly [];
-
-export const NO_UNION_IN_COMMENT_DOCUMENTATION = {
-  summary: "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
-  rationale: "A broad string annotation does not express a closed set documented beside it.",
-  remediation: "If the list is exhaustive, express it as a string-literal union; keep examples and runtime constraints documented separately.",
-  category: "maintainability",
-  autofix: "safe",
-  limitations: ["Only bare quoted-value lists directly attached to explicitly annotated string declarations are inspected. Unknown schema builders and runtime validation are not inferred.",
-    "Automatic fixes remove only the broad string member from an unused private unmerged interface/object alias whose existing quoted literal branches exactly match the adjacent comment's set. Authored literal branches, nullability and the comment are retained. Bare string declarations, observed/public types, heritage, generics, dependent this, computed/indexed members, escapes and comments inside the changed union remain manual."],
-  examples: [
-    {
-      id: "literal-union",
-      title: "Encode allowed values in the type",
-      outcome: "no-match",
-      files: [{ path: "src/record.ts", source: "interface R { kind: 'aa' | 'bb'; }" }],
-      focusPath: "src/record.ts",
-      expectedCount: 0,
-      public: true,
-    },
-    {
-      id: "comment-only-union",
-      title: "Do not leave allowed values in a comment",
-      outcome: "match",
-      files: [{ path: "src/record.ts", source: "interface R {\n  kind: string; // 'aa' | 'bb'\n}" }],
-      focusPath: "src/record.ts",
-      expectedCount: 1,
-      public: true,
-    },
-    {
-      id: "safe-autofix",
-      title: "Keep the literal contract already authored beside its exact comment",
-      outcome: "match",
-      files: [{ path: "src/autofix-example.ts", source: "export {}; interface Choice { kind: string | 'aa' | 'bb'; // 'aa' | 'bb'\n}" }],
-      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; interface Choice { kind: 'aa' | 'bb'; // 'aa' | 'bb'\n}" }],
-      focusPath: "src/autofix-example.ts",
-      expectedCount: 1,
-    },
-  ],
-} as const satisfies RuleDocumentation;
-
-// A literal long enough to be a sentence is an example, a message or a format
-// string — not an enum member.
+// A literal long enough to be a sentence is an example, a message or a format string — not an enum member.
 const MAX_LITERAL_LENGTH = 28;
 
 const LITERAL = String.raw`(?:'[^'\n]*'|"[^"\n]*"|\`[^\`\n]*\`)`;
-
 const LEAD_IN_RE =
   /^(?:one of|either|values?|allowed(?: values)?|options?|possible(?: values)?)\s*[:=-]?\s*/i;
 const UNION_BODY_RE = new RegExp(String.raw`^${LITERAL}(?:\s*[|,/]\s*${LITERAL})+\.?$`);
 const LITERAL_G = new RegExp(LITERAL, "g");
 
 /** True when a type annotation is an unconstrained `string` after all. */
-function isBareString(node: TSESTree.TypeNode | undefined): boolean {
-  if (node === undefined) return false;
+function isBareString(node: ESTree.TSType | null | undefined): boolean {
+  if (node === undefined || node === null) return false;
   switch (node.type) {
-    case AST_NODE_TYPES.TSStringKeyword:
+    case "TSStringKeyword":
       return true;
     // `string[]` holds members of the same closed set, one element at a time.
-    case AST_NODE_TYPES.TSArrayType:
+    case "TSArrayType":
       return isBareString(node.elementType);
-    // `string | null` is still an unconstrained string, and so is `string | "a"`
-    // — the checker collapses that one to `string`.
-    case AST_NODE_TYPES.TSUnionType:
+    // `string | null` is still an unconstrained string, and so is `string | "a"`.
+    case "TSUnionType":
       return node.types.some((member) => isBareString(member));
     default:
       return false;
   }
 }
 
-function targetOf(node: TSESTree.Node): Target | null {
+/** A declaration this rule can judge: a named one that holds a bare string. */
+interface Target {
+  readonly node: Node;
+  readonly name: string;
+}
+
+function targetOf(node: Node): Target | null {
   switch (node.type) {
-    case AST_NODE_TYPES.TSPropertySignature:
-    case AST_NODE_TYPES.PropertyDefinition: {
+    case "TSPropertySignature":
+    case "PropertyDefinition": {
       const name = node.computed ? null : nameOf(node.key);
       if (name === null || !isBareString(node.typeAnnotation?.typeAnnotation)) return null;
       return { node, name };
     }
-    case AST_NODE_TYPES.VariableDeclarator: {
-      if (node.id.type !== AST_NODE_TYPES.Identifier) return null;
+    case "VariableDeclarator": {
+      if (node.id.type !== "Identifier") return null;
       if (!isBareString(node.id.typeAnnotation?.typeAnnotation)) return null;
       return { node, name: node.id.name };
     }
@@ -104,15 +67,9 @@ function targetOf(node: TSESTree.Node): Target | null {
   }
 }
 
-/** A declaration this rule can judge: a named one that holds a bare string. */
-interface Target {
-  readonly node: TSESTree.Node;
-  readonly name: string;
-}
-
-function nameOf(key: TSESTree.Node): string | null {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
+function nameOf(key: Node): string | null {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
   return null;
 }
 
@@ -127,15 +84,14 @@ function unionLiterals(body: string): string[] | null {
   return literals;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-union-in-comment",
-  documentation: NO_UNION_IN_COMMENT_DOCUMENTATION,
+export default defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
     docs: {
       description:
         "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
+      url: docsUrl("no-union-in-comment"),
     },
     schema: [],
     messages: {
@@ -143,19 +99,15 @@ export default createRule<Options, MessageIds>({
         'The annotation for `{{name}}` accepts arbitrary strings. If this list is exhaustive, express it as a string-literal union ("{{first}}" | …); retain separate runtime constraints or examples.',
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const sourceCode = context.sourceCode;
-    if (isGeneratedFile(context, sourceCode.text)) {
-      return {};
-    }
+  createOnce(context) {
+    let sourceCode: SourceCode;
 
-    function annotated(comment: TSESTree.Comment): Target | null {
+    function annotated(comment: Comment): Target | null {
       const anchor = commentAnchor(comment);
       for (
-        let node: TSESTree.Node | undefined | null = anchor;
-        node != null && node.type !== AST_NODE_TYPES.Program;
-        node = node.parent
+        let node: Node | null = anchor;
+        node !== null && node.type !== "Program";
+        node = parentOf(node)
       ) {
         const target = targetOf(node);
         if (target !== null) {
@@ -167,39 +119,39 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
-    function commentAnchor(comment: TSESTree.Comment): TSESTree.Node | null {
+    function commentAnchor(comment: Comment): Node | null {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
-      let anchor: TSESTree.Node | null;
       if (before !== null && before.loc.end.line === comment.loc.start.line) {
-        // The separator a member ends on belongs to the CONTAINER, so resolving
-        // `,` or `;` lands on the object and never reaches the member itself.
-        let token: TSESTree.Token | null = before;
+        // The separator a member ends on belongs to the CONTAINER, so step back over `,` and `;`.
+        let token: Token | null = before;
         while (token !== null && (token.value === "," || token.value === ";")) {
           token = sourceCode.getTokenBefore(token, { includeComments: false });
         }
-        anchor = token === null ? null : sourceCode.getNodeByRangeIndex(token.range[0]);
-      } else {
-        const after = sourceCode.getTokenAfter(comment, { includeComments: false });
-        if (after === null || after.loc.start.line !== comment.loc.end.line + 1) return null;
-        anchor = sourceCode.getNodeByRangeIndex(after.range[0]);
+        return token === null ? null : sourceCode.getNodeByRangeIndex(token.range[0]);
       }
-      return anchor;
+      const after = sourceCode.getTokenAfter(comment, { includeComments: false });
+      if (after === null || after.loc.start.line !== comment.loc.end.line + 1) return null;
+      return sourceCode.getNodeByRangeIndex(after.range[0]);
     }
 
     return {
+      before() {
+        sourceCode = context.sourceCode;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)) return false;
+        return undefined;
+      },
       Program(): void {
         for (const comment of sourceCode.getAllComments()) {
-          const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
-          if (body.length === 0) continue;
-          const literals = unionLiterals(body);
+          const literals = unionLiterals(comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim());
           if (literals === null) continue;
           const target = annotated(comment);
           if (target === null) continue;
+          const fix = existingLiteralUnionFix(sourceCode, target, literals, context.filename);
           context.report({
             node: comment,
             messageId: "unionInComment",
             data: { name: target.name, first: literals[0] ?? "" },
-            fix: existingLiteralUnionFix(sourceCode, target, literals, context.filename),
+            ...(fix !== null && { fix }),
           });
         }
       },
@@ -208,20 +160,17 @@ export default createRule<Options, MessageIds>({
 });
 
 function existingLiteralUnionFix(
-  sourceCode: Readonly<TypeScriptSourceCode>,
+  sourceCode: SourceCode,
   target: Target,
   literals: readonly string[],
   filename: string,
-): NativeReportFix | null {
-  if (target.node.type !== AST_NODE_TYPES.TSPropertySignature || target.node.computed) return null;
-  const container = target.node.parent;
-  const owner = container.parent;
-  if ((container.type !== AST_NODE_TYPES.TSInterfaceBody || owner.type !== AST_NODE_TYPES.TSInterfaceDeclaration || owner.extends.length > 0) &&
-    (container.type !== AST_NODE_TYPES.TSTypeLiteral || owner.type !== AST_NODE_TYPES.TSTypeAliasDeclaration || owner.typeAnnotation !== container)) return null;
-  if ((owner.type !== AST_NODE_TYPES.TSInterfaceDeclaration && owner.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) ||
-    owner.typeParameters !== undefined || !isUnusedPrivateBinding(sourceCode, owner, owner.id, filename) || dependentOwner(owner)) return null;
+): FixFn | null {
+  if (target.node.type !== "TSPropertySignature" || target.node.computed) return null;
+  const owner = closedOwner(target.node);
+  if (owner === null || owner.typeParameters !== null || !isUnusedPrivateBinding(sourceCode, owner, owner.id, filename) ||
+      dependentOwner(owner)) return null;
   const annotation = target.node.typeAnnotation?.typeAnnotation;
-  if (annotation?.type !== AST_NODE_TYPES.TSUnionType || sourceCode.getCommentsInside(annotation).length > 0) return null;
+  if (annotation?.type !== "TSUnionType" || sourceCode.getCommentsInside(annotation).length > 0) return null;
   const members = authoredLiteralMembers(sourceCode, annotation);
   if (members === null) return null;
   const { authored, retained } = members;
@@ -232,32 +181,41 @@ function existingLiteralUnionFix(
   return (fixer) => fixer.replaceText(annotation, replacement);
 }
 
+/** The non-extending interface, or the alias whose whole type is the literal, that directly holds `member`. */
+function closedOwner(member: ESTree.TSPropertySignature): ESTree.TSInterfaceDeclaration | ESTree.TSTypeAliasDeclaration | null {
+  const container = parentOf(member);
+  const owner = container === null ? null : parentOf(container);
+  if (container?.type === "TSInterfaceBody" && owner?.type === "TSInterfaceDeclaration" && owner.extends.length === 0) return owner;
+  if (container?.type === "TSTypeLiteral" && owner?.type === "TSTypeAliasDeclaration" && owner.typeAnnotation === container) return owner;
+  return null;
+}
+
 function authoredLiteralMembers(
-  sourceCode: Readonly<TypeScriptSourceCode>,
-  annotation: TSESTree.TSUnionType,
-): { readonly authored: ReadonlySet<string>; readonly retained: readonly TSESTree.TypeNode[] } | null {
+  sourceCode: SourceCode,
+  annotation: ESTree.TSUnionType,
+): { readonly authored: ReadonlySet<string>; readonly retained: readonly ESTree.TSType[] } | null {
   const authored = new Set<string>();
-  const retained: TSESTree.TypeNode[] = [];
+  const retained: ESTree.TSType[] = [];
   for (const member of annotation.types) {
-    if (member.type === AST_NODE_TYPES.TSStringKeyword) continue;
-    if (member.type === AST_NODE_TYPES.TSLiteralType && member.literal.type === AST_NODE_TYPES.Literal && typeof member.literal.value === "string") {
+    if (member.type === "TSStringKeyword") continue;
+    if (member.type === "TSLiteralType" && member.literal.type === "Literal" && typeof member.literal.value === "string") {
       if (sourceCode.getText(member).includes("\\")) return null;
       authored.add(member.literal.value);
-    } else if (member.type !== AST_NODE_TYPES.TSNullKeyword && member.type !== AST_NODE_TYPES.TSUndefinedKeyword) return null;
+    } else if (member.type !== "TSNullKeyword" && member.type !== "TSUndefinedKeyword") return null;
     retained.push(member);
   }
   return { authored, retained };
 }
 
-function dependentOwner(owner: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration): boolean {
-  const members = owner.type === AST_NODE_TYPES.TSInterfaceDeclaration ? owner.body.body :
-    owner.typeAnnotation.type === AST_NODE_TYPES.TSTypeLiteral ? owner.typeAnnotation.members : [];
-  if (members.some((member) => member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed)) return true;
-  const pending: TSESTree.Node[] = [owner];
+function dependentOwner(owner: ESTree.TSInterfaceDeclaration | ESTree.TSTypeAliasDeclaration): boolean {
+  const members: readonly Node[] = owner.type === "TSInterfaceDeclaration" ? owner.body.body :
+    owner.typeAnnotation.type === "TSTypeLiteral" ? owner.typeAnnotation.members : [];
+  if (members.some((member) => member.type !== "TSPropertySignature" || member.computed)) return true;
+  const pending: Node[] = [owner];
   while (pending.length > 0) {
     const node = pending.pop();
     if (node === undefined) continue;
-    if (node.type === AST_NODE_TYPES.TSThisType) return true;
+    if (node.type === "TSThisType") return true;
     forEachOwnAstChild(node, (child) => { pending.push(child); });
   }
   return false;

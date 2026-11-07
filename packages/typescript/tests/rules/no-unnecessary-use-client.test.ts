@@ -1,23 +1,8 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-unnecessary-use-client.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, {
-  NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION,
-} from "../../src/rules/no-unnecessary-use-client.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parserOptions: {
-      ecmaFeatures: { jsx: true },
-    },
-  },
-});
+const RULE_TESTER = ruleTester({ lang: "jsx" });
 
 RULE_TESTER.run("no-unnecessary-use-client", rule, {
   valid: [
@@ -58,7 +43,7 @@ RULE_TESTER.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "allows hook calls",
-      code: NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION.examples[0].files[0].source,
+      code: "'use client'; import { useState } from 'react'; export default function X() { const [n] = useState(0); return <div>{n}</div>; }",
     },
     {
       name: "allows JSX event handlers",
@@ -208,7 +193,7 @@ RULE_TESTER.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "reports static components",
-      code: NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION.examples[1].files[0].source,
+      code: "'use client'; export default function X() { return <div>hello</div>; }",
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
     {

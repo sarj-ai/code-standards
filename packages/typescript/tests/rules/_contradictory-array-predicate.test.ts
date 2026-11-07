@@ -1,21 +1,11 @@
-import { join } from "node:path";
-
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
 import rule from "../../src/rules/no-contradictory-type-predicate.js";
+import { FIXTURES, ruleTester, typed } from "./_tester.js";
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
+const TESTER = ruleTester({ cwd: FIXTURES });
+
 const CHECK = 'function texts(value: unknown): value is string[] { return Array.isArray(value); }';
 
-TESTER.run("no-contradictory-type-predicate", rule, {
+TESTER.run("no-contradictory-type-predicate", rule, typed({
   valid: [
     ...[
       ['unknown elements retain an honest boundary',CHECK.replace('string[]','unknown[]')],
@@ -94,7 +84,6 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     ].map(([name,code])=>({name,code:code!})),
     { name:'generated predicates are excluded',code:'// @generated\n'+CHECK },
     { name:'declaration contract has no implementation',filename:'types.d.ts',code:'declare function texts(value:unknown):value is string[];' },
-    { name:'exact local suppression preserves owned contract',code:'// eslint-disable-next-line @rule-tester/no-contradictory-type-predicate -- external validation owns contents\n'+CHECK },
   ],
   invalid: [
     ...['string[]','number[]','boolean[]','bigint[]','symbol[]','readonly string[]'].map(target=>({name:`primitive element contract ${target}`,code:CHECK.replace('string[]',target),errors:[{messageId:'uncheckedArrayElements' as const,data:{promised:target}}]})),
@@ -109,4 +98,4 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name:'ordinary destructuring does not extract a constructor',code:'const {label}={label:"ready"};void label;'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
     { name:'known computed destructuring retains an ordinary data field',code:'const key="label";const {[key]:label}={label:"ready"};void label;'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
   ],
-});
+}));

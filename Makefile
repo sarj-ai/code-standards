@@ -57,8 +57,8 @@ setup:
 
 verify:
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory format-check lint
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood typecheck
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build format-check lint
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood-python typecheck
 	+bash .github/scripts/make-verify-tail.sh "$(VERIFY_TEST_MODE)" $(MAKE)
 
 doctor:
@@ -138,8 +138,8 @@ test-tsconfig:
 release-status:
 	$(STANDARDS) --root . maintain release status --commit "$(COMMIT)"
 
-# Each package runs its native type-aware lint gate.
-lint:
+# Each package runs its native type-aware lint gate (TypeScript's loads the built plugin).
+lint: typescript-build
 	npm --prefix packages/typescript run lint
 	uv --directory packages/bootstrap run ruff check src/ tests/
 	uv --directory packages/contracts run ruff check src/ tests/
@@ -163,7 +163,7 @@ dogfood-python:
 	@bash .github/scripts/make-dogfood-python.sh "$(TEST_JOBS)"
 
 dogfood-typescript: typescript-build
-	npm --prefix packages/typescript run dogfood:built
+	npm --prefix packages/typescript run lint
 
 typecheck:
 	+bash .github/scripts/make-typecheck.sh $(MAKE) --no-print-directory $(if $(filter 1,$(TEST_JOBS)),--jobs=1,$(if $(filter -j%,$(MAKEFLAGS)),,--jobs=2))
@@ -179,7 +179,7 @@ check-no-private-refs:
 # and additional copies.
 # Regenerate the shipped record of every rule identifier and what became of it.
 # It never deletes: a rule that leaves a registry is moved to `retired`, because
-# a consumer config naming a removed rule makes ESLint exit 2 on the whole repo
+# a consumer config naming a removed rule makes Oxlint fail to build its config
 # and `doctor` needs the record to warn before the upgrade rather than after.
 sync-rule-ledger:
 	@$(STANDARDS) --root . maintain sync-ledger

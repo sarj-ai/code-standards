@@ -4,7 +4,7 @@ description: Write or review pytest and Vitest tests for distinct regression cov
 ---
 
 Run `code-standards observe --test-value --base BASE` for changes; omit `--base`
-for the suite. Executable ESLint config needs `--trust-repository-code`.
+for the suite. Executable Oxlint config needs `--trust-repository-code`.
 Check changed fixtures/consumers with `code-standards check`.
 
 Name the contract, plausible wrong outcome and cheapest faithful oracle. Reuse

@@ -1,42 +1,19 @@
 /**
  * @fileoverview no-secret-in-log — a secret passed to a logging call persists in log sinks far beyond its intended lifetime.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
+ * Port of the 18.x `no-secret-in-log` rule. Same algorithm; options and
+ * the test-file gate are read per file in `before()`.
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { createLogMatcher, LOGGING_OPTION_PROPERTIES, type LoggingOptions, type LogMatcher } from "../utils/logging.js";
+import { isTestFile } from "../utils/paths.js";
+import { FLAG_PREFIXES, INNOCUOUS_WORDS, isSecretName, leadingWord, tokenize } from "../utils/secret-names.js";
+import { findVariable, getPropertyName } from "../utils/static-string.js";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
-
-import {
-  createLogMatcher,
-  LOGGING_OPTION_PROPERTIES,
-  type LoggingOptions,
-} from "./_logging.js";
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
-import {
-  FLAG_PREFIXES,
-  INNOCUOUS_WORDS,
-  isSecretName,
-  leadingWord,
-  tokenize,
-} from "./_secret-names.js";
-
-type MessageIds = "noSecretInLog" | "noRawBodyInLog";
-type Options = readonly [LoggingOptions?];
-
-export const NO_SECRET_IN_LOG_DOCUMENTATION = {
-  summary: "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
-  rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
-  remediation: "Omit the value, log allowlisted non-sensitive context, or use an approved redactor; truncation alone is not a safety guarantee.",
-  category: "security",
-  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Literal containers, template/string concatenation expressions, direct slice/substring/substr calls, and unshadowed global JSON.stringify without a replacer are inspected; unknown spreads, computed properties, aliases, replacers, and opaque calls are not followed. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
-  examples: [
-    { id: "redacted-secret", title: "Log non-sensitive context instead of the secret", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { requestId });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
-    { id: "logged-secret", title: "Do not send a secret to logs", outcome: "match", files: [{ path: "src/auth.ts", source: "logger.error('auth failed', { token });" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+const NAME = "no-secret-in-log";
 
 const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   ...INNOCUOUS_WORDS,
@@ -97,12 +74,12 @@ function hasRedactionMarker(name: string): boolean {
   return tokenize(name).some((token) => SECRET_REDACTION_TOKENS.has(token));
 }
 
-function valueName(node: TSESTree.Node): string | null {
+function valueName(node: Node): string | null {
   if (node.type === "Identifier") return node.name;
-  return node.type === "MemberExpression" ? ASTUtils.getPropertyName(node) : null;
+  return node.type === "MemberExpression" ? getPropertyName(node) : null;
 }
 
-function isRawSecretValue(prop: TSESTree.Property): boolean {
+function isRawSecretValue(prop: ESTree.ObjectProperty): boolean {
   if (prop.shorthand) {
     return true;
   }
@@ -152,28 +129,24 @@ const BLOB_SAFE_TOKENS: ReadonlySet<string> = new Set([
   "public",
 ]);
 
-function rawBlobValueName(value: TSESTree.Node): string | null {
-  const unwrappedValueCallee = value.type === "CallExpression" || value.type === "NewExpression" ? unwrapExpression(value.callee) : null;
+const RESPONSE_NAME_RE = /^(?:res|response|\w+Response)$/;
+
+function rawBlobValueName(value: Node): string | null {
   if (value.type === "AwaitExpression") return rawBlobValueName(value.argument);
   if (value.type === "ChainExpression") return rawBlobValueName(value.expression);
   if (value.type === "Identifier") {
     return isRawBlobName(value.name) ? value.name : null;
   }
   if (value.type === "MemberExpression") {
-    const name = ASTUtils.getPropertyName(value);
+    const name = getPropertyName(value);
     return name !== null && isRawBlobName(name) ? name : null;
   }
-  if (
-    value.type === "CallExpression" &&
-    value.arguments.length === 0 &&
-    unwrappedValueCallee?.type === "MemberExpression" &&
-    unwrappedValueCallee.object.type === "Identifier" &&
-    /^(?:res|response|\w+Response)$/.test(unwrappedValueCallee.object.name)
-  ) {
-    const name = ASTUtils.getPropertyName(unwrappedValueCallee);
-    return name === "json" || name === "text" ? `${unwrappedValueCallee.object.name}.${name}()` : null;
-  }
-  return null;
+  if (value.type !== "CallExpression" || value.arguments.length !== 0) return null;
+  const callee = unwrapExpression(value.callee);
+  if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier" ||
+    !RESPONSE_NAME_RE.test(callee.object.name)) return null;
+  const name = getPropertyName(callee);
+  return name === "json" || name === "text" ? `${callee.object.name}.${name}()` : null;
 }
 
 /** True if the name names a raw request/response blob and is not a derived form. */
@@ -196,7 +169,7 @@ function isRawBlobName(name: string): boolean {
 }
 
 /** The static string name of an object-property key, or null when not statically named. */
-function propertyKeyName(prop: TSESTree.Property): string | null {
+function propertyKeyName(prop: ESTree.ObjectProperty): string | null {
   if (prop.computed) {
     return null;
   }
@@ -209,15 +182,14 @@ function propertyKeyName(prop: TSESTree.Property): string | null {
   return null;
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-secret-in-log",
-  documentation: NO_SECRET_IN_LOG_DOCUMENTATION,
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
         "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -233,21 +205,18 @@ export default createRule<Options, MessageIds>({
         "Raw `{{name}}` passed to a logging call. Request/response bodies can contain personal data or credentials. Log allowlisted non-sensitive context or use an approved redactor.",
     },
   },
-  create(context, [loggingOptions]) {
-    const matcher = createLogMatcher(loggingOptions);
-    // Bodies in a test file are fixtures the author wrote, not production PII.
-    const blobArmApplies = !isTestFile(context);
+  createOnce(context) {
+    let matcher: LogMatcher;
+    // Options arrive per file; rebuild the matcher only when they change.
+    let matcherOptions: unknown;
+    let blobArmApplies = false;
 
-
-
-
-
-    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+    function resolvesToGlobal(identifier: Node & { name: string }): boolean {
+      const variable = findVariable(context.sourceCode.getScope(identifier), identifier.name);
       return variable === null || variable.defs.length === 0;
     }
 
-    function inspectLoggedValue(value: TSESTree.Node): void {
+    function inspectLoggedValue(value: Node): void {
       value = unwrapExpression(value);
       const input = transparentCallInput(value);
       if (input !== undefined) {
@@ -277,44 +246,46 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Undefined means opaque; null means a transparent call with no logged bytes. */
-    function transparentCallInput(value: TSESTree.Node): TSESTree.Node | null | undefined {
-      const callee = value.type === "CallExpression" ? unwrapExpression(value.callee) : null;
-      if (value.type !== "CallExpression" || callee?.type !== "MemberExpression" ||
-        value.arguments.some((arg) => arg.type === "SpreadElement")) return undefined;
+    function transparentCallInput(value: Node): Node | null | undefined {
+      if (value.type !== "CallExpression") return undefined;
+      const callee = unwrapExpression(value.callee);
+      if (callee.type !== "MemberExpression" || value.arguments.some((arg) => arg.type === "SpreadElement")) return undefined;
       const object = unwrapExpression(callee.object);
-      const method = ASTUtils.getPropertyName(callee);
-      if (method === "stringify" && object.type === "Identifier" && object.name === "JSON" &&
-        resolvesToGlobal(object) && hasNoReplacer(value.arguments[1])) return value.arguments[0] ?? null;
+      const method = getPropertyName(callee);
+      if (method === "stringify" && isGlobalJson(object) && hasNoReplacer(value.arguments[1])) return value.arguments[0] ?? null;
       if (method === "slice" || method === "substring" || method === "substr") {
         return isEmptyTruncation(method, value.arguments) ? null : object;
       }
       return undefined;
     }
 
+    function isGlobalJson(node: Node): boolean {
+      return node.type === "Identifier" && node.name === "JSON" && resolvesToGlobal(node);
+    }
 
-    function hasNoReplacer(replacer: TSESTree.CallExpressionArgument | undefined): boolean {
+    function hasNoReplacer(replacer: Node | undefined): boolean {
       return replacer === undefined ||
         (replacer.type === "Literal" && replacer.value === null) ||
         (replacer.type === "Identifier" && replacer.name === "undefined" && resolvesToGlobal(replacer)) ||
         (replacer.type === "UnaryExpression" && replacer.operator === "void");
     }
 
-    function isEmptyTruncation(method: string, args: TSESTree.CallExpressionArgument[]): boolean {
+    function isEmptyTruncation(method: string, args: Node[]): boolean {
       const [start, end] = args;
       if (end?.type !== "Literal" || typeof end.value !== "number" || !Number.isFinite(end.value)) return false;
       if (method === "substr") return end.value <= 0;
       return start?.type === "Literal" && typeof start.value === "number" && start.value === end.value;
     }
 
-    function inspectLoggedObject(value: TSESTree.ObjectExpression): void {
+    function inspectLoggedObject(value: ESTree.ObjectExpression): void {
       for (const property of literalProperties(value)) {
         if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
         inspectLoggedValue(property.value);
       }
     }
 
-    function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {
-      const effective = new Map<string, TSESTree.Property>();
+    function literalProperties(value: ESTree.ObjectExpression): ESTree.ObjectProperty[] {
+      const effective = new Map<string, ESTree.ObjectProperty>();
       for (const entry of value.properties) {
         if (entry.type === "SpreadElement") {
           if (entry.argument.type !== "ObjectExpression") {
@@ -338,7 +309,7 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Reports `node` when `value` carries an un-redacted request/response blob. */
-    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
+    function reportRawBlob(node: Node, value: Node): boolean {
       if (!blobArmApplies) {
         return false;
       }
@@ -350,7 +321,7 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function reportSecretProperty(prop: TSESTree.Property): boolean {
+    function reportSecretProperty(prop: ESTree.ObjectProperty): boolean {
       const keyName = propertyKeyName(prop);
       const value = valueName(prop.value);
       if (value !== null && hasRedactionMarker(value)) return false;
@@ -362,7 +333,7 @@ export default createRule<Options, MessageIds>({
       return true;
     }
 
-    function reportSecretArgument(arg: TSESTree.Node): boolean {
+    function reportSecretArgument(arg: Node): boolean {
       const name = valueName(arg);
       if (name === null || !isSecretKeyword(name)) {
         return false;
@@ -372,7 +343,16 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      before(): void {
+        const [loggingOptions] = context.options as unknown as readonly [LoggingOptions?];
+        if (matcher === undefined || loggingOptions !== matcherOptions) {
+          matcher = createLogMatcher(loggingOptions);
+          matcherOptions = loggingOptions;
+        }
+        // Bodies in a test file are fixtures the author wrote, not production PII.
+        blobArmApplies = !isTestFile({ filename: context.filename, cwd: context.cwd });
+      },
+      CallExpression(node: ESTree.CallExpression): void {
         if (!matcher.isLoggingCall(node)) {
           return;
         }

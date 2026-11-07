@@ -1,25 +1,17 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-raw-env.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_RAW_ENV_DOCUMENTATION } from "../../src/rules/no-raw-env.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-raw-env", rule, {
   valid: [
+    { name: "raw-environment-read-dynamic-member", filename: "src/database.ts", code: "const url = process[auditDynamicMember][auditDynamicMember];" },
     { name: "does not infer process from a foreign default import", code: 'import proc from "./process"; const key = proc["env"].KEY;' },
     { name: "preserves a shadowed Node process alias", code: 'import proc from "node:process"; function read(proc: {env: {KEY: string}}) { return proc.env.KEY; }' },
     { name: "does not infer a value from a type-only Node namespace", code: 'import type * as proc from "node:process"; const key = proc.env.KEY;' },
     { name: "preserves platform exemptions under a Node alias", code: 'import proc from "node:process"; const runtime = proc["env"]["NODE_ENV"];' },
     { name: "does not confuse injected config with Node process", code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }" },
-    { name: "accepts the documented validated environment", code: NO_RAW_ENV_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented validated environment", code: "import { env } from './env.js'; const url = env.DATABASE_URL;" },
 
     { code: "import { env } from '@/env'; const url = env.DATABASE_URL;" },
 
@@ -30,7 +22,6 @@ RULE_TESTER.run("no-raw-env", rule, {
     { code: "const x = process[member];" },
 
     { code: "const x = config.meta.env;" },
-
 
     { code: "if (process.env.NODE_ENV === 'production') {}" },
     { code: "const dev = import.meta.env.DEV;" },
@@ -139,12 +130,13 @@ RULE_TESTER.run("no-raw-env", rule, {
     },
   ],
   invalid: [
+    { name: "raw-environment-read-static-member", filename: "src/database.ts", code: "const url = process[\"env\"][\"DATABASE_URL\"];", errors: [{ messageId: "noRawEnv" }] },
     { name: "reports a default Node process alias", code: 'import proc from "node:process"; const key = proc.env.KEY;', errors: [{ messageId: "noRawEnv" }] },
     { name: "reports a namespace process alias with static bracket access", code: 'import * as proc from "process"; const key = proc["env"]["KEY"];', errors: [{ messageId: "noRawEnv" }] },
     { name: "reports a static bracket read of the raw environment object", code: "const x = process['env'];", errors: [{ messageId: "noRawEnv" }] },
     { name: "does not treat a comment as environment validation", filename: "src/env.ts", code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "does not treat string payload as environment validation", filename: "src/env.ts", code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
-    { name: "reports the documented raw environment read", code: NO_RAW_ENV_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
+    { name: "reports the documented raw environment read (its focusPath keeps it distinct from the next case's code)", filename: "src/database.ts", code: "const url = process.env.DATABASE_URL;", errors: [{ messageId: "noRawEnv" }] },
     {
       code: "const url = process.env.DATABASE_URL;",
       errors: [{ messageId: "noRawEnv" }],
@@ -201,38 +193,4 @@ RULE_TESTER.run("no-raw-env", rule, {
       errors: [{ messageId: "noRawEnv" }],
     },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "raw-environment-read-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/database.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/database.ts",
-        "source": "const url = process[\"env\"][\"DATABASE_URL\"];"
-      }
-    ]
-  },
-  {
-    "id": "raw-environment-read-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/database.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/database.ts",
-        "source": "const url = process[auditDynamicMember][auditDynamicMember];"
-      }
-    ]
-  }
-] } });
 });

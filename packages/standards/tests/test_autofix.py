@@ -282,12 +282,12 @@ def test_fix_tool_output_preserves_machine_stdout(
     tool.write_text('print("fixture tool output")\n', encoding="utf-8")
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted
-        assert eslint
+        assert typescript
         return [lifecycle.Command("fixture", (sys.executable, str(tool)), root)]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts the external-tool plan to exercise real stdout descriptor routing with an isolated fixture.
@@ -302,7 +302,7 @@ def test_fix_tool_output_preserves_machine_stdout(
 
 
 @pytest.mark.parametrize("installed", [True, False])
-def test_eslint_fixes_prefer_the_installed_binary_over_the_package_manager_shell(
+def test_oxlint_fixes_prefer_the_installed_binary_over_the_package_manager_shell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed: bool
 ) -> None:
     (tmp_path / "package.json").write_text(
@@ -312,10 +312,10 @@ def test_eslint_fixes_prefer_the_installed_binary_over_the_package_manager_shell
     web = tmp_path / "apps" / "web"
     (web / "src").mkdir(parents=True)
     (web / "package.json").write_text(json.dumps({"name": "web"}), encoding="utf-8")
-    (web / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (web / "oxlint.config.mts").write_text("export default {};\n", encoding="utf-8")
     source = web / "src" / "component.tsx"
     source.write_text("export const Component = () => null;\n", encoding="utf-8")
-    binary = tmp_path / "node_modules" / ".bin" / "eslint"
+    binary = tmp_path / "node_modules" / ".bin" / "oxlint"
     if installed:
         binary.parent.mkdir(parents=True)
         binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -326,16 +326,24 @@ def test_eslint_fixes_prefer_the_installed_binary_over_the_package_manager_shell
         executed.extend(commands)
         return 0
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- capture the planned ESLint fixer instead of running a package manager.
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- capture the planned Oxlint fixer instead of running a package manager.
         lifecycle, "execute", execute
     )
     result = autofix.run(tmp_path, [str(source)], trusted=True)
 
     assert result.status == 0
-    eslint = [command for command in executed if command.label.startswith("ESLint")]
-    assert [command.cwd for command in eslint] == [web]
-    tail = ("--config", "eslint.config.mjs", "--fix", "--", "src/component.tsx")
-    assert eslint[0].argv == ((str(binary), *tail) if installed else ("yarn", "exec", "eslint", *tail))
+    oxlint = [command for command in executed if command.label.startswith("Oxlint (")]
+    assert [command.cwd for command in oxlint] == [web]
+    tail = (
+        "--report-unused-disable-directives-severity=off",
+        "-c",
+        "oxlint.config.mts",
+        "--fix",
+        "--",
+        "src/component.tsx",
+    )
+    assert oxlint[0].argv == ((str(binary), *tail) if installed else ("yarn", "exec", "oxlint", *tail))
+    assert oxlint[0].prepare is not None
 
 
 @pytest.mark.parametrize("failed_status", [-9, -11, 2])
@@ -348,12 +356,12 @@ def test_failed_fix_tool_stops_remaining_commands_and_reports_infrastructure_fai
     executed: list[str] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted
-        assert eslint
+        assert typescript
         return planned
 
     def execute(commands: Iterable[lifecycle.Command]) -> int:
@@ -456,12 +464,12 @@ def test_check_fixes_report_failed_child_without_corrupting_machine_stdout(
     child.write_text('import sys\nprint("child detail")\nprint("child failure", file=sys.stderr)\nsys.exit(2)\n')
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
     ) -> list[lifecycle.Command]:
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted
-        assert eslint
+        assert typescript
         return [lifecycle.Command("private child", (sys.executable, str(child)), root)]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- run a real isolated child to verify failed-tool output and the CLI report contract together.

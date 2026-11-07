@@ -1,20 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import rule, { PREFER_ZOD_INFER_DOCUMENTATION } from "../../src/rules/prefer-zod-infer.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+import rule from "../../src/rules/prefer-zod-infer.js";
+import { RuleTester } from "./_tester.js";
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
+  eslintCompat: true,
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
+
+const INFERRED_TYPE_EXAMPLE = 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;';
+const HANDWRITTEN_TWIN_EXAMPLE = 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }';
 
 const IMPORT = 'import { z } from "zod";\n';
 
@@ -47,7 +41,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     { name: "does not pair a local type with a module schema", code: `${IMPORT}const UserSchema = z.object({ id: z.string() }); function run() { interface User { id: string } }` },
     { name: "does not equate different array element types", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: number[] }` },
     { name: "does not equate different nested object shapes", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), child: z.object({ value: z.string() }) }); interface User { id: string; child: { value: number } }` },
-    { name: "accepts the documented inferred type", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented inferred type", code: INFERRED_TYPE_EXAMPLE },
 
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      type User = z.infer<typeof UserSchema>;`,
@@ -55,10 +49,8 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
      type UserInput = z.input<typeof UserSchema>;
      type UserOutput = z.output<typeof UserSchema>;`,
 
-
     `${IMPORT}const userSchema = z.object({ id: z.string(), name: z.string() });
      interface DatabaseRow { id: string; name: string }`,
-
 
     `${IMPORT}type ApiKeyInput = { id: string; label?: string };
      const ApiKeyInputSchema: z.ZodType<ApiKeyInput> = z.object({ id: z.string(), label: z.string().optional() });`,
@@ -67,7 +59,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
      type Query = { limit: string };
      const QuerySchema: z.ZodType<Query, z.ZodTypeDef, QueryRaw> = z.object({ limit: z.string() });`,
 
-
     `${IMPORT}const PageSchema = z.object({ items: z.unknown(), total: z.number() });
      type Page<T> = { items: T[]; total: number };`,
     {
@@ -75,7 +66,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       code: `${IMPORT}const PageSchema = z.object({ items: z.unknown(), total: z.number() });
              interface Page<T> { items: T[]; total: number }`,
     },
-
 
     `${IMPORT}const ZReadingSchema = z.looseObject({ celsius: z.number().nullish(), taken: z.string().nullish() });
      interface Reading { celsius: number; taken: string }`,
@@ -96,7 +86,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              const MergedSchema = z.object({ id: z.string() }).merge(z.object({ name: z.string() }));
              interface Merged { id: string; name: string }`,
     },
-
 
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      interface User { id: string; name: string; displayName: string }`,
@@ -159,7 +148,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     `${IMPORT}const UserSchema = z.object({ id: z.string(), deletedAt: z.string().nullable() });
      interface User { id: string; deletedAt: string }`,
 
-
     `${IMPORT}const UserSchema = z.object({ user_id: z.string(), name: z.string() });
      const UserCamel = UserSchema.transform((row) => ({ userId: row.user_id, name: row.name }));
      interface User { user_id: string; name: string }`,
@@ -177,7 +165,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              interface Preprocessed { id: string }`,
     },
 
-
     `${IMPORT}interface Base { createdAt: string }
      const UserSchema = z.object({ id: z.string() });
      interface User extends Base { id: string }`,
@@ -187,16 +174,12 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type User = BaseUser & { id: string };`,
     },
 
-
-
     `${IMPORT}const RoleSchema = z.object({ id: z.string() });
      const UserSchema = z.object({ role: RoleSchema, backupRole: RoleSchema });
      interface User { role: Role; backupRole: Role }`,
 
-
     `const z = builder; const UserSchema = z.object({ id: z.string() });
      interface User { id: string }`,
-
 
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
@@ -206,7 +189,9 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
              interface User { id: string }`,
+      name: "does not report twins in generated files (cwd is the package root, not the file's directory)",
       filename: "src/generated/api.ts",
+      cwd: process.cwd(),
     },
     {
       name: "does not report twins in story files",
@@ -215,11 +200,15 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       filename: "src/User.stories.tsx",
     },
 
-
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
              interface User { id: string }`,
       options: [{ ignoreTypeNames: ["^User$"] }],
+    },
+    {
+      name: "handwritten-twin-dynamic-member",
+      code: "import { z } from \"zod\"; const UserSchema = z[auditDynamicMember]({ id: z[auditDynamicMember]() }); interface User { id: string }",
+      filename: "src/user.ts",
     },
   ],
 
@@ -238,7 +227,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     {name: "preserves referenced twin ownership", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { id: string } declare const value: User;", output: null, errors: [{messageId: "handWrittenTwin"}]},
     {name: "preserves exported twin ownership", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); export interface User { id: string }", output: null, errors: [{messageId: "handWrittenTwin"}]},
     {name: "preserves member documentation", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { /** stable contract */ id: string }", output: null, errors: [{messageId: "handWrittenTwin"}]},
-    { name: "reports the documented hand-written twin", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source, output: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;", errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
+    { name: "reports the documented hand-written twin", code: HANDWRITTEN_TWIN_EXAMPLE, output: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;", errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
              interface User { id: string; name: string }`,
@@ -335,14 +324,6 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
-    {
-      name: "recognizes the exact Date type inferred by z.date",
-      code: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
-             interface Event { createdAt: Date }`,
-      output: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
-             type Event = z.infer<typeof EventSchema>;`,
-      errors: [{ messageId: "handWrittenTwin" }],
-    },
 
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
@@ -350,39 +331,19 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       options: [{ requireIdenticalShape: false }],
       errors: [{ messageId: "handWrittenTwin" }],
     },
+    {
+      name: "reports a twin whose member is the lib Date (no fix: Oxlint's scope manager has no lib globals)",
+      code: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
+             interface Event { createdAt: Date }`,
+      output: null,
+      errors: [{ messageId: "handWrittenTwin" }],
+    },
+    {
+      name: "handwritten-twin-static-member",
+      code: "import { z } from \"zod\"; const UserSchema = z[\"object\"]({ id: z[\"string\"]() }); interface User { id: string }",
+      filename: "src/user.ts",
+      output: "import { z } from \"zod\"; const UserSchema = z[\"object\"]({ id: z[\"string\"]() }); type User = z.infer<typeof UserSchema>;",
+      errors: [{ messageId: "handWrittenTwin" }],
+    },
   ],
-});
-
-
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "handwritten-twin-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/user.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/user.ts",
-        "source": "import { z } from \"zod\"; const UserSchema = z[\"object\"]({ id: z[\"string\"]() }); interface User { id: string }"
-      }
-    ]
-  },
-  {
-    "id": "handwritten-twin-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/user.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/user.ts",
-        "source": "import { z } from \"zod\"; const UserSchema = z[auditDynamicMember]({ id: z[auditDynamicMember]() }); interface User { id: string }"
-      }
-    ]
-  }
-] } });
 });

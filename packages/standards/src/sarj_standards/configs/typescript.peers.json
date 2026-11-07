@@ -1,0 +1,117 @@
+{
+  "$comment": [
+    "Every npm package the TypeScript capability (Oxlint, oxfmt, tsrs, React Doctor) loads or",
+    "executes, at the exact versions this repo installs and tests: the binaries, the @sarj plugin",
+    "and the ESLint plugins oxlint.strict.mts loads under `jsPlugins`.",
+    "",
+    "tsrs does all type checking and supplies `tsrs-lint` for type-aware rules, so there is no",
+    "TypeScript compiler pair. `typescript` stays only because @eslint-react/eslint-plugin imports",
+    "the TypeScript JavaScript API when it loads.",
+    "",
+    "`eslint` is not run. It is pinned because the JS plugins peer on it and npm cannot resolve",
+    "their ranges on its own; see `ceilings` and `npmOverrides`.",
+    "",
+    "`platformPackages` lists the platform binaries each peer ships as optionalDependencies at its own",
+    "version. Installs exempt the peers and these exact versions from the repository's release-age and",
+    "trust policies for that install only."
+  ],
+  "peers": {
+    "@eslint-react/eslint-plugin": "5.28.8",
+    "@sarj/eslint-plugin": "19.0.0",
+    "@tanstack/eslint-plugin-query": "5.106.1",
+    "eslint": "10.14.0",
+    "eslint-node-test": "1.0.1",
+    "eslint-plugin-jsdoc": "65.4.4",
+    "eslint-plugin-playwright": "2.12.2",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
+    "eslint-plugin-regexp": "3.3.3",
+    "eslint-plugin-security": "4.2.1",
+    "eslint-plugin-testing-library": "7.16.2",
+    "eslint-plugin-unicorn": "79.0.0",
+    "eslint-plugin-zod": "5.2.2",
+    "oxfmt": "0.76.0",
+    "oxlint": "1.91.0",
+    "oxlint-plugin-eslint": "1.91.0",
+    "react-doctor": "0.9.22",
+    "syncpack": "15.3.3",
+    "tsrs": "0.22.0-ts7.1.0-beta",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  },
+  "ageGatePreapprovals": {
+    "@sarj/eslint-plugin": "19.0.0"
+  },
+  "platformPackages": {
+    "oxfmt": [
+      "@oxfmt/binding-android-arm-eabi",
+      "@oxfmt/binding-android-arm64",
+      "@oxfmt/binding-darwin-arm64",
+      "@oxfmt/binding-darwin-x64",
+      "@oxfmt/binding-freebsd-x64",
+      "@oxfmt/binding-linux-arm-gnueabihf",
+      "@oxfmt/binding-linux-arm-musleabihf",
+      "@oxfmt/binding-linux-arm64-gnu",
+      "@oxfmt/binding-linux-arm64-musl",
+      "@oxfmt/binding-linux-ppc64-gnu",
+      "@oxfmt/binding-linux-riscv64-gnu",
+      "@oxfmt/binding-linux-riscv64-musl",
+      "@oxfmt/binding-linux-s390x-gnu",
+      "@oxfmt/binding-linux-x64-gnu",
+      "@oxfmt/binding-linux-x64-musl",
+      "@oxfmt/binding-openharmony-arm64",
+      "@oxfmt/binding-win32-arm64-msvc",
+      "@oxfmt/binding-win32-ia32-msvc",
+      "@oxfmt/binding-win32-x64-msvc"
+    ],
+    "oxlint": [
+      "@oxlint/binding-android-arm-eabi",
+      "@oxlint/binding-android-arm64",
+      "@oxlint/binding-darwin-arm64",
+      "@oxlint/binding-darwin-x64",
+      "@oxlint/binding-freebsd-x64",
+      "@oxlint/binding-linux-arm-gnueabihf",
+      "@oxlint/binding-linux-arm-musleabihf",
+      "@oxlint/binding-linux-arm64-gnu",
+      "@oxlint/binding-linux-arm64-musl",
+      "@oxlint/binding-linux-ppc64-gnu",
+      "@oxlint/binding-linux-riscv64-gnu",
+      "@oxlint/binding-linux-riscv64-musl",
+      "@oxlint/binding-linux-s390x-gnu",
+      "@oxlint/binding-linux-x64-gnu",
+      "@oxlint/binding-linux-x64-musl",
+      "@oxlint/binding-openharmony-arm64",
+      "@oxlint/binding-win32-arm64-msvc",
+      "@oxlint/binding-win32-ia32-msvc",
+      "@oxlint/binding-win32-x64-msvc"
+    ],
+    "syncpack": [
+      "syncpack-darwin-arm64",
+      "syncpack-darwin-x64",
+      "syncpack-linux-arm64",
+      "syncpack-linux-arm64-musl",
+      "syncpack-linux-x64",
+      "syncpack-linux-x64-musl",
+      "syncpack-windows-arm64",
+      "syncpack-windows-x64"
+    ],
+    "tsrs": [
+      "@tsrs/darwin-arm64",
+      "@tsrs/darwin-x64",
+      "@tsrs/linux-arm64-gnu",
+      "@tsrs/linux-arm64-musl",
+      "@tsrs/linux-x64-gnu",
+      "@tsrs/linux-x64-musl",
+      "@tsrs/win32-x64"
+    ]
+  },
+  "npmOverrides": {
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    }
+  },
+  "ceilings": {
+    "eslint": "Not run. eslint-plugin-unicorn 79 peers `eslint >= 10.4` and eslint-plugin-react 7.37.5 peers `eslint <= ^9.7`, so npm refuses the tree unless eslint is a direct dependency that the eslint-plugin-react override can point at.",
+    "eslint-plugin-react": "7.37.5 is the newest release and peers `eslint <= ^9.7`; the npm override permits ESLint 10. Oxlint loads it as react-js for the two rules without a native port.",
+    "typescript": "@eslint-react/eslint-plugin imports the TypeScript JavaScript API at load time. TypeScript 7 has no JavaScript API, so the official TypeScript 6 compatibility package supplies it."
+  }
+}

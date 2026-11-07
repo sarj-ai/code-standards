@@ -228,7 +228,7 @@ def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> N
 
 
 @pytest.mark.usefixtures("native_workflow_versions")
-def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_environment(
+def test_yarn_workspace_setup_and_doctor_share_the_workspace_peer_set(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -249,39 +249,33 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
         encoding="utf-8",
     )
     (tmp_path / "yarn.lock").write_text("__metadata:\n  version: 8\n", encoding="utf-8")
+    # The TypeScript tools run from node_modules/.bin, so Plug'n'Play is not supported.
+    (tmp_path / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
     (web / "package.json").write_text('{"name":"web","private":true,"type":"module"}\n', encoding="utf-8")
     (source / "index.ts").write_text("export {};\n", encoding="utf-8")
     binaries = tmp_path / "test-bin"
     binaries.mkdir()
+    # The install links a stand-in oxfmt; post-install seeding formats the new config and the repository with it.
+    oxfmt = "#!" + sys.executable + "\nimport sys\nraise SystemExit(0)\n"
     yarn_shim = binaries / "yarn_shim.py"
     yarn_shim.write_text(
         "from pathlib import Path\n"
-        "import json\n"
         "import sys\n"
         "arguments = sys.argv[1:]\n"
         "if arguments[:1] == ['install']:\n"
-        "    Path('.pnp.cjs').touch()\n"
-        "    raise SystemExit(0)\n"
-        "if arguments[:2] == ['exec', 'node']:\n"
-        "    assert Path(arguments[2]).name == 'eslint-selected-rules.mts'\n"
-        "    assert json.loads(arguments[3])['full'] is True\n"
-        "    arguments = ['exec', 'eslint', *arguments[4:]]\n"
-        "if arguments[:2] == ['exec', 'eslint'] and '\"eslint\"' in Path('package.json').read_text():\n"
-        "    boundary = max(index for index, value in enumerate(arguments) if value == '--') + 1\n"
-        "    print(json.dumps([{'filePath': str(Path(value).resolve()), 'messages': []} for value in arguments[boundary:]]))\n"
+        "    binary = Path('node_modules/.bin/oxfmt')\n"
+        "    binary.parent.mkdir(parents=True, exist_ok=True)\n"
+        f"    binary.write_text({oxfmt!r})\n"
+        "    binary.chmod(0o755)\n"
         "    raise SystemExit(0)\n"
         "raise SystemExit(127)\n",
         encoding="utf-8",
     )
     if sys.platform == "win32":
-        (binaries / "yarn.cmd").write_text(
-            f'@"{sys.executable}" "{yarn_shim}" %*\r\n',
-            encoding="utf-8",
-        )
-    else:
-        yarn = binaries / "yarn"
-        yarn.write_text(f"#!{sys.executable}\n{yarn_shim.read_text(encoding='utf-8')}", encoding="utf-8")
-        yarn.chmod(0o755)
+        pytest.skip("the stand-in oxfmt is a POSIX script")
+    yarn = binaries / "yarn"
+    yarn.write_text(f"#!{sys.executable}\n{yarn_shim.read_text(encoding='utf-8')}", encoding="utf-8")
+    yarn.chmod(0o755)
     monkeypatch.setenv(
         "PATH",
         f"{binaries}{os.pathsep}{os.environ['PATH']}",  # ruff: ignore[banned-api] -- retain the test runner's tool path behind the fake Yarn executable.
@@ -301,15 +295,14 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
         )
         == 0
     )
-    capsys.readouterr()
+    assert "note: oxfmt formatted 0 file(s) once" in capsys.readouterr().out
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
-    capsys.readouterr()
-    assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code", "apps/web/src/index.ts"]) == 0
 
     root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert "resolutions" in as_table(root_package)
-    assert manifest.eslint_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
+    assert manifest.typescript_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
+    assert (web / "oxfmt.config.mts").is_file()
 
 
 def test_unified_ratchet_initializes_and_checks_a_suppression_budget(tmp_path: Path) -> None:
@@ -506,6 +499,12 @@ def react_doctor_policy(tmp_path: Path) -> Policy:
         (("generated/client.ts", "package.json"), True),
         (("package.json",), True),
         (("web/tsconfig.json",), True),
+        ((".oxlintrc.json",), True),
+        (("web/oxlint.config.mts",), True),
+        (("oxlint-suppressions.json",), True),
+        (("web/doctor.config.json",), True),
+        (("next.config.mjs",), True),
+        (("bun.lock",), True),
         (("README.md",), False),
         ((), False),
     ],

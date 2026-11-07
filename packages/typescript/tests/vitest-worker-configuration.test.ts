@@ -5,8 +5,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
-import { record } from "../../standards/src/sarj_standards/configs/tool-json.mts";
+const RecordSchema = z.record(z.string(), z.unknown());
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  const parsed = RecordSchema.safeParse(value);
+  if (!parsed.success) throw new TypeError(`${label} must be an object`);
+  return parsed.data;
+}
 
 const CONFIG_PATH = fileURLToPath(new URL("../vitest.config.ts", import.meta.url));
 const VITEST_NODE_MODULE = new URL("../node_modules/vitest/dist/node.js", import.meta.url).href;

@@ -1,18 +1,11 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-restricted-library-load.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION } from "../../src/rules/no-restricted-library-load.js";
+const RULE_TESTER = ruleTester();
 
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-});
+const CONFIGURED_REPLACEMENT_EXAMPLE = "import ky from 'ky'; const client = ky;";
+const RUNTIME_LOAD_EXAMPLE = "const client = require('axios');";
 
 const OPTIONS = [
   {
@@ -31,7 +24,7 @@ const OPTIONS = [
 RULE_TESTER.run("no-restricted-library-load", rule, {
   valid: [
     { name: "preserves erased import-type equals declarations", code: "import type Axios = require('axios');", options: OPTIONS },
-    { name: "accepts the documented static import", code: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.examples[0].files[0].source, options: OPTIONS },
+    { name: "accepts the documented static import", code: CONFIGURED_REPLACEMENT_EXAMPLE, options: OPTIONS },
     { code: 'import axios from "axios";', options: OPTIONS },
     { code: 'export { default } from "axios";', options: OPTIONS },
     { code: 'const client = require(name);', options: OPTIONS },
@@ -50,7 +43,7 @@ RULE_TESTER.run("no-restricted-library-load", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented runtime load", code: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.examples[1].files[0].source, options: OPTIONS, errors: [{ messageId: "restrictedLibraryLoad" }] },
+    { name: "reports the documented runtime load", code: RUNTIME_LOAD_EXAMPLE, options: OPTIONS, errors: [{ messageId: "restrictedLibraryLoad" }] },
     {
       code: 'const client = await import("axios");',
       options: OPTIONS,

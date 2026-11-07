@@ -1,24 +1,23 @@
 /**
- * @fileoverview no-storage-in-stateless-modules — private storage inside a module a team declared stateless diverges from the system of record, silently.
+ * @fileoverview no-storage-in-stateless-modules — keep private storage out of modules declared stateless.
  *
- * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts
+ * Port of the 18.x `no-storage-in-stateless-modules` rule. The rule is untyped, so the port
+ * covers all of it.
  */
 
-import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { defineRule, type ESTree, type Node } from "../types.js";
+import { unwrapExpression } from "../utils/ast.js";
+import { docsUrl } from "../utils/docs-url.js";
+import { isTestFile } from "../utils/paths.js";
+import { sqlTextOf, stripSqlNoise } from "../utils/sql.js";
+import { getPropertyName } from "../utils/static-string.js";
 
-import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
-import { isTestFile } from "./_paths.js";
-import { sqlTextOf, stripSqlNoise } from "./_sql.js";
+const NAME = "no-storage-in-stateless-modules";
 
-type MessageIds = "storageInStatelessModule";
-
-export interface RuleOptions {
+interface RuleOptions {
   readonly modules?: readonly string[];
   readonly methods?: readonly string[];
 }
-
-type Options = readonly [RuleOptions?];
 
 const DEFAULT_METHODS: readonly string[] = [
   "prepare",
@@ -28,22 +27,9 @@ const DEFAULT_METHODS: readonly string[] = [
 
 const MIN_ARGUMENTS: ReadonlyMap<string, number> = new Map([["put", 2]]);
 
-export const NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION = {
-  summary: "Disallow SQL or key/value access inside configured stateless modules; derive state from a system of record instead.",
-  rationale: "Private storage in a stateless workflow creates another source of truth that can silently diverge.",
-  remediation: "Read from the system of record or derive state from an artifact the workflow already produces.",
-  category: "architecture",
-  limitations: ["This opt-in architectural policy requires configured module paths and storage method names. Overloaded `put` requires storage-like receiver evidence; `prepare` requires SQL-shaped literal text or a conventional database receiver for dynamic text. These syntax heuristics do not prove database provenance or identify the system of record."],
-  examples: [
-    { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true, ruleOptions: [{ modules: ["[\\\\/]engineer-digest[\\\\/]"] }] },
-    { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "export {}; await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true, ruleOptions: [{ modules: ["[\\\\/]engineer-digest[\\\\/]"] }] },
-  ],
-} as const satisfies RuleDocumentation<Options>;
-
-/** Compile regex sources. Invalid configuration must fail loudly. */
-function compile(patterns: readonly string[]): RegExp[] {
-  return patterns.map((pattern) => new RegExp(pattern));
-}
+const SQL_STATEMENT_RE = /^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu;
+const SQL_RECEIVER_RE = /^(?:db|database|connection)$/iu;
+const IDENTIFIER_WORD_RE = /[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|\d+/gu;
 
 const STORAGE_RECEIVER_WORDS: ReadonlySet<string> = new Set([
   "bucket",
@@ -58,14 +44,12 @@ const STORAGE_RECEIVER_WORDS: ReadonlySet<string> = new Set([
 
 /** The flagged storage method name of `receiver.method(...)`, or null. */
 function storageMethodName(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
   const callee = unwrapExpression(node.callee);
-
-  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-  const name = ASTUtils.getPropertyName(callee);
+  if (callee.type !== "MemberExpression") return null;
+  const name = getPropertyName(callee);
   if (name === null || !methods.has(name)) {
     return null;
   }
@@ -74,7 +58,7 @@ function storageMethodName(
   }
   // `put` is shared by HTTP clients, queues, builders, and KV stores. Require
   // receiver evidence before treating this ambiguous name as storage access.
-  if (name === "put" && !isStorageLikeReceiver(calleeReceiver)) {
+  if (name === "put" && !isStorageLikeReceiver(callee.object)) {
     return null;
   }
   if (name === "prepare" && !hasSqlPreparationEvidence(node, callee)) return null;
@@ -83,16 +67,16 @@ function storageMethodName(
 
 /** Whether the receiver itself gives syntactic evidence of storage access. */
 function isStorageLikeReceiver(
-  node: TSESTree.Expression | TSESTree.Super,
+  node: Node,
 ): boolean {
   node = unwrapExpression(node);
-  if (node.type === AST_NODE_TYPES.Identifier) {
+  if (node.type === "Identifier") {
     return isStorageIdentifier(node.name);
   }
-  if (node.type !== AST_NODE_TYPES.MemberExpression) {
+  if (node.type !== "MemberExpression") {
     return false;
   }
-  const name = ASTUtils.getPropertyName(node);
+  const name = getPropertyName(node);
   if (name !== null && isStorageIdentifier(name)) {
     return true;
   }
@@ -107,18 +91,27 @@ function isStorageIdentifier(name: string): boolean {
 
 /** Split snake/camel/Pascal identifiers without treating `httpClient` as storage. */
 function identifierWords(name: string): string[] {
-  return name.match(/[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|\d+/gu) ?? [name];
+  return name.match(IDENTIFIER_WORD_RE) ?? [name];
 }
 
-export default createRule<Options, MessageIds>({
-  name: "no-storage-in-stateless-modules",
-  documentation: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION,
+/** `prepare` is storage only for a SQL statement or a database-named receiver. */
+function hasSqlPreparationEvidence(node: ESTree.CallExpression, callee: ESTree.MemberExpression): boolean {
+  const argument = node.arguments[0];
+  const text = argument === undefined ? null : sqlTextOf(argument);
+  if (text !== null) return SQL_STATEMENT_RE.test(stripSqlNoise(text));
+  const receiver = callee.object;
+  const receiverName = receiver.type === "Identifier" ? receiver.name : receiver.type === "MemberExpression" ? getPropertyName(receiver) : null;
+  return receiverName !== null && SQL_RECEIVER_RE.test(receiverName);
+}
+
+export default defineRule({
   meta: {
     defaultOptions: [{}],
     type: "problem",
     docs: {
       description:
         "Disallow SQL or key/value access inside configured stateless modules; derive state from a system of record instead.",
+      url: docsUrl(NAME),
     },
     schema: [
       {
@@ -144,24 +137,21 @@ export default createRule<Options, MessageIds>({
         "`{{method}}()` reaches for private storage inside a module declared stateless. Derive the state from a read against the system of record, or from a marker in the artefact this feature already produces.",
     },
   },
-  create(context, [options]) {
-    if (isTestFile(context)) {
-      return {};
-    }
-    const modules = options?.modules ?? [];
-    if (modules.length === 0) {
-      return {};
-    }
-
-    const scoped = compile(modules);
-    if (!scoped.some((re) => re.test(context.filename))) {
-      return {};
-    }
-
-    const methods = new Set(options?.methods ?? DEFAULT_METHODS);
-
+  createOnce(context) {
+    let methods: ReadonlySet<string> = new Set();
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      before() {
+        if (isTestFile({ filename: context.filename, cwd: context.cwd })) return false;
+        const options = context.options[0] as RuleOptions | undefined;
+        const modules = options?.modules ?? [];
+        if (modules.length === 0) return false;
+        // Compile every pattern first so invalid configuration fails loudly.
+        const scoped = modules.map((pattern) => new RegExp(pattern));
+        if (!scoped.some((re) => re.test(context.filename))) return false;
+        methods = new Set(options?.methods ?? DEFAULT_METHODS);
+        return undefined;
+      },
+      CallExpression(node: ESTree.CallExpression): void {
         const method = storageMethodName(node, methods);
         if (method !== null) {
           context.report({
@@ -174,17 +164,3 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
-
-function hasSqlPreparationEvidence(node: TSESTree.CallExpression, callee: TSESTree.MemberExpression): boolean {
-  const argument = node.arguments[0];
-  const text = argument === undefined ? null : sqlTextOf(argument);
-  if (text !== null) {
-    if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return false;
-  } else {
-    const receiver = callee.object;
-    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression ? ASTUtils.getPropertyName(receiver) ?? "" : "";
-    if (!/^(?:db|database|connection)$/iu.test(receiverName)) return false;
-  }
-
-  return true;
-}

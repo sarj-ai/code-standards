@@ -1,22 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule from "../../src/rules/no-server-file-uploads.js";
+import { ruleTester } from "./_tester.js";
 
-import rule, { NO_SERVER_FILE_UPLOADS_DOCUMENTATION } from "../../src/rules/no-server-file-uploads.js";
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-server-file-uploads", rule, {
   valid: [
-    { name: "browser signed upload", code: NO_SERVER_FILE_UPLOADS_DOCUMENTATION.examples[0].files[0].source },
-    { name: "server object metadata", code: NO_SERVER_FILE_UPLOADS_DOCUMENTATION.examples[3].files[0].source },
+    { name: "documented example browser-signed-url", filename: "app/upload.ts", code: "'use client'; export async function upload(file: File, signedUrl: string) { await fetch(signedUrl, { method: 'PUT', body: file, signal: AbortSignal.timeout(60000) }); }" },
+    { name: "documented example server-object-metadata", filename: "app/actions.ts", code: "'use server'; export async function complete(objectKey: string) { return validateUploadedObject(objectKey); }" },
+    { name: "browser signed upload", code: "'use client'; export async function upload(file: File, signedUrl: string) { await fetch(signedUrl, { method: 'PUT', body: file, signal: AbortSignal.timeout(60000) }); }" },
+    { name: "server object metadata", code: "'use server'; export async function complete(objectKey: string) { return validateUploadedObject(objectKey); }" },
     { name: "ordinary browser script", code: "const file = new File(['data'], 'data.txt'); await fetch(signedUrl, { method: 'PUT', body: file });" },
     { name: "filename does not prove server intent", filename: "/app/api/upload/route.ts", code: "export function selected(file: File) { return file.name; }" },
     { name: "client with type-only server import", code: "'use client'; import type { NextRequest } from 'next/server'; export type Selected = File;" },
@@ -42,8 +35,10 @@ RULE_TESTER.run("no-server-file-uploads", rule, {
     { name: "browser buffer File", code: "'use client'; import { File as NativeFile } from 'node:buffer'; const value = new NativeFile([], 'item');" },
   ],
   invalid: [
-    { name: "server File parameter", code: NO_SERVER_FILE_UPLOADS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "serverFile" }] },
-    { name: "Hono file upload", code: NO_SERVER_FILE_UPLOADS_DOCUMENTATION.examples[2].files[0].source, errors: [{ messageId: "serverFile" }] },
+    { name: "documented example server-file-parameter", filename: "app/actions.ts", code: "'use server'; export async function upload(file: File) { return file.name; }", errors: 1 },
+    { name: "documented example hono-file-validation", filename: "src/server.ts", code: "import { Hono } from 'hono'; const app = new Hono(); app.post('/upload', async (c) => { const body = await c.req.parseBody(); return c.json({ uploaded: body.file instanceof File }); });", errors: 1 },
+    { name: "server File parameter", code: "'use server'; export async function upload(file: File) { return file.name; }", errors: [{ messageId: "serverFile" }] },
+    { name: "Hono file upload", code: "import { Hono } from 'hono'; const app = new Hono(); app.post('/upload', async (c) => { const body = await c.req.parseBody(); return c.json({ uploaded: body.file instanceof File }); });", errors: [{ messageId: "serverFile" }] },
     { name: "server-only runtime validation", code: "import 'server-only'; const valid = input instanceof File;", errors: [{ messageId: "serverFile" }] },
     { name: "Next.js server route", code: "import { NextResponse } from 'next/server'; export async function POST(request: Request) { const data = await request.formData(); return NextResponse.json({ valid: data.get('file') instanceof File }); }", errors: [{ messageId: "serverFile" }] },
     { name: "Next.js namespace import", code: "import * as server from 'next/server'; const valid = input instanceof File;", errors: [{ messageId: "serverFile" }] },
@@ -68,8 +63,4 @@ RULE_TESTER.run("no-server-file-uploads", rule, {
     { name: "multiple directives", code: "'use strict'; 'use server'; const file = File;", errors: [{ messageId: "serverFile" }] },
     { name: "JavaScript upload validation", filename: "server.js", code: "import 'server-only'; const valid = input instanceof File;", errors: [{ messageId: "serverFile" }] },
   ],
-});
-
-it("executes the documented upload examples", async () => {
-  await verifyRuleExamples(rule);
 });

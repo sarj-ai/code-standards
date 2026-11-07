@@ -75,9 +75,10 @@ export default { ...base, test: { ...base.test, reporters } };
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
       if (options.acknowledgePreview && acknowledged === undefined && stderr.includes(PREVIEW_END)) {
-        acknowledged = Promise.resolve().then(() => {
+        acknowledged = (async () => {
+          await Promise.resolve();
           writeFileSync(join(root, "continue"), "preview received");
-        });
+        })();
       }
     });
     const status = await new Promise<number | null>((resolve, reject) => {

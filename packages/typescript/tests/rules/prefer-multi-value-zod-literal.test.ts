@@ -1,18 +1,9 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+// vitest: shared-module-graph
+import { expect, it } from "vitest";
 import { z } from "zod";
 
-import rule, {
-  PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
-} from "../../src/rules/prefer-multi-value-zod-literal.js";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
-RuleTester.itOnly = it.only;
+import rule from "../../src/rules/prefer-multi-value-zod-literal.js";
+import { ruleTester } from "./_tester.js";
 
 it("does not automatically change the public schema and validation error contracts", () => {
   const original = z.union([z.literal(1), z.literal(2)]);
@@ -24,12 +15,7 @@ it("does not automatically change the public schema and validation error contrac
   expect(rule.meta.fixable).toBeUndefined();
 });
 
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
-});
+const RULE_TESTER = ruleTester();
 const ERROR = { messageId: "useMultiValueLiteral" as const };
 
 RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
@@ -54,9 +40,8 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
     {
       name: "public no-match example",
       filename:
-        PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[0].focusPath,
-      code: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[0].files[0]
-        .source,
+        "src/schema.ts",
+      code: "import { z } from 'zod/v4'; export const Version = z.literal([1, 2, 3]);",
     },
     "import { z } from 'zod'; export const V = z.union([z.literal(1), z.string()]);",
     "import { z } from 'zod/v4'; export const V = z.union([z.literal('a'), z.literal('b')]);",
@@ -112,8 +97,8 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
     {
       name: "public match example",
       filename:
-        PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].focusPath,
-      code: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].files[0].source.replace(
+        "src/schema.ts",
+      code: "import { z } from 'zod/v4'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);".replace(
         "from 'zod'",
         "from 'zod/v4'",
       ),
@@ -160,44 +145,20 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
   ],
 });
 
-it("preserves outcomes for static member access and unknown member keys", async () => {
-  const documentation = rule.documentation;
-  if (documentation === undefined)
-    throw new Error("Missing rule documentation");
-  await verifyRuleExamples({
-    ...rule,
-    documentation: {
-      ...documentation,
-      examples: [
-        {
-          id: "literal-union-static-member",
-          title: "Static member access preserves the rule outcome",
-          outcome: "match",
-          focusPath: "src/schema.ts",
-          expectedCount: 1,
-          files: [
-            {
-              path: "src/schema.ts",
-              source:
-                'import { z } from \'zod/v4\'; export const Version = z["union"]([z["literal"](1), z["literal"](2), z["literal"](3)]);',
-            },
-          ],
-        },
-        {
-          id: "literal-union-dynamic-member",
-          title: "Unknown member access does not establish API identity",
-          outcome: "no-match",
-          focusPath: "src/schema.ts",
-          expectedCount: 0,
-          files: [
-            {
-              path: "src/schema.ts",
-              source:
-                "import { z } from 'zod/v4'; export const Version = z[auditDynamicMember]([z[auditDynamicMember](1), z[auditDynamicMember](2), z[auditDynamicMember](3)]);",
-            },
-          ],
-        },
-      ],
+ruleTester().run("prefer-multi-value-zod-literal", rule, {
+  valid: [
+    {
+      name: "literal-union-dynamic-member",
+      filename: "src/schema.ts",
+      code: "import { z } from 'zod/v4'; export const Version = z[auditDynamicMember]([z[auditDynamicMember](1), z[auditDynamicMember](2), z[auditDynamicMember](3)]);",
     },
-  });
+  ],
+  invalid: [
+    {
+      name: "literal-union-static-member",
+      filename: "src/schema.ts",
+      code: 'import { z } from \'zod/v4\'; export const Version = z["union"]([z["literal"](1), z["literal"](2), z["literal"](3)]);',
+      errors: 1,
+    },
+  ],
 });
