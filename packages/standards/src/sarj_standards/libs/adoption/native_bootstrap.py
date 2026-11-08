@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import hashlib
+from http import HTTPStatus
+from http.client import HTTPException
 import os
 from pathlib import Path
 import platform
+from random import SystemRandom
 import shutil
 import tempfile
+from time import sleep
 from typing import Final
-from urllib.error import URLError
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
 VERSION: Final = "2026.10.8"
+# Each round tries the mirror, then GitHub; later rounds wait with full jitter.
+_ROUNDS: Final = 3
+_BACKOFF_SECONDS: Final = 2.0
+_TRANSIENT_STATUSES: Final = frozenset({HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS})
 # Official raw-asset digests: https://api.github.com/repos/jdx/mise/releases/tags/v2026.10.8
 _DIGESTS: Final = {
     "linux-x64": "c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428",
@@ -62,28 +70,54 @@ def _matches(path: Path, expected: str) -> bool:
 
 
 def _download(destination: Path, *, target: str, expected: str) -> None:
-    url = f"https://mise.jdx.dev/v{VERSION}/mise-v{VERSION}-{target}"
-    request = Request(url, headers={"User-Agent": "code-standards-native-bootstrap/1"})
+    # Transient failures retry every remaining source; a permanent HTTP status or a
+    # checksum mismatch retires that source. Only a verified binary is installed.
+    headers = {"User-Agent": "code-standards-native-bootstrap/1"}
+    sources = [
+        Request(f"https://mise.jdx.dev/v{VERSION}/mise-v{VERSION}-{target}", headers=headers),
+        Request(f"https://github.com/jdx/mise/releases/download/v{VERSION}/mise-v{VERSION}-{target}", headers=headers),
+    ]
+    failure: OSError | HTTPException = OSError("pinned mise download failed")
     with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".mise-") as temporary:
         downloaded = Path(temporary) / "mise"
-        try:
-            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official HTTPS mirror.
-        except URLError, TimeoutError:
-            request = Request(
-                f"https://github.com/jdx/mise/releases/download/v{VERSION}/mise-v{VERSION}-{target}",
-                headers={"User-Agent": "code-standards-native-bootstrap/1"},
-            )
-            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official HTTPS release origin.
+        for attempt in range(_ROUNDS):
+            if attempt and sources:
+                sleep(SystemRandom().uniform(0, _BACKOFF_SECONDS * 2.0 ** (attempt - 1)))
+            for request in list(sources):
+                try:
+                    _fetch_verified(request, downloaded, expected)
+                except _RetiredSourceError as error:
+                    failure = error
+                    sources.remove(request)
+                    continue
+                except (OSError, HTTPException) as error:
+                    failure = error
+                    continue
+                downloaded.chmod(0o755)
+                downloaded.replace(destination)
+                return
+    raise failure
+
+
+# A permanent HTTP status or a checksum mismatch: retrying that source cannot help.
+class _RetiredSourceError(OSError):
+    pass
+
+
+def _fetch_verified(request: Request, downloaded: Path, expected: str) -> None:
+    try:
         with (
-            response,
+            urlopen(request, timeout=120) as response,  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official HTTPS mirror and release origin.
             downloaded.open("wb") as stream,
         ):
             shutil.copyfileobj(response, stream)  # pyright: ignore[reportAny] -- urllib's bytes stream is consumed without executing it.
-        if not _matches(downloaded, expected):
-            message = "pinned mise download checksum mismatch"
-            raise OSError(message)
-        downloaded.chmod(0o755)
-        downloaded.replace(destination)
+    except HTTPError as error:
+        if error.code < HTTPStatus.INTERNAL_SERVER_ERROR and error.code not in _TRANSIENT_STATUSES:
+            raise _RetiredSourceError(str(error)) from error
+        raise
+    if not _matches(downloaded, expected):
+        message = "pinned mise download checksum mismatch"
+        raise _RetiredSourceError(message)
 
 
 if __name__ == "__main__":
