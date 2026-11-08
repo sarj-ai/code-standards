@@ -2531,7 +2531,7 @@ _RESULT_CACHE_PATH: Final = "${{ runner.temp }}/standards-results"
 _RESULT_CACHE_PREFIX: Final = (
     "standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-"
 )
-_TRUSTED_RESULT_WRITE: Final = (
+_DEFAULT_BRANCH_PUSH: Final = (
     "github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"
 )
 _RESULT_CACHE_RESTORE: Final = (
@@ -2548,11 +2548,11 @@ _RESULT_CACHE_ENVIRONMENT: Final = (
     "          SARJ_STANDARDS_RESULT_CACHE: >-",
     "            ${{ vars.STANDARDS_RESULT_CACHE != 'off' && format('{0}/standards-results', runner.temp) || 'off' }}",
     "          SARJ_STANDARDS_RESULT_CACHE_WRITE: >-",
-    f"            ${{{{ {_TRUSTED_RESULT_WRITE} && '1' || '' }}}}",
+    f"            ${{{{ {_DEFAULT_BRANCH_PUSH} && '1' || '' }}}}",
 )
 _RESULT_CACHE_SAVE: Final = (
     "      - name: Save trusted Standards results",
-    f"        if: vars.STANDARDS_RESULT_CACHE != 'off' && {_TRUSTED_RESULT_WRITE}",
+    f"        if: vars.STANDARDS_RESULT_CACHE != 'off' && {_DEFAULT_BRANCH_PUSH}",
     "        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
     "        with:",
     f"          path: {_RESULT_CACHE_PATH}",
