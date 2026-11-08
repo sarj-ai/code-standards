@@ -418,6 +418,11 @@ def test_supported_alias_source_survives_setup_and_offline_update(
         "export const value = legacy();\n"
         "// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- public signature\n"
         "export function identity<T extends string>(value: T): T { return value; }\n"
+        "// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- known runtime boundary\n"
+        "export const optional = value?.length;\n"
+        "declare function consume(callback: () => void): void;\n"
+        "// eslint-disable-next-line @typescript-eslint/strict-void-return -- ignored callback result\n"
+        "consume(() => null);\n"
     )
     root = _repository(
         tmp_path,

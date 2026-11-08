@@ -394,9 +394,11 @@ def _suppressions(path: Path) -> dict[str, dict[str, int]]:
 
 def _plan_directives(kept: Sequence[Path], changes: _Changes) -> None:
     targets = {**_renamed_rules(), **retired_suppressions.retired_lint_targets()}
-    # These two aliases already suppress the same native rules; retain source identity.
+    # These proven aliases already suppress the same native rules; retain source identity.
     targets.pop("@typescript-eslint/no-deprecated", None)
     targets.pop("@typescript-eslint/no-unnecessary-type-parameters", None)
+    targets.pop("@typescript-eslint/no-unnecessary-condition", None)
+    targets.pop("@typescript-eslint/strict-void-return", None)
     for path in kept:
         try:
             text = path.read_bytes().decode("utf-8")
