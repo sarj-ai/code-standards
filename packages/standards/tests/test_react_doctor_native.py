@@ -638,3 +638,34 @@ def test_hidden_ancestor_environment_scope_keeps_authored_risks_and_artifact_sec
         item.rule_id == "react-doctor/artifact-secret-leak" and item.location.path == "dist/assets/main.js"
         for item in findings
     )
+
+
+def test_file_level_migration_exclusion_keeps_generated_security(installation: Path, project: Path) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    target = project / "src/components/ui/generated.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def execute(request):\n    exec(f\"{request.query['command']}\")\n")
+    value = "sk_live_" + "aB3cD5eF7gH9jK2mN4pQ6rS8tU0vW1xY"
+    artifact = project / "dist/assets/main.js"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(f'const config={{secret:"{value}"}};' + "const x=1;" * 3000)
+    (project / ".gitignore").write_text("dist/\n")
+    (project / ".sarj-standards.toml").write_text(
+        'schema = 4\nbundle = "9.4.9"\n[doctor]\nexclude = ["src/components/ui/generated.py", "dist/assets/main.js"]\n'
+    )
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise official security callbacks with a migration-only file exclusion.
+        project,
+        projects=(project,),
+        root=project,
+        runner=external.DEFAULT_EXECUTOR,
+        file_count=1,
+        staged=False,
+        full_scan=True,
+    )
+    assert report.completion is Completion.COMPLETE, report.issues
+    assert any(
+        item.rule_id == "react-doctor/command-execution-input-risk"
+        and item.location.path == "src/components/ui/generated.py"
+        for item in report.diagnostics
+    )
+    assert any(item.rule_id == "react-doctor/artifact-secret-leak" for item in report.diagnostics)

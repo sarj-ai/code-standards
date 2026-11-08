@@ -423,6 +423,12 @@ def test_supported_alias_source_survives_setup_and_offline_update(
         "declare function consume(callback: () => void): void;\n"
         "// eslint-disable-next-line @typescript-eslint/strict-void-return -- ignored callback result\n"
         "consume(() => null);\n"
+        "// eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- assertion boundary\n"
+        'export const asserted = "control" as string;\n'
+        "// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated boundary\n"
+        "export function unsafe(value: unknown) { return value as string; }\n"
+        "// eslint-disable-next-line @typescript-eslint/no-misused-spread -- intentional characters\n"
+        'export const characters = [..."control"];\n'
     )
     root = _repository(
         tmp_path,
@@ -435,3 +441,50 @@ def test_supported_alias_source_survives_setup_and_offline_update(
         assert (root / "source.ts").read_text() == source
         assert cli.main(["--root", str(root), "update", "--offline", "--no-install"]) == 0
         assert (root / "source.ts").read_text() == source
+
+
+def test_generated_source_file_exclusion_survives_setup_and_offline_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = b"/* eslint-disable react-hooks/exhaustive-deps */\r\nexport const Stepper = () => null;\r\n"
+    root = _repository(
+        tmp_path,
+        {
+            "src/components/ui/stepper.tsx": source.decode(),
+            "src/hooks/generated.ts": source.decode(),
+            "oxlint.config.mts": typescript_migration.render_entrypoint().replace(
+                "...ignorePatterns,", '...ignorePatterns, "src/components/ui/**", "src/hooks/**",'
+            ),
+            "oxfmt.config.mts": oxfmt.render_config(
+                oxfmt.OxfmtSeed(None, {"ignorePatterns": ["src/components/ui/**", "src/hooks/**"]})
+            ),
+            "src/authored.tsx": source.decode(),
+            "tsconfig.json": '{"compilerOptions":{"jsx":"react-jsx"},"include":["src"]}\n',
+        },
+    )
+    _with_tools(root)
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    # Use the supported file-level adoption exclusion; directory exclusions also
+    # exclude security discovery and are deliberately not used here.
+    assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+    config = root / ".sarj-standards.toml"
+    config.write_text(
+        config.read_text() + '\n[doctor]\nexclude = ["src/components/ui/stepper.tsx", "src/hooks/generated.ts"]\n'
+    )
+    generated = root / "src/components/ui/stepper.tsx"
+    generated.write_bytes(source)
+    hook = root / "src/hooks/generated.ts"
+    hook.write_bytes(source)
+    for _ in range(2):
+        (root / "src/authored.tsx").write_bytes(source)
+        migration = typescript_migration.plan(root, root, doctor.authored_files(root))
+        assert generated not in dict(migration.writes)
+        assert "react-hooks/exhaustive-deps" not in dict(migration.writes)[root / "src/authored.tsx"]
+        assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+        assert generated.read_bytes() == source
+        assert hook.read_bytes() == source
+        assert "react-hooks/exhaustive-deps" not in (root / "src/authored.tsx").read_text()
+        assert cli.main(["--root", str(root), "update", "--offline", "--no-install"]) == 0
+        assert generated.read_bytes() == source
+        assert hook.read_bytes() == source
+        assert cli.main(["--root", str(root), "update", "--offline", "--check", "--no-install"]) == 0

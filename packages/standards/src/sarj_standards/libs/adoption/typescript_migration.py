@@ -399,6 +399,9 @@ def _plan_directives(kept: Sequence[Path], changes: _Changes) -> None:
     targets.pop("@typescript-eslint/no-unnecessary-type-parameters", None)
     targets.pop("@typescript-eslint/no-unnecessary-condition", None)
     targets.pop("@typescript-eslint/strict-void-return", None)
+    targets.pop("@typescript-eslint/consistent-type-assertions", None)
+    targets.pop("@typescript-eslint/no-unsafe-type-assertion", None)
+    targets.pop("@typescript-eslint/no-misused-spread", None)
     for path in kept:
         try:
             text = path.read_bytes().decode("utf-8")

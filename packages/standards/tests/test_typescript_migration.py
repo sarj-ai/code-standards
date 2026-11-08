@@ -680,6 +680,12 @@ def test_supported_typescript_aliases_preserve_source_across_repeated_migration(
         "declare function consume(callback: () => void): void;\n"
         "// eslint-disable-next-line @typescript-eslint/strict-void-return -- ignored callback result\n"
         "consume(() => null);\n"
+        "// eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- assertion boundary\n"
+        'export const asserted = "control" as string;\n'
+        "// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated boundary\n"
+        "export function unsafe(value: unknown) { return value as string; }\n"
+        "// eslint-disable-next-line @typescript-eslint/no-misused-spread -- intentional characters\n"
+        'export const characters = [..."control"];\n'
     )
     root = _repository(tmp_path, {"src/legacy.ts": source})
     for _ in range(2):
@@ -693,17 +699,24 @@ def test_supported_typescript_aliases_preserve_source_across_repeated_migration(
         assert (root / "src/legacy.ts").read_text() == source
 
 
-def test_preserving_supported_aliases_still_migrates_other_directives(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("unicorn/no-exports-in-scripts", "unicorn-js/no-exports-in-scripts"),
+        ("@typescript-eslint/no-unsafe-assignment", "typescript/no-unsafe-assignment"),
+    ],
+)
+def test_preserving_supported_aliases_still_migrates_other_directives(
+    tmp_path: Path, legacy: str, canonical: str
+) -> None:
     source = (
         "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
         "export const value = legacy();\n"
-        "// eslint-disable-next-line unicorn/no-exports-in-scripts -- testable entrypoint\n"
+        f"// eslint-disable-next-line {legacy} -- testable entrypoint\n"
         "export const run = value;\n"
     )
     root = _repository(tmp_path, {"src/legacy.ts": source})
-    assert _written(_plan(root), root / "src/legacy.ts") == source.replace(
-        "unicorn/no-exports-in-scripts", "unicorn-js/no-exports-in-scripts"
-    )
+    assert _written(_plan(root), root / "src/legacy.ts") == source.replace(legacy, canonical)
 
 
 @pytest.mark.parametrize(
@@ -718,6 +731,21 @@ def test_preserving_supported_aliases_still_migrates_other_directives(tmp_path: 
             "strict-void-return",
             "declare function example(callback: () => void): void;\nexample(() => null);\n",
             "warn",
+        ),
+        (
+            "consistent-type-assertions",
+            'export function example() {\n  return "control" as string;\n}\n',
+            "error",
+        ),
+        (
+            "no-unsafe-type-assertion",
+            "export function example(value: unknown) {\n  return value as string;\n}\n",
+            "error",
+        ),
+        (
+            "no-misused-spread",
+            'export function example() {\n  return [..."control"];\n}\n',
+            "error",
         ),
     ],
 )
@@ -736,7 +764,11 @@ def test_preserved_aliases_suppress_only_the_intended_native_typed_finding(
             "plugins": ["typescript"],
             "categories": {"correctness": "off"},
             "options": {"typeAware": True, "reportUnusedDisableDirectives": "error"},
-            "rules": {f"typescript/{rule}": severity},
+            "rules": {
+                f"typescript/{rule}": [severity, {"assertionStyle": "never"}]
+                if rule == "consistent-type-assertions"
+                else severity
+            },
         }
     )
     root = project(tmp_path / "native", {"source.ts": text}, config=f"export default {config}")
