@@ -1722,10 +1722,8 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager, package:
         return
     plan.writes.append((package_json, merged))
     plan.notes.append(
-        f"pinned the tested TypeScript peers in {package_json} and merged the {client} overrides into "
-        f"{override_target}:\n{printed}\n"
-        f"    {client} cannot resolve the tree without them -- Oxlint loads eslint-plugin-react, which"
-        " peers eslint <=9.7, and the unicorn plugin needs >=10.4."
+        f"pinned the tested TypeScript peers in {package_json}"
+        + (f" and merged the {client} overrides into {override_target}:\n{printed}" if overrides.entries else "")
     )
 
 

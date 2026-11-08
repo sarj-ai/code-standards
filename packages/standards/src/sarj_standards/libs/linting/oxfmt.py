@@ -299,10 +299,12 @@ def _existing_coverage(root: Path) -> dict[str, JsonValue]:
     entrypoint = root / "oxfmt.config.mts"
     if existing == ["oxfmt.config.mts"]:
         raw = _entrypoint_options(entrypoint)
-        if not isinstance(raw, dict) or "overrides" in raw:
-            msg = "oxfmt overrides need manual review before adopting shared style"
+        if not isinstance(raw, dict):
+            msg = "shared oxfmt options must be a literal object"
             raise ValueError(msg)
-        inherited = _coverage_options(raw)
+        # Already adopted: these options belong to the repository. Reseeding
+        # would erase behavioral exceptions and required Tailwind configuration.
+        inherited = raw
         existing = []
     if existing == [".oxfmtrc.json"]:
         config = _without_schema(_json_object(root / ".oxfmtrc.json"))
@@ -337,6 +339,9 @@ def matches_shared_config(root: Path, seed: OxfmtSeed) -> bool:
 
 def _static_options(text: str) -> JsonValue:
     # Accept only a literal object, including the keys and trailing commas oxfmt emits.
+    # Match strings first so URL/comment tokens and escaped glob brackets stay data.
+    comments = re.compile(r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<comment>//[^\r\n]*|/\*.*?\*/)""", re.DOTALL)
+    text = comments.sub(lambda match: " " if match["comment"] is not None else match[0], text)
     tokens = re.compile(
         r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<key>\b[A-Za-z_$][\w$]*)(?=\s*:)|(?P<trailing>,)(?=\s*[}\]])"""
     )
