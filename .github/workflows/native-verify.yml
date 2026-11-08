@@ -86,10 +86,11 @@ jobs:
         shell: bash
         timeout-minutes: 10
         env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
           PORTABILITY_REPORT_DIR: ${{ runner.temp }}/portability-reports
           PIP_CACHE_DIR: ${{ runner.temp }}/portability-pip-cache
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/release-portability.sh"
+        run: GITHUB_SHA="$CANDIDATE_SHA" bash "$GITHUB_WORKSPACE/.github/scripts/release-portability.sh"
       - name: Keep portability timings and failure logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
