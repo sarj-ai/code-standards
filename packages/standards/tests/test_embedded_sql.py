@@ -9,6 +9,7 @@ import pytest
 from sarj_standards import Standards
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, CoverageDisposition
+from sarj_standards.libs.diagnostics.serialize import to_json
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.embedded_sql import analyze_sources, with_embedded_sql
 from sarj_standards.libs.linting.policy import Policy
@@ -251,3 +252,43 @@ def test_public_full_check_preserves_sql_findings_and_coverage(
     assert {item.code for item in report.diagnostics if item.source == "sqlfluff"} == expected
     assert any(item.source == "sqlfluff" for item in report.coverage) is has_gap
     assert not report.issues
+
+
+def _sql_only_repository(root: Path) -> Path:
+    path = _write_query(root, repr("SELECT a UNION SELECT a, b"))
+    adopted = manifest.Manifest(
+        version="8.190.0",
+        configs=("pyright",),
+        python_dest=".",
+        typescript_dest=".",
+        disabled_capabilities=tuple(name for name in manifest.ALL_CAPABILITIES if name not in {"sqlfluff", "pyright"}),
+    )
+    (root / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    return path
+
+
+def test_overlapped_sql_pass_matches_the_serial_report(tmp_path: Path) -> None:
+    path = _sql_only_repository(tmp_path)
+    standards = Standards(tmp_path)
+
+    serial = standards.analyze((str(path),), external=True, mode="corpus", python_type_check=False, jobs=1)
+    overlapped = standards.analyze((str(path),), external=True, mode="corpus", python_type_check=False, jobs=2)
+
+    assert to_json(overlapped) == to_json(serial)
+    assert {item.code for item in overlapped.diagnostics if item.source == "sqlfluff"} == {"AM07"}
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_sql_pass_failure_still_propagates_after_both_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, jobs: int
+) -> None:
+    path = _sql_only_repository(tmp_path)
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        msg = "sql pass failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr("sarj_standards.libs.linting.embedded_sql.embedded_sql_result", fail)
+
+    with pytest.raises(RuntimeError, match="sql pass failed"):
+        Standards(tmp_path).analyze((str(path),), external=True, mode="corpus", python_type_check=False, jobs=jobs)

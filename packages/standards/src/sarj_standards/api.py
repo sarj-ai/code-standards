@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 import os
@@ -77,6 +77,7 @@ from .libs.typed_containers import is_object_list, is_object_mapping
 
 if TYPE_CHECKING:
     from .libs.adoption.manifest import Manifest, Profile
+    from .libs.linting.embedded_sql import EmbeddedSQLPass
     from .libs.linting.runner import GroupedPaths
 
 
@@ -454,15 +455,19 @@ class Standards:
                 upstream_rules=upstream_rules,
             )
 
-        combined = report_from_tools(
-            self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
+        combined = _grouped_analysis(
+            self.root,
+            native_analysis,
+            external_analysis,
+            jobs=jobs,
+            sql_pass=_embedded_sql_pass(
+                self.root,
+                files=selected_groups.python,
+                adopted=adopted,
+                enabled=rule_selection is None and not upstream_rules.ids,
+            ),
+            policy=selection_policy,
         )
-        if rule_selection is None and not upstream_rules.ids:
-            from .libs.linting.embedded_sql import with_embedded_sql  # ruff: ignore[import-outside-top-level] -- selected native SQL analysis is an opt-in Python capability.
-
-            combined = with_embedded_sql(
-                combined, files=selected_groups.python, adopted=adopted, policy=selection_policy
-            )
         changed_scope = _analysis_changed_scope(
             self.root,
             combined,
@@ -940,6 +945,32 @@ def _selection_policy(root: Path, adopted: Manifest | None, normalized_mode: Ana
             else Policy.from_manifest(root, adopted)
         )
     )
+
+
+def _grouped_analysis(
+    root: Path,
+    native: Callable[[], tuple[ToolReport, ...]],
+    external: Callable[[], tuple[ToolReport, ...]],
+    *,
+    jobs: int,
+    sql_pass: EmbeddedSQLPass,
+    policy: Policy,
+) -> AnalysisReport:
+    def external_then_sql() -> tuple[ToolReport, ...]:
+        reports = external()
+        # The external group usually finishes first; overlap the SQL pass with native analysis.
+        sql_pass.run()
+        return reports
+
+    return sql_pass.merge(
+        report_from_tools(root, analyze_groups(root, native, external_then_sql, jobs=jobs)), policy=policy
+    )
+
+
+def _embedded_sql_pass(root: Path, *, files: Sequence[str], adopted: Manifest | None, enabled: bool) -> EmbeddedSQLPass:
+    from .libs.linting.embedded_sql import EmbeddedSQLPass  # ruff: ignore[import-outside-top-level] -- selected native SQL analysis is an opt-in Python capability.
+
+    return EmbeddedSQLPass(root, files=files, adopted=adopted, enabled=enabled)
 
 
 def _selected_external_analysis(
