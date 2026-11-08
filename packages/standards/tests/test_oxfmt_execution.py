@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import oxfmt
 from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessOutput, ToolResolution
 
@@ -137,6 +138,38 @@ def test_missing_local_oxfmt_is_a_dependency_failure(tmp_path: Path) -> None:
 
     assert report.completion is Completion.FAILED
     assert report.issues[0].kind == "missing-dependency"
+
+
+@needs_oxfmt
+@pytest.mark.parametrize(("key", "expected_status"), [('"wire_key"', 0), ("wire_key", 1)])
+def test_managed_formatting_preserves_wire_key_lint_boundaries(tmp_path: Path, key: str, expected_status: int) -> None:
+    _managed_project(tmp_path, {})
+    (tmp_path / "source.ts").write_text(f"export const request = {{ {key}: 1, localValue: 2 }};\n", encoding="utf-8")
+    _written(tmp_path, "source.ts")
+    package = parse_json((REPO_ROOT / "packages/typescript/package.json").read_text(encoding="utf-8"))
+    assert isinstance(package, dict)
+    entrypoint = package["main"]
+    assert isinstance(entrypoint, str)
+    plugin = REPO_ROOT / "packages/typescript" / entrypoint
+    (tmp_path / ".oxlintrc.json").write_text(
+        json.dumps(
+            {
+                "jsPlugins": [{"name": "@sarj", "specifier": str(plugin)}],
+                "rules": {"@sarj/require-camelcase-properties": "error"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    checked = subprocess.run(
+        [str(MODULES / ".bin/oxlint"), "--threads", "1", "--max-warnings", "0", "source.ts"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert checked.returncode == expected_status, checked.stdout + checked.stderr
+    if expected_status:
+        assert "require-camelcase-properties" in checked.stdout + checked.stderr
 
 
 @needs_oxfmt

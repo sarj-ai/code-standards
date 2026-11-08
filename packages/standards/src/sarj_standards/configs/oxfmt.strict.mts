@@ -5,6 +5,7 @@ import type { OxfmtConfig } from "oxfmt";
 
 const sharedStyle: OxfmtConfig = {
   printWidth: 80,
+  quoteProps: "preserve",
   sortPackageJson: false,
   sortImports: {
     groups: [
