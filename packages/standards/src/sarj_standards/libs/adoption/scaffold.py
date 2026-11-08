@@ -2489,8 +2489,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
         lines.extend((f"      - name: {label}", "        run: |", f"          {command}"))
-    if ecosystems.python:
-        lines.extend(_RESULT_CACHE_RESTORE)
+    lines.extend(_RESULT_CACHE_RESTORE)
     lines.extend(
         (
             "      - name: Run standards",
@@ -2501,18 +2500,18 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             "            github.event.before == '0000000000000000000000000000000000000000') &&",
             "            (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||",
             "            github.event.before) || '' }}",
-            *(_RESULT_CACHE_ENVIRONMENT if ecosystems.python else ()),
+            *_RESULT_CACHE_ENVIRONMENT,
             f"        run: {runner} check --trust-repository-code --format github",
         )
     )
-    if ecosystems.python:
-        lines.extend(_RESULT_CACHE_SAVE)
+    lines.extend(_RESULT_CACHE_SAVE)
     return "\n".join(lines) + "\n"
 
 
-# Python results are reused only when every input is unchanged. Pushes to the
-# default branch write them; other events only read. The STANDARDS_RESULT_CACHE
-# repository variable set to off forces full analysis.
+# Analyzer results (Python, SQL, shell, Terraform and text lint) are reused only
+# when every input is unchanged. Pushes to the default branch write them; other
+# events only read. A cache step never fails the gate: a miss runs the analyzer.
+# The STANDARDS_RESULT_CACHE repository variable set to off forces full analysis.
 _RESULT_CACHE_PATH: Final = "${{ runner.temp }}/standards-results"
 _RESULT_CACHE_PREFIX: Final = (
     "standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-"
@@ -2524,6 +2523,7 @@ _RESULT_CACHE_RESTORE: Final = (
     "      - name: Restore Standards results",
     "        id: standards-results",
     "        if: vars.STANDARDS_RESULT_CACHE != 'off'",
+    "        continue-on-error: true",
     "        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
     "        with:",
     f"          path: {_RESULT_CACHE_PATH}",
@@ -2539,6 +2539,7 @@ _RESULT_CACHE_ENVIRONMENT: Final = (
 _RESULT_CACHE_SAVE: Final = (
     "      - name: Save trusted Standards results",
     f"        if: vars.STANDARDS_RESULT_CACHE != 'off' && {_DEFAULT_BRANCH_PUSH}",
+    "        continue-on-error: true",
     "        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
     "        with:",
     f"          path: {_RESULT_CACHE_PATH}",

@@ -433,7 +433,7 @@ def test_generated_workflows_default_to_github_hosted_linux(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize("ecosystem", ["python", "typescript"])
-def test_generated_workflow_reuses_python_results_written_only_by_default_branch_pushes(
+def test_generated_workflow_reuses_results_written_only_by_default_branch_pushes(
     tmp_path: Path, ecosystem: str
 ) -> None:
     (_python_repo if ecosystem == "python" else _typescript_repo)(tmp_path)
@@ -441,9 +441,6 @@ def test_generated_workflow_reuses_python_results_written_only_by_default_branch
     steps = normalize_json_value(manifest.table_field(manifest.table_field(parsed, "jobs"), "standards")["steps"])
     assert isinstance(steps, list)
     named = {item["name"]: item for item in steps if isinstance(item, dict) and isinstance(item.get("name"), str)}
-    if ecosystem == "typescript":
-        assert named.keys().isdisjoint({"Restore Standards results", "Save trusted Standards results"})
-        return
     names = list(named)
     restore, save = named["Restore Standards results"], named["Save trusted Standards results"]
     assert (
@@ -456,6 +453,10 @@ def test_generated_workflow_reuses_python_results_written_only_by_default_branch
     )
     assert save["if"] == f"vars.STANDARDS_RESULT_CACHE != 'off' && {trusted}"
     assert restore["if"] == "vars.STANDARDS_RESULT_CACHE != 'off'"
+    assert restore["continue-on-error"] is save["continue-on-error"] is True
+    run_environment = named["Run standards"]["env"]
+    assert isinstance(run_environment, dict)
+    assert run_environment["SARJ_STANDARDS_RESULT_CACHE_WRITE"] == f"${{{{ {trusted} && '1' || '' }}}}"
     assert isinstance(restore["with"], dict)
     assert isinstance(save["with"], dict)
     assert save["with"]["key"] == "${{ steps.standards-results.outputs.cache-primary-key }}"
@@ -1923,14 +1924,13 @@ def test_generated_ci_initial_push_keeps_native_baseline_boundaries(
     step = next(item for item in steps if isinstance(item, dict) and item.get("name") == "Run standards")
     assert isinstance(step, dict)
     assert step["shell"] == "bash"
-    assert step["env"] == {
-        "SARJ_STANDARDS_BASE": (
-            "${{ !(github.event_name == 'push' && github.event.created && "
-            "github.event.before == '0000000000000000000000000000000000000000') && "
-            "(github.event.pull_request.base.sha || github.event.merge_group.base_sha || "
-            "github.event.before) || '' }}"
-        ),
-    }
+    assert isinstance(step["env"], dict)
+    assert step["env"]["SARJ_STANDARDS_BASE"] == (
+        "${{ !(github.event_name == 'push' && github.event.created && "
+        "github.event.before == '0000000000000000000000000000000000000000') && "
+        "(github.event.pull_request.base.sha || github.event.merge_group.base_sha || "
+        "github.event.before) || '' }}"
+    )
     command = step["run"]
     assert isinstance(command, str)
     native_command = f"{BOOTSTRAP_COMMAND} check --trust-repository-code --format github"
