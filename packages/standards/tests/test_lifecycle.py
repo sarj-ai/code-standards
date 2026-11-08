@@ -725,3 +725,65 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(
     assert completed.returncode == 0
     assert hook.stat().st_mode == original_mode
     assert f"pre-commit=={distribution_version('pre-commit')}" in capture.read_text(encoding="utf-8")
+
+
+def test_directive_worker_transports_large_selection_without_argv_growth(tmp_path: Path) -> None:
+    paths = (
+        *(f"source/{index:05}-" + "x" * 240 + ".ts" for index in range(17273)),
+        "source/space and 'quote'.ts",
+        "source/new\nline.ts",
+        "--option-looking.ts",
+        "source/é.ts",
+    )
+    if os.name == "posix":
+        with pytest.raises(OSError, match="Argument list too long") as failed:
+            subprocess.run([sys.executable, "-c", "pass", *paths], check=True, timeout=30)
+        assert failed.value.errno == 7
+    command = lifecycle._unused_directive_command(tmp_path, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise the actual subprocess owner that exceeded ARG_MAX.
+    assert command.prepare is not None
+    with command.prepare(command) as prepared:
+        assert len(prepared.argv) == 7
+        assert sum(len(os.fsencode(value)) + 1 for value in prepared.argv) < 4096
+        transport = Path(prepared.argv[-1])
+        if os.name == "posix":
+            assert stat.S_IMODE(transport.parent.stat().st_mode) == 0o700
+        assert oxlint_directives._read_paths_file(transport) == list(paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Verify the worker's exact filename decoder.
+        probe = (
+            "import sys; from sarj_standards.libs.linting.oxlint_directives import _read_paths_file; "
+            "from pathlib import Path; paths=_read_paths_file(Path(sys.argv[1])); "
+            "assert len(paths)==17277; assert paths[-3]=='source/new\\nline.ts'; "
+            "assert paths[-2]=='--option-looking.ts'; print(len(paths))"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe, str(transport)], check=True, capture_output=True, text=True, timeout=30
+        )
+        assert completed.stdout.strip() == str(len(paths))
+    assert not transport.exists()
+
+
+@pytest.mark.parametrize("payload", [b"unterminated", b"first\0\0", b"x" * (16 * 1024 * 1024 + 1)])
+def test_directive_path_transport_rejects_malformed_or_oversized_input(tmp_path: Path, payload: bytes) -> None:
+    transport = tmp_path / "paths"
+    transport.write_bytes(payload)
+    with pytest.raises(ValueError, match="transport"):
+        oxlint_directives._read_paths_file(transport)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise worker input validation before fixes.
+
+
+def test_directive_worker_cli_reads_literal_paths_from_prepared_transport(tmp_path: Path) -> None:
+    paths: tuple[str, ...] = ("space and 'quote'.ts", "--option-looking.ts", "é.ts")
+    if os.name != "nt":
+        paths += ("new\nline.ts",)
+    for name in paths:
+        (tmp_path / name).write_text("export {};\n")
+    command = lifecycle._unused_directive_command(tmp_path, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise the real prepared worker CLI.
+    expected = 0 if oxlint_directives.SUPPORTS_DIRECTIVE_REWRITES else 2
+    assert lifecycle.execute((command,)) == expected
+    assert all((tmp_path / name).read_text() == "export {};\n" for name in paths)
+
+
+@pytest.mark.parametrize("paths", [("nul\0name.ts",), ("x" * (16 * 1024 * 1024 + 1),)], ids=("nul-byte", "oversized"))
+def test_directive_transport_refuses_unrepresentable_selection(tmp_path: Path, paths: tuple[str, ...]) -> None:
+    command = lifecycle._unused_directive_command(tmp_path, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Verify whole-selection refusal before worker execution.
+    assert command.prepare is not None
+    with pytest.raises(ValueError, match="transport"), command.prepare(command):
+        pytest.fail("invalid selection reached worker execution")

@@ -53,6 +53,7 @@ class _Tool(StrEnum):
 
 _SUFFIX_TO_TOOL = MappingProxyType(
     {
+        ".astro": _Tool.TEXT,
         ".hcl": _Tool.IAC,
         ".py": _Tool.PYTHON,
         ".pyi": _Tool.PYTHON,

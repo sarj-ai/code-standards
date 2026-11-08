@@ -408,7 +408,7 @@
           ],
           "repeatable": false,
           "required": false,
-          "summary": "allow executable repository Oxlint and oxfmt configuration (generated hooks and CI set this explicitly)"
+          "summary": "allow executable repository Oxlint, oxfmt and Doctor configuration (generated hooks and CI set this explicitly)"
         },
         {
           "choices": [],
@@ -3089,7 +3089,7 @@
                   ],
                   "repeatable": false,
                   "required": false,
-                  "summary": "allow executable repository Oxlint and oxfmt configuration"
+                  "summary": "allow executable repository Oxlint, oxfmt and Doctor configuration"
                 },
                 {
                   "choices": [],
@@ -3361,6 +3361,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.4.0).",
-  "version": "9.4.0"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.4.1).",
+  "version": "9.4.1"
 }

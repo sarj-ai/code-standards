@@ -70,6 +70,7 @@ def run(
     typescript: bool = True,
     machine_output: bool = False,
     default_scope: bool = False,
+    format_only_paths: frozenset[str] = frozenset(),
 ) -> FixResult:
     from sarj_standards.libs.adoption import lifecycle  # ruff: ignore[import-outside-top-level] -- third-party execution is needed only for explicit fix operations.
 
@@ -79,10 +80,14 @@ def run(
     targets = tuple(Path(path) for path in selected)
     transaction.validate_targets(root, targets)
     originals = {path: path.read_bytes() for path in targets}
-    fix_paths(root, selection.native, policy=policy)
+    fix_paths(
+        root, tuple(path for path in selection.native if policy.relative(path) not in format_only_paths), policy=policy
+    )
     commands = [
         _with_local_oxlint(command, root)
-        for command in lifecycle.selected_format_commands(root, selected, trusted=trusted, typescript=typescript)
+        for command in lifecycle.selected_format_commands(
+            root, selected, trusted=trusted, typescript=typescript, format_only_paths=format_only_paths
+        )
     ]
     status = 0
     for command in commands:

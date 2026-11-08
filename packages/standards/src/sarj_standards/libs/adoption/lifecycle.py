@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
+import tempfile
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.json_boundary import parse_json
@@ -286,7 +287,12 @@ def format_commands(ecosystems: scaffold.Ecosystems, *, root: Path | None = None
 
 
 def selected_format_commands(
-    root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+    root: Path,
+    paths: Iterable[str],
+    *,
+    trusted: bool = True,
+    typescript: bool = True,
+    format_only_paths: frozenset[str] = frozenset(),
 ) -> list[Command]:
     from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level] -- fix planning shares checking policy.
 
@@ -296,9 +302,11 @@ def selected_format_commands(
     selected = tuple(sorted(set(policy.filter_paths(paths))))
     commands: list[Command] = []
     if adopted is None or "ruff" in adopted.enabled_capabilities:
-        commands.extend(_ruff_fix_commands(repository, selected, policy))
+        lint_paths = tuple(path for path in selected if policy.relative(path) not in format_only_paths)
+        commands.extend(_ruff_fix_commands(repository, lint_paths, policy))
     if trusted and typescript and (adopted is None or TYPESCRIPT_CAPABILITY in adopted.enabled_capabilities):
-        commands.extend(oxlint_fix_commands(repository, selected, policy))
+        lint_paths = tuple(path for path in selected if policy.relative(path) not in format_only_paths)
+        commands.extend(oxlint_fix_commands(repository, lint_paths, policy))
         commands.extend(oxfmt_write_commands(repository, selected))
     commands.extend(shell_format_commands(repository, selected))
     return commands
@@ -409,11 +417,27 @@ def _unused_directive_command(root: Path, paths: Sequence[str]) -> Command:
             "sarj_standards.libs.linting.oxlint_directives",
             "--root",
             str(root),
-            "--",
-            *paths,
         ),
         root,
+        prepare=partial(_directive_paths_file, paths=paths),
     )
+
+
+@contextmanager
+def _directive_paths_file(command: Command, *, paths: Sequence[str]) -> Generator[Command]:
+    from sarj_standards.libs.linting.oxlint_directives import MAX_PATH_BYTES  # ruff: ignore[import-outside-top-level] -- the worker owns its bounded path transport.
+
+    if any("\0" in path for path in paths):
+        msg = "directive path transport cannot contain NUL in a filename"
+        raise ValueError(msg)
+    if sum(len(os.fsencode(path)) + 1 for path in paths) > MAX_PATH_BYTES:
+        msg = "directive path selection exceeds the transport byte budget"
+        raise ValueError(msg)
+    payload = b"".join(os.fsencode(path) + b"\0" for path in paths)
+    with tempfile.TemporaryDirectory(prefix="sarj-directive-paths-") as directory:
+        source = Path(directory) / "paths"
+        source.write_bytes(payload)
+        yield replace(command, argv=(*command.argv, "--paths-file", str(source)))
 
 
 def oxfmt_write_commands(root: Path, paths: Sequence[str]) -> list[Command]:

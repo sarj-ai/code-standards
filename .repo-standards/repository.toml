@@ -9,6 +9,11 @@ source = "packages/standards/src/sarj_standards/configs/action-parser/index.mts"
 reason = "Reproducible Node-compatible bundle ships the pinned GitHub parser inside the Python wheel without consumer npm or TypeScript setup."
 
 [[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/format-only.mjs"
+kind = "runtime"
+reason = "Compares immutable TypeScript source layout with the pinned formatter from the Python wheel."
+
+[[javascript.artifacts]]
 path = "packages/standards/src/sarj_standards/configs/html-script-source.mjs"
 kind = "runtime"
 reason = "Preserves HTML script byte locations for the packaged Node lint adapter."
@@ -22,6 +27,11 @@ reason = "Reads React project configuration without executing repository code in
 path = "packages/standards/src/sarj_standards/configs/project-settings.mjs"
 kind = "runtime"
 reason = "Supplies framework capabilities to the official React Doctor plugin from the Python wheel."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/react-doctor-artifact-pem.mjs"
+kind = "runtime"
+reason = "Parses public PEM-removal regex tokens before the official artifact scan in the Python wheel without consumer TypeScript setup."
 
 [[javascript.artifacts]]
 path = "packages/standards/src/sarj_standards/configs/react-doctor-runner.mjs"
@@ -39,12 +49,22 @@ kind = "runtime"
 reason = "Materializes the selected Git index for the packaged Node adapter without changing the worktree."
 
 [[javascript.artifacts]]
+path = "packages/standards/tests/fixtures/doctor/artifact-pem.mjs"
+kind = "runtime"
+reason = "Executes official Doctor callback regression controls with dynamically resolved installed modules and ephemeral key material."
+
+[[javascript.artifacts]]
 path = "packages/typescript/src/upstream/effects.js"
 kind = "vendor"
 reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
 
 [[javascript.artifacts]]
 path = "packages/typescript/src/upstream/jsdoc-js.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/next.js"
 kind = "vendor"
 reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
 

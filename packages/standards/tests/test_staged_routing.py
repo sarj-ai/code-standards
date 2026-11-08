@@ -427,7 +427,9 @@ def test_pending_safe_fixes_preserve_both_indexes_and_unselected_source(
         *,
         trusted: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
         typescript: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         return []
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real native fix and Git selection while isolating unrelated external formatting tools.
@@ -745,8 +747,14 @@ def test_explicit_staged_fixes_ignore_unrelated_hidden_index_flags(
     planned: list[tuple[str, ...]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == adopted_git_repo
         assert trusted == (command == "fix")
         assert typescript
@@ -1103,8 +1111,14 @@ def test_staged_fixes_preserve_untracked_copies_of_index_deleted_files(
     checked: list[tuple[str, ...]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == repository
         assert trusted == (command == "fix")
         assert typescript
@@ -1168,8 +1182,14 @@ def test_deleted_staged_metadata_still_triggers_repository_policy(
     routed: list[tuple[tuple[str, ...], bool | int, bool | int]] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == adopted_git_repo
         assert not trusted
         assert typescript

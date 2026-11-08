@@ -21,7 +21,7 @@ from .oxfmt import CONFIG_NAMES as _OXFMT_CONFIGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping
+    from collections.abc import Callable, Collection, Iterable, Mapping
 
     from pydantic import JsonValue
 
@@ -91,13 +91,36 @@ def _read(path: Path) -> InputProof:
 
 
 def validate(owner: FormatterOwner) -> None:
+    validate_all((owner,))
+
+
+def validate_all(owners: Iterable[FormatterOwner]) -> None:
+    inputs: dict[Path, InputProof] = {}
+    runtimes: dict[Path, RuntimeProof] = {}
+    missing: set[Path] = set()
+    for owner in owners:
+        _collect_owner_proofs(owner, inputs, runtimes)
+        missing.update(owner.missing)
     if (
-        any(_read(proof.path) != proof for proof in owner.inputs)
-        or any(not _runtime_unchanged(proof) for proof in owner.runtimes)
-        or any(os.path.lexists(path) for path in owner.missing)
+        any(_read(proof.path) != proof for proof in inputs.values())
+        or any(not _runtime_unchanged(proof) for proof in runtimes.values())
+        or any(os.path.lexists(path) for path in missing)
     ):
         msg = "formatter owner, configuration or installed pin changed during native planning"
         raise ValueError(msg)
+
+
+def _collect_owner_proofs(
+    owner: FormatterOwner, inputs: dict[Path, InputProof], runtimes: dict[Path, RuntimeProof]
+) -> None:
+    for proof in owner.inputs:
+        if inputs.setdefault(proof.path, proof) != proof:
+            msg = "formatter ownership changed during native planning"
+            raise ValueError(msg)
+    for proof in owner.runtimes:
+        if runtimes.setdefault(proof.path, proof) != proof:
+            msg = "native runtime changed during native planning"
+            raise ValueError(msg)
 
 
 def _runtime_unchanged(proof: RuntimeProof) -> bool:
@@ -121,7 +144,9 @@ def _tracked(path: Path, root: Path, tracked: Collection[str], inputs: dict[Path
     if path.relative_to(root).as_posix() not in tracked:
         msg = "formatter owner and configuration must be tracked repository inputs"
         raise ValueError(msg)
-    return inputs.setdefault(path, _read(path))
+    if path not in inputs:
+        inputs[path] = _read(path)
+    return inputs[path]
 
 
 def configured(root: Path, relative: str) -> bool:
@@ -247,7 +272,9 @@ def _installed_tool(
 
 
 def _object(path: Path, inputs: dict[Path, InputProof]) -> dict[str, JsonValue]:
-    proof = inputs.setdefault(path, _read(path))
+    if path not in inputs:
+        inputs[path] = _read(path)
+    proof = inputs[path]
     try:
         parsed = parse_unique_json(proof.contents.decode("utf-8"))
     except RecursionError as exc:

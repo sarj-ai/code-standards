@@ -405,7 +405,9 @@ class Standards:
         coverage.extend(_prepared_coverage(adopted, prepared_devops))
         if not external:
             combined = report_from_tools(self.root, native_analysis())
-            changed_scope = _analysis_changed_scope(self.root, combined, baseline_budget, staged=staged)
+            changed_scope = _analysis_changed_scope(
+                self.root, combined, baseline_budget, staged=staged, trusted=normalized_trust is TrustMode.TRUSTED
+            )
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 combined = _with_warning_severity(combined, _warning_rule_keys(normalized_mode, rule_selection))
@@ -462,7 +464,12 @@ class Standards:
                 combined, files=selected_groups.python, adopted=adopted, policy=selection_policy
             )
         changed_scope = _analysis_changed_scope(
-            self.root, combined, baseline_budget, staged=staged, shell_format=paths is None and not staged
+            self.root,
+            combined,
+            baseline_budget,
+            staged=staged,
+            shell_format=paths is None and not staged,
+            trusted=normalized_trust is TrustMode.TRUSTED,
         )
         combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
         combined = _with_warning_severity(
@@ -806,6 +813,7 @@ def _analysis_changed_scope(
     *,
     staged: bool,
     shell_format: bool = False,
+    trusted: bool = False,
 ) -> diagnostic_baseline.ChangedLineScope | None:
     paths = frozenset(
         item.location.path
@@ -813,7 +821,13 @@ def _analysis_changed_scope(
         if (budget.counts and diagnostic_baseline.is_baselineable(item))
         or (shell_format and item.source == "shfmt" and item.rule_id == "format")
     )
-    return diagnostic_baseline.changed_line_scope(root, staged=staged, paths=paths) if paths else None
+    scope = diagnostic_baseline.changed_line_scope(root, staged=staged, paths=paths) if paths else None
+    if trusted and scope is not None and not scope.failed and scope.paths and budget.counts:
+        from .libs.linting import format_only  # ruff: ignore[import-outside-top-level] -- native proof is only needed when changed source intersects an accepted diagnostic budget.
+
+        equivalent = format_only.equivalent_paths(root, scope.paths, staged=staged)
+        scope = replace(scope, paths=scope.paths - equivalent)
+    return scope
 
 
 def _with_shell_format_severity(
