@@ -186,6 +186,51 @@ def cached_analysis(
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class TrackedResult:
+    result: CachedResult
+    # Repository-relative paths the analysis read beyond its keyed inputs.
+    reads: tuple[str, ...] = ()
+
+
+def cached_tracked_analysis(
+    analyzer: str,
+    *,
+    inputs: Callable[[], Iterable[str]],
+    compute: Callable[[], TrackedResult],
+    identity: Callable[[str], str],
+    keep: int = _KEEP_PER_ANALYZER,
+    outcomes: list[bool] | None = None,
+) -> CachedResult:
+    # The entry records every extra path the analysis read with its identity;
+    # it is reused only while each of them is unchanged.
+    cache = ResultCache.from_environment()
+    if cache is None:
+        return compute().result
+    try:
+        fingerprint = _fingerprint(analyzer, inputs())
+    except (OSError, ValueError, subprocess.SubprocessError, metadata.PackageNotFoundError) as error:
+        _notice(analyzer, f"runs: fingerprint unavailable ({type(error).__name__})")
+        return compute().result
+    entry = cache.directory / f"v{_SCHEMA}" / analyzer / f"{fingerprint}.json"
+    loaded = _load(entry, analyzer, fingerprint, identity=identity)
+    if outcomes is not None:
+        outcomes.append(loaded is not None)
+    if loaded is not None:
+        if cache.writable:
+            _touch(entry)
+        return loaded
+    tracked = compute()
+    if cache.writable and _storable(tracked.result):
+        try:
+            reads = tuple((path, identity(path)) for path in dict.fromkeys(tracked.reads))
+            _store(entry, analyzer, fingerprint, tracked.result, reads=reads)
+            _prune_once(entry.parent, keep)
+        except (OSError, ValueError) as error:
+            _notice(analyzer, f"result not stored ({type(error).__name__})")
+    return tracked.result
+
+
 def notice_outcomes(analyzer: str, outcomes: Sequence[bool]) -> None:
     if outcomes:
         _notice(analyzer, f"reused {sum(outcomes)} of {len(outcomes)} units")
@@ -350,7 +395,9 @@ def _feed(digest: _Digest, text: str) -> None:
     digest.update(data)
 
 
-def _load(entry: Path, analyzer: str, fingerprint: str) -> CachedResult | None:
+def _load(
+    entry: Path, analyzer: str, fingerprint: str, *, identity: Callable[[str], str] | None = None
+) -> CachedResult | None:
     try:
         payload = parse_unique_json(entry.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -359,10 +406,33 @@ def _load(entry: Path, analyzer: str, fingerprint: str) -> CachedResult | None:
         _notice(analyzer, f"ignores unreadable entry ({type(error).__name__})")
         return None
     try:
-        return _entry_result(payload, analyzer, fingerprint)
+        result = _entry_result(payload, analyzer, fingerprint)
+        if identity is not None and not _reads_unchanged(payload, identity):
+            return None
     except (TypeError, ValueError) as error:
         _notice(analyzer, f"ignores invalid entry ({error})")
         return None
+    return result
+
+
+def _reads_unchanged(payload: JsonValue, identity: Callable[[str], str]) -> bool:
+    reads = payload.get("reads") if isinstance(payload, dict) else None
+    if not isinstance(reads, list):
+        msg = "tracked cache entry has no reads"
+        raise TypeError(msg)
+    for item in reads:
+        match item:
+            case [str() as path, str() as recorded]:
+                pass
+            case _:
+                msg = "tracked cache entry read must be a path and identity"
+                raise TypeError(msg)
+        try:
+            if identity(path) != recorded:
+                return False
+        except OSError, ValueError:
+            return False
+    return True
 
 
 def _entry_result(payload: JsonValue, analyzer: str, fingerprint: str) -> CachedResult:
@@ -383,9 +453,23 @@ def _storable(result: CachedResult) -> bool:
     return all(report.completion is Completion.COMPLETE and not report.issues for report in result.reports)
 
 
-def _store(entry: Path, analyzer: str, fingerprint: str, result: CachedResult) -> None:
+def _store(
+    entry: Path,
+    analyzer: str,
+    fingerprint: str,
+    result: CachedResult,
+    *,
+    reads: tuple[tuple[str, str], ...] | None = None,
+) -> None:
     entry.parent.mkdir(parents=True, exist_ok=True)
-    document = {"schema": _SCHEMA, "analyzer": analyzer, "fingerprint": fingerprint, "result": encode_result(result)}
+    document: dict[str, JsonValue] = {
+        "schema": _SCHEMA,
+        "analyzer": analyzer,
+        "fingerprint": fingerprint,
+        "result": encode_result(result),
+    }
+    if reads is not None:
+        document["reads"] = [[path, recorded] for path, recorded in reads]
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=entry.parent, delete=False, suffix=".tmp") as stream:
         json.dump(document, stream, sort_keys=True, separators=(",", ":"))
         temporary = Path(stream.name)

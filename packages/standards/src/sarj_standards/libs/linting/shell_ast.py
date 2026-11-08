@@ -25,6 +25,10 @@ class ShellSyntaxError(ValueError):
     pass
 
 
+def checked_executable() -> Path:
+    return _checked_executable()
+
+
 def _checked_executable() -> Path:
     from .devops_tools import NativeToolError, checked_tool  # ruff: ignore[import-outside-top-level] -- native registry imports the textlint adapter.
 

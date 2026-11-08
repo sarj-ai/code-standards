@@ -8,6 +8,7 @@ from typing import final, override
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
+from sarj_standards.libs.linting.read_tracking import record_read
 from sarj_standards.libs.linting.text_rule_base import Finding, Rule, RuleMeta
 from sarj_standards.libs.linting.text_rules._slack_payload import payload_markup_uses, references_github_environment
 from sarj_standards.libs.rules import DefaultLevel, ExampleFile, ExpectedOutcome, Language, RuleCategory, RuleExample
@@ -97,6 +98,7 @@ def _program(path: Path, top: dict[str, Node], job: dict[str, Node], step: dict[
     ):
         return None
     script = root / directory / argument
+    record_read(script)
     try:
         if not script.resolve().is_relative_to(root) or script.stat().st_size > _MAX_SOURCE:
             return None
