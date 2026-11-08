@@ -408,3 +408,25 @@ def test_existing_exceptions_keep_import_order_raw_text_and_shared_style(tmp_pat
     assert "css`a{color: red}`" in preserved
     assert "css`a{color: red}`" not in ordinary
     assert "values = [z, a];" in preserved
+
+
+def test_supported_alias_source_survives_setup_and_offline_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
+        "export const value = legacy();\n"
+        "// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- public signature\n"
+        "export function identity<T extends string>(value: T): T { return value; }\n"
+    )
+    root = _repository(
+        tmp_path,
+        {"source.ts": source, "tsconfig.json": '{"compilerOptions":{"strict":true},"include":["*.ts"]}\n'},
+    )
+    _with_tools(root)
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    for _ in range(2):
+        assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+        assert (root / "source.ts").read_text() == source
+        assert cli.main(["--root", str(root), "update", "--offline", "--no-install"]) == 0
+        assert (root / "source.ts").read_text() == source

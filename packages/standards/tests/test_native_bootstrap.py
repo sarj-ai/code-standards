@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from email.message import Message
 import hashlib
 import io
 from pathlib import Path
@@ -7,7 +8,7 @@ import platform
 import shlex
 import stat
 from typing import TYPE_CHECKING
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 if TYPE_CHECKING:
@@ -184,4 +185,51 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
         "python",
         "-m",
         "sarj_standards.libs.adoption.native_bootstrap",
+    ]
+
+
+@pytest.mark.parametrize("fallback", ["valid", "checksum", "network"])
+@pytest.mark.parametrize("primary", ["http", "timeout", "network"])
+def test_primary_transport_failure_uses_only_pinned_api_asset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fallback: str, primary: str
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the pinned network boundary.
+        native_bootstrap, "_DIGESTS", {"linux-x64": _DIGEST}
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- select a supported target independently of the host.
+        native_bootstrap, "_target", lambda: "linux-x64"
+    )
+    calls: list[str] = []
+
+    def download(request: Request, *, timeout: int) -> io.BytesIO:
+        assert timeout == 120
+        assert request.get_header("Authorization") is None
+        calls.append(request.full_url)
+        message = "primary unavailable"
+        if len(calls) == 1:
+            if primary == "http":
+                raise HTTPError(request.full_url, 504, message, Message(), None)
+            if primary == "timeout":
+                raise TimeoutError(message)
+            raise URLError(message)
+        if fallback == "network":
+            raise URLError(message)
+        assert request.get_header("Accept") == "application/octet-stream"
+        return io.BytesIO(_PAYLOAD if fallback == "valid" else b"corrupt")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- simulate transport failure without live network.
+        native_bootstrap, "urlopen", download
+    )
+    destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
+    if fallback == "valid":
+        assert native_bootstrap.provision(tmp_path).read_bytes() == _PAYLOAD
+        assert destination.stat().st_mode & 0o777 == 0o755
+    else:
+        with pytest.raises(OSError, match=r"primary unavailable|checksum mismatch"):
+            native_bootstrap.provision(tmp_path)
+        assert not destination.exists()
+        assert list(destination.parent.iterdir()) == []
+    assert calls == [
+        f"https://github.com/jdx/mise/releases/download/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64",
+        "https://api.github.com/repos/jdx/mise/releases/assets/630389326",
     ]

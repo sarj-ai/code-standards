@@ -665,3 +665,35 @@ def test_workspace_legacy_commands_forward_to_root_and_retire_tools(tmp_path: Pa
     assert isinstance(document, dict)
     assert document["scripts"] == {"lint": "pnpm -w run lint packages/app", "format": "pnpm -w run format packages/app"}
     assert document["devDependencies"] == {}
+
+
+def test_supported_typescript_aliases_preserve_source_across_repeated_migration(tmp_path: Path) -> None:
+    source = (
+        "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
+        "export const value = legacy();\n"
+        "// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- public signature\n"
+        "export function identity<T extends string>(value: T): T { return value; }\n"
+    )
+    root = _repository(tmp_path, {"src/legacy.ts": source})
+    for _ in range(2):
+        migration = _plan(root)
+        assert all(path != root / "src/legacy.ts" for path, _contents in migration.writes)
+        for path, contents in migration.writes:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents)
+        for path in migration.deletes:
+            path.unlink(missing_ok=True)
+        assert (root / "src/legacy.ts").read_text() == source
+
+
+def test_preserving_supported_aliases_still_migrates_other_directives(tmp_path: Path) -> None:
+    source = (
+        "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
+        "export const value = legacy();\n"
+        "// eslint-disable-next-line unicorn/no-exports-in-scripts -- testable entrypoint\n"
+        "export const run = value;\n"
+    )
+    root = _repository(tmp_path, {"src/legacy.ts": source})
+    assert _written(_plan(root), root / "src/legacy.ts") == source.replace(
+        "unicorn/no-exports-in-scripts", "unicorn-js/no-exports-in-scripts"
+    )

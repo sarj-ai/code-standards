@@ -7,6 +7,7 @@ import platform
 import shutil
 import tempfile
 from typing import Final
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 
@@ -17,6 +18,13 @@ _DIGESTS: Final = {
     "linux-arm64": "6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5",
     "macos-x64": "a122fd04db5f2da07d24528ed61109bc82142ca44e821d4faafa05650f6ba627",
     "macos-arm64": "dd77de9a7574e38d8409fb06fa85e1581415896639d075987791d8c4e5a57b73",
+}
+
+_ASSET_IDS: Final = {
+    "linux-arm64": 630388935,
+    "linux-x64": 630389326,
+    "macos-arm64": 630389474,
+    "macos-x64": 630389531,
 }
 
 
@@ -65,8 +73,17 @@ def _download(destination: Path, *, target: str, expected: str) -> None:
     request = Request(url, headers={"User-Agent": "code-standards-native-bootstrap/1"})
     with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".mise-") as temporary:
         downloaded = Path(temporary) / "mise"
+        try:
+            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed HTTPS release origin.
+        except URLError, TimeoutError:
+            asset = _ASSET_IDS[target]
+            request = Request(
+                f"https://api.github.com/repos/jdx/mise/releases/assets/{asset}",
+                headers={"User-Agent": "code-standards-native-bootstrap/1", "Accept": "application/octet-stream"},
+            )
+            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official API origin and immutable asset ID; no credentials.
         with (
-            urlopen(request, timeout=120) as response,  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed HTTPS release origin.
+            response,
             downloaded.open("wb") as stream,
         ):
             shutil.copyfileobj(response, stream)  # pyright: ignore[reportAny] -- urllib's bytes stream is consumed without executing it.
