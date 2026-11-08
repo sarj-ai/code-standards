@@ -468,7 +468,7 @@ def test_normal_staged_fix_preserves_description_only_python(tmp_path: Path, mon
     source.write_text(reviewed)
     control = autofix.run(tmp_path, (str(source),), trusted=True, typescript=False)
     assert control.status in {0, 1}
-    assert source.read_bytes() != reviewed.encode()
+    assert source.read_bytes() == reviewed.encode()
     source.write_text(reviewed)
     _git(tmp_path, "add", "app.py")
     assert (

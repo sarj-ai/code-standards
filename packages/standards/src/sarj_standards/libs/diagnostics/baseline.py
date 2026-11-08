@@ -283,6 +283,14 @@ def load(
     ).fingerprints
 
 
+def historical_paths(path: Path) -> frozenset[str]:
+    document = _load_document(path)
+    return frozenset(
+        _required_text(_string_object_dict(entry, label="diagnostic baseline entry"), "path", index)
+        for index, entry in enumerate(document.entries)
+    )
+
+
 def load_budget(
     path: Path,
     *,

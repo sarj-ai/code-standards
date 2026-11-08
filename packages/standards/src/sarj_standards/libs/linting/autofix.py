@@ -77,6 +77,7 @@ def run(
     policy = Policy.from_manifest(root, manifest.load(root))
     selection = _selection(root, paths, policy=policy, default_scope=default_scope)
     selected = selection.formatter
+    format_only_paths |= _historical_paths(root, selected)
     targets = tuple(Path(path) for path in selected)
     transaction.validate_targets(root, targets)
     originals = {path: path.read_bytes() for path in targets}
@@ -99,6 +100,23 @@ def run(
         if result > 1:
             break
     return FixResult(status, tuple(path for path, original in originals.items() if path.read_bytes() != original))
+
+
+def _historical_paths(root: Path, paths: Sequence[str]) -> frozenset[str]:
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level] -- baseline parsing is needed only for explicit fix operations.
+    from sarj_standards.libs.linting import oxlint  # ruff: ignore[import-outside-top-level] -- Oxlint imports lifecycle; discover ledger owners only at execution time.
+
+    adopted = manifest.load(root)
+    protected = set(
+        baseline.historical_paths(root / adopted.diagnostic_baseline)
+        if adopted is not None and adopted.diagnostic_baseline is not None
+        else ()
+    )
+    for command in oxlint.select_oxlint_commands(root, paths).commands:
+        for path, rules in oxlint.read_suppressions(command.cwd).items():
+            if any(count > 0 for count in rules.values()):
+                protected.add((command.cwd / path).relative_to(root).as_posix())
+    return frozenset(protected)
 
 
 def _with_local_oxlint(command: Command, root: Path) -> Command:
