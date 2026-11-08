@@ -432,6 +432,37 @@ def test_generated_workflows_default_to_github_hosted_linux(tmp_path: Path) -> N
         assert _first_step(workflow) == "      - name: Harden the runner"
 
 
+@pytest.mark.parametrize("ecosystem", ["python", "typescript"])
+def test_generated_workflow_reuses_python_results_written_only_by_default_branch_pushes(
+    tmp_path: Path, ecosystem: str
+) -> None:
+    (_python_repo if ecosystem == "python" else _typescript_repo)(tmp_path)
+    parsed = manifest.as_table(parse_yaml(scaffold.github_ci_workflow(tmp_path)))
+    steps = normalize_json_value(manifest.table_field(manifest.table_field(parsed, "jobs"), "standards")["steps"])
+    assert isinstance(steps, list)
+    named = {item["name"]: item for item in steps if isinstance(item, dict) and isinstance(item.get("name"), str)}
+    if ecosystem == "typescript":
+        assert named.keys().isdisjoint({"Restore Standards results", "Save trusted Standards results"})
+        return
+    names = list(named)
+    restore, save = named["Restore Standards results"], named["Save trusted Standards results"]
+    assert (
+        names.index("Restore Standards results")
+        < names.index("Run standards")
+        < names.index("Save trusted Standards results")
+    )
+    trusted = (
+        "github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"
+    )
+    assert save["if"] == f"vars.STANDARDS_RESULT_CACHE != 'off' && {trusted}"
+    assert restore["if"] == "vars.STANDARDS_RESULT_CACHE != 'off'"
+    assert isinstance(restore["with"], dict)
+    assert isinstance(save["with"], dict)
+    assert save["with"]["key"] == "${{ steps.standards-results.outputs.cache-primary-key }}"
+    assert restore["with"]["path"] == save["with"]["path"] == "${{ runner.temp }}/standards-results"
+    assert str(restore["with"]["key"]).startswith(str(restore["with"]["restore-keys"]))
+
+
 def test_generated_workflows_on_blacksmith_start_at_checkout(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     runner = "blacksmith-2vcpu-ubuntu-2404"
