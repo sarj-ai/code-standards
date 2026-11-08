@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from enum import StrEnum
+from functools import cache
 from hashlib import sha256
 from importlib import metadata
 import json
@@ -10,8 +11,10 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- a timed-out tool probe leaves its analyzer uncached.
 import sys
 import tempfile
+import threading
 from typing import TYPE_CHECKING, Final, Protocol
 
 from sarj_standards.libs.diagnostics import (
@@ -37,7 +40,7 @@ from sarj_standards.libs.json_boundary import parse_unique_json
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from _typeshed import DataclassInstance
     from pydantic import JsonValue
@@ -51,6 +54,11 @@ _CACHE_ENV: Final = "SARJ_STANDARDS_RESULT_CACHE"
 _WRITE_ENV: Final = "SARJ_STANDARDS_RESULT_CACHE_WRITE"
 _SCHEMA: Final = 1
 _KEEP_PER_ANALYZER: Final = 8
+# Per-file and per-project analyzers keep one entry per input unit.
+KEEP_PER_UNIT: Final = 4096
+# These only locate executables, and every executable an analyzer runs is keyed
+# by its own identity. PATH also names each run's temporary tool environment.
+_LOCATION_ENVIRONMENT: Final = frozenset({"PATH"})
 _ENGINE_DISTRIBUTIONS: Final = (
     "code-standards",
     "sarj-python-lint",
@@ -122,6 +130,11 @@ class ResultCache:
         return cls(Path(value), writable)
 
 
+# An analyzer may read inputs that cannot be enumerated, so it always runs.
+class UnknownInputsError(ValueError):
+    pass
+
+
 def cached_python_analysis(
     analyzer: str,
     root: Path,
@@ -130,18 +143,34 @@ def cached_python_analysis(
     parameters: Iterable[str],
     compute: Callable[[], CachedResult],
 ) -> CachedResult:
+    return cached_analysis(analyzer, inputs=lambda: _python_inputs(root, selected, parameters), compute=compute)
+
+
+def cached_analysis(
+    analyzer: str,
+    *,
+    inputs: Callable[[], Iterable[str]],
+    compute: Callable[[], CachedResult],
+    keep: int = _KEEP_PER_ANALYZER,
+    outcomes: list[bool] | None = None,
+) -> CachedResult:
+    # `inputs` must name every input the analyzer can observe; any error runs it.
+    # With `outcomes`, per-unit hits are recorded instead of one notice per unit.
     cache = ResultCache.from_environment()
     if cache is None:
         return compute()
     try:
-        fingerprint = _fingerprint(analyzer, root, selected, parameters)
-    except (OSError, ValueError, metadata.PackageNotFoundError) as error:
+        fingerprint = _fingerprint(analyzer, inputs())
+    except (OSError, ValueError, subprocess.SubprocessError, metadata.PackageNotFoundError) as error:
         _notice(analyzer, f"runs: fingerprint unavailable ({type(error).__name__})")
         return compute()
     entry = cache.directory / f"v{_SCHEMA}" / analyzer / f"{fingerprint}.json"
     loaded = _load(entry, analyzer, fingerprint)
+    if outcomes is not None:
+        outcomes.append(loaded is not None)
     if loaded is not None:
-        _notice(analyzer, f"reused {fingerprint[:12]}")
+        if outcomes is None:
+            _notice(analyzer, f"reused {fingerprint[:12]}")
         if cache.writable:
             _touch(entry)
         return loaded
@@ -149,11 +178,54 @@ def cached_python_analysis(
     if cache.writable and _storable(result):
         try:
             _store(entry, analyzer, fingerprint, result)
-            _prune(entry.parent)
+            _prune_once(entry.parent, keep)
         except OSError as error:
             _notice(analyzer, f"result not stored ({type(error).__name__})")
-    _notice(analyzer, f"ran {fingerprint[:12]}")
+    if outcomes is None:
+        _notice(analyzer, f"ran {fingerprint[:12]}")
     return result
+
+
+def notice_outcomes(analyzer: str, outcomes: Sequence[bool]) -> None:
+    if outcomes:
+        _notice(analyzer, f"reused {sum(outcomes)} of {len(outcomes)} units")
+
+
+def file_identity(path: Path) -> str:
+    # Missing and directory inputs are part of what an analyzer can observe.
+    if not path.exists() and not path.is_symlink():
+        return "missing"
+    if path.is_symlink():
+        return f"symlink:{path.readlink()}"
+    return _file_digest(path)
+
+
+def executable_identity(path: Path) -> str:
+    resolved = path.resolve(strict=True)
+    status = resolved.stat()
+    # A replaced binary has a new stat identity, so its digest is recomputed.
+    return _executable_digest(_ExecutableStat(str(resolved), status.st_size, status.st_mtime_ns, status.st_ino))
+
+
+def environment_parts(environment: Mapping[str, str]) -> tuple[str, ...]:
+    return tuple(
+        f"environment={key}={value}"
+        for key, value in sorted(environment.items())
+        if key not in _LOCATION_ENVIRONMENT and not key.startswith(("MISE_", "UV_"))
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ExecutableStat:
+    path: str
+    size: int
+    modified: int
+    inode: int
+
+
+@cache
+def _executable_digest(executable: _ExecutableStat) -> str:
+    return f"{executable.path}:{_file_digest(Path(executable.path))}"
 
 
 def python_inputs_digest(root: Path) -> str:
@@ -177,7 +249,7 @@ def decode_result(payload: JsonValue) -> CachedResult:
     return CachedResult(reports, coverage)
 
 
-def _fingerprint(analyzer: str, root: Path, selected: Sequence[str], parameters: Iterable[str]) -> str:
+def _fingerprint(analyzer: str, inputs: Iterable[str]) -> str:
     digest = sha256()
     for part in (
         f"schema={_SCHEMA}",
@@ -185,10 +257,15 @@ def _fingerprint(analyzer: str, root: Path, selected: Sequence[str], parameters:
         f"engine={_engine_identity()}",
         f"python={sys.version}",
         f"platform={platform.platform()}",
-        f"inputs={python_inputs_digest(root)}",
-        *(f"parameter={item}" for item in parameters),
+        *inputs,
     ):
         _feed(digest, part)
+    return digest.hexdigest()
+
+
+def _python_inputs(root: Path, selected: Sequence[str], parameters: Iterable[str]) -> Iterable[str]:
+    yield f"inputs={python_inputs_digest(root)}"
+    yield from (f"parameter={item}" for item in parameters)
     resolved = root.resolve()
     for name in selected:
         # Selection order is part of native Python semantics.
@@ -196,12 +273,13 @@ def _fingerprint(analyzer: str, root: Path, selected: Sequence[str], parameters:
         if resolved not in path.parents and path != resolved:
             msg = f"selected input escapes the repository: {name}"
             raise ValueError(msg)
-        _feed(digest, f"selected={name}")
-        _feed(digest, _file_digest(path))
-    return digest.hexdigest()
+        yield f"selected={name}"
+        yield _file_digest(path)
 
 
+@cache
 def _engine_identity() -> str:
+    # Installed distributions cannot change within one analysis process.
     digest = sha256()
     installed = sorted(
         f"{dist.metadata['Name']}=={dist.version}".lower() for dist in metadata.distributions() if dist.metadata["Name"]
@@ -321,9 +399,18 @@ def _touch(entry: Path) -> None:
         return
 
 
-def _prune(directory: Path) -> None:
+_PRUNED: set[Path] = set()
+_PRUNED_LOCK = threading.Lock()
+
+
+def _prune_once(directory: Path, keep: int) -> None:
+    # Units are stored many times per analysis; one pass per directory suffices.
+    with _PRUNED_LOCK:
+        if directory in _PRUNED:
+            return
+        _PRUNED.add(directory)
     entries = sorted(directory.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
-    for stale in entries[_KEEP_PER_ANALYZER:]:
+    for stale in entries[keep:]:
         stale.unlink(missing_ok=True)
 
 
