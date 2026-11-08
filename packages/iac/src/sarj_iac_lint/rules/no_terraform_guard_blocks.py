@@ -32,7 +32,7 @@ class NoTerraformGuardBlocks(Rule):
     id = "no-terraform-guard-blocks"
     code = "SARJ222"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Ban Terraform validation, precondition, postcondition, and check blocks.",
         rationale=(
             "The team keeps infrastructure declarations concise and owns custom deployment policy in tests and "
