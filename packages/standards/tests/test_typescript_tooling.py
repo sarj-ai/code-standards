@@ -47,7 +47,7 @@ def test_seeding_without_a_formatter_to_migrate_needs_no_tools(tmp_path: Path) -
     assert path == root / "oxfmt.config.mts"
     assert 'from "./oxfmt.strict.mts"' in contents
     assert not seeding.deletes
-    assert not seeding.deferred
+    assert not seeding.errors
 
 
 def test_seeding_from_an_oxfmtrc_replaces_it(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ def test_seeding_from_an_oxfmtrc_replaces_it(tmp_path: Path) -> None:
     seeding = typescript_tooling.plan_oxfmt_config(root)
 
     [(_path, contents)] = seeding.writes
-    assert '"printWidth": 90' in contents
+    assert "printWidth" not in contents
     assert seeding.deletes == (root / ".oxfmtrc.json",)
 
 
@@ -65,15 +65,15 @@ def test_seeding_from_prettier_waits_for_the_installed_oxfmt(tmp_path: Path) -> 
 
     seeding = typescript_tooling.plan_oxfmt_config(root)
 
-    assert not seeding.writes
-    assert seeding.deferred
+    assert seeding.writes
+    assert seeding.deletes == (root / ".prettierrc.json",)
     assert not (root / ".oxfmtrc.json").exists()
 
 
 def test_an_existing_config_is_never_seeded_again(tmp_path: Path) -> None:
     root = _repository(tmp_path, {"oxfmt.config.mts": "export default {};\n"})
 
-    assert typescript_tooling.plan_oxfmt_config(root) == typescript_tooling.OxfmtSeeding()
+    assert typescript_tooling.plan_oxfmt_config(root).errors
 
 
 def test_finish_seeds_from_biome_disables_its_formatter_and_formats_once(tmp_path: Path) -> None:
@@ -84,11 +84,10 @@ def test_finish_seeds_from_biome_disables_its_formatter_and_formats_once(tmp_pat
     notes = typescript_tooling.finish(root, root, files, written=())
 
     config = (root / "oxfmt.config.mts").read_text(encoding="utf-8")
-    assert "Seeded once from biome" in config
+    assert "Shared Standards style" in config
     biome = (root / "biome.json").read_text(encoding="utf-8")
-    assert biome == _BIOME.replace('"enabled": true', '"enabled": false')
-    assert (root / "src/a.ts").read_text(encoding="utf-8") == "export const a = 'x';\n"
-    assert "disabled the Biome formatter in biome.json; oxfmt formats this repository now" in notes
+    assert biome == _BIOME
+    assert (root / "src/a.ts").read_text(encoding="utf-8") == 'export const a = "x";\n'
     assert any(note.startswith("oxfmt formatted 1 file(s) once") for note in notes)
     assert files.rollback().ok
     assert (root / "src/a.ts").read_text(encoding="utf-8") == 'export const a = "x"\n'
@@ -117,26 +116,36 @@ def test_finish_formats_a_scaffolded_entrypoint_without_reformatting_the_reposit
     assert (root / "src/a.ts").read_text(encoding="utf-8") == "export const a = 1\n"
 
 
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        pytest.param(
-            '{\n  "formatter": { "enabled": true }\n}\n', '{\n  "formatter": { "enabled": false }\n}\n', id="on"
-        ),
-        pytest.param(
-            '{\n  "formatter": { "lineWidth": 90 }\n}\n',
-            '{\n  "formatter": { "enabled": false, "lineWidth": 90 }\n}\n',
-            id="default-on",
-        ),
-        pytest.param(
-            '{\n  "files": {}\n}\n', '{\n  "formatter": { "enabled": false },\n  "files": {}\n}\n', id="absent"
-        ),
-    ],
-)
-def test_biome_formatter_is_disabled_in_place(tmp_path: Path, text: str, expected: str) -> None:
-    root = _repository(tmp_path, {"biome.json": text})
+def test_existing_generated_config_collects_nested_ignores_and_filters_other_roots(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path / "app",
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\nexport default createConfig({printWidth: 120, ignorePatterns: ["dist/**",],});\n',
+            "packages/web/.prettierignore": "generated/**\n",
+        },
+    )
+    outside = tmp_path / "biome.json"
+    outside.write_text("{}", encoding="utf-8")
+    nested = root / "packages/web/.prettierignore"
+    seeding = typescript_tooling.plan_oxfmt_config(root, (nested, outside))
+    assert not seeding.errors
+    assert seeding.deletes == (nested,)
+    [(_, contents)] = seeding.writes
+    assert "printWidth" not in contents
+    assert "dist/**" in contents
+    assert "packages/web/generated/**" in contents
+
+
+def test_real_oxfmt_roundtrip_is_idempotent(tmp_path: Path) -> None:
+    root = _repository(tmp_path, {".oxfmtrc.json": '{"ignorePatterns": ["dist/**"], "printWidth": 120}'})
+    _with_tools(root)
+    seeding = typescript_tooling.plan_oxfmt_config(root)
     files = transaction.FileTransaction.capture(root, (), explicit_only=True)
-
-    assert typescript_tooling._disable_biome_formatter(root, files)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- the in-place text edit is the unit under test.
-
-    assert (root / "biome.json").read_text(encoding="utf-8") == expected
+    for path, text in seeding.writes:
+        files.track(path)
+        files.write_text(path, text)
+    for path in seeding.deletes:
+        files.track(path)
+        files.remove_file(path)
+    typescript_tooling.finish(root, root, files, written=tuple(path for path, _ in seeding.writes))
+    assert not typescript_tooling.plan_oxfmt_config(root).writes

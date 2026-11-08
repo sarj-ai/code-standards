@@ -1,8 +1,22 @@
 import type { OxfmtConfig } from "oxfmt";
 
-// Managed by code-standards. Keep repository style, ignores and overrides in oxfmt.config.mts.
-// Style options come from the repository so adopting oxfmt does not reformat code; this file
-// carries only the shared policy: which file types oxfmt owns and which files it never touches.
+// Managed by code-standards. All repositories start with the same formatting
+// policy. Keep repository file exclusions in oxfmt.config.mts.
+
+const sharedStyle: OxfmtConfig = {
+  printWidth: 80,
+  sortPackageJson: false,
+  sortImports: {
+    groups: [
+      ["side_effect", "side_effect_style"],
+      ["builtin", "type-builtin"],
+      ["external", "type-external"],
+      ["internal", "type-internal", "subpath", "type-subpath", "unknown"],
+      ["parent", "type-parent", "sibling", "type-sibling", "index", "type-index"],
+    ],
+    newlinesBetween: true,
+  },
+};
 
 /** Every file extension oxfmt formats. */
 export const formatExtensions = Object.freeze([
@@ -78,7 +92,7 @@ export function createConfig({
   const skipped = formatExtensions.filter((extension) => !extensions.includes(extension));
   const unowned = skipped.length === 1 ? `**/*.${skipped[0]}` : `**/*.{${skipped.join(",")}}`;
   const scope = skipped.length === 0 ? [] : [unowned];
-  return { ...style, ignorePatterns: [...managedFiles, ...scope, ...ignorePatterns] };
+  return { ...sharedStyle, ...style, ignorePatterns: [...managedFiles, ...scope, ...ignorePatterns] };
 }
 
 export default createConfig();

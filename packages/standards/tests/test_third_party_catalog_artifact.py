@@ -167,7 +167,7 @@ def _assert_react_doctor_inventory(providers: list[dict[str, JsonValue]], rules:
         "homepage": "https://react.doctor/",
         "id": "react-doctor",
         "label": "React Doctor",
-        "package": "react-doctor",
+        "package": "oxlint-plugin-react-doctor",
         "projectionScope": "complete",
         "version": "0.9.22",
     }

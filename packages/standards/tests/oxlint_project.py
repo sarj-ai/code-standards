@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import shutil
@@ -36,7 +35,7 @@ export function createConfig() {
     plugins: ["eslint", "typescript", "unicorn", "react", "nextjs"],
     jsPlugins: [
       { name: "@sarj", specifier: "@sarj/eslint-plugin" },
-      { name: "unicorn-js", specifier: "eslint-plugin-unicorn" },
+      { name: "unicorn-js", specifier: "@sarj/eslint-plugin/unicorn" },
     ],
     categories: { correctness: "off" },
     options: { reportUnusedDisableDirectives: "error" },
@@ -45,7 +44,7 @@ export function createConfig() {
       "no-console": "error",
       "typescript/no-explicit-any": "error",
       "typescript/no-floating-promises": "error",
-      "unicorn-js/no-useless-undefined": "error",
+      "unicorn-js/no-unnecessary-global-this": "error",
       "@sarj/no-vague-suppression-description": "error",
       "@sarj/directive-require-description": ["error", { ignore: [] }],
     },
@@ -75,18 +74,12 @@ def project(root: Path, files: Mapping[str, str], *, config: str = CONSUMER, git
             (modules / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
     plugin = modules / "@sarj" / "eslint-plugin"
     plugin.mkdir(parents=True)
-    (plugin / "package.json").write_text(
-        '{"name":"@sarj/eslint-plugin","type":"module","main":"./index.mjs","exports":"./index.mjs"}\n',
-        encoding="utf-8",
-    )
+    (plugin / "package.json").write_text((TYPESCRIPT / "package.json").read_text(encoding="utf-8"), encoding="utf-8")
+    (plugin / "dist").symlink_to(TYPESCRIPT / "dist", target_is_directory=True)
     (root / "package.json").write_text('{"type":"module","private":true}\n', encoding="utf-8")
     (root / "tsconfig.json").write_text(
         '{"compilerOptions":{"strict":true,"module":"nodenext","moduleResolution":"nodenext","noEmit":true,'
         '"skipLibCheck":true,"allowImportingTsExtensions":true},"include":["**/*.ts"]}\n',
-        encoding="utf-8",
-    )
-    (plugin / "index.mjs").write_text(
-        f"export {{ default }} from {json.dumps(PLUGIN.as_uri())};\n",
         encoding="utf-8",
     )
     (root / "oxlint.strict.ts").write_text(STRICT, encoding="utf-8")

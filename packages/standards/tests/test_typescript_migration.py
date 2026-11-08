@@ -117,7 +117,7 @@ def test_a_scaffolded_consumer_gets_the_default_entrypoint_and_loses_the_eslint_
     assert set(migration.deletes) == {root / "eslint.config.ts", root / "eslint.strict.ts"}
     assert not migration.keeps_eslint
     assert {"typescript-eslint", "@eslint/js", "@typescript/native"} <= migration.retired_dependencies
-    assert "eslint" not in migration.retired_dependencies  # The Oxlint JS plugins still peer on it.
+    assert "eslint" in migration.retired_dependencies
 
 
 def test_the_default_entrypoint_extends_the_managed_preset_and_spreads_its_ignores() -> None:
@@ -194,14 +194,9 @@ def test_a_custom_config_stays_and_keeps_its_preset_and_dependencies(tmp_path: P
     )
 
     migration = _plan(root)
-
-    assert migration.keeps_eslint
+    assert migration.errors
+    assert migration.writes == ()
     assert migration.deletes == ()
-    assert _written(migration, root / "oxlint.config.mts") == typescript_migration.render_entrypoint()
-    assert {"@eslint/js", "jiti"}.isdisjoint(migration.retired_dependencies)
-    notes = "\n".join(migration.notes)
-    assert "kept eslint.config.ts: it is not a static Standards config" in notes
-    assert "kept eslint.strict.d.mts: eslint.config.ts imports it" in notes
 
 
 def test_several_eslint_configs_are_an_error(tmp_path: Path) -> None:
@@ -232,15 +227,9 @@ def test_a_pnpm_workspace_keeps_a_nested_config_and_rewrites_package_directives(
     )
 
     migration = _plan(root)
-
-    assert migration.keeps_eslint
-    assert migration.deletes == (root / "eslint.config.ts",)
-    assert _written(migration, root / "packages/web/src/page.ts") == (
-        "// eslint-disable-next-line typescript/no-explicit-any -- legacy\n"
-    )
-    notes = "\n".join(migration.notes)
-    assert "kept nested ESLint config packages/web/eslint.config.mjs" in notes
-    assert "kept eslint.strict.ts: packages/web/eslint.config.mjs imports it" in notes
+    assert migration.errors
+    assert migration.writes == ()
+    assert migration.deletes == ()
 
 
 def test_yarn_plug_and_play_artifacts_are_left_alone(tmp_path: Path) -> None:
@@ -371,11 +360,9 @@ def test_a_kept_config_keeps_its_suppressions_and_converts_them_once(tmp_path: P
     )
 
     migration = _plan(root)
-    _apply(migration)
-
-    assert root / "eslint-suppressions.json" not in migration.deletes
-    assert json.loads((root / "oxlint-suppressions.json").read_text()) == {"src/a.ts": {"no-undef": {"count": 1}}}
-    assert _plan(root).writes == ()
+    assert migration.errors
+    assert migration.writes == ()
+    assert migration.deletes == ()
 
 
 def test_unreferenced_tsconfig_projects_join_the_root_references(tmp_path: Path) -> None:
@@ -496,10 +483,10 @@ def test_workspace_type_checks_move_to_tsrs_and_retire_the_native_compiler(tmp_p
             True,
             {
                 "lint:ci": "eslint --format json -o report.json .",
-                "lint:src": "eslint src",
+                "lint:src": "LINT src",
                 "lint": "LINT",
-                "format": "prettier --write src",
-                "format:check": "prettier .",
+                "format": "oxfmt src",
+                "format:check": "oxfmt --check",
             },
         ),
         (
@@ -644,6 +631,37 @@ def test_a_script_that_still_runs_eslint_is_reported(tmp_path: Path) -> None:
     package = json.dumps({"name": "consumer", "scripts": {"lint:ci": "eslint -o report.json ."}})
     root = _repository(tmp_path, {"package.json": package, "eslint.config.ts": _SCAFFOLDED_ESLINT_CONFIG})
 
-    notes = _plan(root).notes
+    errors = _plan(root).errors
 
-    assert any(note.startswith("still invoke ESLint") and "package.json" in note for note in notes)
+    assert any("script lint:ci" in error and "package.json" in error for error in errors)
+
+
+def test_workspace_legacy_commands_forward_to_root_and_retire_tools(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps({"name": "consumer", "packageManager": "pnpm@10.0.0"}),
+            "packages/app/package.json": json.dumps(
+                {
+                    "name": "app",
+                    "scripts": {
+                        "lint": "biome check --config-path=../../biome.json ./src",
+                        "format": "prettier --write ./src",
+                    },
+                    "devDependencies": {
+                        "@biomejs/biome": "1",
+                        "prettier": "1",
+                        "eslint-config-next": "1",
+                        "eslint-config-expo": "1",
+                        "eslint-config-prettier": "1",
+                    },
+                }
+            ),
+        },
+    )
+    migration = _plan(root)
+    assert not migration.errors
+    document = parse_json(_written(migration, root / "packages/app/package.json"))
+    assert isinstance(document, dict)
+    assert document["scripts"] == {"lint": "pnpm -w run lint packages/app", "format": "pnpm -w run format packages/app"}
+    assert document["devDependencies"] == {}

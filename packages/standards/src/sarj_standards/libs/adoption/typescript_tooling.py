@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-import re
 from typing import TYPE_CHECKING, Final
-
-from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting.process import ProcessCapabilities, ToolResolution
 
 from . import lifecycle
 from .configs import BIOME_CONFIG_NAMES, OXFMT_ENTRYPOINT, OXLINT_ENTRYPOINT, OXLINT_SUPPRESSIONS
@@ -15,13 +11,12 @@ from .configs import BIOME_CONFIG_NAMES, OXFMT_ENTRYPOINT, OXLINT_ENTRYPOINT, OX
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
 
-    from sarj_standards.libs.linting.process import ProcessOutput, ProcessRequest
+    from sarj_standards.libs.linting import oxfmt
 
     from .transaction import FileTransaction
 
 
 _OXFMT_RC: Final = ".oxfmtrc.json"
-_BIOME_FORMATTER: Final = re.compile(r'"formatter"\s*:\s*\{\s*(?P<enabled>"enabled"\s*:\s*true)?')
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,58 +24,67 @@ class OxfmtSeeding:
     writes: tuple[tuple[Path, str], ...] = ()
     deletes: tuple[Path, ...] = ()
     notes: tuple[str, ...] = ()
-    #: Seeding needs `oxfmt --migrate`, so it runs after the install.
-    deferred: bool = False
+    errors: tuple[str, ...] = ()
 
 
-class _NeedsOxfmtError(Exception):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class _NoProcesses:
-    # Planning never runs tools: a seed that needs `oxfmt --migrate` waits for the install.
-    capabilities: ProcessCapabilities = field(default_factory=lambda: ProcessCapabilities(ToolResolution.PROVIDED))
-
-    def run(self, request: ProcessRequest) -> ProcessOutput:
-        raise _NeedsOxfmtError(request.argv)
-
-
-def plan_oxfmt_config(typescript_root: Path) -> OxfmtSeeding:
-    # Seed oxfmt.config.mts at planning time when no Prettier or Biome config needs `oxfmt --migrate`.
+def plan_oxfmt_config(typescript_root: Path, sources: Collection[Path] = ()) -> OxfmtSeeding:
     from sarj_standards.libs.linting import oxfmt  # ruff: ignore[import-outside-top-level] -- oxfmt imports adoption.lifecycle.
 
     entrypoint = typescript_root / OXFMT_ENTRYPOINT
-    if entrypoint.is_file():
-        return OxfmtSeeding()
-    try:
-        seed = oxfmt.seed_config(typescript_root, runner=_NoProcesses())
-    except _NeedsOxfmtError:
-        return OxfmtSeeding(
-            notes=(f"{OXFMT_ENTRYPOINT} is seeded from the current formatter after the install",), deferred=True
+    legacy_names = {*BIOME_CONFIG_NAMES, *oxfmt.PRETTIER_CONFIG_NAMES, ".prettierignore"}
+    legacy = tuple(
+        sorted(
+            {
+                *(path for path in sources if path.is_relative_to(typescript_root) and path.name in legacy_names),
+                *(typescript_root / name for name in legacy_names if (typescript_root / name).is_file()),
+            }
         )
-    except ValueError as exc:
-        return OxfmtSeeding(notes=(f"write {OXFMT_ENTRYPOINT} by hand: {exc}",))
-    deletes = (typescript_root / _OXFMT_RC,) if seed.source == "oxfmt" else ()
-    return OxfmtSeeding(((entrypoint, oxfmt.render_config(seed)),), deletes)
+    )
+    try:
+        seed = _coverage_seed(typescript_root, legacy)
+    except (TypeError, ValueError) as exc:
+        return OxfmtSeeding(errors=(f"write {OXFMT_ENTRYPOINT} by hand: {exc}",))
+    deletes = (*legacy, *((typescript_root / _OXFMT_RC,) if seed.source == "oxfmt" else ()))
+    writes = () if oxfmt.matches_shared_config(typescript_root, seed) else ((entrypoint, oxfmt.render_config(seed)),)
+    return OxfmtSeeding(writes, deletes, seed.warnings)
+
+
+def _coverage_seed(typescript_root: Path, legacy: Collection[Path]) -> oxfmt.OxfmtSeed:
+    from sarj_standards.libs.linting import oxfmt  # ruff: ignore[import-outside-top-level] -- oxfmt imports adoption.lifecycle.
+
+    seed = oxfmt.seed_config(typescript_root)
+    options = dict(seed.options)
+    ignores = options.get("ignorePatterns", [])
+    if not isinstance(ignores, list):
+        msg = "ignorePatterns must be an array"
+        raise TypeError(msg)
+    for directory in sorted({path.parent for path in legacy if path.parent != typescript_root}):
+        nested = oxfmt.seed_config(directory).options.get("ignorePatterns", [])
+        if isinstance(nested, list):
+            prefix = directory.relative_to(typescript_root).as_posix()
+            ignores.extend(_prefixed_ignore(prefix, pattern) for pattern in nested if isinstance(pattern, str))
+    if ignores:
+        options["ignorePatterns"] = ignores
+    return replace(seed, options=options)
+
+
+def _prefixed_ignore(prefix: str, pattern: str) -> str:
+    negate = "!" if pattern.startswith("!") else ""
+    return f"{negate}{prefix}/{pattern.removeprefix('!').removeprefix('/')}"
 
 
 def finish(root: Path, typescript_root: Path, files: FileTransaction, *, written: Collection[Path]) -> tuple[str, ...]:
-    # The adoption steps that need the installed tools; `written` is what the plan wrote. oxfmt seeds its
-    # config from Prettier or Biome when planning could not, and the repository is formatted once with the
-    # new config (DECISIONS #7); Oxlint trims bulk suppressions converted from ESLint to the findings it
-    # reports. Every file this touches is recorded in `files` so a failed update rolls it back.
+    # Format once with the shared policy, then trim converted bulk suppressions.
+    # Every touched file belongs to the transaction so a failed update rolls it back.
     from sarj_standards.libs.linting import oxfmt  # ruff: ignore[import-outside-top-level] -- oxfmt imports adoption.lifecycle.
 
     notes: list[str] = []
     entrypoint = typescript_root / OXFMT_ENTRYPOINT
     seeded = entrypoint in written
-    if not entrypoint.is_file() and plan_oxfmt_config(typescript_root).deferred:
+    if not entrypoint.is_file():
         seed = oxfmt.seed_config(typescript_root)
-        notes.extend(f"oxfmt --migrate: {warning}" for warning in seed.warnings)
+        notes.extend(seed.warnings)
         _write(files, entrypoint, oxfmt.render_config(seed))
-        if seed.source == "biome":
-            notes.extend(_disable_biome_formatter(typescript_root, files))
         seeded = True
     if seeded:
         reformatted = _reformat(root, typescript_root, files)
@@ -113,52 +117,6 @@ def _format(root: Path, typescript_root: Path, files: FileTransaction, paths: Se
     files.track(*paths)
     _run(oxfmt.write_command([str(path) for path in paths], project=typescript_root, root=root))
     files.mark_written(*paths)
-
-
-def _disable_biome_formatter(typescript_root: Path, files: FileTransaction) -> tuple[str, ...]:
-    # oxfmt owns formatting now; a Biome formatter left on would undo it on every `biome check --write`.
-    path = next((typescript_root / name for name in BIOME_CONFIG_NAMES if (typescript_root / name).is_file()), None)
-    if path is None:
-        return ()
-    text = path.read_text(encoding="utf-8")
-    edited = _without_biome_formatter(text)
-    if edited is None:
-        return (f"disable the Biome formatter in {path.name} by hand: oxfmt formats this repository now",)
-    if edited == text:
-        return ()
-    _write(files, path, edited)
-    return (f"disabled the Biome formatter in {path.name}; oxfmt formats this repository now",)
-
-
-def _without_biome_formatter(text: str) -> str | None:
-    # Edit the text in place so the rest of the file keeps its layout; the parse proves the edit hit the root key.
-    try:
-        parsed = parse_json(text)
-    except ValueError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    formatter = parsed.get("formatter")
-    if isinstance(formatter, dict) and formatter.get("enabled") is False:
-        return text
-    expected = {**parsed, "formatter": {**(formatter if isinstance(formatter, dict) else {}), "enabled": False}}
-    candidates = [
-        f'{text[: match.start("enabled")]}"enabled": false{text[match.end("enabled") :]}'
-        if match.group("enabled")
-        else f'{text[: match.end()]}"enabled": false, {text[match.end() :]}'
-        for match in _BIOME_FORMATTER.finditer(text)
-    ]
-    if "formatter" not in parsed and (opening := re.match(r"\s*\{(?P<indent>\s*)", text)) is not None:
-        candidates.append(
-            f'{text[: opening.end()]}"formatter": {{ "enabled": false }},{opening["indent"]}{text[opening.end() :]}'
-        )
-    for edited in candidates:
-        try:
-            if parse_json(edited) == expected:
-                return edited
-        except ValueError:
-            continue
-    return None
 
 
 def _prune_suppressions(root: Path, typescript_root: Path, files: FileTransaction) -> tuple[str, ...]:

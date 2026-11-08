@@ -30,7 +30,7 @@ describe("stage 2 rule additions", () => {
 describe("typescript.peers.json", () => {
   it("pins every JS plugin the config can load", () => {
     const specifiers = jsPlugins(createConfig({ testFrameworks: ALL_TEST_FRAMEWORKS })).map(({ specifier }) => specifier);
-    expect(specifiers.filter((specifier) => PEERS[specifier] === undefined)).toEqual([]);
+    expect(specifiers.filter((specifier) => PEERS[specifier.replace(/^(@sarj\/eslint-plugin)\/.+$/u, "$1")] === undefined)).toEqual([]);
   });
 
   it("pins tsrs and oxlint, and no TypeScript compiler pair", () => {

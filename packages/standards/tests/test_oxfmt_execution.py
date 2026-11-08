@@ -205,21 +205,9 @@ def test_biome_seed_restores_scope_and_biome_defaults(tmp_path: Path) -> None:
         '\nPlease review:\n  - "overrides" cannot be migrated automatically yet\n',
     )
 
-    seed = oxfmt.seed_config(tmp_path, runner=executor)
-
-    assert executor.requests[0].argv == ("oxfmt", "--migrate=biome")
-    assert not (tmp_path / ".oxfmtrc.json").exists()
-    assert seed.source == "biome"
-    assert seed.options == migrated | {
-        "ignorePatterns": ["**/generated"],
-        "sortPackageJson": False,
-        "extensions": ["css", "json", "ts", "tsx"],
-        "overrides": [
-            {"files": ["**/*.css"], "options": {"singleQuote": False}},
-            {"files": ["**/*.{json,jsonc}"], "options": {"trailingComma": "none"}},
-        ],
-    }
-    assert seed.warnings == ("Biome override ['legacy/**'] sets formatter options; port it to oxfmt overrides",)
+    with pytest.raises(ValueError, match="Biome override"):
+        oxfmt.seed_config(tmp_path, runner=executor)
+    assert executor.requests == []
 
 
 def test_biome_seed_without_includes_keeps_biome_languages_only(tmp_path: Path) -> None:
@@ -234,8 +222,7 @@ def test_biome_seed_without_includes_keeps_biome_languages_only(tmp_path: Path) 
     ("files", "message"),
     [
         ({".oxfmtrc.jsonc": "{}"}, "already configures oxfmt"),
-        ({"oxfmt.config.mts": "export default {};"}, "already configures oxfmt"),
-        ({".prettierrc.json": "{}", "biome.json": "{}"}, "both Prettier and the Biome formatter"),
+        ({"oxfmt.config.mts": "export default {};"}, "handcrafted"),
     ],
 )
 def test_seed_refuses_ambiguous_formatter_configs(tmp_path: Path, files: dict[str, str], message: str) -> None:
@@ -249,9 +236,9 @@ def test_seed_refuses_ambiguous_formatter_configs(tmp_path: Path, files: dict[st
 def test_seed_keeps_existing_oxfmtrc_and_defaults_repositories_without_a_formatter(tmp_path: Path) -> None:
     executor = _listing(0)
     (tmp_path / "biome.json").write_text('{"formatter": {"enabled": false}}', encoding="utf-8")
-    assert oxfmt.seed_config(tmp_path, runner=executor).options["printWidth"] == 80
+    assert oxfmt.seed_config(tmp_path, runner=executor).options == {}
     (tmp_path / ".oxfmtrc.json").write_text('{"$schema": "x", "printWidth": 120}', encoding="utf-8")
-    assert oxfmt.seed_config(tmp_path, runner=executor) == oxfmt.OxfmtSeed("oxfmt", {"printWidth": 120})
+    assert oxfmt.seed_config(tmp_path, runner=executor) == oxfmt.OxfmtSeed("oxfmt", {})
     assert executor.requests == []
 
 
@@ -266,10 +253,6 @@ def test_prettier_seed_keeps_repository_style_tailwind_sorting_and_ignores(tmp_p
 
     assert not (tmp_path / ".oxfmtrc.json").exists()
     assert seed.options == {
-        "semi": False,
-        "printWidth": 100,
-        "sortPackageJson": False,
-        "sortTailwindcss": {},
         "ignorePatterns": ["public/r/"],
         "extensions": sorted(oxfmt.FORMAT_EXTENSIONS - {"gs", "toml"}),
     }
@@ -279,9 +262,8 @@ def test_prettier_seed_keeps_repository_style_tailwind_sorting_and_ignores(tmp_p
     (tmp_path / "wrangler.toml").write_text("name    =   'x'\n", encoding="utf-8")
     report = oxfmt.analyze(["view.tsx", "wrangler.toml"], project=tmp_path, root=tmp_path)
     assert report.completion is Completion.COMPLETE, report.issues
-    [diagnostic] = report.diagnostics
-    assert diagnostic.location.path == "view.tsx"
-    assert _written(tmp_path, "view.tsx") == 'export const v = <div className="flex p-4" />\n'
+    assert report.diagnostics == ()
+    assert _written(tmp_path, "view.tsx") == 'export const v = <div className="p-4 flex" />;\n'
 
 
 @needs_oxfmt
@@ -310,4 +292,4 @@ def test_biome_seed_with_real_migration_leaves_biome_files_unchanged(tmp_path: P
 
     assert seed.source == "biome"
     assert report.completion is Completion.COMPLETE, report.issues
-    assert report.diagnostics == ()
+    assert {diagnostic.location.path for diagnostic in report.diagnostics} == {"source.ts", "wrangler.jsonc"}

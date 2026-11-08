@@ -43,7 +43,6 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 )
 AGE_GATE_POLICY_NAMES: Final = frozenset({".npmrc", ".yarnrc.yml", ".yarnrc.yaml", "pnpm-workspace.yaml"})
 
-_ESLINT: Final = "eslint"
 #: pnpm policy lists that take exact `name@version` exemptions.
 _PNPM_EXEMPTION_SETTINGS: Final = ("minimumReleaseAgeExclude", "trustPolicyExclude")
 #: Yarn Berry's exact-version exemptions from `npmMinimalAgeGate`, and the variable that sets them inline.
@@ -164,8 +163,11 @@ def overrides_for(client: PackageManager) -> Overrides:
         case PackageManager.YARN:
             return Overrides(("resolutions",), dict(_flatten(npm_entries, "/")))
         case PackageManager.BUN:
-            # Bun ignores nested npm overrides, so pin the JS plugins' ESLint peer at the root.
-            return Overrides(("overrides",), {_ESLINT: manifest.typescript_peers()[_ESLINT]})
+            # Bun supports root overrides, but ignores npm's nested selectors.
+            return Overrides(
+                ("overrides",),
+                {name: _resolved_tree(value) for name, value in npm_entries.items() if isinstance(value, str)},
+            )
 
 
 def pnpm_workspace_values(text: str) -> dict[str, str]:
@@ -311,11 +313,7 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
 
 def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> str | None:
     if client is PackageManager.YARN:
-        note = (
-            "Yarn resolves `resolutions` at install time, so re-run `yarn install`"
-            f" after the block is written -- and note Yarn pins {_ESLINT} for"
-            " eslint-plugin-react (an Oxlint JS plugin) to an exact version rather than tracking your own."
-        )
+        note = "Yarn resolves `resolutions` at install time, so re-run `yarn install` after the block is written."
         if yarn is YarnVariant.BERRY:
             note += (
                 " Yarn 4.15+ also refuses a package published within its minimum release"

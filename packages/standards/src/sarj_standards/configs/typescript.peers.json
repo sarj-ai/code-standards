@@ -2,44 +2,30 @@
   "$comment": [
     "Every npm package the TypeScript capability (Oxlint, oxfmt, tsrs, React Doctor) loads or",
     "executes, at the exact versions this repo installs and tests: the binaries, the @sarj plugin",
-    "and the ESLint plugins oxlint.strict.mts loads under `jsPlugins`.",
+    "the standalone upstream rule entrypoints, and the remaining plugins under `jsPlugins`.",
     "",
     "tsrs does all type checking and supplies `tsrs-lint` for type-aware rules, so there is no",
-    "TypeScript compiler pair. `typescript` stays only because @eslint-react/eslint-plugin imports",
+    "TypeScript compiler pair. `typescript` stays only because the React correctness rules import",
     "the TypeScript JavaScript API when it loads.",
-    "",
-    "`eslint` is not run. It is pinned because the JS plugins peer on it and npm cannot resolve",
-    "their ranges on its own; see `ceilings` and `npmOverrides`.",
     "",
     "`platformPackages` lists the platform binaries each peer ships as optionalDependencies at its own",
     "version. Installs exempt the peers and these exact versions from the repository's release-age and",
     "trust policies for that install only."
   ],
   "peers": {
-    "@eslint-react/eslint-plugin": "5.28.8",
-    "@sarj/eslint-plugin": "19.0.0",
-    "@tanstack/eslint-plugin-query": "5.106.1",
-    "eslint": "10.14.0",
-    "eslint-node-test": "1.0.1",
-    "eslint-plugin-jsdoc": "65.4.4",
-    "eslint-plugin-playwright": "2.12.2",
-    "eslint-plugin-react": "7.37.5",
-    "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
-    "eslint-plugin-regexp": "3.3.3",
-    "eslint-plugin-security": "4.2.1",
-    "eslint-plugin-testing-library": "7.16.2",
-    "eslint-plugin-unicorn": "79.0.0",
+    "@sarj/eslint-plugin": "19.0.1",
     "eslint-plugin-zod": "5.2.2",
     "oxfmt": "0.76.0",
     "oxlint": "1.91.0",
     "oxlint-plugin-eslint": "1.91.0",
-    "react-doctor": "0.9.22",
+    "oxlint-plugin-react-doctor": "0.9.22",
+    "parse5": "8.0.0",
     "syncpack": "15.3.3",
     "tsrs": "0.23.0-ts7.1.0-beta",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "19.0.0"
+    "@sarj/eslint-plugin": "19.0.1"
   },
   "platformPackages": {
     "oxfmt": [
@@ -104,14 +90,8 @@
       "@tsrs/win32-x64"
     ]
   },
-  "npmOverrides": {
-    "eslint-plugin-react": {
-      "eslint": "$eslint"
-    }
-  },
+  "npmOverrides": {},
   "ceilings": {
-    "eslint": "Not run. eslint-plugin-unicorn 79 peers `eslint >= 10.4` and eslint-plugin-react 7.37.5 peers `eslint <= ^9.7`, so npm refuses the tree unless eslint is a direct dependency that the eslint-plugin-react override can point at.",
-    "eslint-plugin-react": "7.37.5 is the newest release and peers `eslint <= ^9.7`; the npm override permits ESLint 10. Oxlint loads it as react-js for the two rules without a native port.",
-    "typescript": "@eslint-react/eslint-plugin imports the TypeScript JavaScript API at load time. TypeScript 7 has no JavaScript API, so the official TypeScript 6 compatibility package supplies it."
+    "typescript": "The React correctness rules use the TypeScript JavaScript API. TypeScript 7 has no JavaScript API, so the official TypeScript 6 compatibility package supplies it."
   }
 }

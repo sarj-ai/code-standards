@@ -8,6 +8,91 @@ kind = "generated"
 source = "packages/standards/src/sarj_standards/configs/action-parser/index.mts"
 reason = "Reproducible Node-compatible bundle ships the pinned GitHub parser inside the Python wheel without consumer npm or TypeScript setup."
 
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/html-script-source.mjs"
+kind = "runtime"
+reason = "Preserves HTML script byte locations for the packaged Node lint adapter."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/project-configuration.mjs"
+kind = "runtime"
+reason = "Reads React project configuration without executing repository code in the packaged Node adapter."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/project-settings.mjs"
+kind = "runtime"
+reason = "Supplies framework capabilities to the official React Doctor plugin from the Python wheel."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/react-doctor-runner.mjs"
+kind = "runtime"
+reason = "Runs the official Oxlint plugin directly from the Python wheel without a consumer TypeScript build."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/react-doctor-scan.mjs"
+kind = "runtime"
+reason = "Executes the official synchronous project security callbacks from the Python wheel."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/staged-request.mjs"
+kind = "runtime"
+reason = "Materializes the selected Git index for the packaged Node adapter without changing the worktree."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/effects.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/jsdoc-js.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/node-test.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/playwright.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/query.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/react-correctness.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/react-js.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/regexp.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/security.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/testing-library.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
+[[javascript.artifacts]]
+path = "packages/typescript/src/upstream/unicorn-js.js"
+kind = "vendor"
+reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
+
 [documentation]
 # Canonical harness entrypoints; other new pages retain the zero-page default.
 addition_exemptions = [

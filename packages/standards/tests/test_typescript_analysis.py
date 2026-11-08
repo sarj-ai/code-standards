@@ -343,7 +343,7 @@ def test_fix_sources_removes_unused_directives_oxlint_reports(tmp_path: Path) ->
 def test_fix_pipeline_fixes_cleans_directives_and_formats(tmp_path: Path) -> None:
     source = (
         "// eslint-disable-next-line no-debugger -- nothing to hide here\n"
-        "export function f(a = undefined) { return a }\n"
+        "export function f() { return globalThis.Array }\n"
     )
     root = project(tmp_path / "repo", {"src/a.ts": source})
     (root / ".oxfmtrc.json").write_text('{"semi": true}\n', encoding="utf-8")
@@ -358,7 +358,7 @@ def test_fix_pipeline_fixes_cleans_directives_and_formats(tmp_path: Path) -> Non
 
     assert result.status == 0
     assert result.changed == (root / "src/a.ts",)
-    assert (root / "src/a.ts").read_text(encoding="utf-8") == "export function f(a?) {\n  return a;\n}\n"
+    assert (root / "src/a.ts").read_text(encoding="utf-8") == "export function f() {\n  return Array;\n}\n"
 
 
 def test_oxfmt_project_analysis_reports_unformatted_files_with_the_real_binary(tmp_path: Path) -> None:

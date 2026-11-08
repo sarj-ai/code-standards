@@ -1,9 +1,9 @@
 {
   "description": "The record of the rules oxlint.strict.mts added with the switch to Oxlint, beyond what Platform's config already enabled; tests/managed-config/additions.test.ts checks the config against it. From the Oxlint rule survey (Platform/products, portal, ai, automations; Oxlint 1.91.0). Size and complexity limits were left out on purpose. Rules with existing findings start as warnings.",
   "jsPlugins": [
-    { "name": "@tanstack/query", "specifier": "@tanstack/eslint-plugin-query", "surveyedVersion": "5.106.1" },
-    { "name": "@eslint-react", "specifier": "@eslint-react/eslint-plugin", "surveyedVersion": "5.28.8" },
-    { "name": "effects", "specifier": "eslint-plugin-react-you-might-not-need-an-effect", "surveyedVersion": "1.0.2", "note": "the plugin ashStack vendors" }
+    { "name": "@tanstack/query", "specifier": "@sarj/eslint-plugin/query", "surveyedVersion": "5.106.1" },
+    { "name": "@eslint-react", "specifier": "@sarj/eslint-plugin/react-correctness", "surveyedVersion": "5.28.8" },
+    { "name": "effects", "specifier": "@sarj/eslint-plugin/effects", "surveyedVersion": "1.0.2", "note": "the plugin ashStack vendors" }
   ],
   "rules": {
     "@sarj/no-oxlint-directive": { "level": "warn", "note": "keep one suppression spelling; Standards separately enforces the required suppression policy" },

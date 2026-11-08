@@ -365,7 +365,7 @@ def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Pat
     assert baseline_path.read_text(encoding="utf-8") == late_edit
 
 
-def test_upgrade_migrates_the_root_eslint_config_and_keeps_nested_eslint_projects(tmp_path: Path) -> None:
+def test_upgrade_blocks_untranslated_nested_eslint_projects(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text(
@@ -380,13 +380,12 @@ def test_upgrade_migrates_the_root_eslint_config_and_keeps_nested_eslint_project
     adopted = manifest.Manifest("0.0.1", ("typescript",), ".", ".", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
-    plan = upgrade.build_plan(tmp_path)
+    with pytest.raises(ValueError, match="port its overrides"):
+        upgrade.build_plan(tmp_path)
 
-    assert (CONFIGS_DIR / "oxlint.strict.mts", tmp_path / "oxlint.strict.mts") in plan.config_writes
-    assert {tmp_path / "eslint.config.mjs", tmp_path / "eslint.strict.mjs"} <= set(plan.scaffold_plan.deletes)
-    assert tmp_path / "oxlint.config.mts" in {path for path, _contents in plan.scaffold_plan.writes}
-    assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
-    assert consumer_config not in plan.scaffold_plan.deletes
+    assert (tmp_path / "eslint.config.mjs").is_file()
+    assert (tmp_path / "eslint.strict.mjs").is_file()
+    assert not (tmp_path / "oxlint.config.mts").exists()
     assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
 
 
@@ -944,7 +943,7 @@ def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> 
     assert dev_dependencies["test-tool"] == "4.5.6"
     assert manifest.table_field(data, "scripts") == {
         "custom": "keep this",
-        "lint": "OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint oxlint",
+        "lint": "code-standards check --trust-repository-code",
         "format": "oxfmt",
         "format:check": "oxfmt --check",
     }
@@ -1483,7 +1482,7 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
     assert manifest.typescript_peers()["@sarj/eslint-plugin"] in observed_packages[0]
 
 
-def test_update_preserves_existing_nested_eslint_projects_during_schema_migration(tmp_path: Path) -> None:
+def test_update_blocks_untranslated_nested_eslint_during_schema_migration(tmp_path: Path) -> None:
     selected = tmp_path / "apps" / "dashboard"
     selected.mkdir(parents=True)
     (selected / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
@@ -1506,10 +1505,11 @@ def test_update_preserves_existing_nested_eslint_projects_during_schema_migratio
         encoding="utf-8",
     )
 
+    before = (tmp_path / manifest.MANIFEST_NAME).read_bytes()
     status = _main(["update", "--offline", "--no-install", str(tmp_path)])
 
-    assert status == 0
-    assert manifest.load(tmp_path) is not None
+    assert status == 2
+    assert (tmp_path / manifest.MANIFEST_NAME).read_bytes() == before
     assert nested_config.read_text(encoding="utf-8") == original_nested
 
 

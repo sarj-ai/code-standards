@@ -81,23 +81,36 @@ def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) ->
     assert "supported managers: npm, pnpm, yarn, bun" in proc.stderr
 
 
+@pytest.fixture
+def synthetic_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercises translation of the centrally loaded policy independently of enabled plugins.
+        manifest, "typescript_peers", lambda: {"example-peer": "1.2.3"}
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- supplies the matching central policy input without installing obsolete plugin peers.
+        manifest, "typescript_overrides", lambda: {"example-plugin": {"example-peer": "$example-peer"}}
+    )
+
+
+@pytest.mark.usefixtures("synthetic_overrides")
 def test_npm_keeps_the_nested_form_with_resolved_root_references() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.typescript_peers()["eslint"]}
+    assert overrides.entries["example-plugin"] == {"example-peer": "1.2.3"}
     assert "$" not in json.dumps(overrides.as_document())
 
 
+@pytest.mark.usefixtures("synthetic_overrides")
 def test_pnpm_gets_a_flat_selector_for_its_workspace_policy() -> None:
     overrides = packagemanager.overrides_for(PackageManager.PNPM)
     assert overrides.key_path == ("overrides",)
-    assert "eslint-plugin-react>eslint" in overrides.entries
+    assert "example-plugin>example-peer" in overrides.entries
 
 
+@pytest.mark.usefixtures("synthetic_overrides")
 def test_yarn_gets_the_resolved_overrides_as_resolutions() -> None:
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
-    assert overrides.entries == {"eslint-plugin-react/eslint": manifest.typescript_peers()["eslint"]}
+    assert overrides.entries == {"example-plugin/example-peer": "1.2.3"}
     assert "$" not in json.dumps(overrides.as_document())
 
 
@@ -107,10 +120,10 @@ def test_only_the_internal_plugin_is_an_age_gate_exception() -> None:
     assert approvals == {"@sarj/eslint-plugin": manifest.typescript_peers()["@sarj/eslint-plugin"]}
 
 
-def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
+def test_bun_needs_no_retired_eslint_override() -> None:
     overrides = packagemanager.overrides_for(PackageManager.BUN)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries == {"eslint": manifest.typescript_peers()["eslint"]}
+    assert overrides.entries == {}
 
 
 @pytest.mark.parametrize(
@@ -475,7 +488,7 @@ def test_init_writes_pnpm_overrides_into_workspace_yaml_for_a_standalone_repo(tm
     assert "overrides" not in written, "a bare `overrides` key is ignored by pnpm"
     assert "pnpm" not in written, "pnpm 11 ignores package.json#pnpm.overrides"
     workspace = (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
-    assert '"eslint-plugin-react>eslint"' in workspace
+    assert "eslint" not in workspace
     assert "pnpm install --no-frozen-lockfile --ignore-scripts" in proc.stdout
     assert "--ignore-workspace" not in proc.stdout
 
@@ -489,7 +502,7 @@ def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: 
 
     assert proc.returncode == 0, proc.stderr
     text = workspace.read_text(encoding="utf-8")
-    assert '"eslint-plugin-react>eslint"' in text
+    assert "eslint" not in text
     assert "rollup@<4" in text
     assert "allowBuilds" in text
     package: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
@@ -523,11 +536,11 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     written = manifest.as_table(parsed)
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
-    assert resolutions == {"eslint-plugin-react/eslint": manifest.typescript_peers()["eslint"]}
+    assert resolutions == {}
     assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
 
 
-def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
+def test_init_bun_requires_no_retired_peer_overrides(tmp_path: Path) -> None:
     _project(tmp_path, "bun.lock", {"name": "web", "packageManager": "bun@1.2.0"})
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -536,14 +549,14 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
-    assert overrides == {"eslint": manifest.typescript_peers()["eslint"]}
+    assert overrides == {}
 
 
-def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides(tmp_path: Path) -> None:
+def test_npm_preserves_an_unmanaged_override(tmp_path: Path) -> None:
     _project(
         tmp_path,
         "package-lock.json",
-        {"name": "web", "overrides": {"eslint-plugin-react": "7.37.4"}},
+        {"name": "web", "overrides": {"example-plugin": "7.37.4"}},
     )
 
     proc = _cli("init", "--dest", str(tmp_path))
@@ -551,9 +564,7 @@ def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides
     assert proc.returncode == 0, proc.stderr
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
-    react = manifest.table_field(overrides, "eslint-plugin-react")
-    assert react["."] == "$eslint-plugin-react"
-    assert react["eslint"] == manifest.typescript_peers()["eslint"]
+    assert overrides["example-plugin"] == "7.37.4"
 
 
 def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(tmp_path: Path) -> None:
@@ -593,7 +604,7 @@ def test_pnpm_workspace_policy_keeps_unrelated_package_json_pnpm_settings(tmp_pa
     pnpm = manifest.table_field(manifest.as_table(parsed), "pnpm")
     assert pnpm["onlyBuiltDependencies"] == ["esbuild"]
     assert "overrides" not in pnpm
-    assert '"eslint-plugin-react>eslint"' in (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
+    assert "eslint" not in (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
 
 
 def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:

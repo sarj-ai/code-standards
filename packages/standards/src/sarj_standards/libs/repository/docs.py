@@ -635,6 +635,9 @@ def _package_usage(name: str, engine: str | None) -> str:
             "required peer; `settings.sarj.typeAware: false` or `SARJ_TYPE_AWARE=0` runs them untyped. "
             "The package no longer ships ESLint rules or presets. Rule names, options and suppression IDs "
             "are unchanged.\n\n"
+            "Managed subpath entrypoints retain the selected upstream rules without "
+            "installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript "
+            "JavaScript API peer; the managed toolchain supplies TypeScript 6.\n\n"
             "Rules and configuration are documented in the generated rule directory."
         )
     executable = (
