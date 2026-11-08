@@ -11,13 +11,21 @@ from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, CoverageDisposition
 from sarj_standards.libs.diagnostics.serialize import to_json
 from sarj_standards.libs.linting.analysis import report_from_tools
-from sarj_standards.libs.linting.embedded_sql import analyze_sources, with_embedded_sql
+from sarj_standards.libs.linting.embedded_sql import (
+    EmbeddedSQLPass,
+    analyze_embedded_sql,
+    analyze_sources,
+    with_embedded_sql,
+)
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessOutput, ProcessRequest, RequestExecutor
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
+
+    from sarj_standards.libs.linting.result_cache import CachedResult
 
 
 def _write_query(root: Path, expression: str) -> Path:
@@ -278,17 +286,30 @@ def test_overlapped_sql_pass_matches_the_serial_report(tmp_path: Path) -> None:
     assert {item.code for item in overlapped.diagnostics if item.source == "sqlfluff"} == {"AM07"}
 
 
-@pytest.mark.parametrize("jobs", [1, 2])
-def test_sql_pass_failure_still_propagates_after_both_groups(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, jobs: int
-) -> None:
-    path = _sql_only_repository(tmp_path)
-
-    def fail(*_args: object, **_kwargs: object) -> None:
+def _failing_sql_pass(root: Path) -> EmbeddedSQLPass:
+    def fail(_root: Path, _files: Sequence[str], _adopted: manifest.Manifest | None) -> CachedResult | None:
         msg = "sql pass failed"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr("sarj_standards.libs.linting.embedded_sql.embedded_sql_result", fail)
+    return EmbeddedSQLPass(root, files=("store.py",), adopted=None, enabled=True, analyze=fail)
+
+
+def test_sql_pass_failure_is_raised_when_merging(tmp_path: Path) -> None:
+    sql_pass = _failing_sql_pass(tmp_path)
+    sql_pass.run()
 
     with pytest.raises(RuntimeError, match="sql pass failed"):
-        Standards(tmp_path).analyze((str(path),), external=True, mode="corpus", python_type_check=False, jobs=jobs)
+        sql_pass.merge(report_from_tools(tmp_path, ()), policy=Policy.from_manifest(tmp_path, None))
+
+
+def test_sql_pass_runs_at_merge_when_the_external_group_never_reached_it(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="sql pass failed"):
+        _failing_sql_pass(tmp_path).merge(report_from_tools(tmp_path, ()), policy=Policy.from_manifest(tmp_path, None))
+
+
+def test_disabled_sql_pass_leaves_the_report_unchanged(tmp_path: Path) -> None:
+    report = report_from_tools(tmp_path, ())
+    sql_pass = EmbeddedSQLPass(tmp_path, files=("store.py",), adopted=None, enabled=False, analyze=analyze_embedded_sql)
+    sql_pass.run()
+
+    assert sql_pass.merge(report, policy=Policy.from_manifest(tmp_path, None)) is report

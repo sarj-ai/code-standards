@@ -29,7 +29,7 @@ from .sqlfluff_protocol import MAX_INPUT_BYTES, MAX_QUERIES, SQLFLUFF_VERSION, S
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from pathlib import Path
 
     from sarj_standards.libs.adoption.manifest import Manifest
@@ -74,21 +74,34 @@ def embedded_sql_result(root: Path, *, files: Sequence[str], adopted: Manifest |
     return cached_python_analysis("sqlfluff-embedded", root, selected=files, parameters=(), compute=run)
 
 
+def analyze_embedded_sql(root: Path, files: Sequence[str], adopted: Manifest | None) -> CachedResult | None:
+    return embedded_sql_result(root, files=files, adopted=adopted)
+
+
 class EmbeddedSQLPass:
     # Runs the SQL pass beside the analysis groups and merges it after both, so
     # the report and any failure match running it after the groups.
-    def __init__(self, root: Path, *, files: Sequence[str], adopted: Manifest | None, enabled: bool) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        files: Sequence[str],
+        adopted: Manifest | None,
+        enabled: bool,
+        analyze: Callable[[Path, Sequence[str], Manifest | None], CachedResult | None],
+    ) -> None:
         self._root = root
         self._files = files
         self._adopted = adopted
         self._enabled = enabled
+        self._analyze = analyze
         self._outcome: list[CachedResult | Exception | None] = []
 
     def run(self) -> None:
         if not self._enabled or self._outcome:
             return
         try:
-            self._outcome.append(embedded_sql_result(self._root, files=self._files, adopted=self._adopted))
+            self._outcome.append(self._analyze(self._root, self._files, self._adopted))
         except Exception as error:  # ruff: ignore[blind-except] -- re-raised by merge, after both groups.
             self._outcome.append(error)
 

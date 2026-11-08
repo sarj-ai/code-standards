@@ -968,9 +968,12 @@ def _grouped_analysis(
 
 
 def _embedded_sql_pass(root: Path, *, files: Sequence[str], adopted: Manifest | None, enabled: bool) -> EmbeddedSQLPass:
-    from .libs.linting.embedded_sql import EmbeddedSQLPass  # ruff: ignore[import-outside-top-level] -- selected native SQL analysis is an opt-in Python capability.
+    from .libs.linting.embedded_sql import (  # ruff: ignore[import-outside-top-level] -- selected native SQL analysis is an opt-in Python capability.
+        EmbeddedSQLPass,
+        analyze_embedded_sql,
+    )
 
-    return EmbeddedSQLPass(root, files=files, adopted=adopted, enabled=enabled)
+    return EmbeddedSQLPass(root, files=files, adopted=adopted, enabled=enabled, analyze=analyze_embedded_sql)
 
 
 def _selected_external_analysis(
