@@ -18,6 +18,7 @@ jobs:
       BASE_VERSION: 9.4.0
       CANDIDATES: overlap-sql=447d2c3785dadc2d430eb0f6a25e6c6ee4a0a3bc unit-cache=7f0e57e91e21ba49e6ddd89dceee5a604c006fba
       CACHE_CANDIDATE: unit-cache
+      RAW_API: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

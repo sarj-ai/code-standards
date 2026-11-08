@@ -32,8 +32,19 @@ run() { # tag engine mode(off|write|read)
       write) export SARJ_STANDARDS_RESULT_CACHE=$RUNNER_TEMP/cache SARJ_STANDARDS_RESULT_CACHE_WRITE=1 ;;
       read) export SARJ_STANDARDS_RESULT_CACHE=$RUNNER_TEMP/cache ;;
     esac
-    SARJ_STANDARDS_BASE=$(git rev-parse HEAD^1) uv run --no-config --no-project --isolated --python 3.15.0 "${withs[@]}" \
-      code-standards --root "$PWD" check "${check_args[@]}" --format json >"$out/$tag.json" 2>"$out/$tag.err"
+    if [[ ${RAW_API:-} == 1 ]]; then
+      # Policy mode stops at this repository's adoption gate; raw mode runs every analyzer.
+      uv run --no-config --no-project --isolated --python 3.15.0 "${withs[@]}" python -I -c '
+import sys
+from pathlib import Path
+from sarj_standards import Standards
+from sarj_standards.libs.diagnostics.serialize import to_json
+report = Standards(Path(sys.argv[1])).analyze(None, external=True, trust="trusted", mode="raw", jobs=2, python_type_check=False)
+print(to_json(report))' "$PWD" >"$out/$tag.json" 2>"$out/$tag.err"
+    else
+      SARJ_STANDARDS_BASE=$(git rev-parse HEAD^1) uv run --no-config --no-project --isolated --python 3.15.0 "${withs[@]}" \
+        code-standards --root "$PWD" check "${check_args[@]}" --format json >"$out/$tag.json" 2>"$out/$tag.err"
+    fi
   )
   log "$tag-exit" "$?"
   log "$tag-wall" "$(echo "$(date +%s.%N) - $s" | bc)"
