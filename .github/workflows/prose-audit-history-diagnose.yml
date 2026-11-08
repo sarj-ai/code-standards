@@ -20,7 +20,7 @@ jobs:
       - name: Check out failed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: fe5f3dc45c76866da4dc8ddcc7886c5587dea0e7
+          ref: 9775d1b470b05dc6558500f311e1f056cf25b495
           fetch-depth: 0
           persist-credentials: false
       - name: Install CI-pinned scanner
@@ -43,3 +43,4 @@ jobs:
               print("HISTORY_FINDING " + json.dumps({key: finding.get(key) for key in fields}))
           print("HISTORY_FINDING_COUNT " + str(len(findings)))
           PY
+
