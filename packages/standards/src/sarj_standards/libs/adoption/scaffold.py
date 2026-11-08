@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import re
 import shlex
-import textwrap
 import tomllib
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
@@ -1695,15 +1694,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager, package:
         else:
             plan.writes.append((pnpm_workspace, merged))
         package_overrides = None
-    override_target = package_json = root / "package.json"
-    if client is PackageManager.PNPM:
-        override_target = pnpm_workspace
-        rendered_overrides = "".join(
-            f"      {json.dumps(key)}: {json.dumps(value)}\n" for key, value in overrides.entries.items()
-        ).rstrip()
-        printed = f"    overrides:\n{rendered_overrides}"
-    else:
-        printed = textwrap.indent(json.dumps(overrides.as_document(), indent=2), "    ")
+    package_json = root / "package.json"
     if not package_json.is_file():
         plan.errors.append(
             f"cannot adopt TypeScript in {root}: no package.json exists at the detected install root, so the "
@@ -1721,12 +1712,7 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager, package:
         plan.skips.append((package_json, f"already pins the tested TypeScript peers and {client} overrides"))
         return
     plan.writes.append((package_json, merged))
-    plan.notes.append(
-        f"pinned the tested TypeScript peers in {package_json} and merged the {client} overrides into "
-        f"{override_target}:\n{printed}\n"
-        f"    {client} cannot resolve the tree without them -- Oxlint loads eslint-plugin-react, which"
-        " peers eslint <=9.7, and the unicorn plugin needs >=10.4."
-    )
+    plan.notes.append(f"pinned the tested TypeScript peers in {package_json}")
 
 
 def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan, package: _PackageMigration) -> None:

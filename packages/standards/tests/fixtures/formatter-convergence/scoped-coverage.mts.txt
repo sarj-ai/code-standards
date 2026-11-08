@@ -1,0 +1,39 @@
+import { createConfig } from "./oxfmt.strict.mts";
+
+// Shared Standards style; repository-owned file coverage and exclusions.
+export default createConfig({
+  // Keep existing repository options during updates.
+  "ignorePatterns": [
+    "**/*",
+    "!**/",
+    "!entry1.json",
+    "!entry2.json",
+    "!entry3.json",
+    "!entry2.entry4.json",
+    "!.entry5.ts",
+    "!.entry6.ts",
+    "!entry7/entry8/entry9/entry10/entry11.ts",
+    "!entry12/entry13/entry14.tsx",
+    "!entry4/entry15/**",
+    "!entry16/entry15/**",
+    "!entry17/entry15/**",
+    "!entry18/entry15/**",
+    "!entry19/*/entry15/**",
+    "!entry19/*/entry20/**",
+    "!entry19/*/entry16/**",
+    "**/entry21/entry22/**",
+    "**/*.entry23.{js,ts,mjs,mts}",
+    "!entry24.entry23.ts",
+    "!entry25.entry23.mts",
+    "!entry19/entry8/entry20/entry26/entry27.entry23.ts",
+    "entry19/entry8/entry15/entry28/entry29/entry30/**",
+    "**/*.d.ts",
+    "**/entry31.json",
+    "entry18/entry15/entry32/entry33.json",
+    "entry18/entry15/entry32/entry29/entry33.ts",
+    "entry4/entry15/entry34.mjs",
+    "entry7/entry8/entry9/entry10/entry11.mjs",
+    "entry12/entry13/entry14.jsx",
+    "!entry35.entry23.mts"
+  ]
+});

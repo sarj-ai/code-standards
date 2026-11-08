@@ -17,6 +17,7 @@ const policy = {
   embeddedLanguageFormatting: "off",
   jsdoc: false,
   objectWrap: "collapse",
+  printWidth: 80,
   sortImports: false,
   sortPackageJson: false,
 };

@@ -3,15 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards._meta import CONFIGS_DIR
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import transaction, typescript_migration, typescript_tooling, upgrade
+from sarj_standards.libs.adoption import doctor, transaction, typescript_migration, typescript_tooling, upgrade
 from sarj_standards.libs.diagnostics import Completion
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import autofix, oxfmt
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 _MODULES = Path(__file__).resolve().parents[2] / "typescript" / "node_modules"
@@ -136,7 +141,7 @@ def test_existing_generated_config_collects_nested_ignores_and_filters_other_roo
     assert not seeding.errors
     assert seeding.deletes == (nested,)
     [(_, contents)] = seeding.writes
-    assert "printWidth" not in contents
+    assert "printWidth" in contents
     assert "dist/**" in contents
     assert "packages/web/generated/**" in contents
 
@@ -231,3 +236,197 @@ def test_astro_adoption_update_and_explicit_staged_formatting(
         assert autofix.run(root, tuple(selected), trusted=True).status == 0
     assert not oxfmt.analyze(selected, project=root, root=root).diagnostics
     assert (root / "view.astro").read_text() != '<div><span class="hello">world</span></div>\n'
+
+
+_CONVERGENCE = Path(__file__).parent / "fixtures" / "formatter-convergence"
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    sorted(_CONVERGENCE.glob("*.mts.txt")),
+    ids=[path.name.removesuffix(".mts.txt") for path in sorted(_CONVERGENCE.glob("*.mts.txt"))],
+)
+def test_adopted_formatter_options_survive_planning(tmp_path: Path, fixture: Path) -> None:
+    original = fixture.read_text(encoding="utf-8")
+    root = _repository(tmp_path, {"oxfmt.config.mts": original})
+
+    plan = typescript_tooling.plan_oxfmt_config(root)
+
+    if fixture.name == "computed-options.mts.txt":
+        assert plan.errors
+        return
+    assert not plan.errors
+    assert not plan.writes
+    assert not plan.deletes
+    assert (root / "oxfmt.config.mts").read_text(encoding="utf-8") == original
+
+
+def test_literal_comments_do_not_change_string_tokens(tmp_path: Path) -> None:
+    options = r"""{
+      // comment before a key
+      ignorePatterns: ["https://example.com/a/*b*/", "route\\[id\\]/**", /* trailing */],
+      astro: /* parser */ true,
+      overrides: [{files: ['src/a.ts'], options: {sortImports: false,},},],
+    }"""
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\n'
+            f"export default createConfig({options});\n"
+        },
+    )
+
+    assert not typescript_tooling.plan_oxfmt_config(root).errors
+    seed = oxfmt.seed_config(root)
+    assert seed.options["ignorePatterns"] == ["https://example.com/a/*b*/", r"route\[id\]/**"]
+    assert seed.options["astro"] is True
+    assert seed.options["overrides"] == [{"files": ["src/a.ts"], "options": {"sortImports": False}}]
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029"])
+@pytest.mark.parametrize("position", ["options", "prefix"])
+def test_line_comments_cannot_hide_computation(tmp_path: Path, separator: str, position: str) -> None:
+    options = f'{{ // reviewed{separator} astro: enable(),\n extensions: ["ts"] }}'
+    prefix = ""
+    if position == "prefix":
+        options = "{}"
+        prefix = f"// reviewed{separator}enable();\n"
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\n'
+            f"{prefix}export default createConfig({options});\n"
+        },
+    )
+
+    assert typescript_tooling.plan_oxfmt_config(root).errors
+
+
+@pytest.mark.parametrize("options", ["{...process.env}", "{astro: enable()}", "{overrides: exceptions}"])
+def test_planning_rejects_computed_managed_options(tmp_path: Path, options: str) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\n'
+            f"export default createConfig({options});\n"
+        },
+    )
+
+    assert typescript_tooling.plan_oxfmt_config(root).errors
+
+
+def test_first_adoption_still_refuses_legacy_overrides(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path, {".oxfmtrc.json": '{"overrides":[{"files":["src/a.ts"],"options":{"singleQuote":true}}]}'}
+    )
+
+    assert typescript_tooling.plan_oxfmt_config(root).errors
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "mobile-coverage",
+        "dashboard-exceptions",
+        "parser-exceptions",
+        "tailwind-exceptions",
+        "web-exceptions",
+        "raw-exceptions",
+    ],
+)
+def test_existing_formatter_setup_and_update_are_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    original = (_CONVERGENCE / f"{name}.mts.txt").read_bytes()
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": original.decode(),
+            "tsconfig.json": '{"compilerOptions":{"strict":true},"include":["*.ts"]}\n',
+            "source.ts": "export const value = 1;\n",
+        },
+    )
+    _with_tools(root)
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+
+    for _ in range(2):
+        assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+        setup_output = capsys.readouterr()
+        assert "eslint <=9.7" not in setup_output.out + setup_output.err
+        assert '"overrides": {}' not in setup_output.out + setup_output.err
+        assert (root / "oxfmt.config.mts").read_bytes() == original
+        plan = upgrade.build_plan(root)
+        assert not plan.scaffold_plan.errors
+        assert not any(path.name == "oxfmt.config.mts" for path, _ in plan.scaffold_plan.edits)
+        capsys.readouterr()
+        assert cli.main(["--root", str(root), "update", "--check", "--no-install"]) in {0, 1}
+        assert "oxfmt.config.mts" not in capsys.readouterr().out
+        assert cli.main(["--root", str(root), "update", "--offline", "--no-install"]) == 0
+        assert (root / "oxfmt.config.mts").read_bytes() == original
+    findings = [
+        finding for finding in doctor.diagnose_adoption_health(root) if finding.id == "doctor.typescript.oxfmt-config"
+    ]
+    assert findings
+    assert all(finding.level is doctor.Level.OK for finding in findings)
+    cli.main(["--root", str(root), "doctor"])
+    output = capsys.readouterr()
+    assert "handcrafted" not in output.out + output.err
+    assert "eslint <=9.7" not in output.out + output.err
+
+
+def test_existing_exceptions_keep_import_order_raw_text_and_shared_style(tmp_path: Path) -> None:
+    options: dict[str, JsonValue] = {
+        "overrides": [
+            {
+                "files": ["preserved.ts"],
+                "options": {
+                    "sortImports": False,
+                    "embeddedLanguageFormatting": "off",
+                },
+            }
+        ],
+    }
+    source = (
+        'import z from "z";\nimport a from "a";\nexport const raw = css`a{color: red}`;\nexport const values=[z,a];\n'
+    )
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": oxfmt.render_config(oxfmt.OxfmtSeed(None, options)),
+            "preserved.ts": source,
+            "ordinary.ts": source,
+        },
+    )
+    _with_tools(root)
+    assert not typescript_tooling.plan_oxfmt_config(root).writes
+    command = oxfmt.write_command(["preserved.ts", "ordinary.ts"], project=root, root=root)
+    subprocess.run(command.argv, cwd=command.cwd, check=True, capture_output=True)
+    preserved = (root / "preserved.ts").read_text()
+    ordinary = (root / "ordinary.ts").read_text()
+    assert preserved.index('from "z"') < preserved.index('from "a"')
+    assert ordinary.index('from "a"') < ordinary.index('from "z"')
+    assert "css`a{color: red}`" in preserved
+    assert "css`a{color: red}`" not in ordinary
+    assert "values = [z, a];" in preserved
+
+
+def test_supported_alias_source_survives_setup_and_offline_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
+        "export const value = legacy();\n"
+        "// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- public signature\n"
+        "export function identity<T extends string>(value: T): T { return value; }\n"
+    )
+    root = _repository(
+        tmp_path,
+        {"source.ts": source, "tsconfig.json": '{"compilerOptions":{"strict":true},"include":["*.ts"]}\n'},
+    )
+    _with_tools(root)
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    for _ in range(2):
+        assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+        assert (root / "source.ts").read_text() == source
+        assert cli.main(["--root", str(root), "update", "--offline", "--no-install"]) == 0
+        assert (root / "source.ts").read_text() == source
