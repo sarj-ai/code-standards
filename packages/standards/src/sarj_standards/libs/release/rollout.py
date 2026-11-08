@@ -1770,7 +1770,10 @@ def run_consumer_bootstrap(
         repo / adopted.typescript_dest,
         repo,
     )
-    javascript_roots = secondary_javascript_roots(repo, primary_typescript_root)
+    javascript_roots = (
+        *_uninstalled_primary_javascript(primary_typescript_root),
+        *secondary_javascript_roots(repo, primary_typescript_root),
+    )
     if javascript_roots:
         installs.append(partial(_install_secondary_javascript, javascript_roots, tool_prefix, runner, environment))
     if len(installs) > 1:
@@ -1794,6 +1797,13 @@ def run_consumer_bootstrap(
         if result.returncode != 0:
             return result
     return None
+
+
+def _uninstalled_primary_javascript(root: Path) -> tuple[Path, ...]:
+    # `update` installs the primary root only when its plan changes dependencies, so a
+    # routine bump leaves it empty; consumer bootstrap scripts still need its packages.
+    has_lock = any((root / name).is_file() for name, _manager in adoption_packagemanager.LOCKFILES)
+    return (root,) if has_lock and not (root / "node_modules").exists() else ()
 
 
 def _install_secondary_javascript(
