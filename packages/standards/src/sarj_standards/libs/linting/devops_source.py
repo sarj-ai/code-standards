@@ -23,14 +23,34 @@ from sarj_standards.libs.diagnostics import (
 )
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
-from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, ProcessOutput
-from sarj_standards.libs.linting.process import current_cancellation, initialize_process_cancellation
+from sarj_standards.libs.linting.external import (
+    DEFAULT_EXECUTOR,
+    ProcessExecutor,
+    ProcessOutput,
+    analysis_environment,
+)
+from sarj_standards.libs.linting.process import (
+    ToolResolution,
+    current_cancellation,
+    executor_capabilities,
+    initialize_process_cancellation,
+)
+from sarj_standards.libs.linting.result_cache import (
+    KEEP_PER_UNIT,
+    CachedResult,
+    UnknownInputsError,
+    cached_analysis,
+    environment_parts,
+    executable_identity,
+    notice_outcomes,
+)
+from sarj_standards.libs.linting.terraform_inputs import project_inputs, tflint_plugin_inputs
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from sarj_standards.libs.linting.devops_tools import NativeTool
     from sarj_standards.libs.linting.policy import Policy
@@ -471,18 +491,65 @@ def _terraform_reports(
         reports.extend(_failed("terraform-validate", message, len(project_paths)) for _, project_paths in projects)
         return tuple(reports)
 
+    outcomes: list[bool] = []
+
     def validate(project: Path, project_paths: tuple[Path, ...]) -> ToolReport:
-        return _json_tool(
-            "terraform",
-            ("validate", "-json", "-no-color"),
+        return cached_project(
+            "terraform-validate",
+            root,
             project,
             project_paths,
-            lambda payload, project_root: parse_terraform(payload, root, cwd=project_root),
-            runner=runner,
+            runner,
+            tools=("terraform",),
+            outcomes=outcomes,
+            compute=lambda: _json_tool(
+                "terraform",
+                ("validate", "-json", "-no-color"),
+                project,
+                project_paths,
+                lambda payload, project_root: parse_terraform(payload, root, cwd=project_root),
+                runner=runner,
+            ),
         )
 
     reports.extend(_per_project(projects, validate))
+    notice_outcomes("terraform-validate", outcomes)
     return tuple(reports)
+
+
+def cached_project(
+    analyzer: str,
+    root: Path,
+    project: Path,
+    paths: tuple[Path, ...],
+    runner: ProcessExecutor,
+    *,
+    tools: tuple[str, ...],
+    outcomes: list[bool],
+    compute: Callable[[], ToolReport],
+) -> ToolReport:
+    def inputs() -> Iterator[str]:
+        if executor_capabilities(runner).tool_resolution is not ToolResolution.LOCAL:
+            msg = "only locally resolved Terraform tools have a provable identity"
+            raise UnknownInputsError(msg)
+        yield f"runner={type(runner).__qualname__}"
+        yield f"project={project.relative_to(root).as_posix()}"
+        yield from (f"selected={path.relative_to(root).as_posix()}" for path in paths)
+        yield from environment_parts(analysis_environment())
+        for name in tools:
+            executable = checked_tool(name, root=project, runner=runner).executable
+            if executable is None:
+                msg = f"{name} has no attested executable"
+                raise UnknownInputsError(msg)
+            yield f"tool={name}={executable_identity(executable)}"
+        if "tflint" in tools:
+            yield from tflint_plugin_inputs()
+        yield from project_inputs(root, project)
+
+    [report] = cached_analysis(
+        analyzer, inputs=inputs, compute=lambda: CachedResult((compute(),)), keep=KEEP_PER_UNIT, outcomes=outcomes
+    ).reports
+    return report
 
 
 def _tflint_reports(
@@ -494,9 +561,22 @@ def _tflint_reports(
                 "tflint", "TFLint requires trusted repository configuration and installed pinned plugins", len(paths)
             ),
         )
-    return _per_project(
-        _project_inputs(paths), lambda project, project_paths: _tflint_report(root, project, project_paths, runner)
+    outcomes: list[bool] = []
+    reports = _per_project(
+        _project_inputs(paths),
+        lambda project, project_paths: cached_project(
+            "tflint",
+            root,
+            project,
+            project_paths,
+            runner,
+            tools=("tflint",),
+            outcomes=outcomes,
+            compute=lambda: _tflint_report(root, project, project_paths, runner),
+        ),
     )
+    notice_outcomes("tflint", outcomes)
+    return reports
 
 
 def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: ProcessExecutor) -> ToolReport:

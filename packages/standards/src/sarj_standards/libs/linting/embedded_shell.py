@@ -33,9 +33,18 @@ from .devops_programs import (
     execution_blocks,
 )
 from .devops_tools import TOOLS, NativeToolError, checked_tool
-from .external import parse_shellcheck, redact_message, run_process_input
+from .external import analysis_environment, parse_shellcheck, redact_message, run_process_input
 from .policy import Policy
 from .process import current_cancellation, initialize_process_cancellation
+from .result_cache import (
+    KEEP_PER_UNIT,
+    CachedResult,
+    cached_analysis,
+    environment_parts,
+    executable_identity,
+    file_identity,
+    notice_outcomes,
+)
 from .shell_policy import ACTION_EXCLUSIONS, SHELLCHECK_ARGS
 
 
@@ -159,9 +168,7 @@ def analyze_sources(
             continue
         work.append(_ShellFile(path, active, candidates, document))
 
-    def analyze(item: _ShellFile | tuple[ToolReport, ...]) -> tuple[ToolReport, ...]:
-        if not isinstance(item, _ShellFile):
-            return item
+    def analyze_file(item: _ShellFile) -> tuple[ToolReport, ...]:
         reports: list[ToolReport] = []
         if "shellcheck" in item.active and not _dockerfile(item.path):
             reports.append(_shellcheck_report(root, item.path, item.candidates, item.document, executable=executable))
@@ -171,12 +178,43 @@ def analyze_sources(
             )
         return tuple(reports)
 
+    # Each file's result depends only on its path and bytes, the manifest policy,
+    # the selected tools and the environment they run in.
+    shared = (
+        f"manifest={file_identity(root / manifest.MANIFEST_NAME)}",
+        *environment_parts(analysis_environment()),
+    )
+    outcomes: list[bool] = []
+
+    def inputs(item: _ShellFile) -> tuple[str, ...]:
+        tools = sorted(name for name in item.active if name != "shellcheck" or not _dockerfile(item.path))
+        return (
+            *shared,
+            f"path={item.path.relative_to(root).as_posix()}",
+            f"source={file_identity(item.path)}",
+            f"active={','.join(sorted(item.active))}",
+            *(f"tool={name}={executable_identity(executable(name))}" for name in tools),
+        )
+
+    def analyze(item: _ShellFile | tuple[ToolReport, ...]) -> tuple[ToolReport, ...]:
+        if not isinstance(item, _ShellFile):
+            return item
+        return cached_analysis(
+            "embedded-shell",
+            inputs=lambda: inputs(item),
+            compute=lambda: CachedResult(analyze_file(item)),
+            keep=KEEP_PER_UNIT,
+            outcomes=outcomes,
+        ).reports
+
     with ThreadPoolExecutor(
         thread_name_prefix="embedded-shell",
         initializer=initialize_process_cancellation,
         initargs=(current_cancellation(),),
     ) as workers:
-        return tuple(report for reports in workers.map(analyze, work) for report in reports)
+        reports = tuple(report for reports in workers.map(analyze, work) for report in reports)
+    notice_outcomes("embedded-shell", outcomes)
+    return reports
 
 
 class AttestedExecutables:

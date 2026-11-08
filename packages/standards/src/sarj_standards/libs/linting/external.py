@@ -66,13 +66,21 @@ from .process import (
     executor_capabilities,
     raise_if_cancelled,
 )
-from .result_cache import CachedResult, cached_python_analysis
+from .result_cache import (
+    CachedResult,
+    UnknownInputsError,
+    cached_analysis,
+    cached_python_analysis,
+    environment_parts,
+    executable_identity,
+    file_identity,
+)
 from .runner import GroupedPaths, accepts_hook_path, group_paths
 from .shell_policy import SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from typing import BinaryIO
 
     from pydantic import JsonValue
@@ -1752,15 +1760,56 @@ def _shell_source_reports(
     capabilities: frozenset[str] | None,
     attest_version: bool,
 ) -> tuple[ToolReport, ...]:
-    from .shell_format import analyze_sources as analyze_shell_format  # ruff: ignore[import-outside-top-level] -- formatter reuses the bounded input runner without introducing an import cycle.
+    from .shell_format import (  # ruff: ignore[import-outside-top-level] -- formatter reuses the bounded input runner without introducing an import cycle.
+        analyze_sources as analyze_shell_format,
+        attested_executable as shell_format_executable,
+    )
+
+    shellcheck = capabilities is None or "shellcheck" in capabilities
+    shfmt = capabilities is None or "shfmt" in capabilities
+
+    def shell_files() -> CachedResult:
+        reports: list[ToolReport] = []
+        if shellcheck:
+            reports.extend(_shellcheck_reports(grouped, root=root, runner=runner, attest_version=attest_version))
+        if shfmt:
+            reports.extend(analyze_shell_format(root=root, paths=(*grouped.shellcheck, *grouped.unsupported_shell)))
+        return CachedResult(tuple(reports))
+
+    def shell_file_inputs() -> Iterator[str]:
+        # ShellCheck follows sources only among its inputs (no -x) and shfmt
+        # ignores EditorConfig when given printer flags, so these files are all
+        # either tool reads.
+        if executor_capabilities(runner).tool_resolution is not ToolResolution.LOCAL:
+            msg = "only locally resolved shell tools have a provable identity"
+            raise UnknownInputsError(msg)
+        yield f"runner={type(runner).__qualname__}"
+        yield f"selected=shellcheck:{shellcheck},shfmt:{shfmt},attest:{attest_version}"
+        yield f"manifest={file_identity(root / manifest.MANIFEST_NAME)}"
+        yield from environment_parts(_analysis_environment())
+        for label, names in (("shell", grouped.shellcheck), ("zsh", grouped.unsupported_shell)):
+            for name in names:
+                path = Path(name) if Path(name).is_absolute() else root / name
+                yield f"{label}={path.resolve().relative_to(root.resolve()).as_posix()}"
+                yield file_identity(path)
+        if shellcheck:
+            yield f"tool=shellcheck={_tool_identity('shellcheck')}"
+        if shfmt:
+            yield f"tool=shfmt={executable_identity(shell_format_executable(root))}"
 
     reports: list[ToolReport] = []
-    if capabilities is None or "shellcheck" in capabilities:
-        reports.extend(_shellcheck_reports(grouped, root=root, runner=runner, attest_version=attest_version))
-    if capabilities is None or "shfmt" in capabilities:
-        reports.extend(analyze_shell_format(root=root, paths=(*grouped.shellcheck, *grouped.unsupported_shell)))
+    if grouped.shellcheck or grouped.unsupported_shell:
+        reports.extend(cached_analysis("shell-files", inputs=shell_file_inputs, compute=shell_files).reports)
     reports.extend(_embedded_shell_reports(grouped, root=root, capabilities=capabilities))
     return tuple(reports)
+
+
+def _tool_identity(name: str) -> str:
+    executable = _analyzer_executable(name)
+    if executable is None:
+        msg = f"{name} is not installed"
+        raise UnknownInputsError(msg)
+    return executable_identity(Path(executable))
 
 
 def _embedded_shell_reports(
@@ -2280,6 +2329,10 @@ def _run_process(request: ProcessRequest) -> ProcessOutput:
 def _analyzer_executable(name: str) -> str | None:
     environment_bin = str(Path(sys.executable).parent)
     return shutil.which(name, path=environment_bin) or shutil.which(name)
+
+
+def analysis_environment() -> dict[str, str]:
+    return _analysis_environment()
 
 
 def _analysis_environment() -> dict[str, str]:

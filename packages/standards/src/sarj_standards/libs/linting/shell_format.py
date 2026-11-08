@@ -68,6 +68,10 @@ def validate_format_fix(source: str, formatted: str, *, filename: str) -> None:
             raise NativeToolError(message)
 
 
+def attested_executable(root: Path) -> Path:
+    return _executable(root)
+
+
 def _executable(root: Path) -> Path:
     tool = checked_tool("shfmt", root=root)
     if tool.executable is None:
