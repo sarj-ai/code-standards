@@ -1924,3 +1924,39 @@ def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
     (tmp_path / "main.tf").write_text('resource "x" "y" {}\n', encoding="utf-8")
 
     assert cli_main(["--root", str(tmp_path), "baseline", "init", "/etc/hosts"]) == 2
+
+
+def _provenance_document(bundle: str, entries: list[dict[str, int | str]], *, schema: int = 2) -> bytes:
+    provenance = {"bundleVersion": bundle, "consumerBaseSha": "0" * 40, "catalogDigest": "1" * 64}
+    return json.dumps({"schemaVersion": schema, "provenance": provenance, "diagnostics": entries}).encode()
+
+
+_PROVENANCE_ENTRY: dict[str, int | str] = {
+    "count": 1,
+    "fingerprint": "a" * 64,
+    "path": "a.py",
+    "ruleId": "no-print",
+    "source": "ruff",
+}
+
+
+@pytest.mark.parametrize(
+    ("after", "expected"),
+    [
+        pytest.param(_provenance_document("9.2.3", [_PROVENANCE_ENTRY]), True, id="provenance-only"),
+        pytest.param(
+            _provenance_document("9.2.3", [_PROVENANCE_ENTRY, {**_PROVENANCE_ENTRY, "path": "b.py"}]),
+            False,
+            id="added-entry",
+        ),
+        pytest.param(_provenance_document("9.2.3", []), False, id="removed-entry"),
+        pytest.param(_provenance_document("9.2.3", [{**_PROVENANCE_ENTRY, "count": 2}]), False, id="changed-count"),
+        pytest.param(_provenance_document("9.2.3", [{**_PROVENANCE_ENTRY, "count": True}]), False, id="count-type"),
+        pytest.param(_provenance_document("9.2.3", [_PROVENANCE_ENTRY], schema=1), False, id="schema"),
+        pytest.param(b"not json", False, id="malformed"),
+    ],
+)
+def test_only_a_provenance_change_with_identical_entries_is_provenance_only(after: bytes, *, expected: bool) -> None:
+    before = _provenance_document("9.2.2", [_PROVENANCE_ENTRY])
+
+    assert baseline.provenance_only_change(before, after) is expected

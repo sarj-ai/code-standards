@@ -487,7 +487,14 @@ def baseline_and_suppression_changes(plan: UpgradePlan) -> tuple[Path, ...]:
         for path, contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits, *plan.pin_writes)
         if path in protected
     )
-    changed = {path for path, contents in writes if contents.encode("utf-8") != plan.preconditions.get(path)}
+    diagnostic = None if plan.adopted.diagnostic_baseline is None else plan.root / plan.adopted.diagnostic_baseline
+    changed = {
+        path
+        for path, contents in writes
+        if (before := plan.preconditions.get(path)) != (after := contents.encode("utf-8"))
+        # A bundle bump rewrites only the diagnostic baseline's provenance; its accepted entries stay put.
+        and not (path == diagnostic and before is not None and baseline.provenance_only_change(before, after))
+    }
     changed.update(
         target
         for source, target in plan.config_writes

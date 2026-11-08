@@ -53,6 +53,7 @@ from sarj_standards.libs.adoption.configs import (
     OXLINT_PRESET,
     OXLINT_SUPPRESSIONS,
 )
+from sarj_standards.libs.diagnostics import baseline as diagnostic_baseline
 from sarj_standards.libs.json_boundary import parse_json, parse_json_documents
 from sarj_standards.libs.linting import directive_formatter, native_byte_bridge, oxlint, oxlint_directives
 from sarj_standards.libs.release import metadata_verification, retirement
@@ -1574,6 +1575,42 @@ def assert_preserved_baselines(repo: Path, expected: Mapping[Path, adoption_tran
         raise RolloutError(msg)
 
 
+@dataclass(frozen=True)
+class PreservedBaselines:
+    snapshots: Mapping[Path, adoption_transaction.FileSnapshot]
+    refreshed: frozenset[str] = frozenset()
+
+
+def refresh_preserved_provenance(
+    repo: Path, expected: Mapping[Path, adoption_transaction.FileSnapshot]
+) -> PreservedBaselines:
+    # A bundle update rewrites only the diagnostic baseline's provenance; accept exactly that refresh.
+    if not expected:
+        return PreservedBaselines(expected)
+    paths = tuple(expected)
+    adoption_transaction.validate_targets(repo, paths)
+    current = adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
+    diagnostic = _diagnostic_baseline_path(repo)
+    for path, before in expected.items():
+        after = current[path]
+        if after != before and not (
+            path == diagnostic
+            and before.contents is not None
+            and after.contents is not None
+            and (before.mode, before.group) == (after.mode, after.group)
+            and diagnostic_baseline.provenance_only_change(before.contents, after.contents)
+        ):
+            msg = "consumer verification mutated controller-owned baseline bytes or metadata"
+            raise RolloutError(msg)
+    refreshed = frozenset(path.relative_to(repo).as_posix() for path in paths if current[path] != expected[path])
+    return PreservedBaselines(current, refreshed)
+
+
+def _diagnostic_baseline_path(repo: Path) -> Path | None:
+    adopted = load_consumer_manifest(repo)
+    return None if adopted is None or adopted.diagnostic_baseline is None else repo / adopted.diagnostic_baseline
+
+
 def snapshot_consumer_baselines(
     repo: Path, consumer: Consumer, *, preserve_baselines: bool = True
 ) -> Mapping[Path, adoption_transaction.FileSnapshot]:
@@ -2144,7 +2181,8 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
             except subprocess.CalledProcessError as exc:
                 msg = f"{consumer.name}: update failed before a coherent rollout patch was prepared:\n"
                 raise RolloutError(msg + process_failure_detail(exc)) from exc
-            assert_preserved_baselines(repo, preserved)
+            refreshed_baselines = refresh_preserved_provenance(repo, preserved)
+            preserved = refreshed_baselines.snapshots
             migration_postimages = _prove_update_migration(
                 repo,
                 migration,
@@ -2177,6 +2215,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 repository_baseline_paths=tuple(repository_baselines),
                 regenerate=migration.regenerates_baseline,
             )
+            allowed_baseline_paths |= refreshed_baselines.refreshed
             assert_preserved_baselines(repo, preserved)
             if bootstrap is None:
                 if oxlint_directives.SUPPORTS_DIRECTIVE_REWRITES:
