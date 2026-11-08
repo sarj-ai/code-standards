@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4f1bd1568bdd9e881fbc5c19387d2cab5189194953564e0c382124b97a0065fa",
-  "cliSha256": "77ff579229828c340a53aea71472c6c5fac537b0df6793adb50cd56f508950f2",
+  "catalogSha256": "76d2caff039c2d7d42df90eedd7ceef48bd27e0d1fbb8dbb771531ffbaa0aa3c",
+  "cliSha256": "f8ddf543174b54f13cc52428a99df5bc8eb7470ca8b646d6b9d185c8e82ae6c7",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -134,19 +134,79 @@
           "title": "An extra switch gates the intended implementation"
         },
         {
-          "expectedCount": 0,
+          "expectedCount": 1,
           "files": [
             {
               "path": "main.tf",
-              "source": "resource \"example_storage\" \"app\" {\n  enabled = true\n}\n"
+              "source": "variable \"migration_phase\" {\n  type        = string\n  description = \"Retire by: 2000-01-01\\nRemove when: Every deployment uses the new store; delete the old phase and input.\"\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "main.tf",
-          "id": "direct-provider-configuration",
+          "id": "expired-nonboolean-migration-mode",
+          "outcome": "reject",
+          "scenarioId": "migration-mode",
+          "title": "Explicit lifecycle records also expire on migration modes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"paging_enabled\" {\n  type        = bool\n  description = \"Permanent:\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "permanent-control-without-rationale",
+          "outcome": "reject",
+          "scenarioId": "permanent",
+          "title": "A permanent exemption needs a rationale"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"paging_enabled\" {\n  type        = bool\n  description = \"Permanent: Production pages on-call; disposable environments must keep paging off.\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "permanent-operational-control",
+          "outcome": "accept",
+          "scenarioId": "permanent",
+          "title": "Explain a lasting per-environment control"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"migration_phase\" {\n  type        = string\n  description = \"Retire by: 2099-12-31\\nRemove when: Every deployment uses the new store; delete the old phase and input.\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "scheduled-nonboolean-migration-mode",
+          "outcome": "accept",
+          "scenarioId": "migration-mode",
+          "title": "Keep an explicitly scheduled migration mode until cutover"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"private_route_enabled\" {\n  type        = bool\n  description = \"Retire by: 2099-12-31\\nRemove when: All deployments use the private route; delete this input and the legacy route.\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "temporary-switch-with-removal-plan",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Configure the provider directly"
+          "title": "Record the deadline and deletion condition in the input description"
         }
       ],
       "optionsSchemaSource": null
