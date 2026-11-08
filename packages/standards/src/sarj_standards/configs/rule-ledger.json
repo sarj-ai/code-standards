@@ -290,6 +290,7 @@
       "no-restated-comment",
       "no-terraform-comments",
       "no-terraform-data-condition",
+      "no-terraform-guard-blocks",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
     ],
@@ -743,7 +744,8 @@
       "SARJ218",
       "SARJ219",
       "SARJ220",
-      "SARJ221"
+      "SARJ221",
+      "SARJ222"
     ],
     "text": [
       "SARJ300",

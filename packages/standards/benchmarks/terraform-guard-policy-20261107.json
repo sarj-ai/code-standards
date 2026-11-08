@@ -1,0 +1,391 @@
+{
+  "schema": 1,
+  "rule": "iac:no-terraform-guard-blocks",
+  "code": "SARJ222",
+  "decision": "warning-then-separate-error-promotion",
+  "admission": {
+    "ownerOverride": "The repository owner explicitly requests a categorical style ban on validation, precondition, postcondition and check blocks, and excludes ordinary branching from the request.",
+    "meaning": "Matches establish violations of that design policy, not intrinsic Terraform defects or proof that the guarded invariant is redundant.",
+    "existingOwners": "Terraform owns native syntax, input types, provider validation and lifecycle behavior. Existing SARJ209, SARJ210 and SARJ217 cover narrower redundant validation, terraform_data guards and expression complexity. None implements the requested categorical policy.",
+    "noChangeHarm": "Infrastructure declarations continue to mix deployment policy with resource configuration, retaining the verbosity and review burden the owner asked to remove.",
+    "smallestFix": "Recognize Terraform-owned blocks through the shared HCL tree; emit one diagnostic per guard, or one per complete check block. Do not modify infrastructure or automatically delete source.",
+    "remediation": "Move required invariants into their owning tests or deployment preflight before manual removal. Retain native protection and lifecycle settings."
+  },
+  "coverage": {
+    "publicExamples": {
+      "policyTruePositives": 4,
+      "policyTrueNegatives": 4,
+      "falsePositives": 0,
+      "falseNegatives": 0
+    },
+    "nativeFocusedTests": 52,
+    "fullIacSuitePassed": 2191,
+    "boundaries": [
+      "variable validation",
+      "resource, data and ephemeral lifecycle precondition and postcondition",
+      "output precondition",
+      "top-level check with nested assertions and data sources",
+      "LF and CRLF exact locations",
+      "ordinary ternaries, count and for_each",
+      "provider payloads and IAM condition",
+      "prevent_destroy, deletion protection and ignore_changes",
+      "comments, strings, heredocs and labelled lookalikes",
+      "other dialects and Terraform JSON abstention",
+      "shared malformed-input recovery",
+      "no automatic guard removal",
+      "native CLI warning/error status",
+      "suppression and narrower diagnostic precedence scoped to the actual resource, including malformed and excepted neighbors"
+    ]
+  },
+  "corpus": {
+    "method": "Two immutable private Git snapshots, exported as Terraform-only local corpora with pinned content digests. run_isolated_corpora runs the native candidate CLI in independent verified batches. Private provenance retains revisions, source, paths and identifying hashes; none is published here.",
+    "corpora": 2,
+    "files": 389,
+    "bytes": 2094622,
+    "policyMatches": 347,
+    "sampledForManualReview": 50,
+    "isolatedBatches": 2,
+    "outputTruncation": false,
+    "allExistingDiagnosticsPreserved": true,
+    "duplicateLocations": 0,
+    "policyMatchesByKind": {
+      "postcondition": 4,
+      "precondition": 60,
+      "validation": 283
+    },
+    "sampleMethod": "All four postconditions and the 23 lowest SHA256-ranked locations in each of the validation and precondition clusters: 50 inspected matches. Ranking uses location independently of source text. Each major observed guard kind is represented.",
+    "inspectedSample": {
+      "policyTruePositives": 50,
+      "falsePositives": 0,
+      "ambiguous": 0,
+      "unreviewedMatches": 297
+    },
+    "interpretation": "Reviewed matches enforce ranges, formats, identity/security requirements, migration sequencing and service dependencies. These are genuine guard blocks under the requested policy; many protect meaningful invariants that must be preserved elsewhere before removal. Unreviewed matches and unlabeled zeroes do not estimate field precision or recall. No check blocks occurred in this corpus; native synthetic examples cover that owner."
+  },
+  "performance": {
+    "method": "Full native IaC registry over the same 389 frozen Terraform files and 2,094,622 bytes, five alternating baseline/candidate fresh-process pairs. Cold is the first analysis after imports and file reads; each process then performs three warm analyses. Baseline is public main source at the recorded revision, not a disabled candidate rule. Same pinned Python 3.15.0 and contracts 0.8.0 environment. macOS process lifetime ru_maxrss is converted from bytes to KiB.",
+    "baselineRevision": "a31b99b28f30a9812ed4a2e2e4b55caa76ab12dd",
+    "files": 389,
+    "freshProcessPairs": 5,
+    "warmPassesPerProcess": 3,
+    "summary": {
+      "baseline": {
+        "coldMedianMilliseconds": 1012.9210422746837,
+        "warmMedianMilliseconds": 1014.5385842770338,
+        "wallMedianMilliseconds": 4209.276000037789,
+        "peakRssMedianKiB": 48080.0,
+        "peakRssMaximumKiB": 49872.0,
+        "findingsPerPass": 2865,
+        "policyFindingsPerPass": 0
+      },
+      "candidate": {
+        "coldMedianMilliseconds": 1068.3601661585271,
+        "warmMedianMilliseconds": 1078.7841249257326,
+        "wallMedianMilliseconds": 4423.215833958238,
+        "peakRssMedianKiB": 48576.0,
+        "peakRssMaximumKiB": 49488.0,
+        "findingsPerPass": 3212,
+        "policyFindingsPerPass": 347
+      },
+      "coldRatio": 1.054731930298679,
+      "warmRatio": 1.063324886450209
+    },
+    "runs": [
+      {
+        "mode": "baseline",
+        "files": 389,
+        "cold": {
+          "milliseconds": 995.3274996951222,
+          "findings": 2865,
+          "policyFindings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 1002.3164581507444,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1031.8286251276731,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1036.2215829081833,
+            "findings": 2865,
+            "policyFindings": 0
+          }
+        ],
+        "peakRssKiB": 49872.0,
+        "wallMilliseconds": 4209.276000037789
+      },
+      {
+        "mode": "candidate",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1098.6645831726491,
+          "findings": 3212,
+          "policyFindings": 347
+        },
+        "warm": [
+          {
+            "milliseconds": 1114.7247082553804,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1066.5582502260804,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1069.9467500671744,
+            "findings": 3212,
+            "policyFindings": 347
+          }
+        ],
+        "peakRssKiB": 48576.0,
+        "wallMilliseconds": 4456.773666664958
+      },
+      {
+        "mode": "candidate",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1067.5858752802014,
+          "findings": 3212,
+          "policyFindings": 347
+        },
+        "warm": [
+          {
+            "milliseconds": 1062.5833747908473,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1057.6459998264909,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1085.5663330294192,
+            "findings": 3212,
+            "policyFindings": 347
+          }
+        ],
+        "peakRssKiB": 49488.0,
+        "wallMilliseconds": 4423.215833958238
+      },
+      {
+        "mode": "baseline",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1028.573041781783,
+          "findings": 2865,
+          "policyFindings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 999.1799579001963,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1048.3844582922757,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1073.7658753059804,
+            "findings": 2865,
+            "policyFindings": 0
+          }
+        ],
+        "peakRssKiB": 48752.0,
+        "wallMilliseconds": 4302.042125258595
+      },
+      {
+        "mode": "baseline",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1094.8571669869125,
+          "findings": 2865,
+          "policyFindings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 1042.6000421866775,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1004.9342918209732,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1007.4967918917537,
+            "findings": 2865,
+            "policyFindings": 0
+          }
+        ],
+        "peakRssKiB": 47984.0,
+        "wallMilliseconds": 4283.397583756596
+      },
+      {
+        "mode": "candidate",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1068.3601661585271,
+          "findings": 3212,
+          "policyFindings": 347
+        },
+        "warm": [
+          {
+            "milliseconds": 1091.427333187312,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1073.4373750165105,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1092.0224580913782,
+            "findings": 3212,
+            "policyFindings": 347
+          }
+        ],
+        "peakRssKiB": 48448.0,
+        "wallMilliseconds": 4473.920457996428
+      },
+      {
+        "mode": "candidate",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1070.8665838465095,
+          "findings": 3212,
+          "policyFindings": 347
+        },
+        "warm": [
+          {
+            "milliseconds": 1075.9967500343919,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1082.7435841783881,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1078.7841249257326,
+            "findings": 3212,
+            "policyFindings": 347
+          }
+        ],
+        "peakRssKiB": 48832.0,
+        "wallMilliseconds": 4421.091000083834
+      },
+      {
+        "mode": "baseline",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1002.1172501146793,
+          "findings": 2865,
+          "policyFindings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 1024.9803750775754,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1005.7861250825226,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1014.5385842770338,
+            "findings": 2865,
+            "policyFindings": 0
+          }
+        ],
+        "peakRssKiB": 48080.0,
+        "wallMilliseconds": 4150.988791137934
+      },
+      {
+        "mode": "baseline",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1012.9210422746837,
+          "findings": 2865,
+          "policyFindings": 0
+        },
+        "warm": [
+          {
+            "milliseconds": 1008.3191669546068,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1003.7662922404706,
+            "findings": 2865,
+            "policyFindings": 0
+          },
+          {
+            "milliseconds": 1016.1753338761628,
+            "findings": 2865,
+            "policyFindings": 0
+          }
+        ],
+        "peakRssKiB": 48032.0,
+        "wallMilliseconds": 4141.700750216842
+      },
+      {
+        "mode": "candidate",
+        "files": 389,
+        "cold": {
+          "milliseconds": 1065.0406661443412,
+          "findings": 3212,
+          "policyFindings": 347
+        },
+        "warm": [
+          {
+            "milliseconds": 1079.0398749522865,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1093.938000034541,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          {
+            "milliseconds": 1073.9613748155534,
+            "findings": 3212,
+            "policyFindings": 347
+          }
+        ],
+        "peakRssKiB": 47184.0,
+        "wallMilliseconds": 4417.669125366956
+      }
+    ],
+    "limitations": "Shared host and OS caches; no page-cache eviction, statistical significance, universal precision or worst-case overhead claim. Measurements exclude module import and source-read time from analysis timings, but wall time includes process startup. Existing diagnostics are compared exactly in a separate native pass."
+  },
+  "verificationCommands": [
+    "uv run --project packages/standards --frozen code-standards --root . maintain rules prepare iac:no-terraform-guard-blocks",
+    "uv run --frozen pytest -q (packages/iac)",
+    "uv run --frozen ruff check src tests (packages/iac)",
+    "uv run --frozen basedpyright (packages/iac)",
+    "make verify"
+  ],
+  "limitations": [
+    "This is an explicitly requested team style policy, not a runtime-correctness detector.",
+    "Terraform JSON, Terraform test assertions and other HCL dialects are outside the rule.",
+    "The shared HCL parser recovers some malformed block prefixes; native Terraform validation remains necessary.",
+    "The new-rule admission gate requires WARNING first. Blocking ERROR promotion follows in a separate change after that version is published.",
+    "Finite sampled calibration does not prove absence of field false negatives or safe removal of any guarded constraint."
+  ]
+}

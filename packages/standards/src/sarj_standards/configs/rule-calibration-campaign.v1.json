@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/iac/no-terraform-guard-blocks",
+      "family": "iac",
+      "ruleId": "no-terraform-guard-blocks",
+      "state": "complete",
+      "evidence": "Fifty-two focused tests, eight executable public examples and 2,191 complete IaC tests pass. Native isolated runs cover 389 immutable private Terraform files in two batches and report 347 policy matches without output truncation or duplicate locations. All major observed guard kinds are represented in a deterministic 50-match review: 50 policy true positives and no known inspected false positives or ambiguity. Unreviewed matches and unlabeled zeroes do not establish field precision or recall. A separate exact comparison preserves every existing warning-stage diagnostic. Five alternating fresh-process pairs measure full-registry cold/warm analysis and process peak RSS. Redacted evidence, timings and limits are in packages/standards/benchmarks/terraform-guard-policy-20261107.json. Private sources, paths, revisions and identifying hashes remain local.",
+      "outcome": "Introduce SARJ222 at WARNING as the owner's explicit categorical design policy, then promote to blocking ERROR in a separate change after the warning version is published. No autofix: required invariants move into owning tests or deployment preflight before manual guard removal. Preserve ordinary branching, IAM conditions and native lifecycle/deletion protections. Terraform JSON and other HCL dialects remain documented coverage limits. This policy does not establish that guarded constraints are redundant or safe to delete."
+    },
+    {
       "task": "rule-audit/python/prefer-injected-service",
       "family": "python",
       "ruleId": "prefer-injected-service",
