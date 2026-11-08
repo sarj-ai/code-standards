@@ -1,0 +1,62 @@
+import { createConfig } from "./oxfmt.strict.mts";
+
+// Shared Standards style; repository-owned file coverage and exclusions.
+export default createConfig({
+  // Keep existing repository options during updates.
+  "overrides": [ // Preserve exact-file behavior.
+    {
+      "files": [
+        "entry1/entry2/entry3/entry4/entry5.tsx",
+        "entry1/entry6/entry3/entry5.tsx",
+        "entry1/entry31/entry3/entry4/entry22.tsx"
+      ],
+      "options": {
+        "embeddedLanguageFormatting": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.jsonc"
+      ],
+      "options": {
+        "trailingComma": "none"
+      }
+    },
+    {
+      "files": [
+        "entry1/entry32/entry33/entry34/entry35/entry36.tsx",
+        "entry1/entry32/entry33/entry34/entry35/entry37/entry38.tsx",
+        "entry1/entry32/entry33/entry34/entry50.ts",
+        "entry1/entry8/entry34/entry139/\\[entry140\\]/entry36.tsx",
+        "entry1/entry171/entry34/\\(entry172\\)/entry173/entry174/\\[entry175\\]/entry36.tsx",
+        "entry1/entry171/entry34/\\(entry172\\)/entry173/entry36.tsx",
+        "entry1/entry205/entry232/entry233.mts",
+        "entry1/entry205/entry232/entry234.mjs",
+        "entry1/entry469/entry34/entry61/entry274/\\[entry470\\]/entry471/\\[entry472\\]/entry63.ts",
+        "entry1/entry679/entry680/entry34.js",
+        "entry60/entry751.entry748.ts"
+      ],
+      "options": {
+        "sortImports": false
+      }
+    },
+    {
+      "files": [
+        "entry1/entry609/entry172/entry752.ts",
+        "entry1/entry609/entry172/entry3.ts",
+        "entry1/entry609/entry172/entry84/entry768.ts"
+      ],
+      "options": {
+        "embeddedLanguageFormatting": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "entry1/entry7/entry315/entry769.json",
+    "entry1/entry309/.entry770/entry11.json",
+    "entry1/entry563/entry315/entry616/entry771.json",
+    "entry1/entry379/entry60/entry772/entry773/entry774.json",
+    "entry1/entry379/entry60/entry772/entry773/entry775.json",
+    "entry1/entry379/entry60/entry772/entry773/entry776.json"
+  ]
+});

@@ -1,0 +1,28 @@
+import { createConfig } from "./oxfmt.strict.mts";
+
+// Shared Standards style; repository-owned file coverage and exclusions.
+export default createConfig({
+  // Keep existing repository options during updates.
+  "quoteProps": "preserve",
+  "overrides": [ // Preserve exact-file behavior.
+    {
+      "files": [
+        "entry1/entry2/entry3.ts",
+        "entry1/entry4/entry5.ts",
+        "entry6/entry7.entry6.ts",
+        "entry6/entry8.entry6.ts"
+      ],
+      "options": {
+        "sortImports": false
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "entry9/**",
+    "entry10/**",
+    "entry11/**",
+    "entry12/**",
+    "entry13/**",
+    ".entry14/**"
+  ]
+});

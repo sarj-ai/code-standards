@@ -1,0 +1,35 @@
+import { createConfig } from "./oxfmt.strict.mts";
+
+const shared = createConfig();
+const importOrder = shared.sortImports as Exclude<
+  typeof shared.sortImports,
+  boolean | undefined
+>;
+const groups = importOrder.groups ?? [];
+
+// Preserve existing runtime import evaluation order while retaining shared sorting.
+export default createConfig({
+  overrides: [
+    {
+      files: ["packages/dashboard/src/app/layout.tsx"],
+      options: {
+        sortImports: {
+          ...importOrder,
+          groups: [...groups.slice(1), groups[0]],
+        },
+      },
+    },
+    {
+      files: ["packages/dashboard/src/components/ui/badge.tsx"],
+      options: {
+        sortImports: {
+          ...importOrder,
+          customGroups: [
+            { groupName: "react-runtime", elementNamePattern: ["react"] },
+          ],
+          groups: ["react-runtime", ...groups],
+        },
+      },
+    },
+  ],
+});

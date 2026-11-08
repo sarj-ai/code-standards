@@ -1,0 +1,67 @@
+import { createConfig } from "./oxfmt.strict.mts";
+
+// Shared Standards style; repository-owned file coverage and exclusions.
+export default createConfig({
+  // Keep existing repository options during updates.
+  "overrides": [ // Preserve exact-file behavior.
+    {
+      "files": [
+        "entry1/entry2/entry3.ts",
+        "entry1/entry2/entry4.tsx"
+      ],
+      "options": {
+        "sortImports": false
+      }
+    }
+  ],
+  "extensions": [
+    "cjs",
+    "css",
+    "cts",
+    "gql",
+    "graphql",
+    "handlebars",
+    "hbs",
+    "htm",
+    "html",
+    "js",
+    "json",
+    "json5",
+    "jsonc",
+    "jsx",
+    "less",
+    "markdown",
+    "md",
+    "mdx",
+    "mjs",
+    "mts",
+    "pcss",
+    "scss",
+    "ts",
+    "tsx",
+    "vue",
+    "yaml",
+    "yml"
+  ],
+  "ignorePatterns": [
+    "entry5/",
+    "entry6/",
+    "*.entry7.js",
+    "*.entry7.css",
+    "entry8.yaml",
+    "entry9.yaml",
+    "/entry10.entry11.mts",
+    "entry1/entry12/entry13/",
+    "entry14/",
+    "entry15/",
+    "entry16/",
+    "entry17/",
+    "entry18/",
+    ".entry19*",
+    ".entry20/",
+    "entry1/entry21.entry22.ts",
+    "entry1/entry23/entry24/entry25.entry22.ts",
+    "entry26/",
+    "entry27/entry28.mjs"
+  ]
+});
