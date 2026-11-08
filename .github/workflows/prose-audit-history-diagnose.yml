@@ -1,0 +1,45 @@
+name: Prose audit history diagnosis
+
+on:
+  push:
+    branches:
+      - codex/prose-gitleaks-diagnose-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2
+        with:
+          egress-policy: audit
+      - name: Check out failed candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fe5f3dc45c76866da4dc8ddcc7886c5587dea0e7
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install CI-pinned scanner
+        run: bash .github/scripts/ci-install-gitleaks.sh
+      - name: Reproduce history findings
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner --log-opts='--all' --report-format json --report-path "$RUNNER_TEMP/history-findings.json"
+      - name: Report locations without secret values
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "history-findings.json"
+          if not path.is_file():
+              raise SystemExit("Scanner report unavailable")
+          findings = json.loads(path.read_text())
+          fields = ("RuleID", "File", "Commit", "StartLine", "EndLine", "Fingerprint")
+          for finding in findings:
+              print("HISTORY_FINDING " + json.dumps({key: finding.get(key) for key in fields}))
+          print("HISTORY_FINDING_COUNT " + str(len(findings)))
+          PY
