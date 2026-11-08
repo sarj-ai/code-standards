@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Final
 import pytest
 
 from sarj_standards.libs.adoption import lifecycle
-from sarj_standards.libs.adoption.manifest import ExclusionOverride, Manifest
-from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
+from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
+from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Severity, TrustMode, baseline
 from sarj_standards.libs.linting import autofix, oxlint, oxlint_directives
 from sarj_standards.libs.linting.external import UpstreamRules, analyze_external
 from sarj_standards.libs.linting.policy import Policy
@@ -432,3 +432,71 @@ def test_large_project_selection_remains_bounded_and_complete(tmp_path: Path, co
     else:
         assert not executor.requests
         assert reports[1].issues[0].kind == "project-limit"
+
+
+@pytest.mark.parametrize("metadata", ["baseline", "nested-ledger"])
+def test_historical_autofix_preserves_sources_and_reports_new_findings(tmp_path: Path, metadata: str) -> None:
+    historical = "// eslint-disable-next-line no-debugger -- retain authored explanation\nexport const value = globalThis.Array;\n"
+    root = project(
+        tmp_path / "repo",
+        {"src/history.ts": historical.replace(" = ", "="), "src/clean.ts": "export const clean = globalThis.Array;\n"},
+    )
+    (root / ".oxfmtrc.json").write_text("{}\n")
+    owner = root
+    if metadata == "baseline":
+        path = root / "baseline.json"
+        path.write_text(
+            baseline.render(
+                (
+                    Diagnostic(
+                        "HISTORY",
+                        "existing",
+                        Severity.ERROR,
+                        "oxlint",
+                        Location("src/history.ts"),
+                        rule_id="unicorn-js/no-unnecessary-global-this",
+                        fingerprint="a" * 64,
+                    ),
+                )
+            )
+        )
+        adopted = Manifest("8.0.0", (lifecycle.TYPESCRIPT_CAPABILITY,), ".", ".", diagnostic_baseline=path.name)
+        (root / MANIFEST_NAME).write_text(adopted.render())
+    else:
+        owner = root / "src"
+        (owner / "oxlint.config.ts").write_text('import config from "../oxlint.config.ts";\nexport default config;\n')
+        (owner / "oxlint-suppressions.json").write_text(
+            json.dumps({"history.ts": {"unicorn-js/no-unnecessary-global-this": {"count": 1}}}, indent=2)
+        )
+    ledger = owner / "oxlint-suppressions.json"
+    ledger_before = ledger.read_bytes() if ledger.exists() else None
+
+    result = autofix.run(root, ["src/history.ts", "src/clean.ts"], trusted=True)
+
+    assert result.status == 0
+    assert (root / "src/history.ts").read_text() == historical
+    assert (root / "src/clean.ts").read_text() == "export const clean = Array;\n"
+    assert (ledger.read_bytes() if ledger.exists() else None) == ledger_before
+    (root / "src/history.ts").write_text(f"{historical}debugger;\n")
+    reports = analyze_external(
+        [str(root / "src/history.ts")], root=root, trust=TrustMode.TRUSTED, capabilities=_CAPABILITIES
+    )
+    assert all(report.completion is Completion.COMPLETE and not report.issues for report in reports)
+    assert any(diagnostic.rule_id == "no-debugger" for report in reports for diagnostic in report.diagnostics)
+
+
+@pytest.mark.parametrize("metadata", ["baseline", "ledger"])
+def test_invalid_historical_metadata_fails_before_any_source_write(tmp_path: Path, metadata: str) -> None:
+    original = "export const value = globalThis.Array;\n"
+    root = project(tmp_path / "repo", {"src/history.ts": original})
+    if metadata == "baseline":
+        (root / "baseline.json").write_text('{"schemaVersion":1,"diagnostics":[{"path":"../escape.ts"}]}')
+        adopted = Manifest("8.0.0", (lifecycle.TYPESCRIPT_CAPABILITY,), ".", ".", diagnostic_baseline="baseline.json")
+        (root / MANIFEST_NAME).write_text(adopted.render())
+    else:
+        (root / "oxlint-suppressions.json").write_text('{"src/history.ts":{"no-debugger":{"count":0}}}')
+
+    with pytest.raises(ValueError, match=r"invalid fingerprint|greater than or equal to 1"):
+        autofix.run(root, ["src/history.ts"], trusted=True)
+
+    assert (root / "src/history.ts").read_text() == original

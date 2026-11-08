@@ -1960,3 +1960,18 @@ def test_only_a_provenance_change_with_identical_entries_is_provenance_only(afte
     before = _provenance_document("9.2.2", [_PROVENANCE_ENTRY])
 
     assert baseline.provenance_only_change(before, after) is expected
+
+
+@pytest.mark.parametrize("relative", ["src/history.ts", "../escape.ts", "/absolute.ts"])
+def test_historical_paths_share_baseline_path_validation(tmp_path: Path, relative: str) -> None:
+    path = tmp_path / "baseline.json"
+    finding = Diagnostic("X", "existing", Severity.ERROR, "oxlint", Location("src/history.ts"), fingerprint="a" * 64)
+    path.write_text(_policy_baseline((finding,)).replace("src/history.ts", relative))
+
+    if relative == "src/history.ts":
+        assert baseline.historical_paths(path) == frozenset({relative})
+        with pytest.raises(ValueError, match="policy digest"):
+            baseline.load(path, expected_catalog_digest="b" * 64)
+    else:
+        with pytest.raises(ValueError, match="repository-relative"):
+            baseline.historical_paths(path)
