@@ -59,3 +59,43 @@ jobs:
         run: mise exec "python@$UV_PYTHON" -- uv run --project packages/standards --frozen python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Verify the complete candidate
         run: mise exec "python@$UV_PYTHON" -- make verify
+
+  windows-portability:
+    name: Windows consumer portability
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.5'
+          enable-cache: false
+      - name: Install the supported Python versions
+        shell: bash
+        run: uv python install 3.14 3.15
+      - name: Run the release portability checks
+        shell: bash
+        timeout-minutes: 10
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
+          PORTABILITY_REPORT_DIR: ${{ runner.temp }}/portability-reports
+          PIP_CACHE_DIR: ${{ runner.temp }}/portability-pip-cache
+        run: GITHUB_SHA="$CANDIDATE_SHA" bash "$GITHUB_WORKSPACE/.github/scripts/release-portability.sh"
+      - name: Keep portability timings and failure logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-windows-portability-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/portability-reports
+          if-no-files-found: warn
+          retention-days: 7
