@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
+import os
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- report bounded immutable Git provenance failures.
 import time
@@ -32,9 +33,21 @@ from sarj_standards.libs.diagnostics import (
 )
 from sarj_standards.libs.rules import RuleEngine, RuleSelection
 
-from . import textlint
+from . import shell_ast, textlint
 from .process import raise_if_cancelled
-from .result_cache import CachedResult, cached_python_analysis
+from .read_tracking import tracked_reads
+from .result_cache import (
+    KEEP_PER_UNIT,
+    CachedResult,
+    ResultCache,
+    TrackedResult,
+    UnknownInputsError,
+    cached_python_analysis,
+    cached_tracked_analysis,
+    executable_identity,
+    file_identity,
+    notice_outcomes,
+)
 from .runner import GroupedPaths, group_paths
 
 
@@ -44,7 +57,7 @@ _PARALLEL_PYTHON_FILES = 512
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from typing import Self
 
     from sarj_iac_lint.guard_contracts import GuardContracts
@@ -632,16 +645,91 @@ def _run_text(
     if unknown:
         msg = f"unknown text rule(s): {', '.join(unknown)}"
         raise ValueError(msg)
-    raw = tuple(
-        finding
-        for finding in textlint.check_paths(files, root=root, rule_ids=rule_ids, sources=sources)
-        if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
-    )
-    raise_if_cancelled(None)
     by_code = {meta.code: (rule_id, meta.description, meta.blocking) for rule_id, meta in textlint.REGISTRY.items()}
     documents: dict[Path, SourceDocument] = {}
-    diagnostics = tuple(_normalize_text(item, root, by_code, documents, sources=sources) for item in raw)
+
+    def normalized(findings: Iterable[textlint.Finding]) -> tuple[Diagnostic, ...]:
+        raw = tuple(
+            finding
+            for finding in findings
+            if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
+        )
+        raise_if_cancelled(None)
+        return tuple(_normalize_text(item, root, by_code, documents, sources=sources) for item in raw)
+
+    if ResultCache.from_environment() is None:
+        diagnostics = normalized(textlint.check_paths(files, root=root, rule_ids=rule_ids, sources=sources))
+    else:
+        diagnostics = _cached_text_diagnostics(files, root, rule_ids=rule_ids, sources=sources, normalized=normalized)
     return ToolReport("sarj-text-lint", Completion.COMPLETE, diagnostics=diagnostics)
+
+
+def _cached_text_diagnostics(
+    files: Sequence[str],
+    root: Path,
+    *,
+    rule_ids: frozenset[str] | None,
+    sources: SourceCatalog,
+    normalized: Callable[[Iterable[textlint.Finding]], tuple[Diagnostic, ...]],
+) -> tuple[Diagnostic, ...]:
+    # Each file's findings depend on its bytes, the manifest's text policy, the
+    # selected rules, the shell parser, and any file a rule reads by reference.
+    resolved = root.resolve()
+    checker = textlint.TextChecker(root=root, rule_ids=rule_ids, sources=sources)
+    shared: list[str] = []
+    outcomes: list[bool] = []
+
+    def shared_inputs() -> list[str]:
+        if not shared:
+            try:
+                parser = executable_identity(shell_ast.checked_executable())
+            except shell_ast.ShellParseError as error:
+                raise UnknownInputsError(str(error)) from error
+            shared.extend(
+                (
+                    f"manifest={file_identity(resolved / '.sarj-standards.toml')}",
+                    f"rules={','.join(sorted(rule_ids)) if rule_ids is not None else '*'}",
+                    f"shell-parser={parser}",
+                )
+            )
+        return shared
+
+    def identity(relative: str) -> str:
+        path = Path(os.path.normpath(resolved / relative))
+        target = path.resolve()
+        if not target.is_relative_to(resolved):
+            return "outside"
+        return f"{target.relative_to(resolved).as_posix()}:{file_identity(path)}"
+
+    def analyze(raw: str) -> TrackedResult:
+        with tracked_reads() as reads:
+            diagnostics = normalized(checker.check(raw))
+        return TrackedResult(
+            CachedResult((ToolReport("sarj-text-lint", Completion.COMPLETE, diagnostics=diagnostics),)),
+            tuple(os.path.relpath(path, resolved) for path in reads),
+        )
+
+    def inputs(raw: str) -> list[str]:
+        path = Path(raw)
+        return [
+            *shared_inputs(),
+            f"path={path.resolve().relative_to(resolved).as_posix()}",
+            f"source={file_identity(path)}",
+        ]
+
+    diagnostics: list[Diagnostic] = []
+    for raw in files:
+        result = cached_tracked_analysis(
+            "text-lint",
+            inputs=lambda raw=raw: inputs(raw),
+            compute=lambda raw=raw: analyze(raw),
+            identity=identity,
+            keep=KEEP_PER_UNIT,
+            outcomes=outcomes,
+        )
+        diagnostics.extend(diagnostic for report in result.reports for diagnostic in report.diagnostics)
+    notice_outcomes("text-lint", outcomes)
+    return tuple(diagnostics)
 
 
 def _normalize_text(

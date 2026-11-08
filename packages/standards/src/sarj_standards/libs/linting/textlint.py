@@ -1252,23 +1252,61 @@ def check_paths(
     rule_ids: frozenset[str] | None = None,
     sources: SourceCatalog | None = None,
 ) -> list[Finding]:
-    base = (root or Path.cwd()).resolve()
-    durable_patterns, excluded_patterns = _text_policy(base)
-    enabled_codes = None if rule_ids is None else frozenset(REGISTRY[rule_id].code for rule_id in rule_ids)
-    findings: list[Finding] = []
-    shell_parser = make_shell_parser()
+    checker = TextChecker(root=root, rule_ids=rule_ids, sources=sources)
+    findings = [finding for raw in paths for finding in checker.check(raw)]
+    return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
-    def collect_path_findings(path: Path, relative: str, source: str) -> list[Finding]:
+
+class TextChecker:
+    # One repository policy and shell parser for many independent per-file checks.
+    def __init__(
+        self,
+        *,
+        root: Path | None = None,
+        rule_ids: frozenset[str] | None = None,
+        sources: SourceCatalog | None = None,
+    ) -> None:
+        self._base = (root or Path.cwd()).resolve()
+        self._durable_patterns, self._excluded_patterns = _text_policy(self._base)
+        self._rule_ids = rule_ids
+        self._enabled_codes = None if rule_ids is None else frozenset(REGISTRY[rule_id].code for rule_id in rule_ids)
+        self._sources = sources
+        self._shell_parser = make_shell_parser()
+
+    def check(self, raw: str) -> list[Finding]:
+        enabled_codes = self._enabled_codes
+        path = Path(raw)
+        try:
+            snapshot = SourceSnapshot.read(path) if self._sources is None else self._sources.capture(path)
+            source = snapshot.decode(
+                _TEXT_ENCODINGS.get(path.suffix.casefold(), "utf-8"), newlines=NewlinePolicy.UNIVERSAL
+            ).text
+        except UnicodeDecodeError:
+            return []
+        relative = _relative(path.resolve(), self._base)
+        if any(fnmatch(relative, pattern) for pattern in self._excluded_patterns):
+            return []
+        if path.suffix.casefold() == ".tf":
+            # HCL comments and other attributes belong to the IaC analyzer.
+            path_findings = []
+            if enabled_codes is None or "SARJ309" in enabled_codes:
+                path_findings = _terraform_deployment_findings(path, source)
+        else:
+            path_findings = self._path_findings(path, relative, source)
+        return _selected_text_findings(path_findings, path, source, enabled_codes)
+
+    def _path_findings(self, path: Path, relative: str, source: str) -> list[Finding]:
+        enabled_codes = self._enabled_codes
         path_findings: list[Finding] = []
         execution = _ExecutionFacts(relative, source)
         if enabled_codes is None or "SARJ302" in enabled_codes:
-            path_findings.extend(_artifact_findings(path, relative, source, durable_patterns))
+            path_findings.extend(_artifact_findings(path, relative, source, self._durable_patterns))
         if enabled_codes is None or "SARJ309" in enabled_codes:
             path_findings.extend(_declarative_deployment_findings(path, relative, source, execution=execution))
         if enabled_codes is None or "SARJ310" in enabled_codes:
             path_findings.extend(
                 _workflow_embedded_program_findings(
-                    path, relative, source, shell_parser=shell_parser, execution=execution
+                    path, relative, source, shell_parser=self._shell_parser, execution=execution
                 )
             )
         if enabled_codes is None or "SARJ304" in enabled_codes:
@@ -1283,30 +1321,8 @@ def check_paths(
             path_findings.extend(_claude_settings_secret_permission_findings(path, relative, source))
         if enabled_codes is None or enabled_codes.intersection({"SARJ300", "SARJ301", "SARJ306"}):
             path_findings.extend(_comment_findings(path, source))
-        path_findings.extend(_authored_findings(path, source, rule_ids))
+        path_findings.extend(_authored_findings(path, source, self._rule_ids))
         return path_findings
-
-    for raw in paths:
-        path = Path(raw)
-        try:
-            snapshot = SourceSnapshot.read(path) if sources is None else sources.capture(path)
-            source = snapshot.decode(
-                _TEXT_ENCODINGS.get(path.suffix.casefold(), "utf-8"), newlines=NewlinePolicy.UNIVERSAL
-            ).text
-        except UnicodeDecodeError:
-            continue
-        relative = _relative(path.resolve(), base)
-        if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
-            continue
-        if path.suffix.casefold() == ".tf":
-            # HCL comments and other attributes belong to the IaC analyzer.
-            path_findings = []
-            if enabled_codes is None or "SARJ309" in enabled_codes:
-                path_findings = _terraform_deployment_findings(path, source)
-        else:
-            path_findings = collect_path_findings(path, relative, source)
-        findings.extend(_selected_text_findings(path_findings, path, source, enabled_codes))
-    return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
 def _authored_findings(path: Path, source: str, rule_ids: frozenset[str] | None) -> list[Finding]:
