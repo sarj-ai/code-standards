@@ -111,6 +111,7 @@ import noVagueSuppressionDescription from "./rules/no-vague-suppression-descript
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
 import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
+import preferCodedErrorResult from "./rules/prefer-coded-error-result.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
@@ -276,6 +277,7 @@ const RULES = {
   "no-zod-native-enum": noZodNativeEnum,
   "no-zod-parse-typed-object": noZodParseTypedObject,
   "prefer-await-in-async-return": preferAwaitInAsyncReturn,
+  "prefer-coded-error-result": preferCodedErrorResult,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-dependency-interface": preferDependencyInterface,
   "prefer-discriminated-union": preferDiscriminatedUnion,

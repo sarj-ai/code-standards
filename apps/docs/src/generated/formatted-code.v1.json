@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fff5bd2f80f5b1c7fad4f7df04af33887b0a602b7a34ad53d8873419f6cce447",
-  "cliSha256": "b5258b0b8c45898956f018c59fb0c84908515914a15159bf08d97456a7f93760",
+  "catalogSha256": "2b36d2d57d15b590820bf051bb8ac4a8bef0de17894e97b2016f5744d0f23ccf",
+  "cliSha256": "c921487f1075eaa2a2a24d4eeda3f025ad0edb366d68320ce4b1c279b0ce111f",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7300,6 +7300,101 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": {\n      \"description\": \"Check async return statements or every promise-valued call.\",\n      \"enum\": [\"async-return\", \"all-promise-calls\"],\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "oxlint:prefer-coded-error-result": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "type Error = { code: \"duplicate\"; name: string } | { code: \"invalid_transition\" };\nexport type Result<T> = { ok: true; data: T } | { ok: false; error: Error };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "code-and-context",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The consumer can choose behavior and format context"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "type Duplicate = { code: \"duplicate\"; name: string };\nexport function reject(name: string): { ok: false; error: Duplicate } {\n  return { ok: false, error: { code: \"duplicate\", name } };\n}\nexport function format(error: Duplicate): string {\n  return `Duplicate ${error.name}`;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "consumer-renders-context",
+          "outcome": "accept",
+          "scenarioId": "consumer-formatting",
+          "title": "Retain the typed context and format after handling the code"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };\nexport type Saved = Result<number, \"duplicate\" | \"invalid_transition\">;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "finite-error-codes",
+          "outcome": "accept",
+          "scenarioId": "generic-error",
+          "title": "An error code needs no invented payload"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };\nexport type Saved = Result<number, string>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "generic-error-instantiation",
+          "outcome": "reject",
+          "scenarioId": "generic-error",
+          "title": "A concrete generic error channel erases its identity"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "export type Result<T> = { ok: true; data: T } | { ok: false; message: string };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "message-only-result",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A failure erases identity into a message"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "export function reject(name: string) {\n  return { ok: false, code: \"duplicate\", message: `Duplicate ${name}` };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "producer-renders-context",
+          "outcome": "reject",
+          "scenarioId": "consumer-formatting",
+          "title": "A code alone does not move message formatting to the consumer"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:prefer-constant-time-secret-compare": {
       "examples": [
         {
@@ -11876,6 +11971,21 @@
     "python:no-custom-control-flow-exception": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/content.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef load(name: str, allowed: bool) -> str | Denied:\n    return name if allowed else Denied(name)\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/content.py",
+          "id": "code-context-and-consumer-formatting",
+          "outcome": "accept",
+          "scenarioId": "typed-payload",
+          "title": "A typed outcome retains the code and formatting context"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -11904,6 +12014,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The return contract represents the expected unsupported outcome"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/content.py",
+              "source": "class Denied(Exception):\n    def __init__(self, name: str) -> None:\n        self.name = name\n        super().__init__(f\"Denied {name}\")\n\n\ndef load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/content.py",
+          "id": "typed-context-hidden-in-exception",
+          "outcome": "reject",
+          "scenarioId": "typed-payload",
+          "title": "A guarded rejection hides typed context in its exception contract"
         }
       ],
       "optionsSchemaSource": null
