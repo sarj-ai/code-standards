@@ -336,6 +336,7 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     for name in [
         "Build package and exact local dependency wheels",
         "Build the plugin for native ESLint integration tests",
+        "Install documentation integration fixtures",
         "Install the manifest formatter",
         "Install the pinned native tool bootstrap",
         "Install and attest integration native tools",
@@ -352,6 +353,11 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
         "Test against the built wheel"
     )
     assert names.index("Install the manifest formatter") < names.index("Test against the built wheel")
+    assert (
+        _run("release.yml", "build-standards", "Install documentation integration fixtures")
+        == "npm --prefix ../../apps/docs ci --ignore-scripts --no-audit --no-fund"
+    )
+    assert names.index("Install documentation integration fixtures") < names.index("Test against the built wheel")
     publish = _job("release.yml", "publish-standards")
     assert publish["environment"] == "pypi-standards-release"
     assert publish["permissions"] == {"contents": "read", "id-token": "write"}
