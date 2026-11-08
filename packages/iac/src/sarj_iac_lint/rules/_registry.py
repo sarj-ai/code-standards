@@ -21,6 +21,7 @@ from sarj_iac_lint.rules.no_redundant_variable_validation import NoRedundantVari
 from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 from sarj_iac_lint.rules.no_terraform_data_condition import NoTerraformDataCondition
+from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks
 from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
 from sarj_iac_lint.rules.require_prevent_destroy import RequirePreventDestroyOnIrreplaceable
 
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoTerraformGuardBlocks.id: NoTerraformGuardBlocks,
         ConditionalResourcePresence.id: ConditionalResourcePresence,
         NoHardcodedDeploymentLocation.id: NoHardcodedDeploymentLocation,
         NoBooleanEnableVariable.id: NoBooleanEnableVariable,
