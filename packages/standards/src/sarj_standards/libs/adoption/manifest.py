@@ -158,6 +158,7 @@ class Manifest:
     text_excluded_paths: tuple[str, ...] = ()
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
+    terraform_guard_contracts: str | None = None
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
@@ -211,6 +212,10 @@ class Manifest:
             sections.append(f"\n[text]\n{_array_field('exclude', self.text_excluded_paths)}")
         if self.doctor_excluded_paths:
             sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
+        if self.terraform_guard_contracts is not None:
+            sections.append(
+                "\n[iac.no-terraform-guard-blocks]\ncontracts = " + _toml_string(self.terraform_guard_contracts) + "\n"
+            )
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
@@ -389,6 +394,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         text_excluded_paths=_string_list(text_table, "exclude", label="manifest [text].exclude"),
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
+        terraform_guard_contracts=terraform_guard_contract_option(data),
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
@@ -995,3 +1001,14 @@ def _array_field(key: str, values: tuple[str, ...]) -> str:
 
 def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False).replace("\x7f", r"\u007f")
+
+
+def terraform_guard_contract_option(data: Mapping[str, object]) -> str | None:
+    iac = _manifest_table(data, "iac")
+    options = _manifest_table(iac, "no-terraform-guard-blocks")
+    if not options:
+        return None
+    if set(options) != {"contracts"} or options["contracts"] != ".sarj-terraform-guards.json":
+        message = "SARJ222 supports only its fixed immutable guard-contract manifest"
+        raise ValueError(message)
+    return ".sarj-terraform-guards.json"

@@ -27,7 +27,8 @@
 #     ``OXLINT_TSGOLINT_PATH`` from ``oxlint_environment``. It returns a report
 #     named ``oxlint`` without analyzer/invocation IDs or duration; the caller
 #     adds those as ``external._invoke`` does. When Oxlint lints fewer files than
-#     selected it reruns with ``--debug=files`` and names the missing files.
+#     selected it proves authored exclusions through native discovery with and
+#     without ignores, reports skipped scope, and fails on unproven coverage.
 #     ``OxlintRequest(rules=None)`` is a full run; ``rules=frozenset(...)`` runs
 #     only those canonical rule IDs. Both force ``REQUIRED_RULES`` on last, so a
 #     consumer config cannot turn the floor off. Callers add upstream advisory
@@ -88,6 +89,8 @@ from sarj_standards.libs.diagnostics import (
     ExecutionIssue,
     Location,
     RelatedLocation,
+    RuleExecution,
+    RuleExecutionState,
     Severity,
     SourceDocument,
     ToolReport,
@@ -506,7 +509,7 @@ def oxlint_environment(cwd: Path, root: Path) -> OxlintEnvironment:
 
 
 @contextmanager
-def selected_config(command: Command, request: OxlintRequest) -> Generator[Command]:
+def selected_config(command: Command, request: OxlintRequest, *, discover_ignored: bool = False) -> Generator[Command]:
     argv = list(command.argv)
     config = _command_config(command)
     payload = {
@@ -526,9 +529,11 @@ def selected_config(command: Command, request: OxlintRequest) -> Generator[Comma
         suffix=".mts",
         dir=command.cwd if config is None else config.parent,
     ) as overlay:
+        export = "{ ...config, ignorePatterns: [] }" if discover_ignored else "config"
         overlay.write(
             f"import {{ createSelectedConfig }} from {json.dumps(_SELECTED_CONFIG.as_uri())};\n"
-            f"export default await createSelectedConfig({json.dumps(payload)});\n"
+            f"const config = await createSelectedConfig({json.dumps(payload)});\n"
+            f"export default {export};\n"
         )
         overlay.flush()
         if config is None:
@@ -583,6 +588,7 @@ def run_oxlint(
     except FileNotFoundError as exc:
         issue = ExecutionIssue("oxlint", "missing-dependency", str(exc))
         return ToolReport("oxlint", Completion.FAILED, issues=(issue,), file_count=len(selected))
+    excluded: frozenset[Path] = frozenset()
     type_check = ("--type-check",) if request.rules is None else ()
     with selected_config(command, request) as configured:
         output = runner.run(
@@ -596,15 +602,17 @@ def run_oxlint(
         result = read_oxlint(output, root=repository, cwd=command.cwd, selected=request.rules is not None)
         issues = result.issues
         if not issues and result.file_count != len(selected):
-            discovery = runner.run(
-                ProcessRequest(
-                    with_options(configured.argv, "--debug=files"),
-                    command.cwd,
-                    variables,
-                    timeout_seconds=timeout_seconds,
-                )
+            coverage = _coverage_exclusions(
+                command,
+                configured,
+                request,
+                result.file_count,
+                root=repository,
+                runner=runner,
+                variables=variables,
+                timeout_seconds=timeout_seconds,
             )
-            issues = (coverage_issue(discovery, root=repository, cwd=command.cwd, selected=selected),)
+            issues, excluded = coverage.issues, coverage.excluded
     diagnostics = (*result.diagnostics, *required_suppressions(command, root=repository))
     return ToolReport(
         "oxlint",
@@ -612,7 +620,79 @@ def run_oxlint(
         diagnostics=diagnostics,
         issues=issues,
         file_count=result.file_count,
+        rule_executions=_excluded_scope(excluded, repository),
     )
+
+
+def _excluded_scope(excluded: frozenset[Path], root: Path) -> tuple[RuleExecution, ...]:
+    if not excluded:
+        return ()
+    return (
+        RuleExecution(
+            "oxlint/source-scope",
+            RuleExecutionState.SKIPPED,
+            len(excluded),
+            None,
+            "skipped-scope: native Oxlint ignore policy excludes "
+            + ", ".join(sorted(path.relative_to(root).as_posix() for path in excluded)),
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class _CoverageExclusions:
+    issues: tuple[ExecutionIssue, ...]
+    excluded: frozenset[Path] = frozenset()
+
+
+def _coverage_exclusions(
+    command: Command,
+    configured: Command,
+    request: OxlintRequest,
+    file_count: int,
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    variables: Mapping[str, str],
+    timeout_seconds: float,
+) -> _CoverageExclusions:
+    selected = command_files(command)
+
+    def discover(target: Command, *options: str) -> ProcessOutput:
+        return runner.run(
+            ProcessRequest(
+                with_options(target.argv, "--debug=files", *options),
+                command.cwd,
+                variables,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+
+    discovery = discover(configured)
+    discovered = _discovery_files(discovery, root=root, cwd=command.cwd)
+    if discovered is None:
+        return _CoverageExclusions((coverage_issue(discovery, root=root, cwd=command.cwd, selected=selected),))
+    if len(discovered) != file_count or not discovered <= selected:
+        issue = ExecutionIssue(
+            "oxlint",
+            "protocol-mismatch",
+            "Native file discovery disagrees with the analyzed file count or selected input ownership",
+        )
+        return _CoverageExclusions((issue,))
+    # --no-ignore alone leaves config ignorePatterns active in Oxlint 1.91.
+    # Reuse the existing trusted loader, removing only selection ignores.
+    with selected_config(command, request, discover_ignored=True) as unignored:
+        proof = discover(unignored, "--no-ignore")
+    eligible = _discovery_files(proof, root=root, cwd=command.cwd)
+    if eligible != selected:
+        return _CoverageExclusions((coverage_issue(proof, root=root, cwd=command.cwd, selected=selected),))
+    return _CoverageExclusions((), selected - discovered)
+
+
+def _discovery_files(output: ProcessOutput, *, root: Path, cwd: Path) -> frozenset[Path] | None:
+    if output.returncode != 0:
+        return None
+    return frozenset(_reported_path(line, cwd, root) for line in output.stdout.splitlines() if line)
 
 
 def coverage_issue(output: ProcessOutput, *, root: Path, cwd: Path, selected: frozenset[Path]) -> ExecutionIssue:

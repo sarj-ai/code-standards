@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- report bounded immutable Git provenance failures.
 import time
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Self
 
+    from sarj_iac_lint.guard_contracts import GuardContracts
     from sarj_python_lint.rule_base import Fix as PythonFix
 
     from .policy import Policy
@@ -94,6 +96,12 @@ class _SeverityDiagnostic(Protocol):
 
 
 @runtime_checkable
+class _BaselineDiagnostic(Protocol):
+    @property
+    def baselineable(self) -> bool: ...
+
+
+@runtime_checkable
 class _FixDiagnostic(Protocol):
     @property
     def fixes(self) -> tuple[PythonFix, ...]: ...
@@ -135,6 +143,8 @@ def analyze(
     grouped: GroupedPaths | None = None,
     rule_selection: RuleSelection | None = None,
     python_jobs: int = 1,
+    staged: bool = False,
+    use_guard_contracts: bool = True,
 ) -> AnalysisReport:
     root = root.resolve()
     try:
@@ -146,9 +156,11 @@ def analyze(
         return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
     sources = SourceCatalog()
+    iac_contracts = _iac_contracts(root, staged=staged) if use_guard_contracts else _PreparedIAC()
     reports = tuple(
         report
         for report in (
+            iac_contracts.report,
             _native_report(
                 "sarj-python-lint",
                 "sarj_python_lint",
@@ -174,6 +186,7 @@ def analyze(
                 root,
                 sources=sources,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
+                guard_contracts=iac_contracts.contracts,
             ),
             _text_report(
                 routed,
@@ -278,6 +291,7 @@ def _native_report(
     python_baseline: Path | None = None,
     rule_ids: frozenset[str] | None = None,
     python_jobs: int = 1,
+    guard_contracts: GuardContracts | None = None,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
@@ -293,6 +307,7 @@ def _native_report(
             python_baseline=python_baseline,
             rule_ids=rule_ids,
             python_jobs=python_jobs,
+            guard_contracts=guard_contracts,
         )
 
     try:
@@ -325,6 +340,7 @@ def _run_native(
     python_baseline: Path | None,
     rule_ids: frozenset[str] | None,
     python_jobs: int = 1,
+    guard_contracts: GuardContracts | None = None,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -354,6 +370,10 @@ def _run_native(
             jobs=python_jobs if len(paths) >= _PARALLEL_PYTHON_FILES else 1,
             sources=sources,
         )
+    elif package == "sarj_iac_lint":
+        from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- selected IaC engine only.
+
+        native_result = analyze_iac(selected_rules, paths, sources=sources, guard_contracts=guard_contracts)
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
     raise_if_cancelled(None)
@@ -501,6 +521,8 @@ def normalize_native(
 
         if item.code in PROTECTED_SUPPRESSION_CODES:
             tags = ("non-baselineable", "required-source-policy")
+    if source == "sarj-iac-lint" and isinstance(item, _BaselineDiagnostic) and not item.baselineable:
+        tags = ("non-baselineable", "required-source-policy")
     relative_path = _relative_path(resolved, root)
     return Diagnostic(
         code=item.code,
@@ -668,3 +690,19 @@ def _relative_path(path: Path, root: Path) -> str:
     except ValueError as exc:
         msg = "analyzer reported a path outside the repository root"
         raise ValueError(msg) from exc
+
+
+@dataclass(frozen=True)
+class _PreparedIAC:
+    contracts: "GuardContracts | None" = None
+    report: ToolReport | None = None
+
+
+def _iac_contracts(root: Path, *, staged: bool) -> _PreparedIAC:
+    from .iac_guard_contracts import CoreIAC  # ruff: ignore[import-outside-top-level] -- load the IaC contract adapter only during native analysis.
+
+    try:
+        return _PreparedIAC(contracts=CoreIAC(root, staged=staged).prepare())
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        issue = ExecutionIssue("sarj-iac-lint", "guard-contract-failure", f"{type(exc).__name__}: {exc}")
+        return _PreparedIAC(report=ToolReport("sarj-iac-lint", Completion.FAILED, issues=(issue,)))

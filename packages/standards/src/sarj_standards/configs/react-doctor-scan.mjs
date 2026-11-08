@@ -210,11 +210,11 @@ export function ignoredFinding(file, finding, key, config) {
 }
 
 function ignoredByConfig(path, key, config) {
-  if (config.ignore?.files?.some((pattern) => matchesGlob(path, pattern))) return true;
+  if (config.ignore?.files?.some((pattern) => matchesSourceGlob(path, pattern))) return true;
   return (
     config.ignore?.overrides?.some(
       (override) =>
-        override.files.some((pattern) => matchesGlob(path, pattern)) &&
+        override.files.some((pattern) => matchesSourceGlob(path, pattern)) &&
         (!override.rules?.length ||
           override.rules.some((id) => id === key || `react-doctor/${id}` === key)),
     ) ?? false
@@ -232,4 +232,29 @@ function suppressedAbove(lines, line, key) {
 
 export function hideWarning(severity, override, config) {
   return severity === "warn" && config.warnings === false && override !== "warn";
+}
+
+// Node's globstar skips hidden ancestors. Explicit source scopes must also own
+// nested environments under .cache; ordinary segment patterns retain Node's semantics.
+export function matchesSourceGlob(path, pattern) {
+  if (matchesGlob(path, pattern)) return true;
+  const parts = path.split("/");
+  const patterns = pattern.split("/");
+  const memo = new Map();
+  const match = (i, j) => {
+    const key = `${i}:${j}`;
+    if (memo.has(key)) return memo.get(key);
+    let result;
+    if (j === patterns.length) result = i === parts.length;
+    else if (patterns[j] === "**")
+      result = match(i, j + 1) || (i < parts.length && match(i + 1, j));
+    else
+      result =
+        i < parts.length &&
+        matchesGlob(parts[i], patterns[j]) &&
+        match(i + 1, j + 1);
+    memo.set(key, result);
+    return result;
+  };
+  return patterns.includes("**") && match(0, 0);
 }
