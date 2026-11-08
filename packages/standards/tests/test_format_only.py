@@ -540,3 +540,63 @@ def test_python_description_proof_rejects_unowned_inputs(tmp_path: Path, mutatio
     if mutation == "missing":
         source.unlink()
     assert format_only.equivalent_paths(tmp_path, (source.name,), staged=True) == frozenset()
+
+
+@pytest.mark.parametrize("mutation", ["layout", "literal", "imports", "raw", "added"])
+def test_jsx_width_policy_and_source_identity(project: Path, mutation: str) -> None:
+    original = (
+        'import "first";\nimport "second";\n'
+        "export const raw = String.raw`first\\nsecond`;\n"
+        "export const View = () => <p>Review the selected workspace settings before continuing.</p>;\n"
+    )
+    canonical = (
+        'import "first";\nimport "second";\n'
+        "export const raw = String.raw`first\\nsecond`;\n"
+        "export const View = () => (\n"
+        "  <p>Review the selected workspace settings before continuing.</p>\n"
+        ");\n"
+    )
+    source = project / "view.tsx"
+    source.write_text(original)
+    _git(project, "add", "view.tsx")
+    _git(project, "-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "JSX fixture")
+    if mutation == "literal":
+        canonical = canonical.replace("Review", "Change")
+    if mutation == "imports":
+        canonical = canonical.replace('import "first";\nimport "second";', 'import "second";\nimport "first";')
+    if mutation == "raw":
+        canonical = canonical.replace(r"first\nsecond", r"first\tsecond")
+    if mutation == "added":
+        source = project / "added.tsx"
+    source.write_text(canonical)
+    _git(project, "add", source.name)
+    assert format_only.equivalent_paths(project, (source.name,), staged=True) == (
+        frozenset({source.name}) if mutation == "layout" else frozenset()
+    )
+
+
+def test_comparison_formats_real_jsx_at_shared_eighty_columns(project: Path) -> None:
+    modules = project / "node_modules/oxfmt"
+    real_module = (Path(__file__).parents[2] / "typescript/node_modules/oxfmt/dist/index.js").resolve()
+    (modules / "package.json").write_text('{"type":"module","exports":"./observe.mjs"}')
+    (modules / "observe.mjs").write_text(
+        f"import {{ format as nativeFormat }} from {json.dumps(real_module.as_uri())};\n"
+        "export async function format(...args) {\n"
+        "  const result = await nativeFormat(...args);\n"
+        '  process.stderr.write(JSON.stringify(result.code) + "\\n");\n'
+        "  return result;\n}\n"
+    )
+    source = "export const View = () => <p>Review the selected workspace settings before continuing.</p>;\n"
+    script = Path(format_only.__file__).parents[2] / "configs/format-only.mjs"
+    result = subprocess.run(
+        ("node", str(script)),
+        input=json.dumps(
+            [{"entrypoint": str(project / "package.json"), "path": "view.tsx", "before": source, "after": source}]
+        ),
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    expected = "export const View = () => (\n  <p>Review the selected workspace settings before continuing.</p>\n);\n"
+    assert [json.loads(line) for line in result.stderr.splitlines()] == [expected, expected]
+    assert json.loads(result.stdout) == ["view.tsx"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from email.message import Message
 import hashlib
 import io
 from pathlib import Path
@@ -7,7 +8,7 @@ import platform
 import shlex
 import stat
 from typing import TYPE_CHECKING
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 if TYPE_CHECKING:
@@ -74,9 +75,7 @@ def test_bootstrap_verifies_download_and_every_cache_hit(
     assert calls == (
         []
         if cached == _PAYLOAD
-        else [
-            f"https://github.com/jdx/mise/releases/download/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-{target}"
-        ]
+        else [f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-{target}"]
     )
     assert list(destination.parent.iterdir()) == [destination]
 
@@ -185,3 +184,85 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
         "-m",
         "sarj_standards.libs.adoption.native_bootstrap",
     ]
+
+
+@pytest.mark.parametrize("fallback", ["valid", "checksum", "network"])
+@pytest.mark.parametrize("primary", ["http", "timeout", "network"])
+def test_mirror_transport_failure_uses_only_pinned_github_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fallback: str, primary: str
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the pinned network boundary.
+        native_bootstrap, "_DIGESTS", {"linux-x64": _DIGEST}
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- select a supported target independently of the host.
+        native_bootstrap, "_target", lambda: "linux-x64"
+    )
+    calls: list[str] = []
+
+    def download(request: Request, *, timeout: int) -> io.BytesIO:
+        assert timeout == 120
+        assert request.get_header("Authorization") is None
+        calls.append(request.full_url)
+        message = "primary unavailable"
+        if len(calls) == 1:
+            if primary == "http":
+                raise HTTPError(request.full_url, 504, message, Message(), None)
+            if primary == "timeout":
+                raise TimeoutError(message)
+            raise URLError(message)
+        if fallback == "network":
+            raise URLError(message)
+        assert request.get_header("Accept") is None
+        return io.BytesIO(_PAYLOAD if fallback == "valid" else b"corrupt")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- simulate transport failure without live network.
+        native_bootstrap, "urlopen", download
+    )
+    destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
+    if fallback == "valid":
+        assert native_bootstrap.provision(tmp_path).read_bytes() == _PAYLOAD
+        assert destination.stat().st_mode & 0o777 == 0o755
+    else:
+        with pytest.raises(OSError, match=r"primary unavailable|checksum mismatch"):
+            native_bootstrap.provision(tmp_path)
+        assert not destination.exists()
+        assert list(destination.parent.iterdir()) == []
+    assert calls == [
+        f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64",
+        f"https://github.com/jdx/mise/releases/download/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64",
+    ]
+
+
+@pytest.mark.parametrize("failure", ["checksum", "stream-timeout"])
+def test_primary_content_failure_blocks_without_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise pinned content verification.
+        native_bootstrap, "_DIGESTS", {"linux-x64": _DIGEST}
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- select a supported target independently of the host.
+        native_bootstrap, "_target", lambda: "linux-x64"
+    )
+    calls: list[str] = []
+
+    class TimedOutStream(io.BytesIO):
+        def read(self, _size: int | None = -1) -> bytes:
+            message = "stream timed out"
+            raise TimeoutError(message)
+
+    def download(request: Request, *, timeout: int) -> io.BytesIO:
+        assert timeout == 120
+        calls.append(request.full_url)
+        return TimedOutStream(_PAYLOAD) if failure == "stream-timeout" else io.BytesIO(b"corrupt")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- simulate invalid content without live network.
+        native_bootstrap, "urlopen", download
+    )
+    destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"previous cache")
+    with pytest.raises(OSError, match=r"stream timed out|checksum mismatch"):
+        native_bootstrap.provision(tmp_path)
+    assert calls == [f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64"]
+    assert destination.read_bytes() == b"previous cache"
+    assert list(destination.parent.iterdir()) == [destination]

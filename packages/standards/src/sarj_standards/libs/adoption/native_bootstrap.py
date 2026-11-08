@@ -7,6 +7,7 @@ import platform
 import shutil
 import tempfile
 from typing import Final
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 
@@ -61,12 +62,20 @@ def _matches(path: Path, expected: str) -> bool:
 
 
 def _download(destination: Path, *, target: str, expected: str) -> None:
-    url = f"https://github.com/jdx/mise/releases/download/v{VERSION}/mise-v{VERSION}-{target}"
+    url = f"https://mise.jdx.dev/v{VERSION}/mise-v{VERSION}-{target}"
     request = Request(url, headers={"User-Agent": "code-standards-native-bootstrap/1"})
     with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".mise-") as temporary:
         downloaded = Path(temporary) / "mise"
+        try:
+            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official HTTPS mirror.
+        except URLError, TimeoutError:
+            request = Request(
+                f"https://github.com/jdx/mise/releases/download/v{VERSION}/mise-v{VERSION}-{target}",
+                headers={"User-Agent": "code-standards-native-bootstrap/1"},
+            )
+            response = urlopen(request, timeout=120)  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed official HTTPS release origin.
         with (
-            urlopen(request, timeout=120) as response,  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed HTTPS release origin.
+            response,
             downloaded.open("wb") as stream,
         ):
             shutil.copyfileobj(response, stream)  # pyright: ignore[reportAny] -- urllib's bytes stream is consumed without executing it.
