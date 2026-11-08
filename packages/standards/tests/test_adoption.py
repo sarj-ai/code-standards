@@ -3096,7 +3096,15 @@ def test_init_migrates_existing_generated_hooks_to_one_staged_hook(tmp_path: Pat
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     updated = config.read_text(encoding="utf-8")
-    assert updated.count("verbose: true") == 1
+    document = manifest.as_table(parse_yaml(updated))
+    staged_hooks = [
+        hook
+        for repository in manifest.list_field(document, "repos")
+        for item in manifest.list_field(manifest.as_table(repository), "hooks")
+        if (hook := manifest.as_table(item)).get("id") == "sarj-standards-check"
+    ]
+    assert len(staged_hooks) == 1
+    assert staged_hooks[0].get("verbose") is True
     assert updated.count("id: sarj-standards-check") == 1
     assert "id: sarj-standards-drift" not in updated
     assert "check --staged" in updated

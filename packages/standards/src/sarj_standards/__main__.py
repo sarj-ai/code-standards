@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         from repo_standards.core.commit_message import check_commit_message_file  # ruff: ignore[import-outside-top-level] -- reuse the canonical validator without loading unrelated commands.
 
+        result = None
         try:
             accepted = (
                 Path.cwd().resolve().is_dir()
@@ -41,7 +42,11 @@ def main(argv: list[str] | None = None) -> int:
             return 130
         except OSError, ValueError:
             accepted = False
-        if accepted:
+        if accepted and result is not None:
+            from repo_standards.core.subject import subject_advisories  # ruff: ignore[import-outside-top-level] -- keep the accepted commit path independent of the full command graph.
+
+            for advice in subject_advisories(result.header):
+                sys.stdout.write(f"Advisory: {advice.code}\n{advice.message}\n{advice.remediation}\n")
             return 0
     from sarj_standards.cli.main import main as cli_main  # ruff: ignore[import-outside-top-level] -- installed metadata probes do not need the command graph.
 
