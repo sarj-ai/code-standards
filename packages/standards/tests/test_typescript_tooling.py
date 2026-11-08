@@ -283,6 +283,25 @@ def test_literal_comments_do_not_change_string_tokens(tmp_path: Path) -> None:
     assert seed.options["overrides"] == [{"files": ["src/a.ts"], "options": {"sortImports": False}}]
 
 
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029"])
+@pytest.mark.parametrize("position", ["options", "prefix"])
+def test_line_comments_cannot_hide_computation(tmp_path: Path, separator: str, position: str) -> None:
+    options = f'{{ // reviewed{separator} astro: enable(),\n extensions: ["ts"] }}'
+    prefix = ""
+    if position == "prefix":
+        options = "{}"
+        prefix = f"// reviewed{separator}enable();\n"
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\n'
+            f"{prefix}export default createConfig({options});\n"
+        },
+    )
+
+    assert typescript_tooling.plan_oxfmt_config(root).errors
+
+
 @pytest.mark.parametrize("options", ["{...process.env}", "{astro: enable()}", "{overrides: exceptions}"])
 def test_planning_rejects_computed_managed_options(tmp_path: Path, options: str) -> None:
     root = _repository(

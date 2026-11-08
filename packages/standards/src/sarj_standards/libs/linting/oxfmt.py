@@ -322,7 +322,7 @@ def _existing_coverage(root: Path) -> dict[str, JsonValue]:
 def _entrypoint_options(entrypoint: Path) -> JsonValue:
     text = entrypoint.read_text(encoding="utf-8")
     match = re.fullmatch(
-        r"\s*import \{ createConfig \} from [\"\']\./oxfmt\.strict\.mts[\"\'];?\s*(?://[^\n]*\n\s*)*export default createConfig\((?P<options>\{.*\})?\);?\s*",
+        r"\s*import \{ createConfig \} from [\"\']\./oxfmt\.strict\.mts[\"\'];?\s*(?://[^\r\n\u2028\u2029]*[\r\n\u2028\u2029]\s*)*export default createConfig\((?P<options>\{.*\})?\);?\s*",
         text,
         re.DOTALL,
     )
@@ -340,7 +340,9 @@ def matches_shared_config(root: Path, seed: OxfmtSeed) -> bool:
 def _static_options(text: str) -> JsonValue:
     # Accept only a literal object, including the keys and trailing commas oxfmt emits.
     # Match strings first so URL/comment tokens and escaped glob brackets stay data.
-    comments = re.compile(r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<comment>//[^\r\n]*|/\*.*?\*/)""", re.DOTALL)
+    comments = re.compile(
+        r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<comment>//[^\r\n\u2028\u2029]*|/\*.*?\*/)""", re.DOTALL
+    )
     text = comments.sub(lambda match: " " if match["comment"] is not None else match[0], text)
     tokens = re.compile(
         r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<key>\b[A-Za-z_$][\w$]*)(?=\s*:)|(?P<trailing>,)(?=\s*[}\]])"""
