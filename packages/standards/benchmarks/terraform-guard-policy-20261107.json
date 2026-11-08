@@ -2,7 +2,7 @@
   "schema": 1,
   "rule": "iac:no-terraform-guard-blocks",
   "code": "SARJ222",
-  "decision": "warning-then-separate-error-promotion",
+  "decision": "error-design-policy-after-published-warning-release",
   "admission": {
     "ownerOverride": "The repository owner explicitly requests a categorical style ban on validation, precondition, postcondition and check blocks, and excludes ordinary branching from the request.",
     "meaning": "Matches establish violations of that design policy, not intrinsic Terraform defects or proof that the guarded invariant is redundant.",
@@ -60,7 +60,8 @@
       "ambiguous": 0,
       "unreviewedMatches": 297
     },
-    "interpretation": "Reviewed matches enforce ranges, formats, identity/security requirements, migration sequencing and service dependencies. These are genuine guard blocks under the requested policy; many protect meaningful invariants that must be preserved elsewhere before removal. Unreviewed matches and unlabeled zeroes do not estimate field precision or recall. No check blocks occurred in this corpus; native synthetic examples cover that owner."
+    "interpretation": "Reviewed matches enforce ranges, formats, identity/security requirements, migration sequencing and service dependencies. These are genuine guard blocks under the requested policy; many protect meaningful invariants that must be preserved elsewhere before removal. Unreviewed matches and unlabeled zeroes do not estimate field precision or recall. No check blocks occurred in this corpus; native synthetic examples cover that owner.",
+    "frame": "Historical warning-admission calibration; the promotion preserves every policy location."
   },
   "performance": {
     "method": "Full native IaC registry over the same 389 frozen Terraform files and 2,094,622 bytes, five alternating baseline/candidate fresh-process pairs. Cold is the first analysis after imports and file reads; each process then performs three warm analyses. Baseline is public main source at the recorded revision, not a disabled candidate rule. Same pinned Python 3.15.0 and contracts 0.8.0 environment. macOS process lifetime ru_maxrss is converted from bytes to KiB.",
@@ -372,7 +373,8 @@
         "wallMilliseconds": 4417.669125366956
       }
     ],
-    "limitations": "Shared host and OS caches; no page-cache eviction, statistical significance, universal precision or worst-case overhead claim. Measurements exclude module import and source-read time from analysis timings, but wall time includes process startup. Existing diagnostics are compared exactly in a separate native pass."
+    "limitations": "Shared host and OS caches; no page-cache eviction, statistical significance, universal precision or worst-case overhead claim. Measurements exclude module import and source-read time from analysis timings, but wall time includes process startup. Existing diagnostics are compared exactly in a separate native pass.",
+    "frame": "Historical warning-admission comparison against the earlier public main revision."
   },
   "verificationCommands": [
     "uv run --project packages/standards --frozen code-standards --root . maintain rules prepare iac:no-terraform-guard-blocks",
@@ -385,7 +387,380 @@
     "This is an explicitly requested team style policy, not a runtime-correctness detector.",
     "Terraform JSON, Terraform test assertions and other HCL dialects are outside the rule.",
     "The shared HCL parser recovers some malformed block prefixes; native Terraform validation remains necessary.",
-    "The new-rule admission gate requires WARNING first. Blocking ERROR promotion follows in a separate change after that version is published.",
-    "Finite sampled calibration does not prove absence of field false negatives or safe removal of any guarded constraint."
-  ]
+    "Finite sampled calibration does not prove absence of field false negatives or safe removal of any guarded constraint.",
+    "WARNING admission was published in IaC 0.37.0 and bundle 9.2.0. This separate change promotes the same explicit policy to blocking ERROR without an autofix."
+  ],
+  "promotion": {
+    "decision": "error",
+    "warningPublication": {
+      "iacVersion": "0.37.0",
+      "bundleVersion": "9.2.0",
+      "compatibilityVersion": "9.2.0",
+      "pullRequest": "https://github.com/sarj-ai/code-standards/pull/2170",
+      "commit": "470a0d31d211f604dc125b72fc6f0bd104295f77",
+      "releaseRun": "https://github.com/sarj-ai/code-standards/actions/runs/42431205752",
+      "publishedSmoke": {
+        "bundleVersion": "9.2.0",
+        "iacVersion": "0.37.0",
+        "level": "warning",
+        "guardDiagnostics": 4,
+        "allowedDiagnostics": 0,
+        "sourcePreservedWithFix": true,
+        "installedFromPublishedDistributions": true
+      }
+    },
+    "targetVersions": {
+      "iac": "0.38.0",
+      "bundle": "9.3.0"
+    },
+    "fullIacSuitePassed": 2191,
+    "isolatedEvaluation": {
+      "batches": [
+        {
+          "files": 248,
+          "returncode": 1,
+          "stdoutLines": 179,
+          "truncated": false
+        },
+        {
+          "files": 141,
+          "returncode": 1,
+          "stdoutLines": 168,
+          "truncated": false
+        }
+      ],
+      "policyFindings": 347
+    },
+    "overlapReview": {
+      "reviewed": 78,
+      "codeCounts": {
+        "SARJ217": 74,
+        "SARJ210": 4
+      },
+      "guardKinds": {
+        "validation": 66,
+        "precondition": 8,
+        "terraform_data": 4
+      },
+      "method": "Every removed expression diagnostic was checked through generic HCL parent and attribute ownership against preserved warning-stage guard locations. All four resource-header diagnostics have every direct lifecycle guard covered. All 78 reviewed observations are owned by the same banned blocks; no unrelated diagnostic is removed. Private contexts remain local."
+    },
+    "performance": {
+      "method": "Same native registry, frozen files, pinned Python/contracts environment and five alternating fresh-process pairs as the admission comparison. Baseline is the actually published warning source; candidate changes authored severity to ERROR. Each fresh process has one first analysis and three warm analyses. Process lifetime peak RSS is measured on macOS. No page-cache eviction or general speedup/overhead bound is claimed.",
+      "warningRevision": "470a0d31d211f604dc125b72fc6f0bd104295f77",
+      "files": 389,
+      "policyLocationsPreserved": 347,
+      "narrowerOverlapsRemoved": {
+        "SARJ217": 74,
+        "SARJ210": 4
+      },
+      "unaffectedExistingDiagnosticsPreserved": true,
+      "freshProcessPairs": 5,
+      "warmPassesPerProcess": 3,
+      "summary": {
+        "baseline": {
+          "coldMedianMilliseconds": 1053.5907503217459,
+          "warmMedianMilliseconds": 1058.8550418615341,
+          "wallMedianMilliseconds": 4335.190916899592,
+          "peakRssMedianKiB": 48560.0,
+          "peakRssMaximumKiB": 48880.0,
+          "findingsPerPass": 3212,
+          "policyFindingsPerPass": 347
+        },
+        "candidate": {
+          "coldMedianMilliseconds": 1054.57454174757,
+          "warmMedianMilliseconds": 1057.0026249624789,
+          "wallMedianMilliseconds": 4341.559291351587,
+          "peakRssMedianKiB": 48608.0,
+          "peakRssMaximumKiB": 49344.0,
+          "findingsPerPass": 3134,
+          "policyFindingsPerPass": 347
+        },
+        "coldRatio": 1.0009337510086567,
+        "warmRatio": 0.9982505472176828
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1031.3003747723997,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1027.3647080175579,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1029.2507917620242,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1032.7435829676688,
+              "findings": 3212,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48608.0,
+          "wallMilliseconds": 4218.29858282581
+        },
+        {
+          "mode": "candidate",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1051.1216251179576,
+            "findings": 3134,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1049.866832792759,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1049.5911659672856,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1069.5640840567648,
+              "findings": 3134,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48624.0,
+          "wallMilliseconds": 4309.98604092747
+        },
+        {
+          "mode": "candidate",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1054.57454174757,
+            "findings": 3134,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1047.725624870509,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1068.1224172003567,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1086.0340832732618,
+              "findings": 3134,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 47728.0,
+          "wallMilliseconds": 4341.559291351587
+        },
+        {
+          "mode": "baseline",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1053.5907503217459,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1063.3974997326732,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1054.7112920321524,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1061.3412498496473,
+              "findings": 3212,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48880.0,
+          "wallMilliseconds": 4344.767082948238
+        },
+        {
+          "mode": "baseline",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1060.603582765907,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1059.4684998504817,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1060.6147921644151,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1058.8550418615341,
+              "findings": 3212,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48560.0,
+          "wallMilliseconds": 4335.190916899592
+        },
+        {
+          "mode": "candidate",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1065.3128330595791,
+            "findings": 3134,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1077.9347917996347,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1084.378959145397,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1057.0026249624789,
+              "findings": 3134,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 49344.0,
+          "wallMilliseconds": 4390.639124903828
+        },
+        {
+          "mode": "candidate",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1068.2000000961125,
+            "findings": 3134,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1064.6177497692406,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1059.3521250411868,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1053.7483328953385,
+              "findings": 3134,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48592.0,
+          "wallMilliseconds": 4347.3280421458185
+        },
+        {
+          "mode": "baseline",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1054.4650834053755,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1106.7962092347443,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1081.394209060818,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1075.815667398274,
+              "findings": 3212,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 47504.0,
+          "wallMilliseconds": 4413.689333945513
+        },
+        {
+          "mode": "baseline",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1033.1424591131508,
+            "findings": 3212,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1034.7685418091714,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1014.7858751006424,
+              "findings": 3212,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1028.7768747657537,
+              "findings": 3212,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48528.0,
+          "wallMilliseconds": 4209.0547499246895
+        },
+        {
+          "mode": "candidate",
+          "files": 389,
+          "cold": {
+            "milliseconds": 1027.1512498147786,
+            "findings": 3134,
+            "policyFindings": 347
+          },
+          "warm": [
+            {
+              "milliseconds": 1035.1306670345366,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1023.0676662176847,
+              "findings": 3134,
+              "policyFindings": 347
+            },
+            {
+              "milliseconds": 1033.6748748086393,
+              "findings": 3134,
+              "policyFindings": 347
+            }
+          ],
+          "peakRssKiB": 48608.0,
+          "wallMilliseconds": 4220.1306251809
+        }
+      ]
+    },
+    "limits": "The same 50 inspected guard-policy matches remain applicable because policy locations and messages are unchanged. All 78 changed overlap observations were reviewed separately. No check or ephemeral-resource guard matches occurred in the frozen corpora; native fixtures cover those owners. Finite calibration does not establish universal precision or recall, prove guarded constraints redundant, or authorize automatic guard deletion."
+  }
 }
