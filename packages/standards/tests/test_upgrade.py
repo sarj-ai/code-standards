@@ -32,7 +32,7 @@ from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
@@ -140,32 +140,63 @@ def test_preserved_update_keeps_retired_waivers_and_configuration_byte_identical
     assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
 
 
-def test_preserved_update_refuses_diagnostic_provenance_migration_without_writes(tmp_path: Path) -> None:
-    _outdated_python_repo(tmp_path)
-    adopted = manifest.load(tmp_path)
+_ENTRY: dict[str, int | str] = {
+    "count": 2,
+    "fingerprint": "a" * 64,
+    "path": "service.py",
+    "ruleId": "no-print",
+    "source": "ruff",
+}
+
+
+def _diagnostic_baseline(bundle: str, entries: Sequence[Mapping[str, int | str]]) -> str:
+    provenance = {"bundleVersion": bundle, "consumerBaseSha": "0" * 40, "catalogDigest": "1" * 64}
+    return json.dumps({"schemaVersion": 2, "provenance": provenance, "diagnostics": entries}) + "\n"
+
+
+def _adopt_diagnostic_baseline(root: Path, entries: Sequence[Mapping[str, int | str]]) -> Path:
+    adopted = manifest.load(root)
     assert adopted is not None
-    (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (root / manifest.MANIFEST_NAME).write_text(
         replace(adopted, diagnostic_baseline="diagnostic-baseline.json").render()
     )
-    path = tmp_path / "diagnostic-baseline.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schemaVersion": 2,
-                "provenance": {
-                    "bundleVersion": "0.0.1",
-                    "consumerBaseSha": "0" * 40,
-                    "catalogDigest": "1" * 64,
-                },
-                "diagnostics": [],
-            }
-        )
-        + "\n"
-    )
+    path = root / "diagnostic-baseline.json"
+    path.write_text(_diagnostic_baseline("0.0.1", entries))
     path.chmod(0o640)
+    return path
+
+
+def test_preserved_update_accepts_a_provenance_only_diagnostic_baseline_refresh(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    path = _adopt_diagnostic_baseline(tmp_path, [_ENTRY])
+    before = path.read_bytes()
+
+    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 0
+    assert path.read_bytes() != before
+    assert baseline.provenance_only_change(before, path.read_bytes())
+    assert f'"bundleVersion": "{manifest.adopted_version()}"' in path.read_text()
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        pytest.param([_ENTRY, {**_ENTRY, "fingerprint": "b" * 64}], id="added-entry"),
+        pytest.param([], id="removed-entry"),
+        pytest.param([{**_ENTRY, "count": 3}], id="changed-count"),
+    ],
+)
+def test_preserved_update_refuses_diagnostic_baseline_entry_changes(
+    tmp_path: Path, entries: Sequence[Mapping[str, int | str]]
+) -> None:
+    _outdated_python_repo(tmp_path)
+    path = _adopt_diagnostic_baseline(tmp_path, [_ENTRY])
+    plan = upgrade.build_plan(tmp_path)
+    plan.preconditions[path] = path.read_bytes()
+    plan.baseline_writes.append((path, _diagnostic_baseline(manifest.adopted_version(), entries)))
     before = {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()}
 
-    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 2
+    assert path in upgrade.baseline_and_suppression_changes(plan)
+    assert upgrade.apply(plan, install=False, preserve_baselines=True) == 2
     assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
 
 

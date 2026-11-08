@@ -531,6 +531,29 @@ def _entry_selected(entry: Mapping[str, object], selectors: frozenset[str]) -> b
     )
 
 
+def provenance_only_change(before: bytes, after: bytes) -> bool:
+    try:
+        old = parse_unique_json(before.decode("utf-8"))
+        new = parse_unique_json(after.decode("utf-8"))
+    except UnicodeDecodeError, ValueError, RecursionError:
+        return False
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return False
+    if old.get("schemaVersion") != SCHEMA_VERSION or new.get("schemaVersion") != SCHEMA_VERSION:
+        return False
+    try:
+        _validate_provenance(old.get("provenance"))
+        _validate_provenance(new.get("provenance"))
+    except TypeError, ValueError:
+        return False
+    return _without_provenance(old) == _without_provenance(new)
+
+
+def _without_provenance(document: dict[str, JsonValue]) -> str:
+    # Canonical text keeps entry values exact: `true` and `1` stay distinct.
+    return json.dumps({key: value for key, value in document.items() if key != "provenance"}, sort_keys=True)
+
+
 def _validate_provenance(value: object) -> dict[str, str]:
     provenance = _string_object_dict(value, label="diagnostic baseline provenance")
     if set(provenance) != {"bundleVersion", "consumerBaseSha", "catalogDigest"}:

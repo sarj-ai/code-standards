@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 import subprocess
 from typing import TYPE_CHECKING
@@ -12,6 +13,8 @@ from sarj_standards.libs.release import rollout
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from sarj_standards.libs.adoption.transaction import FileSnapshot
 
 
 _MANIFEST_SOURCE = (
@@ -198,3 +201,65 @@ def test_disabled_preservation_does_not_inspect_baseline_targets(tmp_path: Path)
     consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"))
 
     assert rollout.snapshot_consumer_baselines(tmp_path / "not-cloned", consumer, preserve_baselines=False) == {}
+
+
+_ENTRY: dict[str, int | str] = {
+    "count": 2,
+    "fingerprint": "a" * 64,
+    "path": "service.py",
+    "ruleId": "no-print",
+    "source": "ruff",
+}
+
+
+def _baseline_bytes(bundle: str, entries: Sequence[Mapping[str, int | str]] = (_ENTRY,)) -> bytes:
+    provenance = {"bundleVersion": bundle, "consumerBaseSha": "0" * 40, "catalogDigest": "1" * 64}
+    document = {"schemaVersion": 2, "provenance": provenance, "diagnostics": list(entries)}
+    return (json.dumps(document) + "\n").encode()
+
+
+def _preserved_diagnostic_baseline(root: Path) -> Mapping[Path, FileSnapshot]:
+    (root / rollout.MANIFEST).write_text(_MANIFEST_SOURCE)
+    path = root / "diagnostic-baseline.json"
+    path.write_bytes(_baseline_bytes("8.129.1"))
+    path.chmod(0o640)
+    consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"))
+    return rollout.snapshot_consumer_baselines(root, consumer)
+
+
+def test_preservation_accepts_a_provenance_only_diagnostic_baseline_refresh(tmp_path: Path) -> None:
+    preserved = _preserved_diagnostic_baseline(tmp_path)
+    path = tmp_path / "diagnostic-baseline.json"
+    path.write_bytes(_baseline_bytes("9.2.3"))
+
+    refreshed = rollout.refresh_preserved_provenance(tmp_path, preserved)
+
+    assert refreshed.refreshed == frozenset({"diagnostic-baseline.json"})
+    rollout.assert_preserved_baselines(tmp_path, refreshed.snapshots)
+    path.write_bytes(_baseline_bytes("9.2.3", ({**_ENTRY, "count": 3},)))
+    with pytest.raises(rollout.RolloutError, match="controller-owned"):
+        rollout.assert_preserved_baselines(tmp_path, refreshed.snapshots)
+
+
+@pytest.mark.parametrize("mutation", ["added-entry", "removed-entry", "changed-count", "chmod", "other-baseline"])
+def test_preservation_refuses_diagnostic_baseline_entry_or_metadata_changes(tmp_path: Path, mutation: str) -> None:
+    preserved = _preserved_diagnostic_baseline(tmp_path)
+    path = tmp_path / "diagnostic-baseline.json"
+    match mutation:
+        case "added-entry":
+            path.write_bytes(_baseline_bytes("9.2.3", (_ENTRY, {**_ENTRY, "fingerprint": "b" * 64})))
+        case "removed-entry":
+            path.write_bytes(_baseline_bytes("9.2.3", ()))
+        case "changed-count":
+            path.write_bytes(_baseline_bytes("9.2.3", ({**_ENTRY, "count": 3},)))
+        case "chmod":
+            path.write_bytes(_baseline_bytes("9.2.3"))
+            path.chmod(0o600)
+        case _:
+            path.write_bytes(_baseline_bytes("9.2.3"))
+            (tmp_path / rollout.MANIFEST).write_text(
+                _MANIFEST_SOURCE.replace("diagnostic-baseline.json", "other-baseline.json")
+            )
+
+    with pytest.raises(rollout.RolloutError, match="controller-owned"):
+        rollout.refresh_preserved_provenance(tmp_path, preserved)
