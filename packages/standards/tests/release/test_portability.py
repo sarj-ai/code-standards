@@ -34,8 +34,13 @@ def test_portability_overlaps_both_lanes_and_propagates_each_failure(tmp_path: P
         '  touch "$SIGNALS/cli"\n'
         '  for i in {1..500}; do [[ -f "$SIGNALS/hook" ]] && break; sleep 0.01; done\n'
         '  test -f "$SIGNALS/hook"\n'
-        '  if [[ "$*" == *test_lifecycle.py* ]]; then [[ "$FAILED" != lifecycle ]]; else [[ "$FAILED" != cli ]]; fi\n'
+        '  if [[ "$*" == *test_lifecycle.py* ]]; then\n'
+        '    echo lifecycle-output; [[ "$FAILED" != lifecycle ]]\n'
+        "  else\n"
+        '    echo cli-output; [[ "$FAILED" != cli ]]\n'
+        "  fi\n"
         "else\n"
+        "  echo hook-output\n"
         '  touch "$SIGNALS/hook"\n'
         '  for i in {1..500}; do [[ -f "$SIGNALS/cli" ]] && break; sleep 0.01; done\n'
         '  test -f "$SIGNALS/cli"\n'
@@ -74,6 +79,17 @@ def test_portability_overlaps_both_lanes_and_propagates_each_failure(tmp_path: P
     assert (reports / "consumer-cli.log").exists()
     assert (reports / "lifecycle-cli.log").exists()
     assert (reports / "pre-commit.log").exists()
+    lines = process.stdout.splitlines()
+    for label, marker in {
+        "consumer-cli": "cli-output",
+        "lifecycle-cli": "lifecycle-output",
+        "pre-commit": "hook-output",
+    }.items():
+        start = lines.index(f"{label}: started")
+        output = lines.index(marker)
+        finished = next(index for index, line in enumerate(lines) if line.startswith(f"{label}: ") and "(exit " in line)
+        assert start < output < finished
+        assert process.stdout.count(marker) == (reports / f"{label}.log").read_text().count(marker)
 
 
 @pytest.mark.parametrize(

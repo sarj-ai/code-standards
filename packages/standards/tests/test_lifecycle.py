@@ -761,7 +761,11 @@ def test_directive_worker_transports_large_selection_without_argv_growth(tmp_pat
     assert not transport.exists()
 
 
-@pytest.mark.parametrize("payload", [b"unterminated", b"first\0\0", b"x" * (16 * 1024 * 1024 + 1)])
+@pytest.mark.parametrize(
+    "payload",
+    [b"unterminated", b"first\0\0", b"x" * (16 * 1024 * 1024 + 1)],
+    ids=("unterminated", "empty-path", "oversized"),
+)
 def test_directive_path_transport_rejects_malformed_or_oversized_input(tmp_path: Path, payload: bytes) -> None:
     transport = tmp_path / "paths"
     transport.write_bytes(payload)
