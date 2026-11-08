@@ -15,6 +15,7 @@ from sarj_standards.libs.adoption.manifest import Manifest, as_table, load
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.analysis import analyze as analyze_core
 from sarj_standards.libs.linting.iac_guard_contracts import CONTRACT_PATH, CoreIAC
+from sarj_standards.libs.staged_git import isolated_environment
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
@@ -227,7 +228,7 @@ def test_initializer_rejects_candidate_postimages(guard_adapter: _GuardFixture) 
     [
         ('"schema": 1', '"schema": true'),
         ('"schema": 1', '"schema": 0, "schema": 1'),
-        (_REVISION, "c" * 40),
+        ('"schema": 1', '"schema": 1, "original_revision": "untrusted"'),
         ('"protected"', '"other"'),
         ('"main.tf"', '"missing.tf"'),
         ('"kind": "precondition"', '"kind": "validation"'),
@@ -363,3 +364,134 @@ def test_policy_free_iac_analysis_retains_the_default_guard_ban(tmp_path: Path, 
     report = Standards(tmp_path).analyze(["main.tf"], mode=mode, rules=["iac:no-terraform-guard-blocks"])
     assert not report.issues
     assert [item.code for item in report.diagnostics] == ["SARJ222"]
+
+
+def _git(root: Path, *arguments: str) -> str:
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            f"core.hooksPath={root / '.git' / 'hooks'}",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.autocrlf=false",
+            *arguments,
+        ],
+        cwd=root,
+        env=isolated_environment(),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    ).stdout.strip()
+
+
+def _commit(root: Path, message: str) -> None:
+    _git(root, "add", "--all")
+    _git(root, "commit", "--quiet", "-m", message)
+
+
+def _adoption_branch(root: Path, source: str = _ORIGINAL) -> bytes:
+    _git(root, "init", "--quiet", "--template=", "--initial-branch=main")
+    (root / "main.tf").write_text(_ORIGINAL)
+    _commit(root, "Original guards")
+    _git(root, "switch", "--quiet", "--create", "adoption")
+    (root / "migration.txt").write_text("Preparatory tooling change\n")
+    (root / "main.tf").write_text(source)
+    _commit(root, "Prepare migration")
+    manifest = CoreIAC(root).initialize(["main.tf"], original_revision=_git(root, "rev-parse", "HEAD"))
+    (root / CONTRACT_PATH).write_text(manifest, newline="\n")
+    (root / ".sarj-standards.toml").write_text(
+        Manifest(
+            version="9.4.6", configs=(), python_dest=".", typescript_dest=".", terraform_guard_contracts=CONTRACT_PATH
+        ).render()
+    )
+    _commit(root, "Adopt guard contracts")
+    return manifest.encode()
+
+
+def _integrate(root: Path, method: str) -> None:
+    match method:
+        case "merge":
+            _git(root, "merge", "--no-ff", "-m", "Merge adoption", "adoption")
+        case "squash":
+            _git(root, "merge", "--squash", "adoption")
+            _commit(root, "Squash adoption")
+        case "rebase":
+            _git(root, "switch", "--quiet", "adoption")
+            _git(root, "rebase", "main")
+            _git(root, "switch", "--quiet", "main")
+            _git(root, "merge", "--ff-only", "adoption")
+        case _:
+            message = "Unsupported fixture integration method"
+            raise ValueError(message)
+    _git(root, "branch", "--delete", "--force", "adoption")
+    _git(root, "reflog", "expire", "--expire=now", "--all")
+    _git(root, "gc", "--prune=now")
+
+
+@pytest.mark.parametrize("method", ["merge", "squash", "rebase"])
+@pytest.mark.parametrize("advance_main", [False, True])
+def test_unchanged_guard_contract_survives_pr_integration(tmp_path: Path, method: str, *, advance_main: bool) -> None:
+    manifest = _adoption_branch(tmp_path)
+    assert CoreIAC(tmp_path).prepare() is not None
+    _git(tmp_path, "switch", "--quiet", "main")
+    if advance_main:
+        (tmp_path / "unrelated.txt").write_text("Unrelated target-branch change\n")
+        _commit(tmp_path, "Advance target branch")
+    _integrate(tmp_path, method)
+
+    assert (tmp_path / CONTRACT_PATH).read_bytes() == manifest
+    assert (tmp_path / "main.tf").read_text() == _ORIGINAL
+    assert CoreIAC(tmp_path).prepare() is not None
+    report = Standards(tmp_path).analyze([], rules=["iac:no-terraform-guard-blocks"])
+    assert report.issues == ()
+
+
+@pytest.mark.parametrize("method", ["merge", "squash"])
+def test_integration_cannot_grandfather_a_new_feature_branch_guard(tmp_path: Path, method: str) -> None:
+    added = _ORIGINAL[_ORIGINAL.index("resource ") :].replace('"protected"', '"extra"')
+    _adoption_branch(tmp_path, _ORIGINAL + added)
+    assert CoreIAC(tmp_path).prepare() is not None
+    _git(tmp_path, "switch", "--quiet", "main")
+    _integrate(tmp_path, method)
+
+    with pytest.raises(ValueError, match="immutable original source"):
+        CoreIAC(tmp_path).prepare()
+    report = Standards(tmp_path).analyze([], rules=["iac:no-terraform-guard-blocks"])
+    assert any(issue.kind == "guard-contract-failure" for issue in report.issues)
+
+
+@pytest.mark.parametrize("method", ["merge", "squash", "rebase"])
+def test_integration_rejects_target_branch_guard_drift(tmp_path: Path, method: str) -> None:
+    manifest = _adoption_branch(tmp_path)
+    _git(tmp_path, "switch", "--quiet", "main")
+    (tmp_path / "main.tf").write_text(_ORIGINAL.replace("condition = var.approved", "condition = true"))
+    _commit(tmp_path, "Change target guard")
+    _integrate(tmp_path, method)
+
+    assert (tmp_path / CONTRACT_PATH).read_bytes() == manifest
+    with pytest.raises(ValueError, match="immutable original source"):
+        CoreIAC(tmp_path).prepare()
+
+
+@pytest.mark.parametrize("change", ["manifest", "remove-reintroduce"])
+def test_committed_contract_history_cannot_replace_frozen_policy(tmp_path: Path, change: str) -> None:
+    manifest = _adoption_branch(tmp_path)
+    path = tmp_path / CONTRACT_PATH
+    if change == "manifest":
+        path.write_bytes(manifest + b" ")
+        _commit(tmp_path, "Change contract")
+    else:
+        path.unlink()
+        _commit(tmp_path, "Remove contract")
+        path.write_bytes(manifest)
+        _commit(tmp_path, "Reintroduce contract")
+
+    with pytest.raises(ValueError, match=r"immutable.*changed|removed and reintroduced"):
+        CoreIAC(tmp_path).prepare()

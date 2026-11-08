@@ -69,6 +69,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
     from pathlib import Path
 
+    from sarj_iac_lint.guard_contracts import GuardContracts
+
     from sarj_standards.libs.linting.process import ProcessRequest
     from tests.call_contracts import ExternalAnalyzeOptions, OxlintSelectionOptions
 
@@ -1702,12 +1704,17 @@ def test_iac_native_binding_preserves_selected_source_catalog_identity(
     analyze_iac = iac_engine.analyze
 
     def observed(
-        rule_ids: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None
+        rule_ids: Sequence[str],
+        paths: list[Path],
+        *,
+        sources: SourceCatalog | None = None,
+        guard_contracts: GuardContracts | None = None,
     ) -> list[IacDiagnostic]:
         assert rule_ids == ["require-deletion-protection"]
         assert paths == [target]
         assert sources is catalog
-        return analyze_iac(rule_ids, paths, sources=sources)
+        assert guard_contracts is None
+        return analyze_iac(rule_ids, paths, sources=sources, guard_contracts=guard_contracts)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forward the actual public IaC checker while observing the typed integration boundary.
         iac_engine, "analyze", observed

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 import json
 import re
 import shutil
@@ -26,12 +26,6 @@ _OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _LIMIT = 500_000
 
 
-@dataclass(frozen=True)
-class _ContractHeader:
-    original_revision: str
-    paths: tuple[str, ...]
-
-
 class CoreIAC:
     def __init__(self, root: Path, *, staged: bool = False) -> None:
         self.root = root.resolve()
@@ -48,7 +42,7 @@ class CoreIAC:
             raise ValueError(message)
         entries = self._original_entries(original_revision, tuple(paths))
         self._verify_current(entries)
-        return self._serialize(original_revision, entries)
+        return self._serialize(entries)
 
     def prepare(self) -> GuardContracts | None:
         active = self._configured_manifest()
@@ -58,13 +52,9 @@ class CoreIAC:
 
         introductions, current = active
         self._check_staged_manifest(current)
-        header = self._manifest_header(current)
-        original_revision = header.original_revision
-        if original_revision != self._original_revision(introductions, current):
-            message = "guard contract original revision was retargeted"
-            raise ValueError(message)
-        entries = self._original_entries(original_revision, header.paths)
-        if parse_unique_json(current) != parse_unique_json(self._serialize(original_revision, entries)):
+        paths = self._manifest_paths(current)
+        entries = self._original_entries(self._original_revision(introductions, current), paths)
+        if parse_unique_json(current) != parse_unique_json(self._serialize(entries)):
             message = "guard contracts differ from immutable original source"
             raise ValueError(message)
         self._verify_current(entries)
@@ -106,26 +96,24 @@ class CoreIAC:
         if self._git("show", f"{introduced}:{CONTRACT_PATH}") != current:
             message = "immutable guard contract manifest was changed"
             raise ValueError(message)
+        # An integration commit may be the first addition on this branch. Its
+        # parent independently proves these guards already existed here, without
+        # depending on feature-branch commit IDs that squash/rebase can discard.
         return self._git("rev-parse", "--verify", f"{introduced}^1").strip()
 
-    def _manifest_header(self, source: str) -> _ContractHeader:
+    def _manifest_paths(self, source: str) -> tuple[str, ...]:
         value = as_table(parse_unique_json(source))
-        if set(value) != {"schema", "original_revision", "guards"}:
+        if set(value) != {"schema", "guards"}:
             message = "malformed Terraform guard contract manifest"
             raise ValueError(message)
         if type(value["schema"]) is not int or value["schema"] != 1:
             message = "unsupported Terraform guard contract schema"
             raise ValueError(message)
-        revision = value["original_revision"]
-        if not isinstance(revision, str):
-            message = "guard contract original revision must be a full commit ID"
-            raise TypeError(message)
-        self._revision(revision)
         guards = value["guards"]
         if not is_object_list(guards) or not guards:
             message = "guard contracts must contain existing guards"
             raise ValueError(message)
-        return _ContractHeader(revision, tuple(sorted({_entry_path(guard) for guard in guards})))
+        return tuple(sorted({_entry_path(guard) for guard in guards}))
 
     def _original_entries(self, revision: str, paths: Sequence[str]) -> tuple[GuardContract, ...]:
         from sarj_iac_lint.guard_contracts import contracts_for_source, relative_tf_path  # ruff: ignore[import-outside-top-level] -- load only for selected IaC contract analysis.
@@ -214,13 +202,8 @@ class CoreIAC:
             raise ValueError(message)
 
     @staticmethod
-    def _serialize(revision: str, entries: Sequence[GuardContract]) -> str:
-        return (
-            json.dumps(
-                {"schema": 1, "original_revision": revision, "guards": [asdict(entry) for entry in entries]}, indent=2
-            )
-            + "\n"
-        )
+    def _serialize(entries: Sequence[GuardContract]) -> str:
+        return json.dumps({"schema": 1, "guards": [asdict(entry) for entry in entries]}, indent=2) + "\n"
 
 
 def _entry_path(value: object) -> str:
