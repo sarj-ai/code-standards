@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208]
   workflow_dispatch:
   schedule:
     - cron: '23 9 * * 1'
@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@c35f025a41562e4c5abbe86bd5f72b0eacb1ffd5 # v6.21.1
+        uses: sarj-ai/repo-standards@4d5d50b61662c779b5df7c431500d30b876a906a # v6.21.3
 
   changes:
     name: Detect affected checks
