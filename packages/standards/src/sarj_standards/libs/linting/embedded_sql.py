@@ -29,7 +29,7 @@ from .sqlfluff_protocol import MAX_INPUT_BYTES, MAX_QUERIES, SQLFLUFF_VERSION, S
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from pathlib import Path
 
     from sarj_standards.libs.adoption.manifest import Manifest
@@ -59,14 +59,66 @@ class _BatchReport:
 def with_embedded_sql(
     report: AnalysisReport, *, files: Sequence[str], adopted: Manifest | None, policy: Policy
 ) -> AnalysisReport:
+    return merge_embedded_sql(report, embedded_sql_result(report.root, files=files, adopted=adopted), policy=policy)
+
+
+def embedded_sql_result(root: Path, *, files: Sequence[str], adopted: Manifest | None) -> CachedResult | None:
+    # Reads only the selected Python sources, so it may run beside the analysis groups.
     if adopted is None or "sqlfluff" not in adopted.enabled_capabilities or not files:
-        return report
+        return None
 
     def run() -> CachedResult:
-        analyzed = analyze_sources(files, root=report.root)
+        analyzed = analyze_sources(files, root=root)
         return CachedResult(analyzed.tools, analyzed.coverage)
 
-    embedded = cached_python_analysis("sqlfluff-embedded", report.root, selected=files, parameters=(), compute=run)
+    return cached_python_analysis("sqlfluff-embedded", root, selected=files, parameters=(), compute=run)
+
+
+def analyze_embedded_sql(root: Path, files: Sequence[str], adopted: Manifest | None) -> CachedResult | None:
+    return embedded_sql_result(root, files=files, adopted=adopted)
+
+
+class EmbeddedSQLPass:
+    # Runs the SQL pass beside the analysis groups and merges it after both, so
+    # the report and any failure match running it after the groups.
+    def __init__(
+        self,
+        root: Path,
+        *,
+        files: Sequence[str],
+        adopted: Manifest | None,
+        enabled: bool,
+        analyze: Callable[[Path, Sequence[str], Manifest | None], CachedResult | None],
+    ) -> None:
+        self._root = root
+        self._files = files
+        self._adopted = adopted
+        self._enabled = enabled
+        self._analyze = analyze
+        self._outcome: list[CachedResult | Exception | None] = []
+
+    def run(self) -> None:
+        if not self._enabled or self._outcome:
+            return
+        try:
+            self._outcome.append(self._analyze(self._root, self._files, self._adopted))
+        except Exception as error:  # ruff: ignore[blind-except] -- re-raised by merge, after both groups.
+            self._outcome.append(error)
+
+    def merge(self, report: AnalysisReport, *, policy: Policy) -> AnalysisReport:
+        if not self._enabled:
+            return report
+        # A failed external group never reached the pass; run it now, as before.
+        self.run()
+        [outcome] = self._outcome
+        if isinstance(outcome, Exception):
+            raise outcome
+        return merge_embedded_sql(report, outcome, policy=policy)
+
+
+def merge_embedded_sql(report: AnalysisReport, embedded: CachedResult | None, *, policy: Policy) -> AnalysisReport:
+    if embedded is None:
+        return report
     filtered = tuple(
         ToolReport(
             tool.name,
