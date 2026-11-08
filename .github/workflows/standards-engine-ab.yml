@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - run: |
           cp -R .github/bench "$RUNNER_TEMP/bench-scripts"
-          git checkout -q --force --detach 8c7959e2b0b58d0bd0e4a3ee4d26e4e97ed5ae17
+          git checkout -q --force --detach 8c7959e2516e4053501438b5dd32e0f25b5ac7b2
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: 0.13.5
