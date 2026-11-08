@@ -1,11 +1,13 @@
 import json
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards.libs.adoption import doctor, typescript_migration
+from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.json_boundary import parse_json
-from tests.oxlint_project import commands, project, run_native
+from tests.oxlint_project import MODULES, OXLINT, commands, environment, project, run_native
 
 
 if TYPE_CHECKING:
@@ -673,6 +675,17 @@ def test_supported_typescript_aliases_preserve_source_across_repeated_migration(
         "export const value = legacy();\n"
         "// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- public signature\n"
         "export function identity<T extends string>(value: T): T { return value; }\n"
+        "// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- known runtime boundary\n"
+        "export const optional = value?.length;\n"
+        "declare function consume(callback: () => void): void;\n"
+        "// eslint-disable-next-line @typescript-eslint/strict-void-return -- ignored callback result\n"
+        "consume(() => null);\n"
+        "// eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- assertion boundary\n"
+        'export const asserted = "control" as string;\n'
+        "// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated boundary\n"
+        "export function unsafe(value: unknown) { return value as string; }\n"
+        "// eslint-disable-next-line @typescript-eslint/no-misused-spread -- intentional characters\n"
+        'export const characters = [..."control"];\n'
     )
     root = _repository(tmp_path, {"src/legacy.ts": source})
     for _ in range(2):
@@ -686,14 +699,102 @@ def test_supported_typescript_aliases_preserve_source_across_repeated_migration(
         assert (root / "src/legacy.ts").read_text() == source
 
 
-def test_preserving_supported_aliases_still_migrates_other_directives(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("unicorn/no-exports-in-scripts", "unicorn-js/no-exports-in-scripts"),
+        ("@typescript-eslint/no-unsafe-assignment", "typescript/no-unsafe-assignment"),
+    ],
+)
+def test_preserving_supported_aliases_still_migrates_other_directives(
+    tmp_path: Path, legacy: str, canonical: str
+) -> None:
     source = (
         "// eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy API boundary\n"
         "export const value = legacy();\n"
-        "// eslint-disable-next-line unicorn/no-exports-in-scripts -- testable entrypoint\n"
+        f"// eslint-disable-next-line {legacy} -- testable entrypoint\n"
         "export const run = value;\n"
     )
     root = _repository(tmp_path, {"src/legacy.ts": source})
-    assert _written(_plan(root), root / "src/legacy.ts") == source.replace(
-        "unicorn/no-exports-in-scripts", "unicorn-js/no-exports-in-scripts"
+    assert _written(_plan(root), root / "src/legacy.ts") == source.replace(legacy, canonical)
+
+
+@pytest.mark.parametrize(
+    ("rule", "source", "severity"),
+    [
+        (
+            "no-unnecessary-condition",
+            "export function example(value: string) {\n  if (value === undefined) return 1;\n  return 0;\n}\n",
+            "error",
+        ),
+        (
+            "strict-void-return",
+            "declare function example(callback: () => void): void;\nexample(() => null);\n",
+            "warn",
+        ),
+        (
+            "consistent-type-assertions",
+            'export function example() {\n  return "control" as string;\n}\n',
+            "error",
+        ),
+        (
+            "no-unsafe-type-assertion",
+            "export function example(value: unknown) {\n  return value as string;\n}\n",
+            "error",
+        ),
+        (
+            "no-misused-spread",
+            'export function example() {\n  return [..."control"];\n}\n',
+            "error",
+        ),
+    ],
+)
+@pytest.mark.parametrize("spelling", [None, "@typescript-eslint", "typescript", "unknown"])
+def test_preserved_aliases_suppress_only_the_intended_native_typed_finding(
+    tmp_path: Path, rule: str, source: str, severity: str, spelling: str | None
+) -> None:
+    text = source + source.replace("example", "adjacent")
+    if spelling is not None:
+        alias = "@typescript-eslint/not-a-real-rule" if spelling == "unknown" else f"{spelling}/{rule}"
+        lines = text.splitlines(keepends=True)
+        lines.insert(1, f"// eslint-disable-next-line {alias} -- intentional legacy boundary\n")
+        text = "".join(lines)
+    config = json.dumps(
+        {
+            "plugins": ["typescript"],
+            "categories": {"correctness": "off"},
+            "options": {"typeAware": True, "reportUnusedDisableDirectives": "error"},
+            "rules": {
+                f"typescript/{rule}": [severity, {"assertionStyle": "never"}]
+                if rule == "consistent-type-assertions"
+                else severity
+            },
+        }
     )
+    root = project(tmp_path / "native", {"source.ts": text}, config=f"export default {config}")
+    completed = subprocess.run(
+        [str(OXLINT), "--config", "oxlint.config.ts", "--type-aware", "--format", "json", "source.ts"],
+        cwd=root,
+        env={**environment(), "OXLINT_TSGOLINT_PATH": str(MODULES / ".bin" / "tsrs-lint")},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert not completed.stderr, completed.stderr
+    diagnostics = [as_table(item) for item in list_field(as_table(parse_json(completed.stdout)), "diagnostics")]
+    findings = [item for item in diagnostics if item.get("code") == f"typescript({rule})"]
+    suppressed = spelling in {"@typescript-eslint", "typescript"}
+    assert len(findings) == (1 if suppressed else 2), completed.stdout
+    assert all(item["severity"] == ("warning" if severity == "warn" else "error") for item in findings)
+    # The second violation stays visible, proving that suppression is local.
+    label = as_table(list_field(findings[-1], "labels")[0])
+    offset = table_field(label, "span")["offset"]
+    assert isinstance(offset, int)
+    assert offset > text.index("adjacent")
+    unused = [
+        item for item in diagnostics if isinstance(item["message"], str) and "Unused eslint-disable" in item["message"]
+    ]
+    assert len(unused) == (1 if spelling == "unknown" else 0), completed.stdout
+    assert len(diagnostics) == len(findings) + len(unused), completed.stdout
+    assert completed.returncode == (1 if severity == "error" or unused else 0)

@@ -390,6 +390,8 @@ class Standards:
                 grouped=selected_groups,
                 rule_selection=rule_selection,
                 python_jobs=1 if jobs == 1 else os.process_cpu_count() or 1,
+                staged=staged,
+                use_guard_contracts=normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE},
             )
             if rule_selection is None:
                 native = _with_library_policy(

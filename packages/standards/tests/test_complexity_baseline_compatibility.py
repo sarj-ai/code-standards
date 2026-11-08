@@ -187,9 +187,8 @@ def test_unexpected_git_tree_failure_stays_observable_and_recovers(tmp_path: Pat
         unavailable.rename(tree)
 
     assert len(policy.diagnostics) == 1
-    assert len(policy.issues) == 1
-    assert policy.issues[0].kind == "baseline-compatibility-failure"
-    assert "128" in policy.issues[0].message
+    assert sorted(issue.kind for issue in policy.issues) == ["baseline-compatibility-failure", "guard-contract-failure"]
+    assert all("128" in issue.message for issue in policy.issues)
     assert sum(tool.baselined_count for tool in policy.tools) == 0
     recovered = api.Standards(tmp_path).analyze([str(subject.target)], rules=_RULES)
     assert recovered.diagnostics == ()

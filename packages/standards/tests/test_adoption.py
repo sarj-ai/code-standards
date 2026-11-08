@@ -1470,7 +1470,12 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     path = tmp_path / manifest.MANIFEST_NAME
     adopted = manifest.load(tmp_path)
     assert adopted is not None
-    current = replace(adopted, durable_artifacts=("evidence/**",), knip_application=True).render()
+    current = replace(
+        adopted,
+        durable_artifacts=("evidence/**",),
+        knip_application=True,
+        terraform_guard_contracts=".sarj-terraform-guards.json",
+    ).render()
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
         '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n'
@@ -1487,6 +1492,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.text_excluded_paths == ("templates/**",)
     assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
     assert adopted.diagnostic_baseline == "quality/diagnostics.json"
+    assert adopted.terraform_guard_contracts == ".sarj-terraform-guards.json"
     assert adopted.ci_bootstrap == ("yarn generate",)
     assert adopted.knip_application
 

@@ -5,6 +5,8 @@ import type { OxfmtConfig } from "oxfmt";
 
 const sharedStyle: OxfmtConfig = {
   printWidth: 80,
+  // Quoted wire keys opt out of require-camelcase-properties.
+  quoteProps: "preserve",
   sortPackageJson: false,
   sortImports: {
     groups: [

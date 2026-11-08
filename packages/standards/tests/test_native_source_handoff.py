@@ -19,6 +19,7 @@ from sarj_standards.libs.linting.analysis import PythonSourceDocument, normalize
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from sarj_iac_lint.guard_contracts import GuardContracts
     from sarj_iac_lint.rule_base import Diagnostic as IacDiagnostic
     from sarj_python_lint.rule_base import Diagnostic as PythonDiagnostic
 
@@ -94,9 +95,13 @@ def _observe_completion(
             original_iac = iac_engine.analyze
 
             def analyze_iac(
-                rule_ids: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None
+                rule_ids: Sequence[str],
+                paths: list[Path],
+                *,
+                sources: SourceCatalog | None = None,
+                guard_contracts: GuardContracts | None = None,
             ) -> list[IacDiagnostic]:
-                result = original_iac(rule_ids, paths, sources=sources)
+                result = original_iac(rule_ids, paths, sources=sources, guard_contracts=guard_contracts)
                 completed(sources)
                 return result
 

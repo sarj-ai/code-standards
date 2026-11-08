@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel
@@ -9,6 +11,7 @@ import pytest
 
 from sarj_standards.libs.adoption.configs import OXLINT_SUPPRESSIONS
 from sarj_standards.libs.adoption.lifecycle import Command
+from sarj_standards.libs.adoption.manifest import ALL_CAPABILITIES
 from sarj_standards.libs.diagnostics import Completion, Severity
 from sarj_standards.libs.linting import oxlint
 from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR
@@ -301,7 +304,7 @@ def test_tsrs_lint_is_required_for_typed_analysis(tmp_path: Path) -> None:
     assert executor.requests == []
 
 
-def test_full_run_type_checks_and_names_files_the_config_ignores(tmp_path: Path) -> None:
+def test_full_run_type_checks_and_reports_files_the_config_excludes(tmp_path: Path) -> None:
     config = (
         'import { createConfig } from "./oxlint.strict.ts";\n'
         'export default { extends: [createConfig()], ignorePatterns: ["src/legacy/**"] };\n'
@@ -317,11 +320,14 @@ def test_full_run_type_checks_and_names_files_the_config_ignores(tmp_path: Path)
 
     report = analyze(root, oxlint.OxlintRequest(), "src")
 
-    assert report.completion is Completion.FAILED
+    assert report.completion is Completion.COMPLETE
     assert {item.rule_id for item in report.diagnostics} == {"tsc/TS2322", "no-debugger"}
-    (issue,) = report.issues
-    assert issue.kind == "coverage-missing"
-    assert "did not analyze 1 of 2 selected maintained file(s) (src/legacy/b.ts)" in issue.message
+    assert not report.issues
+    assert report.file_count == 1
+    (scope,) = report.rule_executions
+    assert scope.execution.value == "skipped"
+    assert scope.file_count == 1
+    assert scope.reason == "skipped-scope: native Oxlint ignore policy excludes src/legacy/b.ts"
     assert not list(root.glob(".sarj-oxlint-*"))
 
 
@@ -385,3 +391,101 @@ def test_selection_skips_skill_payloads_links_generated_trees_and_lint_configs(t
     for paths in (["."], ["src/a.ts", "src/link.ts", ".agents/tools/helper.ts", ".claude/skills/x/payload.ts"]):
         (command,) = oxlint.select_oxlint_commands(tmp_path, paths).commands
         assert oxlint.command_files(command) == frozenset({tmp_path / "src/a.ts", tmp_path / ".agents/tools/helper.ts"})
+
+
+def test_ignored_selected_source_completes_check_and_baseline_init(tmp_path: Path) -> None:
+    config = 'import { createConfig } from "./oxlint.strict.ts"; export default {extends:[createConfig()],ignorePatterns:["scripts/**"]};'
+    root = project(tmp_path / "repo", {"scripts/lib.mjs": "debugger;\n", "adjacent.mjs": "debugger;\n"}, config=config)
+    (root / "oxfmt.config.mts").write_text("export default {printWidth:80};\n")
+    disabled = json.dumps([name for name in ALL_CAPABILITIES if name != "typescript"])
+    (root / ".sarj-standards.toml").write_text(f'schema=4\nbundle="9.4.5"\n[capabilities]\ndisable={disabled}\n')
+    commands = (
+        ("check", "scripts/lib.mjs", "--trust-repository-code", "--format", "json"),
+        ("baseline", "init", "scripts/lib.mjs", "--trust-repository-code", "--output", str(root / "baseline.json")),
+    )
+    for arguments in commands:
+        result = subprocess.run(
+            (sys.executable, "-m", "sarj_standards", "--root", str(root), *arguments),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+    result = subprocess.run(
+        (
+            sys.executable,
+            "-m",
+            "sarj_standards",
+            "--root",
+            str(root),
+            "check",
+            "adjacent.mjs",
+            "--trust-repository-code",
+            "--format",
+            "json",
+        ),
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert '"ruleId": "no-debugger"' in result.stdout
+
+
+def test_native_discovery_cannot_explain_a_missing_file(tmp_path: Path) -> None:
+    root = project(tmp_path / "repo", {"source.ts": "export const n = 1;\n"})
+    outputs = iter(
+        (
+            ProcessOutput(0, '{"diagnostics":[],"number_of_files":0}', ""),
+            ProcessOutput(0, "", ""),
+            ProcessOutput(0, "", ""),
+        )
+    )
+
+    def discovery(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == root
+        return next(outputs)
+
+    executor = FakeProcessExecutor(discovery)
+    command = local(oxlint.select_oxlint_commands(root, ("source.ts",)).commands[0])
+    report = oxlint.run_oxlint(
+        command, root=root, runner=executor, environment=environment(), request=oxlint.OxlintRequest()
+    )
+    assert report.completion is Completion.FAILED
+    assert report.issues[0].kind == "coverage-missing"
+    assert not report.rule_executions
+
+
+def test_actual_plugin_crash_remains_execution_failure(tmp_path: Path) -> None:
+    config = (
+        'export default {jsPlugins:[{name:"scope-crash",specifier:"./scope-crash.mjs"}],'
+        'rules:{"scope-crash/explode":"error"}};'
+    )
+    root = project(tmp_path / "repo", {"source.mjs": "export const value = 1;\n"}, config=config)
+    (root / "scope-crash.mjs").write_text(
+        'export default {meta:{name:"scope-crash"},rules:{explode:{create(){throw new Error("scope crash control")}}}};'
+    )
+    report = analyze(root, oxlint.OxlintRequest(), "source.mjs")
+    assert report.completion is Completion.FAILED
+    assert report.issues
+    assert not report.rule_executions
+
+
+def test_actual_parser_failure_is_not_a_scope_exclusion(tmp_path: Path) -> None:
+    root = project(tmp_path / "repo", {"source.mjs": "const value = ;\n"})
+    report = analyze(root, oxlint.OxlintRequest(), "source.mjs")
+    assert report.completion is Completion.FAILED
+    assert report.issues
+    assert not report.rule_executions
+
+
+def test_unowned_source_is_not_a_scope_exclusion(tmp_path: Path) -> None:
+    source = tmp_path / "source.mjs"
+    source.write_text("debugger;\n")
+    selection = oxlint.select_oxlint_commands(tmp_path, (str(source),))
+    assert selection.unowned_count == 1
+    assert not selection.commands

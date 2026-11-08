@@ -599,3 +599,73 @@ def test_artifact_pem_removal_keeps_same_artifact_secrets(installation: Path, pr
     artifacts = {item.location.path for item in findings if item.rule_id == "react-doctor/artifact-secret-leak"}
     assert artifacts == {"dist/key.js", "dist/after.js", "dist/after.js.map", "dist/lookalike.js", "dist/data.js"}
     assert "react-doctor/firebase-permissive-rules" in {item.rule_id for item in findings}
+
+
+def test_hidden_ancestor_environment_scope_keeps_authored_risks_and_artifact_secrets(
+    installation: Path, project: Path
+) -> None:
+    paths = (
+        ".cache/baseline-checks/.venv/lib/python3.14/site-packages/pygments/formatters/img.py",
+        ".venv/service.py",
+        "python/.venv/service.py",
+        ".cache/authored.py",
+        "python/.venv-sibling/service.py",
+    )
+    for relative in paths:
+        path = project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("def execute(request):\n    exec(f\"{request.query['command']}\")\n")
+    artifact = project / "dist/assets/main.js"
+    artifact.parent.mkdir(parents=True)
+    token = "sk_live_" + "aB3cD5eF7gH9jK2mN4pQ6rS8tU0vW1xY"
+    artifact.write_text(f'const config={{secret:"{token}"}};' + "const x=1;" * 3000)
+    (project / ".gitignore").write_text("dist/\n")
+    before = scan(installation, project)
+    assert before.returncode == 0, before.stderr
+    findings = external.parse_react_doctor(before.stdout, root=project)
+    assert {
+        item.location.path for item in findings if item.rule_id == "react-doctor/command-execution-input-risk"
+    } == set(paths)
+    (project / "config.json").write_text(json.dumps({"ignore": {"files": ["**/.venv/**"]}}))
+    after = scan(installation, project)
+    assert after.returncode == 0, after.stderr
+    findings = external.parse_react_doctor(after.stdout, root=project)
+    assert {item.location.path for item in findings if item.rule_id == "react-doctor/command-execution-input-risk"} == {
+        ".cache/authored.py",
+        "python/.venv-sibling/service.py",
+    }
+    assert any(
+        item.rule_id == "react-doctor/artifact-secret-leak" and item.location.path == "dist/assets/main.js"
+        for item in findings
+    )
+
+
+def test_file_level_migration_exclusion_keeps_generated_security(installation: Path, project: Path) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    target = project / "src/components/ui/generated.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def execute(request):\n    exec(f\"{request.query['command']}\")\n")
+    value = "sk_live_" + "aB3cD5eF7gH9jK2mN4pQ6rS8tU0vW1xY"
+    artifact = project / "dist/assets/main.js"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(f'const config={{secret:"{value}"}};' + "const x=1;" * 3000)
+    (project / ".gitignore").write_text("dist/\n")
+    (project / ".sarj-standards.toml").write_text(
+        'schema = 4\nbundle = "9.4.9"\n[doctor]\nexclude = ["src/components/ui/generated.py", "dist/assets/main.js"]\n'
+    )
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise official security callbacks with a migration-only file exclusion.
+        project,
+        projects=(project,),
+        root=project,
+        runner=external.DEFAULT_EXECUTOR,
+        file_count=1,
+        staged=False,
+        full_scan=True,
+    )
+    assert report.completion is Completion.COMPLETE, report.issues
+    assert any(
+        item.rule_id == "react-doctor/command-execution-input-risk"
+        and item.location.path == "src/components/ui/generated.py"
+        for item in report.diagnostics
+    )
+    assert any(item.rule_id == "react-doctor/artifact-secret-leak" for item in report.diagnostics)

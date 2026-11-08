@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_iac_lint._hcl import Block
+    from sarj_iac_lint.guard_contracts import GuardContracts
 
 
 _RESOURCE_LABEL_COUNT = 2
@@ -40,13 +41,16 @@ class NoTerraformGuardBlocks(Rule):
             "explicit design policy, not a claim that Terraform conditions are invalid or always redundant."
         ),
         remediation=(
-            "Move any required invariant into its owning test or deployment preflight, then remove the guard block. "
+            "Preserve existing deployment safety invariants. Use reviewed immutable guard contracts when "
+            "removing a guard would change deployment behavior. For other guards, move an invariant only after "
+            "proving equivalent enforcement phase and behavior. "
             "Preserve Terraform types, provider validation, deletion protection and lifecycle settings. Review the "
             "behavior before removing a guard; no automatic deletion is provided."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Reviewed immutable existing-guard contracts may preserve exact path, owner, kind, condition and error identities through Core. Unlisted or changed guards retain ERROR; contracts are not baseline debt.",
             "Reports variable validation, resource/data/ephemeral lifecycle preconditions and postconditions, output preconditions, and top-level check blocks in .tf files.",
             "Ordinary conditional expressions, count, for_each, provider condition blocks, prevent_destroy and deletion protection are allowed.",
             "Comments, strings, heredoc payloads, provider blocks with similar names and Terraform test assertions are not guard blocks.",
@@ -165,6 +169,9 @@ class NoTerraformGuardBlocks(Rule):
     )
     description = documentation.summary
 
+    def __init__(self, contracts: GuardContracts | None = None) -> None:
+        self.contracts = contracts
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         documentation = self.documentation
@@ -178,9 +185,24 @@ class NoTerraformGuardBlocks(Rule):
                 self.code,
                 f"Terraform {block.type} guard blocks are prohibited; move required policy to tests or deployment preflight before removing the block.",
                 severity=documentation.default_level,
+                suppressible=self.contracts is None,
+                baselineable=self.contracts is None,
             )
-            for block in guard_blocks(path, source)
+            for block in self.prohibited_guards(path, source)
         ]
+
+    def prohibited_guards(self, path: Path, source: str) -> tuple[Block, ...]:
+        if self.contracts is None:
+            return guard_blocks(path, source)
+        parsed = document_result(source)
+        if not isinstance(parsed, ParsedDocument):
+            return guard_blocks(path, source)
+        return tuple(
+            guard
+            for owner in parsed.root.blocks
+            for guard in owned_guards(owner)
+            if not self.contracts.accepts(path, owner, guard)
+        )
 
 
 def guard_blocks(path: Path, source: str) -> tuple[Block, ...]:
@@ -192,10 +214,10 @@ def guard_blocks(path: Path, source: str) -> tuple[Block, ...]:
         return ()
     if not isinstance(parsed, ParsedDocument):
         return ()
-    return tuple(guard for owner in parsed.root.blocks for guard in _owned_guards(owner))
+    return tuple(guard for owner in parsed.root.blocks for guard in owned_guards(owner))
 
 
-def _owned_guards(owner: Block) -> Iterator[Block]:
+def owned_guards(owner: Block) -> Iterator[Block]:
     if owner.type == "check" and len(owner.labels) == 1:
         yield owner
         return

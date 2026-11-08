@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
@@ -293,3 +294,71 @@ def test_biome_seed_with_real_migration_leaves_biome_files_unchanged(tmp_path: P
     assert seed.source == "biome"
     assert report.completion is Completion.COMPLETE, report.issues
     assert {diagnostic.location.path for diagnostic in report.diagnostics} == {"source.ts", "wrangler.jsonc"}
+
+
+class _NamingFinding(BaseModel):
+    code: str
+    message: str
+
+
+class _NamingReport(BaseModel):
+    diagnostics: list[_NamingFinding]
+
+
+@needs_oxfmt
+def test_shared_formatting_preserves_wire_keys_and_native_naming_enforcement(tmp_path: Path) -> None:
+    _managed_project(tmp_path, {})
+    source = 'export const payload = { "external_wire_key": 1 };\nconsole.log(JSON.stringify(payload));\n'
+    target = tmp_path / "wire.mjs"
+    target.write_text(source, encoding="utf-8")
+    plugin = REPO_ROOT / "packages/typescript/dist/index.js"
+    (tmp_path / ".oxlintrc.json").write_text(
+        json.dumps(
+            {
+                "plugins": [],
+                "jsPlugins": [{"name": "@sarj", "specifier": str(plugin)}],
+                "categories": {"correctness": "off"},
+                "rules": {"@sarj/require-camelcase-properties": "error"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def naming_findings() -> list[_NamingFinding]:
+        result = subprocess.run(
+            [str(MODULES / ".bin/oxlint"), "-c", ".oxlintrc.json", "--format", "json", "--", target.name],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode in {0, 1}, result.stderr
+        report = _NamingReport.model_validate_json(result.stdout)
+        assert all(item.code == "@sarj(require-camelcase-properties)" for item in report.diagnostics), report
+        return report.diagnostics
+
+    def emitted_payload() -> str:
+        result = subprocess.run(
+            ["node", str(target)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout
+
+    assert naming_findings() == []
+    original_payload = emitted_payload()
+    formatted = _written(tmp_path, target.name)
+    assert naming_findings() == []
+    assert '"external_wire_key"' in formatted
+    assert emitted_payload() == original_payload == '{"external_wire_key":1}\n'
+    assert _written(tmp_path, target.name) == formatted
+
+    target.write_text(formatted + "export const adjacent = { new_unquoted_wire_key: 2 };\n", encoding="utf-8")
+    control = _written(tmp_path, target.name)
+    findings = naming_findings()
+    assert len(findings) == 1, findings
+    assert "new_unquoted_wire_key" in findings[0].message
+    assert emitted_payload() == original_payload
+    assert _written(tmp_path, target.name) == control
