@@ -2402,6 +2402,7 @@ jobs:
         primary.mkdir(parents=True, exist_ok=True)
         (primary / "package.json").write_text('{"packageManager":"pnpm@11.20.0"}\n', encoding="utf-8")
         (primary / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        (primary / "node_modules").mkdir()
         secondary = tmp_path / "secondary-app" / "web"
         secondary.mkdir(parents=True)
         (secondary / "package-lock.json").write_text("{}\n", encoding="utf-8")
@@ -2444,6 +2445,7 @@ jobs:
             (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - app\n", encoding="utf-8")
         elif workspace_metadata == "malformed":
             package.write_text("{", encoding="utf-8")
+        (tmp_path / "node_modules").mkdir()
         member = tmp_path / "app"
         member.mkdir()
         (member / "package-lock.json").write_text("{}\n", encoding="utf-8")
@@ -2456,6 +2458,29 @@ jobs:
 
         assert failure is None
         assert runner.commands == []
+
+    @pytest.mark.parametrize("installed", [False, True], ids=["routine-bump", "update-installed"])
+    def test_installs_an_empty_primary_javascript_root_before_bootstrap(
+        self, tmp_path: Path, *, installed: bool
+    ) -> None:
+        (tmp_path / "package.json").write_text('{"packageManager":"yarn@4.18.1"}\n', encoding="utf-8")
+        (tmp_path / "yarn.lock").write_text("__metadata:\n  version: 8\n", encoding="utf-8")
+        (tmp_path / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
+        if installed:
+            (tmp_path / "node_modules").mkdir()
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 4\nbundle = "9.2.3"\n\n[dest]\npython = "."\ntypescript = "."\n\n'
+            '[ci]\nbootstrap = ["yarn build:dependencies"]\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(0, "installed"), (0, "built")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is None
+        bootstrap = ("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "yarn build:dependencies")
+        install = ("yarn", "install", "--immutable", "--mode=skip-build")
+        assert runner.commands == ([bootstrap] if installed else [install, bootstrap])
 
     def test_stops_when_a_secondary_javascript_install_fails(self, tmp_path: Path) -> None:
         primary = tmp_path / "typescript"
