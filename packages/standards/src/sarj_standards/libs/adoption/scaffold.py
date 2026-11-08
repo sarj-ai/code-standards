@@ -2452,6 +2452,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
+            "          cache-python: true",
             "          cache-dependency-glob: |",
             "            .sarj-standards.toml",
             "            **/uv.lock",

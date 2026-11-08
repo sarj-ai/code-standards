@@ -33,6 +33,7 @@ jobs:
         with:
           version: '0.13.5'
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install repository-policy Python
         run: uv python install 3.15

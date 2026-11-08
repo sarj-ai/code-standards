@@ -60,6 +60,7 @@ jobs:
         with:
           version: '0.13.5'
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Resolve the exact bundle version
         id: version
@@ -142,6 +143,7 @@ jobs:
         with:
           version: '0.13.5'
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install the pinned mise bootstrap
         env:
@@ -225,6 +227,7 @@ jobs:
         with:
           version: '0.13.5'
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Mint the fleet rollout token
         id: app-token

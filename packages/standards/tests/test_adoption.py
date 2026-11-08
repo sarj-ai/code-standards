@@ -3396,6 +3396,25 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
         assert "npm ci --no-audit --no-fund" in rendered.stdout
 
 
+def test_generated_ci_reuses_uv_dependencies_and_python_without_skipping_checks(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    _typescript_repo(tmp_path)
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    workflow = _workflow_document(scaffold.github_ci_workflow(tmp_path))
+    job = manifest.as_table(manifest.as_table(workflow["jobs"])["standards"])
+    steps = [manifest.as_table(step) for step in manifest.list_field(job, "steps")]
+    uv_step = next(step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"))
+    uv_options = manifest.as_table(uv_step["with"])
+
+    assert uv_options["enable-cache"] is True
+    assert uv_options["cache-python"] is True
+    assert uv_options["cache-dependency-glob"] == ".sarj-standards.toml\n**/uv.lock\n"
+    javascript_install = next(step for step in steps if step.get("name") == "Install JavaScript dependencies")
+    assert steps.index(uv_step) < steps.index(javascript_install)
+    assert "uv sync --locked" in [step.get("run") for step in steps]
+    assert all("if" not in step for step in steps if "run" in step)
+
+
 def test_show_ci_syncs_every_uv_workspace_package_and_runs_configured_bootstrap(tmp_path: Path) -> None:
     python = tmp_path / "python"
     python.mkdir()
