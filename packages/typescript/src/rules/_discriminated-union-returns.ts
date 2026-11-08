@@ -54,9 +54,15 @@ interface ObjectContract {
   readonly optional: ReadonlySet<string>;
 }
 
+interface BooleanPair {
+  readonly left: string;
+  readonly right: string;
+}
+
 export interface DiscriminatedReturn {
   readonly reportNode: Node;
-  readonly tag: string;
+  readonly relationship: { readonly kind: "presence"; readonly tag: string } |
+    { readonly kind: "boolean-pair"; readonly fields: BooleanPair };
   readonly members: ReadonlyMap<string, ESTree.TSPropertySignature>;
   readonly returned: readonly ReadonlyMap<string, Node>[];
 }
@@ -79,10 +85,49 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: SourceCode
     if (member.optional) continue;
     const domain = tagDomain(member.typeAnnotation?.typeAnnotation);
     if (domain !== undefined && hasTagSpecificPayload(name, domain, shape.optional, returned)) {
-      return { reportNode: contract.reportNode, tag: name, members: shape.members, returned };
+      return { reportNode: contract.reportNode, relationship: { kind: "presence", tag: name }, members: shape.members, returned };
+    }
+  }
+  const fields = correlatedBooleanFields(shape, returned);
+  return fields === undefined ? undefined : {
+    reportNode: contract.reportNode, relationship: { kind: "boolean-pair", fields }, members: shape.members, returned,
+  };
+}
+
+/** Literal writes establish a producer relationship; neither spelling nor field count does. */
+function correlatedBooleanFields(
+  shape: ObjectContract,
+  returned: readonly ReadonlyMap<string, Node>[],
+): BooleanPair | undefined {
+  const fields = [...shape.members].filter(([, member]) => !member.optional &&
+    member.typeAnnotation?.typeAnnotation.type === "TSBooleanKeyword").map(([name]) => name);
+  if (fields.length > 8) return undefined;
+  for (const [index, left] of fields.entries()) {
+    for (const right of fields.slice(index + 1)) {
+      const combinations = booleanCombinations(left, right, returned);
+      if (combinations !== undefined && restrictedVaryingPair(combinations)) return { left, right };
     }
   }
   return undefined;
+}
+
+/** Read every producer write, abstaining when either field's value is opaque. */
+function booleanCombinations(left: string, right: string, returned: readonly ReadonlyMap<string, Node>[]): ReadonlySet<string> | undefined {
+  const combinations = new Set<string>();
+  for (const properties of returned) {
+    const a = properties.get(left);
+    const b = properties.get(right);
+    if (a?.type !== "Literal" || typeof a.value !== "boolean" || b?.type !== "Literal" || typeof b.value !== "boolean") return undefined;
+    combinations.add(`${Number(a.value)}${Number(b.value)}`);
+  }
+  return combinations;
+}
+
+/** Each axis must vary, and at least one of the four combinations must be absent. */
+function restrictedVaryingPair(combinations: ReadonlySet<string>): boolean {
+  if (combinations.size < 2 || combinations.size === 4) return false;
+  const values = [...combinations];
+  return [0, 1].every(index => values.some(value => value[index] === "0") && values.some(value => value[index] === "1"));
 }
 
 function returnContract(node: Producer, sourceCode: SourceCode): Contract | undefined {
@@ -136,7 +181,7 @@ function objectContract(elements: readonly ESTree.TSSignature[]): ObjectContract
     members.set(name, member);
     if (member.optional) optional.add(name);
   }
-  return optional.size === 0 ? undefined : { members, optional };
+  return { members, optional };
 }
 
 /** Compare produced keys with the declared contract before inferring their tag relationship. */
