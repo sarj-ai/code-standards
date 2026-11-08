@@ -2629,12 +2629,36 @@ def _append_javascript_ci(
             )
         )
     javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
-    if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
+    if ecosystems.client is PackageManager.PNPM and _pnpm_ci_cache_supported(root, install_root):
+        lines.extend(
+            (
+                "      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0",
+                "        with:",
+                "          cache: ${{ github.server_url == 'https://github.com' }}",
+            )
+        )
+    elif ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
         lines.extend(("      - name: Activate Corepack", "        run: corepack enable"))
     lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
     if install_root is not None and install_root != root:
         relative_install_root = install_root.relative_to(root).as_posix()
         lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
+
+
+def _pnpm_ci_cache_supported(root: Path, install_root: Path | None) -> bool:
+    # The action discovers the store from the checkout root, independently of its manifest/lockfile inputs.
+    if install_root != root or not (root / "pnpm-lock.yaml").is_file():
+        return False
+    document = _json_object(root / "package.json").document
+    if document is None or "packageManager" in manifest.table_field(document, "devEngines"):
+        return False
+    declared = manifest.text_field(document, "packageManager")
+    if declared is None or "+" in declared:
+        return False
+    try:
+        return packagemanager.declared_version(root, PackageManager.PNPM) is not None
+    except ValueError:
+        return False
 
 
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:

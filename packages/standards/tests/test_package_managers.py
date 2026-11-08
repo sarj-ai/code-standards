@@ -235,6 +235,87 @@ def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
     assert "yarn install --immutable" in berry
 
 
+@pytest.mark.parametrize("typescript_dest", [".", "services/web"])
+def test_ci_caches_root_pnpm_installs_and_always_runs_the_frozen_install(tmp_path: Path, typescript_dest: str) -> None:
+    _project(tmp_path, "pnpm-lock.yaml", {"name": "workspace", "packageManager": "pnpm@12.15.0"})
+    if typescript_dest != ".":
+        (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - services/*\n", encoding="utf-8")
+        web = tmp_path / typescript_dest
+        web.mkdir(parents=True)
+        (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    ecosystems = scaffold.detect(tmp_path, typescript_dest=typescript_dest)
+
+    workflow = scaffold.github_ci_workflow(tmp_path, ecosystems=ecosystems)
+
+    assert ecosystems.typescript_install_root == tmp_path
+    assert (
+        "      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0\n"
+        "        with:\n"
+        "          cache: ${{ github.server_url == 'https://github.com' }}\n"
+        "      - name: Install JavaScript dependencies\n"
+        "        run: pnpm install --frozen-lockfile --ignore-scripts\n"
+    ) in workflow
+    assert "corepack enable" not in workflow
+    assert "cache: pnpm" not in workflow
+    assert "working-directory:" not in workflow
+
+
+@pytest.mark.parametrize(
+    ("package_json", "has_lock"),
+    [
+        pytest.param({"name": "web"}, True, id="missing-version"),
+        pytest.param({"packageManager": 12}, True, id="non-string-version"),
+        pytest.param({"packageManager": "pnpm"}, True, id="missing-version-separator"),
+        pytest.param({"packageManager": "pnpm@latest"}, True, id="tag"),
+        pytest.param({"packageManager": "pnpm@^12.15.0"}, True, id="range"),
+        pytest.param({"packageManager": "pnpm@12.15"}, True, id="partial-version"),
+        pytest.param({"packageManager": "pnpm@012.15.0"}, True, id="invalid-version"),
+        pytest.param({"packageManager": "pnpm@12.15.0+sha512.abcdef"}, True, id="integrity"),
+        pytest.param(
+            {
+                "packageManager": "pnpm@12.15.0",
+                "devEngines": {"packageManager": {"name": "pnpm", "version": "12.14.0"}},
+            },
+            True,
+            id="competing-dev-engines",
+        ),
+        pytest.param({"packageManager": "pnpm@12.15.0"}, False, id="missing-lockfile"),
+    ],
+)
+def test_ci_preserves_corepack_when_root_pnpm_cache_requirements_are_missing(
+    tmp_path: Path, package_json: dict[str, JsonValue], has_lock: bool
+) -> None:
+    _project(tmp_path, "pnpm-lock.yaml", package_json)
+    if not has_lock:
+        (tmp_path / "pnpm-lock.yaml").unlink()
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    assert "corepack enable" in workflow
+    assert "pnpm/action-setup" not in workflow
+    assert "run: pnpm install --frozen-lockfile --ignore-scripts" in workflow
+
+
+def test_ci_preserves_corepack_for_an_independent_nested_pnpm_install(tmp_path: Path) -> None:
+    _project(tmp_path, "pnpm-lock.yaml", {"name": "tooling", "packageManager": "pnpm@12.15.0"})
+    web = tmp_path / "services" / "web # production"
+    web.mkdir(parents=True)
+    _project(web, "pnpm-lock.yaml", {"name": "web", "packageManager": "pnpm@12.15.0"})
+    (web / ".npmrc").write_text("store-dir=.pnpm-store\n", encoding="utf-8")
+    ecosystems = scaffold.detect(tmp_path, typescript_dest="services/web # production")
+
+    workflow = scaffold.github_ci_workflow(tmp_path, ecosystems=ecosystems)
+
+    assert ecosystems.typescript_install_root == web
+    assert "corepack enable" in workflow
+    assert "pnpm/action-setup" not in workflow
+    assert (
+        "      - name: Install JavaScript dependencies\n"
+        "        run: pnpm install --frozen-lockfile --ignore-scripts\n"
+        '        working-directory: "services/web # production"\n'
+    ) in workflow
+
+
 def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: Path) -> None:
     web = tmp_path / "services" / "web"
     web.mkdir(parents=True)
