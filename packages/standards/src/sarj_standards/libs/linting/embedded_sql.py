@@ -24,6 +24,7 @@ from sarj_standards.libs.json_boundary import parse_unique_json
 
 from .analysis import PythonSourceDocument, report_from_tools
 from .external import DEFAULT_EXECUTOR, process_request
+from .result_cache import CachedResult, cached_python_analysis
 from .sqlfluff_protocol import MAX_INPUT_BYTES, MAX_QUERIES, SQLFLUFF_VERSION, SQLRequest, SQLResponse, SQLViolation
 
 
@@ -60,7 +61,12 @@ def with_embedded_sql(
 ) -> AnalysisReport:
     if adopted is None or "sqlfluff" not in adopted.enabled_capabilities or not files:
         return report
-    embedded = analyze_sources(files, root=report.root)
+
+    def run() -> CachedResult:
+        analyzed = analyze_sources(files, root=report.root)
+        return CachedResult(analyzed.tools, analyzed.coverage)
+
+    embedded = cached_python_analysis("sqlfluff-embedded", report.root, selected=files, parameters=(), compute=run)
     filtered = tuple(
         ToolReport(
             tool.name,
@@ -71,7 +77,7 @@ def with_embedded_sql(
             version=tool.version,
             file_count=tool.file_count,
         )
-        for tool in embedded.tools
+        for tool in embedded.reports
     )
     return report_from_tools(report.root, (*report.tools, *filtered), coverage=(*report.coverage, *embedded.coverage))
 
