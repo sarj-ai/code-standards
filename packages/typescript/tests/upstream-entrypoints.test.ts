@@ -74,6 +74,8 @@ for (const {name,specifier} of ${JSON.stringify(jsPlugins(MANAGED))}) {
 await import("oxlint-plugin-react-doctor");
 await import("oxlint-plugin-react-doctor/core");
 await import("@sarj/eslint-plugin");
+const next = (await import("@sarj/eslint-plugin/next")).default;
+if (Object.keys(next.rules).join() !== "no-location-assign-relative-destination") throw new Error("Unexpected Next rule export");
 console.log(JSON.stringify(loaded));`,
   );
   const loaded = JSON.parse(command(process.execPath, ["probe.mjs"])) as {
@@ -90,7 +92,13 @@ console.log(JSON.stringify(loaded));`,
       .map((id) => id.slice(alias.length + 1))
       .sort();
   for (const { name, specifier } of jsPlugins(MANAGED)) {
-    if (specifier.startsWith("@sarj/eslint-plugin/")) expect(loaded[name]).toEqual(selected(name));
+    if (specifier.startsWith("@sarj/eslint-plugin/"))
+      expect(loaded[name]).toEqual(
+        [
+          ...selected(name),
+          ...(name === "unicorn-js" ? ["prefer-https", "prefer-switch"] : []),
+        ].sort(),
+      );
     else expect(loaded[name]).toEqual(expect.arrayContaining(selected(name)));
   }
 });
@@ -147,4 +155,103 @@ export default {
   expect(await readFile(join(ROOT, "invalid.ts"), "utf8")).toBe(
     '/** implementation */\nexport function fail(value: unknown) { if (typeof value !== "string") throw new TypeError("Expected a string"); }\n',
   );
+});
+
+it("executes the opt-in Next rule from the fresh package under the ESLint import guard", async () => {
+  await writeFile(
+    join(ROOT, "next.config.mjs"),
+    `import "./guard.mjs";
+export default {categories:{correctness:"off"},env:{browser:true},
+jsPlugins:[{name:"next-js",specifier:"@sarj/eslint-plugin/next"}],
+rules:{"next-js/no-location-assign-relative-destination":"error"}};`,
+  );
+  await writeFile(
+    join(ROOT, "next.ts"),
+    "const a=b; const b=a; location.assign(a); location.assign('/A'.toLowerCase());\n",
+  );
+  const result = spawnSync(
+    process.execPath,
+    ["node_modules/oxlint/bin/oxlint", "-c", "next.config.mjs", "--format=json", "next.ts"],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      timeout: 30_000,
+    },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(1);
+  const output = JSON.parse(result.stdout) as {
+    diagnostics: { code: string; filename: string; message: string }[];
+  };
+  expect(output.diagnostics).toHaveLength(1);
+  expect(output.diagnostics[0]).toMatchObject({
+    code: "next-js(no-location-assign-relative-destination)",
+    filename: "next.ts",
+  });
+  expect(output.diagnostics[0]?.message).toContain("Do not use `location.assign()`");
+});
+
+it("runs opt-in Unicorn HTTPS and switch rules with findings and fixes under the import guard", async () => {
+  expect(MANAGED.rules).not.toHaveProperty("unicorn-js/prefer-https");
+  expect(MANAGED.rules).not.toHaveProperty("unicorn-js/prefer-switch");
+  await writeFile(
+    join(ROOT, "unicorn.config.mjs"),
+    `import "./guard.mjs";
+export default {categories:{correctness:"off"},
+jsPlugins:[{name:"unicorn-policy",specifier:"@sarj/eslint-plugin/unicorn"}],
+rules:{"unicorn-policy/prefer-https":"error","unicorn-policy/prefer-switch":"error"}};`,
+  );
+  await writeFile(
+    join(ROOT, "unicorn.ts"),
+    `const url = "http://api.github.com/path";
+function choose(value: number) {
+  if (value === 1) return "one";
+  else if (value === 2) return "two";
+  else if (value === 3) return "three";
+  return "other";
+}
+const secure = "https://api.github.com/path";
+const namespace = "http://www.w3.org/2000/svg";
+const local = "http://localhost:3000";
+function short(value: number) { if(value === 1) return 1; else if(value === 2) return 2; }
+`,
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import=./guard.mjs",
+      "node_modules/oxlint/bin/oxlint",
+      "-c",
+      "unicorn.config.mjs",
+      "--format=json",
+      "unicorn.ts",
+    ],
+    { cwd: ROOT, encoding: "utf8", timeout: 30_000 },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(1);
+  const output = JSON.parse(result.stdout) as { diagnostics: { code: string }[] };
+  expect(output.diagnostics.map((item) => item.code).sort()).toEqual([
+    "unicorn-policy(prefer-https)",
+    "unicorn-policy(prefer-switch)",
+  ]);
+  command(process.execPath, [
+    "--import=./guard.mjs",
+    "node_modules/oxlint/bin/oxlint",
+    "-c",
+    "unicorn.config.mjs",
+    "--fix",
+    "unicorn.ts",
+  ]);
+  const fixed = await readFile(join(ROOT, "unicorn.ts"), "utf8");
+  expect(fixed).toContain('"https://api.github.com/path"');
+  expect(fixed).toContain("switch (value)");
+  expect(fixed).toContain('"http://www.w3.org/2000/svg"');
+  command(process.execPath, [
+    "--import=./guard.mjs",
+    "node_modules/oxlint/bin/oxlint",
+    "-c",
+    "unicorn.config.mjs",
+    "unicorn.ts",
+  ]);
 });

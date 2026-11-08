@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+import sys
 
 from pydantic import BaseModel, JsonValue, RootModel
 import pytest
 
-from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 
 
@@ -421,3 +422,180 @@ def test_html_skips_external_and_inert_scripts(installation: Path, project: Path
     output = scan(installation, project)
     assert output.returncode == 0, output.stderr
     assert Report.model_validate_json(output.stdout).diagnostics == ()
+
+
+def test_authored_module_overlay_through_request(installation: Path, project: Path) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    (project / "doctor.config.json").write_text((project / "config.json").read_text())
+    (project / "doctor.config.ts").write_text(
+        'import managed from "./doctor.config.json" with { type: "json" };\n'
+        'export default {...managed, ignore: {...managed.ignore, files: ["src/view.tsx", "firestore.rules"]}};\n'
+    )
+    reports = external.analyze_external(
+        (str(project / "src/view.tsx"),),
+        root=project,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+        react_doctor_full_scan=True,
+        typescript=False,
+    )
+    report = next(item for item in reports if item.name == "react-doctor")
+    assert report.completion is Completion.COMPLETE
+    assert not report.diagnostics
+
+
+def test_untrusted_overlay_never_executes(installation: Path, project: Path) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    marker = project / "executed"
+    (project / "doctor.config.mjs").write_text(
+        'import {writeFileSync} from "node:fs";\n'
+        f'writeFileSync({json.dumps(str(marker))}, "executed"); export default {{}};\n'
+    )
+    reports = external.analyze_external(
+        (str(project / "src/view.tsx"),),
+        root=project,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+        react_doctor_full_scan=True,
+        typescript=False,
+    )
+    report = next(item for item in reports if item.name == "react-doctor")
+    assert report.completion is Completion.FAILED
+    assert "--trust-repository-code" in str(report.issues)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("staged", [False, True])
+@pytest.mark.parametrize("extension", ["ts", "mts", "js", "mjs", "cts", "cjs"])
+def test_overlay_preserves_security_and_exact_artifact_boundaries(
+    installation: Path, project: Path, extension: str, *, staged: bool
+) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    (project / "package.json").write_text('{"type":"module","dependencies":{"react":"19.2.8"}}')
+    installed = [
+        ".venv/lib/adapter.py",
+        "python/.venv/lib/adapter.py",
+        "python/embedder/.venv/lib/adapter.py",
+        "python/future/service/.venv/lib/adapter.py",
+    ]
+    authored = ["python/service.py", "python/.venv-sibling/service.py", "python/.venv.py"]
+    inherited = ["python/managed-file.py", "python/managed-rule.py"]
+    for path in [*installed, *authored, *inherited]:
+        target = project / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("def execute(request):\n    exec(f\"{request.query['command']}\")\n")
+    for path in ["docs/snippets/voice-sample.jsx", "docs/snippets/sibling.jsx", "src/authored.jsx"]:
+        target = project / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("export const Example = () => <MissingComponent />;\n")
+    config = JsonDocument.model_validate_json((project / "config.json").read_text()).root
+    config["ignore"] = {
+        "files": ["python/managed-file.py"],
+        "overrides": [{"files": ["python/managed-rule.py"], "rules": ["react-doctor/command-execution-input-risk"]}],
+    }
+    (project / "doctor.config.json").write_text(json.dumps(config))
+    unbounded = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Prove the official callbacks detect installed and authored fixtures before overlay exclusions.
+        project,
+        projects=(project,),
+        root=project,
+        runner=external.DEFAULT_EXECUTOR,
+        file_count=1,
+        staged=False,
+        full_scan=True,
+    )
+    assert unbounded.completion is Completion.COMPLETE, unbounded.issues
+    assert sorted(
+        item.location.path
+        for item in unbounded.diagnostics
+        if item.rule_id == "react-doctor/command-execution-input-risk"
+    ) == sorted([*installed, *authored])
+    assert sorted(
+        item.location.path for item in unbounded.diagnostics if item.rule_id == "react-doctor/jsx-no-undef"
+    ) == ["docs/snippets/sibling.jsx", "docs/snippets/voice-sample.jsx", "src/authored.jsx"]
+    (project / f"doctor.config.{extension}").write_text(
+        'import managed from "./doctor.config.json" with { type: "json" };\n'
+        "export default {...managed, ignore: {...managed.ignore,\n"
+        'files: [...managed.ignore.files, "**/.venv/**"],\n'
+        'overrides: [...managed.ignore.overrides, {files: ["docs/snippets/voice-sample.jsx"], '
+        'rules: ["react-doctor/jsx-no-undef"]}]}};\n'
+    )
+    wrapper = project / f"doctor.config.{extension}"
+    if extension in {"cts", "cjs"}:
+        wrapper.write_text(
+            wrapper.read_text()
+            .replace(
+                'import managed from "./doctor.config.json" with { type: "json" };',
+                'const managed = require("./doctor.config.json");',
+            )
+            .replace("export default", "module.exports =")
+        )
+    if staged:
+        assert execute(project, "git", "add", ".").returncode == 0
+        wrapper.write_text("throw new Error('unstaged config must not execute');\n")
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- Exercise published adapter with authored module semantics.
+        project,
+        projects=(project,),
+        root=project,
+        runner=external.DEFAULT_EXECUTOR,
+        file_count=1,
+        staged=staged,
+        full_scan=True,
+        trust_repository_code=True,
+    )
+    assert report.completion is Completion.COMPLETE, report.issues
+    assert sorted(
+        item.location.path for item in report.diagnostics if item.rule_id == "react-doctor/command-execution-input-risk"
+    ) == sorted(authored)
+    assert sorted(item.location.path for item in report.diagnostics if item.rule_id == "react-doctor/jsx-no-undef") == [
+        "docs/snippets/sibling.jsx",
+        "src/authored.jsx",
+    ]
+    assert "react-doctor/firebase-permissive-rules" in {item.rule_id for item in report.diagnostics}
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+def test_cli_overlay_requires_explicit_trust(installation: Path, project: Path, *, trusted: bool) -> None:
+    (project / "node_modules").symlink_to(installation / "node_modules", target_is_directory=True)
+    (project / "src/view.tsx").write_text("export const View = () => <div />;\n")
+    (project / "firestore.rules").unlink()
+    (project / "doctor.config.ts").write_text('export default {ignore: {files: ["src/view.tsx"]}};\n')
+    output = execute(
+        project,
+        sys.executable,
+        "-m",
+        "sarj_standards",
+        "--root",
+        str(project),
+        "check",
+        "--skip-typescript",
+        "--skip-python-type-check",
+        "--format",
+        "json",
+        *(("--trust-repository-code",) if trusted else ()),
+        "src/view.tsx",
+    )
+    assert output.returncode == (0 if trusted else 2), output.stdout + output.stderr
+    if not trusted:
+        assert "--trust-repository-code" in output.stdout + output.stderr
+
+
+def test_artifact_pem_removal_keeps_same_artifact_secrets(installation: Path, project: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures/doctor/artifact-pem.mjs"
+    output = execute(
+        installation,
+        "node",
+        str(fixture),
+        str(installation),
+        (CONFIGS / "react-doctor-artifact-pem.mjs").as_uri(),
+        str(project),
+        guarded=True,
+    )
+    assert output.returncode == 0, output.stderr
+    result = scan(installation, project)
+    assert result.returncode == 0, result.stderr
+    findings = external.parse_react_doctor(result.stdout, root=project)
+    artifacts = {item.location.path for item in findings if item.rule_id == "react-doctor/artifact-secret-leak"}
+    assert artifacts == {"dist/key.js", "dist/after.js", "dist/after.js.map", "dist/lookalike.js", "dist/data.js"}
+    assert "react-doctor/firebase-permissive-rules" in {item.rule_id for item in findings}

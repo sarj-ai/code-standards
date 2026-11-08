@@ -54,12 +54,18 @@
       "alias": "@eslint-react",
       "name": "@eslint-react/eslint-plugin",
       "subpath": "react-correctness"
+    },
+    {
+      "alias": "next-js",
+      "name": "@next/eslint-plugin-next",
+      "subpath": "next"
     }
   ],
-  "sourceLockSha256": "b95de6b1d6d58cb5b922a90d63baa0e0721003f7ac97d69b0b02d900383d53e1",
+  "sourceLockSha256": "5f93fe9fd2df94ba577b24945979ab54365780216953721e921c6e9d5acd935e",
   "files": {
     "effects.js": "ce454255877d2d89f796aff020ec5b6c6133628030ff1bbb51b11a6b76f67b9f",
     "jsdoc-js.js": "b6fc2b19cdcae9329a3884cde566b50d044c5a7d6f7d461d3f08f62d48dd7f71",
+    "next.js": "590fe0257708a6029d26e26d1e86c39586bb078fc80736ad3382e28fd038eb9e",
     "node-test.js": "3336c85999e20dc0f8f3b491bfd92ee95d9bbdbfddfd9dcd131dc37c44f68f6e",
     "playwright.js": "5c6d2ec4149c324523807b8fcf5eaf6ebcfad3d6131c46a6cf0a8699854805f6",
     "query.js": "305ec195f5be112a70cf2473d601c4553740c48af8df6f3cb116d8ab0aec610e",
@@ -68,6 +74,6 @@
     "regexp.js": "350c19cc384c30e286931da26b2c02517cfd9cc106a61aa7743e59d2a222d989",
     "security.js": "c992ff825e072cc37be8047f14a04b8984fd3c8b076b166032f1a8f016562210",
     "testing-library.js": "f76086be785a57e27bd6f8950661e238fdb8cb7090784f19f2e5aa8d7ba8f85e",
-    "unicorn-js.js": "70f84b49a1d5280cbddcad2a35d85a0eddd67ca1efea19ed5cc36eee0ca6e2ec"
+    "unicorn-js.js": "38d8fcc9411b2e0115cef4cba8d05e868e3122275e1133cbf775e89a44b89d2b"
   }
 }

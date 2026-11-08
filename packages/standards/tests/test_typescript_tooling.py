@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
+import subprocess
 
 import pytest
 
 from sarj_standards._meta import CONFIGS_DIR
-from sarj_standards.libs.adoption import transaction, typescript_migration, typescript_tooling
+import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import transaction, typescript_migration, typescript_tooling, upgrade
+from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import autofix, oxfmt
 
 
 _MODULES = Path(__file__).resolve().parents[2] / "typescript" / "node_modules"
@@ -149,3 +154,80 @@ def test_real_oxfmt_roundtrip_is_idempotent(tmp_path: Path) -> None:
         files.remove_file(path)
     typescript_tooling.finish(root, root, files, written=tuple(path for path, _ in seeding.writes))
     assert not typescript_tooling.plan_oxfmt_config(root).writes
+
+
+def test_update_keeps_required_astro_activation(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\nexport default createConfig({astro: true});\n',
+            "package.json": '{"devDependencies":{"@astrojs/compiler-rs":"0.5.2"}}',
+        },
+    )
+
+    seeding = typescript_tooling.plan_oxfmt_config(root)
+
+    assert not seeding.errors
+    assert not seeding.writes
+    assert not seeding.deletes
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("staged", [False, True])
+def test_astro_adoption_update_and_explicit_staged_formatting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, legacy: bool, staged: bool
+) -> None:
+    if not (_MODULES / "@astrojs/compiler-rs/package.json").is_file():
+        pytest.skip("requires @astrojs/compiler-rs 0.5.2 alongside the pinned oxfmt")
+    config = (
+        {".oxfmtrc.json": '{"astro":true,"printWidth":120}\n'}
+        if legacy
+        else {
+            "oxfmt.config.mts": 'import { createConfig } from "./oxfmt.strict.mts";\nexport default createConfig({astro: true});\n'
+        }
+    )
+    root = _repository(
+        tmp_path,
+        {
+            **config,
+            "package.json": '{"name":"consumer","private":true,"devDependencies":{"@astrojs/compiler-rs":"0.5.2"}}\n',
+            "tsconfig.json": '{"compilerOptions":{"strict":true},"include":["*.ts"]}\n',
+            "source.ts": "export const value = 1;\n",
+            "view.astro": '<div><span class="hello">world</span></div>\n',
+        },
+    )
+    _with_tools(root)
+    assert cli.main(["--root", str(root), "setup", "--no-install"]) == 0
+    package = parse_json((root / "package.json").read_text())
+    assert isinstance(package, dict)
+    dependencies = package["devDependencies"]
+    assert isinstance(dependencies, dict)
+    assert dependencies["@astrojs/compiler-rs"] == "0.5.2"
+    assert oxfmt.seed_config(root).options["astro"] is True
+    plan = upgrade.build_plan(root)
+    assert not any(path.name == "oxfmt.config.mts" for path, _ in plan.scaffold_plan.edits)
+    assert not typescript_tooling.plan_oxfmt_config(root).writes
+    # Exercise the unpublished candidate, rather than resolving the registry updater.
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    assert capsys.readouterr().out
+    before = (root / "oxfmt.config.mts").read_bytes()
+    assert cli.main(["--root", str(root), "update", "--check", "--no-install"]) in {0, 1}
+    assert "oxfmt.config.mts" not in capsys.readouterr().out
+    assert (root / "oxfmt.config.mts").read_bytes() == before
+
+    (root / "view.astro").write_text('<div><span class="hello">world</span></div>\n')
+    selected = ["view.astro"]
+    report = oxfmt.analyze(selected, project=root, root=root)
+    assert report.completion is Completion.COMPLETE
+    assert [finding.location.path for finding in report.diagnostics] == selected
+    if staged:
+        subprocess.run(("git", "init", "--quiet", "--template="), cwd=root, check=True)
+        subprocess.run(("git", "add", "view.astro"), cwd=root, check=True)
+        assert cli.main(["--root", str(root), "check", "--staged", "--fix", "--trust-repository-code"]) == 1
+        assert "Safe fixes applied" in capsys.readouterr().err
+        subprocess.run(("git", "add", "view.astro"), cwd=root, check=True)
+        assert cli.main(["--root", str(root), "check", "--staged", "--trust-repository-code"]) == 0
+    else:
+        assert autofix.run(root, tuple(selected), trusted=True).status == 0
+    assert not oxfmt.analyze(selected, project=root, root=root).diagnostics
+    assert (root / "view.astro").read_text() != '<div><span class="hello">world</span></div>\n'

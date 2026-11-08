@@ -282,8 +282,14 @@ def test_fix_tool_output_preserves_machine_stdout(
     tool.write_text('print("fixture tool output")\n', encoding="utf-8")
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted
@@ -356,8 +362,14 @@ def test_failed_fix_tool_stops_remaining_commands_and_reports_infrastructure_fai
     executed: list[str] = []
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted
@@ -464,8 +476,14 @@ def test_check_fixes_report_failed_child_without_corrupting_machine_stdout(
     child.write_text('import sys\nprint("child detail")\nprint("child failure", file=sys.stderr)\nsys.exit(2)\n')
 
     def commands(
-        root: Path, paths: Iterable[str], *, trusted: bool = True, typescript: bool = True
+        root: Path,
+        paths: Iterable[str],
+        *,
+        trusted: bool = True,
+        typescript: bool = True,
+        format_only_paths: frozenset[str] = frozenset(),
     ) -> list[lifecycle.Command]:
+        assert not format_only_paths
         assert root == tmp_path
         assert tuple(paths) == (str(source),)
         assert not trusted

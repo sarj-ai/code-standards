@@ -2472,6 +2472,11 @@ def _apply_safe_fixes(
 
     requested = files if files or scoped else [str(root)]
     try:
+        format_only_paths: frozenset[str] = frozenset()
+        if args.staged and args.trust_repository_code:
+            from sarj_standards.libs.linting import format_only  # ruff: ignore[import-outside-top-level] -- the staged formatter proof needs the provisioned native runtime only for a trusted fix.
+
+            format_only_paths = format_only.equivalent_paths(root, files, staged=True)
         return autofix.run(
             root,
             requested,
@@ -2479,6 +2484,7 @@ def _apply_safe_fixes(
             typescript=args.typescript,
             machine_output=args.output_format != "text",
             default_scope=not files and not scoped,
+            format_only_paths=format_only_paths,
         )
     except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
         print(f"error: cannot apply safe fixes: {exc}", file=sys.stderr)
@@ -3450,7 +3456,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             bool,
             typer.Option(
                 "--trust-repository-code",
-                help="allow executable repository Oxlint and oxfmt configuration (generated hooks and CI set this explicitly)",
+                help="allow executable repository Oxlint, oxfmt and Doctor configuration (generated hooks and CI set this explicitly)",
             ),
         ] = False,
         jobs: Annotated[
@@ -4500,7 +4506,9 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         output: Annotated[Path | None, typer.Option("--output")] = None,
         trust_repository_code: Annotated[
             bool,
-            typer.Option("--trust-repository-code", help="allow executable repository Oxlint and oxfmt configuration"),
+            typer.Option(
+                "--trust-repository-code", help="allow executable repository Oxlint, oxfmt and Doctor configuration"
+            ),
         ] = False,
         files: Annotated[list[str] | None, typer.Argument()] = None,
     ) -> int:

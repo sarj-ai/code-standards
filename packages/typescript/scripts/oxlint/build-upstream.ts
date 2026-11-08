@@ -1,4 +1,4 @@
-// Publish only the upstream rules the managed preset uses. Importing each full
+// Publish selected managed rules and explicit opt-in compatibility rules. Importing each full
 // plugin also initializes unrelated rules, including rules that load ESLint.
 // Normal builds verify and copy the reviewed rule bundles.
 // sources.lock.json is provenance, not an install input for this package.
@@ -28,6 +28,7 @@ const PLUGINS = [
   ["testing-library", "eslint-plugin-testing-library", "testing-library"],
   ["playwright", "eslint-plugin-playwright", "playwright"],
   ["@eslint-react", "@eslint-react/eslint-plugin", "react-correctness"],
+  ["next-js", "@next/eslint-plugin-next", "next"],
 ] as const;
 
 // Ordinary builds consume reviewed, engine-free snapshots. Upstream source
@@ -62,13 +63,16 @@ const PRESET = await readFile(
 );
 // Rule tables precede createConfig; later settings use plugin-qualified keys too.
 const RULE_IDS: readonly string[] = [
-  ...new Set(
-    [
+  ...new Set([
+    ...[
       ...PRESET.split("export function createConfig")[0]!.matchAll(
         /"((?:unicorn-js|jsdoc-js|react-js|regexp|security|@tanstack\/query|effects|node-test|testing-library|playwright|@eslint-react)\/[^" ]+)"\s*:/gu,
       ),
     ].map((match) => match[1]!),
-  ),
+    // Existing authored policies can opt in without the full plugin's ESLint peer.
+    "unicorn-js/prefer-https",
+    "unicorn-js/prefer-switch",
+  ]),
 ];
 const ENGINE = /(?:^|\/)node_modules\/eslint\//u;
 const BUILTIN_RULE_EXPORT = "export {default as getBuiltinRule} from './get-builtin-rule.js';";
@@ -95,6 +99,42 @@ const SELECTED_UNICORN_UTILITIES: Plugin = {
 const PURE_HELPERS: Plugin = {
   name: "pure-upstream-helpers",
   setup(builder) {
+    builder.onLoad(
+      {
+        filter:
+          /@next\/eslint-plugin-next\/dist\/rules\/no-location-assign-relative-destination\.js$/,
+      },
+      async ({ path }) => {
+        const source = await readFile(path, "utf8");
+        const signature = "function getStaticStringPrefix(node, sourceCode) {";
+        const binaryRecursion = "getStaticStringPrefix(node.left, sourceCode)";
+        const aliasRecursion = "getStaticStringPrefix(lastWriteExpr, sourceCode)";
+        const ending = "    return null;\n}\n";
+        if (
+          !source.includes(signature) ||
+          !source.includes(binaryRecursion) ||
+          !source.includes(aliasRecursion) ||
+          !source.endsWith(ending)
+        )
+          throw new Error(`Next prefix resolver changed: ${path}`);
+        // Next 16.4.1 recurses forever on cyclic aliases. Track only the current
+        // evaluation path; sibling/repeated evaluations and relative prefixes
+        // retain upstream behavior. A cyclic branch has an unknown prefix.
+        return {
+          contents:
+            source
+              .replace(
+                signature,
+                `${signature.slice(0, -3)}, seen = new Set()) {\n    if (seen.has(node)) return null;\n    seen.add(node);\n    try {`,
+              )
+              .replace(binaryRecursion, "getStaticStringPrefix(node.left, sourceCode, seen)")
+              .replace(aliasRecursion, "getStaticStringPrefix(lastWriteExpr, sourceCode, seen)")
+              .slice(0, -ending.length) +
+            "    return null;\n    } finally { seen.delete(node); }\n}\n",
+          loader: "js",
+        };
+      },
+    );
     builder.onLoad({ filter: /eslint-plugin-react\/lib\/util\/message\.js$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
       if (!source.includes("semver.satisfies(eslintPkg.version, '>= 4.15')"))
@@ -113,7 +153,10 @@ const PURE_HELPERS: Plugin = {
         const chained = "exports.visitorKeys = exports.getKeys = void 0;";
         if (!source.includes(chained)) throw new Error(`Visitor exports changed: ${path}`);
         return {
-          contents: source.replace(chained, "exports.getKeys = void 0; exports.visitorKeys = void 0;"),
+          contents: source.replace(
+            chained,
+            "exports.getKeys = void 0; exports.visitorKeys = void 0;",
+          ),
           loader: "js",
         };
       },
@@ -132,9 +175,18 @@ export * as ESLintUtils from ${JSON.stringify(join(dirname(path), "eslint-utils/
 for (const [alias, name, subpath] of PLUGINS) {
   // Refresh inputs are direct dependencies in the locked npm source fixture.
   const packageRoot = join(sourceRoot, "node_modules", name);
-  const directRules = ["unicorn-js", "jsdoc-js", "react-js"].includes(alias);
-  const root = directRules ? dirname(resolveSource(name)) : packageRoot;
-  const rules = RULE_IDS.filter((id) => id.startsWith(`${alias}/`))
+  const directRules = ["unicorn-js", "jsdoc-js", "react-js", "next-js"].includes(alias);
+  const root =
+    alias === "next-js"
+      ? join(packageRoot, "dist")
+      : directRules
+        ? dirname(resolveSource(name))
+        : packageRoot;
+  // Next is an opt-in compatibility export, never part of the default profile.
+  const rules = (
+    alias === "next-js" ? ["next-js/no-location-assign-relative-destination"] : RULE_IDS
+  )
+    .filter((id) => id.startsWith(`${alias}/`))
     .map((id) => id.slice(alias.length + 1))
     .sort();
   const imports = rules.map((rule, index) => {
@@ -165,7 +217,7 @@ for (const [alias, name, subpath] of PLUGINS) {
       resolveDir: sourceRoot,
     },
     absWorkingDir: PACKAGE_DIR,
-    outfile: join(SNAPSHOTS, `${directRules ? alias : subpath}.js`),
+    outfile: join(SNAPSHOTS, `${directRules && alias !== "next-js" ? alias : subpath}.js`),
     bundle: true,
     write: false,
     platform: "node",

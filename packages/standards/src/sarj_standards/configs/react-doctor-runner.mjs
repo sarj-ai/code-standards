@@ -214,7 +214,9 @@ function runNativeBatch(files, root, configPath, config) {
     throw new Error(`Oxlint failed: ${result.stderr || result.stdout}`);
   }
   if (report["number_of_files"] !== files.length)
-    throw new Error(`Oxlint analyzed ${report["number_of_files"]} of ${files.length} selected files`);
+    throw new Error(
+      `Oxlint analyzed ${report["number_of_files"]} of ${files.length} selected files`,
+    );
   for (const record of report.diagnostics) {
     if (!record.code || record.message.startsWith("Error running JS plugin"))
       throw new Error(`Oxlint failed: ${record.message}`);
@@ -290,12 +292,25 @@ try {
   const originalPath = request.staged ? stagedRequest(request, temporary) : (path) => path;
   for (const project of request.projects.filter(selectedProject)) {
     project.fullScan = fullProjectScope(project);
-    const config = JSON.parse(readFileSync(request.config, "utf8"));
+    let config;
+    if (request.config.endsWith(".json")) {
+      config = JSON.parse(readFileSync(request.config, "utf8"));
+    } else {
+      if (request.trustRepositoryCode !== true)
+        throw new Error("Executable Doctor config requires --trust-repository-code");
+      config = (await import(pathToFileURL(request.config).href)).default;
+    }
+    // eslint-disable-next-line @sarj/no-runtime-typeof -- Module exports and parsed JSON are raw boundary values; reject non-object configs before native callbacks.
+    if (config === null || typeof config !== "object" || Array.isArray(config))
+      throw new Error("Doctor config must export an object");
     project.files = selectedSources(project);
     const settings = projectSettings(project.root, core, request.repositoryRoot, parseSync);
     const findings = [
       ...nativeDiagnostics(project, config, settings),
-      ...scanSecurity(project.root, core, config, project.excluded, isExcluded),
+      ...scanSecurity(project.root, core, config, project.excluded, isExcluded, {
+        parseSync,
+        visitorKeys,
+      }),
     ];
     diagnostics.push(
       ...findings.map((finding) => ({

@@ -118,7 +118,7 @@ _MAX_MOBILE_CONFIG_BYTES = 1024 * 1024
 _PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
 _SECURITY_BATCH_SIZE = 250
-_MAX_OXLINT_PROJECTS = 32
+_MAX_OXLINT_PROJECTS = 128
 _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
@@ -467,6 +467,7 @@ def analyze_external(
                 staged=react_doctor_staged,
                 full_scan=react_doctor_full_scan,
                 paths=contained,
+                trust_repository_code=normalized_trust is TrustMode.TRUSTED,
                 include_compiler=not (typescript and (capabilities is None or TYPESCRIPT_CAPABILITY in capabilities)),
             )
         )
@@ -1241,17 +1242,23 @@ def _invoke_react_doctor(
     full_scan: bool = False,
     paths: Sequence[str] = (),
     include_compiler: bool = True,
+    trust_repository_code: bool = False,
 ) -> ToolReport:
     # Project discovery and staged execution stay in Standards. The adapter invokes
     # only the official native plugin and its public project-security callbacks.
     adopted = manifest.load(root)
+    config = next(
+        (
+            project / f"doctor.config.{suffix}"
+            for suffix in ("ts", "mts", "js", "mjs", "cts", "cjs", "json")
+            if (project / f"doctor.config.{suffix}").is_file()
+        ),
+        _PACKAGED_MOBILE_CONFIGS / "doctor.config.json",
+    )
     request = {
         "installRoot": str(packagemanager.workspace_root(project, root)),
-        "config": str(
-            project / "doctor.config.json"
-            if (project / "doctor.config.json").is_file()
-            else _PACKAGED_MOBILE_CONFIGS / "doctor.config.json"
-        ),
+        "config": str(config),
+        "trustRepositoryCode": trust_repository_code,
         "repositoryRoot": str(root),
         "includeCompiler": include_compiler,
         "staged": staged,

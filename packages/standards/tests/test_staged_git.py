@@ -381,9 +381,11 @@ def test_default_react_runner_receives_validated_index_without_changing_security
         staged: bool,
         full_scan: bool = False,
         paths: Sequence[str] = (),
+        trust_repository_code: bool = False,
         include_compiler: bool = True,
     ) -> api.ToolReport:
         assert tuple(paths) == (str(source),)
+        assert trust_repository_code
         assert include_compiler
         assert project == root == tmp_path
         assert tuple(projects) == (tmp_path,)

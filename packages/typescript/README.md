@@ -10,7 +10,9 @@ npm install --save-dev @sarj/eslint-plugin
 
 Version 19 is an Oxlint JS plugin. Load it as `jsPlugins: [{ name: "@sarj", specifier: "@sarj/eslint-plugin" }]`, or extend the managed `createConfig()` that Standards syncs. Type-aware rules get type information from `tsrs`, a required peer; `settings.sarj.typeAware: false` or `SARJ_TYPE_AWARE=0` runs them untyped. The package no longer ships ESLint rules or presets. Rule names, options and suppression IDs are unchanged.
 
-Managed subpath entrypoints retain the selected upstream rules without installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript JavaScript API peer; the managed toolchain supplies TypeScript 6.
+The `unicorn` entrypoint additionally exports upstream `prefer-https` and `prefer-switch` for explicit consumer opt-in; neither is enabled by managed defaults.
+
+The opt-in `next` entrypoint exports the official `no-location-assign-relative-destination` rule for existing consumer policies; it does not enable extra Next policies in the managed profile. The Next 16.4.1 prefix resolver has a narrow cycle guard: cyclic aliases return unknown instead of overflowing the stack; resolvable relative prefixes still report. Managed subpath entrypoints retain the selected upstream rules without installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript JavaScript API peer; the managed toolchain supplies TypeScript 6.
 
 Rules and configuration are documented in the generated rule directory.
 

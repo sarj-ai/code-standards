@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "19.0.1",
+  "version": "19.0.2",
   "packageManager": "npm@12.2.1",
   "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -41,6 +41,9 @@
     },
     "./react-correctness": {
       "import": "./dist/react-correctness.js"
+    },
+    "./next": {
+      "import": "./dist/next.js"
     }
   },
   "files": [

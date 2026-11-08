@@ -266,7 +266,7 @@ def seed_config(
     *,
     runner: ProcessExecutor | None = None,  # ruff: ignore[unused-function-argument] -- Retained for callers of the former formatter migration API.
 ) -> OxfmtSeed:
-    # Adoption shares style across repositories; preserve only file coverage.
+    # Adoption shares style; preserve file coverage and required parser activation.
     root = root.resolve()
     inherited = _existing_coverage(root)
     biome = _biome_config(root)
@@ -290,7 +290,7 @@ def seed_config(
 
 
 def _coverage_options(options: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
-    return {key: value for key, value in options.items() if key in {"ignorePatterns", "extensions"}}
+    return {key: value for key, value in options.items() if key in {"ignorePatterns", "extensions", "astro"}}
 
 
 def _existing_coverage(root: Path) -> dict[str, JsonValue]:

@@ -406,3 +406,29 @@ def test_directive_plan_formats_postimages_with_the_projects_oxfmt(tmp_path: Pat
 
     # Formatter debt stays for the rollout's own oxfmt commit; the cleanup removes only the directive.
     assert expected["src/a.ts"].after.decode("utf-8") == body
+
+
+@pytest.mark.parametrize("count", [120, 129])
+def test_large_project_selection_remains_bounded_and_complete(tmp_path: Path, count: int) -> None:
+    for index in range(count):
+        _typescript_project(tmp_path / f"project-{index:03}", oxfmt_config=None)
+    (tmp_path / "unowned.ts").write_text("export {};\n")
+    executor = _Executor(_oxlint_output)
+    reports = analyze_external(
+        [str(tmp_path)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=executor,
+        capabilities=_CAPABILITIES,
+        rule_ids=frozenset({"no-tautological-expect"}),
+    )
+    assert reports[0].issues[0].kind == "coverage-missing"
+    if count == 120:
+        assert len(executor.requests) == len(reports) - 1 == 120
+        assert all(report.completion is Completion.COMPLETE and report.file_count == 1 for report in reports[1:])
+        assert {request.cwd for request in executor.requests} == {
+            tmp_path / f"project-{index:03}" for index in range(count)
+        }
+    else:
+        assert not executor.requests
+        assert reports[1].issues[0].kind == "project-limit"

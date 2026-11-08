@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { closeSync, lstatSync, openSync, readSync, readdirSync, readFileSync } from "node:fs";
 import { matchesGlob, relative, resolve } from "node:path";
 
+import { reactDoctorArtifactPem } from "./react-doctor-artifact-pem.mjs";
+
 const SKIP = new Set([
   ".git",
   ".open-next",
@@ -35,13 +37,13 @@ function suppressionMatches(line, kind, key) {
   return !rules || rules.split(/[,\s]+/).some((id) => id === key || `react-doctor/${id}` === key);
 }
 
-export function scanSecurity(root, core, config, excluded = [], isExcluded = () => false) {
+export function scanSecurity(root, core, config, excluded = [], isExcluded = () => false, parser) {
   const rules = core.REACT_DOCTOR_SCAN_RULES.filter(
     (entry) => ruleSeverity(entry, config) !== "off",
   );
   const diagnostics = new Map();
   for (const file of securityFiles(root, core, excluded, isExcluded)) {
-    for (const diagnostic of scanFile(root, file, rules, config))
+    for (const diagnostic of scanFile(root, file, rules, config, parser))
       diagnostics.set(JSON.stringify(diagnostic), diagnostic);
   }
   return [...diagnostics.values()];
@@ -130,14 +132,16 @@ function ignoredRule(entry, config) {
   return config.ignore?.rules?.some((id) => id === entry.key || id === entry.id) ?? false;
 }
 
-function scanFile(root, file, rules, config) {
+function scanFile(root, file, rules, config, parser) {
   let ignored;
   return rules.flatMap((entry) => {
     if (entry.rule.committedFilesOnly) {
       ignored ??= gitIgnored(root, file.absolutePath);
       if (ignored) return [];
     }
-    return scanRule(file, entry, config);
+    const content =
+      entry.id === "artifact-secret-leak" ? reactDoctorArtifactPem(file, parser) : file.content;
+    return scanRule(file, entry, config, content);
   });
 }
 
@@ -151,9 +155,9 @@ function gitIgnored(root, file) {
   }
 }
 
-function scanRule(file, entry, config) {
+function scanRule(file, entry, config, content) {
   const override = severityOverride(entry, config);
-  return entry.rule.scan(file).flatMap((finding) => {
+  return entry.rule.scan({ ...file, content }).flatMap((finding) => {
     const severity = override ?? finding.severity ?? entry.rule.severity;
     if (hideWarning(severity, override, config)) return [];
     if (ignoredFinding(file, finding, entry.key, config)) return [];

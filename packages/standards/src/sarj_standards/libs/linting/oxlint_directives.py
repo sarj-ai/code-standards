@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Sequence
 
 
+MAX_PATH_BYTES: Final = 16 * 1024 * 1024
 _GIT_TIMEOUT: Final = timedelta(seconds=5)
 _SOURCE_MODE_MAX: Final = 0o7777
 _DIRECTIVE_TOKENS: Final = (b"eslint-disable", b"eslint-enable", b"oxlint-disable", b"oxlint-enable")
@@ -613,9 +614,31 @@ def _unchanged(root: Path, index: _Index, files: Mapping[str, _File]) -> None:
 
 def main(
     root: Annotated[Path, typer.Option("--root")],
-    paths: Annotated[list[str], typer.Argument()],
+    paths: Annotated[list[str] | None, typer.Argument()] = None,
+    paths_file: Annotated[Path | None, typer.Option("--paths-file")] = None,
 ) -> None:
-    raise typer.Exit(fix_sources(root, paths))
+    if paths_file is not None:
+        if paths:
+            msg = "paths and --paths-file are mutually exclusive"
+            raise typer.BadParameter(msg)
+        paths = _read_paths_file(paths_file)
+    raise typer.Exit(fix_sources(root, paths or ()))
+
+
+def _read_paths_file(path: Path) -> list[str]:
+    with path.open("rb") as stream:
+        payload = stream.read(MAX_PATH_BYTES + 1)
+    if len(payload) > MAX_PATH_BYTES:
+        msg = "directive path selection exceeds the transport byte budget"
+        raise ValueError(msg)
+    if payload and not payload.endswith(b"\0"):
+        msg = "directive path transport must be NUL terminated"
+        raise ValueError(msg)
+    paths = payload.split(b"\0")[:-1]
+    if any(not item for item in paths):
+        msg = "directive path transport contains an empty path"
+        raise ValueError(msg)
+    return [os.fsdecode(item) for item in paths]
 
 
 if __name__ == "__main__":
