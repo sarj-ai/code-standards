@@ -236,7 +236,7 @@ def _installed_tool(
     version = _dependency(
         _object(declaration, inputs), package_name, project=owner, root=root, tracked=tracked, inputs=inputs
     )
-    package_file = _installed_package_file(root, owner, package_name)
+    package_file = _installed_package_file(root, owner, package_name, inputs)
     installed = _object(package_file, inputs)
     if installed.get("name") != package_name or installed.get("version") != version:
         msg = "installed native formatter does not match the declared immutable pin"
@@ -341,13 +341,29 @@ def _installation_owner(root: Path, project: Path, package_name: str) -> Path:
     return owner
 
 
-def _installed_package_file(root: Path, owner: Path, package_name: str) -> Path:
+def _installed_package_file(root: Path, owner: Path, package_name: str, inputs: dict[Path, InputProof]) -> Path:
     modules = (owner / "node_modules").resolve()
     package_file = (modules / package_name / "package.json").resolve()
-    if not package_file.is_relative_to(modules) or not modules.is_relative_to(root):
+    if not modules.is_relative_to(root) or not (
+        package_file.is_relative_to(modules) or _in_pnpm_global_virtual_store(modules, package_file, inputs)
+    ):
         msg = "native formatter package resolves outside repository-local node_modules"
         raise ValueError(msg)
     return package_file
+
+
+def _in_pnpm_global_virtual_store(modules: Path, package_file: Path, inputs: dict[Path, InputProof]) -> bool:
+    # pnpm's global virtual store links packages from its content-addressed store, outside the
+    # repository. Accept that location only where this install's own state records it.
+    state = modules / ".modules.yaml"
+    if not os.path.lexists(state):
+        return False
+    metadata = _object(state, inputs)
+    store = metadata.get("virtualStoreDir")
+    if metadata.get("nodeLinker") != "isolated" or not isinstance(store, str) or not store:
+        return False
+    links = (modules / store).resolve()
+    return links.name == "links" and package_file.is_relative_to(links)
 
 
 def _package_entrypoint(package_file: Path, installed: Mapping[str, JsonValue], tool: Literal["oxfmt"]) -> Path:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -203,3 +204,39 @@ def test_new_configuration_or_ignore_input_invalidates_frozen_absence_proof(
     added.write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="changed"):
         directive_formatter.validate(owner)
+
+
+def _link_from_pnpm_global_virtual_store(root: Path, *, linker: str = "isolated", recorded: str = "links") -> Path:
+    store = root.parent / f"pnpm-store-{root.name}" / "v11"
+    package = store / "links/@/oxfmt/0.76.0/0123abcd/node_modules/oxfmt"
+    local = root / "node_modules/oxfmt"
+    package.parent.mkdir(parents=True)
+    local.rename(package)
+    local.symlink_to(package, target_is_directory=True)
+    state = {"nodeLinker": linker, "virtualStoreDir": os.path.relpath(store / recorded, root / "node_modules")}
+    (root / "node_modules/.modules.yaml").write_text(json.dumps(state) + "\n", encoding="utf-8")
+    return package
+
+
+def test_pnpm_global_virtual_store_install_is_the_formatter_owner(tmp_path: Path) -> None:
+    tracked = _project(tmp_path, catalog=True)
+    package = _link_from_pnpm_global_virtual_store(tmp_path)
+
+    owner = directive_formatter.select(tmp_path, "source.js", tracked, _node=lambda _cwd: Path(sys.executable))
+
+    assert owner.version == "0.76.0"
+    assert owner.invocation.entrypoint == (package / "bin/entry.js").resolve()
+    (tmp_path / "node_modules/.modules.yaml").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="changed"):
+        directive_formatter.validate(owner)
+
+
+@pytest.mark.parametrize(("linker", "recorded"), [("hoisted", "links"), ("isolated", "elsewhere/links")])
+def test_formatter_outside_the_recorded_pnpm_virtual_store_is_refused(
+    tmp_path: Path, linker: str, recorded: str
+) -> None:
+    tracked = _project(tmp_path, catalog=True)
+    _link_from_pnpm_global_virtual_store(tmp_path, linker=linker, recorded=recorded)
+
+    with pytest.raises(ValueError, match="outside repository-local node_modules"):
+        directive_formatter.select(tmp_path, "source.js", tracked, _node=lambda _cwd: Path(sys.executable))
