@@ -157,7 +157,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_custom_control_flow_exception",
         class_name="NoCustomControlFlowException",
         code="SARJ542",
-        description="Return typed outcomes for expected domain failures instead of marker or fixed-message exceptions.",
+        description="Return coded typed outcomes for expected domain failures instead of exception-only contracts.",
         aliases=(),
         enabled_by_default=True,
     ),

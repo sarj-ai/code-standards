@@ -441,3 +441,197 @@ def test_literal_message_exception_is_a_result_review_candidate(base: str) -> No
 def test_exception_payloads_and_behavior_remain_valid(initializer: str) -> None:
     source = f"class Unavailable(Exception):\n    {initializer}\ndef load():\n    raise Unavailable\n"
     assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+_PAYLOAD_ERROR = """class Denied(Exception):
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f'Denied {name}')
+"""
+
+
+@pytest.mark.parametrize(
+    "guard",
+    [
+        "if not allowed:\n        raise Denied(name)",
+        "if allowed:\n        return name\n    else:\n        raise Denied(name)",
+    ],
+)
+@pytest.mark.parametrize("definition", ["def", "async def"])
+def test_typed_payload_guard_reviews_the_failure_contract(guard: str, definition: str) -> None:
+    source = _PAYLOAD_ERROR + f"{definition} load(name: str, allowed: bool) -> str:\n    {guard}\n    return name\n"
+    [finding] = NoCustomControlFlowException().check(Path("app/store.py"), source)
+    assert finding.code == "SARJ542"
+    assert finding.severity is Severity.WARNING
+    assert "format the message at the consumer" in finding.message
+
+
+@pytest.mark.parametrize(
+    "initializer",
+    [
+        "def __init__(self, name: str) -> None:\n        super().__init__(f'Denied {name}')",
+        "def __init__(self, name: str) -> None:\n        self.detail = f'Denied {name}'\n        super().__init__(self.detail)",
+        "def __init__(self, name: str) -> None:\n        self.name: str = name\n        super().__init__('Denied')",
+        "def __init__(self, *, name: str) -> None:\n        self.name = name\n        super().__init__('Denied')",
+    ],
+)
+def test_payload_identity_or_formatting_is_reviewed(initializer: str) -> None:
+    source = f"class Denied(Exception):\n    {initializer}\ndef load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name=name)\n    return name\n"
+    assert len(NoCustomControlFlowException().check(Path("app/store.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise Denied(name)",
+        "if not allowed:\n        raise Denied",
+        "if not allowed:\n        raise Denied()",
+        "if not allowed:\n        raise Denied(name, name)",
+        "if not allowed:\n        raise Denied(unknown=name)",
+        "if not allowed:\n        raise Denied(name, name=name)",
+        "if not allowed:\n        raise Denied(*values)",
+        "if not allowed:\n        raise Denied(**values)",
+        "if not allowed:\n        log(); raise Denied(name)",
+        "try:\n        if not allowed:\n            raise Denied(name)\n    finally:\n        cleanup()",
+        "with transaction():\n        if not allowed:\n            raise Denied(name)",
+        "for value in values:\n        if not allowed:\n            raise Denied(name)",
+    ],
+)
+def test_payload_guard_requires_a_closed_observable_contract(body: str) -> None:
+    source = _PAYLOAD_ERROR + f"def load(name: str, allowed: bool) -> str:\n    {body}\n    return name\n"
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "initializer",
+    [
+        "def __init__(self, name) -> None:\n        self.name = name",
+        "def __init__(self, name: str) -> None:\n        self.name = normalize(name)",
+        "def __init__(self, name: str) -> None:\n        notify(name)\n        self.name = name",
+        "def __init__(self, name: str) -> None:\n        self.name = name\n    def retry(self) -> None:\n        retry()",
+        "def __init__(self, *names: str) -> None:\n        self.names = names",
+        "@decorate\n    def __init__(self, name: str) -> None:\n        self.name = name",
+    ],
+)
+def test_payload_behavior_and_untyped_contracts_abstain(initializer: str) -> None:
+    source = f"class Denied(Exception):\n    {initializer}\ndef load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+@pytest.mark.parametrize("base", ["BaseException", "AssertionError", "RuntimeError", "TypeError"])
+def test_payload_control_flow_and_programming_defect_bases_abstain(base: str) -> None:
+    source = (
+        _PAYLOAD_ERROR.replace("Exception", base)
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+def test_payload_value_error_validator_keeps_framework_rejection() -> None:
+    source = (
+        "from pydantic import field_validator\n"
+        + _PAYLOAD_ERROR.replace("Exception", "ValueError")
+        + "@field_validator('name')\ndef load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "annotation"),
+    [
+        ("from typing import Never", "Never"),
+        ("from typing import NoReturn as Stop", "Stop"),
+        ("import typing", "typing.NoReturn"),
+        ("from typing import NoReturn", "'NoReturn'"),
+        ("from typing import Never", "'Never'"),
+    ],
+)
+def test_payload_never_returning_contract_is_not_an_expected_outcome(prefix: str, annotation: str) -> None:
+    source = (
+        prefix
+        + "\n"
+        + _PAYLOAD_ERROR
+        + f"def stop(name: str, allowed: bool) -> {annotation}:\n    if not allowed:\n        raise Denied(name)\n    raise RuntimeError\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+def test_payload_generator_preserves_its_iteration_protocol() -> None:
+    source = (
+        _PAYLOAD_ERROR
+        + "def values(name: str, allowed: bool) -> Iterator[str]:\n    if not allowed:\n        raise Denied(name)\n    yield name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+def test_payload_guard_remains_a_warning_without_a_fix() -> None:
+    source = (
+        _PAYLOAD_ERROR
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    rule = NoCustomControlFlowException()
+    [finding] = rule.check(Path("app/store.py"), source)
+    assert finding.severity is Severity.WARNING
+    assert finding.fixes == ()
+    assert rule.check(Path("app/store.py"), source) == [finding]
+
+
+@pytest.mark.parametrize(
+    ("prefix", "base"),
+    [
+        ("from unknown import FrameworkBase\n", "FrameworkBase"),
+        ("from trio import Cancelled\n", "Cancelled"),
+        ("from asyncio import CancelledError\n", "CancelledError"),
+        ("class NativeExit(BaseException):\n    pass\n", "NativeExit"),
+    ],
+)
+def test_payload_unknown_and_native_control_flow_bases_remain_opaque(prefix: str, base: str) -> None:
+    source = (
+        prefix
+        + _PAYLOAD_ERROR.replace("Exception", base)
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+def test_payload_positional_only_parameter_cannot_be_supplied_as_a_keyword() -> None:
+    source = (
+        _PAYLOAD_ERROR.replace("name: str)", "name: str, /)")
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name=name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+def test_payload_source_resolves_a_first_party_exception_base(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'fixture'\nversion = '0.0.0'\n")
+    (tmp_path / "errors.py").write_text("class DomainError(Exception):\n    pass\n")
+    source = (
+        "from errors import DomainError\n"
+        + _PAYLOAD_ERROR.replace("Exception", "DomainError")
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    [finding] = NoCustomControlFlowException().check(tmp_path / "service.py", source)
+    assert finding.code == "SARJ542"
+
+
+def test_payload_first_party_base_preserves_native_control_flow(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'fixture'\nversion = '0.0.0'\n")
+    (tmp_path / "errors.py").write_text("class DomainError(BaseException):\n    pass\n")
+    source = (
+        "from errors import DomainError\n"
+        + _PAYLOAD_ERROR.replace("Exception", "DomainError")
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(tmp_path / "service.py", source) == []
+
+
+@pytest.mark.parametrize("base_use", ["register_handler(Base)", "alias = Base", "Base.code = 400"])
+def test_payload_ancestry_preserves_registered_or_mutated_bases(base_use: str) -> None:
+    source = (
+        "class Base(Exception): pass\n"
+        + base_use
+        + "\n"
+        + _PAYLOAD_ERROR.replace("Exception", "Base")
+        + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
+    )
+    assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []

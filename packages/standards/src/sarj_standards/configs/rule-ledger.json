@@ -398,6 +398,7 @@
       "no-zod-native-enum",
       "no-zod-parse-typed-object",
       "prefer-await-in-async-return",
+      "prefer-coded-error-result",
       "prefer-constant-time-secret-compare",
       "prefer-dependency-interface",
       "prefer-discriminated-union",

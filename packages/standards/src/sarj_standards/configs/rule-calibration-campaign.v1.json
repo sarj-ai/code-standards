@@ -1849,6 +1849,14 @@
       "outcome": "Describe receiver-chain Promise evidence and manual catch/scheduling review, not universal await equivalence. Preserve existing severity; no promotion or new autofix."
     },
     {
+      "task": "rule-audit/typescript/prefer-coded-error-result",
+      "family": "typescript",
+      "ruleId": "prefer-coded-error-result",
+      "state": "pending",
+      "evidence": "2026-11-08 actionable failure review. All 71 focused rule cases, six executable documentation examples and 32 shared native compiler observations cover bounded local error contracts, code/context formatting and variant-addition exhaustiveness. An immutable purposive 17-file application sample contains one TypeScript message-only contract candidate. Seven alternating paired measurements retain existing scope-aware rules in both arms; shared-VM noise prevents a speed claim. These observations do not establish fleet precision or recall. Broader field calibration remains pending.",
+      "outcome": "@sarj/prefer-coded-error-result: Retain WARNING without autofix. Review source-proven message-only errors and directly rendered coded rejections; choose finite domain codes, minimum handling context and consumer presentation through reviewed migrations. Preserve absence, independent outcomes, opaque contracts and intentional presentation boundaries. Full campaign completion is not claimed."
+    },
+    {
       "task": "rule-audit/typescript/prefer-constant-time-secret-compare",
       "family": "typescript",
       "ruleId": "prefer-constant-time-secret-compare",
@@ -3035,8 +3043,8 @@
       "family": "python",
       "ruleId": "no-custom-control-flow-exception",
       "state": "pending",
-      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover directly raised name-only local exceptions, stable identities, payload-bearing exceptions, validator protocols, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending. Fresh-context ten-pass follow-up 2026-10-29: paired probes cover escaped or mutated marker ancestry and validator rejection protocols without inferring expectedness from names. Existing severity/autofix and calibration state are retained; bounded synthetic and fixture evidence does not establish field precision, recall or fleet performance.",
-      "outcome": "SARJ542: Stage at WARNING without autofix. Consider typed outcomes for expected domain failures while preserving framework validation, cancellation, unwinding, and genuine exceptional protocols. Full campaign completion is not claimed."
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover directly raised name-only local exceptions, stable identities, payload-bearing exceptions, validator protocols, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending. Fresh-context ten-pass follow-up 2026-10-29: paired probes cover escaped or mutated marker ancestry and validator rejection protocols without inferring expectedness from names. Existing severity/autofix and calibration state are retained; bounded synthetic and fixture evidence does not establish field precision, recall or fleet performance. 2026-11-08 actionable failure follow-up: 190 AST cases cover typed payload constructors and annotated sync/async guard rejections with source-proven ancestry and conservative exclusions for resource/transaction scopes, framework callbacks, cancellation, termination, malformed calls and escaping identities. The immutable purposive 17-file application sample adds one Python candidate whose context is needed for an access check before presenting the rejection. Native compiler probes demonstrate variant-addition failures and repaired exhaustive handlers; aggregate sample observations do not establish field precision or recall.",
+      "outcome": "SARJ542: Retain WARNING without autofix. Review expected rejections for a typed return union with stable codes and required context, formatted at the consumer. Preserve framework validation, cancellation, transaction/resource unwinding and genuine exceptional protocols. Full campaign completion is not claimed."
     },
     {
       "task": "rule-audit/python/no-redundant-sql-alias",
