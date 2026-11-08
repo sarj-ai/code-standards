@@ -8,7 +8,8 @@ import re
 import shlex
 from typing import TYPE_CHECKING, Final
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.json_boundary import parse_json, parse_unique_json
 from sarj_standards.libs.rules import oxlint_ids
 
 from . import eslint_config, manifest, retired_suppressions, tsconfigs
@@ -54,6 +55,7 @@ _EXAMPLE_OVERRIDE: Final = """    // Example: your router generates bracketed fi
     // },
 """
 _ESLINT_TSCONFIG: Final = "tsconfig.eslint.json"
+_CONSUMER_BIOME_CONFIG: Final = "biome.lint.json"
 #: Sources whose imports keep an ESLint-era package in use.
 _IMPORTING_SUFFIXES: Final = frozenset({*TYPESCRIPT_SOURCE_SUFFIXES, ".astro", ".mdx", ".svelte", ".vue"})
 #: ESLint-era packages Standards pinned (eslint.peers.json); the ones the TypeScript peers keep are excluded.
@@ -109,7 +111,12 @@ _LEGACY_PEERS: Final = frozenset(
     }
 )
 _HOOK_AND_CI_NAMES: Final = frozenset({".lefthook.yml", ".pre-commit-config.yaml", "Makefile", "lefthook.yml"})
-_PACKAGE_BINARIES: Final[Mapping[str, str]] = {"@typescript/native": "tsc", "eslint": "eslint", "jiti": "jiti"}
+_PACKAGE_BINARIES: Final[Mapping[str, str]] = {
+    "@biomejs/biome": "biome",
+    "@typescript/native": "tsc",
+    "eslint": "eslint",
+    "jiti": "jiti",
+}
 _SPECIFIER: Final = re.compile(
     r"""(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)["'](?P<spec>[^"'\s]+)["']""", re.MULTILINE
 )
@@ -198,7 +205,9 @@ def plan(root: Path, typescript_root: Path, files: Sequence[Path]) -> Migration:
 def _validate_retired_commands(typescript_root: Path, sources: Sequence[Path], changes: _Changes) -> None:
     for source in sources:
         if source.name != "package.json" and (
-            source.name in _HOOK_AND_CI_NAMES or source.suffix == ".sh" or ".github" in source.parts
+            source.name in _HOOK_AND_CI_NAMES
+            or source.suffix == ".sh"
+            or (".github" in source.parts and source.suffix in {".yml", ".yaml"})
         ):
             command = source.read_text(encoding="utf-8", errors="replace")
             if any(_invokes(binary, command) for binary in ("eslint", "prettier", "biome")):
@@ -214,10 +223,64 @@ def _validate_package_commands(root: Path, source: Path, changes: _Changes) -> N
         migrated = _migrated_script(command, lint="oxlint", replace_eslint=True)
         if not isinstance(migrated, str):
             continue
+        if _consumer_biome_lint(migrated):
+            if _consumer_biome_policy(source.parent):
+                continue
+            changes.errors.append(
+                f"{_relative(source, root)} script {name}: {_CONSUMER_BIOME_CONFIG} must be a regular consumer-owned "
+                "config with formatting disabled and custom lint rules enabled"
+            )
+            continue
         if any(_invokes(binary, migrated) for binary in ("eslint", "prettier", "biome")):
             changes.errors.append(
                 f"{_relative(source, root)} script {name}: port unsupported command `{command}` to code-standards before update"
             )
+
+
+def _consumer_biome_lint(command: str) -> bool:
+    # A separately owned linter may cover CSS/Astro policy Oxlint cannot replace.
+    # Never retain a formatter, a compound shell program or an unsafe fix mode.
+    if _SHELL_OPERATOR.search(command):
+        return False
+    try:
+        words = shlex.split(_RUNNER.sub("", command, count=1))
+    except ValueError:
+        return False
+    configs: list[str] = []
+    for index, word in enumerate(words):
+        if word == "--config-path":
+            configs.append(words[index + 1] if index + 1 < len(words) else "")
+        elif word.startswith("--config-path="):
+            configs.append(word.partition("=")[2])
+    return (
+        words[:2] == ["biome", "lint"]
+        and configs == [_CONSUMER_BIOME_CONFIG]
+        and "--" not in words
+        and not any(word == "--unsafe" or word.startswith("--unsafe=") for word in words)
+    )
+
+
+def _consumer_biome_policy(directory: Path) -> bool:
+    path = directory / _CONSUMER_BIOME_CONFIG
+    if is_link_like(path) or not path.is_file():
+        return False
+    try:
+        document = parse_unique_json(path.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return False
+    if not isinstance(document, dict):
+        return False
+    formatter = document.get("formatter")
+    linter = document.get("linter")
+    return (
+        isinstance(formatter, dict)
+        and formatter.get("enabled") is False
+        and isinstance(linter, dict)
+        and linter.get("enabled") is True
+        and isinstance(linter.get("rules", {}), dict)
+        and isinstance(linter.get("domains", {}), dict)
+        and bool(linter.get("rules") or linter.get("domains"))
+    )
 
 
 def migrated_scripts(scripts: Mapping[str, JsonValue], *, lint: str, replace_eslint: bool) -> dict[str, JsonValue]:
@@ -470,7 +533,13 @@ def _with_references(owner: Path, names: Sequence[str]) -> str | None:
 def _retired_dependencies(
     sources: Sequence[Path], deletes: Collection[Path], *, replace_eslint: bool
 ) -> frozenset[str]:
+    # Existing native configs may load legacy plugins through jsPlugins specifiers
+    # or computed helpers. Import scanning cannot prove those dependencies unused.
+    # Retire the old compiler alias independently; its imports and commands below
+    # still keep it when a consumer uses it beyond migrated type checking.
     candidates = _dependency_candidates(sources)
+    if any(path.name in OXLINT_CONFIG_NAMES and path not in deletes for path in sources):
+        candidates.intersection_update({"@typescript/native"})
     # ESLint loads a kept TypeScript config through jiti.
     used: set[str] = set() if replace_eslint else {"jiti"}
     for path in sources:
@@ -616,6 +685,8 @@ def _migrated_script(command: JsonValue, *, lint: str, replace_eslint: bool) -> 
     # with other arguments stays, and a remaining ESLint call is reported.
     if not isinstance(command, str):
         return command
+    if _consumer_biome_lint(command):
+        return command
     stripped = _RUNNER.sub("", command, count=1)
     stripped = re.sub(r"^OXLINT_TSGOLINT_PATH=\S+\s+", "", stripped)
     if _SHELL_OPERATOR.search(stripped):
@@ -650,18 +721,16 @@ def _simple_arguments(words: Sequence[str], *, binary: str, check: bool) -> tupl
             check = False
         elif word in {"--check", "-c"}:
             check = True
-        elif word in {"--config-path", "--config"}:
-            index += 1
-        elif word.startswith(("--config-path=", "--config=")) or (
-            binary == "oxlint"
-            and word
-            in {
-                "--type-aware",
-                "--type-check",
-                "--deny-warnings",
-                "--report-unused-disable-directives",
-            }
-        ):
+        elif word in {"--config-path", "--config"} or word.startswith(("--config-path=", "--config=")):
+            # A selected configuration changes policy and scope. Only the separately
+            # validated consumer lint mode can retain it without translating it.
+            return None
+        elif binary == "oxlint" and word in {
+            "--type-aware",
+            "--type-check",
+            "--deny-warnings",
+            "--report-unused-disable-directives",
+        }:
             pass
         elif word.startswith("-"):
             return None

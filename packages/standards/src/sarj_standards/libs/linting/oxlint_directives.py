@@ -341,9 +341,7 @@ def _audit(
 ) -> dict[str, SourcePostimage]:
     environment = oxlint.oxlint_environment(command.cwd, root)
     with oxlint.selected_config(command, oxlint.OxlintRequest()) as configured:
-        argv = oxlint.with_options(
-            configured.argv, "-f", "json", "--type-aware", "--report-unused-disable-directives-severity=error"
-        )
+        argv = oxlint.with_options(configured.argv, "-f", "json", "--type-aware")
         # The rollout runner owns the environment, so pass the typed-lint binary in argv.
         variables = (f"{key}={value}" for key, value in environment.items())
         completed = run(lifecycle.Command(command.label, ("env", *variables, *argv), command.cwd))

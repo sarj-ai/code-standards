@@ -195,3 +195,30 @@ def test_plan_lets_the_formatter_read_untracked_inputs_the_caller_owns(tmp_path:
     # Owned, the config passes; the fixture then stops at the missing oxfmt pin.
     with pytest.raises(ValueError, match="one unambiguous declared dependency"):
         oxlint_directives.plan(root, ("src/a.ts",), run=run_native, owned=(".oxfmtrc.json",))
+
+
+@pytest.mark.parametrize("severity", ["off", "warn", "error"])
+def test_plan_preserves_the_configured_unused_directive_policy(tmp_path: Path, severity: str) -> None:
+    source = (
+        "// eslint-disable-next-line no-debugger -- retained by consumer policy\n"
+        "export const value = 1;\n"
+        "// eslint-disable-next-line no-debugger -- actually used\n"
+        "debugger;\n"
+    )
+    outside = "// eslint-disable-next-line no-debugger -- outside selection\nexport const other = 2;\n"
+    config = (
+        'import { createConfig } from "./oxlint.strict.ts";\n'
+        f'export default {{ extends: [createConfig()], options: {{ reportUnusedDisableDirectives: "{severity}" }} }};\n'
+    )
+    root = project(tmp_path / "repo", {"src/a.ts": source, "src/other.ts": outside}, config=config, git=True)
+    expected = oxlint_directives.plan(root, ("src/a.ts",), run=run_native)
+
+    if severity == "off":
+        assert expected == {}
+    else:
+        assert set(expected) == {"src/a.ts"}
+        assert expected["src/a.ts"].after.decode("utf-8") == (
+            "export const value = 1;\n// eslint-disable-next-line no-debugger -- actually used\ndebugger;\n"
+        )
+    assert (root / "src/a.ts").read_text(encoding="utf-8") == source
+    assert (root / "src/other.ts").read_text(encoding="utf-8") == outside
