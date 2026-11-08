@@ -647,7 +647,7 @@ def test_workspace_legacy_commands_forward_to_root_and_retire_tools(tmp_path: Pa
                 {
                     "name": "app",
                     "scripts": {
-                        "lint": "biome check --config-path=../../biome.json ./src",
+                        "lint": "biome check ./src",
                         "format": "prettier --write ./src",
                     },
                     "devDependencies": {
@@ -667,6 +667,214 @@ def test_workspace_legacy_commands_forward_to_root_and_retire_tools(tmp_path: Pa
     assert isinstance(document, dict)
     assert document["scripts"] == {"lint": "pnpm -w run lint packages/app", "format": "pnpm -w run format packages/app"}
     assert document["devDependencies"] == {}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "biome lint --config-path=biome.lint.json --error-on-warnings .",
+        "pnpm exec biome lint --error-on-warnings --config-path biome.lint.json src styles",
+        "bunx biome lint --config-path=biome.lint.json --write src/main.ts",
+    ],
+)
+def test_consumer_biome_lint_keeps_its_policy_dependency_and_command(tmp_path: Path, command: str) -> None:
+    contents = json.dumps(
+        {
+            "formatter": {"enabled": False},
+            "linter": {"enabled": True, "rules": {"preset": "all", "suspicious": {"noLoopFunc": "error"}}},
+            "files": {"includes": ["**/*.astro", "**/*.css", "**/*.ts"]},
+        }
+    )
+    scripts = {"lint:consumer": command, "format": "biome format --write"}
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps(
+                {"scripts": scripts, "devDependencies": {"@biomejs/biome": "2.6.3", "prettier": "3.8.0"}}
+            ),
+            "biome.lint.json": contents,
+            "eslint.config.ts": _SCAFFOLDED_ESLINT_CONFIG,
+            "styles.css": "a { color: red }\n",
+        },
+    )
+
+    migration = _plan(root)
+    updated = typescript_migration.migrated_scripts(scripts, lint="oxlint", replace_eslint=True)
+
+    assert not migration.errors
+    assert "@biomejs/biome" not in migration.retired_dependencies
+    assert "prettier" in migration.retired_dependencies
+    assert updated["lint:consumer"] == command
+    assert updated["format"] == "oxfmt"
+    assert typescript_migration.migrated_scripts(updated, lint="oxlint", replace_eslint=True) == updated
+    assert root / "biome.lint.json" not in migration.deletes
+    assert root / "biome.lint.json" not in dict(migration.writes)
+    assert (root / "biome.lint.json").read_text() == contents
+    assert (root / "styles.css").read_text() == "a { color: red }\n"
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "{",
+        "[]",
+        '{"formatter":{"enabled":true},"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"all"}}}',
+        '{"formatter":{"enabled":true},"linter":{"enabled":true,"rules":{"preset":"all"}}}',
+        '{"formatter":{"enabled":false},"linter":{"enabled":false,"rules":{"preset":"all"}}}',
+        '{"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{}}}',
+        '{"formatter":{"enabled":false},"linter":{"enabled":true,"rules":"all"}}',
+        '{"formatter":{"enabled":false},"linter":{"enabled":true,"domains":[]}}',
+    ],
+)
+def test_consumer_biome_lint_refuses_missing_or_malformed_ownership(tmp_path: Path, contents: str) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps({"scripts": {"lint:consumer": "biome lint --config-path=biome.lint.json"}}),
+            "biome.lint.json": contents,
+            "oxlint.config.mts": "export default {};\n",
+        },
+    )
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert not migration.writes
+    assert not migration.deletes
+    assert (root / "biome.lint.json").read_text() == contents
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "biome lint --config-path=biome.lint.json --unsafe",
+        "biome lint --config-path=biome.lint.json --unsafe=true",
+        "biome lint --config-path=biome.lint.json --config-path=other.json",
+        "biome lint --config-path biome.lint.json --config-path other.json",
+        "biome lint -- --config-path=biome.lint.json",
+        "biome lint --config-path=biome.lint.json && echo done",
+        "biome lint --config-path=other.json",
+        "eslint --config strict-demo.mjs src",
+        "eslint --config=strict-demo.mjs src",
+    ],
+)
+def test_consumer_biome_lint_and_other_explicit_configs_never_lose_policy(tmp_path: Path, command: str) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps({"scripts": {"lint:consumer": command}}),
+            "biome.lint.json": '{"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"all"}}}',
+            "oxlint.config.mts": "export default {};\n",
+        },
+    )
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert not migration.writes
+    assert not migration.deletes
+    assert (
+        typescript_migration.migrated_scripts({"lint:consumer": command}, lint="oxlint", replace_eslint=True)[
+            "lint:consumer"
+        ]
+        == command
+    )
+
+
+def test_consumer_biome_lint_does_not_follow_a_config_link(tmp_path: Path) -> None:
+    target = tmp_path / "separate-policy.json"
+    target.write_text('{"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"all"}}}')
+    root = _repository(
+        tmp_path / "consumer",
+        {
+            "package.json": json.dumps({"scripts": {"lint:consumer": "biome lint --config-path=biome.lint.json"}}),
+            "oxlint.config.mts": "export default {};\n",
+        },
+    )
+    (root / "biome.lint.json").symlink_to(target)
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert (root / "biome.lint.json").is_symlink()
+    assert not migration.writes
+    assert not migration.deletes
+
+
+@pytest.mark.parametrize("compiler_command", [None, "node node_modules/@typescript/native/bin/tsc --version"])
+def test_consumer_biome_and_native_plugin_dependencies_are_not_retired(
+    tmp_path: Path, compiler_command: str | None
+) -> None:
+    plugins = (
+        'export default { jsPlugins: [{ name: "react-legacy", specifier: "eslint-plugin-react" }, '
+        '{ name: "node-test-extra", specifier: "eslint-node-test" }] };\n'
+    )
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps(
+                {
+                    "name": "native-consumer",
+                    "scripts": {} if compiler_command is None else {"compiler:version": compiler_command},
+                    "devDependencies": {
+                        "eslint-plugin-react": "patch:eslint-plugin-react@7.37.5#reviewed.patch",
+                        "eslint-node-test": "1.0.1",
+                        "eslint": "10.14.0",
+                        "@typescript/native": "npm:typescript@7.0.2",
+                    },
+                }
+            ),
+            "oxlint.config.mts": plugins,
+        },
+    )
+
+    migration = _plan(root)
+
+    assert not migration.errors
+    assert migration.retired_dependencies == (
+        frozenset({"@typescript/native"}) if compiler_command is None else frozenset()
+    )
+    assert (root / "oxlint.config.mts").read_text() == plugins
+    assert root / "package.json" not in dict(migration.writes)
+
+
+def test_consumer_biome_explicit_workspace_policy_is_not_replaced_by_root_policy(tmp_path: Path) -> None:
+    command = "biome check --config-path=../../biome.json ./src"
+    root = _repository(
+        tmp_path,
+        {
+            "package.json": json.dumps({"name": "consumer", "packageManager": "pnpm@10.0.0"}),
+            "packages/app/package.json": json.dumps({"scripts": {"lint": command}}),
+        },
+    )
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert not migration.writes
+    assert not migration.deletes
+    assert (
+        typescript_migration.migrated_scripts({"lint": command}, lint="oxlint", replace_eslint=True)["lint"] == command
+    )
+
+
+def test_consumer_biome_lint_ownership_does_not_cross_workspace_boundaries(tmp_path: Path) -> None:
+    root = _repository(
+        tmp_path,
+        {
+            "biome.lint.json": '{"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"all"}}}',
+            "packages/app/package.json": json.dumps(
+                {"scripts": {"lint:consumer": "biome lint --config-path=biome.lint.json"}}
+            ),
+        },
+    )
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert not migration.writes
+    assert not migration.deletes
+    assert not (root / "packages/app/biome.lint.json").exists()
 
 
 def test_supported_typescript_aliases_preserve_source_across_repeated_migration(tmp_path: Path) -> None:
@@ -798,3 +1006,46 @@ def test_preserved_aliases_suppress_only_the_intended_native_typed_finding(
     assert len(unused) == (1 if spelling == "unknown" else 0), completed.stdout
     assert len(diagnostics) == len(findings) + len(unused), completed.stdout
     assert completed.returncode == (1 if severity == "error" or unused else 0)
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        pytest.param(".github/scripts/identity.mjs", "const eslint = Object.freeze({});\n", id="javascript-identifier"),
+        pytest.param(".github/scripts/report.mts", "const prettier = 'policy';\n", id="typescript-identifier"),
+        pytest.param(".github/scripts/report.py", "biome = object()\n", id="python-identifier"),
+    ],
+)
+def test_program_identifiers_are_not_retired_shell_invocations(tmp_path: Path, path: str, source: str) -> None:
+    root = _repository(tmp_path, {path: source, "oxlint.config.mts": "export default {};\n"})
+
+    migration = _plan(root)
+
+    assert not migration.errors
+    assert (root / path).read_text() == source
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        pytest.param(".github/scripts/lint.sh", "eslint .\n", id="shell-command"),
+        pytest.param(
+            ".github/workflows/lint.yml",
+            "jobs:\n  lint:\n    steps:\n      - run: prettier --check .\n",
+            id="workflow-command",
+        ),
+        pytest.param(
+            "lefthook.yml", "pre-commit:\n  commands:\n    lint:\n      run: biome check .\n", id="hook-command"
+        ),
+        pytest.param("Makefile", "lint:\n\teslint .\n", id="make-command"),
+    ],
+)
+def test_retired_shell_invocations_still_block_before_any_migration(tmp_path: Path, path: str, source: str) -> None:
+    root = _repository(tmp_path, {path: source, "oxlint.config.mts": "export default {};\n"})
+
+    migration = _plan(root)
+
+    assert migration.errors
+    assert not migration.writes
+    assert not migration.deletes
+    assert (root / path).read_text() == source

@@ -926,11 +926,14 @@ def _analysis_inputs(
 ) -> list[str]:
     if paths is not None:
         selected = _contained_paths(root, paths)
-        return selected if mode is AnalysisMode.RAW else _with_tracked_terraform_tests(root, selected)
-    if mode is AnalysisMode.RAW:
+    elif mode is AnalysisMode.RAW:
         return [str(root)]
-    verify_paths = adopted.verify_paths if adopted is not None else (".",)
-    return _with_tracked_terraform_tests(root, [str(root / path) for path in verify_paths])
+    else:
+        verify_paths = adopted.verify_paths if adopted is not None else (".",)
+        selected = [str(root / path) for path in verify_paths]
+    return (
+        selected if mode in {AnalysisMode.RAW, AnalysisMode.OBSERVE} else _with_tracked_terraform_tests(root, selected)
+    )
 
 
 def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:

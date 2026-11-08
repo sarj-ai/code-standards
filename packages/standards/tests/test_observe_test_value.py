@@ -43,6 +43,11 @@ def test_observe_reports_candidates_without_turning_them_into_default_blockers(
     )
     (tests / "fakes").mkdir()
     (tests / "fakes/test_sender.py").write_text("def test_unused():\n    send()\n", encoding="utf-8")
+    infrastructure = tmp_path / "iac"
+    infrastructure.mkdir()
+    (infrastructure / "smoke.tftest.hcl").write_text('run "smoke" { command = plan }\n', encoding="utf-8")
+    _git(tmp_path, "init", "--quiet", "--template=")
+    _git(tmp_path, "add", ".")
     default = Standards(tmp_path).analyze(["tests/test_delivery.py"])
     assert not any(item.code == "SARJ495" for item in default.diagnostics)
     assert {(item.code, item.severity) for item in default.diagnostics if item.code in {"SARJ057", "SARJ066"}} == {
