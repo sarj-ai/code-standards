@@ -118,6 +118,22 @@ STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
     ),
     f"{PACKAGE}/tests/test_repo_standards_pins.py": "e56e8ecf5cf4ec6bd6c080f6a0e82a3b040ac3dfadffb36e5d5b3a09e2b3f74e",
 }
+STANDARDS_8208_REF = "refs/heads/maintenance/standards-8.208"
+STANDARDS_8208_ANCHOR = "5e6e5623e5834ad2830c19b3c0e32096e86de7d0"
+STANDARDS_8208_ANCHOR_VERSION = "8.208.8"
+# Advice delivery only; runtime dependencies, engines and baseline policy stay at the anchor.
+STANDARDS_8208_APPROVED_SHA256: Final[dict[str, str]] = {
+    "packages/standards/src/sarj_standards/__main__.py": "71a2f98187cc2d64cbab34209b1e94103daefa9a8190e84918fa7217701e846c",
+    "packages/standards/src/sarj_standards/cli/main.py": "53dd90d7e662902a1c0f4e2bf07bbde0e5dc40b74b4b295cb29e6da80ccddd06",
+    "packages/standards/src/sarj_standards/libs/adoption/scaffold.py": "65c6108fb61467f6e2703c82e045af9065ddfed8cdcfdbb33de030b1c04f253a",
+    "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "5040e0b29cc1f3fa0225be88b2399cb6516e525856c1026f78de5d96ba275ecd",
+    "packages/standards/tests/test_adoption.py": "ad6bbb8a5809acbcb45975f06e36c2b53101499eae171f524569fdc9cbdcd378",
+    "packages/standards/tests/test_commit_message.py": "3364a248e8230457c3a00c1b180f849c037d648134ce32dae797c7ba3d5a3778",
+    "packages/standards/tests/test_commit_only_launcher.py": "6c8d92c07d90e7a3b56a5aa7bfdb708a64785366597690249029f546a3952caf",
+    "packages/standards/tests/test_precommit_execution.py": "25dedd2f86601ad31381bcc9e821df91ee9974afc59eed986e7966fa38ddd660",
+    "packages/standards/tests/test_repo_standards_pins.py": "06a160bd566d11e82053f5a28cc0d35ad1e56d344a7db82de52016eb91b51a76",
+    ".github/workflows/commit-policy.yml": "0f78a5eb62332836a60aa28156c2ce338478c408491e114ea9260991496ed431",
+}
 RELEASE_TARGETS = frozenset({"typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"})
 
 
@@ -207,6 +223,32 @@ def _validate_standards_8129(root: Path, commit: str) -> None:
             msg = f"8.129 maintenance must match the reviewed repo-standards 6.13.0 projection in {path}"
             raise ReleaseLaneError(msg)
     _validate_docs(root, STANDARDS_8129_ANCHOR, commit)
+
+
+def _validate_standards_8208(root: Path, commit: str) -> None:
+    changed = _changed_since_anchor(root, STANDARDS_8208_ANCHOR, commit)
+    version = _project_version(root, commit)
+    if re.fullmatch(r"8\.208\.(?:9|[1-9][0-9]+)", version) is None:
+        msg = "8.208 advice publication requires an exact 8.208.x version from 8.208.9"
+        raise ReleaseLaneError(msg)
+    unexpected = (
+        changed - STANDARDS_8208_APPROVED_SHA256.keys() - TOOLING_PATHS - set(VERSION_PROJECTIONS) - {DOC_EXAMPLES}
+    )
+    if unexpected:
+        msg = f"8.208 advice publication changes an unapproved path: {', '.join(sorted(unexpected))}"
+        raise ReleaseLaneError(msg)
+    for path in VERSION_PROJECTIONS:
+        expected = _at(root, STANDARDS_8208_ANCHOR, path).replace(
+            STANDARDS_8208_ANCHOR_VERSION.encode(), version.encode()
+        )
+        if _at(root, commit, path) != expected:
+            msg = f"8.208 advice publication must retain the runtime and engine version projection in {path}"
+            raise ReleaseLaneError(msg)
+    for path, expected in STANDARDS_8208_APPROVED_SHA256.items():
+        if hashlib.sha256(_at(root, commit, path)).hexdigest() != expected:
+            msg = f"8.208 advice publication must match the reviewed advice bytes in {path}"
+            raise ReleaseLaneError(msg)
+    _validate_docs(root, STANDARDS_8208_ANCHOR, commit)
 
 
 def _validate_maintenance(root: Path, commit: str) -> None:
@@ -349,6 +391,7 @@ def _validate_gitleaks(root: Path, commit: str) -> None:
 _MAINTENANCE_VALIDATORS: Final[dict[str, Callable[[Path, str], None]]] = {
     MAINTENANCE_REF: _validate_maintenance,
     STANDARDS_8129_REF: _validate_standards_8129,
+    STANDARDS_8208_REF: _validate_standards_8208,
 }
 
 

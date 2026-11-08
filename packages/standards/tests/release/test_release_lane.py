@@ -40,6 +40,12 @@ class ActionPublisherLane(PublisherLane, Protocol):
     COMMIT_POLICY_BACKPORT_SHA256: dict[str, str]
 
 
+@runtime_checkable
+class AdvicePublisherLane(PublisherLane, Protocol):
+    STANDARDS_8208_ANCHOR: str
+    STANDARDS_8208_APPROVED_SHA256: dict[str, str]
+
+
 @dataclass(frozen=True)
 class Candidate:
     root: Path
@@ -337,7 +343,9 @@ def test_cli_records_only_the_validated_lane(candidate: Candidate, lane: Publish
     assert output.read_text() == "lane=standards-maintenance\n"
 
 
-@pytest.mark.parametrize("branch", ["maintenance/standards-8.101", "maintenance/standards-8.129"])
+@pytest.mark.parametrize(
+    "branch", ["maintenance/standards-8.101", "maintenance/standards-8.129", "maintenance/standards-8.208"]
+)
 @pytest.mark.parametrize(
     "scenario",
     ["exact", "branch", "sha", "repository", "workflow", "event", "missing-terminal"],
@@ -1219,4 +1227,123 @@ def test_standards_8129_candidate_cannot_use_the_8101_lane(standards_8129: Candi
     with pytest.raises(ValueError, match="legacy policy or an unapproved path"):
         lane.validate_lane(
             standards_8129.root, source_ref="refs/heads/maintenance/standards-8.101", commit=standards_8129.commit
+        )
+
+
+@pytest.fixture
+def advice_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPatch) -> Candidate:
+    assert isinstance(lane, AdvicePublisherLane)
+    _git(tmp_path, "init", "--quiet")
+    advice_path = "packages/standards/src/sarj_standards/__main__.py"
+    files = {
+        "packages/standards/pyproject.toml": '[project]\nversion = "8.208.8"\ndependencies = ["repo-standards==6.21.1", "sarj-rule-contracts==0.7.0"]\n',
+        "packages/standards-compat/pyproject.toml": '[project]\nversion = "8.208.8"\ndependencies = ["code-standards==8.208.8"]\n',
+        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "8.208.8"\n',
+        ".sarj-standards.toml": 'bundle = "8.208.8"\nrule_profile = "all"\n',
+        lane.CLI_REFERENCE: '{"version":"8.208.8","commands":[]}\n',
+        lane.DOC_EXAMPLES: '{"catalogSha256":"retained","cliSha256":"original","rules":[]}\n',
+        advice_path: "ADVICE = False\n",
+    }
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    anchor = _commit(tmp_path)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise immutable-anchor lookup with real private Git objects; injection bypasses that boundary.
+        lane, "STANDARDS_8208_ANCHOR", anchor
+    )
+    for relative in lane.VERSION_PROJECTIONS:
+        path = tmp_path / relative
+        path.write_text(path.read_text().replace("8.208.8", "8.208.9"))
+    reviewed = b"ADVICE = True\n"
+    (tmp_path / advice_path).write_bytes(reviewed)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the publisher's actual digest allowlist against private Git objects; injection bypasses this check.
+        lane, "STANDARDS_8208_APPROVED_SHA256", {advice_path: hashlib.sha256(reviewed).hexdigest()}
+    )
+    (tmp_path / lane.DOC_EXAMPLES).write_text(
+        json.dumps(
+            {
+                "catalogSha256": "retained",
+                "cliSha256": hashlib.sha256((tmp_path / lane.CLI_REFERENCE).read_bytes()).hexdigest(),
+                "rules": [],
+            }
+        )
+    )
+    return Candidate(tmp_path, anchor, _commit(tmp_path))
+
+
+def test_advice_maintenance_accepts_reviewed_changes_without_engine_or_sdk_drift(
+    lane: PublisherLane, advice_candidate: Candidate
+) -> None:
+    assert (
+        lane.validate_lane(
+            advice_candidate.root,
+            source_ref="refs/heads/maintenance/standards-8.208",
+            commit=advice_candidate.commit,
+        )
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "before", "after", "failure"),
+    [
+        pytest.param(
+            "packages/standards/pyproject.toml",
+            "repo-standards==6.21.1",
+            "repo-standards==6.22.0",
+            "runtime and engine",
+            id="runtime-sdk",
+        ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/__main__.py",
+            "ADVICE = True",
+            "ADVICE = False",
+            "reviewed advice",
+            id="unreviewed-advice",
+        ),
+        pytest.param(
+            "apps/docs/src/generated/formatted-code.v1.json",
+            "retained",
+            "changed",
+            "legacy catalog",
+            id="formatter-catalog",
+        ),
+        pytest.param(
+            "packages/typescript/src/unreviewed.ts",
+            "",
+            "export const changed = true;",
+            "unapproved path",
+            id="engine-source",
+        ),
+    ],
+)
+def test_advice_maintenance_refuses_policy_or_unreviewed_source_changes(
+    lane: PublisherLane, advice_candidate: Candidate, *, path: str, before: str, after: str, failure: str
+) -> None:
+    target = advice_candidate.root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(target.read_text().replace(before, after) if target.exists() else after)
+    commit = _commit(advice_candidate.root)
+    with pytest.raises(ValueError, match=failure):
+        lane.validate_lane(advice_candidate.root, source_ref="refs/heads/maintenance/standards-8.208", commit=commit)
+
+
+def test_advice_maintenance_refuses_a_different_release_line(lane: PublisherLane, advice_candidate: Candidate) -> None:
+    target = advice_candidate.root / "packages/standards/pyproject.toml"
+    target.write_text(target.read_text().replace("8.208.9", "9.4.1"))
+    commit = _commit(advice_candidate.root)
+    with pytest.raises(ValueError, match=r"exact 8\.208\.x"):
+        lane.validate_lane(advice_candidate.root, source_ref="refs/heads/maintenance/standards-8.208", commit=commit)
+
+
+def test_advice_maintenance_cannot_publish_sibling_packages(lane: PublisherLane, advice_candidate: Candidate) -> None:
+    targets = dict.fromkeys(lane.RELEASE_TARGETS, "false")
+    targets.update(standards="true", python="true")
+    with pytest.raises(ValueError, match="cannot publish sibling"):
+        lane.validate_lane(
+            advice_candidate.root,
+            source_ref="refs/heads/maintenance/standards-8.208",
+            commit=advice_candidate.commit,
+            detected_targets=json.dumps(targets),
         )
