@@ -1,0 +1,49 @@
+# Benchmark only; never merge. Released engine vs candidate builds on this tree.
+name: Standards engine AB
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/standards-engine-ab.yml
+      - .github/bench/**
+
+permissions:
+  contents: read
+
+jobs:
+  ab:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 90
+    env:
+      BASE_VERSION: 9.4.8
+      CANDIDATES: text=605f37e75454cd024a6f74ffe5c0954174956de5
+      CACHE_CANDIDATE: text
+      RAW_API: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: |
+          cp -R .github/bench "$RUNNER_TEMP/bench-scripts"
+          git checkout -q --force --detach c99c3b490e682b941d8b63484b97f6c00ecd2d2a
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: 0.13.5
+      - name: Install mise
+        run: |
+          curl -fsSL https://mise.run | MISE_INSTALL_PATH="$HOME/.local/bin/mise" sh
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
+      - run: bash "$RUNNER_TEMP/bench-scripts/ab2.sh"
+      - if: always()
+        run: |
+          cat "$RUNNER_TEMP/ab/summary.tsv"
+          ! grep -q DIFFERENT "$RUNNER_TEMP/ab/summary.tsv"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ab
+          path: ${{ runner.temp }}/ab
