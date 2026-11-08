@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from email.message import Message
 import hashlib
+from http.client import HTTPException, IncompleteRead
 import io
 from pathlib import Path
 import platform
@@ -111,6 +113,10 @@ def test_failed_bootstrap_does_not_publish_corrupt_cache_or_path(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test bootstrap lookup; caller overrides would allow unpinned artifacts.
         native_bootstrap, "urlopen", download
     )
+    sleeps: list[float] = []
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- retry without sleeping.
+        native_bootstrap, "sleep", sleeps.append
+    )
     with pytest.raises(OSError, match=r"download failed|checksum mismatch"):
         native_bootstrap.main()
     assert destination.read_bytes() == b"previous corrupt cache"
@@ -186,11 +192,33 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
     ]
 
 
-@pytest.mark.parametrize("fallback", ["valid", "checksum", "network"])
-@pytest.mark.parametrize("primary", ["http", "timeout", "network"])
-def test_mirror_transport_failure_uses_only_pinned_github_release(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fallback: str, primary: str
-) -> None:
+_MIRROR = f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64"
+_GITHUB = f"https://github.com/jdx/mise/releases/download/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64"
+
+
+class _FailingStream(io.BytesIO):
+    def __init__(self, error: Exception) -> None:
+        super().__init__(_PAYLOAD)
+        self.error: Exception = error
+
+    def read(self, _size: int | None = -1) -> bytes:
+        raise self.error
+
+
+class _UpperBound:
+    def uniform(self, low: float, high: float) -> float:
+        assert low == 0
+        return high
+
+
+@dataclass(frozen=True)
+class _Downloads:
+    calls: list[str]
+    sleeps: list[float]
+
+
+# Each source serves its scripted outcomes in order; its last outcome repeats.
+def _scripted_downloads(monkeypatch: pytest.MonkeyPatch, outcomes: dict[str, list[str | int]]) -> _Downloads:
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the pinned network boundary.
         native_bootstrap, "_DIGESTS", {"linux-x64": _DIGEST}
     )
@@ -198,71 +226,92 @@ def test_mirror_transport_failure_uses_only_pinned_github_release(
         native_bootstrap, "_target", lambda: "linux-x64"
     )
     calls: list[str] = []
+    sleeps: list[float] = []
 
     def download(request: Request, *, timeout: int) -> io.BytesIO:
         assert timeout == 120
         assert request.get_header("Authorization") is None
-        calls.append(request.full_url)
-        message = "primary unavailable"
-        if len(calls) == 1:
-            if primary == "http":
-                raise HTTPError(request.full_url, 504, message, Message(), None)
-            if primary == "timeout":
-                raise TimeoutError(message)
+        url = request.full_url
+        script = outcomes[url]
+        outcome = script[min(calls.count(url), len(script) - 1)]
+        calls.append(url)
+        if isinstance(outcome, int):
+            raise HTTPError(url, outcome, "unavailable", Message(), None)
+        if outcome == "timeout":
+            message = "connect timed out"
+            raise TimeoutError(message)
+        if outcome == "network":
+            message = "unreachable"
             raise URLError(message)
-        if fallback == "network":
-            raise URLError(message)
-        assert request.get_header("Accept") is None
-        return io.BytesIO(_PAYLOAD if fallback == "valid" else b"corrupt")
+        streams = {
+            "valid": io.BytesIO(_PAYLOAD),
+            "corrupt": io.BytesIO(b"corrupt"),
+            "stream-timeout": _FailingStream(TimeoutError("stream timed out")),
+            "reset": _FailingStream(ConnectionResetError("connection reset")),
+            "truncated": _FailingStream(IncompleteRead(b"partial")),
+        }
+        return streams[outcome]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- simulate transport failure without live network.
         native_bootstrap, "urlopen", download
     )
-    destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
-    if fallback == "valid":
-        assert native_bootstrap.provision(tmp_path).read_bytes() == _PAYLOAD
-        assert destination.stat().st_mode & 0o777 == 0o755
-    else:
-        with pytest.raises(OSError, match=r"primary unavailable|checksum mismatch"):
-            native_bootstrap.provision(tmp_path)
-        assert not destination.exists()
-        assert list(destination.parent.iterdir()) == []
-    assert calls == [
-        f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64",
-        f"https://github.com/jdx/mise/releases/download/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64",
-    ]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- record backoff without sleeping.
+        native_bootstrap, "sleep", sleeps.append
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- make jitter deterministic at its upper bound.
+        native_bootstrap, "SystemRandom", _UpperBound
+    )
+    return _Downloads(calls, sleeps)
 
 
-@pytest.mark.parametrize("failure", ["checksum", "stream-timeout"])
-def test_primary_content_failure_blocks_without_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+@pytest.mark.parametrize(
+    "primary", [503, 504, 429, "timeout", "network", "stream-timeout", "reset", "truncated", "corrupt", 404]
+)
+def test_primary_failure_falls_back_to_verified_github_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, primary: str | int
 ) -> None:
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise pinned content verification.
-        native_bootstrap, "_DIGESTS", {"linux-x64": _DIGEST}
-    )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- select a supported target independently of the host.
-        native_bootstrap, "_target", lambda: "linux-x64"
-    )
-    calls: list[str] = []
+    downloads = _scripted_downloads(monkeypatch, {_MIRROR: [primary], _GITHUB: ["valid"]})
+    destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
+    assert native_bootstrap.provision(tmp_path) == destination.resolve()
+    assert destination.read_bytes() == _PAYLOAD
+    assert destination.stat().st_mode & 0o777 == 0o755
+    assert downloads == _Downloads([_MIRROR, _GITHUB], [])
 
-    class TimedOutStream(io.BytesIO):
-        def read(self, _size: int | None = -1) -> bytes:
-            message = "stream timed out"
-            raise TimeoutError(message)
 
-    def download(request: Request, *, timeout: int) -> io.BytesIO:
-        assert timeout == 120
-        calls.append(request.full_url)
-        return TimedOutStream(_PAYLOAD) if failure == "stream-timeout" else io.BytesIO(b"corrupt")
+def test_transient_failures_retry_with_bounded_jittered_backoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloads = _scripted_downloads(monkeypatch, {_MIRROR: [503, "timeout", "valid"], _GITHUB: [502, "reset"]})
+    assert native_bootstrap.provision(tmp_path).read_bytes() == _PAYLOAD
+    assert downloads == _Downloads([_MIRROR, _GITHUB, _MIRROR, _GITHUB, _MIRROR], [2.0, 4.0])
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- simulate invalid content without live network.
-        native_bootstrap, "urlopen", download
-    )
+
+@pytest.mark.parametrize(
+    ("primary", "fallback", "expected_calls", "expected_sleeps", "error"),
+    [
+        pytest.param(503, 503, [_MIRROR, _GITHUB] * 3, [2.0, 4.0], "unavailable", id="persistent-outage"),
+        pytest.param(503, "corrupt", [_MIRROR, _GITHUB, _MIRROR, _MIRROR], [2.0, 4.0], "unavailable", id="corrupt"),
+        pytest.param("corrupt", "corrupt", [_MIRROR, _GITHUB], [], "checksum mismatch", id="both-corrupt"),
+        pytest.param(404, 404, [_MIRROR, _GITHUB], [], "unavailable", id="not-found-not-retried"),
+        pytest.param(403, "timeout", [_MIRROR, _GITHUB, _GITHUB, _GITHUB], [2.0, 4.0], "timed out", id="forbidden"),
+    ],
+)
+def test_exhausted_sources_never_install_or_replace_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    primary: str | int,
+    fallback: str | int,
+    expected_calls: list[str],
+    expected_sleeps: list[float],
+    error: str,
+) -> None:
+    downloads = _scripted_downloads(monkeypatch, {_MIRROR: [primary], _GITHUB: [fallback]})
     destination = tmp_path / native_bootstrap.VERSION / "linux-x64/bin/mise"
     destination.parent.mkdir(parents=True)
     destination.write_bytes(b"previous cache")
-    with pytest.raises(OSError, match=r"stream timed out|checksum mismatch"):
+    with pytest.raises((OSError, HTTPException), match=error):
         native_bootstrap.provision(tmp_path)
-    assert calls == [f"https://mise.jdx.dev/v{native_bootstrap.VERSION}/mise-v{native_bootstrap.VERSION}-linux-x64"]
     assert destination.read_bytes() == b"previous cache"
     assert list(destination.parent.iterdir()) == [destination]
+    assert downloads == _Downloads(expected_calls, expected_sleeps)
