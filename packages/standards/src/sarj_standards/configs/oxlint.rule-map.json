@@ -1902,6 +1902,21 @@
       "design-system-tsx": "warn"
     }
   },
+  "@sarj/prefer-configured-cloud-scope": {
+    "kind": "js-alias",
+    "oxlintId": "@sarj/prefer-configured-cloud-scope",
+    "contexts": {
+      "source-ts": "warn",
+      "source-tsx": "warn",
+      "source-js": "warn",
+      "source-jsx": "warn",
+      "test-ts": "warn",
+      "test-bun-ts": "warn",
+      "test-playwright-ts": "warn",
+      "config-ts": "warn",
+      "design-system-tsx": "warn"
+    }
+  },
   "@sarj/prefer-constant-time-secret-compare": {
     "kind": "js-alias",
     "oxlintId": "@sarj/prefer-constant-time-secret-compare",

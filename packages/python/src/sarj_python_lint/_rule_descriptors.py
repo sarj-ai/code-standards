@@ -27,6 +27,15 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
+        rule_id=RuleId("prefer-configured-cloud-scope"),
+        module="sarj_python_lint.rules.prefer_configured_cloud_scope",
+        class_name="PreferConfiguredCloudScope",
+        code="SARJ566",
+        description="Read Cloudflare account targets from validated deployment configuration.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("fastapi-route-declares-security"),
         module="sarj_python_lint.rules.fastapi_route_declares_security",
         class_name="FastapiRouteDeclaresSecurity",

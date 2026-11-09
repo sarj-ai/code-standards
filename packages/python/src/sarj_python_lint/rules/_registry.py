@@ -121,6 +121,7 @@ from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 from sarj_python_lint.rules.prefer_autospec_for_callable_mock import PreferAutospecForCallableMock
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollectionComprehension
+from sarj_python_lint.rules.prefer_configured_cloud_scope import PreferConfiguredCloudScope
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
@@ -294,6 +295,7 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         PreferCoordinatedStateOwner.id: PreferCoordinatedStateOwner,
         PreferInjectedService.id: PreferInjectedService,
+        PreferConfiguredCloudScope.id: PreferConfiguredCloudScope,
         FastapiRouteDeclaresSecurity.id: FastapiRouteDeclaresSecurity,
         PreferValidatedUuidComparison.id: PreferValidatedUuidComparison,
         PreferSinglePsycopgCursor.id: PreferSinglePsycopgCursor,

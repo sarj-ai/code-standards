@@ -153,6 +153,7 @@
       "prefer-bulk-upsert",
       "prefer-class-row",
       "prefer-collection-comprehension",
+      "prefer-configured-cloud-scope",
       "prefer-constant-time-secret-compare",
       "prefer-coordinated-state-owner",
       "prefer-declarative-batch-validation",
@@ -400,6 +401,7 @@
       "no-zod-parse-typed-object",
       "prefer-await-in-async-return",
       "prefer-coded-error-result",
+      "prefer-configured-cloud-scope",
       "prefer-constant-time-secret-compare",
       "prefer-dependency-interface",
       "prefer-discriminated-union",
@@ -694,7 +696,8 @@
       "SARJ562",
       "SARJ563",
       "SARJ564",
-      "SARJ565"
+      "SARJ565",
+      "SARJ566"
     ],
     "sql": [
       "SARJ101",
