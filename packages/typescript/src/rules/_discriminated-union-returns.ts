@@ -6,10 +6,12 @@
  * the `undefined` checks accept both.
  */
 
-import type { ESTree, Node, Scope, SourceCode, TsDefinition } from "../types.js";
-import { tsVariable } from "../types.js";
+import type { ESTree, Identifier, Node, SourceCode, TsDefinition } from "../types.js";
+import { isErasedExpression } from "../utils/ast.js";
 import { isPresent } from "../utils/is-present.js";
 import { findVariable } from "../utils/static-string.js";
+import { typeBinding } from "../utils/type-binding.js";
+import { hasIdentifierNamed } from "../utils/unused-private-binding.js";
 
 type Producer = ESTree.ArrowFunctionExpression | ESTree.Function;
 type Tag = string | number | boolean;
@@ -81,14 +83,20 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: SourceCode
   if (shape === undefined) return undefined;
   const returned = returnedProperties(paths.objects, shape);
   if (returned === undefined) return undefined;
+  // Async functions assimilate callable `then` values instead of fulfilling with the carrier object.
+  if (node.async && returned.some(properties => {
+    const then = properties.get("then");
+    return then !== undefined && (then.type !== "Literal" || (typeof then.value === "object" && then.value !== null));
+  })) return undefined;
+  const emptyPayload = returned.some(properties => hasEmptyPayload(properties, shape.optional));
   for (const [name, member] of shape.members) {
-    if (member.optional) continue;
-    const domain = tagDomain(member.typeAnnotation?.typeAnnotation);
+    if (member.optional || emptyPayload) continue;
+    const domain = tagDomain(member.typeAnnotation?.typeAnnotation, sourceCode);
     if (domain !== undefined && hasTagSpecificPayload(name, domain, shape.optional, returned)) {
       return { reportNode: contract.reportNode, relationship: { kind: "presence", tag: name }, members: shape.members, returned };
     }
   }
-  const fields = correlatedBooleanFields(shape, returned);
+  const fields = correlatedBooleanFields(shape, returned, sourceCode);
   return fields === undefined ? undefined : {
     reportNode: contract.reportNode, relationship: { kind: "boolean-pair", fields }, members: shape.members, returned,
   };
@@ -98,9 +106,10 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: SourceCode
 function correlatedBooleanFields(
   shape: ObjectContract,
   returned: readonly ReadonlyMap<string, Node>[],
+  sourceCode: SourceCode,
 ): BooleanPair | undefined {
   const fields = [...shape.members].filter(([, member]) => !member.optional &&
-    member.typeAnnotation?.typeAnnotation.type === "TSBooleanKeyword").map(([name]) => name);
+    booleanType(member.typeAnnotation?.typeAnnotation, sourceCode)).map(([name]) => name);
   if (fields.length > 8) return undefined;
   for (const [index, left] of fields.entries()) {
     for (const right of fields.slice(index + 1)) {
@@ -109,6 +118,12 @@ function correlatedBooleanFields(
     }
   }
   return undefined;
+}
+
+/** Exact Boolean domains, including one unmerged local alias, preserve both possible values. */
+function booleanType(type: ESTree.TSType | undefined, sourceCode: SourceCode): boolean {
+  const domain = tagDomain(type, sourceCode);
+  return domain?.size === 2 && domain.has(true) && domain.has(false);
 }
 
 /** Read every producer write, abstaining when either field's value is opaque. */
@@ -159,15 +174,7 @@ function returnContract(node: Producer, sourceCode: SourceCode): Contract | unde
 /** Resolve type-space bindings without confusing a value-space shadow with a type. */
 function definitions(reference: ESTree.TSTypeReference, sourceCode: SourceCode): readonly TsDefinition[] {
   if (reference.typeName.type !== "Identifier") return [];
-  let scope: Scope | null = sourceCode.getScope(reference);
-  while (scope !== null) {
-    const found = scope.set.get(reference.typeName.name);
-    const binding = found === undefined ? undefined : tsVariable(found);
-    const typeDefinitions = binding?.defs.filter((definition) => definition.isTypeDefinition) ?? [];
-    if (typeDefinitions.length > 0 || binding?.isTypeVariable === true) return typeDefinitions;
-    scope = scope.upper;
-  }
-  return [];
+  return typeBinding(sourceCode, reference.typeName)?.defs.filter(definition => definition.isTypeDefinition) ?? [];
 }
 
 /** Validate that every declared field has a unique, locally known name and optionality. */
@@ -195,13 +202,12 @@ function returnedProperties(
     if (properties === undefined) return undefined;
     if ([...properties.keys()].some((name) => !contract.members.has(name))) return undefined;
     if ([...contract.members].some(([name, member]) => !member.optional && !properties.has(name))) return undefined;
-    if (hasEmptyPayload(properties, contract.optional)) return undefined;
     returned.push(properties);
   }
   return returned;
 }
 
-/** Spreads, accessors, computed keys and duplicates conceal the actual runtime key set. */
+/** Spreads, accessors, dynamic computed keys and duplicates conceal the runtime key set. */
 function objectProperties(object: ESTree.ObjectExpression): ReadonlyMap<string, Node> | undefined {
   const properties = new Map<string, Node>();
   for (const property of object.properties) {
@@ -225,7 +231,13 @@ function hasEmptyPayload(properties: ReadonlyMap<string, Node>, optional: Readon
   return false;
 }
 
-function tagDomain(node: ESTree.TSType | undefined): ReadonlySet<Tag> | undefined {
+function tagDomain(node: ESTree.TSType | undefined, sourceCode: SourceCode): ReadonlySet<Tag> | undefined {
+  if (node?.type === "TSTypeReference" && !isPresent(node.typeArguments)) {
+    const bindings = definitions(node, sourceCode);
+    const declaration = bindings.length === 1 ? bindings[0]?.node : undefined;
+    if (declaration?.type !== "TSTypeAliasDeclaration" || isPresent(declaration.typeParameters)) return undefined;
+    node = declaration.typeAnnotation;
+  }
   if (node?.type === "TSBooleanKeyword") return new Set([true, false]);
   if (node?.type !== "TSUnionType") return undefined;
   const values = new Set<Tag>();
@@ -314,6 +326,7 @@ function reachableSwitch(statement: ESTree.SwitchStatement, sourceCode: SourceCo
 
 /** Restrict witnesses to the producer's unchanged broad input, before any narrowing. */
 function broadSwitchInput(statement: ESTree.SwitchStatement, sourceCode: SourceCode): "string" | "number" | undefined {
+  if (hasIdentifierNamed(sourceCode, "eval")) return undefined;
   const body = statement.parent;
   if (body.type !== "BlockStatement" || body.body.length !== 1) return undefined;
   const owner = body.parent;
@@ -372,6 +385,13 @@ function statementsPaths(statements: readonly ESTree.Statement[], budget: PathBu
 
 function returnedObjects(expression: ESTree.Expression, budget: PathBudget, depth: number): readonly ESTree.ObjectExpression[] | undefined {
   if (!budget.within(depth)) return undefined;
+  if (isErasedExpression(expression)) {
+    return returnedObjects(expression.expression, budget, depth + 1);
+  }
+  if (expression.type === "Identifier") {
+    const initializer = closedReturnInitializer(expression, budget.sourceCode);
+    return initializer === undefined ? undefined : returnedObjects(initializer, budget, depth + 1);
+  }
   if (expression.type === "ObjectExpression") {
     return budget.recordObject() ? [expression] : undefined;
   }
@@ -381,11 +401,27 @@ function returnedObjects(expression: ESTree.Expression, budget: PathBudget, dept
   return consequent === undefined || alternate === undefined ? undefined : [...consequent, ...alternate];
 }
 
+/** A sole-use const immediately before this return cannot escape or be mutated through another reference. */
+function closedReturnInitializer(identifier: Identifier, sourceCode: SourceCode): ESTree.Expression | undefined {
+  const returned = identifier.parent;
+  if (returned.type !== "ReturnStatement" || returned.argument !== identifier || returned.parent.type !== "BlockStatement" ||
+    hasIdentifierNamed(sourceCode, "eval")) return undefined;
+  const block = returned.parent;
+  const declaration = block.body[block.body.indexOf(returned) - 1];
+  if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || declaration.declarations.length !== 1) return undefined;
+  const value = declaration.declarations[0];
+  if (value?.id.type !== "Identifier" || value.id.name !== identifier.name || value.init === null) return undefined;
+  const binding = findVariable(sourceCode.getScope(identifier), identifier.name);
+  if (binding?.defs.length !== 1 || binding.defs[0]?.node !== value || binding.eslintUsed ||
+    !binding.references.some(reference => reference.identifier === identifier && reference.isRead()) ||
+    binding.references.some(reference => reference.isWrite() ? reference.init !== true : reference.identifier !== identifier)) return undefined;
+  return value.init;
+}
+
 
 function propertyName(node: ESTree.ObjectProperty | ESTree.TSPropertySignature): string | undefined {
-  if (node.computed) return undefined;
-  if (node.key.type === "Identifier") return node.key.name;
   if (node.key.type === "Literal" && typeof node.key.value === "string") return node.key.value;
+  if (!node.computed && node.key.type === "Identifier") return node.key.name;
   return undefined;
 }
 

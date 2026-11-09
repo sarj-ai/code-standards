@@ -94,7 +94,13 @@ function returnsOnlyConditionalObject(fn: ESTree.Function): boolean {
   const statements = fn.body?.body ?? [];
   const [returned] = statements;
   return statements.length === 1 && returned?.type === "ReturnStatement" &&
-    returned.argument?.type === "ConditionalExpression";
+    returned.argument?.type === "ConditionalExpression" && bareConditionalObjects(returned.argument);
+}
+
+/** Assertions and local aliases can widen expression types; detecting them does not justify narrowing a function annotation. */
+function bareConditionalObjects(expression: ESTree.Expression): boolean {
+  return expression.type === "ObjectExpression" || (expression.type === "ConditionalExpression" &&
+    bareConditionalObjects(expression.consequent) && bareConditionalObjects(expression.alternate));
 }
 
 function privateVariantType(properties: ReadonlyMap<string, Node>, result: DiscriminatedReturn, sourceCode: SourceCode): string | null {
@@ -103,14 +109,19 @@ function privateVariantType(properties: ReadonlyMap<string, Node>, result: Discr
   const fields: string[] = [];
   for (const [name, member] of result.members) {
     const value = properties.get(name);
-    if (value === undefined) continue;
+    if (value === undefined && result.relationship.kind === "presence") continue;
     const annotation = member.typeAnnotation?.typeAnnotation;
     if (annotation === undefined) return null;
     const narrow = result.relationship.kind === "presence"
       ? name === result.relationship.tag
       : name === result.relationship.fields.left || name === result.relationship.fields.right;
-    const type = narrow ? sourceCode.getText(value) : sourceCode.getText(annotation);
-    fields.push(`${member.readonly ? "readonly " : ""}${sourceCode.getText(member.key)}: ${type}`);
+    let type = sourceCode.getText(annotation);
+    if (narrow) {
+      if (value === undefined) return null;
+      type = sourceCode.getText(value);
+    }
+    const optional = result.relationship.kind === "boolean-pair" && !narrow && member.optional;
+    fields.push(`${member.readonly ? "readonly " : ""}${sourceCode.getText(member.key)}${optional ? "?" : ""}: ${type}`);
   }
   return `{ ${fields.join("; ")} }`;
 }

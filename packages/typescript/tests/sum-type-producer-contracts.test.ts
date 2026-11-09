@@ -102,3 +102,35 @@ it("three failure dispositions preserve partial results and reject only the cros
   expect(nativeContract(fixed + consume).codes).toEqual([]);
   expect(nativeContract(producer).emitted).toBe(nativeContract(fixed).emitted);
 });
+
+it("async assimilation can fulfill with a state absent from returned thenable carriers", async () => {
+  const result = nativeContract('type R={left:boolean;right:boolean;then?:unknown};function settle(resolve:(value:R)=>void):void{resolve({left:true,right:true});}async function state(flag:boolean):Promise<R>{return flag?{left:true,right:false,then:settle}:{left:false,right:true,then:settle};}state(true).then(value=>JSON.stringify(value));');
+  expect(result.codes).toEqual([]);
+  expect(await runInNewContext(result.emitted)).toBe('{"left":true,"right":true}');
+});
+
+it("a broad assertion still requires a broad function return annotation", () => {
+  const flat = '{left:boolean;right:boolean}';
+  const variants = '{left:true;right:false}|{left:false;right:true}';
+  const source = `type Flat=${flat};function state(flag:boolean):${flat}{return flag?({left:true,right:false} as Flat):({left:false,right:true} as Flat);}`;
+  expect(nativeContract(source).codes).toEqual([]);
+  expect(nativeContract(source.replace(`):${flat}`, `):${variants}`)).codes).toContain(2322);
+});
+
+it("a Boolean-pair union retains independent optional and nullable payloads", () => {
+  const flat = '{left:boolean;right:boolean;trace?:string|null}';
+  const variants = '{left:true;right:false;trace?:string|null}|{left:false;right:true;trace?:string|null}';
+  const source = `function state(flag:boolean):${flat}{return flag?{left:true,right:false,trace:null}:{left:false,right:true};}`;
+  const fixed = source.replace(flat, variants);
+  expect(nativeContract(source).codes).toEqual([]);
+  expect(nativeContract(fixed).codes).toEqual([]);
+  expect(nativeContract(source).emitted).toBe(nativeContract(fixed).emitted);
+  expect(nativeContract(`type State=${variants};const withoutTrace:State={left:true,right:false};const nullable:State={left:false,right:true,trace:null};`).codes).toEqual([]);
+  expect(nativeContract(`type State=${variants};const crossed:State={left:true,right:true};`).codes).toContain(2322);
+});
+
+it("direct eval in a default parameter can erase switch input witnesses", () => {
+  const result = nativeContract('function state(command:string,force:undefined=eval("command=\\\"start\\\"")):{phase:"queued"|"complete";ticket?:string}{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}}for(const command of ["start","other",""]){if(state(command).phase!=="queued")throw Error("input was not replaced");}');
+  expect(result.codes).toEqual([]);
+  expect(() => { runInNewContext(result.emitted); }).not.toThrow();
+});
