@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import hashlib
+from importlib.metadata import PackageNotFoundError, distribution
 import os
 from pathlib import Path
 import platform
@@ -11,7 +12,6 @@ import shutil
 import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed-argument git and Lefthook calls are required.
 import sys
-import sysconfig
 from types import MappingProxyType
 from typing import Final
 
@@ -293,13 +293,12 @@ def _native_binary() -> Path:
     machine = platform.machine().lower()
     architecture = _ARCHITECTURES.get(machine, machine)
     suffix = ".exe" if system == "windows" else ""
-    binary = (
-        Path(sysconfig.get_path("purelib"))
-        / "lefthook"
-        / "bin"
-        / f"lefthook-{system}-{architecture}"
-        / f"lefthook{suffix}"
-    )
+    try:
+        installed = distribution("lefthook")
+    except PackageNotFoundError as exc:
+        msg = "native Lefthook distribution is missing from the code-standards environment"
+        raise OSError(msg) from exc
+    binary = Path(str(installed.locate_file(f"lefthook/bin/lefthook-{system}-{architecture}/lefthook{suffix}")))
     if not binary.is_file():
         msg = f"native Lefthook binary is missing from the code-standards environment: {binary}"
         raise OSError(msg)

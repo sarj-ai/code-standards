@@ -1182,7 +1182,9 @@ def _is_pin_site(path: Path) -> bool:
     return ".github" in path.parts and "workflows" in path.parts and path.suffix.lower() in {".yml", ".yaml"}
 
 
-def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinRewrite:
+def rewrite_version_pins(
+    text: str, installed: Mapping[str, str], *, retained_approvals: Collection[str] = ()
+) -> VersionPinRewrite:
     changed: set[str] = set()
     text, migrated_launchers = launcher.rewrite_legacy_repository_invocations(text)
     if migrated_launchers:
@@ -1206,7 +1208,11 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
 
     def preapproved_plugin(match: re.Match[str]) -> str:
         current = installed.get(_SARJ_PLUGIN)
-        if current is None or match.group("version") == current:
+        if (
+            current is None
+            or match.group("version") == current
+            or f"{_SARJ_PLUGIN}@{match.group('version')}" in retained_approvals
+        ):
             return match.group(0)
         changed.add(_SARJ_PLUGIN)
         return f"{match.group('prefix')}{current}{match.group('suffix')}"
@@ -1226,17 +1232,23 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
             changed.add("code-standards")
             isolated = migrated
     pinned = _PIN.sub(replacement, isolated)
-    pinned = _PREAPPROVED_PLUGIN.sub(preapproved_plugin, pinned)
     preapprovals = manifest.typescript_age_gate_preapprovals()
     if current_plugin := installed.get(_SARJ_PLUGIN):
         preapprovals[_SARJ_PLUGIN] = current_plugin
-    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(pinned, preapprovals)
+    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(
+        pinned, preapprovals, retained_approvals=retained_approvals
+    )
+    pinned = _PREAPPROVED_PLUGIN.sub(preapproved_plugin, pinned)
     changed.update(age_gate_changed)
     return VersionPinRewrite(pinned, tuple(sorted(changed)))
 
 
-def _rewrite_age_gate_preapprovals(text: str, approvals: Mapping[str, str]) -> AgeGateRewrite:
+def _rewrite_age_gate_preapprovals(
+    text: str, approvals: Mapping[str, str], *, retained_approvals: Collection[str] = ()
+) -> AgeGateRewrite:
     managed = frozenset(approvals)
+    current_approvals = frozenset(f"{name}@{version}" for name, version in approvals.items())
+    retained_aliases = frozenset(retained_approvals) - current_approvals
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
         header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
@@ -1244,8 +1256,11 @@ def _rewrite_age_gate_preapprovals(text: str, approvals: Mapping[str, str]) -> A
             continue
         retained: list[str] = []
         trailing: list[str] = []
+        present: set[str] = set()
 
-        def retain_existing_items(index: int, header: re.Match[str], retained: list[str], trailing: list[str]) -> int:
+        def retain_existing_items(
+            index: int, header: re.Match[str], retained: list[str], trailing: list[str], present: set[str]
+        ) -> int:
             end = index + 1
             saw_item = False
             while end < len(lines):
@@ -1265,14 +1280,22 @@ def _rewrite_age_gate_preapprovals(text: str, approvals: Mapping[str, str]) -> A
                     retained.append(candidate)
                 else:
                     saw_item = True
-                    if _managed_preapproval(item.group("value"), managed) is None:
+                    value = item.group("value")
+                    if value in retained_aliases or _managed_preapproval(value, managed) is None:
                         retained.append(candidate)
+                    elif value in current_approvals and value not in present:
+                        retained.append(candidate)
+                        present.add(value)
                 end += 1
             return end
 
-        end = retain_existing_items(index, header, retained, trailing)
+        end = retain_existing_items(index, header, retained, trailing, present)
         item_indent = f"{header.group('indent')}  "
-        rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(approvals)]
+        rendered = [
+            f'{item_indent}- "{name}@{approvals[name]}"\n'
+            for name in sorted(approvals)
+            if f"{name}@{approvals[name]}" not in present
+        ]
         replacement = [line, *retained, *rendered, *trailing]
         original = lines[index:end]
         if replacement != original:
@@ -1328,7 +1351,12 @@ def rewrite_file_version_pins(
 ) -> VersionPinRewrite:
     if _path_is_excluded(root, path, exclusions):
         return VersionPinRewrite(contents, ())
-    contents, packages = rewrite_version_pins(contents, installed)
+    aliases = (
+        _local_alias_preapprovals(path) if path.name in {"pnpm-workspace.yaml", ".yarnrc.yml"} else frozenset[str]()
+    )
+    if aliases is None:
+        return VersionPinRewrite(contents, ())
+    contents, packages = rewrite_version_pins(contents, installed, retained_approvals=aliases)
     if _is_github_workflow(path):
         action_update = _rewrite_repo_standards_actions(contents)
         contents = action_update.contents
@@ -1343,6 +1371,55 @@ def rewrite_file_version_pins(
 
 def _is_github_workflow(path: Path) -> bool:
     return path.parent.name == "workflows" and path.parent.parent.name == ".github" and path.suffix in {".yml", ".yaml"}
+
+
+def _local_alias_preapprovals(policy_path: Path) -> frozenset[str] | None:
+    package = policy_path.parent / "package.json"
+    if is_link_like(package):
+        return None
+    try:
+        document = parse_json(package.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return frozenset()
+    except OSError, ValueError, RecursionError:
+        return None
+    if not is_object_mapping(document):
+        return None
+    owned = manifest.typescript_age_gate_preapprovals()
+    aliases: set[str] = set()
+    for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+        values = document.get(field)
+        if values is None:
+            continue
+        if not is_object_mapping(values):
+            return None
+        for alias, specifier in values.items():
+            try:
+                approval = _exact_managed_alias(alias, specifier, owned)
+            except TypeError, ValueError:
+                return None
+            if approval:
+                aliases.add(approval)
+    return frozenset(aliases)
+
+
+def _exact_managed_alias(alias: object, specifier: object, owned: Collection[str]) -> str | None:
+    if not isinstance(alias, str) or not isinstance(specifier, str):
+        msg = "Dependency name and specifier must be strings"
+        raise TypeError(msg)
+    if not specifier.startswith("npm:"):
+        return None
+    target = specifier.removeprefix("npm:")
+    if target in owned:
+        msg = "Managed npm alias requires an exact version"
+        raise ValueError(msg)
+    name, _, version = target.rpartition("@")
+    if name not in owned or alias == name:
+        return None
+    if re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version) is None:
+        msg = "Managed npm alias requires an exact version"
+        raise ValueError(msg)
+    return f"{name}@{version}"
 
 
 def _rewrite_repo_standards_actions(source: str) -> VersionPinRewrite:

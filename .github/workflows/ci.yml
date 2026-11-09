@@ -1105,6 +1105,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Install pinned Gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/ci-install-gitleaks.sh
       - name: Scan tracked tree and reachable history
         run: bash .github/scripts/ci-gitleaks-scan.sh
