@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from importlib.metadata import requires, version
+from importlib.metadata import PackageNotFoundError, PathDistribution, requires, version
 import io
 import json
 import os
@@ -1438,6 +1438,7 @@ def test_hook_install_refuses_linked_durable_binary_without_overwriting_its_targ
     assert victim.read_text(encoding="utf-8") == "keep me"
 
 
+@pytest.mark.parametrize("layout", ["present", "missing-binary", "missing-distribution"])
 @pytest.mark.parametrize(
     "runtime",
     [
@@ -1450,6 +1451,7 @@ def test_native_hook_binary_matches_the_runtime_platform(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     runtime: tuple[str, str, str, str],
+    layout: str,
 ) -> None:
     system, machine, directory, filename = runtime
     expected = tmp_path / "lefthook" / "bin" / directory / filename
@@ -1466,8 +1468,15 @@ def test_native_hook_binary_matches_the_runtime_platform(
     def git(_root: Path, *_args: str) -> str:
         return ".git/hooks/pre-commit\n"
 
-    def purelib(_name: str) -> str:
-        return str(tmp_path)
+    metadata = tmp_path / "lefthook-2.2.2.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text("Name: lefthook\nVersion: 2.2.2\n", encoding="utf-8")
+
+    def installed_distribution(name: str) -> PathDistribution:
+        assert name == "lefthook"
+        if layout == "missing-distribution":
+            raise PackageNotFoundError(name)
+        return PathDistribution(metadata)
 
     hook = tmp_path / ".git/hooks/pre-commit"
     hook.parent.mkdir(parents=True)
@@ -1489,12 +1498,18 @@ def test_native_hook_binary_matches_the_runtime_platform(
         "sarj_standards.libs.repository.hooks.platform.machine", lambda: machine
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- filesystem and tool lookup interception is the behavior under test.
-        "sarj_standards.libs.repository.hooks.sysconfig.get_path", purelib
+        "sarj_standards.libs.repository.hooks.distribution", installed_distribution
     )
 
-    hooks.install(tmp_path)
-
     durable = hook.parent / f".sarj-lefthook{expected.suffix}"
+    if layout != "present":
+        expected.unlink()
+        with pytest.raises(OSError, match="native Lefthook"):
+            hooks.install(tmp_path)
+        assert not durable.exists()
+        return
+
+    hooks.install(tmp_path)
     assert durable.read_text(encoding="utf-8") == "binary"
 
 

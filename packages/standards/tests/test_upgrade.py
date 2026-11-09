@@ -848,6 +848,132 @@ def test_upgrade_keeps_a_root_comment_after_yaml_preapprovals(tmp_path: Path) ->
     assert update.contents[comment - 2 : comment] == "\n\n"
 
 
+@pytest.mark.parametrize(
+    ("filename", "heading"),
+    [("pnpm-workspace.yaml", "minimumReleaseAgeExclude"), (".yarnrc.yml", "npmPreapprovedPackages")],
+)
+@pytest.mark.parametrize("field", ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"])
+def test_upgrade_retains_authored_exact_alias_approvals(
+    tmp_path: Path, filename: str, heading: str, field: str
+) -> None:
+    package = tmp_path / "package.json"
+    original_package = json.dumps({field: {"retained-plugin": "npm:@sarj/eslint-plugin@18.3.1"}})
+    package.write_text(original_package, encoding="utf-8")
+    policy = tmp_path / filename
+    retained = "  - '@sarj/eslint-plugin@18.3.1' # declaration owner\n"
+    original = (
+        f"minimumReleaseAge: 20160\n{heading}:\n{retained}"
+        '  - "@sarj/eslint-plugin@17.1.0"\n  - "unrelated@1.2.3" # unchanged\n'
+    )
+    policy.write_text(original, encoding="utf-8")
+    installed = {"@sarj/eslint-plugin": "19.2.0"}
+
+    rewritten = doctor.rewrite_file_version_pins(tmp_path, policy, original, installed)
+
+    assert retained in rewritten.contents
+    assert "17.1.0" not in rewritten.contents
+    assert '  - "@sarj/eslint-plugin@19.2.0"\n' in rewritten.contents
+    assert '  - "unrelated@1.2.3" # unchanged\n' in rewritten.contents
+    assert rewritten.contents.startswith("minimumReleaseAge: 20160\n")
+    assert (
+        doctor.rewrite_file_version_pins(tmp_path, policy, rewritten.contents, installed).contents == rewritten.contents
+    )
+    assert policy.read_text(encoding="utf-8") == original
+    assert package.read_text(encoding="utf-8") == original_package
+
+
+@pytest.mark.parametrize(
+    "package_source",
+    [
+        "{",
+        "[]",
+        '{"devDependencies": []}',
+        '{"devDependencies": {"retained-plugin": 123}}',
+        '{"devDependencies": {"retained-plugin": "npm:@sarj/eslint-plugin@^18.3.1"}}',
+        '{"devDependencies": {"retained-plugin": "npm:@sarj/eslint-plugin@latest"}}',
+        '{"devDependencies": {"retained-plugin": "npm:@sarj/eslint-plugin"}}',
+    ],
+)
+def test_upgrade_abstains_when_alias_approval_requirements_are_ambiguous(tmp_path: Path, package_source: str) -> None:
+    package = tmp_path / "package.json"
+    package.write_text(package_source, encoding="utf-8")
+    policy = tmp_path / "pnpm-workspace.yaml"
+    original = 'minimumReleaseAgeExclude:\n  - "@sarj/eslint-plugin@18.3.1" # retained\n'
+    policy.write_text(original, encoding="utf-8")
+
+    rewritten = doctor.rewrite_file_version_pins(tmp_path, policy, original, {"@sarj/eslint-plugin": "19.2.0"})
+
+    assert rewritten.contents == original
+    assert rewritten.packages == ()
+    assert package.read_text(encoding="utf-8") == package_source
+    assert policy.read_text(encoding="utf-8") == original
+
+
+def test_upgrade_does_not_read_a_linked_alias_manifest(tmp_path: Path) -> None:
+    target = tmp_path / "private-package.json"
+    target.write_text('{"dependencies": {"retained": "npm:@sarj/eslint-plugin@18.3.1"}}', encoding="utf-8")
+    package = tmp_path / "package.json"
+    package.symlink_to(target)
+    policy = tmp_path / "pnpm-workspace.yaml"
+    original = 'minimumReleaseAgeExclude:\n  - "@sarj/eslint-plugin@18.3.1"\n'
+
+    rewritten = doctor.rewrite_file_version_pins(tmp_path, policy, original, {"@sarj/eslint-plugin": "19.2.0"})
+
+    assert rewritten.contents == original
+    assert rewritten.packages == ()
+    assert package.is_symlink()
+    assert target.read_text(encoding="utf-8") == '{"dependencies": {"retained": "npm:@sarj/eslint-plugin@18.3.1"}}'
+
+
+@pytest.mark.parametrize("alias", ["retained", "@sarj/eslint-plugin"])
+def test_upgrade_does_not_create_an_alias_approval(tmp_path: Path, alias: str) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps({"devDependencies": {alias: "npm:@sarj/eslint-plugin@18.3.1"}}), encoding="utf-8"
+    )
+    policy = tmp_path / "pnpm-workspace.yaml"
+    original = 'minimumReleaseAgeExclude:\n  - "unrelated@1.2.3"\n'
+
+    rewritten = doctor.rewrite_file_version_pins(tmp_path, policy, original, {"@sarj/eslint-plugin": "19.2.0"})
+
+    assert "18.3.1" not in rewritten.contents
+    assert '  - "unrelated@1.2.3"\n' in rewritten.contents
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_upgrade_preserves_formatter_quotes_and_comments_for_current_approvals(newline: str) -> None:
+    current = manifest.typescript_age_gate_preapprovals()
+    original = (
+        "minimumReleaseAgeExclude:"
+        + newline
+        + "".join(f"  - '{name}@{version}' # reviewed approval{newline}" for name, version in sorted(current.items()))
+    )
+
+    rewritten = doctor.rewrite_version_pins(original, current)
+
+    assert rewritten.contents == original
+    assert rewritten.packages == ()
+
+
+def test_upgrade_plan_keeps_alias_policy_and_primary_dependency_consistent(tmp_path: Path) -> None:
+    package = tmp_path / "package.json"
+    package.write_text(
+        json.dumps(
+            {"devDependencies": {"@sarj/eslint-plugin": "18.3.1", "retained": "npm:@sarj/eslint-plugin@18.3.1"}}
+        ),
+        encoding="utf-8",
+    )
+    policy = tmp_path / "pnpm-workspace.yaml"
+    policy.write_text('minimumReleaseAgeExclude:\n  - "@sarj/eslint-plugin@18.3.1" # retained\n', encoding="utf-8")
+    current = manifest.typescript_peers()["@sarj/eslint-plugin"]
+
+    updates = {update.path: update.contents for update in doctor.plan_version_pin_updates(tmp_path)}
+
+    assert f'"@sarj/eslint-plugin": "{current}"' in updates[package]
+    assert '"retained": "npm:@sarj/eslint-plugin@18.3.1"' in updates[package]
+    assert '  - "@sarj/eslint-plugin@18.3.1" # retained\n' in updates[policy]
+    assert f'  - "@sarj/eslint-plugin@{current}"\n' in updates[policy]
+
+
 def test_upgrade_ignores_unselected_ambiguous_mobile_roots(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     for relative in ("mobile/first", "mobile/second"):

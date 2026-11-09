@@ -419,8 +419,14 @@ def test_registry_verifier_parses_on_release_runner_python() -> None:
     ast.parse(verifier, feature_version=(3, 12))
 
 
-@pytest.mark.parametrize("checksum_status", [0, 1], ids=["verified", "mismatch"])
-def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks(tmp_path: Path, checksum_status: int) -> None:
+@pytest.mark.parametrize(
+    ("curl_status", "fallback_status", "checksum_status"),
+    [(0, 0, 0), (0, 0, 1), (22, 0, 0), (22, 0, 1), (22, 7, 0), (22, 124, 0)],
+    ids=["verified", "mismatch", "fallback-verified", "fallback-mismatch", "fallback-failed", "fallback-timeout"],
+)
+def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks(
+    tmp_path: Path, *, curl_status: int, fallback_status: int, checksum_status: int
+) -> None:
     steps = _ci_steps("gitleaks")
     checkout_index, checkout = next(
         (index, step) for index, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/checkout@")
@@ -432,14 +438,18 @@ def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks(tmp_path:
     execution = [(index, step) for index, step in enumerate(steps) if "run" in step]
     assert execution
     assert all(index > checkout_index for index, _ in execution)
-    environment = _record_commands(tmp_path, "curl", "sha256sum", "tar", "gitleaks")
-    environment["CHECKSUM_STATUS"] = str(checksum_status)
+    assert execution[0][1]["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    environment = _record_commands(tmp_path, "curl", "gh", "sha256sum", "tar", "gitleaks")
+    environment.update(CHECKSUM_STATUS=str(checksum_status), CURL_STATUS=str(curl_status), HTTP_STATUS="")
+    fallback = tmp_path / "bin/gh"
+    fallback.write_text(fallback.read_text() + f"sys.exit({fallback_status})\n")
     result = _run_ci_step(execution[0][1], root=tmp_path, environment=environment)
     for _, step in execution[1:]:
         if result.returncode:
             break
         result = _run_ci_step(step, root=tmp_path, environment=environment)
-    assert result.returncode == checksum_status
+    expected_status = fallback_status if curl_status and fallback_status else checksum_status
+    assert result.returncode == expected_status
     expected = [
         [
             "curl",
@@ -451,21 +461,40 @@ def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks(tmp_path:
             str(tmp_path / "gitleaks.tar.gz"),
             "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
         ],
-        [
-            "sha256sum",
-            "--check",
-            "--strict",
-            f"551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  {tmp_path / 'gitleaks.tar.gz'}\n",
-        ],
     ]
-    if checksum_status == 0:
-        expected.extend(
+    if curl_status:
+        expected.append(
             [
-                ["tar", "-xzf", str(tmp_path / "gitleaks.tar.gz"), "-C", str(tmp_path), "gitleaks"],
-                ["gitleaks", "dir", ".", "--config", ".gitleaks.toml", "--redact", "--no-banner"],
-                ["gitleaks", "git", "--config", ".gitleaks.toml", "--redact", "--no-banner", "--log-opts=--all"],
+                "gh",
+                "release",
+                "download",
+                "v8.30.1",
+                "--repo",
+                "gitleaks/gitleaks",
+                "--pattern",
+                "gitleaks_8.30.1_linux_x64.tar.gz",
+                "--output",
+                str(tmp_path / "gitleaks.tar.gz"),
+                "--clobber",
             ]
         )
+    if not (curl_status and fallback_status):
+        expected.append(
+            [
+                "sha256sum",
+                "--check",
+                "--strict",
+                f"551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  {tmp_path / 'gitleaks.tar.gz'}\n",
+            ]
+        )
+        if checksum_status == 0:
+            expected.extend(
+                [
+                    ["tar", "-xzf", str(tmp_path / "gitleaks.tar.gz"), "-C", str(tmp_path), "gitleaks"],
+                    ["gitleaks", "dir", ".", "--config", ".gitleaks.toml", "--redact", "--no-banner"],
+                    ["gitleaks", "git", "--config", ".gitleaks.toml", "--redact", "--no-banner", "--log-opts=--all"],
+                ]
+            )
     assert _recorded_commands(tmp_path) == expected
 
 
