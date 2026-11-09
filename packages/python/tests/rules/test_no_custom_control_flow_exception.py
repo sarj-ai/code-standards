@@ -414,8 +414,8 @@ def test_nested_helper_proof_budget(depth: int, expected: int) -> None:
     assert len(_check("\n".join(lines) + "\n")) == expected
 
 
-@pytest.mark.parametrize("base", ["Exception", "ValueError", "MissingError"])
-def test_literal_message_exception_is_a_result_review_candidate(base: str) -> None:
+@pytest.mark.parametrize(("base", "count"), [("Exception", 1), ("ValueError", 1), ("MissingError", 0)])
+def test_literal_message_exception_requires_a_proven_base(base: str, count: int) -> None:
     source = (
         "from external import MissingError\n"
         f"class Unavailable({base}):\n"
@@ -423,9 +423,9 @@ def test_literal_message_exception_is_a_result_review_candidate(base: str) -> No
         "        super().__init__('unavailable')\n"
         "def load():\n    raise Unavailable\n"
     )
-    [finding] = NoCustomControlFlowException().check(Path("app/store.py"), source)
-    assert finding.code == "SARJ542"
-    assert finding.severity is Severity.WARNING
+    findings = NoCustomControlFlowException().check(Path("app/store.py"), source)
+    assert len(findings) == count
+    assert all(finding.code == "SARJ542" and finding.severity is Severity.WARNING for finding in findings)
 
 
 @pytest.mark.parametrize(
@@ -635,3 +635,530 @@ def test_payload_ancestry_preserves_registered_or_mutated_bases(base_use: str) -
         + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
     )
     assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
+
+
+_IMPORTED_ERROR = "class Rejected(Exception): pass\n"
+_IMPORTED_PAYLOAD = "class Rejected(Exception):\n    def __init__(self, name: str) -> None:\n        self.name = name\n        super().__init__(f'Denied {name}')\n"
+_IMPORTED_SERVICE = "from errors import Rejected\ndef save(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Rejected(name)\n    return name\n"
+
+
+def _imported_project(tmp_path: Path, errors: str = _IMPORTED_ERROR, service: str = _IMPORTED_SERVICE) -> Path:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.0.0'\n")
+    (tmp_path / "errors.py").write_text(errors)
+    path = tmp_path / "service.py"
+    path.write_text(service)
+    return path
+
+
+@pytest.mark.parametrize("errors", [_IMPORTED_ERROR, _IMPORTED_PAYLOAD, "class Rejected(ValueError): pass\n"])
+@pytest.mark.parametrize("definition", ["def", "async def"])
+def test_imported_guard(tmp_path: Path, errors: str, definition: str) -> None:
+    path = _imported_project(tmp_path, errors, _IMPORTED_SERVICE.replace("def save", f"{definition} save"))
+    source = path.read_text()
+    [finding] = NoCustomControlFlowException().check(path, source)
+    assert finding.line == 4
+    assert finding.severity is Severity.WARNING
+    assert not finding.fixes
+    assert "return contract" in finding.message
+    assert "consumer" in finding.message
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "from typing import final",
+        "from typing import final as final",
+        "from typing_extensions import final",
+        "import typing as t",
+    ],
+)
+def test_proven_final_exception(tmp_path: Path, prefix: str) -> None:
+    decorator = "t.final" if prefix.startswith("import") else "final"
+    path = _imported_project(tmp_path, prefix + "\n@" + decorator + "\n" + _IMPORTED_PAYLOAD)
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "errors",
+    [
+        "from external import final\n@final\n" + _IMPORTED_ERROR,
+        "from typing import final\nfinal=other\n@final\n" + _IMPORTED_ERROR,
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from typing import final\n@final\n" + _IMPORTED_ERROR,
+        "@decorate\n" + _IMPORTED_ERROR,
+        "class Rejected(Exception, Other): pass\n",
+        "class Rejected[T](Exception): pass\n",
+        "class Rejected(Exception, metaclass=Meta): pass\n",
+        _IMPORTED_ERROR + "register(Rejected)\n",
+        _IMPORTED_ERROR + "alias=Rejected\n",
+        _IMPORTED_ERROR + "Rejected.flag=True\n",
+        _IMPORTED_ERROR + "del Rejected.flag\n",
+        _IMPORTED_ERROR + "Rejected=other\n",
+        _IMPORTED_ERROR + "class Rejected(Exception): pass\n",
+        "from external import *\n" + _IMPORTED_ERROR,
+        _IMPORTED_ERROR + "globals()[name]=value\n",
+        "from external import FrameworkError\nclass Rejected(FrameworkError): pass\n",
+        "from fastapi import HTTPException\nclass Rejected(HTTPException): pass\n",
+        "from asyncio import CancelledError\nclass Rejected(CancelledError): pass\n",
+    ],
+)
+def test_unproven_imported_contracts_abstain(tmp_path: Path, errors: str) -> None:
+    path = _imported_project(tmp_path, errors)
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "BaseException",
+        "SystemExit",
+        "KeyboardInterrupt",
+        "GeneratorExit",
+        "StopIteration",
+        "RuntimeError",
+        "AssertionError",
+        "TypeError",
+        "OSError",
+    ],
+)
+def test_exceptional_and_control_flow_roots(tmp_path: Path, base: str) -> None:
+    path = _imported_project(tmp_path, _IMPORTED_ERROR.replace("Exception", base))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise Rejected(name)",
+        "if not allowed:\n        log(); raise Rejected(name)",
+        "if not allowed:\n        notify()\n        raise Rejected(name)",
+        "try:\n        if not allowed:\n            raise Rejected(name)\n    finally:\n        cleanup()",
+        "try:\n        work()\n    except ValueError:\n        if not allowed:\n            raise Rejected(name)",
+        "with transaction():\n        if not allowed:\n            raise Rejected(name)",
+        "async with transaction():\n        if not allowed:\n            raise Rejected(name)",
+        "for value in values:\n        if not allowed:\n            raise Rejected(name)",
+        "while not allowed:\n        if not allowed:\n            raise Rejected(name)",
+        "match allowed:\n        case False:\n            raise Rejected(name)",
+        "if not allowed:\n        error=Rejected(name)\n        raise error",
+        "if not allowed:\n        message=format_message(name)\n        raise Rejected(message)",
+        'if not allowed:\n        message="unused"\n        raise Rejected(name)',
+        'if not allowed:\n        message=f"Denied {format_name(name)}"\n        raise Rejected(message)',
+    ],
+)
+def test_new_detection_stays_outside_protected_or_complex_flow(tmp_path: Path, body: str) -> None:
+    source = (
+        "from errors import Rejected\nasync def save(name: str, allowed: bool) -> str:\n    "
+        + body
+        + "\n    return name\n"
+    )
+    path = _imported_project(tmp_path, _IMPORTED_PAYLOAD, source)
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _IMPORTED_SERVICE.replace(
+            "def save(name: str, allowed: bool)", "def save(name: str, allowed: bool, Rejected: object)"
+        ),
+        _IMPORTED_SERVICE.replace("def save", "Rejected=other\ndef save"),
+        _IMPORTED_SERVICE + "register(Rejected)\n",
+        _IMPORTED_SERVICE + "alias=Rejected\n",
+        _IMPORTED_SERVICE + "Rejected.flag=True\n",
+        _IMPORTED_SERVICE.replace("from errors import Rejected", "from external import Rejected"),
+        _IMPORTED_SERVICE.replace("from errors import Rejected", "import errors").replace(
+            "raise Rejected(name)", "raise errors.Rejected(name)"
+        ),
+        _IMPORTED_SERVICE.replace(
+            "from errors import Rejected",
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from errors import Rejected",
+        ),
+        _IMPORTED_SERVICE.replace("from errors import Rejected", "from external import *\nfrom errors import Rejected"),
+        _IMPORTED_SERVICE + "exec(code)\n",
+        _IMPORTED_SERVICE.replace(" -> str", ""),
+        _IMPORTED_SERVICE.replace(" -> str", " -> 'str'"),
+        _IMPORTED_SERVICE.replace("def save", "@custom\ndef save"),
+        _IMPORTED_SERVICE.replace("def save", '@field_validator("name")\ndef save'),
+        _IMPORTED_SERVICE.replace("def save", "def __call__"),
+        _IMPORTED_SERVICE.replace("return name", "yield name"),
+    ],
+    ids=(
+        "parameter-shadows-import",
+        "rebound-import",
+        "registered-import",
+        "aliased-import",
+        "mutated-import",
+        "external-source",
+        "module-attribute-raise",
+        "type-only-import",
+        "wildcard-namespace",
+        "dynamic-namespace",
+        "missing-return-annotation",
+        "quoted-return-annotation",
+        "custom-function-decorator",
+        "validator-decorator",
+        "special-method-contract",
+        "generator-contract",
+    ),
+)
+def test_import_and_function_ownership(tmp_path: Path, source: str) -> None:
+    path = _imported_project(tmp_path, _IMPORTED_PAYLOAD, source)
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "annotation"),
+    [
+        ("from typing import Never", "Never"),
+        ("from typing import NoReturn as Stop", "Stop"),
+        ("import typing", "typing.NoReturn"),
+    ],
+)
+def test_never_contracts_remain_exceptions(tmp_path: Path, prefix: str, annotation: str) -> None:
+    path = _imported_project(
+        tmp_path, _IMPORTED_ERROR, prefix + "\n" + _IMPORTED_SERVICE.replace(" -> str", " -> " + annotation)
+    )
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize("value", ["'Denied'", "f'Denied {name}'", "f'Denied {name!r}'", "f'Denied {name:>12}'"])
+def test_message_preparation_is_still_a_rejection_guard(tmp_path: Path, value: str) -> None:
+    source = _IMPORTED_SERVICE.replace("raise Rejected(name)", "message=" + value + "\n        raise Rejected(message)")
+    path = _imported_project(tmp_path, _IMPORTED_PAYLOAD, source)
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "Rejected",
+        "Rejected()",
+        "Rejected(name,name)",
+        "Rejected(missing=name)",
+        "Rejected(name, name=name)",
+        "Rejected(*values)",
+        "Rejected(**values)",
+    ],
+)
+def test_imported_payload_arity_is_required(tmp_path: Path, expression: str) -> None:
+    path = _imported_project(tmp_path, _IMPORTED_PAYLOAD, _IMPORTED_SERVICE.replace("Rejected(name)", expression))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+def test_renamed_relative_import_and_per_function_deduplication(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.0.0'\n")
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "errors.py").write_text(_IMPORTED_PAYLOAD)
+    source = _IMPORTED_SERVICE.replace("from errors import Rejected", "from .errors import Rejected as Denied").replace(
+        "raise Rejected", "raise Denied"
+    )
+    source = source.replace("    return name", "    if allowed is None:\n        raise Denied(name)\n    return name")
+    source += "\n" + source[source.index("def save") :].replace("def save", "def read")
+    findings = NoCustomControlFlowException().check(package / "service.py", source)
+    assert len(findings) == 2
+    assert findings[0].line != findings[1].line
+
+
+def test_source_and_raise_suppressions(tmp_path: Path) -> None:
+    path = _imported_project(
+        tmp_path, _IMPORTED_ERROR.replace(": pass", ":  # sarj-noqa: SARJ542 -- framework exception contract\n    pass")
+    )
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+    (tmp_path / "errors.py").write_text(_IMPORTED_ERROR)
+    assert (
+        NoCustomControlFlowException().check(
+            path,
+            source.replace("raise Rejected(name)", "raise Rejected(name)  # sarj-noqa: SARJ542 -- reviewed boundary"),
+        )
+        == []
+    )
+
+
+def test_source_resolution_does_not_import_application_modules(tmp_path: Path) -> None:
+    marker = tmp_path / "must-not-exist"
+    errors = f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n" + _IMPORTED_ERROR
+    path = _imported_project(tmp_path, errors)
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+    assert not marker.exists()
+
+
+def test_inherited_source_proven_base_without_payload(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text(
+        "class DomainError(Exception):\n    def __str__(self) -> str:\n        return str(self.args)\n"
+    )
+    path = _imported_project(tmp_path, "from base import DomainError\nclass Rejected(DomainError): pass\n")
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+def test_transaction_has_finished_before_rejection_guard(tmp_path: Path) -> None:
+    source = _IMPORTED_SERVICE.replace(
+        "    if not allowed:", "    with transaction():\n        work()\n    if not allowed:"
+    )
+    path = _imported_project(tmp_path, _IMPORTED_ERROR, source)
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+def test_legitimate_absence_and_existing_return_union(tmp_path: Path) -> None:
+    source = _IMPORTED_SERVICE.replace(
+        "if not allowed:\n        raise Rejected(name)", "if not allowed:\n        return None"
+    ).replace(" -> str:", " -> str | None:")
+    path = _imported_project(tmp_path, _IMPORTED_ERROR, source)
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+def test_inherited_constructor_arity_is_not_assumed(tmp_path: Path) -> None:
+    errors = _IMPORTED_PAYLOAD.replace("Rejected", "Base") + "class Rejected(Base): pass\n"
+    path = _imported_project(tmp_path, errors, _IMPORTED_SERVICE.replace("Rejected(name)", "Rejected()"))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+def test_suppressed_first_guard_does_not_hide_another_guard(tmp_path: Path) -> None:
+    source = _IMPORTED_SERVICE.replace(
+        "raise Rejected(name)",
+        "raise Rejected(name)  # sarj-noqa: SARJ542 -- reviewed boundary",
+    ).replace("    return name", "    if allowed is None:\n        raise Rejected(name)\n    return name")
+    path = _imported_project(tmp_path, service=source)
+    source = path.read_text()
+    [finding] = NoCustomControlFlowException().check(path, source)
+    assert finding.line == 6
+
+
+@pytest.mark.parametrize("expression", ["Rejected", "Rejected()"])
+def test_imported_fixed_initializer_accepts_only_its_signature(tmp_path: Path, expression: str) -> None:
+    errors = "class Rejected(Exception):\n    def __init__(self) -> None:\n        super().__init__('denied')\n"
+    path = _imported_project(tmp_path, errors, _IMPORTED_SERVICE.replace("Rejected(name)", expression))
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression", ["Rejected(name)", "Rejected(name=name)", "Rejected(*values)", "Rejected(**values)"]
+)
+def test_imported_fixed_initializer_rejects_unknown_arguments(tmp_path: Path, expression: str) -> None:
+    errors = "class Rejected(Exception):\n    def __init__(self) -> None:\n        super().__init__('denied')\n"
+    path = _imported_project(tmp_path, errors, _IMPORTED_SERVICE.replace("Rejected(name)", expression))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize("expression", ["Rejected(reason=name)", "Rejected(*values)", "Rejected(**values)"])
+def test_native_marker_call_contract_is_not_invented(tmp_path: Path, expression: str) -> None:
+    path = _imported_project(tmp_path, service=_IMPORTED_SERVICE.replace("Rejected(name)", expression))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize("directory", ["vendor", "vendored", "third_party", "tests", "generated"])
+def test_foreign_exception_sources_abstain(tmp_path: Path, directory: str) -> None:
+    path = _imported_project(tmp_path)
+    source = path.read_text()
+    foreign = tmp_path / directory
+    foreign.mkdir()
+    (foreign / "__init__.py").write_text("")
+    (foreign / "errors.py").write_text(_IMPORTED_ERROR)
+    source = source.replace("from errors import", f"from {directory}.errors import")
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+def test_reexported_exception_is_not_assumed_to_be_a_local_class(tmp_path: Path) -> None:
+    path = _imported_project(tmp_path, "from implementation import Rejected\n")
+    source = path.read_text()
+    (tmp_path / "implementation.py").write_text(_IMPORTED_ERROR)
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+def test_different_import_aliases_share_one_function_contract_warning(tmp_path: Path) -> None:
+    path = _imported_project(tmp_path)
+    source = path.read_text()
+    source = source.replace(
+        "from errors import Rejected", "from errors import Rejected\nfrom errors import Rejected as Other"
+    )
+    source = source.replace("    return name", "    if allowed is None:\n        raise Other(name)\n    return name")
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+def test_local_payload_message_guard_and_final_marker() -> None:
+    source = "from typing import final\n@final\n" + _IMPORTED_PAYLOAD
+    source += _IMPORTED_SERVICE.removeprefix("from errors import Rejected\n").replace(
+        "raise Rejected(name)",
+        'message=f"Denied {name}"\n        raise Rejected(message)',
+    )
+    assert len(_check(source)) == 1
+
+
+def test_cross_module_custom_allocator_abstains(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text(
+        "class Base(Exception):\n    def __new__(cls, token: str):\n        return super().__new__(cls)\n"
+    )
+    path = _imported_project(tmp_path, "from base import Base\n" + _IMPORTED_PAYLOAD.replace("Exception", "Base"))
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize(("depth", "count"), [(1, 1), (7, 1), (8, 0), (9, 0)])
+def test_imported_ancestry_proof_is_bounded(tmp_path: Path, depth: int, count: int) -> None:
+    declarations = ["class Base(Exception): pass"]
+    parent = "Base"
+    for index in range(depth):
+        name = f"Parent{index}"
+        declarations.append(f"class {name}({parent}): pass")
+        parent = name
+    declarations.append(f"class Rejected({parent}): pass")
+    path = _imported_project(tmp_path, "\n".join(declarations) + "\n")
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == count
+
+
+def test_imported_definition_module_budget(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.0.0'\n")
+    imports: list[str] = []
+    functions: list[str] = []
+    for index in range(33):
+        (tmp_path / f"errors_{index}.py").write_text(_IMPORTED_ERROR)
+        imports.append(f"from errors_{index} import Rejected as Rejected{index}")
+        functions.append(
+            f'def save{index}(allowed: bool) -> str:\n    if not allowed:\n        raise Rejected{index}\n    return "saved"\n'
+        )
+    findings = NoCustomControlFlowException().check(tmp_path / "service.py", "\n".join([*imports, *functions]))
+    assert len(findings) == 32
+    assert len({(finding.line, finding.col) for finding in findings}) == 32
+
+
+def test_imported_functional_validator_callback_preserves_rejection(tmp_path: Path) -> None:
+    source = "from typing import Annotated\nfrom pydantic import BaseModel, AfterValidator\nfrom errors import Rejected\ndef reject(value: str) -> str:\n    if not value:\n        raise Rejected('empty')\n    return value\nclass Model(BaseModel):\n    name: Annotated[str, AfterValidator(reject)]\n"
+    path = _imported_project(tmp_path, _IMPORTED_ERROR.replace("Exception", "ValueError"), source)
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+    assert len(NoCustomControlFlowException().check(path, source + '\nreject("ordinary")\n')) == 1
+
+
+def test_imported_scope_identity_is_independent_of_error_spelling(tmp_path: Path) -> None:
+    path = _imported_project(
+        tmp_path, _IMPORTED_ERROR.replace("Rejected", "Signal"), _IMPORTED_SERVICE.replace("Rejected", "Signal")
+    )
+    source = path.read_text()
+    assert len(NoCustomControlFlowException().check(path, source)) == 1
+
+
+def test_quoted_or_missing_imported_definition_abstains(tmp_path: Path) -> None:
+    path = _imported_project(tmp_path, "class Rejected(Exception):\n    (\n")
+    source = path.read_text()
+    assert NoCustomControlFlowException().check(path, source) == []
+    (tmp_path / "errors.py").unlink()
+    assert NoCustomControlFlowException().check(path, source) == []
+
+
+@pytest.mark.parametrize("base", ["ValueError", "Exception"])
+def test_source_proven_imported_validator_ancestry(tmp_path: Path, base: str) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="fixture"\nversion="0.0.0"\n')
+    (tmp_path / "base.py").write_text(f"class Parent({base}): pass\n")
+    source = 'from base import Parent\nfrom pydantic import field_validator\nclass LocalRejected(Parent): pass\nclass Model:\n    @field_validator("value")\n    def validate(cls, value: str) -> str:\n        raise LocalRejected("invalid")\n'
+    path = tmp_path / "model.py"
+    assert len(NoCustomControlFlowException().check(path, source)) == (0 if base == "ValueError" else 1)
+    assert (
+        len(
+            NoCustomControlFlowException().check(
+                path, source + '\ndef read() -> str:\n    raise LocalRejected("invalid")\n'
+            )
+        )
+        == 1
+    )
+
+
+def test_value_error_ancestor_behavior_does_not_erase_validator_protocol() -> None:
+    source = 'from pydantic import field_validator\nclass Parent(ValueError):\n    def __str__(self) -> str:\n        return "invalid"\nclass LocalRejected(Parent): pass\nclass Model:\n    @field_validator("value")\n    def validate(cls, value: str) -> str:\n        raise LocalRejected("invalid")\n'
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "declarations",
+    [
+        "from typing import Never\ntype Stop = Never",
+        "from typing import NoReturn,TypeAlias\nStop: TypeAlias = NoReturn",
+        "from typing import Never\ntype Halt = Never\ntype Stop = Halt",
+    ],
+)
+def test_module_never_alias_keeps_nonreturning_contract(tmp_path: Path, declarations: str) -> None:
+    source = declarations + "\n" + _IMPORTED_SERVICE.replace(" -> str", " -> Stop")
+    path = _imported_project(tmp_path, service=source)
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+
+
+def test_private_function_name_does_not_imply_native_control_flow(tmp_path: Path) -> None:
+    path = _imported_project(tmp_path, service=_IMPORTED_SERVICE.replace("def save", "def __save"))
+    assert len(NoCustomControlFlowException().check(path, path.read_text())) == 1
+
+
+def test_inherited_registration_hook_ends_constructor_proof(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text(
+        "registered: list[type[Exception]] = []\nclass Base(Exception):\n"
+        "    def __init_subclass__(cls) -> None:\n        registered.append(cls)\n"
+    )
+    errors = "from base import Base\nclass Rejected(Base): pass\n"
+    path = _imported_project(tmp_path, errors)
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+    local = "from base import Base\n" + _IMPORTED_PAYLOAD.replace("Exception", "Base")
+    local += _IMPORTED_SERVICE.removeprefix("from errors import Rejected\n")
+    assert NoCustomControlFlowException().check(path, local) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "__init_subclass__ = classmethod(hook)",
+        "__init_subclass__: object = classmethod(hook)",
+        "__new__ = staticmethod(hook)",
+        "(__new__, other) = (hook, None)",
+        "if selected:\n        __new__ = hook",
+        "(__init_subclass__ := classmethod(hook))",
+        "from callbacks import hook as __init_subclass__",
+        "__new__: object",
+    ],
+    ids=(
+        "assigned-subclass-hook",
+        "annotated-subclass-hook",
+        "assigned-allocator",
+        "unpacked-allocator",
+        "conditional-allocator",
+        "named-expression-hook",
+        "imported-subclass-hook",
+        "declared-unknown-allocator",
+    ),
+)
+def test_inherited_construction_bindings_end_proof(tmp_path: Path, binding: str) -> None:
+    (tmp_path / "base.py").write_text("class Base(Exception):\n    " + binding + "\n")
+    errors = "from base import Base\nclass Rejected(Base): pass\n"
+    path = _imported_project(tmp_path, errors)
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+    local = "from base import Base\n" + _IMPORTED_PAYLOAD.replace("Exception", "Base")
+    local += _IMPORTED_SERVICE.removeprefix("from errors import Rejected\n")
+    assert NoCustomControlFlowException().check(path, local) == []
+
+
+def test_assigned_inherited_initializer_arity_remains_unknown(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text("class Base(Exception):\n    __init__ = initialize\n")
+    path = _imported_project(tmp_path, "from base import Base\nclass Rejected(Base): pass\n")
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+
+
+def test_method_local_constructor_names_do_not_change_class_construction(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text(
+        "class Base(Exception):\n    def helper(self) -> object:\n        __new__ = other\n        return __new__\n"
+    )
+    path = _imported_project(tmp_path, "from base import Base\nclass Rejected(Base): pass\n")
+    assert len(NoCustomControlFlowException().check(path, path.read_text())) == 1
