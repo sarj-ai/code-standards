@@ -28,6 +28,7 @@ from pydantic import AliasPath, BaseModel, Field, ValidationError
 from repo_standards.repository import parse_baseline_bytes as parse_repository_baseline
 import typer
 import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards import __version__ as _controller_version
 from sarj_standards.libs.adoption import (
@@ -61,7 +62,7 @@ from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 from sarj_standards.libs.rules import oxlint_ids
 from sarj_standards.libs.typed_containers import is_object_mapping
-from sarj_standards.libs.yaml_boundary import parse_yaml
+from sarj_standards.libs.yaml_boundary import compose_yaml, mapping_items, parse_yaml, scalar_value, sequence_items
 
 
 if TYPE_CHECKING:
@@ -999,11 +1000,56 @@ def native_bootstrap_rewrites(
     version: str,
 ) -> dict[str, retirement.NativePinRewrite]:
     expected: dict[str, retirement.NativePinRewrite] = {}
-    for relative, original in _tracked_shell_blobs(repo, base_sha, paths, runner).items():
-        rewritten = launcher.rewrite_native_bootstrap_pin(original.contents, version=version)
+    for relative, original in _tracked_native_bootstrap_blobs(repo, base_sha, paths, runner).items():
+        rewrite = (
+            launcher.rewrite_native_bootstrap_pin if Path(relative).suffix == ".sh" else _rewrite_native_action_pin
+        )
+        rewritten = rewrite(original.contents, version=version)
         if rewritten is not None:
             expected[relative] = retirement.NativePinRewrite(rewritten, original.mode)
     return expected
+
+
+def _rewrite_native_action_pin(source: bytes, *, version: str) -> bytes | None:
+    try:
+        text = source.decode("utf-8")
+        document = compose_yaml(text)
+    except UnicodeError, yaml.YAMLError, RecursionError:
+        return None
+    runs = _yaml_member(document, "runs")
+    using = _yaml_member(runs, "using")
+    steps = _yaml_member(runs, "steps")
+    if not isinstance(using, ScalarNode) or scalar_value(using) != "composite" or not isinstance(steps, SequenceNode):
+        return None
+    replacements: dict[tuple[int, int], str] = {}
+    for step in sequence_items(steps):
+        shell = _yaml_member(step, "shell")
+        command = _yaml_member(step, "run")
+        if not isinstance(shell, ScalarNode) or scalar_value(shell) != "bash" or not isinstance(command, ScalarNode):
+            continue
+        command_text = scalar_value(command)
+        start, end = command.start_mark.index, command.end_mark.index
+        # Keep quoted/folded scalars and scalar aliases protected; identify the literal run value.
+        if (
+            command.style is not None
+            or start < step.start_mark.index
+            or end > step.end_mark.index
+            or text[start:end] != command_text
+        ):
+            continue
+        rewritten = launcher.rewrite_native_bootstrap_pin(command_text.encode("utf-8"), version=version)
+        if rewritten is not None:
+            replacements[start, end] = rewritten.decode("utf-8")
+    for (start, end), replacement in sorted(replacements.items(), reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text.encode("utf-8") if replacements else None
+
+
+def _yaml_member(node: Node | None, name: str) -> Node | None:
+    if not isinstance(node, MappingNode):
+        return None
+    values = [value for key, value in mapping_items(node) if isinstance(key, ScalarNode) and scalar_value(key) == name]
+    return values[0] if len(values) == 1 else None
 
 
 def validate_rollout_native_pins(
@@ -1017,7 +1063,7 @@ def validate_rollout_native_pins(
         permitted = retirement.validate_native_pins(repo, expected)
     except ValueError as exc:
         raise RolloutError(str(exc)) from exc
-    if revision and _tracked_shell_blobs(repo, revision, tuple(expected), runner) != expected:
+    if revision and _tracked_native_bootstrap_blobs(repo, revision, tuple(expected), runner) != expected:
         msg = "committed native bootstrap pin rewrite differs from the immutable-base expectation"
         raise RolloutError(msg)
     return permitted
@@ -1347,10 +1393,16 @@ def _directive_blob_identity(contents: bytes, object_id: str) -> str:
     raise RolloutError(msg)
 
 
-def _tracked_shell_blobs(
+def _tracked_native_bootstrap_blobs(
     repo: Path, revision: str, paths: Sequence[str], runner: CommandRunner
 ) -> dict[str, retirement.NativePinRewrite]:
-    return _tracked_text_blobs(repo, revision, tuple(path for path in paths if Path(path).suffix == ".sh"), runner)
+    selected = tuple(
+        path
+        for path in paths
+        if Path(path).suffix == ".sh"
+        or (path.startswith(".github/actions/") and Path(path).name in {"action.yml", "action.yaml"})
+    )
+    return _tracked_text_blobs(repo, revision, selected, runner)
 
 
 def _tracked_text_blobs(

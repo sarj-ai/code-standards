@@ -621,16 +621,28 @@ class NativePinRepository:
     repo: Path
     base: str
     runner: rollout.SubprocessRunner
+    source: Path
 
 
-@pytest.fixture
-def native_pin_repository(tmp_path: Path) -> NativePinRepository:
+@pytest.fixture(
+    params=("bootstrap.sh", ".github/actions/bootstrap/action.yml", ".github/actions/bootstrap/action.yaml")
+)
+def native_pin_repository(tmp_path: Path, request: pytest.FixtureRequest) -> NativePinRepository:
     repo = tmp_path / "native-pins"
     repo.mkdir()
-    source = repo / "bootstrap.sh"
-    source.write_text(
+    parameter: object = request.param  # pyright: ignore[reportAny] -- Pytest exposes fixture parameters as Any; narrow the declared string cases below.
+    assert isinstance(parameter, str)
+    source = repo / parameter
+    source.parent.mkdir(parents=True, exist_ok=True)
+    command = (
         f"uv run --no-config --no-project --python {launcher.TOOL_PYTHON} "
         "--with code-standards==1.2.3 python -m sarj_standards.libs.adoption.native_bootstrap\n"
+    )
+    source.write_text(
+        command
+        if source.suffix == ".sh"
+        else "name: Bootstrap native tools ☑\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: "
+        + command
     )
     source.chmod(0o644)
     runner = rollout.SubprocessRunner()
@@ -642,7 +654,7 @@ def native_pin_repository(tmp_path: Path) -> NativePinRepository:
         ("git", "commit", "-m", "base"),
     ):
         runner.run(command, cwd=repo)
-    return NativePinRepository(repo, rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo)), runner)
+    return NativePinRepository(repo, rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo)), runner, source)
 
 
 class TestNativePinPermissions:
@@ -650,34 +662,42 @@ class TestNativePinPermissions:
         self, native_pin_repository: NativePinRepository
     ) -> None:
         repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
-        source = repo / "bootstrap.sh"
+        source = native_pin_repository.source
         original = source.read_bytes()
         source.write_bytes(b"printf unrelated\n")
-        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
-        assert expected == {source.name: retirement.NativePinRewrite(original.replace(b"1.2.3", b"1.2.4"), "100644")}
+        expected = rollout.native_bootstrap_rewrites(
+            repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+        )
+        assert expected == {
+            source.relative_to(repo).as_posix(): retirement.NativePinRewrite(
+                original.replace(b"1.2.3", b"1.2.4"), "100644"
+            )
+        }
         with pytest.raises(rollout.RolloutError, match="canonical native bootstrap"):
             rollout.validate_rollout_native_pins(repo, expected, runner)
-        source.write_bytes(expected[source.name].contents)
+        source.write_bytes(expected[source.relative_to(repo).as_posix()].contents)
         allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
-        rollout.reject_unsafe_diff((source.name,), allowed_source_paths=allowed)
+        rollout.reject_unsafe_diff((source.relative_to(repo).as_posix(),), allowed_source_paths=allowed)
 
     def test_commit_replacement_cannot_change_immutable_native_pin_expectation(
         self, native_pin_repository: NativePinRepository
     ) -> None:
         repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
-        source = repo / "bootstrap.sh"
+        source = native_pin_repository.source
         original = source.read_bytes()
         source.write_bytes(original + b"printf unauthorized-body\n")
         source.chmod(0o755)
-        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "add", source.relative_to(repo).as_posix()), cwd=repo)
         runner.run(("git", "commit", "-m", "replacement tree"), cwd=repo)
         replacement = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
         runner.run(("git", "replace", base, replacement), cwd=repo)
-        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
+        expected = rollout.native_bootstrap_rewrites(
+            repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+        )
         source.write_bytes(original.replace(b"1.2.3", b"1.2.4"))
         source.chmod(0o644)
         allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
-        rollout.reject_unsafe_diff((source.name,), allowed_source_paths=allowed)
+        rollout.reject_unsafe_diff((source.relative_to(repo).as_posix(),), allowed_source_paths=allowed)
         source.write_bytes(original.replace(b"1.2.3", b"1.2.4") + b"printf unauthorized-body\n")
         with pytest.raises(rollout.RolloutError, match="canonical native bootstrap"):
             rollout.validate_rollout_native_pins(repo, expected, runner)
@@ -686,34 +706,54 @@ class TestNativePinPermissions:
         self, native_pin_repository: NativePinRepository
     ) -> None:
         repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
-        source = repo / "new.sh"
-        source.write_bytes((repo / "bootstrap.sh").read_bytes())
-        assert rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4") == {}
+        source = (
+            repo / "new.sh"
+            if native_pin_repository.source.suffix == ".sh"
+            else repo / ".github/actions/untracked" / native_pin_repository.source.name
+        )
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(native_pin_repository.source.read_bytes())
+        assert (
+            rollout.native_bootstrap_rewrites(
+                repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+            )
+            == {}
+        )
 
     @pytest.mark.parametrize("body", [b"\0", b"\r\n", b"\xff"], ids=["binary", "normalized-text", "invalid-encoding"])
     def test_unproven_git_blob_bytes_cannot_grant_source_permission(
         self, native_pin_repository: NativePinRepository, body: bytes
     ) -> None:
         repo, runner = native_pin_repository.repo, native_pin_repository.runner
-        source = repo / "bootstrap.sh"
+        source = native_pin_repository.source
         source.write_bytes(source.read_bytes().rstrip(b"\n") + body)
-        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "add", source.relative_to(repo).as_posix()), cwd=repo)
         runner.run(("git", "commit", "-m", "different bytes"), cwd=repo)
         base = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
-        assert rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4") == {}
+        assert (
+            rollout.native_bootstrap_rewrites(
+                repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+            )
+            == {}
+        )
 
     @pytest.mark.parametrize("mutation", ["body", "mode"])
     def test_committed_native_body_is_checked_even_if_worktree_bytes_are_restored(
         self, native_pin_repository: NativePinRepository, mutation: str
     ) -> None:
         repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
-        source = repo / "bootstrap.sh"
-        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
-        source.write_bytes(expected[source.name].contents + (b"printf unrelated\n" if mutation == "body" else b""))
+        source = native_pin_repository.source
+        expected = rollout.native_bootstrap_rewrites(
+            repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+        )
+        source.write_bytes(
+            expected[source.relative_to(repo).as_posix()].contents
+            + (b"printf unrelated\n" if mutation == "body" else b"")
+        )
         source.chmod(0o755 if mutation == "mode" else 0o644)
-        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "add", source.relative_to(repo).as_posix()), cwd=repo)
         runner.run(("git", "commit", "-m", "altered candidate"), cwd=repo)
-        source.write_bytes(expected[source.name].contents)
+        source.write_bytes(expected[source.relative_to(repo).as_posix()].contents)
         source.chmod(0o644)
         with pytest.raises(rollout.RolloutError, match="committed native bootstrap"):
             rollout.validate_rollout_native_pins(repo, expected, runner, revision="HEAD")
@@ -723,9 +763,11 @@ class TestNativePinPermissions:
         self, native_pin_repository: NativePinRepository, mutation: str
     ) -> None:
         repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
-        source = repo / "bootstrap.sh"
-        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
-        source.write_bytes(expected[source.name].contents)
+        source = native_pin_repository.source
+        expected = rollout.native_bootstrap_rewrites(
+            repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4"
+        )
+        source.write_bytes(expected[source.relative_to(repo).as_posix()].contents)
         match mutation:
             case "mode":
                 source.chmod(0o755)
@@ -744,6 +786,75 @@ class TestNativePinPermissions:
             rollout.amend_safe_changes(
                 repo, runner, version="1.2.4", allowed_workflow_paths=frozenset(), native_pin_rewrites=expected
             )
+
+
+@pytest.mark.parametrize(
+    "native_pin_repository",
+    [".github/actions/bootstrap/action.yml", ".github/actions/bootstrap/action.yaml"],
+    indirect=True,
+)
+def test_action_pins_are_updated_before_rollout_permissions_are_planned(
+    native_pin_repository: NativePinRepository,
+) -> None:
+    repo, base, runner, source = (
+        native_pin_repository.repo,
+        native_pin_repository.base,
+        native_pin_repository.runner,
+        native_pin_repository.source,
+    )
+    original = source.read_bytes()
+    updates = adoption_doctor.plan_version_pin_updates(repo, {"code-standards": "1.2.4"})
+    assert len(updates) == 1
+    assert updates[0].path == source
+    source.write_text(updates[0].contents)
+    assert source.read_bytes() == original.replace(b"1.2.3", b"1.2.4")
+    changed = rollout.changed_paths(repo, runner)
+    expected = rollout.native_bootstrap_rewrites(repo, base, changed, runner, version="1.2.4")
+    assert set(expected) == {source.relative_to(repo).as_posix()}
+    allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
+    rollout.reject_unsafe_diff(changed, allowed_source_paths=allowed)
+
+
+@pytest.mark.parametrize("native_pin_repository", [".github/actions/bootstrap/action.yml"], indirect=True)
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("using: composite", "using: node24"),
+        ("shell: bash", "shell: sh"),
+        ("run: uv ", "run: exec uv "),
+        ("run: uv ", "run: |\n        uv "),
+        ("run: uv ", "run: >\n        uv "),
+        ("shell: bash\n", "shell: bash\n      run: echo duplicate\n"),
+    ],
+)
+def test_unproven_action_commands_remain_protected(
+    native_pin_repository: NativePinRepository, before: str, after: str
+) -> None:
+    repo, runner, source = native_pin_repository.repo, native_pin_repository.runner, native_pin_repository.source
+    source.write_text(source.read_text().replace(before, after))
+    runner.run(("git", "add", "."), cwd=repo)
+    runner.run(("git", "commit", "-m", "different action"), cwd=repo)
+    base = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+    assert (
+        rollout.native_bootstrap_rewrites(repo, base, (source.relative_to(repo).as_posix(),), runner, version="1.2.4")
+        == {}
+    )
+
+
+@pytest.mark.parametrize("native_pin_repository", [".github/actions/bootstrap/action.yml"], indirect=True)
+def test_aliased_action_step_rewrites_each_literal_only_once(native_pin_repository: NativePinRepository) -> None:
+    repo, runner, source = native_pin_repository.repo, native_pin_repository.runner, native_pin_repository.source
+    original = source.read_text().replace("- shell: bash", "- &bootstrap\n      shell: bash") + "    - *bootstrap\n"
+    source.write_text(original)
+    runner.run(("git", "add", "."), cwd=repo)
+    runner.run(("git", "commit", "-m", "shared action step"), cwd=repo)
+    base = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+    path = source.relative_to(repo).as_posix()
+    expected = rollout.native_bootstrap_rewrites(repo, base, (path,), runner, version="1.2.4")
+    assert expected == {path: retirement.NativePinRewrite(original.replace("1.2.3", "1.2.4").encode(), "100644")}
+    source.write_bytes(expected[path].contents)
+    allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
+    rollout.reject_unsafe_diff((path,), allowed_source_paths=allowed)
 
 
 @pytest.mark.parametrize(

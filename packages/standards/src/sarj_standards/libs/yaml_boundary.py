@@ -15,6 +15,10 @@ def parse_yaml(text: str) -> object:
     return yaml.safe_load(text)  # pyright: ignore[reportAny] -- untyped parser boundary.
 
 
+def compose_yaml(text: str) -> Node | None:
+    return yaml.compose(text, Loader=yaml.SafeLoader)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML's composer returns Node or None without a typed declaration.
+
+
 def parse_yaml_documents(
     text: str,
 ) -> tuple[  # sarj-noqa: SARJ528 -- SafeLoader constructs native YAML values without normalization.
@@ -88,7 +92,7 @@ class _YamlValidation:
                 raise TypeError(msg)
             identity = self.key_identity(key)
             if identity in names:
-                msg = f"duplicate YAML key: {_scalar_value(key)}"
+                msg = f"duplicate YAML key: {scalar_value(key)}"
                 raise ValueError(msg)
             names.add(identity)
             children.extend((key, value))
@@ -102,7 +106,7 @@ class _YamlValidation:
         return self.loader.construct_object(node)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- safe scalar construction preserves actual dictionary-key equality.
 
 
-def _scalar_value(node: ScalarNode) -> str:
+def scalar_value(node: ScalarNode) -> str:
     value: object = node.value  # pyright: ignore[reportAny] -- PyYAML scalar parser boundary.
     if not isinstance(value, str):
         msg = "YAML scalar node value must be text"
