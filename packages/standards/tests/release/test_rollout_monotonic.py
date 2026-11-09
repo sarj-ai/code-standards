@@ -336,21 +336,19 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str, verif
         "One-way or two-way door",
         "QA impact / blast radius",
         "Test evidence",
+        "Merge Risk",
     ):
         assert f"## {section}\n\n" in body
-    assert f"Exact pushed head: `{'a' * 40}`" in body
-    assert 'Committed paths (2):\n\n    ".sarj-standards.toml"\n    "pyproject.toml"' in body
-    assert "Manual verification instructions (not recorded executions)" in body
-    assert f"1. Check out `{'a' * 40}`." in body
-    assert "2. Review every committed path" in body
-    assert "3. Run the registered consumer verification" in body
-    assert "required approvals and product QA remain separate gates" in body
+    assert f"Head: `{'a' * 40}`" in body
+    assert f"[2 paths](https://github.com/example/consumer/commit/{'a' * 40})" in body
+    assert "CI, approvals and product QA remain." in body
     if verify:
-        assert "selected local verification completed for the candidate tree" in body
-        assert "published head retains the verified tree and consumer base" in body
+        assert "Selected checks passed for tree/base." in body
+        assert "Verification: decent 👀" in body
     else:
-        assert "No consumer verification command is configured; no consumer checks are claimed" in body
-        assert "verification completed" not in body
+        assert "No local checks configured." in body
+        assert "Verification: poor ⚠️" in body
+        assert "Selected checks passed" not in body
 
 
 @pytest.mark.parametrize(
@@ -386,7 +384,7 @@ def test_failed_verification_pr_records_the_controller_revision(monkeypatch: pyt
     assert f"{rollout.CONTROLLER_MARKER_PREFIX}={CONTROLLER_SHA} -->" in body
     assert rollout.VERIFICATION_FAILED_MARKER in body
     assert f"```text\n{failure}\n```" in body
-    assert "later configured checks may not have run" in body
+    assert "Checks blocked; later checks may be unrun." in body
     assert "verification completed" not in body
     assert not any(command[:3] == ("gh", "pr", "merge") for command in runner.commands)
 
