@@ -1115,3 +1115,50 @@ def test_inherited_registration_hook_ends_constructor_proof(tmp_path: Path) -> N
     local = "from base import Base\n" + _IMPORTED_PAYLOAD.replace("Exception", "Base")
     local += _IMPORTED_SERVICE.removeprefix("from errors import Rejected\n")
     assert NoCustomControlFlowException().check(path, local) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "__init_subclass__ = classmethod(hook)",
+        "__init_subclass__: object = classmethod(hook)",
+        "__new__ = staticmethod(hook)",
+        "(__new__, other) = (hook, None)",
+        "if selected:\n        __new__ = hook",
+        "(__init_subclass__ := classmethod(hook))",
+        "from callbacks import hook as __init_subclass__",
+        "__new__: object",
+    ],
+    ids=(
+        "assigned-subclass-hook",
+        "annotated-subclass-hook",
+        "assigned-allocator",
+        "unpacked-allocator",
+        "conditional-allocator",
+        "named-expression-hook",
+        "imported-subclass-hook",
+        "declared-unknown-allocator",
+    ),
+)
+def test_inherited_construction_bindings_end_proof(tmp_path: Path, binding: str) -> None:
+    (tmp_path / "base.py").write_text("class Base(Exception):\n    " + binding + "\n")
+    errors = "from base import Base\nclass Rejected(Base): pass\n"
+    path = _imported_project(tmp_path, errors)
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+    local = "from base import Base\n" + _IMPORTED_PAYLOAD.replace("Exception", "Base")
+    local += _IMPORTED_SERVICE.removeprefix("from errors import Rejected\n")
+    assert NoCustomControlFlowException().check(path, local) == []
+
+
+def test_assigned_inherited_initializer_arity_remains_unknown(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text("class Base(Exception):\n    __init__ = initialize\n")
+    path = _imported_project(tmp_path, "from base import Base\nclass Rejected(Base): pass\n")
+    assert NoCustomControlFlowException().check(path, path.read_text()) == []
+
+
+def test_method_local_constructor_names_do_not_change_class_construction(tmp_path: Path) -> None:
+    (tmp_path / "base.py").write_text(
+        "class Base(Exception):\n    def helper(self) -> object:\n        __new__ = other\n        return __new__\n"
+    )
+    path = _imported_project(tmp_path, "from base import Base\nclass Rejected(Base): pass\n")
+    assert len(NoCustomControlFlowException().check(path, path.read_text())) == 1
