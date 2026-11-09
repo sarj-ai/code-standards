@@ -197,6 +197,141 @@ def test_malformed_source_abstains() -> None:
     assert _check("def check(:") == []
 
 
+_GENERIC = """from typing import Annotated, Literal
+from pydantic import BaseModel, Field
+class Success[T](BaseModel):
+    kind: Literal['success'] = 'success'
+    value: T
+class Error[E](BaseModel):
+    kind: Literal['error'] = 'error'
+    error: E
+type Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator='kind')]
+def save() -> Result[str, str]:
+    return Success(kind='success', value='saved')
+"""
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Result[str, str]", "Success[str] | Error[str]", "'Result[str, str]'", "Annotated[Result[str, str], 'wire']"],
+)
+@pytest.mark.parametrize("call", ["save()", "_ = save()", "_: Result[str, str] = save()"])
+def test_discarded_specialized_generic_outcome(annotation: str, call: str) -> None:
+    source = _GENERIC.replace("def save() -> Result[str, str]", f"def save() -> {annotation}")
+    assert len(_check(source + call + "\n")) == 1
+
+
+@pytest.mark.parametrize("record", ["pydantic", "dataclass", "typeddict"])
+@pytest.mark.parametrize("boolean", [False, True])
+def test_generic_record_conventions_and_wire_tags(record: str, *, boolean: bool) -> None:
+    source = _GENERIC
+    if record == "dataclass":
+        source = source.replace("from pydantic import BaseModel, Field", "from dataclasses import dataclass")
+        source = source.replace("(BaseModel):", ":").replace(
+            "class Success", "@dataclass(frozen=True, kw_only=True)\nclass Success"
+        )
+        source = source.replace("class Error", "@dataclass(frozen=True, kw_only=True)\nclass Error")
+        source = source.replace(
+            "Annotated[Success[T] | Error[E], Field(discriminator='kind')]", "Success[T] | Error[E]"
+        )
+    elif record == "typeddict":
+        source = source.replace("from pydantic import BaseModel, Field", "from typing import TypedDict as BaseModel")
+        source = source.replace(
+            "Annotated[Success[T] | Error[E], Field(discriminator='kind')]", "Success[T] | Error[E]"
+        )
+        source = source.replace(" = 'success'", "").replace(" = 'error'", "")
+    if boolean:
+        source = source.replace("'success'", "True").replace("'error'", "False")
+    assert len(_check(source + "save()\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("Result[str, str]:", "Result:"),
+        ("Result[str, str]:", "Result[str]:"),
+        ("Success[T] | Error[E]", "Success | Error[E]"),
+        ("Success[T] | Error[E]", "Success[T, E] | Error[E]"),
+        ("Success[T] | Error[E]", "T | Error[E]"),
+        ("Result[T, E]", "Result[Success, E]"),
+        ("Success[T](BaseModel)", "Success[Literal](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[BaseModel](BaseModel)"),
+        ("kind: Literal['success']", "kind: T"),
+        ("kind: Literal['success']", "kind: Literal[T]"),
+        ("Success[T](BaseModel)", "Success[T: str](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[T = str](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[*T](BaseModel)"),
+        ("Result[T, E]", "Result[T: str, E]"),
+        ("Result[T, E]", "Result[T = str, E = str]"),
+        ("Result[T, E]", "Result[*T, E]"),
+        ("Result[str, str]:", "Result[*types]:"),
+        ("kind: Literal['error']", "kind: Literal['success']"),
+        ("kind: Literal['error']", "kind: str"),
+        ("type Result[T, E]", "Success.kind = str\ntype Result[T, E]"),
+        ("def save()", "Result = Other\ndef save()"),
+        ("def save()", "@decorator\ndef save()"),
+        ("def save()", "def save[T]()"),
+    ],
+    ids=(
+        "bare-result",
+        "alias-arity",
+        "bare-record",
+        "record-arity",
+        "parameter-variant",
+        "alias-head-shadow",
+        "literal-shadow",
+        "base-shadow",
+        "parameter-tag",
+        "literal-parameter-tag",
+        "bounded-record",
+        "defaulted-record",
+        "variadic-record",
+        "bounded-alias",
+        "defaulted-alias",
+        "variadic-alias",
+        "spread-arguments",
+        "overlapping-tags",
+        "open-tag",
+        "mutated-record",
+        "rebound-alias",
+        "decorated-function",
+        "generic-function",
+    ),
+)
+def test_unproven_generic_contract_abstains(change: tuple[str, str]) -> None:
+    assert _check(_GENERIC.replace(*change) + "save()\n") == []
+
+
+def test_generic_tag_alias_shadow_is_not_resolved_in_module_scope() -> None:
+    source = _GENERIC.replace("class Success[T]", "type Tag = Literal['success']\nclass Success[Tag]")
+    source = source.replace("kind: Literal['success']", "kind: Tag")
+    assert _check(source + "save()\n") == []
+
+
+def test_imported_generic_outcome_contract(tmp_path: Path) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='outcomes'\nversion='0.0.0'\n")
+    provider = package / "models.py"
+    provider.write_text(_GENERIC[: _GENERIC.index("def save()")])
+    service = package / "service.py"
+    service.write_text(
+        "from app.models import Result, Success\ndef save() -> Result[str, str]:\n    return Success(value='saved')\n"
+    )
+    consumer = package / "consumer.py"
+    consumer.write_text("from app.service import save\nsave()\n")
+    findings = analyze([NoDiscardedTaggedOutcome.id], [provider, service, consumer])
+    assert [(item.path, item.line) for item in findings] == [(consumer, 2)]
+
+
+def test_generic_contract_preserves_consumption_suppression_and_async() -> None:
+    for statement in ("value = save()", "consume(save())", "save()  # sarj-noqa: SARJ548 -- deliberately observed"):
+        assert _check(_GENERIC + statement + "\n") == []
+    asynchronous = _GENERIC.replace("def save()", "async def save()")
+    assert len(_check(asynchronous + "async def run():\n    await save()\n")) == 1
+    assert _check(asynchronous + "save()\n") == []
+
+
 def test_bounded_alias_and_union_expansion() -> None:
     aliases = "".join(f"type Deep{index} = Deep{index + 1}\n" for index in range(30))
     source = _BASE + aliases + "type Deep30 = Outcome\n"

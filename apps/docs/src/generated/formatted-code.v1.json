@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e3dca1aad6196045e79e016c2b0224fa53469f0c01e75a38416aa79e13d32236",
-  "cliSha256": "189b2d7824b922ded38d8fa83c53a877e4acaabc1929e824c109caf1e903d186",
+  "catalogSha256": "fd64847d5ebe61673a8116eb4a60d20d9ab150e0dc14783dec760f0d8e5851c6",
+  "cliSha256": "a6b44d0b770dfca365cb4f23e25990bb791c872da0d89660c531a783bfd4dd70",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -12348,7 +12348,11 @@
           "files": [
             {
               "path": "app/content.py",
-              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef load(name: str, allowed: bool) -> str | Denied:\n    return name if allowed else Denied(name)\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+              "source": "from typing import Literal, assert_never\nfrom pydantic import BaseModel, TypeAdapter\nfrom app.outcomes import Error, Result, Success\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ndef load(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\ndef format_result(result: Result[str, Denied]) -> str:\n    if result.kind == \"success\":\n        return result.value\n    if result.kind == \"error\":\n        return f\"Denied {result.error.name}\"\n    assert_never(result)\n\n\ncodec = TypeAdapter[Result[str, Denied]](Result[str, Denied])\n\n\ndef decode_result(data: str) -> Result[str, Denied]:\n    return codec.validate_json(data, strict=True)\n"
+            },
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n"
             }
           ],
           "fixedFiles": [],
@@ -12362,8 +12366,12 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n"
+            },
+            {
               "path": "app/service.py",
-              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef save(name: str, allowed: bool) -> str | Denied:\n    return name if allowed else Denied(name)\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+              "source": "from typing import Literal, assert_never\nfrom pydantic import BaseModel, TypeAdapter\nfrom app.outcomes import Error, Result, Success\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\ndef format_result(result: Result[str, Denied]) -> str:\n    if result.kind == \"success\":\n        return result.value\n    if result.kind == \"error\":\n        return f\"Denied {result.error.name}\"\n    assert_never(result)\n\n\ncodec = TypeAdapter[Result[str, Denied]](Result[str, Denied])\n\n\ndef decode_result(data: str) -> Result[str, Denied]:\n    return codec.validate_json(data, strict=True)\n"
             }
           ],
           "fixedFiles": [],
@@ -12371,7 +12379,7 @@
           "id": "direct-domain-outcome-union",
           "outcome": "accept",
           "scenarioId": "prepared-message",
-          "title": "A direct union preserves the existing successful value"
+          "title": "Both success and rejection carry a stable discriminator"
         },
         {
           "expectedCount": 1,
@@ -12411,8 +12419,12 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n"
+            },
+            {
               "path": "app/service.py",
-              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Missing:\n    record_id: str\n    code: Literal[\"missing\"] = \"missing\"\n\n\ndef load(record_id: str, exists: bool) -> str | Missing:\n    return record_id if exists else Missing(record_id)\n\n\ndef format_error(error: Missing) -> str:\n    return f\"Missing {error.record_id}\"\n"
+              "source": "from typing import Literal, assert_never\nfrom pydantic import BaseModel, TypeAdapter\nfrom app.outcomes import Error, Result, Success\n\n\nclass Missing(BaseModel):\n    code: Literal[\"missing\"] = \"missing\"\n    record_id: str\n\n\ndef load(record_id: str, exists: bool) -> Result[str, Missing]:\n    return (\n        Success[str](value=record_id)\n        if exists\n        else Error[Missing](error=Missing(record_id=record_id))\n    )\n\n\ndef format_result(result: Result[str, Missing]) -> str:\n    if result.kind == \"success\":\n        return result.value\n    if result.kind == \"error\":\n        return f\"Missing {result.error.record_id}\"\n    assert_never(result)\n\n\ncodec = TypeAdapter[Result[str, Missing]](Result[str, Missing])\n\n\ndef decode_result(data: str) -> Result[str, Missing]:\n    return codec.validate_json(data, strict=True)\n"
             }
           ],
           "fixedFiles": [],
@@ -12427,11 +12439,11 @@
           "files": [
             {
               "path": "app/outcomes.py",
-              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Success[T]:\n    value: T\n\n\n@dataclass(frozen=True)\nclass Failure[E]:\n    error: E\n\n\ntype Result[T, E] = Success[T] | Failure[E]\n"
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n"
             },
             {
               "path": "app/service.py",
-              "source": "from dataclasses import dataclass\nfrom typing import Literal\nfrom app.outcomes import Failure, Result, Success\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return Success(name) if allowed else Failure(Denied(name))\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+              "source": "from typing import Literal, assert_never\nfrom pydantic import BaseModel, TypeAdapter\nfrom app.outcomes import Error, Result, Success\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\ndef format_result(result: Result[str, Denied]) -> str:\n    if result.kind == \"success\":\n        return result.value\n    if result.kind == \"error\":\n        return f\"Denied {result.error.name}\"\n    assert_never(result)\n\n\ncodec = TypeAdapter[Result[str, Denied]](Result[str, Denied])\n\n\ndef decode_result(data: str) -> Result[str, Denied]:\n    return codec.validate_json(data, strict=True)\n"
             }
           ],
           "fixedFiles": [],
@@ -12439,7 +12451,7 @@
           "id": "generic-success-failure-union",
           "outcome": "accept",
           "scenarioId": "imported-outcome",
-          "title": "An established generic union makes rejection visible to callers"
+          "title": "An established tagged generic union supports explicit handling and JSON decoding"
         },
         {
           "expectedCount": 1,
@@ -12731,6 +12743,21 @@
           "files": [
             {
               "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\nsave(\"record-7\", False)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "discarded-generic-result",
+          "outcome": "reject",
+          "scenarioId": "generic-result-consumption",
+          "title": "A returned generic success/error contract is discarded"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/outcomes.py",
               "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass Accepted(BaseModel):\n    kind: Literal[\"accepted\"]\n    value: str\n\n\nclass Rejected(BaseModel):\n    kind: Literal[\"rejected\"]\n    reason: str\n\n\ntype Outcome = Accepted | Rejected\n\n\ndef check(value: str) -> Outcome:\n    return Accepted(kind=\"accepted\", value=value)\n\n\ncheck(\"value\")\n"
             }
           ],
@@ -12740,6 +12767,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A tagged outcome is discarded"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\ndef run(name: str, allowed: bool) -> Result[str, Denied]:\n    return save(name, allowed)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "forwarded-generic-result",
+          "outcome": "accept",
+          "scenarioId": "generic-result-consumption",
+          "title": "The caller propagates the complete generic result"
         },
         {
           "expectedCount": 0,
@@ -17179,6 +17221,21 @@
           "title": "Explicit tags preserve positional constructor calls with init=False"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "tagged-generic-result",
+          "outcome": "accept",
+          "scenarioId": "generic-outcome-discriminator",
+          "title": "A tagged generic result supports field narrowing and codec validation"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -17192,6 +17249,21 @@
           "outcome": "reject",
           "scenarioId": "explicit-data-discriminator",
           "title": "Data variants lack a common explicit tag"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Success[T](BaseModel):\n    value: T\n\n\nclass Error[E](BaseModel):\n    error: E\n\n\ntype Result[T, E] = Success[T] | Error[E]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "untagged-generic-result",
+          "outcome": "reject",
+          "scenarioId": "generic-outcome-discriminator",
+          "title": "Generic data wrappers still need an explicit discriminator"
         },
         {
           "expectedCount": 0,

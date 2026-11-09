@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
 from sarj_python_lint.rule_base import Diagnostic, Severity
+from sarj_python_lint.rules._generic_payload import plain_parameters, record_parameters, specialized, uses_parameters
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._pydantic_field_contract import MODEL_SOURCES, unique_members
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
@@ -383,9 +384,14 @@ class _DataUnions:
         for node in leaves:
             if isinstance(node, ast.Constant) and node.value is None:
                 continue
-            if not isinstance(node, ast.Name) or node.id not in self.classes:
+            head = node.value if isinstance(node, ast.Subscript) else node
+            if (
+                not isinstance(head, ast.Name)
+                or head.id not in self.classes
+                or not specialized(node, self.classes[head.id].type_params)
+            ):
                 return None
-            variants.add(node.id)
+            variants.add(head.id)
         return variants
 
     def _leaves(self, expression: ast.expr) -> list[ast.expr] | None:
@@ -399,9 +405,10 @@ class _DataUnions:
             if node is None:
                 return None
             if isinstance(node, ast.Name) and node.id in self.aliases:
-                if node.id in item.aliases:
+                expansion = self._alias_expansion(node.id, item.aliases)
+                if expansion is None:
                     return None
-                pending.append(_Expansion(self.aliases[node.id], item.aliases | {node.id}))
+                pending.append(expansion)
             else:
                 children = self._union_members(node)
                 if children is None:
@@ -409,6 +416,12 @@ class _DataUnions:
                 else:
                     pending.extend(_Expansion(child, item.aliases) for child in children)
         return None
+
+    def _alias_expansion(self, name: str, seen: frozenset[str]) -> _Expansion | None:
+        declaration = self.declarations[name]
+        if name in seen or (isinstance(declaration, ast.TypeAlias) and declaration.type_params):
+            return None
+        return _Expansion(self.aliases[name], seen | {name})
 
     def _union_members(self, node: ast.expr) -> tuple[ast.expr, ...] | None:
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -445,6 +458,8 @@ class _DataUnions:
         return uncertain
 
     def _field_domain(self, field: ast.AnnAssign, *, required: bool) -> _Domain:
+        if _parameter_dependent_field(field, self.context):
+            return _Domain(opaque=True)
         if _direct_initvar_field(field, self.context, self.provenance):
             return _Domain()
         node = field.annotation
@@ -621,6 +636,14 @@ def _class_annotation_shadowed(annotation: ast.expr, names: frozenset[str], cont
     return True
 
 
+def _parameter_dependent_field(field: ast.AnnAssign, context: PythonFileContext) -> bool:
+    owner = context.parents.get(field)
+    if not isinstance(owner, ast.ClassDef) or not owner.type_params:
+        return False
+    parameters = plain_parameters(owner.type_params)
+    return parameters is None or _class_annotation_shadowed(field.annotation, parameters, context)
+
+
 def _class_annotation_children(
     node: ast.expr, *, forward: bool, context: PythonFileContext
 ) -> list[tuple[ast.expr, bool]]:
@@ -634,7 +657,7 @@ def _class_annotation_children(
 
 
 def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool | None:
-    if node.type_params:
+    if record_parameters(node) is None:
         return None
     if any(not _untouched(base, provenance) for base in node.bases):
         return None
@@ -804,8 +827,13 @@ def _alias_value(
     node: ast.stmt, context: PythonFileContext, provenance: ResourceProvenance | None = None
 ) -> ast.expr | None:
     match node:
-        case ast.TypeAlias(type_params=[]):
-            return node.value
+        case ast.TypeAlias():
+            parameters = plain_parameters(node.type_params)
+            return (
+                node.value
+                if parameters is not None and _payload_parameters_only(node.value, parameters, context)
+                else None
+            )
         case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
             return (
                 value
@@ -817,6 +845,42 @@ def _alias_value(
             return None if isinstance(value, ast.Constant) and isinstance(value.value, str) else value
         case _:
             return None
+
+
+def _payload_parameters_only(expression: ast.expr, parameters: frozenset[str], context: PythonFileContext) -> bool:
+    if not parameters:
+        return True
+    pending = [expression]
+    for _ in range(_MAX_EXPANSION):
+        if not pending:
+            return True
+        node = pending.pop()
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return False
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            pending.extend((node.left, node.right))
+        elif isinstance(node, ast.Subscript):
+            children = _parameter_union_children(node, parameters, context)
+            if children is None:
+                return False
+            pending.extend(children)
+        elif uses_parameters(node, parameters):
+            return False
+    return False
+
+
+def _parameter_union_children(
+    node: ast.Subscript, parameters: frozenset[str], context: PythonFileContext
+) -> tuple[ast.expr, ...] | None:
+    if uses_parameters(node.value, parameters):
+        return None
+    symbol = context.module_imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
+    members = _subscript_members(node)
+    if symbol in {"Union", "Optional"}:
+        return members
+    if symbol == "Annotated" and members:
+        return None if any(uses_parameters(member, parameters) for member in members[1:]) else members[:1]
+    return ()
 
 
 def _string_expression(node: ast.expr) -> ast.expr | None:

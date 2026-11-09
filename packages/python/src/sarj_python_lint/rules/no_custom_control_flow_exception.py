@@ -54,6 +54,34 @@ _MAX_VALIDATOR_DEPTH = 32
 _MAX_BASE_DEPTH = 8
 _MAX_IMPORTED_MODULES = 32
 _MAX_MESSAGE_DEPTH = 16
+_RESULT_TYPES = """from typing import Annotated, Literal
+from pydantic import BaseModel, Field
+class Success[T](BaseModel):
+    kind: Literal['success'] = 'success'
+    value: T
+class Error[E](BaseModel):
+    kind: Literal['error'] = 'error'
+    error: E
+type Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator='kind')]
+"""
+_DENIED_SERVICE = """from typing import Literal, assert_never
+from pydantic import BaseModel, TypeAdapter
+from app.outcomes import Error, Result, Success
+class Denied(BaseModel):
+    code: Literal['denied'] = 'denied'
+    name: str
+def save(name: str, allowed: bool) -> Result[str, Denied]:
+    return Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))
+def format_result(result: Result[str, Denied]) -> str:
+    if result.kind == 'success':
+        return result.value
+    if result.kind == 'error':
+        return f'Denied {result.error.name}'
+    assert_never(result)
+codec = TypeAdapter[Result[str, Denied]](Result[str, Denied])
+def decode_result(data: str) -> Result[str, Denied]:
+    return codec.validate_json(data, strict=True)
+"""
 
 
 @final
@@ -72,10 +100,12 @@ class NoCustomControlFlowException(Rule):
         ),
         remediation=(
             "Review direct raises of this exception. If the condition is an expected domain outcome, reuse an established Result[T, E] "
-            "or a generic union of typed success/failure variants with a stable domain error code and the handling context. "
+            "or a generic Success[T] | Error[E] union with a shared Literal discriminator, a stable domain error code and the handling context. "
             "Update callers to handle, propagate or translate each relevant variant; use the native type checker's assert_never "
             "for exhaustiveness. Extend an existing outcome union rather than wrapping it again. "
-            "Format the message at the consumer. Preserve true exceptional failures, "
+            "For a serializable contract, wrap the successful payload too; avoid a raw scalar | Error union. "
+            "Use the project's established codec and validate incoming tags and payloads; Pydantic models with an Annotated "
+            "Field(discriminator=...) union and TypeAdapter are one option. Format the message at the consumer. Preserve true exceptional failures, "
             "validation rejection, transport/framework protocols, cancellation, unwinding and useful cause context. "
             "A class name or a raise does not prove the condition is expected."
         ),
@@ -89,6 +119,7 @@ class NoCustomControlFlowException(Rule):
             "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Direct synchronous module callbacks used only as Annotated validator metadata on plain direct BaseModel fields, and stable nonescaping direct nested helpers, also preserve rejection; lexical helper ownership is bounded to 32 levels. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred. Only simple stable module assignment aliases and nongeneric annotation aliases consumed directly by model fields are followed. Explicit string annotations, custom model hooks, async/generator callbacks, escaped helpers and broader call graphs are not followed. Generic lexical resolution can miss a module marker shadowed only in a method's class namespace.",
             "Tests, generated and vendor code are excluded. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
+            "The examples illustrate an existing project Result abstraction; do not introduce another Result library or require these class/tag names. SARJ510 owns explicit data discriminators and SARJ548 reviews discarded tagged outcomes; the native type checker owns exhaustive handling. A tag alone cannot guarantee JSON support for arbitrary T/E: qualify the concrete payloads with their codec. Keep established wire discriminators, legitimate absence and independent outcomes. This warning does not mechanically ban scalar unions or require every function to return Result.",
         ),
         examples=(
             RuleExample(
@@ -151,15 +182,8 @@ class NoCustomControlFlowException(Rule):
                 title="A typed outcome retains the code and formatting context",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
-                    ExampleFile.python(
-                        "app/content.py",
-                        "from dataclasses import dataclass\nfrom typing import Literal\n"
-                        "@dataclass(frozen=True)\nclass Denied:\n"
-                        "    name: str\n    code: Literal['denied'] = 'denied'\n"
-                        "def load(name: str, allowed: bool) -> str | Denied:\n"
-                        "    return name if allowed else Denied(name)\n"
-                        "def format_error(error: Denied) -> str:\n    return f'Denied {error.name}'\n",
-                    ),
+                    ExampleFile.python("app/outcomes.py", _RESULT_TYPES),
+                    ExampleFile.python("app/content.py", _DENIED_SERVICE.replace("def save(", "def load(")),
                 ),
                 focus_path=PurePosixPath("app/content.py"),
                 expected_count=0,
@@ -186,26 +210,11 @@ class NoCustomControlFlowException(Rule):
             RuleExample(
                 example_id="generic-success-failure-union",
                 scenario="imported-outcome",
-                title="An established generic union makes rejection visible to callers",
+                title="An established tagged generic union supports explicit handling and JSON decoding",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
-                    ExampleFile.python(
-                        "app/outcomes.py",
-                        "from dataclasses import dataclass\n"
-                        "@dataclass(frozen=True)\nclass Success[T]:\n    value: T\n"
-                        "@dataclass(frozen=True)\nclass Failure[E]:\n    error: E\n"
-                        "type Result[T, E] = Success[T] | Failure[E]\n",
-                    ),
-                    ExampleFile.python(
-                        "app/service.py",
-                        "from dataclasses import dataclass\nfrom typing import Literal\n"
-                        "from app.outcomes import Failure, Result, Success\n"
-                        "@dataclass(frozen=True)\nclass Denied:\n"
-                        "    name: str\n    code: Literal['denied'] = 'denied'\n"
-                        "def save(name: str, allowed: bool) -> Result[str, Denied]:\n"
-                        "    return Success(name) if allowed else Failure(Denied(name))\n"
-                        "def format_error(error: Denied) -> str:\n    return f'Denied {error.name}'\n",
-                    ),
+                    ExampleFile.python("app/outcomes.py", _RESULT_TYPES),
+                    ExampleFile.python("app/service.py", _DENIED_SERVICE),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
@@ -234,18 +243,11 @@ class NoCustomControlFlowException(Rule):
             RuleExample(
                 example_id="direct-domain-outcome-union",
                 scenario="prepared-message",
-                title="A direct union preserves the existing successful value",
+                title="Both success and rejection carry a stable discriminator",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
-                    ExampleFile.python(
-                        "app/service.py",
-                        "from dataclasses import dataclass\nfrom typing import Literal\n"
-                        "@dataclass(frozen=True)\nclass Denied:\n"
-                        "    name: str\n    code: Literal['denied'] = 'denied'\n"
-                        "def save(name: str, allowed: bool) -> str | Denied:\n"
-                        "    return name if allowed else Denied(name)\n"
-                        "def format_error(error: Denied) -> str:\n    return f'Denied {error.name}'\n",
-                    ),
+                    ExampleFile.python("app/outcomes.py", _RESULT_TYPES),
+                    ExampleFile.python("app/service.py", _DENIED_SERVICE),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
@@ -280,14 +282,14 @@ class NoCustomControlFlowException(Rule):
                 title="The error variant retains the identifier needed by its caller",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
+                    ExampleFile.python("app/outcomes.py", _RESULT_TYPES),
                     ExampleFile.python(
                         "app/service.py",
-                        "from dataclasses import dataclass\nfrom typing import Literal\n"
-                        "@dataclass(frozen=True)\nclass Missing:\n"
-                        "    record_id: str\n    code: Literal['missing'] = 'missing'\n"
-                        "def load(record_id: str, exists: bool) -> str | Missing:\n"
-                        "    return record_id if exists else Missing(record_id)\n"
-                        "def format_error(error: Missing) -> str:\n    return f'Missing {error.record_id}'\n",
+                        _DENIED_SERVICE.replace("Denied", "Missing")
+                        .replace("denied", "missing")
+                        .replace("name", "record_id")
+                        .replace("allowed", "exists")
+                        .replace("def save(", "def load("),
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
