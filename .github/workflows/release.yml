@@ -846,6 +846,9 @@ jobs:
       - name: Build the plugin for native Oxlint integration tests
         if: steps.reuse.outputs.reused != 'true'
         run: npm --prefix ../typescript run build
+      - name: Install locked documentation formatters
+        if: steps.reuse.outputs.reused != 'true'
+        run: npm --prefix ../../apps/docs ci --ignore-scripts --no-audit --no-fund
       - name: Install the manifest formatter
         if: steps.reuse.outputs.reused != 'true'
         run: bash ../../.github/scripts/ci-install-taplo.sh

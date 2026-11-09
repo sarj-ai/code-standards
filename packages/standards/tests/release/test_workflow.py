@@ -336,6 +336,7 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     for name in [
         "Build package and exact local dependency wheels",
         "Build the plugin for native Oxlint integration tests",
+        "Install locked documentation formatters",
         "Install the manifest formatter",
         "Install the pinned native tool bootstrap",
         "Install and attest integration native tools",
@@ -355,6 +356,14 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     publish = _job("release.yml", "publish-standards")
     assert publish["environment"] == "pypi-standards-release"
     assert publish["permissions"] == {"contents": "read", "id-token": "write"}
+
+
+def test_wheel_integration_installs_locked_documentation_formatters_before_testing() -> None:
+    names = [step.get("name") for step in _steps("release.yml", "build-standards")]
+    assert names.index("Install locked documentation formatters") < names.index("Test against the built wheel")
+    assert _run("release.yml", "build-standards", "Install locked documentation formatters") == (
+        "npm --prefix ../../apps/docs ci --ignore-scripts --no-audit --no-fund"
+    )
 
 
 def test_iac_release_installs_pinned_terraform_before_mandatory_semantic_tests() -> None:
