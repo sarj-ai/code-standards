@@ -85,11 +85,11 @@
   "dependencies": {
     "@eslint/css-tree": "4.1.2",
     "change-case": "5.4.4",
-    "oxc-parser": "0.148.0"
+    "oxc-parser": "0.157.0"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.91.0",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "esbuild": "0.28.2",
     "eslint-plugin-zod": "^5.2.2",
     "jsonc-parser": "3.3.1",
@@ -102,8 +102,8 @@
     "tsrs": "0.23.0-ts7.1.0-beta",
     "tsup": "9.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "uuid": "13.0.0",
-    "vitest": "5.0.5",
+    "uuid": "14.0.3",
+    "vitest": "5.1.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
