@@ -3,9 +3,12 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION = {
-  summary: "Prefer validated deployment configuration for account scope in outgoing cloud management requests.",
-  rationale: "A source-literal cloud account scope pins operational requests to one deployment even when the credential or environment changes.",
-  remediation: "Read the account ID from environment variables or injected configuration, validate it at startup, and pass the validated value to the request. Preserve independent security allowlists and fail closed when required configuration is missing.",
+  summary:
+    "Prefer validated deployment configuration for account scope in outgoing cloud management requests.",
+  rationale:
+    "A source-literal cloud account scope pins operational requests to one deployment even when the credential or environment changes.",
+  remediation:
+    "Read the account ID through one shared settings object validated by a Zod schema at startup, then import or inject that parsed object into consumers. Required values must fail before remote effects. Preserve independent security allowlists; an environment read alone is not validation.",
   category: "correctness",
   defaultLevel: "warning",
   autofix: "none",
@@ -26,22 +29,33 @@ export const PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION = {
       id: "literal-account-scope",
       title: "Move outgoing account scope into deployment configuration",
       outcome: "match",
-      files: [{
-        path: ".github/scripts/publish.mjs",
-        source: "const accountId = '0123456789abcdef0123456789abcdef';\nconst base = `https://api.cloudflare.com/client/v4/accounts/${accountId}`;\nexport async function publish(path, request = fetch) { return request(`${base}/${path}`); }",
-      }],
+      files: [
+        {
+          path: ".github/scripts/publish.mjs",
+          source:
+            "const accountId = '0123456789abcdef0123456789abcdef';\nconst base = `https://api.cloudflare.com/client/v4/accounts/${accountId}`;\nexport async function publish(path, request = fetch) { return request(`${base}/${path}`); }",
+        },
+      ],
       focusPath: ".github/scripts/publish.mjs",
       expectedCount: 1,
       public: true,
     },
     {
       id: "validated-account-scope",
-      title: "Pass validated deployment configuration to the request",
+      title: "Parse one shared settings object with Zod before requests",
       outcome: "no-match",
-      files: [{
-        path: ".github/scripts/publish.mjs",
-        source: "import { env } from './env.mjs';\nconst base = `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) { return request(`${base}/${path}`); }",
-      }],
+      files: [
+        {
+          path: "src/env.mjs",
+          source:
+            "import { z } from 'zod';\nconst SettingsSchema = z.object({ CLOUDFLARE_ACCOUNT_ID: z.string().length(32).regex(/^[a-fA-F0-9]+$/u) });\nexport const settings = SettingsSchema.parse(process.env);",
+        },
+        {
+          path: ".github/scripts/publish.mjs",
+          source:
+            "import { settings } from '../../src/env.mjs';\nconst base = `https://api.cloudflare.com/client/v4/accounts/${settings.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) { return request(`${base}/${path}`); }\nexport async function list(request = fetch) { return request(`${base}/workers/scripts`); }",
+        },
+      ],
       focusPath: ".github/scripts/publish.mjs",
       expectedCount: 0,
       public: true,

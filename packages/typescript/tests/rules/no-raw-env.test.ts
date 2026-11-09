@@ -5,13 +5,70 @@ const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-raw-env", rule, {
   valid: [
-    { name: "raw-environment-read-dynamic-member", filename: "src/database.ts", code: "const url = process[auditDynamicMember][auditDynamicMember];" },
-    { name: "does not infer process from a foreign default import", code: 'import proc from "./process"; const key = proc["env"].KEY;' },
-    { name: "preserves a shadowed Node process alias", code: 'import proc from "node:process"; function read(proc: {env: {KEY: string}}) { return proc.env.KEY; }' },
-    { name: "does not infer a value from a type-only Node namespace", code: 'import type * as proc from "node:process"; const key = proc.env.KEY;' },
-    { name: "preserves platform exemptions under a Node alias", code: 'import proc from "node:process"; const runtime = proc["env"]["NODE_ENV"];' },
-    { name: "does not confuse injected config with Node process", code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }" },
-    { name: "accepts the documented validated environment", code: "import { env } from './env.js'; const url = env.DATABASE_URL;" },
+    {
+      name: "the shared settings module is a supported validation boundary",
+      filename: "/repo/src/settings.ts",
+      code: "export const settings = SettingsSchema.parse(process.env);",
+    },
+    {
+      name: "ESM settings modules parse the shared object at their boundary",
+      filename: "/repo/src/env.mjs",
+      code: "export const settings = SettingsSchema.parse(process.env);",
+    },
+    {
+      name: "a copied input object is allowed when it reaches validation",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = SettingsSchema.parse({ ...process.env });",
+    },
+    {
+      name: "one parsed settings object can serve multiple consumers",
+      filename: "/repo/src/env.ts",
+      code: 'import { z } from "zod"; const SettingsSchema = z.object({ API_KEY: z.string().min(1) }); export const settings = SettingsSchema.parse(process.env); export const first = () => settings.API_KEY; export const second = () => settings.API_KEY;',
+    },
+    {
+      name: "stable raw aliases may flow only to the shared parser",
+      filename: "/repo/src/env.ts",
+      code: "const raw = process.env; const input = raw; export const settings = SettingsSchema.parse(input);",
+    },
+    {
+      name: "supports validation after explicit scalar coercion",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = SettingsSchema.parse({ PORT: Number(process.env.PORT) });",
+    },
+    {
+      name: "supports import meta env in a validated input mapping",
+      filename: "/repo/src/client-env.ts",
+      code: "export const settings = SettingsSchema.parse({ API_URL: import.meta.env.VITE_API_URL });",
+    },
+    {
+      name: "raw-environment-read-dynamic-member",
+      filename: "src/database.ts",
+      code: "const url = process[auditDynamicMember][auditDynamicMember];",
+    },
+    {
+      name: "does not infer process from a foreign default import",
+      code: 'import proc from "./process"; const key = proc["env"].KEY;',
+    },
+    {
+      name: "preserves a shadowed Node process alias",
+      code: 'import proc from "node:process"; function read(proc: {env: {KEY: string}}) { return proc.env.KEY; }',
+    },
+    {
+      name: "does not infer a value from a type-only Node namespace",
+      code: 'import type * as proc from "node:process"; const key = proc.env.KEY;',
+    },
+    {
+      name: "preserves platform exemptions under a Node alias",
+      code: 'import proc from "node:process"; const runtime = proc["env"]["NODE_ENV"];',
+    },
+    {
+      name: "does not confuse injected config with Node process",
+      code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }",
+    },
+    {
+      name: "accepts the documented validated environment",
+      code: "import { env } from './env.js'; const url = env.DATABASE_URL;",
+    },
 
     { code: "import { env } from '@/env'; const url = env.DATABASE_URL;" },
 
@@ -63,15 +120,6 @@ RULE_TESTER.run("no-raw-env", rule, {
     {
       code: "export default { reporters: process.env.GITHUB_ACTIONS };",
       filename: "vitest.config.mts",
-    },
-    {
-      name: "allows a z.object marker in a boundary-named module",
-      code: `
-        import { z } from "zod";
-        const schema = z.object({ API_KEY: z.string() });
-        export const rawApiKey = process.env.API_KEY;
-      `,
-      filename: "/repo/src/client-env.ts",
     },
     {
       name: "allows a parse marker in a boundary-named module",
@@ -130,13 +178,129 @@ RULE_TESTER.run("no-raw-env", rule, {
     },
   ],
   invalid: [
-    { name: "raw-environment-read-static-member", filename: "src/database.ts", code: "const url = process[\"env\"][\"DATABASE_URL\"];", errors: [{ messageId: "noRawEnv" }] },
-    { name: "reports a default Node process alias", code: 'import proc from "node:process"; const key = proc.env.KEY;', errors: [{ messageId: "noRawEnv" }] },
-    { name: "reports a namespace process alias with static bracket access", code: 'import * as proc from "process"; const key = proc["env"]["KEY"];', errors: [{ messageId: "noRawEnv" }] },
-    { name: "reports a static bracket read of the raw environment object", code: "const x = process['env'];", errors: [{ messageId: "noRawEnv" }] },
-    { name: "does not treat a comment as environment validation", filename: "src/env.ts", code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
-    { name: "does not treat string payload as environment validation", filename: "src/env.ts", code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
-    { name: "reports the documented raw environment read (its focusPath keeps it distinct from the next case's code)", filename: "src/database.ts", code: "const url = process.env.DATABASE_URL;", errors: [{ messageId: "noRawEnv" }] },
+    {
+      name: "a settings filename alone does not validate raw values",
+      filename: "/repo/src/settings.ts",
+      code: "export const settings = { KEY: process.env.KEY };",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "an ESM boundary is not exempt merely because ordinary mjs scripts are",
+      filename: "/repo/src/env.mjs",
+      code: 'import { z } from "zod"; const SettingsSchema = z.object({ KEY: z.string() }); export const settings = { KEY: process.env.KEY };',
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "exported raw declarations escape even when other uses reach the parser",
+      filename: "/repo/src/env.ts",
+      code: "export const raw = process.env; export const settings = SettingsSchema.parse(raw);",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "named raw re-exports escape alongside validated settings",
+      filename: "/repo/src/env.ts",
+      code: "const raw = process.env; export const settings = SettingsSchema.parse(raw); export { raw };",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "remote effects must not consume a raw value before validation",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = SettingsSchema.parse(fetch(process.env.API_URL));",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "a shadowed scalar constructor may have arbitrary effects",
+      filename: "/repo/src/env.ts",
+      code: "const Number = value => fetch(value); export const settings = SettingsSchema.parse({ PORT: Number(process.env.PORT) });",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "spreading the environment does not create validated settings",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = { ...process.env };",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "a Zod schema declaration does not validate an unrelated raw export",
+      filename: "/repo/src/client-env.ts",
+      code: 'import { z } from "zod"; const SettingsSchema = z.object({ API_KEY: z.string() }); export const rawApiKey = process.env.API_KEY;',
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "parsing another value does not validate the raw export",
+      filename: "/repo/src/env.ts",
+      code: "const other = SettingsSchema.parse(input); export const rawApiKey = process.env.API_KEY;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "a validated settings export does not exempt an extra raw export",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = SettingsSchema.parse(process.env); export const rawApiKey = process.env.API_KEY;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "raw aliases may not escape alongside the parsed object",
+      filename: "/repo/src/env.ts",
+      code: "const raw = process.env; export const settings = SettingsSchema.parse(raw); export const leaked = raw.API_KEY;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "a parser used as an unrelated method receiver is not a validation argument",
+      filename: "/repo/src/env.ts",
+      code: "export const settings = process.env.parse(input);",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "mutable raw aliases are not a stable validation boundary",
+      filename: "/repo/src/env.ts",
+      code: "let raw = process.env; raw = other; export const settings = SettingsSchema.parse(raw);",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "unused raw aliases are not validated",
+      filename: "/repo/src/env.ts",
+      code: "const raw = process.env;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "raw-environment-read-static-member",
+      filename: "src/database.ts",
+      code: 'const url = process["env"]["DATABASE_URL"];',
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "reports a default Node process alias",
+      code: 'import proc from "node:process"; const key = proc.env.KEY;',
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "reports a namespace process alias with static bracket access",
+      code: 'import * as proc from "process"; const key = proc["env"]["KEY"];',
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "reports a static bracket read of the raw environment object",
+      code: "const x = process['env'];",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "does not treat a comment as environment validation",
+      filename: "src/env.ts",
+      code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "does not treat string payload as environment validation",
+      filename: "src/env.ts",
+      code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
+    {
+      name: "reports the documented raw environment read (its focusPath keeps it distinct from the next case's code)",
+      filename: "src/database.ts",
+      code: "const url = process.env.DATABASE_URL;",
+      errors: [{ messageId: "noRawEnv" }],
+    },
     {
       code: "const url = process.env.DATABASE_URL;",
       errors: [{ messageId: "noRawEnv" }],

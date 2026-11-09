@@ -36,7 +36,17 @@ _MAX_PARTS = 128
 _MAX_BYTES = 8192
 _UNKNOWN = "\x00"
 _BAD = "import httpx\nACCOUNT = '0123456789abcdef0123456789abcdef'\nhttpx.get(f'https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/scripts')\n"
-_GOOD = "from typing import Annotated\nimport httpx\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    cloudflare_account_id: Annotated[str, Field(pattern=r'^[a-fA-F0-9]{32}$')]\nsettings = Settings()\nhttpx.get(f'https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts')\n"
+_GOOD = (
+    "from typing import Annotated\nimport httpx\nfrom pydantic import Field\n"
+    "from pydantic_settings import BaseSettings\n"
+    "class Settings(BaseSettings):\n"
+    "    cloudflare_account_id: Annotated[str, Field(min_length=32, max_length=32, pattern=r'^[a-fA-F0-9]+$')]\n"
+    "def publish(settings: Settings):\n"
+    "    return httpx.post(f'https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts')\n"
+    "def list_scripts(settings: Settings):\n"
+    "    return httpx.get(f'https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts')\n"
+    "settings = Settings()\npublish(settings)\nlist_scripts(settings)\n"
+)
 
 
 class _Part(NamedTuple):
@@ -56,9 +66,10 @@ class PreferConfiguredCloudScope(Rule):
             "Reusing the script in another environment can target the original account even when its credentials change."
         ),
         remediation=(
-            "Read the account ID through validated settings or a required environment variable at startup and inject it "
-            "into the request builder. Preserve independent security allowlists and fail when required configuration "
-            "is absent; do not replace a required setting with a production account fallback."
+            "Load the account ID into one shared Pydantic/Pydantic Settings object at startup and inject that same "
+            "validated object into consumers. Fail before remote effects when required configuration is absent or "
+            "invalid; preserve independent security allowlists and existing optional defaults, without a production "
+            "account fallback. Reading an environment variable alone is not validation."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -71,7 +82,8 @@ class PreferConfiguredCloudScope(Rule):
             (
                 "Reports each originating account literal once. Unknown account values, arbitrary service endpoints, "
                 "worker names, UUIDs, unused strings and validation allowlists are not inferred. Settings and environment "
-                "expressions are left to their existing validation controls."
+                "expressions are left to their existing validation controls; absence of a finding does not prove "
+                "validation or one settings instance. Nested settings and separate runtime/security boundaries remain valid."
             ),
             (
                 "Client instances, injected request functions, format calls, environment fallbacks and cross-file values "
@@ -92,7 +104,7 @@ class PreferConfiguredCloudScope(Rule):
             ),
             RuleExample(
                 example_id="configured-account-request",
-                title="Read the deployment account at the boundary",
+                title="Construct one Pydantic Settings object and inject it into both consumers",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(ExampleFile.python("app/publish.py", _GOOD),),
                 focus_path=PurePosixPath("app/publish.py"),
@@ -130,9 +142,9 @@ class PreferConfiguredCloudScope(Rule):
                 origin.lineno,
                 origin.col_offset + 1,
                 self.code,
-                "This literal Cloudflare account flows to a management API request; read and validate the account "
-                "from required deployment configuration, then inject it into the request builder. Preserve "
-                "independent security allowlists.",
+                "This literal Cloudflare account flows to a management API request; load the account into one shared "
+                "Pydantic-validated settings object at startup, then inject it into consumers. Preserve independent "
+                "security allowlists.",
                 severity=Severity.WARNING,
             )
             for origin in sorted(origins, key=lambda node: (node.lineno, node.col_offset))

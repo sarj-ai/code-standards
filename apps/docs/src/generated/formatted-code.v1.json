@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "42d9f5471a77f4f8138a70191130235cdfea767748768a6351e85e63ca6ee8f6",
-  "cliSha256": "24fd68f9d38a161717243cb8f38a11a8f485745a3d15a8938a3582b91a055bc5",
+  "catalogSha256": "e3dca1aad6196045e79e016c2b0224fa53469f0c01e75a38416aa79e13d32236",
+  "cliSha256": "189b2d7824b922ded38d8fa83c53a877e4acaabc1929e824c109caf1e903d186",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -5192,31 +5192,35 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "src/database.ts",
-              "source": "const url = process.env.DATABASE_URL;\n"
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ DATABASE_URL: z.url() });\nexport const settings = { DATABASE_URL: process.env.DATABASE_URL };\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "src/database.ts",
+          "focusPath": "src/env.ts",
           "id": "raw-environment-read",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not read raw configuration"
+          "title": "Declaring a schema does not validate a raw export"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "src/database.ts",
-              "source": "import { env } from \"./env.js\";\nconst url = env.DATABASE_URL;\n"
+              "source": "import { settings } from \"./env.js\";\nexport const primaryUrl = settings.DATABASE_URL;\nexport const replicaUrl = settings.DATABASE_URL;\n"
+            },
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ DATABASE_URL: z.url() });\nexport const settings = SettingsSchema.parse(process.env);\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "src/database.ts",
+          "focusPath": "src/env.ts",
           "id": "validated-environment",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Read validated configuration"
+          "title": "Parse once and reuse one settings object"
         }
       ],
       "optionsSchemaSource": null
@@ -7717,7 +7721,11 @@
           "files": [
             {
               "path": ".github/scripts/publish.mjs",
-              "source": "import { env } from \"./env.mjs\";\nconst base = `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) {\n  return request(`${base}/${path}`);\n}\n"
+              "source": "import { settings } from \"../../src/env.mjs\";\nconst base = `https://api.cloudflare.com/client/v4/accounts/${settings.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) {\n  return request(`${base}/${path}`);\n}\nexport async function list(request = fetch) {\n  return request(`${base}/workers/scripts`);\n}\n"
+            },
+            {
+              "path": "src/env.mjs",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({\n  CLOUDFLARE_ACCOUNT_ID: z\n    .string()\n    .length(32)\n    .regex(/^[a-fA-F0-9]+$/u),\n});\nexport const settings = SettingsSchema.parse(process.env);\n"
             }
           ],
           "fixedFiles": [],
@@ -7725,7 +7733,7 @@
           "id": "validated-account-scope",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Pass validated deployment configuration to the request"
+          "title": "Parse one shared settings object with Zod before requests"
         }
       ],
       "optionsSchemaSource": null
@@ -16970,7 +16978,7 @@
           "files": [
             {
               "path": "app/publish.py",
-              "source": "from typing import Annotated\nimport httpx\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    cloudflare_account_id: Annotated[str, Field(pattern=r\"^[a-fA-F0-9]{32}$\")]\n\n\nsettings = Settings()\nhttpx.get(\n    f\"https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts\"\n)\n"
+              "source": "from typing import Annotated\nimport httpx\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    cloudflare_account_id: Annotated[\n        str, Field(min_length=32, max_length=32, pattern=r\"^[a-fA-F0-9]+$\")\n    ]\n\n\ndef publish(settings: Settings):\n    return httpx.post(\n        f\"https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts\"\n    )\n\n\ndef list_scripts(settings: Settings):\n    return httpx.get(\n        f\"https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts\"\n    )\n\n\nsettings = Settings()\npublish(settings)\nlist_scripts(settings)\n"
             }
           ],
           "fixedFiles": [],
@@ -16978,7 +16986,7 @@
           "id": "configured-account-request",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Read the deployment account at the boundary"
+          "title": "Construct one Pydantic Settings object and inject it into both consumers"
         },
         {
           "expectedCount": 1,
