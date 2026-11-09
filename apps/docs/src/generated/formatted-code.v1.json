@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "11cd61cb535565dff5f676ddbaded5a3940969de4fd555508ef5b5940e30f2b7",
-  "cliSha256": "0a34ab28bcb42b0fd482dbf88842bf7a4617cc629ef721e8c84f3a0e7b64eb42",
+  "catalogSha256": "9c7a3dc1beb330eb9191494808719ca80b3f76af8934abcdad569aa4989c009f",
+  "cliSha256": "99de142fc597f04ab027bcd8c91d527cac7bea1bc7b7ea01b04f91dd0089a2bb",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -12351,6 +12351,21 @@
           "title": "A typed outcome retains the code and formatting context"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef save(name: str, allowed: bool) -> str | Denied:\n    return name if allowed else Denied(name)\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "direct-domain-outcome-union",
+          "outcome": "accept",
+          "scenarioId": "prepared-message",
+          "title": "A direct union preserves the existing successful value"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -12364,6 +12379,169 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A local marker hides a domain outcome outside the return contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from typing import final\n\n\n@final\nclass Missing(Exception):\n    def __init__(self, record_id: str) -> None:\n        self.record_id = record_id\n        super().__init__(f\"Missing {record_id}\")\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from app.errors import Missing\n\n\ndef load(record_id: str, exists: bool) -> str:\n    if not exists:\n        raise Missing(record_id)\n    return record_id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "final-imported-payload",
+          "outcome": "reject",
+          "scenarioId": "final-payload",
+          "title": "A final imported exception can still hide an expected outcome"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Missing:\n    record_id: str\n    code: Literal[\"missing\"] = \"missing\"\n\n\ndef load(record_id: str, exists: bool) -> str | Missing:\n    return record_id if exists else Missing(record_id)\n\n\ndef format_error(error: Missing) -> str:\n    return f\"Missing {error.record_id}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "finite-contextual-missing-outcome",
+          "outcome": "accept",
+          "scenarioId": "final-payload",
+          "title": "The error variant retains the identifier needed by its caller"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Success[T]:\n    value: T\n\n\n@dataclass(frozen=True)\nclass Failure[E]:\n    error: E\n\n\ntype Result[T, E] = Success[T] | Failure[E]\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\nfrom app.outcomes import Failure, Result, Success\n\n\n@dataclass(frozen=True)\nclass Denied:\n    name: str\n    code: Literal[\"denied\"] = \"denied\"\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return Success(name) if allowed else Failure(Denied(name))\n\n\ndef format_error(error: Denied) -> str:\n    return f\"Denied {error.name}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-success-failure-union",
+          "outcome": "accept",
+          "scenarioId": "imported-outcome",
+          "title": "An established generic union makes rejection visible to callers"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class Rejected(Exception):\n    pass\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from collections.abc import Generator\nfrom contextlib import contextmanager\nfrom app.errors import Rejected\n\n\n@contextmanager\ndef transaction() -> Generator[None]:\n    yield None\n\n\ndef save(name: str, allowed: bool) -> str:\n    with transaction():\n        pass\n    if not allowed:\n        raise Rejected(name)\n    return name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "guard-after-resource-exit",
+          "outcome": "reject",
+          "scenarioId": "resource-boundary",
+          "title": "A rejection after resource exit has an ordinary return contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Denied(Exception):\n    def __init__(self, detail: str) -> None:\n        self.detail = detail\n        super().__init__(detail)\n\n\ndef save(name: str, allowed: bool) -> str:\n    if not allowed:\n        message = f\"Denied {name}\"\n        raise Denied(message)\n    return name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "guard-prepares-a-message",
+          "outcome": "reject",
+          "scenarioId": "prepared-message",
+          "title": "A local message variable still hides a typed rejection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class Rejected(Exception):\n    pass\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from app.errors import Rejected\n\n\ndef save(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Rejected(f\"Denied {name}\")\n    return name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "imported-rejection-contract",
+          "outcome": "reject",
+          "scenarioId": "imported-outcome",
+          "title": "An imported rejection is absent from the successful return contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class Rejected(ValueError):\n    pass\n"
+            },
+            {
+              "path": "app/model.py",
+              "source": "from pydantic import BaseModel, field_validator\nfrom app.errors import Rejected\n\n\nclass Model(BaseModel):\n    name: str\n\n    @field_validator(\"name\")\n    @classmethod\n    def validate_name(cls, value: str) -> str:\n        if not value:\n            raise Rejected(\"name required\")\n        return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/model.py",
+          "id": "imported-validator-rejection",
+          "outcome": "accept",
+          "scenarioId": "validator-boundary",
+          "title": "A validator keeps its native exception rejection protocol"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class Rejected(ValueError):\n    pass\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from app.errors import Rejected\n\n\ndef save(value: str) -> str:\n    if not value:\n        raise Rejected(\"name required\")\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "ordinary-value-error-guard",
+          "outcome": "reject",
+          "scenarioId": "validator-boundary",
+          "title": "An ordinary guard has no validator rejection protocol"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class Rejected(Exception):\n    pass\n"
+            },
+            {
+              "path": "app/service.py",
+              "source": "from collections.abc import Generator\nfrom contextlib import contextmanager\nfrom app.errors import Rejected\n\n\n@contextmanager\ndef transaction() -> Generator[None]:\n    yield None\n\n\ndef save(name: str, allowed: bool) -> str:\n    with transaction():\n        if not allowed:\n            raise Rejected(name)\n    return name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "protected-transaction-rejection",
+          "outcome": "accept",
+          "scenarioId": "resource-boundary",
+          "title": "A rejection under a resource protocol needs separate migration review"
         },
         {
           "expectedCount": 0,
