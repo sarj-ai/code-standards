@@ -519,6 +519,8 @@ jobs:
       - run: uv sync --locked --dev
       - name: Provision and execute ktlint, Detekt, and MobSF rules
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash ../../.github/scripts/ci-kotlin-smoke.sh
   mobile-swift-smoke:
     needs: changes

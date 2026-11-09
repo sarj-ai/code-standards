@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+export XDG_CACHE_HOME="$RUNNER_TEMP/mobile-kotlin-native-cache"
+mobile_cache="$XDG_CACHE_HOME/code-standards/mobile-tools"
+mkdir -p "$mobile_cache"
+ktlint_version=$(jq --exit-status --raw-output '.ktlint' src/sarj_standards/configs/mobile-tools.versions.json)
+detekt_version=$(jq --exit-status --raw-output '.detekt' src/sarj_standards/configs/mobile-tools.versions.json)
+# The native provisioner verifies the original checksums before executing these files.
+timeout --kill-after=5s 60s gh release download "$ktlint_version" --repo pinterest/ktlint \
+  --pattern ktlint --output "$mobile_cache/ktlint-$ktlint_version" --clobber
+timeout --kill-after=5s 60s gh release download "v$detekt_version" --repo detekt/detekt \
+  --pattern "detekt-cli-$detekt_version-all.jar" --output "$mobile_cache/detekt-$detekt_version.jar" --clobber
 repo="$RUNNER_TEMP/mobile-kotlin-smoke"
 mkdir -p "$repo/src/main/kotlin/smoke"
 printf 'plugins { id("com.android.application") }\n' >"$repo/build.gradle.kts"
