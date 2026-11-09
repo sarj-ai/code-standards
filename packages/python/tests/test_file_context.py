@@ -380,3 +380,10 @@ def test_resource_provenance_modes_preserve_namespace_policy_and_source_isolatio
     assert context.static_resource_provenance.dynamic_namespace
     other = PythonFileContext(path, "value = 1\n")
     assert not other.static_resource_provenance.dynamic_namespace
+
+
+@pytest.mark.parametrize("member", ["__self__", "__closure__"])
+def test_application_reflection_does_not_invalidate_static_namespace(member: str) -> None:
+    context = PythonFileContext(Path("app.py"), f"binding = callback.{member}\n")
+    assert not context.static_resource_provenance.dynamic_namespace
+    assert not context.resource_provenance.dynamic_namespace

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -176,3 +177,265 @@ def test_analysis_bounds_abstain_without_partial_evidence() -> None:
         "".join(f"        self._extra{index}: dict[str, str] = {{}}\n" for index in range(17)) + "    def start(",
     )
     assert _check(many) == []
+
+
+@pytest.mark.parametrize("owner", ["Playback", "_Playback", "___"])
+def test_private_names_follow_the_lexical_class(owner: str) -> None:
+    source = _SOURCE.replace("class Playback:", f"class {owner}:").replace("self._", "self.__")
+    assert len(_check(source)) == 1
+    prefix = f"_{owner.lstrip('_')}" if owner.lstrip("_") else ""
+    source += f"    def independent(self, key: str) -> None:\n        self.{prefix}__observers.pop(key, None)\n"
+    assert _check(source) == []
+
+
+def test_two_spellings_of_one_physical_dictionary_are_not_two_fields() -> None:
+    source = _SOURCE.replace("_observers", "__observers").replace("_playbacks", "_Playback__observers")
+    assert _check(source) == []
+
+
+def test_nested_class_mangling_does_not_hide_an_outer_field_mutation() -> None:
+    source = _SOURCE.replace("_observers", "__observers").replace("_playbacks", "__playbacks")
+    source += (
+        "    def independent(self, key: str) -> None:\n"
+        "        class Inner:\n"
+        "            def remove():\n"
+        "                self._Playback__observers.pop(key, None)\n"
+    )
+    assert _check(source) == []
+
+
+def test_implementation_defined_long_private_mangling_abstains() -> None:
+    assert _check(_SOURCE.replace("_observers", "__" + "x" * 256)) == []
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "        state = self.__getstate__()\n        state['_observers'].pop(key, None)\n",
+        "        state = self.__reduce__()\n",
+        "        state = self.__reduce_ex__(4)\n",
+        "        receiver = self.start.__self__\n        receiver._observers.pop(key, None)\n",
+        "        def capture():\n            return self\n        receiver = capture.__closure__[0].cell_contents\n",
+        "        self = self\n        self._observers.pop(key, None)\n",
+        "        del self\n        self._observers.pop(key, None)\n",
+        "        def remove():\n            nonlocal self\n            self._observers.pop(key, None)\n",
+    ],
+)
+def test_reflection_and_ambiguous_receiver_bindings_abstain(extra: str) -> None:
+    assert _check(_SOURCE + "    def independent(self, key: str) -> None:\n" + extra) == []
+
+
+def test_a_shadowed_nested_receiver_is_an_independent_binding() -> None:
+    source = _SOURCE + (
+        "    def other(self, key: str) -> None:\n"
+        "        def mutate(self):\n"
+        "            self = self\n"
+        "            self._observers.pop(key, None)\n"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "print.__self__.str = object\n",
+        "from builtins import print as output\noutput.__self__.str = object\n",
+        "import builtins as native\nnative.print.__self__.str = object\n",
+        "output = print\noutput.__self__.str = object\n",
+    ],
+)
+def test_bound_builtin_namespace_escape_invalidates_builtin_type_proof(prefix: str) -> None:
+    assert _check(prefix + _SOURCE) == []
+
+
+@pytest.mark.parametrize("member", ["__self__", "__closure__"])
+def test_unrelated_application_reflection_preserves_owner_evidence(member: str) -> None:
+    prefix = f"from app import callback\napplication = callback.{member}\n"
+    assert len(_check(prefix + _SOURCE)) == 1
+
+
+def test_a_later_cross_method_cleanup_is_a_lifecycle_witness() -> None:
+    source = _SOURCE.replace(
+        "    def finish(",
+        "        if stopped():\n            self._observers.pop(key, None)\n"
+        "            self._playbacks.pop(key, None)\n    def finish(",
+    )
+    assert len(_check(source)) == 1
+    local_only = source[: source.index("    def finish(")]
+    assert _check(local_only) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("= {}", "= dict()"),
+        ("class Playback:", "class Playback(object):"),
+        ("    def start(", "    @final\n    def start("),
+    ],
+)
+def test_additional_proven_plain_class_forms(old: str, new: str) -> None:
+    source = "from typing import final\n" + _SOURCE.replace(old, new)
+    assert len(_check(source)) == 1
+
+
+def test_class_annotations_do_not_create_shared_dictionary_values() -> None:
+    source = (
+        _SOURCE.replace(
+            "    def __init__(self) -> None:",
+            "    _observers: dict[str, asyncio.Task[None]]\n"
+            "    _playbacks: dict[str, asyncio.Task[bool]]\n"
+            "    def __init__(self) -> None:",
+        )
+        .replace("self._observers: dict[str, asyncio.Task[None]]", "self._observers")
+        .replace("self._playbacks: dict[str, asyncio.Task[bool]]", "self._playbacks")
+    )
+    assert len(_check(source)) == 1
+    assert (
+        _check(
+            source.replace(
+                "_observers: dict[str, asyncio.Task[None]]", "_observers: dict[str, asyncio.Task[None]] = {}"
+            )
+        )
+        == []
+    )
+    assert _check(source.replace("    _observers:", "    _observers: bytes\n    _observers:")) == []
+
+
+@pytest.mark.parametrize("prefix", ["object = supplied\n", "dict = supplied\n", "final = supplied\n"])
+def test_expanded_class_forms_still_require_builtin_and_decorator_identity(prefix: str) -> None:
+    source = "from typing import final\n" + prefix + _SOURCE.replace("class Playback:", "class Playback(object):")
+    source = source.replace("= {}", "= dict()").replace("    def start(", "    @final\n    def start(")
+    assert _check(source) == []
+
+
+def _third_field(source: str = _SOURCE) -> str:
+    return (
+        source.replace("    def start(", "        self._receipts: dict[str, str] = {}\n    def start(")
+        .replace(
+            "        self._playbacks[key] = playback",
+            "        self._playbacks[key] = playback\n        self._receipts[key] = 'saved'",
+        )
+        .replace(
+            "        self._playbacks.pop(key, None)",
+            "        self._playbacks.pop(key, None)\n        self._receipts.pop(key, None)",
+        )
+    )
+
+
+def test_three_coordinated_fields_have_one_maximal_finding() -> None:
+    [finding] = _check(_third_field())
+    assert all(f"Playback.{field}" in finding.message for field in ("_observers", "_playbacks", "_receipts"))
+    assert finding.fixes == ()
+
+
+def test_grouped_removal_order_does_not_have_to_match_assignment_order() -> None:
+    source = _third_field().replace(
+        "        self._observers.pop(key, None)\n        self._playbacks.pop(key, None)\n        self._receipts.pop(key, None)",
+        "        self._receipts.pop(key, None)\n        self._observers.pop(key, None)\n        self._playbacks.pop(key, None)",
+    )
+    assert len(_check(source)) == 1
+
+
+def test_independently_completing_third_field_keeps_only_the_coordinated_pair() -> None:
+    source = _third_field() + "    def receipt_done(self, key: str) -> None:\n        self._receipts.pop(key, None)\n"
+    [finding] = _check(source)
+    assert "Playback._receipts" not in finding.message
+
+
+def test_disjoint_owners_report_separately_without_overlapping_diagnostics() -> None:
+    source = _SOURCE.replace(
+        "    def start(",
+        "        self._pending: dict[str, str] = {}\n        self._results: dict[str, str] = {}\n    def start(",
+    ) + (
+        "    def queue(self, key: str) -> None:\n"
+        "        self._pending[key] = 'pending'\n        self._results[key] = 'result'\n"
+        "    def complete(self, key: str) -> None:\n"
+        "        self._results.pop(key, None)\n        self._pending.pop(key, None)\n"
+    )
+    findings = _check(source)
+    assert len(findings) == 2
+    assert sum("Playback._observers" in finding.message for finding in findings) == 1
+    assert sum("Playback._pending" in finding.message for finding in findings) == 1
+
+
+def test_many_distinct_group_candidates_abstain_as_one_bounded_analysis() -> None:
+    fields = [f"_entry{index}" for index in range(16)]
+    source = "class Entries:\n    def __init__(self):\n" + "".join(
+        f"        self.{field}: dict[str, str] = {{}}\n" for field in fields
+    )
+    cleanup = "    def finish(self, key: str):\n" + "".join(
+        f"        self.{field}.pop(key, None)\n" for field in fields
+    )
+    for ordinal, multiplier in enumerate((1, 3, 5, 7)):
+        for offset in range(3):
+            source += f"    def start{ordinal}_{offset}(self, key: str):\n" + "".join(
+                f"        self.{fields[(index * multiplier + offset) % 16]}[key] = 'value'\n" for index in range(16)
+            )
+            if ordinal == offset == 0:
+                assert len(_check(source + cleanup)) == 1
+    source += cleanup
+    assert sum(1 for _ in ast.walk(ast.parse(source))) < 4096
+    assert _check(source) == []
+
+
+def test_nested_class_namespace_is_not_a_method_closure() -> None:
+    source = _SOURCE + (
+        "    def independent(self, key: str) -> None:\n"
+        "        class Shadow:\n"
+        "            self = None\n"
+        "            def remove():\n"
+        "                self._observers.pop(key, None)\n"
+        "        Shadow.remove()\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "        receiver = getattr(self.start, '__self__')\n        receiver._observers.pop(key, None)\n",
+        "        register(self.finish)\n",
+        "        method = self.start\n        inspect(method)\n",
+        "        owner = self.__class__\n        owner.start = replacement\n",
+        "        state = getattr(super(), '__getstate__')()\n        state['_observers'].pop(key, None)\n",
+        "        parent = super\n        state = getattr(parent(), '__getstate__')()\n        state['_observers'].pop(key, None)\n",
+        "        owner = __class__\n        owner.start = replacement\n",
+    ],
+)
+def test_bound_method_and_class_escapes_abstain(extra: str) -> None:
+    assert _check(_SOURCE + "    def inspect(self, key: str) -> None:\n" + extra) == []
+
+
+def test_private_bound_method_names_have_the_same_escape_contract() -> None:
+    source = _SOURCE + "    def inspect(self) -> None:\n        register(self.start)\n"
+    assert _check(source.replace("def start(", "def __start(").replace("self.start", "self.__start")) == []
+
+
+def test_direct_local_method_calls_do_not_escape_the_receiver() -> None:
+    source = _SOURCE + "    def complete(self, key: str) -> None:\n        self.finish(key)\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "[value async for value in values]",
+        "{value async for value in values}",
+        "{value: value async for value in values}",
+    ],
+)
+def test_implicit_async_comprehension_await_between_dictionary_writes_abstains(expression: str) -> None:
+    source = (
+        "from collections.abc import AsyncIterator\n"
+        "class Entries:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._values: dict[str, object] = {}\n"
+        "        self._labels: dict[str, str] = {}\n"
+        "    async def start(self, key: str, values: AsyncIterator[int], label: str) -> None:\n"
+        "        self._labels[key] = label\n"
+        f"        self._values[key] = {expression}\n"
+        "    def finish(self, key: str) -> None:\n"
+        "        self._values.pop(key, None)\n"
+        "        self._labels.pop(key, None)\n"
+    )
+    assert _check(source) == []
