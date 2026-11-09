@@ -25,6 +25,10 @@ def test_documented_examples() -> None:
         pytest.param("    environment: Env = Env.LOCAL\n", id="enum-member"),
         pytest.param("    environment: str = Field('dev', alias='ENVIRONMENT')\n", id="positional-default"),
         pytest.param("    environment: str = Field(default_factory=pick, alias='ENVIRONMENT')\n", id="factory"),
+        pytest.param(
+            "    environment: str = Field(default=..., default_factory=pick, alias='ENVIRONMENT')\n",
+            id="required-sentinel-with-factory",
+        ),
         pytest.param("    deployment: str = Field(default='dev', alias='ENVIRONMENT')\n", id="alias-only"),
         pytest.param("    ENVIRONMENT: str = Field(default='dev')\n", id="upper-name"),
     ],
@@ -43,6 +47,14 @@ def test_reports_subclass_of_same_file_settings_class() -> None:
     [
         pytest.param(_PRELUDE + "    environment: str = Field(alias='ENVIRONMENT')\n", id="required-field"),
         pytest.param(_PRELUDE + "    environment: str = Field(..., alias='ENVIRONMENT')\n", id="explicit-ellipsis"),
+        pytest.param(
+            _PRELUDE + "    environment: str = Field(default=..., alias='ENVIRONMENT')\n",
+            id="keyword-ellipsis",
+        ),
+        pytest.param(
+            _PRELUDE + "    deployment: str = Field(default=..., alias='ENVIRONMENT')\n",
+            id="keyword-ellipsis-alias",
+        ),
         pytest.param(_PRELUDE + "    environment: str\n", id="bare-annotation"),
         pytest.param(_PRELUDE + "    region: str = Field(default='me', alias='REGION')\n", id="other-setting"),
         pytest.param(

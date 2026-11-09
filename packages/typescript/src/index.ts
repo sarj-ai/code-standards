@@ -112,6 +112,7 @@ import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
 import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
 import preferCodedErrorResult from "./rules/prefer-coded-error-result.js";
+import preferConfiguredCloudScope from "./rules/prefer-configured-cloud-scope.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
@@ -278,6 +279,7 @@ const RULES = {
   "no-zod-parse-typed-object": noZodParseTypedObject,
   "prefer-await-in-async-return": preferAwaitInAsyncReturn,
   "prefer-coded-error-result": preferCodedErrorResult,
+  "prefer-configured-cloud-scope": preferConfiguredCloudScope,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-dependency-interface": preferDependencyInterface,
   "prefer-discriminated-union": preferDiscriminatedUnion,

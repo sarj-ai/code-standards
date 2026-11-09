@@ -33,6 +33,7 @@ _SCOPE_ATTRIBUTES = MappingProxyType(
         "azurerm": frozenset({"subscription_id", "tenant_id", "location", "resource_group_name"}),
         "azuread": frozenset({"tenant_id"}),
         "azapi": frozenset({"subscription_id", "tenant_id", "location"}),
+        "cloudflare": frozenset({"account_id", "zone_id"}),
     }
 )
 _DATA_DIRECTORIES = frozenset({"fixture", "fixtures", "testdata", "generated"})
@@ -53,6 +54,7 @@ class NoDuplicateDeploymentLiteral(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Checks repeated identical direct string assignments to curated cloud scope/location attributes on resource and data blocks in one .tf file. Each provider/attribute/value group produces one warning at its second use.",
+            "Cloudflare coverage includes direct account_id and zone_id scope arguments; record contents, nested policy objects and security expectations are not inferred from matching identifier text.",
             "Explicit provider bindings are grouped separately. Provider configuration, module inputs, variable defaults, locals, snapshot maps, hashes, roles, embedded configuration, generated sources and fixture/data files are excluded.",
             "Expressions, templates, indirect aliases, cross-file repetitions, JSON HCL and unknown providers are not inferred. The Google global location sentinel is not a deployment input.",
             "No autofix: shared values and deliberately independent configuration need an author decision. This warning does not prove that literal infrastructure is invalid or authorize changing a security baseline.",
@@ -80,6 +82,36 @@ class NoDuplicateDeploymentLiteral(Rule):
                     ExampleFile.iac(
                         "main.tf",
                         'variable "project_id" { type = string }\nresource "google_storage_bucket" "a" { project = var.project_id }\nresource "google_cloud_run_v2_job" "b" { project = var.project_id }\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="repeated-cloudflare-account",
+                scenario="cloudflare-account",
+                title="Cloudflare resources repeat their deployment account",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'resource "cloudflare_r2_bucket" "a" { account_id = "example-account" }\nresource "cloudflare_r2_bucket" "b" { account_id = "example-account" }\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="shared-cloudflare-account-input",
+                scenario="cloudflare-account",
+                title="Cloudflare resources share their typed account input",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'variable "account_id" { type = string }\nresource "cloudflare_r2_bucket" "a" { account_id = var.account_id }\nresource "cloudflare_r2_bucket" "b" { account_id = var.account_id }\n',
                     ),
                 ),
                 focus_path=PurePosixPath("main.tf"),

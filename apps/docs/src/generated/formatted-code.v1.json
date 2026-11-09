@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "55ba77e4842f687e5502bdb4a73b8508138cc6fe380c118ac24a0e4987a86a56",
-  "cliSha256": "942814217a2be82ee46bd232a3896a05d93f600f6e988e443ddbc040001a5c47",
+  "catalogSha256": "11cd61cb535565dff5f676ddbaded5a3940969de4fd555508ef5b5940e30f2b7",
+  "cliSha256": "2486d55abdc27f1055b4eefdaa1dad2cb9fa10e66a7d6ff611561ab2b072b57d",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -507,6 +507,21 @@
           "files": [
             {
               "path": "main.tf",
+              "source": "resource \"cloudflare_r2_bucket\" \"a\" { account_id = \"example-account\" }\nresource \"cloudflare_r2_bucket\" \"b\" { account_id = \"example-account\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "repeated-cloudflare-account",
+          "outcome": "reject",
+          "scenarioId": "cloudflare-account",
+          "title": "Cloudflare resources repeat their deployment account"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
               "source": "resource \"google_storage_bucket\" \"a\" { project = \"example-project\" }\nresource \"google_cloud_run_v2_job\" \"b\" { project = \"example-project\" }\n"
             }
           ],
@@ -516,6 +531,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Resources repeat one deployment project"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"account_id\" { type = string }\nresource \"cloudflare_r2_bucket\" \"a\" { account_id = var.account_id }\nresource \"cloudflare_r2_bucket\" \"b\" { account_id = var.account_id }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "shared-cloudflare-account-input",
+          "outcome": "accept",
+          "scenarioId": "cloudflare-account",
+          "title": "Cloudflare resources share their typed account input"
         },
         {
           "expectedCount": 0,
@@ -7661,6 +7691,41 @@
           "outcome": "accept",
           "scenarioId": "named-error-channel",
           "title": "Preserve the existing field name with the required context"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-configured-cloud-scope": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/scripts/publish.mjs",
+              "source": "const accountId = \"0123456789abcdef0123456789abcdef\";\nconst base = `https://api.cloudflare.com/client/v4/accounts/${accountId}`;\nexport async function publish(path, request = fetch) {\n  return request(`${base}/${path}`);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/scripts/publish.mjs",
+          "id": "literal-account-scope",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Move outgoing account scope into deployment configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/scripts/publish.mjs",
+              "source": "import { env } from \"./env.mjs\";\nconst base = `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) {\n  return request(`${base}/${path}`);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/scripts/publish.mjs",
+          "id": "validated-account-scope",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Pass validated deployment configuration to the request"
         }
       ],
       "optionsSchemaSource": null
@@ -16716,6 +16781,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Keep the collection projection declarative"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-configured-cloud-scope": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/publish.py",
+              "source": "from typing import Annotated\nimport httpx\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    cloudflare_account_id: Annotated[str, Field(pattern=r\"^[a-fA-F0-9]{32}$\")]\n\n\nsettings = Settings()\nhttpx.get(\n    f\"https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/workers/scripts\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/publish.py",
+          "id": "configured-account-request",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Read the deployment account at the boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/publish.py",
+              "source": "import httpx\n\nACCOUNT = \"0123456789abcdef0123456789abcdef\"\nhttpx.get(f\"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/scripts\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/publish.py",
+          "id": "literal-account-request",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The outgoing API request is bound to a literal account"
         }
       ],
       "optionsSchemaSource": null

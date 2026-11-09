@@ -924,6 +924,7 @@ const RULES = {
   "@sarj/no-zod-parse-typed-object": "warn",
   "@sarj/prefer-await-in-async-return": ["error", {"scope": "all-promise-calls"}],
   "@sarj/prefer-coded-error-result": "warn",
+  "@sarj/prefer-configured-cloud-scope": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-dependency-interface": "warn",
   "@sarj/prefer-discriminated-union": "warn",

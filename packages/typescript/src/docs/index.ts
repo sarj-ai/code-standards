@@ -108,6 +108,7 @@ import { NO_ZOD_NATIVE_ENUM_DOCUMENTATION } from "./no-zod-native-enum.js";
 import { NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION } from "./no-zod-parse-typed-object.js";
 import { PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION } from "./prefer-await-in-async-return.js";
 import { PREFER_CODED_ERROR_RESULT_DOCUMENTATION } from "./prefer-coded-error-result.js";
+import { PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION } from "./prefer-configured-cloud-scope.js";
 import { PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION } from "./prefer-constant-time-secret-compare.js";
 import { PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION } from "./prefer-dependency-interface.js";
 import { PREFER_DISCRIMINATED_UNION_DOCUMENTATION } from "./prefer-discriminated-union.js";
@@ -274,6 +275,7 @@ export const RULE_DOCUMENTATION = {
   "no-zod-parse-typed-object": NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION,
   "prefer-await-in-async-return": PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
   "prefer-coded-error-result": PREFER_CODED_ERROR_RESULT_DOCUMENTATION,
+  "prefer-configured-cloud-scope": PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION,
   "prefer-constant-time-secret-compare": PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION,
   "prefer-dependency-interface": PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION,
   "prefer-discriminated-union": PREFER_DISCRIMINATED_UNION_DOCUMENTATION,

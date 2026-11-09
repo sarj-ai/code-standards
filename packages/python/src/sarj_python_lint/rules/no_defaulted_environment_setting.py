@@ -145,7 +145,13 @@ def _is_defaulted_environment(field: ast.AnnAssign, imports: ImportIndex) -> boo
     positional_default = bool(value.args) and not (
         isinstance(value.args[0], ast.Constant) and value.args[0].value is Ellipsis
     )
-    return positional_default or any(keyword.arg in _DEFAULT_KEYWORDS for keyword in value.keywords)
+    return positional_default or any(
+        keyword.arg in _DEFAULT_KEYWORDS
+        and not (
+            keyword.arg == "default" and isinstance(keyword.value, ast.Constant) and keyword.value.value is Ellipsis
+        )
+        for keyword in value.keywords
+    )
 
 
 def _is_environment_name(name: str, alias: str | None) -> bool:

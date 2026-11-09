@@ -63,6 +63,24 @@ from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditio
             1,
             id="same-explicit-provider",
         ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = "example-account" }\n'
+            'data "cloudflare_r2_bucket" "b" { account_id = "example-account" }\n',
+            1,
+            id="cloudflare-resource-and-data-account",
+        ),
+        pytest.param(
+            'data "cloudflare_zone" "a" { zone_id = "example-zone" }\n'
+            'resource "cloudflare_dns_record" "b" { zone_id = "example-zone" }\n',
+            1,
+            id="cloudflare-zone",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { provider = cloudflare.selected\naccount_id = "example-account" }\n'
+            'resource "cloudflare_r2_bucket" "b" { provider = cloudflare.selected\naccount_id = "example-account" }\n',
+            1,
+            id="cloudflare-same-explicit-provider",
+        ),
     ],
 )
 def test_repeated_deployment_assignments(source: str, count: int) -> None:
@@ -148,6 +166,55 @@ def test_repeated_deployment_assignments(source: str, count: int) -> None:
             'resource "google_storage_bucket" "a" { project = "example-project" }\n'
             'resource "google_storage_bucket" "b" { project = "example-project"',
             id="malformed-native-input",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = "example-account" }\n',
+            id="cloudflare-one-account-use",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = var.account_id }\n'
+            'data "cloudflare_r2_bucket" "b" { account_id = var.account_id }',
+            id="cloudflare-shared-input",
+        ),
+        pytest.param(
+            'locals { account_id = "example-account" }\n'
+            'resource "cloudflare_r2_bucket" "a" { account_id = local.account_id }\n'
+            'resource "cloudflare_r2_bucket" "b" { account_id = local.account_id }',
+            id="cloudflare-shared-fixed-value",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = data.cloudflare_account.selected.id }\n'
+            'resource "cloudflare_r2_bucket" "b" { account_id = data.cloudflare_account.selected.id }',
+            id="cloudflare-account-reference",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = "example-a" }\n'
+            'resource "cloudflare_r2_bucket" "b" { account_id = "example-b" }',
+            id="cloudflare-independent-accounts",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { account_id = "example-scope" }\n'
+            'resource "cloudflare_dns_record" "b" { zone_id = "example-scope" }',
+            id="cloudflare-independent-scope-kinds",
+        ),
+        pytest.param(
+            'resource "cloudflare_r2_bucket" "a" { provider = cloudflare.primary\naccount_id = "example-account" }\n'
+            'resource "cloudflare_r2_bucket" "b" { provider = cloudflare.recovery\naccount_id = "example-account" }',
+            id="cloudflare-independent-provider-bindings",
+        ),
+        pytest.param(
+            'resource "cloudflare_dns_record" "a" { content = "example-account" }\n'
+            'resource "cloudflare_dns_record" "b" { content = "example-account" }',
+            id="cloudflare-record-payload-is-not-scope",
+        ),
+        pytest.param(
+            'resource "cloudflare_ruleset" "a" { rules { action_parameters { account_id = "example-account" } } }\n'
+            'resource "cloudflare_ruleset" "b" { rules { action_parameters { account_id = "example-account" } } }',
+            id="cloudflare-nested-policy-is-not-scope",
+        ),
+        pytest.param(
+            'locals { expected = { a = { account_id = "example-account" }\nb = { account_id = "example-account" } } }',
+            id="cloudflare-security-expectations-remain-policy",
         ),
     ],
 )

@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "19.7.0",
+  "version": "19.8.0",
   "packageManager": "npm@12.2.1",
   "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
