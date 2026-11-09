@@ -145,7 +145,9 @@ _CASES = (
             "OrganizationMembership | PlatformMembership", "list[OrganizationMembership | PlatformMembership]"
         ),
     ),
-    _case("24-generic-alias", _PLAIN.replace("type Membership =", "type Membership[T] =")),
+    _case("24-generic-alias", _PLAIN.replace("type Membership =", "type Membership[T] ="), match=True),
+    _case("tagged-generic-alias", _TAGGED.replace("type Membership =", "type Membership[T] =")),
+    _case("bounded-generic-alias", _PLAIN.replace("type Membership =", "type Membership[T: object] =")),
     _case("25-ordinary-classes", _PLAIN.replace("@dataclass(frozen=True, slots=True)\n", "")),
     _case(
         "26-inherited-record",

@@ -45,6 +45,107 @@ def _check(source: str, path: str = "app/models.py"):
     return PreferDiscriminatedModelUnion().check(Path(path), source)
 
 
+_GENERIC_OUTCOME = """from typing import Annotated, Literal
+from pydantic import BaseModel, Field
+class Success[T](BaseModel):
+    value: T
+class Error[E](BaseModel):
+    error: E
+type Result[T, E] = Success[T] | Error[E]
+"""
+
+
+@pytest.mark.parametrize(
+    "alias", ["type Result[T, E] = Success[T] | Error[E]", "type Result = Success[str] | Error[int]"]
+)
+def test_generic_data_union_requires_discriminator(alias: str) -> None:
+    source = _GENERIC_OUTCOME.replace("type Result[T, E] = Success[T] | Error[E]", alias)
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("boolean", [False, True])
+@pytest.mark.parametrize("codec_metadata", [False, True])
+def test_generic_disjoint_payload_independent_tags(*, boolean: bool, codec_metadata: bool) -> None:
+    source = _GENERIC_OUTCOME.replace("    value: T", "    kind: Literal['success'] = 'success'\n    value: T")
+    source = source.replace("    error: E", "    kind: Literal['error'] = 'error'\n    error: E")
+    if boolean:
+        source = source.replace("'success'", "True").replace("'error'", "False")
+    if codec_metadata:
+        source = source.replace(
+            "= Success[T] | Error[E]", "= Annotated[Success[T] | Error[E], Field(discriminator='kind')]"
+        )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("Success[T] | Error[E]", "Success | Error[E]"),
+        ("Success[T] | Error[E]", "Success[T, E] | Error[E]"),
+        ("Success[T] | Error[E]", "T | Error[E]"),
+        ("Result[T, E]", "Result[Success, E]"),
+        ("type Result[T, E] = Success[T] | Error[E]", "type Result[Success, E] = 'Success[str] | Error[E]'"),
+        ("Success[T](BaseModel)", "Success[BaseModel](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[T: str](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[T = str](BaseModel)"),
+        ("Success[T](BaseModel)", "Success[*T](BaseModel)"),
+        ("Result[T, E]", "Result[T: str, E]"),
+        ("Result[T, E]", "Result[*T, E]"),
+        ("Success[T] | Error[E]", "Success[T] | str"),
+        ("Success[T] | Error[E]", "list[Success[T]] | Error[E]"),
+    ],
+    ids=(
+        "bare-record",
+        "record-arity",
+        "parameter-variant",
+        "alias-head-shadow",
+        "quoted-alias-shadow",
+        "base-shadow",
+        "bounded-record",
+        "defaulted-record",
+        "variadic-record",
+        "bounded-alias",
+        "variadic-alias",
+        "scalar-variant",
+        "container-variant",
+    ),
+)
+def test_unproven_generic_data_union_abstains(change: tuple[str, str]) -> None:
+    assert _check(_GENERIC_OUTCOME.replace(*change)) == []
+
+
+@pytest.mark.parametrize("annotation", ["T", "Literal[T]", "'T'", "Annotated[T, 'tag']"])
+def test_parameter_dependent_tags_remain_uncertain(annotation: str) -> None:
+    source = _GENERIC_OUTCOME.replace("    value: T", f"    kind: {annotation}\n    value: T")
+    source = source.replace("    error: E", "    kind: Literal['error']\n    error: E")
+    assert _check(source) == []
+
+
+def test_generic_parameter_shadows_module_literal_import() -> None:
+    source = _GENERIC_OUTCOME.replace("class Success[T]", "class Success[Literal]")
+    source = source.replace("    value: T", "    kind: Literal['success']\n    value: T")
+    source = source.replace("    error: E", "    kind: Literal['error']\n    error: E")
+    assert _check(source) == []
+
+
+def test_generic_parameter_dependent_discriminator_metadata_abstains() -> None:
+    source = _GENERIC_OUTCOME.replace(
+        "type Result[T, E] = Success[T] | Error[E]",
+        "type Result[T, E, Field] = Annotated[Success[T] | Error[E], Field(discriminator='kind')]",
+    )
+    assert _check(source) == []
+
+
+def test_generic_data_union_suppression_and_no_autofix() -> None:
+    source = _GENERIC_OUTCOME.replace(
+        "= Success[T] | Error[E]", "= Success[T] | Error[E]  # sarj-noqa: SARJ510 -- nominal contract"
+    )
+    assert _check(source) == []
+    findings = _check(_GENERIC_OUTCOME)
+    assert len(findings) == 1
+    assert not findings[0].fixes
+
+
 _CASES = (
     ("dependent-payload", _BASE, True),
     (
@@ -230,7 +331,7 @@ def test_labeled_domain_states(label: str, source: str, *, matches: bool) -> Non
 
 def test_native_spec_and_public_examples() -> None:
     assert _PROBLEM.bad_examples == (_BASE,)
-    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 4
+    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 6
 
 
 def test_multiple_variant_requirements_produce_one_model_review() -> None:

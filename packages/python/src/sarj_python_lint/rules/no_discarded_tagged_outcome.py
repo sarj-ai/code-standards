@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts
+from sarj_python_lint.rules._generic_payload import plain_parameters, record_parameters, specialized, uses_parameters
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._resource_provenance import import_name_for_binding
 
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
 type _Discard = ast.Expr | ast.Assign | ast.AnnAssign
+type _Tag = str | bool
 _MAX_DEPTH = 16
 _MIN_VARIANTS = 2
 _BASE = """from typing import Literal
@@ -44,6 +46,21 @@ type Outcome = Accepted | Rejected
 def check(value: str) -> Outcome:
     return Accepted(kind='accepted', value=value)
 """
+_GENERIC_RESULT = """from typing import Annotated, Literal
+from pydantic import BaseModel, Field
+class Success[T](BaseModel):
+    kind: Literal['success'] = 'success'
+    value: T
+class Error[E](BaseModel):
+    kind: Literal['error'] = 'error'
+    error: E
+class Denied(BaseModel):
+    code: Literal['denied'] = 'denied'
+    name: str
+type Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator='kind')]
+def save(name: str, allowed: bool) -> Result[str, Denied]:
+    return Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))
+"""
 
 
 @dataclass(frozen=True)
@@ -57,6 +74,7 @@ class _Reference:
     context: "PythonFileContext"
     expression: ast.expr
     anchor: ast.AST | None = None
+    parameters: frozenset[str] = frozenset()
 
 
 @final
@@ -78,10 +96,10 @@ class NoDiscardedTaggedOutcome(ProjectRule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Review warning for standalone synchronous calls and directly awaited async calls to stable source-visible module functions. The return must resolve to at least two direct Pydantic, dataclass or required TypedDict variants sharing a string Literal discriminator with disjoint values. No name such as Result or Error establishes proof.",
-            "Module-local and prepared-project absolute imports, quoted bare aliases and PEP 604 returns, unquoted typing.Union and Annotated, and bounded non-generic type aliases are supported. Quoted typing-wrapper combinations, unknown receivers, decorated or generic functions, re-exports, optional/scalar branches, generic records, inheritance, dynamic namespaces, rebound or escaped callable identities, generator functions and unsupported annotations abstain.",
+            "Review warning for standalone synchronous calls and directly awaited async calls to stable source-visible module functions. The return must resolve to at least two direct Pydantic, dataclass or required TypedDict variants sharing a string or Boolean Literal discriminator with disjoint values. No name such as Result or Error establishes proof.",
+            "Module-local and prepared-project absolute imports, quoted bare aliases and PEP 604 returns, unquoted typing.Union and Annotated, and bounded type aliases are supported. Explicitly specialized PEP 695 records and aliases support ordinary type parameters when tags are independent of payload parameters. Parameter-dependent variants/tags, bounded/defaulted/variadic parameters, incorrect arity, quoted typing-wrapper combinations, unknown receivers, decorated or generic functions, re-exports, optional/scalar branches, inheritance, dynamic namespaces, rebound or escaped callable identities, generator functions and unsupported annotations abstain.",
             "Named assignments, returned, passed or conditionally consumed results are preserved. A direct assignment to the single underscore target is an explicit discard and is reviewed. An unawaited async call belongs to coroutine checks. Direct class-body execution, generated sources and opaque providers are excluded. This rule identifies discarding; it does not prove that an assignment handles every variant or infer expected failure from a record name.",
-            "String Literal tags must be direct instance fields on every variant and retain their original class-scope binding. Quoted field tags remain outside the proof; quoted module return annotations retain their source declaration anchor. Dynamic fields, optional TypedDict fields, non-string tags, computed Literal values and multi-field discriminator hierarchies are not inferred. No automatic rewrite changes call behavior or error handling.",
+            "String or Boolean Literal tags must be direct instance fields on every variant and retain their original class-scope binding. Existing Boolean wire discriminators remain valid; the analyzer does not rename tags or impose Success/Error class names. Quoted field tags remain outside the proof; quoted module return annotations retain their source declaration anchor. Dynamic fields, optional TypedDict fields, other tag types, computed Literal values and multi-field discriminator hierarchies are not inferred. A discriminator does not prove JSON serialization for arbitrary payloads. No automatic rewrite changes call behavior or error handling.",
         ),
         examples=(
             RuleExample(
@@ -99,6 +117,32 @@ class NoDiscardedTaggedOutcome(ProjectRule):
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python("app/outcomes.py", _BASE + "def run() -> Outcome:\n    return check('value')\n"),
+                ),
+                focus_path=PurePosixPath("app/outcomes.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="discarded-generic-result",
+                scenario="generic-result-consumption",
+                title="A returned generic success/error contract is discarded",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/outcomes.py", _GENERIC_RESULT + "save('record-7', False)\n"),),
+                focus_path=PurePosixPath("app/outcomes.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="forwarded-generic-result",
+                scenario="generic-result-consumption",
+                title="The caller propagates the complete generic result",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/outcomes.py",
+                        _GENERIC_RESULT
+                        + "def run(name: str, allowed: bool) -> Result[str, Denied]:\n    return save(name, allowed)\n",
+                    ),
                 ),
                 focus_path=PurePosixPath("app/outcomes.py"),
                 expected_count=0,
@@ -246,6 +290,9 @@ class _OutcomeCalls:
         if node is None or depth >= _MAX_DEPTH:
             return None
         anchor = reference.anchor or reference.expression
+        head = node.value if isinstance(node, ast.Subscript) else node
+        if _root_name(head) in reference.parameters:
+            return None
         if isinstance(node, ast.Name) and node.id in semantics.aliases:
             key = (owner.path, node.id)
             if key in seen or not _alias_identity(owner, node.id, semantics.aliases[node.id], anchor):
@@ -255,12 +302,16 @@ class _OutcomeCalls:
             return None
         children = _union_children(node, owner)
         if children is not None:
-            return self._expanded_members(_Reference(owner, node, anchor), children, seen, depth)
+            return self._expanded_members(_Reference(owner, node, anchor, reference.parameters), children, seen, depth)
+        generic = self._generic_alias(_Reference(owner, node, anchor))
+        if generic is not None:
+            key = (generic.context.path, ast.unparse(generic.expression))
+            return None if key in seen else self._members(generic, seen | {key}, depth + 1)
         imported = self._imported_alias(_Reference(owner, node, anchor))
         if imported is not None:
             key = (imported.context.path, ast.unparse(imported.expression))
             return None if key in seen else self._members(imported, seen | {key}, depth + 1)
-        return [_Reference(owner, node, anchor)]
+        return [_Reference(owner, node, anchor, reference.parameters)]
 
     def _expanded_members(
         self,
@@ -271,7 +322,7 @@ class _OutcomeCalls:
     ) -> list[_Reference] | None:
         result: list[_Reference] = []
         for child in children:
-            member = _Reference(reference.context, child, reference.anchor)
+            member = _Reference(reference.context, child, reference.anchor, reference.parameters)
             expanded = self._members(member, seen, depth + 1)
             if expanded is None:
                 return None
@@ -279,6 +330,43 @@ class _OutcomeCalls:
             if len(result) > _MAX_DEPTH:
                 return None
         return result
+
+    def _generic_alias(self, reference: _Reference) -> _Reference | None:
+        owner, node = reference.context, reference.expression
+        if not isinstance(node, ast.Subscript):
+            return None
+        binding = _reference_binding(owner, node.value, reference.anchor or node)
+        declaration = owner.parents.get(binding) if binding is not None else None
+        if isinstance(binding, ast.alias):
+            imported = self._imported_alias_name(_Reference(owner, node.value, reference.anchor or node))
+            if imported is None:
+                return None
+            owner = imported.context
+            declaration = owner.parents.get(imported.expression)
+        if (
+            not isinstance(declaration, ast.TypeAlias)
+            or not self._stable(owner, declaration.name.id)
+            or not specialized(node, declaration.type_params)
+        ):
+            return None
+        parameters = plain_parameters(declaration.type_params)
+        return _Reference(owner, declaration.value, parameters=parameters) if parameters is not None else None
+
+    def _imported_alias_name(self, reference: _Reference) -> _Reference | None:
+        owner = reference.context
+        unit = self.contracts.project.unit(owner.path)
+        if unit is None:
+            return None
+        symbol = self.contracts.project.resolve(unit, reference.expression)
+        if symbol is None:
+            return None
+        provider = self._provider(self.contracts.project.source_unit(symbol.module))
+        if provider is None or provider.tree is None or not self._stable(provider, symbol.name):
+            return None
+        for declaration in provider.tree.body:
+            if isinstance(declaration, ast.TypeAlias) and declaration.name.id == symbol.name:
+                return _Reference(provider, declaration.name)
+        return None
 
     def _imported_alias(self, reference: _Reference) -> _Reference | None:
         owner, node = reference.context, reference.expression
@@ -304,14 +392,19 @@ class _OutcomeCalls:
         common = set(records[0]).intersection(*(record for record in records[1:]))
         return any(_disjoint([record[field] for record in records]) for field in common)
 
-    def _record(self, reference: _Reference) -> dict[str, frozenset[str]] | None:
+    def _record(self, reference: _Reference) -> dict[str, frozenset[_Tag]] | None:
         owner = reference.context
-        if _reference_binding(owner, reference.expression, reference.anchor or reference.expression) is None:
+        expression = reference.expression
+        head = expression.value if isinstance(expression, ast.Subscript) else expression
+        if (
+            _root_name(head) in reference.parameters
+            or _reference_binding(owner, head, reference.anchor or expression) is None
+        ):
             return None
         unit = self.contracts.project.unit(owner.path)
         if unit is None:
             return None
-        summary = self.contracts.project.class_for(unit, reference.expression)
+        summary = self.contracts.project.class_for(unit, head)
         provider = (
             self._provider(self.contracts.project.source_unit(summary.symbol.module)) if summary is not None else None
         )
@@ -330,7 +423,11 @@ class _OutcomeCalls:
             ),
             None,
         )
-        if declaration is None or not _record_shape(declaration, provider):
+        if (
+            declaration is None
+            or not specialized(expression, declaration.type_params)
+            or not _record_shape(declaration, provider)
+        ):
             return None
         return _record_tags(declaration, provider)
 
@@ -388,7 +485,7 @@ def _union_children(node: ast.expr, context: PythonFileContext) -> list[ast.expr
 
 
 def _record_shape(node: ast.ClassDef, context: PythonFileContext) -> bool:
-    if node.type_params or any(
+    if record_parameters(node) is None or any(
         keyword.arg != "total" or not isinstance(keyword.value, ast.Constant) or keyword.value.value is not True
         for keyword in node.keywords
     ):
@@ -426,21 +523,26 @@ def _record_member(node: ast.stmt) -> bool:
             return False
 
 
-def _record_tags(declaration: ast.ClassDef, context: PythonFileContext) -> dict[str, frozenset[str]] | None:
+def _record_tags(declaration: ast.ClassDef, context: PythonFileContext) -> dict[str, frozenset[_Tag]] | None:
     fields = [
         node for node in declaration.body if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     ]
     names = [node.target.id for node in fields if isinstance(node.target, ast.Name)]
     if len(names) != len(set(names)):
         return None
+    parameters = plain_parameters(declaration.type_params)
+    if parameters is None:
+        return None
     return {
         node.target.id: values
         for node in fields
-        if isinstance(node.target, ast.Name) and (values := _literal_strings(node.annotation, context)) is not None
+        if isinstance(node.target, ast.Name)
+        and not uses_parameters(node.annotation, parameters)
+        and (values := _literal_strings(node.annotation, context)) is not None
     }
 
 
-def _literal_strings(annotation: ast.expr, context: PythonFileContext) -> frozenset[str] | None:
+def _literal_strings(annotation: ast.expr, context: PythonFileContext) -> frozenset[_Tag] | None:
     reference = _literal_reference(_Reference(context, annotation))
     if reference is None:
         return None
@@ -451,10 +553,12 @@ def _literal_strings(annotation: ast.expr, context: PythonFileContext) -> frozen
     }:
         return None
     values = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-    if not values or any(not isinstance(value, ast.Constant) or not isinstance(value.value, str) for value in values):
+    if not values or any(
+        not isinstance(value, ast.Constant) or not isinstance(value.value, str | bool) for value in values
+    ):
         return None
     return frozenset(
-        value.value for value in values if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        value.value for value in values if isinstance(value, ast.Constant) and isinstance(value.value, str | bool)
     )
 
 
@@ -508,8 +612,14 @@ def _reference_binding(context: PythonFileContext, expression: ast.expr, anchor:
     return binding if isinstance(binding, ast.alias | ast.ClassDef | ast.Name) else None
 
 
-def _disjoint(domains: list[frozenset[str]]) -> bool:
-    seen: set[str] = set()
+def _root_name(expression: ast.expr) -> str | None:
+    while isinstance(expression, ast.Attribute):
+        expression = expression.value
+    return expression.id if isinstance(expression, ast.Name) else None
+
+
+def _disjoint(domains: list[frozenset[_Tag]]) -> bool:
+    seen: set[_Tag] = set()
     for domain in domains:
         if not seen.isdisjoint(domain):
             return False
