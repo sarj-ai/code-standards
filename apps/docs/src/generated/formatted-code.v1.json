@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fd64847d5ebe61673a8116eb4a60d20d9ab150e0dc14783dec760f0d8e5851c6",
-  "cliSha256": "a6b44d0b770dfca365cb4f23e25990bb791c872da0d89660c531a783bfd4dd70",
+  "catalogSha256": "e16aa7bcbe286a8c0d8409274d88c9b9d12e5b64a0dc1f3ff1528ee520714176",
+  "cliSha256": "b4089703b796b9c70aa77e49978f4ffdf5787f7778b9c1bab6dcb3b42473fc3c",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7401,6 +7401,36 @@
           "files": [
             {
               "path": "app/result.ts",
+              "source": "import type { Result as NativeResult } from \"neverthrow\";\ntype Saved<T, E> = Promise<NativeResult<T, E>>;\nexport type Output = Saved<\n  number,\n  { code: \"duplicate\"; name: string } | { code: \"denied\" }\n>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "aliased-library-domain-error",
+          "outcome": "accept",
+          "scenarioId": "aliased-library-error",
+          "title": "Keep a finite error code and only the context its consumer needs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "import type { Result as NativeResult } from \"neverthrow\";\ntype Saved<T, E> = Promise<NativeResult<T, E>>;\nexport type Output = Saved<number, string>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "aliased-library-message",
+          "outcome": "reject",
+          "scenarioId": "aliased-library-error",
+          "title": "A transparent alias must preserve the library error contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/result.ts",
               "source": "type Error = { code: \"duplicate\"; name: string } | { code: \"invalid_transition\" };\nexport type Result<T> = { ok: true; data: T } | { ok: false; error: Error };\n"
             }
           ],
@@ -12743,6 +12773,21 @@
           "files": [
             {
               "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\npersist = save\npersist(\"record-7\", False)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "discarded-callable-alias",
+          "outcome": "reject",
+          "scenarioId": "callable-alias-consumption",
+          "title": "A stable alias still returns an outcome that needs handling"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/outcomes.py",
               "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\nsave(\"record-7\", False)\n"
             }
           ],
@@ -12767,6 +12812,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A tagged outcome is discarded"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Success[T](BaseModel):\n    kind: Literal[\"success\"] = \"success\"\n    value: T\n\n\nclass Error[E](BaseModel):\n    kind: Literal[\"error\"] = \"error\"\n    error: E\n\n\nclass Denied(BaseModel):\n    code: Literal[\"denied\"] = \"denied\"\n    name: str\n\n\ntype Result[T, E] = Annotated[Success[T] | Error[E], Field(discriminator=\"kind\")]\n\n\ndef save(name: str, allowed: bool) -> Result[str, Denied]:\n    return (\n        Success[str](value=name) if allowed else Error[Denied](error=Denied(name=name))\n    )\n\n\npersist = save\n\n\ndef run() -> Result[str, Denied]:\n    return persist(\"record-7\", False)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "forwarded-callable-alias",
+          "outcome": "accept",
+          "scenarioId": "callable-alias-consumption",
+          "title": "The alias result is propagated to its caller"
         },
         {
           "expectedCount": 0,
