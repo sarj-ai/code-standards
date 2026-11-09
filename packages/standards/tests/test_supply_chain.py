@@ -498,6 +498,69 @@ def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks(
     assert _recorded_commands(tmp_path) == expected
 
 
+@pytest.mark.parametrize(
+    ("failed_download", "download_status", "report_exit", "completion"),
+    [
+        ("", 0, 0, "complete"),
+        ("ktlint", 7, 0, "complete"),
+        ("detekt", 124, 0, "complete"),
+        ("", 0, 2, "complete"),
+        ("", 0, 0, "partial"),
+    ],
+    ids=["verified", "download-failed", "download-timeout", "findings", "inconclusive"],
+)
+def test_kotlin_ci_uses_native_cache_and_requires_complete_analysis(
+    tmp_path: Path, *, failed_download: str, download_status: int, report_exit: int, completion: str
+) -> None:
+    root = tmp_path / "native fixture"
+    root.mkdir()
+    environment = _record_commands(root, "gh", "uv")
+    environment.update(
+        FAILED_DOWNLOAD=failed_download,
+        DOWNLOAD_STATUS=str(download_status),
+        REPORT_EXIT=str(report_exit),
+        REPORT_COMPLETION=completion,
+    )
+    downloader = root / "bin/gh"
+    downloader.write_text(
+        downloader.read_text()
+        + "artifact = 'detekt' if 'detekt/detekt' in sys.argv else 'ktlint'\n"
+        + "if artifact == os.environ['FAILED_DOWNLOAD']: sys.exit(int(os.environ['DOWNLOAD_STATUS']))\n"
+    )
+    native = root / "bin/uv"
+    native.write_text(
+        native.read_text()
+        + "if 'check' in sys.argv:\n"
+        + "    report = Path(os.environ['RUNNER_TEMP']) / 'mobile-kotlin-smoke/report.json'\n"
+        + "    report.write_text(json.dumps({'exitCode': int(os.environ['REPORT_EXIT']), 'completion': os.environ['REPORT_COMPLETION']}))\n"
+    )
+    workdir = root / "packages/standards"
+    versions = workdir / "src/sarj_standards/configs/mobile-tools.versions.json"
+    versions.parent.mkdir(parents=True)
+    versions.write_text(json.dumps({"ktlint": "12.3.4", "detekt": "23.4.5"}))
+    step = _named_step(_ci_steps("mobile-kotlin-smoke"), "Provision and execute ktlint, Detekt, and MobSF rules")
+    assert step["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    result = _run_ci_step(step, root=workdir, environment=environment)
+    assert result.returncode == (download_status or int(report_exit != 0 or completion != "complete"))
+    commands = _recorded_commands(root)
+    downloads = [command for command in commands if command[0] == "gh"]
+    assert len(downloads) == (1 if failed_download == "ktlint" else 2)
+    assert downloads[0][1:7] == ["release", "download", "12.3.4", "--repo", "pinterest/ktlint", "--pattern"]
+    assert downloads[0][-3:] == [
+        "--output",
+        str(root / "mobile-kotlin-native-cache/code-standards/mobile-tools/ktlint-12.3.4"),
+        "--clobber",
+    ]
+    if failed_download != "ktlint":
+        assert downloads[1][1:7] == ["release", "download", "v23.4.5", "--repo", "detekt/detekt", "--pattern"]
+        assert downloads[1][-3:] == [
+            "--output",
+            str(root / "mobile-kotlin-native-cache/code-standards/mobile-tools/detekt-23.4.5.jar"),
+            "--clobber",
+        ]
+    assert bool([command for command in commands if command[0] == "uv"]) is (download_status == 0)
+
+
 @pytest.mark.parametrize("package", ["bootstrap", "contracts", "python", "sql", "iac", "standards"])
 @pytest.mark.parametrize("tampered", [None, "SHA256SUMS", "example.whl", "example.tar.gz"])
 def test_pypi_publishers_exclude_checksum_manifests(tmp_path: Path, package: str, tampered: str | None) -> None:
