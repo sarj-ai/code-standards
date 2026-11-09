@@ -52,6 +52,8 @@ _FUNCTIONAL_VALIDATORS = frozenset(
 )
 _MAX_VALIDATOR_DEPTH = 32
 _MAX_BASE_DEPTH = 8
+_MAX_IMPORTED_MODULES = 32
+_MAX_MESSAGE_DEPTH = 16
 
 
 @final
@@ -69,8 +71,10 @@ class NoCustomControlFlowException(Rule):
             "rejection still need exceptions."
         ),
         remediation=(
-            "Review direct raises of this exception. If the condition is an expected domain outcome, return a "
-            "typed tagged success/failure union with a stable error code and the handling context, and update every caller. "
+            "Review direct raises of this exception. If the condition is an expected domain outcome, reuse an established Result[T, E] "
+            "or a generic union of typed success/failure variants with a stable domain error code and the handling context. "
+            "Update callers to handle, propagate or translate each relevant variant; use the native type checker's assert_never "
+            "for exhaustiveness. Extend an existing outcome union rather than wrapping it again. "
             "Format the message at the consumer. Preserve true exceptional failures, "
             "validation rejection, transport/framework protocols, cancellation, unwinding and useful cause context. "
             "A class name or a raise does not prove the condition is expected."
@@ -78,8 +82,10 @@ class NoCustomControlFlowException(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This review warning checks stable module-level Exception/ValueError markers and fixed-message subclasses with a source-visible direct raise. It also reviews typed payload constructors limited to assignments and super().__init__ argument formatting, when raised by a single-statement guard in an explicitly annotated function. Constructor parameters must be typed, nonvariadic and actually used; calls must supply their required arguments. Imported base semantics remain a manual contract check.",
-            "Payload guards under try/except/finally, with, loops and match are excluded, as are generators, quoted return annotations and import-proven NoReturn/Never functions. Constructor calls, arbitrary computations, extra methods or behavior, decorated/generic constructors and unknown argument expansion abstain. Source-visible formatting is not a purity proof and never authorizes an automatic rewrite.",
+            "This review warning checks stable module-level Exception/ValueError markers and fixed-message subclasses with a source-visible direct raise. It also reviews typed payload constructors limited to assignments and super().__init__ argument formatting, when raised by a simple rejection guard in an explicitly annotated function. Constructor parameters must be typed and nonvariadic, with at least one used; calls must supply their required arguments. Base ancestry must be source-proven; an opaque external base is not inferred from its name or message.",
+            "Payload guards can prepare one literal or simple formatted message before raising. Guards under try/except/finally, with, loops and match are excluded, as are generators, decorated or special-method functions, quoted return annotations and import-proven NoReturn/Never functions, including simple nongeneric module aliases. Constructor calls, arbitrary computations, extra methods or behavior, decorated/generic constructors and unknown argument expansion abstain. Source-visible formatting is not a purity proof and never authorizes an automatic rewrite.",
+            "Direct module-level from-imports, including renamed and relative imports, are followed to stable first-party exception definitions using the existing bounded local-source resolver. An imported raise must be a simple guard in an explicitly annotated ordinary function, with source-proven Exception/ValueError ancestry and compatible constructor arguments. Import-proven typing.final/typing_extensions.final class decorators preserve this proof. The rule reports once per function and originating exception, at an unsuppressed raise. Source-definition suppressions are also respected.",
+            "Imported discovery does not follow re-exports, module-attribute raises, local imports, aliases, unknown or inherited constructors, custom allocation or inherited subclass hooks, external source, generated/test/vendor definitions, registrations or namespace mutations. Source ancestry is bounded to eight classes and imported definition modules to 32 per file. A guarded raise is evidence to review, not proof of business expectedness. Preserve genuine infrastructure failure contracts even when a warning matches. Never convert a transaction rejection to a return without reviewing rollback, cleanup, logging, retries and side-effect order. Optional absence and independent outcomes remain valid.",
             "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Direct synchronous module callbacks used only as Annotated validator metadata on plain direct BaseModel fields, and stable nonescaping direct nested helpers, also preserve rejection; lexical helper ownership is bounded to 32 levels. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred. Only simple stable module assignment aliases and nongeneric annotation aliases consumed directly by model fields are followed. Explicit string annotations, custom model hooks, async/generator callbacks, escaped helpers and broader call graphs are not followed. Generic lexical resolution can miss a module marker shadowed only in a method's class namespace.",
             "Tests, generated and vendor code are excluded. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
@@ -159,6 +165,215 @@ class NoCustomControlFlowException(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="imported-rejection-contract",
+                scenario="imported-outcome",
+                title="An imported rejection is absent from the successful return contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("app/errors.py", "class Rejected(Exception):\n    pass\n"),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from app.errors import Rejected\n"
+                        "def save(name: str, allowed: bool) -> str:\n"
+                        "    if not allowed:\n        raise Rejected(f'Denied {name}')\n    return name\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="generic-success-failure-union",
+                scenario="imported-outcome",
+                title="An established generic union makes rejection visible to callers",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/outcomes.py",
+                        "from dataclasses import dataclass\n"
+                        "@dataclass(frozen=True)\nclass Success[T]:\n    value: T\n"
+                        "@dataclass(frozen=True)\nclass Failure[E]:\n    error: E\n"
+                        "type Result[T, E] = Success[T] | Failure[E]\n",
+                    ),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from dataclasses import dataclass\nfrom typing import Literal\n"
+                        "from app.outcomes import Failure, Result, Success\n"
+                        "@dataclass(frozen=True)\nclass Denied:\n"
+                        "    name: str\n    code: Literal['denied'] = 'denied'\n"
+                        "def save(name: str, allowed: bool) -> Result[str, Denied]:\n"
+                        "    return Success(name) if allowed else Failure(Denied(name))\n"
+                        "def format_error(error: Denied) -> str:\n    return f'Denied {error.name}'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="guard-prepares-a-message",
+                scenario="prepared-message",
+                title="A local message variable still hides a typed rejection",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "class Denied(Exception):\n"
+                        "    def __init__(self, detail: str) -> None:\n        self.detail = detail\n"
+                        "        super().__init__(detail)\n"
+                        "def save(name: str, allowed: bool) -> str:\n"
+                        "    if not allowed:\n        message = f'Denied {name}'\n"
+                        "        raise Denied(message)\n    return name\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="direct-domain-outcome-union",
+                scenario="prepared-message",
+                title="A direct union preserves the existing successful value",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from dataclasses import dataclass\nfrom typing import Literal\n"
+                        "@dataclass(frozen=True)\nclass Denied:\n"
+                        "    name: str\n    code: Literal['denied'] = 'denied'\n"
+                        "def save(name: str, allowed: bool) -> str | Denied:\n"
+                        "    return name if allowed else Denied(name)\n"
+                        "def format_error(error: Denied) -> str:\n    return f'Denied {error.name}'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="final-imported-payload",
+                scenario="final-payload",
+                title="A final imported exception can still hide an expected outcome",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/errors.py",
+                        "from typing import final\n@final\nclass Missing(Exception):\n"
+                        "    def __init__(self, record_id: str) -> None:\n"
+                        "        self.record_id = record_id\n        super().__init__(f'Missing {record_id}')\n",
+                    ),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from app.errors import Missing\n"
+                        "def load(record_id: str, exists: bool) -> str:\n"
+                        "    if not exists:\n        raise Missing(record_id)\n    return record_id\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="finite-contextual-missing-outcome",
+                scenario="final-payload",
+                title="The error variant retains the identifier needed by its caller",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from dataclasses import dataclass\nfrom typing import Literal\n"
+                        "@dataclass(frozen=True)\nclass Missing:\n"
+                        "    record_id: str\n    code: Literal['missing'] = 'missing'\n"
+                        "def load(record_id: str, exists: bool) -> str | Missing:\n"
+                        "    return record_id if exists else Missing(record_id)\n"
+                        "def format_error(error: Missing) -> str:\n    return f'Missing {error.record_id}'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="imported-validator-rejection",
+                scenario="validator-boundary",
+                title="A validator keeps its native exception rejection protocol",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/errors.py", "class Rejected(ValueError):\n    pass\n"),
+                    ExampleFile.python(
+                        "app/model.py",
+                        "from pydantic import BaseModel, field_validator\nfrom app.errors import Rejected\n"
+                        "class Model(BaseModel):\n    name: str\n"
+                        "    @field_validator('name')\n    @classmethod\n"
+                        "    def validate_name(cls, value: str) -> str:\n"
+                        "        if not value:\n            raise Rejected('name required')\n        return value\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/model.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="protected-transaction-rejection",
+                scenario="resource-boundary",
+                title="A rejection under a resource protocol needs separate migration review",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/errors.py", "class Rejected(Exception):\n    pass\n"),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from collections.abc import Generator\nfrom contextlib import contextmanager\n"
+                        "from app.errors import Rejected\n"
+                        "@contextmanager\ndef transaction() -> Generator[None]:\n    yield None\n"
+                        "def save(name: str, allowed: bool) -> str:\n"
+                        "    with transaction():\n        if not allowed:\n            raise Rejected(name)\n"
+                        "    return name\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="ordinary-value-error-guard",
+                scenario="validator-boundary",
+                title="An ordinary guard has no validator rejection protocol",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("app/errors.py", "class Rejected(ValueError):\n    pass\n"),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from app.errors import Rejected\n"
+                        "def save(value: str) -> str:\n"
+                        "    if not value:\n        raise Rejected('name required')\n    return value\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="guard-after-resource-exit",
+                scenario="resource-boundary",
+                title="A rejection after resource exit has an ordinary return contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("app/errors.py", "class Rejected(Exception):\n    pass\n"),
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from collections.abc import Generator\nfrom contextlib import contextmanager\n"
+                        "from app.errors import Rejected\n"
+                        "@contextmanager\ndef transaction() -> Generator[None]:\n    yield None\n"
+                        "def save(name: str, allowed: bool) -> str:\n"
+                        "    with transaction():\n        pass\n"
+                        "    if not allowed:\n        raise Rejected(name)\n    return name\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -176,7 +391,8 @@ class NoCustomControlFlowException(Rule):
             or (not provenance.builtin_namespace_untouched and not _builtin_namespace_safe(context))
         ):
             return []
-        markers = _markers(context, provenance)
+        contexts = {context.path: context}
+        markers = _markers(context, provenance, contexts)
         raised_markers = _direct_raises(markers, context, provenance)
         findings: list[Diagnostic] = []
         for marker in markers.values():
@@ -197,27 +413,53 @@ class NoCustomControlFlowException(Rule):
                     severity=Severity.WARNING,
                 )
             )
+        for raised, marker in _imported_raises(context, contexts):
+            if context.suppressions.is_suppressed(raised.lineno, self.code):
+                continue
+            findings.append(
+                Diagnostic(
+                    context.path,
+                    raised.lineno,
+                    raised.col_offset + 1,
+                    self.code,
+                    f"Review the return contract for imported `{marker.name}`: this guard communicates rejection only through an exception. "
+                    "If this is an expected domain outcome, return a typed tagged success/failure union with a stable error code "
+                    "and the required context; update callers to handle, propagate or translate each variant and format messages "
+                    "at the consumer. Preserve public adapters, cancellation and transaction/resource unwinding.",
+                    severity=Severity.WARNING,
+                )
+            )
         return findings
 
 
-def _markers(context: PythonFileContext, provenance: ResourceProvenance) -> dict[str, ast.ClassDef]:
-    if context.tree is None:
+def _markers(
+    context: PythonFileContext, provenance: ResourceProvenance, contexts: dict[Path, PythonFileContext]
+) -> dict[str, ast.ClassDef]:
+    if (
+        context.tree is None
+        or context.generated
+        or is_test_path(context.path)
+        or not {"vendor", "vendored", "third_party"}.isdisjoint(context.path.parts)
+    ):
+        return {}
+    if (
+        provenance.wildcard
+        or provenance.dynamic_namespace
+        or (not provenance.builtin_namespace_untouched and not _builtin_namespace_safe(context))
+    ):
         return {}
     markers: dict[str, ast.ClassDef] = {}
-    base_contexts = {context.path: context}
     for node in context.tree.body:
-        if not isinstance(node, ast.ClassDef) or not _marker_body(node):
+        if not isinstance(node, ast.ClassDef) or not _marker_body(node, context):
             continue
         if not _stable_marker(node, context, provenance):
             continue
         base = node.bases[0]
-        fixed_message = any(isinstance(member, ast.FunctionDef) for member in node.body)
+        has_initializer = any(isinstance(member, ast.FunctionDef) for member in node.body)
         payload = _payload_constructor(node) is not None
-        if not _marker_base(
-            base, markers, context, fixed_message=fixed_message, payload=payload, contexts=base_contexts
-        ):
+        if not _marker_base(base, markers, context, payload=payload, contexts=contexts):
             continue
-        if fixed_message and not context.imports.builtin_is_unshadowed("super"):
+        if has_initializer and not context.imports.builtin_is_unshadowed("super"):
             continue
         markers[node.name] = node
     return markers
@@ -236,7 +478,6 @@ def _marker_base(
     markers: dict[str, ast.ClassDef],
     context: PythonFileContext,
     *,
-    fixed_message: bool,
     payload: bool,
     contexts: dict[Path, PythonFileContext],
 ) -> bool:
@@ -244,14 +485,7 @@ def _marker_base(
     local = isinstance(base, ast.Name) and base.id in markers and provenance.binding(base.id, base) is markers[base.id]
     if payload:
         return _payload_exception_base(base, context, contexts, frozenset())
-    if local or _builtin_base(base, context, provenance):
-        return True
-    imported = provenance.runtime_import_name(base)
-    return (
-        fixed_message
-        and imported is not None
-        and not imported.startswith(("builtins.", "asyncio.", "fastapi.", "starlette.", "concurrent.futures."))
-    )
+    return local or _payload_exception_base(base, context, contexts, frozenset())
 
 
 def _payload_exception_base(
@@ -259,13 +493,16 @@ def _payload_exception_base(
     context: PythonFileContext,
     contexts: dict[Path, PythonFileContext],
     seen: frozenset[tuple[Path, str]],
+    *,
+    allow_initializer: bool = True,
+    allowed: frozenset[str] = _BUILTIN_BASES,
 ) -> bool:
     provenance = context.static_resource_provenance
     if provenance.wildcard or provenance.dynamic_namespace:
         return False
     if not provenance.builtin_namespace_untouched and not _builtin_namespace_safe(context):
         return False
-    if _builtin_base(base, context, provenance):
+    if _builtin_base(base, context, provenance, allowed=allowed):
         return True
     if not isinstance(base, ast.Name) or len(seen) >= _MAX_BASE_DEPTH:
         return False
@@ -283,11 +520,20 @@ def _payload_exception_base(
     facts = owner.static_resource_provenance
     if key in seen or owner.generated or binding.name in facts.mutated | facts.external_bindings:
         return False
-    if binding.decorator_list or binding.keywords or binding.type_params:
+    if not _plain_exception_class(binding, owner):
+        return False
+    if not _base_construction_known(binding, allow_initializer=allow_initializer):
         return False
     if _escapes(binding, owner, facts):
         return False
-    return _payload_exception_base(binding.bases[0], owner, contexts, seen | {key})
+    return _payload_exception_base(
+        binding.bases[0], owner, contexts, seen | {key}, allow_initializer=allow_initializer, allowed=allowed
+    )
+
+
+def _base_construction_known(node: ast.ClassDef, *, allow_initializer: bool) -> bool:
+    methods = {member.name for member in node.body if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef)}
+    return methods.isdisjoint({"__new__", "__init_subclass__"}) and (allow_initializer or "__init__" not in methods)
 
 
 def _imported_base_context(
@@ -316,13 +562,18 @@ def _module_class(context: PythonFileContext, name: str) -> ast.ClassDef | None:
     return declarations[0] if len(declarations) == 1 else None
 
 
-def _marker_body(node: ast.ClassDef) -> bool:
+def _plain_exception_class(node: ast.ClassDef, context: PythonFileContext) -> bool:
+    return not (node.keywords or node.type_params) and all(
+        context.static_resource_provenance.runtime_import_name(decorator) in {"typing.final", "typing_extensions.final"}
+        for decorator in node.decorator_list
+    )
+
+
+def _marker_body(node: ast.ClassDef, context: PythonFileContext) -> bool:
     payload = _payload_constructor(node)
     return (
         len(node.bases) == 1
-        and not node.decorator_list
-        and not node.keywords
-        and not node.type_params
+        and _plain_exception_class(node, context)
         and all(
             isinstance(member, ast.Pass)
             or (isinstance(member, ast.FunctionDef) and (_fixed_message_initializer(member) or member is payload))
@@ -481,10 +732,16 @@ def _builtin_namespace_safe(context: PythonFileContext) -> bool:
     return True
 
 
-def _builtin_base(base: ast.expr, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
-    if isinstance(base, ast.Name) and base.id in _BUILTIN_BASES and context.imports.builtin_is_unshadowed(base.id):
+def _builtin_base(
+    base: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    *,
+    allowed: frozenset[str] = _BUILTIN_BASES,
+) -> bool:
+    if isinstance(base, ast.Name) and base.id in allowed and context.imports.builtin_is_unshadowed(base.id):
         return True
-    return any(provenance.imported(base, f"builtins.{name}") for name in _BUILTIN_BASES)
+    return any(provenance.imported(base, f"builtins.{name}") for name in allowed)
 
 
 def _direct_raises(
@@ -512,26 +769,84 @@ def _direct_raises(
 
 
 def _payload_guard(raised: ast.Raise, constructor: ast.FunctionDef, context: PythonFileContext) -> bool:
+    return _guard_function(raised, context) is not None and _payload_call(raised.exc, constructor.args)
+
+
+def _guard_function(raised: ast.Raise, context: PythonFileContext) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     guard = context.parents.get(raised)
-    if not isinstance(guard, ast.If) or not (guard.body == [raised] or guard.orelse == [raised]):
-        return False
+    if not isinstance(guard, ast.If) or not any(
+        _rejection_branch(branch, raised, context) for branch in (guard.body, guard.orelse)
+    ):
+        return None
     owner = context.parents.get(guard)
     while isinstance(owner, ast.If):
         owner = context.parents.get(owner)
     if not isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef) or owner.returns is None:
-        return False
+        return None
     if isinstance(owner.returns, ast.Constant) and isinstance(owner.returns.value, str):
-        return False
-    if has_own_yield(owner):
-        return False
+        return None
+    if owner.decorator_list or (owner.name.startswith("__") and owner.name.endswith("__")) or has_own_yield(owner):
+        return None
     if _validation_callback(raised, context, context.static_resource_provenance, {}):
-        return False
+        return None
+    returns = context.annotation_semantics.resolve_alias(owner.returns)
+    if returns is None:
+        return None
     if any(
-        context.imports.resolves(owner.returns, sources=frozenset({"typing", "typing_extensions"}), symbol=name)
+        context.imports.resolves(
+            returns,
+            sources=frozenset({"typing", "typing_extensions"}),
+            symbol=name,
+        )
         for name in ("Never", "NoReturn")
     ):
+        return None
+    return owner
+
+
+def _rejection_branch(branch: list[ast.stmt], raised: ast.Raise, context: PythonFileContext) -> bool:
+    if branch == [raised]:
+        return True
+    match branch:
+        case [ast.Assign(targets=[ast.Name() as target], value=value), last] if last is raised:
+            pass
+        case _:
+            return False
+    if not (
+        target.id not in context.static_resource_provenance.external_bindings
+        and isinstance(value, ast.JoinedStr | ast.Constant)
+        and _guard_message(value)
+        and raised.exc is not None
+    ):
         return False
-    return _payload_call(raised.exc, constructor.args)
+    return any(
+        isinstance(node, ast.Name)
+        and node.id == target.id
+        and context.static_resource_provenance.binding(node.id, node) is target
+        for node in ast.walk(raised.exc)
+    )
+
+
+def _guard_message(value: ast.expr, depth: int = 0) -> bool:
+    if depth >= _MAX_MESSAGE_DEPTH:
+        return False
+    match value:
+        case ast.Constant(value=str()) | ast.Name():
+            return True
+        case ast.Attribute(value=owner):
+            return _guard_message(owner, depth + 1)
+        case ast.JoinedStr(values=parts):
+            return all(
+                isinstance(part, ast.Constant)
+                or (
+                    isinstance(part, ast.FormattedValue)
+                    and _guard_message(part.value, depth + 1)
+                    and (part.format_spec is None or _guard_message(part.format_spec, depth + 1))
+                )
+                for part in parts
+            )
+        case _:
+            return False
 
 
 def _payload_call(expression: ast.expr | None, arguments: ast.arguments) -> bool:
@@ -568,10 +883,23 @@ def _value_error_marker(marker: ast.ClassDef, context: PythonFileContext, proven
         ) or provenance.imported(base, "builtins.ValueError"):
             return True
         bound = provenance.binding(base.id, base) if isinstance(base, ast.Name) else None
-        if not isinstance(bound, ast.ClassDef) or not _marker_body(bound):
+        if isinstance(bound, ast.alias):
+            return _imported_value_error_base(bound, context)
+        if not isinstance(bound, ast.ClassDef) or len(bound.bases) != 1 or not _plain_exception_class(bound, context):
             return False
         current = bound
     return False
+
+
+def _imported_value_error_base(binding: ast.alias, context: PythonFileContext) -> bool:
+    contexts = {context.path: context}
+    owner = _imported_base_context(binding, context, contexts)
+    if owner is None:
+        return False
+    base = _module_class(owner, binding.name)
+    if base is None or len(base.bases) != 1:
+        return False
+    return _payload_exception_base(base.bases[0], owner, contexts, frozenset(), allowed=frozenset({"ValueError"}))
 
 
 def _validation_callback(
@@ -777,7 +1105,11 @@ def _validation_field(annotation: ast.expr, context: PythonFileContext, provenan
 
 
 def _escapes(marker: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
-    for read in provenance.binding_reads(marker.name, marker):
+    return _binding_escapes(marker.name, marker, context, provenance)
+
+
+def _binding_escapes(name: str, binding: ast.AST, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+    for read in provenance.binding_reads(name, binding):
         parent = context.parents.get(read)
         if isinstance(parent, ast.Call) and parent.func is read:
             owner = context.parents.get(parent)
@@ -792,3 +1124,88 @@ def _escapes(marker: ast.ClassDef, context: PythonFileContext, provenance: Resou
             continue
         return True
     return False
+
+
+def _imported_raises(
+    context: PythonFileContext, contexts: dict[Path, PythonFileContext]
+) -> list[tuple[ast.Raise, ast.ClassDef]]:
+    provenance = context.static_resource_provenance
+    resolved: dict[ast.alias, ast.ClassDef | None] = {}
+    modules: dict[Path, dict[str, ast.ClassDef]] = {}
+    seen: set[tuple[ast.AST, ast.ClassDef]] = set()
+    findings: list[tuple[ast.Raise, ast.ClassDef]] = []
+    for raised in context.nodes(ast.Raise):
+        if context.suppressions.is_suppressed(raised.lineno, NoCustomControlFlowException.code):
+            continue
+        target = raised.exc.func if isinstance(raised.exc, ast.Call) else raised.exc
+        if not isinstance(target, ast.Name):
+            continue
+        binding = provenance.binding(target.id, target)
+        if not isinstance(binding, ast.alias) or provenance.runtime_binding(target.id, target) is not binding:
+            continue
+        owner = _guard_function(raised, context)
+        if owner is None:
+            continue
+        if binding not in resolved:
+            resolved[binding] = _imported_marker(binding, target.id, context, contexts, modules)
+        marker = resolved[binding]
+        if marker is None or (owner, marker) in seen:
+            continue
+        if not _imported_raise_call(raised.exc, marker):
+            continue
+        seen.add((owner, marker))
+        findings.append((raised, marker))
+    return findings
+
+
+def _imported_raise_call(expression: ast.expr | None, marker: ast.ClassDef) -> bool:
+    if isinstance(expression, ast.Call) and (
+        any(isinstance(argument, ast.Starred) for argument in expression.args)
+        or any(keyword.arg is None for keyword in expression.keywords)
+    ):
+        return False
+    constructor = next(
+        (member for member in marker.body if isinstance(member, ast.FunctionDef) and member.name == "__init__"), None
+    )
+    if constructor is None:
+        return not isinstance(expression, ast.Call) or not expression.keywords
+    if not isinstance(expression, ast.Call):
+        return _fixed_message_initializer(constructor)
+    return _payload_call(expression, constructor.args)
+
+
+def _imported_marker(
+    binding: ast.alias,
+    name: str,
+    context: PythonFileContext,
+    contexts: dict[Path, PythonFileContext],
+    modules: dict[Path, dict[str, ast.ClassDef]],
+) -> ast.ClassDef | None:
+    provenance = context.static_resource_provenance
+    if name in provenance.mutated | provenance.external_bindings or _binding_escapes(
+        name, binding, context, provenance
+    ):
+        return None
+    imported = _imported_base_context(binding, context, contexts)
+    if imported is None:
+        return None
+    if imported.path not in modules:
+        if len(modules) >= _MAX_IMPORTED_MODULES:
+            return None
+        modules[imported.path] = _markers(imported, imported.static_resource_provenance, contexts)
+    marker = modules[imported.path].get(binding.name)
+    if (
+        marker is None
+        or imported.suppressions.is_suppressed(marker.lineno, NoCustomControlFlowException.code)
+        or not _payload_exception_base(
+            marker.bases[0],
+            imported,
+            contexts,
+            frozenset(),
+            allow_initializer=any(
+                isinstance(member, ast.FunctionDef) and member.name == "__init__" for member in marker.body
+            ),
+        )
+    ):
+        return None
+    return marker
