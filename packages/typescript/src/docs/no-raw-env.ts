@@ -22,14 +22,14 @@ export const NO_RAW_ENV_DOCUMENTATION = {
       outcome: "no-match",
       files: [
         {
-          path: "src/env.ts",
-          source:
-            "import { z } from 'zod';\nconst SettingsSchema = z.object({ DATABASE_URL: z.url() });\nexport const settings = SettingsSchema.parse(process.env);",
-        },
-        {
           path: "src/database.ts",
           source:
             "import { settings } from './env.js';\nexport const primaryUrl = settings.DATABASE_URL;\nexport const replicaUrl = settings.DATABASE_URL;",
+        },
+        {
+          path: "src/env.ts",
+          source:
+            "import { z } from 'zod';\nconst SettingsSchema = z.object({ DATABASE_URL: z.url() });\nexport const settings = SettingsSchema.parse(process.env);",
         },
       ],
       focusPath: "src/env.ts",

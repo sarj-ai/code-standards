@@ -46,14 +46,14 @@ export const PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION = {
       outcome: "no-match",
       files: [
         {
-          path: "src/env.mjs",
-          source:
-            "import { z } from 'zod';\nconst SettingsSchema = z.object({ CLOUDFLARE_ACCOUNT_ID: z.string().length(32).regex(/^[a-fA-F0-9]+$/u) });\nexport const settings = SettingsSchema.parse(process.env);",
-        },
-        {
           path: ".github/scripts/publish.mjs",
           source:
             "import { settings } from '../../src/env.mjs';\nconst base = `https://api.cloudflare.com/client/v4/accounts/${settings.CLOUDFLARE_ACCOUNT_ID}`;\nexport async function publish(path, request = fetch) { return request(`${base}/${path}`); }\nexport async function list(request = fetch) { return request(`${base}/workers/scripts`); }",
+        },
+        {
+          path: "src/env.mjs",
+          source:
+            "import { z } from 'zod';\nconst SettingsSchema = z.object({ CLOUDFLARE_ACCOUNT_ID: z.string().length(32).regex(/^[a-fA-F0-9]+$/u) });\nexport const settings = SettingsSchema.parse(process.env);",
         },
       ],
       focusPath: ".github/scripts/publish.mjs",
