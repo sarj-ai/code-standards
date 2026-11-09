@@ -10,14 +10,21 @@ unsafe fallbacks without turning stable constants into settings.
 Trace deployment accounts/projects, service origins, resource identifiers, local
 paths and operational tuning to their configuration owner. Externalize values
 that vary by deployment; reuse existing inputs instead of adding parallel env
-names. Parse and validate required settings once at startup, fail before remote
-effects when absent/invalid, and inject the validated values into consumers.
+names. Parse environment input with a Zod schema in JavaScript/TypeScript or a
+Pydantic model/Pydantic Settings in Python. Construct one shared validated root
+settings object per application/runtime boundary at startup, fail before remote
+effects when required values are absent/invalid, and inject or import that same
+object in consumers. Reuse nested component settings where appropriate; keep
+server secrets separate from public client settings. Declaring a schema, adding
+a type annotation or reading an env variable does not validate it. With Zod,
+use the parsed output; `safeParse` requires failure handling before `.data` is
+used. Preserve existing aliases, source precedence, coercion and optional defaults.
 Production fallbacks must not silently select another account or service.
 
 | File/runtime | Configuration boundary to inspect |
 | --- | --- |
-| Python | Typed startup settings from environment or the existing settings loader; inject settings into services instead of repeated environment reads. |
-| JavaScript/TypeScript | Validated server startup env or the platform's runtime bindings; keep secrets out of public build variables visible to clients. |
+| Python | One Pydantic/Pydantic Settings root object constructed at startup; inject it into services instead of repeated environment reads or constructing settings per consumer. |
+| JavaScript/TypeScript | One shared `SettingsSchema.parse(...)` result from validated startup env or platform bindings; keep secrets out of public build variables visible to clients. |
 | Shell/Make | Required, quoted shell variables such as `${ACCOUNT_ID:?required}`; respect Make versus shell expansion and use quoted argument passing. |
 | GitHub Actions YAML | Repository/environment `vars` for deployment values and `secrets` for credentials, passed through `env` or action inputs with validation before deployment. |
 | Terraform/HCL | Typed module inputs supplied by caller configuration, tfvars or `TF_VAR_`; reuse resource/data references and locals for fixed shared values. |

@@ -1,13 +1,13 @@
 /**
  * @fileoverview no-raw-env — a raw `process.env` read is untyped and unvalidated, so a missing variable surfaces as `undefined` in business logic.
  *
- * Port of the 18.x `no-raw-env` rule. File gates and per-file state
- * move to `before()`; the matching is unchanged.
+ * Follow each boundary input to its parser. Raw aliases must not escape
+ * alongside the shared parsed settings object.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { defineRule, type ESTree, type SourceCode } from "../types.js";
+import { defineRule, type ESTree, type Node, type SourceCode, type TsVariable } from "../types.js";
 import { parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isScriptFile, isTestFile } from "../utils/paths.js";
@@ -16,17 +16,31 @@ import { findVariable, getPropertyName } from "../utils/static-string.js";
 /** Build / test / tooling config: `vite.config.ts`, `vitest.config.mts`, `playwright.config.ts`. */
 const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 
-/** Exempt only boundary-named modules that contain a validation marker. */
+/** Recognize validation boundaries; each raw read must still reach a parser. */
 const ENV_BOUNDARY_FILE_RE =
-  /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
+  /(^|[\\/])(?:env|settings|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
 const PROCESS_MODULES: readonly string[] = ["node:process", "process"];
-const PROCESS_IMPORT_SPECIFIERS: readonly string[] = ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"];
+const PROCESS_IMPORT_SPECIFIERS: readonly string[] = [
+  "ImportDefaultSpecifier",
+  "ImportNamespaceSpecifier",
+];
 
 // Build-time constants that bundlers (webpack/Vite) statically replace — exempt.
-const BUILD_TIME_CONSTANTS: ReadonlySet<string> = new Set(["NODE_ENV", "MODE", "DEV", "PROD", "SSR"]);
+const BUILD_TIME_CONSTANTS: ReadonlySet<string> = new Set([
+  "NODE_ENV",
+  "MODE",
+  "DEV",
+  "PROD",
+  "SSR",
+]);
 
-const PLATFORM_MARKERS: ReadonlySet<string> = new Set(["NEXT_RUNTIME", "VERCEL", "VERCEL_ENV", "CI"]);
+const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
+  "NEXT_RUNTIME",
+  "VERCEL",
+  "VERCEL_ENV",
+  "CI",
+]);
 
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
 function isProcessEnv(node: ESTree.MemberExpression, sourceCode: SourceCode): boolean {
@@ -36,11 +50,13 @@ function isProcessEnv(node: ESTree.MemberExpression, sourceCode: SourceCode): bo
   if (binding === null || binding.defs.length === 0) return receiver.name === "process";
   return binding.defs.every((definition) => {
     const parent = definition.parent;
-    return definition.type === "ImportBinding" &&
+    return (
+      definition.type === "ImportBinding" &&
       parent?.type === "ImportDeclaration" &&
       parent.importKind !== "type" &&
       PROCESS_MODULES.includes(parent.source.value) &&
-      PROCESS_IMPORT_SPECIFIERS.includes(definition.node.type);
+      PROCESS_IMPORT_SPECIFIERS.includes(definition.node.type)
+    );
   });
 }
 
@@ -82,6 +98,108 @@ function isWholeEnvSpread(node: ESTree.MemberExpression): boolean {
   return parent?.type === "SpreadElement" && parent.argument === node;
 }
 
+function reachesValidation(
+  node: Node,
+  sourceCode: SourceCode,
+  seen: ReadonlySet<TsVariable> = new Set(),
+  depth = 0,
+  budget = { remaining: 512 },
+): boolean {
+  // Complex flows are deliberately unreported, rather than guessed invalid.
+  if (depth >= 24 || budget.remaining-- <= 0) return true;
+  const parent = parentOf(node);
+  if (parent === null) return false;
+  switch (parent.type) {
+    case "CallExpression":
+      return (
+        parent.arguments.some((argument) => argument === node) &&
+        (isValidationCall(parent) ||
+          (isScalarCoercion(parent, sourceCode) &&
+            reachesValidation(parent, sourceCode, seen, depth + 1, budget)))
+      );
+    case "VariableDeclarator":
+      return parent.init === node && validatedAlias(parent, sourceCode, seen, depth, budget);
+    case "MemberExpression":
+      return (
+        parent.object === node && reachesValidation(parent, sourceCode, seen, depth + 1, budget)
+      );
+    case "Property":
+      return (
+        parent.value === node &&
+        parent.kind === "init" &&
+        !parent.method &&
+        reachesValidation(parent, sourceCode, seen, depth + 1, budget)
+      );
+    case "ObjectExpression":
+    case "ArrayExpression":
+    case "SpreadElement":
+    case "LogicalExpression":
+    case "BinaryExpression":
+    case "ConditionalExpression":
+    case "TemplateLiteral":
+    case "TSAsExpression":
+    case "TSNonNullExpression":
+    case "TSSatisfiesExpression":
+      return reachesValidation(parent, sourceCode, seen, depth + 1, budget);
+    default:
+      return false;
+  }
+}
+
+/** A declaration elsewhere in a module does not validate this particular read. */
+function isValidationCall(node: ESTree.CallExpression): boolean {
+  const callee = unwrapExpression(node.callee);
+  return callee.type === "Identifier"
+    ? callee.name === "createEnv"
+    : callee.type === "MemberExpression" &&
+        ["parse", "safeParse"].includes(getPropertyName(callee) ?? "");
+}
+
+/** Keep raw input away from arbitrary effects before its validation call. */
+function isScalarCoercion(node: ESTree.CallExpression, sourceCode: SourceCode): boolean {
+  const callee = unwrapExpression(node.callee);
+  if (
+    callee.type !== "Identifier" ||
+    !["Number", "String", "Boolean", "BigInt"].includes(callee.name) ||
+    node.arguments.length !== 1
+  )
+    return false;
+  const binding = findVariable(sourceCode.getScope(callee), callee.name);
+  return binding === null || binding.defs.length === 0;
+}
+
+/** Follow a stable raw-input alias only when every use reaches validation. */
+function validatedAlias(
+  node: ESTree.VariableDeclarator,
+  sourceCode: SourceCode,
+  seen: ReadonlySet<TsVariable>,
+  depth: number,
+  budget: { remaining: number },
+): boolean {
+  const declaration = parentOf(node);
+  if (
+    node.id.type !== "Identifier" ||
+    declaration?.type !== "VariableDeclaration" ||
+    declaration.kind !== "const"
+  )
+    return false;
+  if (parentOf(declaration)?.type === "ExportNamedDeclaration") return false;
+  const variable = findVariable(sourceCode.getScope(node.id), node.id.name);
+  if (
+    variable === null ||
+    seen.has(variable) ||
+    variable.references.some((ref) => ref.isWrite() && ref.init !== true)
+  )
+    return false;
+  const reads = variable.references.filter((ref) => ref.isRead());
+  const next = new Set([...seen, variable]);
+  if (reads.length > 128) return true;
+  return (
+    reads.length > 0 &&
+    reads.every((ref) => reachesValidation(ref.identifier, sourceCode, next, depth + 1, budget))
+  );
+}
+
 export default defineRule({
   meta: {
     type: "problem",
@@ -93,54 +211,44 @@ export default defineRule({
     schema: [],
     messages: {
       noRawEnv:
-        "Do not read raw environment values directly. Import the validated env module so values are typed and checked at startup.",
+        "Read one shared settings object validated at startup with Zod (or the existing typed settings loader). Parse required environment values once at the boundary and inject or import the validated result.",
     },
   },
   createOnce(context) {
     let sourceCode: SourceCode;
     let reads: ESTree.MemberExpression[] = [];
     let boundaryFile = false;
-    let hasValidationCall = false;
     return {
       before() {
         const filename = context.filename;
         const file = { filename, cwd: context.cwd };
-        if (isTestFile(file) || isScriptFile(file) || CONFIG_FILE_RE.test(filename)) {
+        boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename);
+        if (
+          isTestFile(file) ||
+          (isScriptFile(file) && !boundaryFile) ||
+          CONFIG_FILE_RE.test(filename)
+        ) {
           return false;
         }
         sourceCode = context.sourceCode;
         reads = [];
-        boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename);
-        hasValidationCall = false;
         return undefined;
-      },
-      CallExpression(node: ESTree.CallExpression): void {
-        if (!boundaryFile) return;
-        const callee = node.callee;
-        if (callee.type === "Identifier" && callee.name === "createEnv") {
-          hasValidationCall = true;
-        } else if (callee.type === "MemberExpression") {
-          const calleeReceiver = unwrapExpression(callee.object);
-          const name = getPropertyName(callee);
-          if (name === "parse" || name === "safeParse" ||
-            (name === "object" && calleeReceiver.type === "Identifier" && calleeReceiver.name === "z")) {
-            hasValidationCall = true;
-          }
-        }
       },
       MemberExpression(node: ESTree.MemberExpression): void {
         if (
           (isProcessEnv(node, sourceCode) || isImportMetaEnv(node)) &&
           !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
-          !isWholeEnvSpread(node)
+          !(isWholeEnvSpread(node) && !boundaryFile)
         ) {
           reads.push(node);
         }
       },
       "Program:exit"(): void {
-        if (boundaryFile && hasValidationCall) return;
-        for (const node of reads) context.report({ node, messageId: "noRawEnv" });
+        for (const node of reads) {
+          if (!boundaryFile || !reachesValidation(node, sourceCode))
+            context.report({ node, messageId: "noRawEnv" });
+        }
       },
     };
   },
