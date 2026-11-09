@@ -3361,6 +3361,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.7.1).",
-  "version": "9.7.1"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.7.2).",
+  "version": "9.7.2"
 }

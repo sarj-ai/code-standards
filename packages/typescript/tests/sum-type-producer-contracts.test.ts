@@ -89,3 +89,16 @@ it("a same-named parameter does not expose an overload implementation default", 
   expect(result.codes).toEqual([]);
   expect(() => { runInNewContext(result.emitted); }).not.toThrow();
 });
+
+it("three failure dispositions preserve partial results and reject only the crossed flag pair", () => {
+  const flat = '{ retriable: boolean; persisted: boolean }';
+  const variants = '{ retriable: false; persisted: true } | { retriable: true; persisted: false } | { retriable: false; persisted: false }';
+  const producer = `function failure(retry: boolean, saved: boolean): ${flat} { return saved ? { retriable: false, persisted: true } : retry ? { retriable: true, persisted: false } : { retriable: false, persisted: false }; }`;
+  const fixed = producer.replace(flat, variants);
+  expect(nativeContract(producer).codes).toEqual([]);
+  expect(nativeContract(fixed).codes).toEqual([]);
+  expect(nativeContract(`type State = ${variants}; const crossed: State = { retriable: true, persisted: true };`).codes).toEqual([2322]);
+  const consume = 'for (const a of [true,false]) for (const b of [true,false]) { const state = failure(a,b); if (state.persisted) { const terminal: false = state.retriable; } }';
+  expect(nativeContract(fixed + consume).codes).toEqual([]);
+  expect(nativeContract(producer).emitted).toBe(nativeContract(fixed).emitted);
+});

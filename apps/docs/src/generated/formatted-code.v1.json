@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b36d2d57d15b590820bf051bb8ac4a8bef0de17894e97b2016f5744d0f23ccf",
-  "cliSha256": "871371c07acd79dcd446b05bc84bf3df93582d472478ee13552a13cd62d0b12c",
+  "catalogSha256": "4f1bd1568bdd9e881fbc5c19387d2cab5189194953564e0c382124b97a0065fa",
+  "cliSha256": "77ff579229828c340a53aea71472c6c5fac537b0df6793adb50cd56f508950f2",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7516,6 +7516,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "src/failure.ts",
+              "source": "function failure(\n  retry: boolean,\n  saved: boolean,\n): { retriable: boolean; persisted: boolean } {\n  return saved\n    ? { retriable: false, persisted: true }\n    : retry\n      ? { retriable: true, persisted: false }\n      : { retriable: false, persisted: false };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/failure.ts",
+          "id": "failure-dispositions",
+          "outcome": "reject",
+          "scenarioId": "boolean-state",
+          "title": "A producer returns retry, terminal and saved-partial combinations"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "src/job.ts",
               "source": "function job(done: boolean): { phase: \"queued\" | \"complete\"; ticket?: string } {\n  return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" };\n}\n"
             }
@@ -7543,11 +7558,26 @@
           "title": "A complete dispatcher preserves each returned variant"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/observations.ts",
+              "source": "function observations(a: boolean, b: boolean): { started: boolean; reported: boolean } {\n  return a\n    ? b\n      ? { started: true, reported: true }\n      : { started: true, reported: false }\n    : b\n      ? { started: false, reported: true }\n      : { started: false, reported: false };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/observations.ts",
+          "id": "independent-observations",
+          "outcome": "accept",
+          "scenarioId": "boolean-state",
+          "title": "Independent observations retain all four combinations"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/result.ts",
-              "source": "type Result = { ok: boolean; data?: string; error?: string };\n"
+              "source": "function result(ok: boolean): { ok: boolean; data?: string; error?: string } {\n  return ok ? { ok: true, data: \"value\" } : { ok: false, error: \"failed\" };\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -7555,7 +7585,7 @@
           "id": "optional-result-payloads",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Review optional result payloads"
+          "title": "A producer establishes the status-to-payload relationship"
         }
       ],
       "optionsSchemaSource": null
@@ -16451,6 +16481,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Request API key uses ordinary equality"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-coordinated-state-owner": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "playback.py",
+              "source": "import asyncio\n\n\nclass Playback:\n    def __init__(self) -> None:\n        self._observers: dict[str, asyncio.Task[None]] = {}\n        self._playbacks: dict[str, asyncio.Task[bool]] = {}\n\n    def start(\n        self, key: str, observer: asyncio.Task[None], playback: asyncio.Task[bool]\n    ) -> None:\n        self._observers[key] = observer\n        self._playbacks[key] = playback\n\n    def finish(self, key: str) -> None:\n        self._observers.pop(key, None)\n        self._playbacks.pop(key, None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "playback.py",
+          "id": "coordinated-playback-bookkeeping",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Observer and playback entries repeat paired bookkeeping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "playback.py",
+              "source": "import asyncio\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass ActivePlayback:\n    observer: asyncio.Task[None]\n    playback: asyncio.Task[bool]\n\n\nclass Playback:\n    def __init__(self) -> None:\n        self._active: dict[str, ActivePlayback] = {}\n\n    def start(\n        self, key: str, observer: asyncio.Task[None], playback: asyncio.Task[bool]\n    ) -> None:\n        self._active[key] = ActivePlayback(observer, playback)\n\n    def finish(self, key: str) -> None:\n        self._active.pop(key, None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "playback.py",
+          "id": "one-typed-playback-owner",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One typed entry retains both task identities"
         }
       ],
       "optionsSchemaSource": null

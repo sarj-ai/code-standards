@@ -352,5 +352,6 @@
   "SARJ561": "prefer-single-psycopg-cursor",
   "SARJ562": "prefer-validated-uuid-comparison",
   "SARJ563": "fastapi-route-declares-security",
-  "SARJ564": "prefer-injected-service"
+  "SARJ564": "prefer-injected-service",
+  "SARJ565": "prefer-coordinated-state-owner"
 }

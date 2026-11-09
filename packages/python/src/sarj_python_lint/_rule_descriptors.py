@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-coordinated-state-owner"),
+        module="sarj_python_lint.rules.prefer_coordinated_state_owner",
+        class_name="PreferCoordinatedStateOwner",
+        code="SARJ565",
+        description="Review dictionaries with repeated same-key writes and removals for one typed owner.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-injected-service"),
         module="sarj_python_lint.rules.prefer_injected_service",
         class_name="PreferInjectedService",

@@ -154,6 +154,7 @@
       "prefer-class-row",
       "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
+      "prefer-coordinated-state-owner",
       "prefer-declarative-batch-validation",
       "prefer-direct-import-module",
       "prefer-discriminated-model-union",
@@ -692,7 +693,8 @@
       "SARJ561",
       "SARJ562",
       "SARJ563",
-      "SARJ564"
+      "SARJ564",
+      "SARJ565"
     ],
     "sql": [
       "SARJ101",
