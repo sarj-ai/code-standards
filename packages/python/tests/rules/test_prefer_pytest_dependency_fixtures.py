@@ -234,6 +234,387 @@ def test_imported_aliased_constructor_reuses_abstract_fixture(rule: ProjectRule,
     assert len(rule.check(test, source)) == 1
 
 
+_BORROWED_RESOURCE_STORES = "from abc import ABC, abstractmethod\nclass Queue(ABC):\n    @abstractmethod\n    def retry(self) -> bool: ...\nclass QueueStore(Queue):\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n    def retry(self) -> bool:\n        return True\nclass Owner:\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n    def read(self) -> bool:\n        return True\n"
+_VISIBLE_QUEUE_FIXTURE = "import pytest\nfrom app.stores import Owner, QueueStore\n@pytest.fixture\ndef resource() -> object:\n    return object()\n@pytest.fixture\ndef owner(resource: object) -> Owner:\n    return Owner(resource)\n@pytest.fixture\ndef queue_store(resource: object) -> QueueStore:\n    return QueueStore(resource)\n"
+_BORROWED_RESOURCE_TEST = "from app.stores import Owner, QueueStore as Backend\nasync def test_retry(owner: Owner):\n    await arrange(owner)\n    queue = Backend(owner.resource)\n    queue.retry()\n    assert owner.read()\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "provider", "registration", "expected"),
+    [
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "local", 1, id="visible-conftest"),
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "module", 1, id="module-provider"),
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "plugin", 1, id="explicit-plugin"),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("owner: Owner", "owner: Owner, queue_store: QueueStore").replace(
+                "queue = Backend(owner.resource)", "queue = queue_store"
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="requests-existing-fixture",
+        ),
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "unregistered", 0, id="unrelated-provider"),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "conditional-plugin", 0, id="conditional-registration"
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("queue.retry()\n    assert owner.read()", "assert queue.retry()"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="direct-construction-under-test",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("    queue.retry()\n", ""),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="constructor-side-effect-under-test",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("    queue.retry()", "    from helper import queue\n    queue.retry()"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="operation-belongs-to-imported-receiver",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("assert owner.read()", "assert lambda: owner.read()"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="uncalled-lambda-is-not-an-observation",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("assert owner.read()", "assert (owner.read() for _ in [1])"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="lazy-generator-is-not-an-observation",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE.replace(
+                "def queue_store(resource: object)", "def queue_store(resource: object, QueueStore)"
+            ),
+            "plugin",
+            0,
+            id="provider-parameter-shadows-constructor",
+        ),
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "imported-override", 0, id="imported-override"),
+        pytest.param(_BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "nested-plugin", 0, id="nested-registration"),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST, _VISIBLE_QUEUE_FIXTURE, "nested-import", 0, id="imported-nested-registration"
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("Backend(owner.resource)", "Backend(owner.resource, timeout=2)"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="constructor-variant",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("queue = Backend(owner.resource)", "queue = factory(owner.resource)"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="factory-request",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry", "@pytest.mark.parametrize('owner', [])\nasync def test_retry"
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="parametrized-owner",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = pytest.mark.parametrize('owner', [Owner(object())])\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="module-parametrized-owner",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = [pytest.mark.usefixtures('resource'), pytest.mark.parametrize(['owner'], [Owner(object())])]\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="module-parametrized-owner-in-mark-list",
+        ),
+        pytest.param(
+            "import pytest\nfrom app.stores import Owner, QueueStore as Backend\nclass TestRetry:\n    pytestmark = pytest.mark.parametrize('owner', [Owner(object())])\n    async def test_retry(self, owner: Owner):\n        await arrange(owner)\n        queue = Backend(owner.resource)\n        queue.retry()\n        assert owner.read()\n",
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="class-parametrized-owner",
+        ),
+        pytest.param(
+            "from tests.case_marks import pytestmark\n" + _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE,
+            "ambient-mark-import",
+            0,
+            id="ambient-imported-module-mark",
+        ),
+        pytest.param(
+            "from app.stores import Owner, QueueStore as Backend\nclass TestRetry:\n    from tests.case_marks import pytestmark\n    async def test_retry(self, owner: Owner):\n        await arrange(owner)\n        queue = Backend(owner.resource)\n        queue.retry()\n        assert owner.read()\n",
+            _VISIBLE_QUEUE_FIXTURE,
+            "ambient-mark-import",
+            0,
+            id="ambient-imported-class-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = []\npytestmark.append(pytest.mark.parametrize('owner', [Owner(object())]))\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-appended-owner-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = marks = []\nmarks.append(pytest.mark.parametrize('owner', [Owner(object())]))\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-chained-owner-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = []\npytestmark += [pytest.mark.parametrize('owner', [Owner(object())])]\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-augmented-owner-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "marks = []\npytestmark = marks\nmarks.append(pytest.mark.parametrize('owner', [Owner(object())]))\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-aliased-mark-list",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = []\nmarks = pytestmark\nmarks.append(pytest.mark.parametrize('owner', [Owner(object())]))\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-escaped-mark-list",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = []\npytestmark = pytest.mark.parametrize('owner', [Owner(object())])\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-rebound-mark-list",
+        ),
+        pytest.param(
+            "import pytest\nfrom app.stores import Owner, QueueStore as Backend\nclass TestRetry:\n    pytestmark = []\n    async def test_retry(self, owner: Owner):\n        await arrange(owner)\n        queue = Backend(owner.resource)\n        queue.retry()\n        assert owner.read()\nTestRetry.pytestmark.append(pytest.mark.parametrize('owner', [Owner(object())]))\n",
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="ambient-mutated-class-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry", "pytestmark = pytest.mark.anyio\nasync def test_retry"
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            1,
+            id="ambient-literal-unrelated-mark",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace("async def test_retry", "pytestmark = marks\nasync def test_retry"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="unresolved-module-marks",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry", "pytestmark = pytest.mark.parametrize('case_id', [1])\nasync def test_retry"
+            ).replace("owner: Owner", "owner: Owner, case_id: int"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            1,
+            id="unrelated-module-parametrization",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry", "@pytest.mark.parametrize('owner', [None], indirect=True)\nasync def test_retry"
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="keeps-function-indirect-parametrization-abstention",
+        ),
+        pytest.param(
+            "import pytest\n"
+            + _BORROWED_RESOURCE_TEST.replace(
+                "async def test_retry",
+                "pytestmark = pytest.mark.parametrize('owner', [None], indirect=True)\nasync def test_retry",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            1,
+            id="module-indirect-owner-is-a-fixture",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE + "\ndef pytest_generate_tests(metafunc):\n    metafunc.parametrize('owner', [])\n",
+            "plugin",
+            0,
+            id="visible-plugin-generation-hook",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE,
+            "hook-only-conftest",
+            0,
+            id="import-free-conftest-generation-hook",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("await arrange(owner)", "owner = replacement()"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="rebound-owner",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("owner: Owner", "owner: Owner, Backend"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="shadowed-constructor",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace("Backend(owner.resource)", "Backend(object())"),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="fresh-construction-under-test",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE.replace(
+                "@pytest.fixture\ndef queue_store", "@pytest.fixture(scope='session')\ndef queue_store"
+            ),
+            "plugin",
+            0,
+            id="broader-fixture-lifetime",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST,
+            _VISIBLE_QUEUE_FIXTURE + "\nqueue_store = replacement\n",
+            "plugin",
+            0,
+            id="rebound-provider",
+        ),
+        pytest.param(
+            _BORROWED_RESOURCE_TEST.replace(
+                "Backend(owner.resource)",
+                "Backend(owner.resource)  # sarj-noqa: SARJ526 -- construction timing is the tested contract",
+            ),
+            _VISIBLE_QUEUE_FIXTURE,
+            "plugin",
+            0,
+            id="local-exception",
+        ),
+    ],
+)
+def test_unrequested_visible_fixture_owns_borrowed_resource_construction(
+    *, rule: ProjectRule, tmp_path: Path, source: str, provider: str, registration: str, expected: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    sources = {
+        tmp_path / "app" / "stores.py": _BORROWED_RESOURCE_STORES,
+        tmp_path / "tests" / "test_retry.py": source,
+    }
+    match registration:
+        case "module":
+            source += "\n" + provider
+            sources[tmp_path / "tests" / "test_retry.py"] = source
+        case "local":
+            sources[tmp_path / "tests" / "conftest.py"] = provider
+        case "hook-only-conftest":
+            source += "\n" + provider
+            sources[tmp_path / "tests" / "test_retry.py"] = source
+            sources[tmp_path / "tests" / "conftest.py"] = (
+                "def pytest_generate_tests(metafunc):\n    metafunc.parametrize('owner', [])\n"
+            )
+        case _:
+            sources[tmp_path / "tests" / "fixtures.py"] = provider
+            if registration in {"plugin", "imported-override", "nested-plugin", "nested-import", "ambient-mark-import"}:
+                sources[tmp_path / "tests" / "conftest.py"] = "pytest_plugins = ['tests.fixtures']\n"
+            match registration:
+                case "conditional-plugin":
+                    sources[tmp_path / "tests" / "conftest.py"] = "if False:\n    pytest_plugins = ['tests.fixtures']\n"
+                case "imported-override":
+                    sources[tmp_path / "tests" / "alternate.py"] = provider.replace(
+                        "def queue_store(resource: object) -> QueueStore:\n    return QueueStore(resource)",
+                        "def queue_store(resource: object) -> Owner:\n    return Owner(resource)",
+                    )
+                    source = "from tests.alternate import queue_store\n" + source
+                    sources[tmp_path / "tests" / "test_retry.py"] = source
+                case "nested-plugin":
+                    sources[tmp_path / "tests" / "fixtures.py"] = provider + "\npytest_plugins = load_plugins()\n"
+                case "nested-import":
+                    sources[tmp_path / "tests" / "fixtures.py"] = (
+                        provider + "\nfrom tests.configuration import pytest_plugins\n"
+                    )
+                    sources[tmp_path / "tests" / "configuration.py"] = "pytest_plugins = ['tests.alternate']\n"
+                case _:
+                    pass
+    if registration == "ambient-mark-import":
+        sources[tmp_path / "tests" / "case_marks.py"] = (
+            "import pytest\nfrom app.stores import Owner\npytestmark = pytest.mark.parametrize('owner', [Owner(object())])\n"
+        )
+    for path, text in sources.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    diagnostics = rule.check(tmp_path / "tests" / "test_retry.py", source)
+    assert len(diagnostics) == expected
+    assert len({(diagnostic.line, diagnostic.col) for diagnostic in diagnostics}) == expected
+
+
 @pytest.mark.parametrize(
     "source",
     [

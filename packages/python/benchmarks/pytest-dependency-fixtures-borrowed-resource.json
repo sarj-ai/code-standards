@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-09",
+  "rule": "python:prefer-pytest-dependency-fixtures",
+  "code": "SARJ526",
+  "decision": "repair-existing-warning-owner",
+  "defaultLevel": "warning",
+  "scope": "A source-resolved ABC or Protocol implementation borrows an attribute of a typed requested fixture, operates before a later direct assertion on that original fixture, and has a visible function-scoped provider. Findings recommend manual fixture or typed-factory selection; provider class matching does not establish resource or lifecycle equivalence.",
+  "autofix": "The existing SAFE fix for an already-requested, authored identity-guarded typed factory is unchanged. The borrowed-resource extension has no automatic fixture replacement.",
+  "validation": {
+    "focusedRuleTestsPassed": 140,
+    "sharedIndexTestsPassed": 158,
+    "executableExamplesPassed": 8,
+    "ruffAndStrictTyping": "passed",
+    "completeBuiltinSourceChecks": "passed with zero errors; six unchanged advisory findings in the shared index remain inherited"
+  },
+  "labeledDetectorPolicy": {
+    "cases": 43,
+    "tp": 6,
+    "fp": 0,
+    "fn": 0,
+    "tn": 37,
+    "definition": "Supported detector expectations; negative cases include deliberate conservative abstentions. These labels do not establish broader pytest recall."
+  },
+  "immutableProducerReplay": {
+    "snapshots": 2,
+    "pythonFilesPerSnapshot": [
+      2538,
+      2538
+    ],
+    "nativeOwnerFileAnalyses": 10152,
+    "selection": "Two frozen states of one private producer project, before and after the requested fixture correction. Every Python file is evaluated; these are related snapshots, not independent projects.",
+    "baselineFindings": {
+      "original": 737,
+      "corrected": 737
+    },
+    "candidateFindings": {
+      "original": 743,
+      "corrected": 741
+    },
+    "newFindings": {
+      "original": 6,
+      "corrected": 4,
+      "uniqueLocations": 6,
+      "allReviewed": true,
+      "knownInspectedFalsePositives": 0
+    },
+    "preservedExistingPayloadsAndSeverities": true,
+    "removedExistingFindings": 0,
+    "duplicateLocations": 0,
+    "requestedConstructionsRemovedByFixtureCorrection": 2,
+    "inspection": "All six new locations were inspected with complete owning tests, visible fixture registration/provider, constructor implementation and direct callers. They arrange state through an existing collaborator; constructor behavior and alternate configurations are not under test. The other shipped findings were retained but not relabeled as freshly reviewed."
+  },
+  "relatedBroaderPolicyReview": {
+    "selection": "All direct constructions of the affected implementation inside collected tests in the two affected modules. Helper/factory definitions are excluded. This is a related-site review, not an unbiased recall sample.",
+    "original": {
+      "tp": 6,
+      "fp": 0,
+      "fn": 2,
+      "tn": 0
+    },
+    "corrected": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 2,
+      "tn": 0
+    },
+    "knownMisses": [
+      "A resource supplied directly as a fixture argument instead of borrowed from an owner attribute.",
+      "An owner read assigned to a local result whose fields are asserted later instead of a direct method call inside the assertion."
+    ]
+  },
+  "fullPythonRegistrySample": {
+    "files": 25,
+    "selection": "24 path-hash-ranked test files plus the reported-case file",
+    "unrelated_diagnostics_unchanged": true,
+    "unrelated_diagnostics": 120
+  },
+  "performance": {
+    "scope": "SARJ526 native owner with full immutable source index; not full-registry fleet overhead",
+    "files": 25,
+    "freshProcessPairs": 3,
+    "order": "Alternating baseline-first and candidate-first. Each process prepares the same complete source index, runs one first owner check and then two later owner checks. Index preparation is reported separately.",
+    "measurements": {
+      "baseline": {
+        "index_seconds_median": 22.40305482293479,
+        "cold_seconds_median": 0.8193645100109279,
+        "warm_seconds_median": 0.6832598539767787,
+        "peak_memory_bytes_median": 951144448
+      },
+      "candidate": {
+        "index_seconds_median": 25.3338265218772,
+        "cold_seconds_median": 1.4146347460336983,
+        "warm_seconds_median": 1.1722892224788666,
+        "peak_memory_bytes_median": 952152064
+      }
+    },
+    "candidateToBaselineRatios": {
+      "index_seconds_median": 1.130820181538014,
+      "cold_seconds_median": 1.7265023426689927,
+      "warm_seconds_median": 1.7157296973556828,
+      "peak_memory_bytes_median": 1.0010593722143033
+    },
+    "memory": "Median per-process Linux peak RSS in bytes; includes engine imports, full source indexing and selected owner checks.",
+    "interpretation": "Selected owner cold/warm medians differ from the paired baseline by +72.7%/+71.6%; the warm difference is +0.489 seconds across 25 files. Peak RSS differs by +0.11%. This does not estimate complete lint-pipeline overhead."
+  },
+  "provenance": "The first reviewed candidate and its successful qualification remain history, including its recovered summary aggregation. Review exposed module/class parametrization assumptions. The repair reuses existing requested-parameter analysis only in the new branch and preserves the prior function-level indirect abstention and SAFE factory fix. After the shared Python registry advanced on main, both source-pinned baseline and candidate producer scans and registry samples were rerun. Immutable producer inventories, original diagnostic payloads and identical new-hit triage were retained as oracles. Three new paired-process timing rounds measure the changed engine. Immutable source inventories and engine hashes were verified before and after; producer identities remain private. A subsequent main integration changed only another Python rule implementation. The qualified owner, its dependency closure and all three code/test files remain identical, so owner tests and 10,152 analyses retain their original scope. The full-registry sample and three paired-process timing rounds were refreshed against that newer main; complete native verification is a separate gate. A second independent review found imported and mutated ambient pytestmark bindings outside the assignment-only helper. Six new negative controls failed on the previous qualified candidate; the repair adds a new-branch-only binding/read guard while leaving the shared helper and SAFE fixer unchanged. Nine added controls include imported module/class marks, append/augmentation, aliasing, rebinding, class mutation and a literal unrelated positive. The expanded supported table has 42 cases. The unchanged baseline owner/dependency closure retains its 5,076 analyses and the same-engine registry baseline; candidate 5,076 owner analyses and the candidate registry sample are fresh. All prior payloads and identical new-hit triage remain oracles. Three fresh timing pairs measure the changed implementation. The preceding public candidate passed native verification and CI; independent judges returned two accepts and one revise. The revise exposed an ordinary chained alias of ambient marks. One added negative control produced a real assertion failure on that candidate. Restricting ambient declarations to a single assignment target closes that counterexample, with 140 owner tests and 43 supported detector cases passing. Existing shared-index and fixture-contract qualification remains scoped to identical source. A complete immutable producer AST census contains no multi-target pytestmark assignments; removing the one added predicate reproduces the preceding production AST. Thus the retained 5,076 baseline and5,076 candidate owner analyses, diagnostic multiplicities and six-site triage remain valid for those inputs; this stage performs zero fresh complete-owner analyses. Current main changed only another Python registry owner, so the 25-file full-registry comparison and all three alternating process timing pairs are fresh against that main. Full native verification and CI qualify the subsequent published head separately.",
+  "limitations": [
+    "Private sources, paths, revisions and identifying hashes remain outside public artifacts.",
+    "The producer is a convenience sample; unchanged or unreviewed findings and unlabeled zeroes do not establish global precision or recall.",
+    "Only the 25-file full-Python-registry sample establishes unchanged unrelated diagnostics; whole-producer scans and timing comparisons select SARJ526 alone.",
+    "Measurements ran on a shared Linux VM without clearing OS caches; no complete-pipeline performance improvement is claimed.",
+    "Providers with variants, broader scope, nested or dynamic registration, unexplained overrides and unresolved contracts abstain. Constructor-only tests and direct subject-only assertions remain explicit.",
+    "Fixture caching, resource identity, setup ordering and teardown still require human review. Publication precedes rollout; consumer approvals remain separate.",
+    "Applicable module/class owner data and unresolved marks abstain. Visible generation hooks in the test, ancestor conftest or explicitly registered plugin also abstain. This does not prove behavior of unknown external pytest plugins. Function-level indirect parametrization retains its earlier conservative abstention.",
+    "The new borrowed-resource branch requires direct module/class ambient-mark declarations. Imported, read/escaped, augmented or indirectly assigned pytestmark bindings and attribute access abstain conservatively; this can miss valid fixture cases. Unknown external plugin or reflective namespace behavior remains outside the source proof.",
+    "Multi-target ambient pytestmark declarations abstain conservatively because another assigned name may mutate the mark collection without a direct pytestmark read. The complete retained producer census excludes that changed applicability shape; evidence reuse does not imply broader pytest correctness."
+  ]
+}
