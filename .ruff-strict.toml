@@ -275,8 +275,8 @@ warns-extend-require-match-for = [
 "asyncio.create_subprocess_shell".msg = "Prefer create_subprocess_exec with separate arguments to avoid shell injection. Intentional shell grammar requires a local TID251 suppression explaining why the command and interpolated values are safe."
 "asyncio.subprocess.create_subprocess_shell".msg = "Prefer create_subprocess_exec with separate arguments to avoid shell injection. Intentional shell grammar requires a local TID251 suppression explaining why the command and interpolated values are safe."
 
-"os.environ".msg                      = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
-"os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
+"os.environ".msg                      = "Load deployment configuration once with Pydantic Settings, validate required values before effects, and inject the shared settings object. Raw environment forwarding or platform probes need an inline, reasoned TID251 suppression."
+"os.getenv".msg                       = "Use the shared Pydantic Settings object validated at startup; keep required deployment values required and preserve explicitly optional defaults."
 
 "fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
 "fastapi.File".msg                    = "Use a pre-signed URL so the client uploads directly to object storage; accept object metadata instead of file bytes."

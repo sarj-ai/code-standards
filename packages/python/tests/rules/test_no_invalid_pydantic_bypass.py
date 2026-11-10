@@ -559,3 +559,245 @@ def test_deep_right_grouped_field_annotation_abstains_without_recursion_failure(
         f"from pydantic import BaseModel\nclass Model(BaseModel):\n    field: {annotation}\nModel.model_construct()\n"
     )
     assert _check(source) == []
+
+
+_SETTINGS_PREFIX = "from typing import Literal\nfrom pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    environment: Literal['dev', 'prod']\n"
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("Settings.model_construct(environment='other')", 1),
+        ("Settings.model_construct()", 1),
+        ("Settings.model_construct(environment=None)", 1),
+        ("Settings.model_construct(environment='dev')", 0),
+        ("Settings.model_construct(environment=value)", 0),
+        ("Settings.model_construct(**values)", 0),
+        ("Settings(environment='dev')", 0),
+        ("Settings.model_validate({'environment': 'other'})", 0),
+        ("Settings(environment='dev').model_copy(update={'environment': 'other'})", 1),
+        ("Settings(environment='dev').model_copy(update={'environment': 'prod'})", 0),
+        ("Settings(environment='dev').model_copy(update=changes)", 0),
+    ],
+)
+def test_direct_settings_validation_and_bypass_contracts(operation: str, expected: int) -> None:
+    assert len(_check(_SETTINGS_PREFIX + f"settings = {operation}\n")) == expected
+
+
+def test_stable_settings_instance_copy_preserves_existing_receiver_proof() -> None:
+    source = (
+        _SETTINGS_PREFIX
+        + "settings = Settings(environment='dev')\nchanged = settings.model_copy(update={'environment': 'other'})\n"
+    )
+    assert len(_check(source)) == 1
+    assert _check(source.replace("changed =", "escape(settings)\nchanged =")) == []
+    assert _check(source.replace("changed =", "settings = replacement\nchanged =")) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "base"),
+    [
+        ("from pydantic_settings import BaseSettings as Root\n", "Root"),
+        ("import pydantic_settings as ps\n", "ps.BaseSettings"),
+        ("from pydantic_settings.main import BaseSettings\n", "BaseSettings"),
+        ("from pydantic_settings import BaseSettings\ndef unrelated(BaseSettings): pass\n", "BaseSettings"),
+    ],
+)
+def test_settings_base_imports_are_proven_at_module_declarations(imports: str, base: str) -> None:
+    source = (
+        "from typing import Literal\n"
+        + imports
+        + f"class Settings({base}):\n    environment: Literal['dev', 'prod']\nSettings.model_construct(environment='other')\n"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "class Settings(CustomSettings):",
+        "class Parent(BaseSettings): pass\nclass Settings(Parent):",
+        "@rewrites_settings\nclass Settings(BaseSettings):",
+        "class Settings(BaseSettings, cli_parse_args=True):",
+        "BaseSettings = replacement\nclass Settings(BaseSettings):",
+    ],
+)
+def test_unknown_inherited_or_custom_settings_contracts_abstain(replacement: str) -> None:
+    source = _SETTINGS_PREFIX.replace("class Settings(BaseSettings):", replacement)
+    assert _check(source + "Settings.model_construct(environment='other')\n") == []
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        "    @classmethod\n    def model_construct(cls, **values): return replacement\n",
+        "    def model_copy(self, **values): return replacement\n",
+        "    @classmethod\n    def settings_customise_sources(cls, settings_cls, **sources): return ()\n",
+        "    @field_validator('environment')\n    @classmethod\n    def normalize(cls, value): return 'dev'\n",
+        "    model_config = {'env_prefix': 'SERVICE_'}\n",
+        "    model_config = SettingsConfigDict(env_prefix='SERVICE_')\n",
+        "    model_config = {'populate_by_name': True}\n",
+        "    model_config = {'extra': policy}\n",
+    ],
+)
+def test_settings_methods_and_unqualified_configuration_abstain(member: str) -> None:
+    source = (
+        "from pydantic import field_validator\nfrom pydantic_settings import SettingsConfigDict\n"
+        + _SETTINGS_PREFIX.replace("    environment:", f"{member}    environment:")
+    )
+    assert _check(source + "Settings.model_construct(environment='other')\n") == []
+
+
+@pytest.mark.parametrize("configuration", ["{'frozen': True}", "{'strict': True, 'extra': 'forbid'}"])
+def test_passive_shared_model_options_are_valid_for_settings(configuration: str) -> None:
+    source = _SETTINGS_PREFIX.replace("    environment:", f"    model_config = {configuration}\n    environment:")
+    assert len(_check(source + "Settings.model_construct(environment='other')\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "ps.BaseSettings.model_construct = replacement",
+        "setattr(ps.BaseSettings, 'model_construct', replacement)",
+        "ps.BaseSettings = replacement",
+        "setattr(ps, 'BaseSettings', replacement)",
+        "configure(ps)",
+        "configure(BaseSettings)",
+    ],
+)
+def test_all_settings_base_namespace_aliases_remain_guarded(mutation: str) -> None:
+    source = "import pydantic_settings as ps\n" + _SETTINGS_PREFIX.replace(
+        "class Settings", f"{mutation}\nclass Settings"
+    )
+    assert _check(source + "Settings.model_construct(environment='other')\n") == []
+
+
+def test_shadowed_settings_receiver_is_not_the_declared_model() -> None:
+    source = _SETTINGS_PREFIX + "def configure(Settings):\n    return Settings.model_construct(environment='other')\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ("str = Field(...)", 1),
+        ("str = Field(default_factory=None)", 1),
+        ("Annotated[str, Field(default_factory=None)]", 1),
+        ("Annotated[str, Field(default='dev')] = Field(...)", 0),
+        ("Annotated[str, Field(default='dev')] = ...", 1),
+        ("Annotated[str, Field(default_factory=str)] = Field(default_factory=None)", 1),
+        ("str | None = None", 0),
+        ("ClassVar[str] = 'dev'", 0),
+    ],
+)
+def test_settings_required_metadata_uses_existing_pydantic_merging(declaration: str, expected: int) -> None:
+    source = (
+        "from typing import Annotated, ClassVar\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n"
+        f"class Settings(BaseSettings):\n    environment: {declaration}\nSettings.model_construct()\n"
+    )
+    assert len(_check(source)) == expected
+
+
+def test_private_settings_fields_are_not_missing_public_inputs() -> None:
+    source = "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    _environment: str\nSettings.model_construct()\n"
+    assert _check(source) == []
+
+
+def test_settings_annotation_budget_is_checked_before_recursive_field_analysis() -> None:
+    annotation = "str" + " | str" * 1500
+    source = f"from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    environment: {annotation}\nSettings.model_construct()\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "BaseSettings"])
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "ClassVar[str]",
+        "Annotated[ClassVar[str], Field()]",
+        "Annotated[Annotated[ClassVar[str], Field()], Field(description='metadata')]",
+        "Annotated[Metadata[str], Field()]",
+    ],
+)
+def test_classvar_metadata_is_not_a_required_model_or_settings_input(base: str, annotation: str) -> None:
+    source = (
+        "from typing import Annotated, ClassVar\nfrom typing_extensions import ClassVar as Metadata\n"
+        "from pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\n"
+        f"class Settings({base}):\n    environment: {annotation}\nSettings.model_construct()\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "BaseSettings"])
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "from external import ClassVar\n",
+        "from typing import ClassVar\nClassVar = external\n",
+        "from typing import ClassVar\ndef unrelated(ClassVar): pass\n",
+    ],
+)
+def test_unproven_or_shadowed_classvar_names_do_not_supply_field_contracts(base: str, prefix: str) -> None:
+    source = (
+        prefix
+        + "from typing import Annotated\nfrom pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\n"
+        + f"class Settings({base}):\n    environment: Annotated[ClassVar[str], Field()]\nSettings.model_construct()\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "BaseSettings"])
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ("str = Ellipsis", 1),
+        ("str = Field(Ellipsis)", 1),
+        ("str = Field(default=Ellipsis)", 1),
+        ("Annotated[str, Field(default=Ellipsis)]", 1),
+        ("Annotated[str, Field(default='dev')] = Field(default=Ellipsis)", 0),
+        ("Annotated[str, Field(default='dev')] = Ellipsis", 1),
+    ],
+)
+def test_builtin_ellipsis_is_a_required_field_default_only(base: str, declaration: str, expected: int) -> None:
+    source = (
+        "from typing import Annotated\nfrom pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\n"
+        f"class Settings({base}):\n    environment: {declaration}\nSettings.model_construct()\n"
+    )
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "BaseSettings"])
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "Ellipsis = 'dev'\n",
+        "Ellipsis = ...\n",
+        "from external import Ellipsis\n",
+        "Ellipsis = 'dev'\nEllipsis = external\n",
+    ],
+)
+def test_shadowed_ellipsis_defaults_remain_opaque(base: str, prefix: str) -> None:
+    source = (
+        "from typing import Annotated\nfrom pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\n"
+        + prefix
+        + f"class Settings({base}):\n    environment: Annotated[str, Field(default=Ellipsis)]\nSettings.model_construct()\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("base", ["BaseModel", "BaseSettings"])
+def test_unrelated_local_ellipsis_name_does_not_shadow_the_field_default(base: str) -> None:
+    source = (
+        "from typing import Annotated\nfrom pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\n"
+        "def unrelated(Ellipsis): pass\n"
+        f"class Settings({base}):\n    environment: Annotated[str, Field(default=Ellipsis)]\nSettings.model_construct()\n"
+    )
+    assert len(_check(source)) == 1
+
+
+class _BuiltinEllipsisRequired(BaseModel):
+    value: Annotated[str, Field(default=Ellipsis)]
+
+
+def test_builtin_ellipsis_required_metadata_matches_pydantic_runtime() -> None:
+    assert _BuiltinEllipsisRequired.model_fields["value"].is_required()

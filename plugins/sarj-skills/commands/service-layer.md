@@ -7,38 +7,78 @@ when contracts or measured cost improve. Add layers for real substitution/policy
 not simple CRUD. Keep deploy-varying settings at a typed startup boundary; inspect
 unsafe fallbacks without turning stable constants into settings.
 
-Trace deployment accounts/projects, service origins, resource identifiers, local
-paths and operational tuning to their configuration owner. Externalize values
-that vary by deployment; reuse existing inputs instead of adding parallel env
-names. Parse environment input with a Zod schema in JavaScript/TypeScript or a
-Pydantic model/Pydantic Settings in Python. Construct one shared validated root
-settings object per application/runtime boundary at startup, fail before remote
-effects when required values are absent/invalid, and inject or import that same
-object in consumers. Reuse nested component settings where appropriate; keep
-server secrets separate from public client settings. Declaring a schema, adding
-a type annotation or reading an env variable does not validate it. With Zod,
-use the parsed output; `safeParse` requires failure handling before `.data` is
-used. Preserve existing aliases, source precedence, coercion and optional defaults.
-Production fallbacks must not silently select another account or service.
+Trace deployment accounts/projects, service origins, resource identifiers, paths
+and tuning to their configuration owner. Externalize deployment-varying values;
+reuse existing inputs. Construct one shared validated root settings object per
+application/runtime startup, then inject/import that instance in consumers.
+Compose existing nested settings and preserve aliases, source precedence and
+intentional optional defaults. Keep server secrets separate from public client
+settings; share parsed output, never raw input aliases.
+Construct settings at the owning entrypoint; library imports and unused CLI
+commands should not require unrelated deployment configuration.
 
-| File/runtime | Configuration boundary to inspect |
+In JavaScript/TypeScript, use the output of the actual Zod parser. Await
+`parseAsync`/`safeParseAsync`; handle `safeParse` failure before using `.data`.
+A schema declaration, parser-shaped method name, ignored result or unawaited
+promise does not establish validated settings. For the existing account input:
+
+```ts
+import { z } from "zod";
+const SettingsSchema = z.object({
+  CLOUDFLARE_ACCOUNT_ID: z.string().length(32).regex(/^[a-fA-F0-9]{32}$/u),
+});
+export const settings = SettingsSchema.parse(process.env);
+```
+
+In Python, construct Pydantic Settings for environment sources, or use a
+Pydantic `BaseModel.model_validate(...)`/`model_validate_json(...)` for an
+already-loaded mapping/JSON input. Use the validated model. `model_construct`
+and `model_copy(update=raw)` do not validate external configuration.
+
+```python
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    cloudflare_account_id: str = Field(
+        validation_alias="CLOUDFLARE_ACCOUNT_ID",
+        min_length=32,
+        max_length=32,
+        pattern=r"^[a-fA-F0-9]{32}$",
+    )
+
+settings = Settings()
+```
+
+Environment input is text. Parse textual booleans/numbers deliberately:
+`Boolean("false")` and `z.coerce.boolean()` use truthiness; `Number("")` is zero.
+Use explicit textual-boolean parsing (such as `z.stringbool()` where supported)
+or a deliberate true/false mapping. Coercion must not make missing/empty required
+input valid. Required parse/validation failures stop startup before remote
+effects; production account/service fallbacks must not hide them. Preserve
+defaults where the contract permits omission and validate defaults when needed
+(`BaseModel` defaults require `validate_default` for that validation).
+
+| File/runtime | Native configuration boundary |
 | --- | --- |
-| Python | One Pydantic/Pydantic Settings root object constructed at startup; inject it into services instead of repeated environment reads or constructing settings per consumer. |
-| JavaScript/TypeScript | One shared `SettingsSchema.parse(...)` result from validated startup env or platform bindings; keep secrets out of public build variables visible to clients. |
-| Shell/Make | Required, quoted shell variables such as `${ACCOUNT_ID:?required}`; respect Make versus shell expansion and use quoted argument passing. |
-| GitHub Actions YAML | Repository/environment `vars` for deployment values and `secrets` for credentials, passed through `env` or action inputs with validation before deployment. |
-| Terraform/HCL | Typed module inputs supplied by caller configuration, tfvars or `TF_VAR_`; reuse resource/data references and locals for fixed shared values. |
-| Compose/Kubernetes/Dockerfile | Native environment/config/secret references and supported interpolation; verify precedence, and keep credentials out of image `ARG`/`ENV` layers. |
-| JSON/JSONC/TOML/INI | The consuming tool's supported config/env interface or an explicit generation step; these formats do not inherently expand `${VAR}`. |
-| SQL | Bound application parameters or explicit migration/session configuration; preserve schema names and immutable migration literals. |
-| Swift/Kotlin/native apps | Platform build/runtime configuration for public deployment values; packaged values are extractable, so keep privileged secrets at an authorized server or secret store. |
-| Markdown/examples | Document required variable names and safe placeholders; preserve deterministic fixtures, public protocol constants and illustrative literals. |
+| Shell/Make | Quoted `${CLOUDFLARE_ACCOUNT_ID:?required}` checks presence; Make spells the shell dollar `$$`. Use quoted arguments and the actual shell. Domain validation belongs to the invoked runtime or native shell implementation. |
+| GitHub Actions YAML | Pass deployment `vars` and credential `secrets` through `env`/action inputs; validate in the invoked entrypoint. Avoid turning untrusted expressions into shell source. |
+| Terraform/HCL | Typed inputs via caller modules, tfvars or `TF_VAR_`, with native provider/input validation. Reuse resource/data references and fixed shared locals; preserve independent scopes. |
+| Compose/Kubernetes/Dockerfile | Use supported interpolation, config/secret references and runtime env; preserve source precedence. Syntax-only or no-interpolation checks do not validate resolved app settings; required interpolation checks presence only. Keep credentials out of image `ARG`/`ENV`; exec-form argv does not imply shell expansion. |
+| JSON/JSONC/TOML/INI/dotenv | Use the consuming tool's supported loader or an explicit generator emitting validated output. These formats do not inherently expand `${VAR}`; native syntax/schema checks do not prove application-domain validation. |
+| SQL | Bind application values or use explicit runner/session configuration. Preserve schema identifiers and immutable migration literals. |
+| Swift/Kotlin/native apps | Use platform build/runtime settings for public values. Packaged values are extractable; retain privileged secrets at an authorized server or appropriate user secret store. |
+| Markdown/examples | Document required names and safe placeholders; keep fixtures and illustrative literals deterministic. |
 
-Keep reviewed security allowlists and expected deployment identities independently
-authoritative. Reading both a target and its expected identity from the same env
-setting removes the check. Do not externalize policy, snapshots or stable
-constants merely because they look like deployment values; no mechanical env
-autofix can establish their owner.
+Keep reviewed security allowlists/expected identities independently authoritative;
+reading the target and expected identity from one env setting removes the check.
+Preserve policy, snapshots, stable protocol/tool constants and legitimate optional
+settings. Validate native formats through their supported mechanisms and the
+owning application runtime.
+
+Startup tests should cover absent/malformed required input, empty/textual-boolean
+coercion traps, permitted defaults, aliases/source precedence and nested settings;
+prove validation precedes effects and consumers reuse the parsed settings object.
 
 Trace acquisition/close ownership through the last consumer, including lazy
 responses. FastAPI provider changes must preserve authorization/security schema:

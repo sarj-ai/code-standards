@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "336611a06e4875849375a4178b3d0cf20554dbef582155587a3fb1078157de6f",
-  "cliSha256": "20d7741e910087e6ed9d5437a77b865016c83184b4e47bba249011dc27cde017",
+  "catalogSha256": "c43868df0390d4da801d7b291d63f50bdd6163b07b0f6dc34c15b740a89d9398",
+  "cliSha256": "82879835050c23ea2c4815da5b34d628670a824c89063f448133a8d7d384dff0",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -5189,6 +5189,130 @@
     "oxlint:no-raw-env": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ API_KEY: z.string().min(1) });\nexport const settings = await SettingsSchema.parseAsync(process.env);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "async-settings-awaited",
+          "outcome": "accept",
+          "scenarioId": "async-settings",
+          "title": "Await parsing before exporting the shared settings object"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ API_KEY: z.string().min(1) });\nexport const settings = SettingsSchema.parseAsync(process.env);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "async-settings-promise",
+          "outcome": "reject",
+          "scenarioId": "async-settings",
+          "title": "An unfinished parser promise is not startup settings"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ API_KEY: z.string().min(1) });\nconst createEnv = (input) => input;\nexport const settings = SettingsSchema.parse(createEnv(process.env));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "identity-loader-before-real-parser",
+          "outcome": "accept",
+          "scenarioId": "closed-identity-adapter",
+          "title": "An identity adapter can forward into the actual Zod parser"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "const createEnv = (input) => input;\nexport const settings = createEnv(process.env);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "identity-loader-without-parser",
+          "outcome": "reject",
+          "scenarioId": "closed-identity-adapter",
+          "title": "A local identity adapter does not validate environment input"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ API_ORIGIN: z.url() });\nexport const settings = SettingsSchema.parse(JSON.parse(process.env.SETTINGS_JSON));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "json-decoding-then-validation",
+          "outcome": "accept",
+          "scenarioId": "json-settings",
+          "title": "Validate decoded environment JSON with the actual schema"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "export const settings = JSON.parse(process.env.SETTINGS_JSON);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "json-decoding-without-validation",
+          "outcome": "reject",
+          "scenarioId": "json-settings",
+          "title": "JSON decoding does not validate the settings contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/database.ts",
+              "source": "import { env as raw } from \"node:process\";\nexport const databaseUrl = raw.DATABASE_URL;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/database.ts",
+          "id": "native-env-import-read",
+          "outcome": "reject",
+          "scenarioId": "native-env-import",
+          "title": "Native env import aliases still need validation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/database.ts",
+              "source": "import { settings } from \"./env.js\";\nexport const databaseUrl = settings.DATABASE_URL;\n"
+            },
+            {
+              "path": "src/env.ts",
+              "source": "import { env as raw } from \"node:process\";\nimport { z } from \"zod\";\nconst SettingsSchema = z.object({ DATABASE_URL: z.url() });\nexport const settings = SettingsSchema.parse(raw);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "native-env-import-validated",
+          "outcome": "accept",
+          "scenarioId": "native-env-import",
+          "title": "Parse the imported environment once and share settings"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -5202,6 +5326,51 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Declaring a schema does not validate a raw export"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ API_ORIGIN: z.url() });\nexport const settings = SettingsSchema.parse(\n  process.env.LOAD_REMOTE ? fetch(\"https://example.test/config\") : {},\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "raw-input-controls-effects",
+          "outcome": "reject",
+          "scenarioId": "conditional-settings",
+          "title": "A raw conditional input is not the value reaching the parser"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { env as raw } from \"node:process\";\nimport { z } from \"zod\";\nconst SettingsSchema = z.object({ API_KEY: z.string().min(1) });\nconst { API_KEY, API_ORIGIN } = raw;\nexport const settings = SettingsSchema.parse({ API_KEY });\nexport const unparsedOrigin = API_ORIGIN;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "selected-fields-raw-escape",
+          "outcome": "reject",
+          "scenarioId": "selected-settings-fields",
+          "title": "Parsing one selected field does not validate another raw export"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { env as raw } from \"node:process\";\nimport { z } from \"zod\";\nconst SettingsSchema = z.object({ API_KEY: z.string().min(1), API_ORIGIN: z.url() });\nconst { API_KEY, API_ORIGIN } = raw;\nexport const settings = SettingsSchema.parse({ API_KEY, API_ORIGIN });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "selected-fields-validated",
+          "outcome": "accept",
+          "scenarioId": "selected-settings-fields",
+          "title": "Validate every selected ordinary field and reuse the parsed result"
         },
         {
           "expectedCount": 0,
@@ -5221,6 +5390,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Parse once and reuse one settings object"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({\n  LOAD_REMOTE: z.enum([\"0\", \"1\"]).transform((value) => value === \"1\"),\n});\nexport const settings = SettingsSchema.parse(process.env);\nif (settings.LOAD_REMOTE) await fetch(\"https://example.test/config\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/env.ts",
+          "id": "validated-input-controls-effects",
+          "outcome": "accept",
+          "scenarioId": "conditional-settings",
+          "title": "Parse the control setting before remote effects"
         }
       ],
       "optionsSchemaSource": null
@@ -6295,6 +6479,25 @@
           "title": "Import a browser-safe settings boundary"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "client-barrel.tsx",
+              "source": "\"use client\";\nexport { CLIENT_SETTINGS } from \"./client-settings.js\";\n"
+            },
+            {
+              "path": "client-settings.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ apiOrigin: z.url() });\nexport const CLIENT_SETTINGS = SettingsSchema.parse({\n  apiOrigin: process.env.NEXT_PUBLIC_API_ORIGIN,\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client-barrel.tsx",
+          "id": "public-client-settings-re-export",
+          "outcome": "accept",
+          "scenarioId": "client-re-export",
+          "title": "Forward public settings from the client boundary"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6308,6 +6511,25 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not pull server settings into a client bundle"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "client-barrel.tsx",
+              "source": "\"use client\";\nexport { SERVER_SETTINGS } from \"./server-settings.js\";\n"
+            },
+            {
+              "path": "server-settings.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({ apiOrigin: z.url() });\nexport const SERVER_SETTINGS = SettingsSchema.parse({\n  apiOrigin: process.env.API_ORIGIN,\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client-barrel.tsx",
+          "id": "server-settings-client-re-export",
+          "outcome": "reject",
+          "scenarioId": "client-re-export",
+          "title": "A client barrel cannot forward server settings"
         }
       ],
       "optionsSchemaSource": null
@@ -7775,6 +7997,40 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Move outgoing account scope into deployment configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/cloud-client.ts",
+              "source": "import { settings } from \"./env.js\";\nexport function list() {\n  return fetch(\n    new URL(\n      `https://api.cloudflare.com/client/v4/accounts/${settings.CLOUDFLARE_ACCOUNT_ID}/workers/scripts`,\n    ),\n  );\n}\n"
+            },
+            {
+              "path": "src/env.ts",
+              "source": "import { z } from \"zod\";\nconst SettingsSchema = z.object({\n  CLOUDFLARE_ACCOUNT_ID: z\n    .string()\n    .length(32)\n    .regex(/^[a-fA-F0-9]+$/u),\n});\nexport const settings = SettingsSchema.parse(process.env);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cloud-client.ts",
+          "id": "native-url-configured-account",
+          "outcome": "accept",
+          "scenarioId": "native-url-account",
+          "title": "Supply the account from shared Zod-validated settings"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/cloud-client.ts",
+              "source": "export function list() {\n  return fetch(\n    new URL(\n      \"https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/workers/scripts\",\n    ),\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cloud-client.ts",
+          "id": "native-url-literal-account",
+          "outcome": "reject",
+          "scenarioId": "native-url-account",
+          "title": "A native URL wrapper still fixes the outgoing account in source"
         },
         {
           "expectedCount": 0,
@@ -12698,6 +12954,36 @@
           "files": [
             {
               "path": "service/settings.py",
+              "source": "from typing import Annotated\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    deployment: Annotated[str, Field(default=\"prod\", alias=\"ENVIRONMENT\")]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "annotated-defaulted-environment",
+          "outcome": "reject",
+          "scenarioId": "annotated-environment",
+          "title": "Annotated metadata still supplies a deployment default"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/settings.py",
+              "source": "from typing import Annotated\nfrom pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    deployment: Annotated[str, Field(alias=\"ENVIRONMENT\")]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "annotated-required-environment",
+          "outcome": "accept",
+          "scenarioId": "annotated-environment",
+          "title": "Annotated metadata can leave the input required"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/settings.py",
               "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: str = Field(default=\"local\", alias=\"ENVIRONMENT\")\n"
             }
           ],
@@ -14114,6 +14400,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Trusted construction still satisfies the declared vocabulary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from typing import Literal\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: Literal[\"dev\", \"prod\"]\n\n\nsettings = Settings.model_construct(environment=\"other\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "settings-construct-invalid-environment",
+          "outcome": "reject",
+          "scenarioId": "settings-validation-boundary",
+          "title": "A settings type does not validate unchecked construction"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from typing import Literal\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: Literal[\"dev\", \"prod\"]\n\n\nsettings = Settings()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "settings-validated-environment",
+          "outcome": "accept",
+          "scenarioId": "settings-validation-boundary",
+          "title": "Construct the validated settings object at startup"
         }
       ],
       "optionsSchemaSource": null
