@@ -253,6 +253,7 @@
       "insert-requires-replay-policy",
       "invalid-concurrent-ddl",
       "invalid-postgres-ddl",
+      "migration-timeout-requires-justification",
       "mixed-migration-phases",
       "new-table-inline-constraints",
       "no-analytical-queries-in-transactional-db",
@@ -728,7 +729,8 @@
       "SARJ127",
       "SARJ128",
       "SARJ129",
-      "SARJ130"
+      "SARJ130",
+      "SARJ131"
     ],
     "iac": [
       "SARJ201",

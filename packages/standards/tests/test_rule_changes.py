@@ -468,6 +468,11 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("python", "no-sys-path-mutation", "off", 1),
         ("oxlint", "no-sys-path-mutation", "error", 1),
         ("python", "no-sys-path-mutation-extra", "error", 1),
+        ("sql", "migration-timeout-requires-justification", "error", 0),
+        ("sql", "migration-timeout-requires-justification", "off", 1),
+        ("python", "migration-timeout-requires-justification", "error", 1),
+        ("sql", "migration-timeout-requires-justification-extra", "error", 1),
+        ("sql", "migration-timeout-requires-Justification", "error", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
@@ -509,6 +514,7 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         "python:no-blanket-suppression",
         "sql:new-table-inline-constraints",
         "python:no-async-client-in-constructor",
+        "sql:migration-timeout-requires-justification",
     ],
 )
 def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(

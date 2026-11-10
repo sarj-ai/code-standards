@@ -102,12 +102,16 @@ _STATEMENT_HEAD_SIZE = 4
 _DUMP_HEADER_RE = re.compile(r"postgresql database dump|dumped by pg_dump|dumped from database", re.IGNORECASE)
 
 
-def is_dump_file(source: str, path: Path | None = None) -> bool:
+def is_explicit_dump_file(source: str, path: Path | None = None) -> bool:
     if path is not None:
         name = path.name.lower()
         if name in {"structure.sql", "schema.sql"} or name.endswith("_dump.sql") or "restore" in path.parts:
             return True
-    if has_file_comment_match(source, _DUMP_HEADER_RE, limit=1024):
+    return has_file_comment_match(source, _DUMP_HEADER_RE, limit=1024)
+
+
+def is_dump_file(source: str, path: Path | None = None) -> bool:
+    if is_explicit_dump_file(source, path):
         return True
     header = source[:1024].lower()
     if "set statement_timeout = 0;" not in header or "set lock_timeout = 0;" not in header:
@@ -174,7 +178,7 @@ _NON_PRODUCTION_SQL_PARTS = frozenset(
         "testdata",
     }
 )
-_NON_POSTGRES_SQL_PARTS = frozenset({"clickhouse", "d1", "mariadb", "mysql", "sqlite"})
+NON_POSTGRES_SQL_PARTS = frozenset({"clickhouse", "d1", "mariadb", "mysql", "sqlite"})
 _FLYWAY_MIGRATION_RE = re.compile(r"^(?:B|R|V)(?:\d+(?:[._]\d+)*)?__.+\.sql$", re.IGNORECASE)
 _MIGRATION_SOURCE_DIRECTIVE_RE = re.compile(
     r"^\s*--\s*(?:migrate:up(?:\s|$)|\+goose\s+up\s*$|liquibase\s+formatted\s+sql\s*$)",
@@ -334,7 +338,7 @@ def is_postgres(source: str) -> bool:
 
 def is_postgres_source(path: Path, source: str) -> bool:
     parts = tuple(part.lower() for part in path.parts)
-    if any(part in _NON_POSTGRES_SQL_PARTS for part in parts):
+    if any(part in NON_POSTGRES_SQL_PARTS for part in parts):
         return False
     dialect = declared_dialect(source)
     if dialect is not None:
@@ -369,7 +373,7 @@ def is_sqlite(source: str) -> bool:
 
 def is_postgres_migration(path: Path, source: str) -> bool:
     parts = tuple(part.lower() for part in path.parts)
-    if any(part in _NON_PRODUCTION_SQL_PARTS or part in _NON_POSTGRES_SQL_PARTS for part in parts):
+    if any(part in _NON_PRODUCTION_SQL_PARTS or part in NON_POSTGRES_SQL_PARTS for part in parts):
         return False
 
     source_directive = _MIGRATION_SOURCE_DIRECTIVE_RE.search(source) is not None

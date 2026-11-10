@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e9c151324b93ee3f917ea913c6db2751d83f8466a4ba922196f84cacfa69003d",
-  "cliSha256": "8a2c273f67d9dd625242f4ed4c8ca784b16f8c6857100f42b8f10ea8d65f04ae",
+  "catalogSha256": "54d87be95ecdf19cf662e1e3ec994b7fd0f5b7756c0c856704d72a102e945d30",
+  "cliSha256": "b382feec4cf4f8e6d7fe74b52f9beaf66640c04028724b30fb8b729fd329f39e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -22656,6 +22656,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A built-in hash index cannot enforce uniqueness"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:migration-timeout-requires-justification": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- timeout-justification: lock_timeout -- restore the session default after the reviewed lock override\nRESET lock_timeout;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "justified-reset",
+          "outcome": "accept",
+          "scenarioId": "reset-timeout",
+          "title": "Cleanup records the setting it restores"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- timeout-justification: statement_timeout -- bounded backfill exceeds the session default\nSET\n  statement_timeout = '10min';\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "justified-set",
+          "outcome": "accept",
+          "scenarioId": "set-timeout",
+          "title": "The reviewed backfill records why it needs a different deadline"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "RESET lock_timeout;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "unjustified-reset",
+          "outcome": "reject",
+          "scenarioId": "reset-timeout",
+          "title": "A reset also changes the session's timeout behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SET\n  statement_timeout = '10min';\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "unjustified-set",
+          "outcome": "reject",
+          "scenarioId": "set-timeout",
+          "title": "A timeout header has no operational reason"
         }
       ],
       "optionsSchemaSource": null

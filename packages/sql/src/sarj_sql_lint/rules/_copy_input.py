@@ -17,7 +17,7 @@ def sql_before_copy_input(source: str) -> str:
     for start, end in dollar_quoted_spans(source):
         masked_chars[start:end] = _NON_NEWLINE.sub(" ", source[start:end])
     masked = "".join(masked_chars)
-    names_preserved = _masked_top_level_sql(source)
+    names_preserved = mask_top_level_sql(source)
     start = 0
     for separator in re.finditer(r";", masked):
         tokens = tokenize(names_preserved[start : separator.start()])
@@ -33,7 +33,7 @@ def _copy_from_stdin(tokens: list[Token]) -> bool:
     return consume(top, 0, "COPY") and any(sequence(top, index, ("FROM", "STDIN")) for index in range(1, len(top)))
 
 
-def _masked_top_level_sql(source: str) -> str:
+def mask_top_level_sql(source: str) -> str:
     masked_chars = list(mask_sql_literals_and_comments(source, mask_dollar_literals=True))
     for start, end in dollar_quoted_spans(source):
         masked_chars[start:end] = _NON_NEWLINE.sub(" ", source[start:end])
