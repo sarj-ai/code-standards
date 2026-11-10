@@ -22,8 +22,10 @@ from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import (
     FIELD_SOURCES,
     MODEL_SOURCES,
+    SETTINGS_SOURCES,
     TYPING_SOURCES,
     direct_models,
+    required_default_sentinel,
     unique_members,
 )
 
@@ -77,16 +79,51 @@ class NoInvalidPydanticBypass(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only plain, direct, module-level Pydantic BaseModel subclasses with supported built-in and typing field annotations are inspected; hooks, inheritance, class decorators and custom methods are excluded.",
+            "Only plain, direct, module-level Pydantic BaseModel or Pydantic Settings BaseSettings subclasses with supported built-in and typing field annotations are inspected; hooks, inheritance, class decorators and custom methods are excluded.",
             "Checks explicit None conflicts, closed string Literal domains, and bounded side-effect-free literal values contradicting builtin primitive or container field contracts. Coercible input is not assumed to be validated stored output.",
             "Container literals preserve their actual construction semantics, including last-wins dictionary keys. Unpacking, calls, unhashable literal containers, opaque values, numeric Literal domains, bounds, aliases and custom field types are not inferred. Bool remains an int subtype, and numeric int-to-float/complex assignability is preserved.",
-            "model_construct must use explicit keywords; omitted required fields are checked only when no unpacking or positional argument can supply them.",
+            "model_construct must use explicit keywords; omitted required fields are checked only when no unpacking or positional argument can supply them. Literal Ellipsis and the source-proven unshadowed bare builtin Ellipsis are equivalent required-field defaults; imported, assigned and shadowed aliases remain opaque.",
             "model_copy requires a fresh exact constructor or a stable unescaped local constructor binding, plus a plain literal update dictionary. Arbitrary annotated receivers and overridden methods are excluded.",
-            "Field aliases, non-passive model configuration, class or instance mutation and escape, ambiguous namespaces, tests and generated files are excluded.",
+            "Field aliases, non-passive model configuration, class or instance mutation and escape, ambiguous namespaces, tests and generated files are excluded. Source-proven ClassVar annotations remain class metadata through bounded transparent Annotated wrappers.",
+            "Settings support is limited to the same passive shared Pydantic configuration options as models. SettingsConfigDict calls, env/CLI/source options and custom settings sources remain excluded; no environment loading or settings validation is inferred from a bypass call.",
             "Direct model field annotations exceeding a bounded depth or node budget exclude the file rather than risking recursive analysis failure. Literal analysis also bounds the value tree and combined string/bytes content to avoid excessive witness work.",
             "Trusted valid construction and copy operations remain legal. No autofix chooses domain values or changes validation behavior.",
         ),
         examples=(
+            RuleExample(
+                example_id="settings-construct-invalid-environment",
+                scenario="settings-validation-boundary",
+                title="A settings type does not validate unchecked construction",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "from typing import Literal\nfrom pydantic_settings import BaseSettings\n"
+                        "class Settings(BaseSettings):\n    environment: Literal['dev', 'prod']\n"
+                        "settings = Settings.model_construct(environment='other')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="settings-validated-environment",
+                scenario="settings-validation-boundary",
+                title="Construct the validated settings object at startup",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "from typing import Literal\nfrom pydantic_settings import BaseSettings\n"
+                        "class Settings(BaseSettings):\n    environment: Literal['dev', 'prod']\n"
+                        "settings = Settings()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="construct-invalid-tag",
                 title="Unchecked construction stores a tag outside the declared vocabulary",
@@ -154,7 +191,9 @@ class NoInvalidPydanticBypass(Rule):
         if is_test_path(context.path) or context.generated:
             return []
         signals = context.symbol_source
-        if "BaseModel" not in signals or not any(api in signals for api in ("model_construct", "model_copy")):
+        if not any(base in signals for base in ("BaseModel", "BaseSettings")) or not any(
+            api in signals for api in ("model_construct", "model_copy")
+        ):
             return []
         if context.tree is None or not _bounded_model_annotations(context):
             return []
@@ -178,7 +217,10 @@ def _bounded_model_annotations(context: PythonFileContext) -> bool:
         if (
             not isinstance(model, ast.ClassDef)
             or len(model.bases) != 1
-            or not context.imports.resolves(model.bases[0], sources=MODEL_SOURCES, symbol="BaseModel")
+            or not (
+                context.imports.resolves(model.bases[0], sources=MODEL_SOURCES, symbol="BaseModel")
+                or context.module_imports.resolves(model.bases[0], sources=SETTINGS_SOURCES, symbol="BaseSettings")
+            )
         ):
             continue
         for member in model.body:
@@ -204,7 +246,7 @@ def _bounded_annotation(annotation: ast.expr) -> bool:
 
 def _models(context: PythonFileContext, provenance: ResourceProvenance) -> dict[ast.ClassDef, _Model]:
     result: dict[ast.ClassDef, _Model] = {}
-    for node in direct_models(context):
+    for node in direct_models(context, include_settings=True):
         if not _stable_class(node, context, provenance) or not _passive_configuration(node, context):
             continue
         fields = _model_fields(node, context)
@@ -223,7 +265,7 @@ def _model_fields(node: ast.ClassDef, context: PythonFileContext) -> dict[str, _
             continue
         if member.target.id not in unique or not _safe_annotation(member.annotation, context):
             return None
-        if member.target.id.startswith("_") or _typing_wrapper(member.annotation, "ClassVar", context):
+        if member.target.id.startswith("_") or _transparent_classvar(member.annotation, context):
             continue
         if member.target.id != "model_config":
             fields[member.target.id] = _Field(member.annotation, _required(member, context))
@@ -345,6 +387,19 @@ def _members(node: ast.expr) -> list[ast.expr]:
     return node.elts if isinstance(node, ast.Tuple) else [node]
 
 
+def _transparent_classvar(annotation: ast.expr, context: PythonFileContext) -> bool:
+    for _ in range(_MAX_ANNOTATION_DEPTH):
+        if _typing_wrapper(annotation, "ClassVar", context):
+            return True
+        if not _typing_wrapper(annotation, "Annotated", context) or not isinstance(annotation, ast.Subscript):
+            return False
+        members = _members(annotation.slice)
+        if not members:
+            return False
+        annotation = members[0]
+    return False
+
+
 def _typing_wrapper(node: ast.expr, wrapper: str, context: PythonFileContext) -> bool:
     return isinstance(node, ast.Subscript) and context.imports.resolves(
         node.value, sources=TYPING_SOURCES, symbol=wrapper
@@ -363,13 +418,13 @@ def _required(field: ast.AnnAssign, context: PythonFileContext) -> bool:
     factory_present = False
     for call in calls:
         defaults = [*call.args, *(keyword.value for keyword in call.keywords if keyword.arg == "default")]
-        if any(not _ellipsis(value) for value in defaults):
+        if any(not required_default_sentinel(value, context) for value in defaults):
             default_present = True
         for keyword in call.keywords:
             if keyword.arg == "default_factory":
                 factory_present = not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
     if bare_default is not None:
-        default_present = not _ellipsis(bare_default)
+        default_present = not required_default_sentinel(bare_default, context)
     return not default_present and not factory_present
 
 
@@ -380,10 +435,6 @@ def _annotated_fields(annotation: ast.expr, context: PythonFileContext) -> list[
     if not members:
         return []
     return [*_annotated_fields(members[0], context), *(item for item in members[1:] if isinstance(item, ast.Call))]
-
-
-def _ellipsis(node: ast.expr) -> bool:
-    return isinstance(node, ast.Constant) and node.value is Ellipsis
 
 
 def _bypass_target(
@@ -616,6 +667,10 @@ def _tuple_incompatible(
     return len(members) != len(value) or any(
         _literal_incompatible(member, item, context) for member, item in zip(members, value, strict=False)
     )
+
+
+def _ellipsis(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is Ellipsis
 
 
 def _string_domain(annotation: ast.expr, context: PythonFileContext) -> frozenset[str | None] | None:

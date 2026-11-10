@@ -2,17 +2,21 @@
  * @fileoverview prefer-configured-cloud-scope — keep outgoing cloud account scope in validated deployment configuration.
  */
 
+import { URL as NativeURL } from "node:url";
+
 import {
   defineRule,
+  tsReference,
   type ESTree,
   type Identifier,
   type Node,
   type SourceCode,
   type TsVariable,
 } from "../types.js";
-import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { typeOnlyReference } from "../utils/stable-value-binding.js";
 import { findVariable, staticPropertyName } from "../utils/static-string.js";
 
 const NAME = "prefer-configured-cloud-scope";
@@ -64,6 +68,7 @@ export default defineRule({
     const requests: ESTree.CallExpression[] = [];
     let fetchOverridden = false;
     let nodesRemaining = 0;
+    let nativeUrlSafe: boolean | undefined;
 
     function bindingOf(node: Identifier): TsVariable | null {
       return findVariable(sourceCode.getScope(node), node.name);
@@ -75,7 +80,8 @@ export default defineRule({
     }
 
     function globalReceiver(node: Node): boolean {
-      return node.type === "Identifier" && GLOBAL_RECEIVERS.has(node.name) && unshadowed(node);
+      const value = unwrapExpression(node);
+      return value.type === "Identifier" && GLOBAL_RECEIVERS.has(value.name) && unshadowed(value);
     }
 
     function outgoingFetch(node: Node, seen = new Set<TsVariable>()): boolean {
@@ -114,6 +120,16 @@ export default defineRule({
         declarator.id.type === "Identifier" &&
         declarator.init !== null &&
         outgoingFetch(declarator.init, next)
+      );
+    }
+
+    function nativeUrlReference(node: Node): boolean {
+      const value = unwrapExpression(node);
+      if (value.type === "Identifier") return value.name === "URL" && unshadowed(value);
+      return (
+        value.type === "MemberExpression" &&
+        globalReceiver(value.object) &&
+        staticPropertyName(value, sourceCode) === "URL"
       );
     }
 
@@ -160,26 +176,7 @@ export default defineRule({
       if (value.type === "Literal" && typeof value.value === "string") {
         return boundedParts([{ text: value.value, source: value }]);
       }
-      if (value.type === "Identifier") {
-        const binding = bindingOf(value);
-        if (
-          binding === null ||
-          seen.has(binding) ||
-          binding.defs.length !== 1 ||
-          binding.references.some((ref) => ref.isWrite() && ref.init !== true)
-        )
-          return UNKNOWN;
-        const [definition] = binding.defs;
-        if (
-          definition?.type !== "Variable" ||
-          definition.parent?.type !== "VariableDeclaration" ||
-          definition.parent.kind !== "const"
-        )
-          return UNKNOWN;
-        const declarator = definition.node as ESTree.VariableDeclarator;
-        if (declarator.id.type !== "Identifier" || declarator.init === null) return UNKNOWN;
-        return urlParts(declarator.init, new Set([...seen, binding]), depth + 1);
-      }
+      if (value.type === "Identifier") return identifierUrlParts(value, seen, depth);
       if (value.type === "BinaryExpression" && value.operator === "+") {
         return boundedParts([
           ...urlParts(value.left, seen, depth + 1),
@@ -187,7 +184,121 @@ export default defineRule({
         ]);
       }
       if (value.type === "TemplateLiteral") return templateParts(value, seen, depth);
+      if (value.type === "NewExpression") return nativeUrlParts(value, seen, depth);
       return UNKNOWN;
+    }
+
+    /** Resolve const provenance separately from folding expression syntax. */
+    function identifierUrlParts(
+      identifier: Identifier,
+      seen: Set<TsVariable>,
+      depth: number,
+    ): readonly UrlPart[] {
+      const binding = bindingOf(identifier);
+      if (
+        binding === null ||
+        seen.has(binding) ||
+        binding.defs.length !== 1 ||
+        binding.references.some((ref) => ref.isWrite() && ref.init !== true)
+      )
+        return UNKNOWN;
+      const [definition] = binding.defs;
+      if (
+        definition?.type !== "Variable" ||
+        definition.parent?.type !== "VariableDeclaration" ||
+        definition.parent.kind !== "const"
+      )
+        return UNKNOWN;
+      const declarator = definition.node as ESTree.VariableDeclarator;
+      if (declarator.id.type !== "Identifier" || declarator.init === null) return UNKNOWN;
+      const initializer = unwrapExpression(declarator.init);
+      if (
+        initializer.type === "NewExpression" &&
+        nativeUrlReference(initializer.callee) &&
+        !onlyUrlRequests(binding, declarator)
+      )
+        return UNKNOWN;
+      return urlParts(declarator.init, new Set([...seen, binding]), depth + 1);
+    }
+
+    /** URL objects may only be read directly by the proven request sink. */
+    function onlyUrlRequests(variable: TsVariable, declarator: ESTree.VariableDeclarator): boolean {
+      if (variable.references.length > 128) return false;
+      const declaration = parentOf(declarator);
+      if (declaration !== null && parentOf(declaration)?.type === "ExportNamedDeclaration")
+        return false;
+      return variable.references.every((reference) => {
+        if (reference.init === true || typeOnlyReference(reference)) return true;
+        const value = outerExpression(reference.identifier);
+        const use = parentOf(value);
+        if (use?.type !== "CallExpression" || use.arguments[0] !== value) return false;
+        const callee = unwrapExpression(use.callee);
+        return (
+          (callee.type === "Identifier" && callee.name === "fetch" && unshadowed(callee)) ||
+          (callee.type === "MemberExpression" &&
+            globalReceiver(callee.object) &&
+            staticPropertyName(callee, sourceCode) === "fetch")
+        );
+      });
+    }
+
+    function nativeUrlParts(
+      value: ESTree.NewExpression,
+      seen: Set<TsVariable>,
+      depth: number,
+    ): readonly UrlPart[] {
+      if (
+        value.arguments.length !== 1 ||
+        !nativeUrlReference(value.callee) ||
+        !nativeUrlUnchanged()
+      )
+        return UNKNOWN;
+      const [argument] = value.arguments;
+      if (argument === undefined || argument.type === "SpreadElement") return UNKNOWN;
+      const parts = urlParts(argument, seen, depth + 1);
+      if (parts.some((part) => part.source === null)) return UNKNOWN;
+      const text = parts.map((part) => part.text).join("");
+      if (!ACCOUNT_URL.test(text)) return UNKNOWN;
+      try {
+        return new NativeURL(text).href === text ? parts : UNKNOWN;
+      } catch {
+        return UNKNOWN;
+      }
+    }
+
+    /** Capturing or mutating the constructor/prototype makes URL semantics unknown. */
+    function nativeUrlUnchanged(): boolean {
+      if (nativeUrlSafe !== undefined) return nativeUrlSafe;
+      nativeUrlSafe = sourceCode.scopeManager.scopes.every((scope) =>
+        scope.references.every((reference) => {
+          if (typeOnlyReference(tsReference(reference))) return true;
+          const identifier = reference.identifier;
+          if (["eval", "Function"].includes(identifier.name) && unshadowed(identifier))
+            return false;
+          let value = outerExpression(identifier);
+          if (!nativeUrlReference(value)) {
+            const member = parentOf(value);
+            if (globalReceiver(value)) {
+              if (member?.type !== "MemberExpression" || member.object !== value) return false;
+              const key = staticPropertyName(member, sourceCode);
+              if (key === null || GLOBAL_RECEIVERS.has(key)) return false;
+            }
+            if (
+              member?.type !== "MemberExpression" ||
+              member.object !== value ||
+              !nativeUrlReference(member)
+            )
+              return true;
+            value = outerExpression(member);
+          }
+          const use = parentOf(value);
+          return (
+            (use?.type === "NewExpression" && use.callee === value) ||
+            (use?.type === "UnaryExpression" && use.operator === "typeof")
+          );
+        }),
+      );
+      return nativeUrlSafe;
     }
 
     function templateParts(
@@ -213,6 +324,7 @@ export default defineRule({
         reported.clear();
         requests.length = 0;
         fetchOverridden = false;
+        nativeUrlSafe = undefined;
         const file = { filename: context.filename, cwd: context.cwd };
         return !isTestFile(file) && !isGeneratedFile(file, sourceCode.text);
       },

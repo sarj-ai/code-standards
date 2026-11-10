@@ -10,6 +10,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.version import InvalidVersion, Version
 
 from sarj_python_lint.json_boundary import is_object_mapping
+from sarj_python_lint.rules._annotation_origins import type_parameter_shadow
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._native_namespace_capability import native_namespace_capability_escapes
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 
 MODEL_SOURCES = frozenset({"pydantic", "pydantic.main"})
+SETTINGS_SOURCES = frozenset({"pydantic_settings", "pydantic_settings.main"})
 FIELD_SOURCES = frozenset({"pydantic", "pydantic.fields"})
 DECORATOR_SOURCES = frozenset({"pydantic", "pydantic.functional_validators", "pydantic.functional_serializers"})
 TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
@@ -31,17 +33,46 @@ _BUILTIN_SOURCES = frozenset({"builtins"})
 _SENSITIVE_MODULES = frozenset({"pydantic", "typing", "typing_extensions", "builtins"})
 
 
-def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple[ast.ClassDef, ...]:
-    tree = context.tree
-    if tree is None or context.generated or context.has_wildcard_import:
-        return ()
+def required_default_sentinel(value: ast.expr, context: PythonFileContext, *, at: ast.AST | None = None) -> bool:
+    if isinstance(value, ast.Constant):
+        return value.value is Ellipsis
+    if not isinstance(value, ast.Name) or value.id != "Ellipsis":
+        return False
+    anchor = value if at is None else at
+    inventory = context.binding_inventory
     if (
-        native_namespace_capability_escapes(context)
-        or _mutated_imports(context)
-        or _ambiguous_imports(context)
-        or _escaped_imports(context)
-        or dynamic_namespace_access(context.nodes(ast.AST), context.imports, context.parents)
+        inventory.wildcard
+        or not context.static_resource_provenance.builtin_namespace_untouched
+        or type_parameter_shadow("Ellipsis", anchor, context)
     ):
+        return False
+    scope = inventory.scope(anchor)
+    while scope is not None:
+        if "Ellipsis" in inventory.bindings.get(scope, {}):
+            return False
+        scope = inventory.scope(scope)
+    return True
+
+
+def model_namespace_hazards(
+    context: PythonFileContext, *, include_settings: bool = False, escape_symbols: frozenset[str] | None = None
+) -> bool:
+    modules = _SENSITIVE_MODULES | {"pydantic_settings"} if include_settings else _SENSITIVE_MODULES
+    return (
+        context.has_wildcard_import
+        or native_namespace_capability_escapes(context)
+        or _mutated_imports(context, modules)
+        or _ambiguous_imports(context, modules)
+        or _escaped_imports(context, modules, escape_symbols)
+        or dynamic_namespace_access(context.nodes(ast.AST), context.imports, context.parents)
+    )
+
+
+def direct_models(
+    context: PythonFileContext, *, methods: bool = False, include_settings: bool = False
+) -> tuple[ast.ClassDef, ...]:
+    tree = context.tree
+    if tree is None or context.generated or model_namespace_hazards(context, include_settings=include_settings):
         return ()
     provenance = context.static_resource_provenance
     return tuple(
@@ -49,7 +80,13 @@ def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple
         for node in tree.body
         if isinstance(node, ast.ClassDef)
         and len(node.bases) == 1
-        and context.imports.resolves(node.bases[0], sources=MODEL_SOURCES, symbol="BaseModel")
+        and (
+            context.imports.resolves(node.bases[0], sources=MODEL_SOURCES, symbol="BaseModel")
+            or (
+                include_settings
+                and context.module_imports.resolves(node.bases[0], sources=SETTINGS_SOURCES, symbol="BaseSettings")
+            )
+        )
         and not node.decorator_list
         and not node.keywords
         and not node.type_params
@@ -187,7 +224,7 @@ def inert_class_value(
     context: PythonFileContext, value: ast.expr, provenance: ResourceProvenance, *, pydantic_fields: bool
 ) -> bool:
     if not isinstance(value, ast.Call):
-        return literal_value(value)
+        return literal_value(value) or required_default_sentinel(value, context)
     qualified = context.module_imports.resolved_qualified_name(value.func)
     if (
         not pydantic_fields
@@ -196,10 +233,15 @@ def inert_class_value(
         or not provenance.imported(value.func, qualified)
     ):
         return False
-    return all(literal_value(argument) for argument in value.args) and all(
+    field_call = qualified in {"pydantic.Field", "pydantic.fields.Field"}
+    return all(
+        literal_value(argument) or (field_call and index == 0 and required_default_sentinel(argument, context))
+        for index, argument in enumerate(value.args)
+    ) and all(
         keyword.arg is not None
         and (
             literal_value(keyword.value)
+            or (field_call and keyword.arg == "default" and required_default_sentinel(keyword.value, context))
             or (
                 keyword.arg == "default_factory"
                 and isinstance(keyword.value, ast.Name)
@@ -212,26 +254,26 @@ def inert_class_value(
     )
 
 
-def _mutated_imports(context: PythonFileContext) -> bool:
+def _mutated_imports(context: PythonFileContext, modules: frozenset[str]) -> bool:
     for node in context.nodes(ast.Attribute, ast.Subscript, ast.Call):
         if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            if _sensitive_import_root(node, context):
+            if _sensitive_import_root(node, context, modules):
                 return True
         elif (
             isinstance(node, ast.Call)
             and node.args
             and _is_attribute_mutator(node.func, context)
-            and _sensitive_import_root(node.args[0], context)
+            and _sensitive_import_root(node.args[0], context, modules)
         ):
             return True
     return False
 
 
-def _sensitive_import_root(node: ast.expr, context: PythonFileContext) -> bool:
+def _sensitive_import_root(node: ast.expr, context: PythonFileContext, modules: frozenset[str]) -> bool:
     while isinstance(node, (ast.Attribute, ast.Subscript)):
         node = node.value
     binding = context.module_imports.bindings.get(node.id) if isinstance(node, ast.Name) else None
-    return binding is not None and binding.module.partition(".")[0] in _SENSITIVE_MODULES
+    return binding is not None and binding.module.partition(".")[0] in modules
 
 
 def _is_attribute_mutator(node: ast.expr, context: PythonFileContext) -> bool:
@@ -241,17 +283,27 @@ def _is_attribute_mutator(node: ast.expr, context: PythonFileContext) -> bool:
     ) or context.imports.resolved_symbol(node, sources=frozenset({"builtins"})) in names
 
 
-def _escaped_imports(context: PythonFileContext) -> bool:
+def _escaped_imports(
+    context: PythonFileContext, modules: frozenset[str], symbols: frozenset[str] | None = None
+) -> bool:
     for node in context.nodes(ast.Name, ast.Attribute):
-        if not isinstance(node.ctx, ast.Load) or not _sensitive_import_root(node, context):
+        if not isinstance(node.ctx, ast.Load) or not _sensitive_import_root(node, context, modules):
             continue
         parent = context.parents.get(node)
         if isinstance(parent, ast.Attribute) and parent.value is node:
+            continue
+        if symbols is not None and not _escape_in_scope(node, context, symbols):
             continue
         if (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING") or _type_reference(node, parent):
             continue
         return True
     return False
+
+
+def _escape_in_scope(node: ast.expr, context: PythonFileContext, symbols: frozenset[str]) -> bool:
+    qualified = context.module_imports.resolved_qualified_name(node)
+    # A whole module stays a namespace capability even when named symbols are narrowed.
+    return qualified is None or any(qualified == symbol or symbol.startswith(f"{qualified}.") for symbol in symbols)
 
 
 def _type_reference(node: ast.expr, parent: ast.AST | None) -> bool:
@@ -273,28 +325,30 @@ def _type_reference(node: ast.expr, parent: ast.AST | None) -> bool:
             return False
 
 
-def _ambiguous_imports(context: PythonFileContext) -> bool:
+def _ambiguous_imports(context: PythonFileContext, modules: frozenset[str]) -> bool:
     return any(
-        _nested_namespace_import(node, context) or _ambiguous_import(node, context)
+        _nested_namespace_import(node, context, modules) or _ambiguous_import(node, context, modules)
         for node in context.nodes(ast.Import, ast.ImportFrom)
     )
 
 
-def _nested_namespace_import(node: ast.Import | ast.ImportFrom, context: PythonFileContext) -> bool:
+def _nested_namespace_import(
+    node: ast.Import | ast.ImportFrom, context: PythonFileContext, modules: frozenset[str]
+) -> bool:
     if context.parents.get(node) is context.tree:
         return False
     if isinstance(node, ast.ImportFrom):
-        return (node.module or "").partition(".")[0] in _SENSITIVE_MODULES
-    return any(alias.name.partition(".")[0] in _SENSITIVE_MODULES for alias in node.names)
+        return (node.module or "").partition(".")[0] in modules
+    return any(alias.name.partition(".")[0] in modules for alias in node.names)
 
 
-def _ambiguous_import(node: ast.Import | ast.ImportFrom, context: PythonFileContext) -> bool:
+def _ambiguous_import(node: ast.Import | ast.ImportFrom, context: PythonFileContext, modules: frozenset[str]) -> bool:
     for alias in node.names:
         name = alias.asname or alias.name.partition(".")[0]
         if name in _BUILTIN_BINDINGS:
             return True
         binding = context.module_imports.bindings.get(name)
-        if binding is None or binding.module.partition(".")[0] not in {"pydantic", "typing", "typing_extensions"}:
+        if binding is None or binding.module.partition(".")[0] not in modules - {"builtins"}:
             continue
         if context.parents.get(node) is not context.tree:
             return True
