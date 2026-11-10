@@ -14,7 +14,7 @@
     "build": "astro build",
     "check": "astro check && tsrs --project tsconfig.tools.json",
     "lint": "OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint oxlint",
-    "test:routing": "node --test scripts/site.test.ts scripts/format-python-examples.test.ts scripts/rule-introductions.test.ts scripts/rule-sort.test.ts scripts/json-boundaries.test.ts",
+    "test:routing": "node --test scripts/site.test.ts scripts/format-python-examples.test.ts scripts/rule-introductions.test.ts scripts/rule-sort.test.ts scripts/json-boundaries.test.ts scripts/rule-search.test.ts",
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
@@ -23,9 +23,9 @@
     "audit:dependencies": "node scripts/audit-dependencies.ts"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.42.7",
+    "@astrojs/starlight": "0.42.10",
     "@sarj/design": "0.5.0",
-    "astro": "7.4.2",
+    "astro": "7.4.8",
     "zod": "4.6.7"
   },
   "devDependencies": {
