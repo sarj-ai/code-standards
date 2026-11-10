@@ -609,6 +609,25 @@ function libraryReference(
   return null;
 }
 
+/** Follow returned alternatives, never the condition or values consumed inside another expression. */
+function returnedValues(
+  node: Node,
+  depth = 0,
+  budget: WalkBudget = { remaining: MAX_TYPE_STEPS },
+): readonly Node[] | null {
+  if (depth >= MAX_DEPTH || --budget.remaining < 0) return null;
+  const value = unwrapExpression(node);
+  if (value.type === "AwaitExpression")
+    return returnedValues(value.argument, depth + 1, budget);
+  if (value.type !== "ConditionalExpression") return [value];
+  const consequent = returnedValues(value.consequent, depth + 1, budget);
+  if (consequent === null) return null;
+  const alternate = returnedValues(value.alternate, depth + 1, budget);
+  if (alternate === null || consequent.length + alternate.length > MAX_VARIANTS)
+    return null;
+  return [...consequent, ...alternate];
+}
+
 /** A literal coded failure still loses presentation ownership when it renders its context here. */
 function renderedFailure(node: Node, source: SourceCode): ProducerIssue | null {
   let value = unwrapExpression(node);
@@ -799,16 +818,22 @@ export default defineRule({
       value: Node,
     ): void {
       if (owner === null) return;
-      const rendered = renderedFailure(value, context.sourceCode);
-      if (rendered === null || reported.has(rendered.node)) return;
+      const issues = (returnedValues(value) ?? []).flatMap((leaf) => {
+        const issue = renderedFailure(leaf, context.sourceCode);
+        return issue === null ? [] : [issue];
+      });
+      if (issues.length === 0) return;
       const contract = owner.returnType?.typeAnnotation;
       if (
         contract !== undefined &&
         outcomeFailures(view(contract), context.sourceCode).length !== 0
       )
         return;
-      reported.add(rendered.node);
-      context.report(rendered);
+      for (const issue of issues) {
+        if (reported.has(issue.node)) continue;
+        reported.add(issue.node);
+        context.report(issue);
+      }
     }
     return {
       before() {

@@ -440,3 +440,190 @@ TESTER.run("prefer-coded-error-result transparent aliases", rule, {
     ),
   ],
 });
+
+TESTER.run("prefer-coded-error-result conditional producers", rule, {
+  valid: [
+    "export function save(allowed: boolean, name: string) { return allowed ? { ok: true, value: name } : { ok: false, code: 'denied', name }; }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : err('denied'); }",
+    "export function save(allowed: boolean, name: string) { return allowed ? name : null; }",
+    "export function save(allowed: boolean, name: string) { return allowed ? `Hello ${name}` : `Bye ${name}`; }",
+    "export function save(allowed: boolean, name: string) { return allowed ? { status: 'loaded', value: name } : { status: 'unconfigured', reason: `Missing ${name}` }; }",
+    "import { err } from './domain.js'; export function save(allowed: boolean, name: string) { return allowed ? null : err(`Denied ${name}`); }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string, err: (s: string) => string) { return allowed ? null : err(`Denied ${name}`); }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : err(`Denied ${name}`).mapErr(() => ({code: \"denied\"})); }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; declare function consume(x: unknown): void; export function save(allowed: boolean, name: string) { return allowed ? null : consume(err(`Denied ${name}`)); }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return err(`Denied ${name}`) ? name : null; }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed && err(`Denied ${name}`); }",
+    "declare const extra: object; export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, message: `Denied ${name}`, ...extra }; }",
+    "export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, success: true, message: `Denied ${name}` }; }",
+    "export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, value: name, message: `Denied ${name}` }; }",
+    "export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, fallbackError: `Denied ${name}`, cleanupError: `Cleanup ${name}` }; }",
+    "declare const e: {code: 'denied'}; export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, error: e, message: `Denied ${name}` }; }",
+    "import { err, errAsync, Err, type Result } from 'neverthrow'; declare const e: Error; export function save(allowed: boolean, name: string) { return allowed ? null : err(e); }",
+    "export function save(allowed: boolean, name: string) { return allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : (allowed ? null : ({ ok: false, message: `Denied ${name}` }))))))))))))))))); }",
+    "export function save(allowed: boolean, name: string) { return allowed ? (allowed ? (allowed ? (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })))) : (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))))) : (allowed ? (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })))) : (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })))))) : (allowed ? (allowed ? (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })))) : (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))))) : (allowed ? (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })))) : (allowed ? (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))) : (allowed ? (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` })) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : (allowed ? ({ ok: false, message: `Denied ${name}` }) : ({ ok: false, message: `Denied ${name}` }))))))); }",
+  ],
+  invalid: [
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? { ok: true, value: name } : err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? err(`Denied ${name}`) : { ok: true, value: name }; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err as fail } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? fail(`Denied ${name}`) : null; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import * as nt from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : nt.err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : new Err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : errAsync(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export async function save(allowed: boolean, name: string) { return await (allowed ? null : errAsync(`Denied ${name}`)); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export async function save(allowed: boolean, name: string) { return allowed ? null : await errAsync(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? null : name ? err(`Denied ${name}`) : null; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? name ? err(`Denied ${name}`) : null : null; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? err(`Denied ${name}`) : err(`Missing ${name}`); }",
+      errors: [
+        { messageId: "preferCodedErrorResult" },
+        { messageId: "preferCodedErrorResult" },
+      ],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? { ok: false, code: 'denied', message: `Denied ${name}` } : { ok: false, code: 'denied', message: `Denied ${name}` }; }",
+      errors: [
+        { messageId: "formatAtConsumer" },
+        { messageId: "formatAtConsumer" },
+      ],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? { ok: false, code: 'denied', message: `Denied ${name}` } : err(`Denied ${name}`); }",
+      errors: [
+        { messageId: "formatAtConsumer" },
+        { messageId: "preferCodedErrorResult" },
+      ],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? { ok: true, value: name } : { ok: false, message: `Denied ${name}` }; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? null : { ok: false, error: { code: 'denied', message: `Denied ${name}` } }; }",
+      errors: [{ messageId: "formatAtConsumer" }],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? { ok: true, value: name } : { ok: false, code: 'denied', message: `Denied ${name}` }; }",
+      errors: [{ messageId: "formatAtConsumer" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export const save = (allowed: boolean, name: string) => allowed ? null : err(`Denied ${name}`);",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "export const service = { save(allowed: boolean, name: string) { return allowed ? null : { ok: false, message: `Denied ${name}` }; } };",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function outer() { return function save(allowed: boolean, name: string) { return allowed ? null : err(`Denied ${name}`); }; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return err(`Denied ${name}`) ? null : err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? null : ({ ok: false, message: `Denied ${name}` } as const); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string) { return allowed ? null : ({ ok: false, message: `Denied ${name}` } satisfies { ok: false; message: string }); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "export function save(allowed: boolean, name: string): { ok: true; value: string } | { ok: false; message: string } { return allowed ? { ok: true, value: name } : { ok: false, message: `Denied ${name}` }; }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string): Result<never, string> { return allowed ? err(\"fixed\") : err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export async function save(allowed: boolean, name: string): Promise<Result<never, string>> { return allowed ? err(\"fixed\") : err(`Denied ${name}`); }",
+      errors: [{ messageId: "preferCodedErrorResult" }],
+      output: null,
+    },
+    {
+      code: "import { err, errAsync, Err, type Result } from 'neverthrow'; export function save(allowed: boolean, name: string) { return allowed ? err(`Denied ${name}`) :\n err(`Missing ${name}`); }",
+      errors: [
+        { messageId: "preferCodedErrorResult" },
+        { messageId: "preferCodedErrorResult" },
+      ],
+      output: null,
+    },
+  ],
+});
+
+function conditionalTree(depth: number): string {
+  if (depth === 0) return "{ ok: false, message: `Denied ${name}` }";
+  const branch = conditionalTree(depth - 1);
+  return `allowed ? (${branch}) : (${branch})`;
+}
+
+TESTER.run("prefer-coded-error-result traversal boundaries", rule, {
+  valid: [],
+  invalid: [
+    invalid(
+      `export function save(allowed: boolean, name: string) { return ${conditionalTree(6)}; }`,
+      64,
+    ),
+    invalid(
+      `export function save(allowed: boolean, name: string) { return ${"allowed ? null : (".repeat(15)}${"{ ok: false, message: `Denied ${name}` }"}${")".repeat(15)}; }`,
+    ),
+  ],
+});

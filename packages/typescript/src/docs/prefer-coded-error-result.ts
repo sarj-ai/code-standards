@@ -19,7 +19,7 @@ export const PREFER_CODED_ERROR_RESULT_DOCUMENTATION = {
     "Broad string and unknown error channels, unshadowed native Error-family types and open string/unknown code fields receive review. Explicit Any stays with the existing no-explicit-any rule. Finite literal codes need no invented payload. Imported domain errors, validation-library errors, generic error parameters, ordinary formatters, legitimate absence and redacted failure states remain valid.",
     "Local aliases, unmerged interfaces without inheritance and generic substitutions are bounded to 16 resolution levels, 64 union members and 256 traversal steps. Transparent aliases retain the proven neverthrow Result/ResultAsync error position, including renamed/namespace imports, generic defaults and unshadowed native Promise/PromiseLike wrappers. Imported local declarations, conditional/intersection/mapped types and unresolved contracts abstain. Optional discriminants, independent success/error payloads and partial-data failures are excluded.",
     "Required code/kind/type/tag fields of unresolved or imported type defer to the type checker; a finite code does not prove that its cases or payloads are useful. Generic error parameters are retained rather than guessed. Ordinary string formatters, absence, validation-library errors and redacted failure states without a string payload are not flagged.",
-    "A directly returned failure object, neverthrow err/errAsync call or new Err with an interpolated template or proven string concatenation receives review. Without a code, the diagnostic asks for a domain contract; with a literal code, it asks for consumer formatting. Literal-only compositions, including earlier stable local constants, remain valid codes. Nested plain error objects, expression-bodied arrows and one direct await are supported. Import identity and value-space shadowing are checked; arbitrary aliases, spreads, accessors, computed keys, helper formatting calls and nonliteral codes abstain. This proves formatting ownership, not which context the domain must expose; presentation adapters remain a reviewed exception.",
+    "A directly returned failure object, neverthrow err/errAsync call or new Err with an interpolated template or proven string concatenation receives review. Without a code, the diagnostic asks for a domain contract; with a literal code, it asks for consumer formatting. Literal-only compositions, including earlier stable local constants, remain valid codes. Nested plain error objects, expression-bodied arrows and awaited returns are supported. Returned conditional branches are followed without visiting their conditions, call arguments or containers; logical/sequence expressions and arbitrary aliases abstain. The entire return expression abstains beyond 16 levels, 64 leaves or 256 traversal steps. Import identity and value-space shadowing are checked; spreads, accessors, computed keys, helper formatting calls and nonliteral codes abstain. This proves formatting ownership, not which context the domain must expose; presentation adapters remain a reviewed exception.",
     "This warning requests domain review: an infrastructure adapter may intentionally retain unknown/Error, and a final presentation boundary may accept every failure and render one message. Neither proves a recoverable domain rejection. No fix invents error codes, fields, handlers or changes serialization, exception unwinding, transactions, retries or logging.",
   ],
   references: [
@@ -27,6 +27,38 @@ export const PREFER_CODED_ERROR_RESULT_DOCUMENTATION = {
     "https://github.com/supermacro/neverthrow",
   ],
   examples: [
+    {
+      id: "conditional-message-failure",
+      scenarioId: "conditional-result-producer",
+      title: "A conditional return still needs a useful error contract",
+      outcome: "match",
+      files: [
+        {
+          path: "app/result.ts",
+          source:
+            "import { err, ok } from 'neverthrow'; export const save = (name: string, allowed: boolean) => allowed ? ok(name) : err(`Denied ${name}`);",
+        },
+      ],
+      focusPath: "app/result.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "conditional-coded-failure",
+      scenarioId: "conditional-result-producer",
+      title: "Preserve the code and context and let the consumer format",
+      outcome: "no-match",
+      files: [
+        {
+          path: "app/result.ts",
+          source:
+            "import { err, ok, type Result } from 'neverthrow'; type Denied = { code: 'denied'; name: string }; export function save(name: string, allowed: boolean): Result<string, Denied> { return allowed ? ok(name) : err({ code: 'denied', name }); } export function format(error: Denied): string { return `Denied ${error.name}`; }",
+        },
+      ],
+      focusPath: "app/result.ts",
+      expectedCount: 0,
+      public: true,
+    },
     {
       id: "aliased-library-message",
       scenarioId: "aliased-library-error",
