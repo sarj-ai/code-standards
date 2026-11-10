@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e16aa7bcbe286a8c0d8409274d88c9b9d12e5b64a0dc1f3ff1528ee520714176",
-  "cliSha256": "0407cd38f34b74077c99929d48d08eb6df53523b72807d55f164d7e0e8598881",
+  "catalogSha256": "336611a06e4875849375a4178b3d0cf20554dbef582155587a3fb1078157de6f",
+  "cliSha256": "20d7741e910087e6ed9d5437a77b865016c83184b4e47bba249011dc27cde017",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7440,6 +7440,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The consumer can choose behavior and format context"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "import { err, ok, type Result } from \"neverthrow\";\ntype Denied = { code: \"denied\"; name: string };\nexport function save(name: string, allowed: boolean): Result<string, Denied> {\n  return allowed ? ok(name) : err({ code: \"denied\", name });\n}\nexport function format(error: Denied): string {\n  return `Denied ${error.name}`;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "conditional-coded-failure",
+          "outcome": "accept",
+          "scenarioId": "conditional-result-producer",
+          "title": "Preserve the code and context and let the consumer format"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/result.ts",
+              "source": "import { err, ok } from \"neverthrow\";\nexport const save = (name: string, allowed: boolean) =>\n  allowed ? ok(name) : err(`Denied ${name}`);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/result.ts",
+          "id": "conditional-message-failure",
+          "outcome": "reject",
+          "scenarioId": "conditional-result-producer",
+          "title": "A conditional return still needs a useful error contract"
         },
         {
           "expectedCount": 0,
