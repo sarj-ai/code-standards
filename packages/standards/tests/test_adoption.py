@@ -1476,6 +1476,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
         durable_artifacts=("evidence/**",),
         knip_application=True,
         terraform_guard_contracts=".sarj-terraform-guards.json",
+        terraform_module_summaries=True,
     ).render()
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
@@ -1494,6 +1495,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
     assert adopted.diagnostic_baseline == "quality/diagnostics.json"
     assert adopted.terraform_guard_contracts == ".sarj-terraform-guards.json"
+    assert adopted.terraform_module_summaries
     assert adopted.ci_bootstrap == ("yarn generate",)
     assert adopted.knip_application
 

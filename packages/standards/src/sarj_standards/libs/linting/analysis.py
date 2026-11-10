@@ -158,6 +158,7 @@ def analyze(
     python_jobs: int = 1,
     staged: bool = False,
     use_guard_contracts: bool = True,
+    module_summaries: bool = False,
 ) -> AnalysisReport:
     root = root.resolve()
     try:
@@ -200,6 +201,7 @@ def analyze(
                 sources=sources,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
                 guard_contracts=iac_contracts.contracts,
+                module_summaries=module_summaries,
             ),
             _text_report(
                 routed,
@@ -305,6 +307,7 @@ def _native_report(
     rule_ids: frozenset[str] | None = None,
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
+    module_summaries: bool = False,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
@@ -321,6 +324,7 @@ def _native_report(
             rule_ids=rule_ids,
             python_jobs=python_jobs,
             guard_contracts=guard_contracts,
+            module_summaries=module_summaries,
         )
 
     try:
@@ -354,6 +358,7 @@ def _run_native(
     rule_ids: frozenset[str] | None,
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
+    module_summaries: bool = False,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -386,7 +391,9 @@ def _run_native(
     elif package == "sarj_iac_lint":
         from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- selected IaC engine only.
 
-        native_result = analyze_iac(selected_rules, paths, sources=sources, guard_contracts=guard_contracts)
+        native_result = analyze_iac(
+            selected_rules, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+        )
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
     raise_if_cancelled(None)
