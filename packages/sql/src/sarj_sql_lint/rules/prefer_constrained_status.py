@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
-from itertools import product
+from itertools import chain, combinations, islice, product
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
@@ -36,6 +35,8 @@ if TYPE_CHECKING:
 _BOOLEAN = re.compile(r"\bBOOL(?:EAN)?\b", re.IGNORECASE)
 _MAX_FLAGS = 6
 _MIN_FLAGS = 2
+_MAX_CHECKS = 32
+_MAX_PREDICATE_NODES = 512
 
 
 @final
@@ -50,15 +51,18 @@ class PreferConstrainedStatus(Rule):
             "A constrained status column can represent the permitted states explicitly and avoid invalid flag combinations."
         ),
         remediation=(
-            "Review whether these dependent booleans represent one lifecycle. If so, replace them with one status "
-            "column and a CHECK over its allowed values, preserving every valid state and application transition."
+            "Review whether these dependent booleans represent one lifecycle. Retain an authoritative Boolean "
+            "when one bit determines the rest; use one constrained status for a multiway lifecycle. "
+            "Preserve every valid combination, independent field, external contract and application transition."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Advisory only: SQL proves dependence, not that flags are semantically one lifecycle. Independent boolean names alone never produce findings.",
-            "Checks only authored PostgreSQL migration CREATE TABLE definitions with two to six NOT NULL BOOLEAN columns participating in a pure boolean CHECK. Nullable flags, unknown expressions, functions, generated columns, dumps and generated migrations are excluded.",
-            "Truth tables cover AND, OR, NOT, boolean equality/inequality and IS TRUE/FALSE. Flags referenced by multiple CHECKs are excluded because interactions may eliminate dependence. Tautologies, contradictions and checks equivalent to independent single-column restrictions are excluded. No automatic schema rewrite is offered.",
+            "Checks only authored PostgreSQL migration CREATE TABLE definitions with two to six NOT NULL BOOLEAN columns in each connected CHECK group. Nullable flags, unknown expressions, functions and generated columns exclude their group; duplicate columns, empty delimited identifiers, dumps and generated migrations are excluded.",
+            "Truth tables conjoin every CHECK sharing a participating column, covering AND, OR, NOT, boolean equality/inequality and IS TRUE/FALSE. Constant false CHECKs and opaque column-free CHECKs exclude the table. Tautologies, contradictions and restrictions equivalent to independent fields are excluded.",
+            "Only irreducible dependent factors are reported. Independent flags and separate dependent groups remain separate even when a tautological expression connects them syntactically. Every accepted combination must survive a reviewed migration; the analysis does not prove a lifecycle or whole-table reachability.",
+            "Tables exceeding 32 CHECKs or 512 CHECK expression nodes abstain. Connected groups exceeding six referenced columns abstain. No automatic schema rewrite is offered; DML, later ALTER statements, defaults, serialized interfaces and transition ordering require review.",
         ),
         examples=(
             RuleExample(
@@ -73,6 +77,69 @@ class PreferConstrainedStatus(Rule):
                 ),
                 focus_path=PurePosixPath("supabase/migrations/001_job.sql"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="joint-lifecycle-constraints",
+                scenario="joint-lifecycle",
+                title="Multiple CHECKs jointly restrict three lifecycle observations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_job.sql",
+                        "CREATE TABLE job (requested BOOLEAN NOT NULL, confirmed BOOLEAN NOT NULL, archived BOOLEAN NOT NULL, "
+                        "CHECK (NOT confirmed OR requested), CHECK (NOT archived OR confirmed));\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_job.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-joint-status-domain",
+                scenario="joint-lifecycle",
+                title="A reviewed status preserves all four outcomes allowed by the implication chain",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_job.sql",
+                        "CREATE TABLE job (status TEXT NOT NULL CHECK (status IN ('new', 'requested', 'confirmed', 'archived')));\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_job.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="independent-axis-is-preserved",
+                scenario="independent-axis",
+                title="A tautological flag does not join the dependent lifecycle factor",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_job.sql",
+                        "CREATE TABLE job (requested BOOLEAN NOT NULL, confirmed BOOLEAN NOT NULL, muted BOOLEAN NOT NULL, "
+                        "CHECK ((NOT confirmed OR requested) AND (muted OR NOT muted)));\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_job.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-status-preserves-independent-flag",
+                scenario="independent-axis",
+                title="A reviewed status models three outcomes while muted remains independent",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_job.sql",
+                        "CREATE TABLE job (status TEXT NOT NULL CHECK (status IN ('new', 'requested', 'confirmed')), "
+                        "muted BOOLEAN NOT NULL);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_job.sql"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
@@ -122,14 +189,68 @@ class PreferConstrainedStatus(Rule):
 
 def _status_candidates(table: TableContract) -> Iterator[tuple[exp.ColumnDef, frozenset[str]]]:
     flags = {column_key(column): column for column in table.columns if _required_boolean(column)}
-    referenced = [frozenset(column_key(column) for column in check.find_all(exp.Column)) for check in table.checks]
-    counts = Counter(name for names in referenced for name in names)
-    for check, names in zip(table.checks, referenced, strict=True):
-        if not names <= flags.keys() or any(counts[name] > 1 for name in names):
+    candidates: list[tuple[exp.ColumnDef, frozenset[str]]] = []
+    for names, guards in _check_components(table):
+        if len(names) > _MAX_FLAGS or not names <= flags.keys():
             continue
-        if _dependent(check, names):
-            column = min((flags[name] for name in names), key=column_offset)
-            yield column, names
+        ordered = tuple(sorted(names))
+        accepted = _accepted_states(guards, ordered)
+        if accepted == frozenset():
+            return
+        if accepted is None:
+            continue
+        for factor in _dependent_factors(accepted, ordered):
+            column = min((flags[name] for name in factor), key=column_offset)
+            candidates.append((column, factor))
+    yield from sorted(candidates, key=lambda candidate: column_offset(candidate[0]))
+
+
+def _check_components(table: TableContract) -> Iterator[tuple[frozenset[str], tuple[exp.Expr, ...]]]:
+    columns = table.columns
+    if len({column_key(column) for column in columns}) != len(columns) or any(
+        not identifier.name for identifier in table.schema.find_all(exp.Identifier)
+    ):
+        return
+    checks = table.checks
+    nodes = chain.from_iterable(check.walk() for check in checks)
+    if len(checks) > _MAX_CHECKS or sum(1 for _ in islice(nodes, _MAX_PREDICATE_NODES + 1)) > _MAX_PREDICATE_NODES:
+        return
+    referenced = [frozenset(column_key(column) for column in check.find_all(exp.Column)) for check in checks]
+    if any(
+        not names and _boolean_value(check, {}) is not True for check, names in zip(checks, referenced, strict=True)
+    ):
+        return
+    yield from _connected_checks(checks, referenced)
+
+
+def _connected_checks(
+    checks: tuple[exp.Expr, ...], referenced: list[frozenset[str]]
+) -> Iterator[tuple[frozenset[str], tuple[exp.Expr, ...]]]:
+    pending = [(names, (check,)) for check, names in zip(checks, referenced, strict=True) if names]
+    while pending:
+        names, guards = pending.pop(0)
+        while True:
+            for index, (other, related) in enumerate(pending):
+                if names & other:
+                    names |= other
+                    guards += related
+                    pending.pop(index)
+                    break
+            else:
+                yield names, guards
+                break
+
+
+def _accepted_states(checks: tuple[exp.Expr, ...], names: tuple[str, ...]) -> frozenset[tuple[bool, ...]] | None:
+    accepted: set[tuple[bool, ...]] = set()
+    for values in product((False, True), repeat=len(names)):
+        bindings = dict(zip(names, values, strict=True))
+        outcomes = tuple(_boolean_value(check, bindings) for check in checks)
+        if any(outcome is None for outcome in outcomes):
+            return None
+        if all(outcomes):
+            accepted.add(values)
+    return frozenset(accepted)
 
 
 def _required_boolean(column: exp.ColumnDef) -> bool:
@@ -144,23 +265,28 @@ def _required_boolean(column: exp.ColumnDef) -> bool:
     )
 
 
-def _dependent(check: exp.Expr, names: frozenset[str]) -> bool:
-    if not _MIN_FLAGS <= len(names) <= _MAX_FLAGS:
-        return False
-    ordered = sorted(names)
-    accepted: list[tuple[bool, ...]] = []
-    for values in product((False, True), repeat=len(ordered)):
-        result = _boolean_value(check, dict(zip(ordered, values, strict=True)))
-        if result is None:
-            return False
-        if result:
-            accepted.append(values)
-    if not accepted:
-        return False
-    independent_count = 1
-    for index in range(len(ordered)):
-        independent_count *= len({values[index] for values in accepted})
-    return len(accepted) < independent_count
+def _dependent_factors(accepted: frozenset[tuple[bool, ...]], names: tuple[str, ...]) -> Iterator[frozenset[str]]:
+    if len(names) < _MIN_FLAGS:
+        return
+    for left, right in _bipartitions(len(names)):
+        left_states = _project(accepted, left)
+        right_states = _project(accepted, right)
+        if len(accepted) == len(left_states) * len(right_states):
+            yield from _dependent_factors(left_states, tuple(names[index] for index in left))
+            yield from _dependent_factors(right_states, tuple(names[index] for index in right))
+            return
+    yield frozenset(names)
+
+
+def _bipartitions(width: int) -> Iterator[tuple[tuple[int, ...], tuple[int, ...]]]:
+    for size in range(1, width):
+        for tail in combinations(range(1, width), size - 1):
+            left = (0, *tail)
+            yield left, tuple(index for index in range(width) if index not in left)
+
+
+def _project(states: frozenset[tuple[bool, ...]], indices: tuple[int, ...]) -> frozenset[tuple[bool, ...]]:
+    return frozenset(tuple(state[index] for index in indices) for state in states)
 
 
 def _boolean_value(node: exp.Expr | None, values: dict[str, bool]) -> bool | None:

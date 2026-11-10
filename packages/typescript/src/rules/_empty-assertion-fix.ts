@@ -1,19 +1,24 @@
-/** @fileoverview _empty-assertion-fix — reuse an authored no-op never guard. */
+/** @fileoverview _empty-assertion-fix — add a local never witness to a closed dispatcher. */
 
 import type { FixFn } from "@oxlint/plugins";
 
 import type { ESTree, Node, SourceCode } from "../types.js";
-import { findVariable } from "../utils/static-string.js";
 import { plainFunctionBody } from "./_closed-module.js";
 
 type OrdinaryFunction = ESTree.Function;
 
-/** Reuse an authored no-op never guard without changing unexpected-value behavior. */
+/** A bare parameter read preserves fallback behavior and standalone function serialization. */
 export function emptyAssertionFix(sourceCode: SourceCode, node: ESTree.SwitchStatement, defaultCase: ESTree.SwitchCase): FixFn | null {
-  if (sourceCode.ast.body.length !== 2 || sourceCode.getAllComments().length > 0) return null;
-  const [helper, statement] = sourceCode.ast.body;
+  if (sourceCode.getAllComments().length > 0) return null;
+  const body = sourceCode.ast.body;
+  const statement = body.at(-1);
   if (
-    helper?.type !== "FunctionDeclaration" || !isEmptyAssertion(helper) ||
+    body.length !== 1 &&
+    (body.length !== 2 || body[0]?.type !== "FunctionDeclaration" || !isEmptyAssertion(body[0]))
+  ) {
+    return null;
+  }
+  if (
     statement?.type !== "ExportNamedDeclaration" || statement.declaration?.type !== "FunctionDeclaration"
   ) {
     return null;
@@ -21,14 +26,11 @@ export function emptyAssertionFix(sourceCode: SourceCode, node: ESTree.SwitchSta
   const owner = statement.declaration;
   if (!isLiteralDispatch(owner, node, defaultCase)) return null;
   const parameter = owner.params[0];
-  if (parameter?.type !== "Identifier" || helper.id === null) return null;
-  const helperName = helper.id.name;
-  const binding = findVariable(sourceCode.getScope(defaultCase), helperName);
-  if (binding?.defs.length !== 1 || binding.defs[0]?.node !== helper) return null;
+  if (parameter?.type !== "Identifier") return null;
   const first = sourceCode.getFirstToken(defaultCase);
   const colon = first === null ? null : sourceCode.getTokenAfter(first);
   if (colon?.value !== ":") return null;
-  return (fixer) => fixer.insertTextAfter(colon, ` ${helperName}(${parameter.name});`);
+  return (fixer) => fixer.insertTextAfter(colon, ` void (${parameter.name} satisfies never);`);
 }
 
 function isEmptyAssertion(node: OrdinaryFunction): boolean {

@@ -4,16 +4,17 @@ import type { RuleDocumentation } from "../documentation.js";
 
 export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
   summary:
-    "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
+    "Require a never witness in empty switch defaults so discriminated unions remain exhaustive at compile time.",
   rationale:
     "An empty default silently accepts new union members instead of making the compiler identify the missing case.",
   remediation:
-    "Call `assertNever` with the discriminant in the exhaustive switch default.",
+    "Use `void (value satisfies never)` or a helper accepting never, preserving the intended runtime fallback.",
   category: "correctness",
   autofix: "safe",
   limitations: [
     "Requires type information and singleton case values covering the current union. The helper must accept never to provide a compile-time check; its spelling alone is not a proof of that contract. Review the desired runtime behavior for unexpected external values.",
-    "Automatic fixes reuse only an existing private ordinary assertNever function with one never parameter, explicit void return and an exactly empty body. The complete comment-free module must otherwise contain only one exported ordinary function with an explicit primitive return type, one string-literal-union parameter, a complete switch with primitive literal returns and a final empty or break default, followed by a primitive fallback return. The existing helper is called in that default, preserving unexpected-value continuation while adding the never compile guard. Throwing helpers, other statements or exports, imports, defaults, aliases and dynamic behavior remain manual.",
+    "Unique-symbol alternatives are compared by native compiler type identity. Distinct symbols can share the same printed type name; a handled symbol or its typed alias covers only that identity. Unavailable literal names do not establish coverage.",
+    "Automatic fixes add void (parameter satisfies never), which only reads the existing parameter at runtime and introduces no helper dependency when the exported function is serialized on its own. The complete comment-free module must contain one exported ordinary function, optionally preceded by an exactly empty private ordinary assertNever helper with one never parameter and explicit void return. The dispatcher needs one string-literal-union parameter, an explicit primitive return type, a complete switch with primitive literal returns and a final empty or break default, followed by a primitive fallback return. Other module statements, imports, defaults, aliases, async functions and dynamic behavior remain manual.",
   ],
   examples: [
     {
@@ -48,20 +49,20 @@ export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
     },
     {
       id: "safe-autofix",
-      title: "Reuse the existing no-op never guard",
+      title: "Keep the never witness local to the dispatcher",
       outcome: "match",
       files: [
         {
           path: "src/render.ts",
           source:
-            "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: break; } return 0; }",
+            "export function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: break; } return 0; }",
         },
       ],
       fixedFiles: [
         {
           path: "src/render.ts",
           source:
-            "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: assertNever(kind); break; } return 0; }",
+            "export function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: void (kind satisfies never); break; } return 0; }",
         },
       ],
       focusPath: "src/render.ts",
