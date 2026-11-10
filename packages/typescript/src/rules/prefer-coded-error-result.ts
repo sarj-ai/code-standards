@@ -83,7 +83,8 @@ function resolve(
   if (depth >= MAX_DEPTH) return null;
   const node = value.node;
   if (node.type !== "TSTypeReference") return value;
-  if (node.typeName.type !== "Identifier") return null;
+  if (node.typeName.type !== "Identifier")
+    return libraryResult(node, source) ? value : null;
   const variable = typeBinding(source, node.typeName);
   if (variable === null || variable.defs.length === 0) return value;
   const bound = value.bindings.get(variable);
@@ -94,7 +95,7 @@ function resolve(
     declaration?.type !== "TSTypeAliasDeclaration" &&
     declaration?.type !== "TSInterfaceDeclaration"
   )
-    return null;
+    return libraryResult(node, source) ? value : null;
   if (
     declaration.type === "TSInterfaceDeclaration" &&
     declaration.extends.length !== 0
@@ -361,6 +362,40 @@ function openStringField(
   return null;
 }
 
+/** Preserve contract precedence through unshadowed native promise annotations. */
+function outcomeFailures(
+  value: TypeView,
+  source: SourceCode,
+  depth = 0,
+  budget: WalkBudget = { remaining: MAX_TYPE_STEPS },
+): readonly Node[] {
+  if (depth >= MAX_DEPTH || --budget.remaining < 0) return [];
+  const resolved = resolve(value, source);
+  if (resolved === null) return [];
+  const structural = failureMessages(resolved, source);
+  if (structural.length !== 0) return structural;
+  const library = libraryError(resolved, source);
+  if (library !== null) return [library];
+  const node = resolved.node;
+  if (node.type !== "TSTypeReference") return [];
+  if (
+    node.typeName.type !== "Identifier" ||
+    !["Promise", "PromiseLike"].includes(node.typeName.name) ||
+    (typeBinding(source, node.typeName)?.defs.length ?? 0) !== 0 ||
+    node.typeArguments?.params.length !== 1
+  )
+    return [];
+  const argument = node.typeArguments.params[0];
+  return argument === undefined
+    ? []
+    : outcomeFailures(
+        { ...resolved, node: argument, origin: argument },
+        source,
+        depth + 1,
+        budget,
+      );
+}
+
 function failureMessages(value: TypeView, source: SourceCode): readonly Node[] {
   const members = variants(value, source);
   if (members === null || members.length < 2) return [];
@@ -493,19 +528,24 @@ function variants(
 }
 
 /** Library identity, rather than the local name Result, establishes the generic error position. */
-function libraryError(
+function libraryError(value: TypeView, source: SourceCode): Node | null {
+  const reference = value.node;
+  if (reference.type !== "TSTypeReference" || !libraryResult(reference, source))
+    return null;
+  if (reference.typeArguments?.params.length !== 2) return null;
+  const error = reference.typeArguments.params[1];
+  return error === undefined
+    ? null
+    : weakError({ ...value, node: error, origin: error }, source);
+}
+
+function libraryResult(
   reference: ESTree.TSTypeReference,
   source: SourceCode,
-): Node | null {
-  if (reference.typeArguments?.params.length !== 2) return null;
-  if (
-    !["Result", "ResultAsync"].includes(
-      libraryName(reference.typeName, source, true) ?? "",
-    )
-  )
-    return null;
-  const error = reference.typeArguments.params[1];
-  return error === undefined ? null : weakError(view(error), source);
+): boolean {
+  return ["Result", "ResultAsync"].includes(
+    libraryName(reference.typeName, source, true) ?? "",
+  );
 }
 
 /** Import symbols prove library identity; unrelated names, computed members and type-only value imports abstain. */
@@ -567,31 +607,6 @@ function libraryReference(
   )
     return { root: node.object, member: node.property.name };
   return null;
-}
-
-/** Preserve contract precedence through unshadowed native promise annotations. */
-function weakAnnotation(
-  node: ESTree.TSType,
-  source: SourceCode,
-  depth = 0,
-  budget: WalkBudget = { remaining: MAX_TYPE_STEPS },
-): boolean {
-  if (depth >= MAX_DEPTH || --budget.remaining < 0) return false;
-  if (failureMessages(view(node), source).length !== 0) return true;
-  if (node.type !== "TSTypeReference") return false;
-  if (libraryError(node, source) !== null) return true;
-  if (
-    node.typeName.type !== "Identifier" ||
-    !["Promise", "PromiseLike"].includes(node.typeName.name) ||
-    typeBinding(source, node.typeName) !== null ||
-    node.typeArguments?.params.length !== 1
-  )
-    return false;
-  const argument = node.typeArguments.params[0];
-  return (
-    argument !== undefined &&
-    weakAnnotation(argument, source, depth + 1, budget)
-  );
 }
 
 /** A literal coded failure still loses presentation ownership when it renders its context here. */
@@ -770,14 +785,7 @@ export default defineRule({
   createOnce(context) {
     const reported = new Set<Node>();
     function check(node: ESTree.TSUnionType | ESTree.TSTypeReference): void {
-      const candidates = failureMessages(view(node), context.sourceCode);
-      const library =
-        node.type === "TSTypeReference"
-          ? libraryError(node, context.sourceCode)
-          : null;
-      for (const candidate of library === null
-        ? candidates
-        : [...candidates, library]) {
+      for (const candidate of outcomeFailures(view(node), context.sourceCode)) {
         if (reported.has(candidate)) continue;
         reported.add(candidate);
         context.report({
@@ -796,7 +804,7 @@ export default defineRule({
       const contract = owner.returnType?.typeAnnotation;
       if (
         contract !== undefined &&
-        weakAnnotation(contract, context.sourceCode)
+        outcomeFailures(view(contract), context.sourceCode).length !== 0
       )
         return;
       reported.add(rendered.node);

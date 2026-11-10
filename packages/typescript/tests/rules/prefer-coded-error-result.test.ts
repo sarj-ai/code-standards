@@ -325,3 +325,118 @@ TESTER.run("prefer-coded-error-result", rule, {
     })),
   ],
 });
+
+TESTER.run("prefer-coded-error-result transparent aliases", rule, {
+  valid: [
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\ntype Wrapper<T, E> = NativeResult<T, E>; export type Output = Wrapper<number, { code: 'denied'; name: string }>;\n",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\ntype Wrapper<T, E> = NativeResult<T, E>; export type Output = Wrapper<number, 'denied' | 'missing'>;\n",
+    "import type { Result as NativeResult } from './domain.js'; type Wrapper<T,E> = NativeResult<T,E>; export type Output = Wrapper<number,string>;\n",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<E,T> = NativeResult<T,E>; export type O = A<'denied',string>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E='denied'> = NativeResult<T,E>; export type O = A<number>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = Promise<NativeResult<T,E>>; export type O = A<number,{code:'missing';key:string}>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; export function forward<T,E>(value:NativeResult<T,E>):NativeResult<T,E>{return value;}",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,{code:'denied';name:string}|{code:'missing';key:number}>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,'missing'>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,never>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; import type { DomainError } from './domain.js'; type A<T,E> = NativeResult<T,E>; export type O = A<number,DomainError>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type Error = {code:'denied'}; type A<T,E> = NativeResult<T,E>; export type O = A<number,Error>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; export type A<T,E> = NativeResult<T,E>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; export function identity<NativeResult>(value:NativeResult):NativeResult{return value;}",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E>={first:T;second:E}; export type O=A<number,string>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type Promise<T>={value:T}; type A<T,E> = Promise<NativeResult<T,E>>; export type O = A<number,string>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = A<T,E>; export type O=A<number,string>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; import type * as nt from './domain.js'; type A<T,E>=nt.Result<T,E>; export type O=A<number,string>;",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; export type O<T>={status:'loaded';value:T}|{status:'failed'|'unconfigured';reason:string};",
+    "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E>=NativeResult<T,E>; export type O=A<number,any>;",
+  ],
+  invalid: [
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\nexport type Output = NativeResult<number, string>;\n",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\ntype Wrapper<T, E> = NativeResult<T, E>; export type Output = Wrapper<number, string>;\n",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\ntype Wrapper<T, E> = NativeResult<T, E>; export type Output = Wrapper<number, unknown>;\n",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow';\ntype Wrapper<T, E> = NativeAsync<T, E>; export type Output = Wrapper<number, Error>;\n",
+      1,
+    ),
+    invalid(
+      "import type * as nt from 'neverthrow'; export type Output = nt.Result<number,string>;\n",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; type B<V,F> = A<V,F>; export type O = B<number,string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<E,T> = NativeResult<T,E>; export type O = A<string,number>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E=string> = NativeResult<T,E>; export type O = A<number>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E=T> = NativeResult<number,E>; export type O = A<string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type E = Error; type A<T,F> = NativeResult<T,F>; export type O = A<number,E>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,'denied'|string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,TypeError|RangeError>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,{code:string;name:string}>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,{code:unknown}>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeResult<T,E>; export type O = A<number,{message:string}>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = NativeAsync<T,E>; export type O = A<number,string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = Promise<NativeResult<T,E>>; export type O = A<number,string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = PromiseLike<NativeResult<T,E>>; export type O = A<number,unknown>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E> = Promise<{ok:true;value:T}|{ok:false;error:E}>; export type O = A<number,string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; type A<T,E>=NativeResult<T,E>; export type O=A<number,string>; export type P=O;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; import type * as nt from 'neverthrow'; type A<T,E>=nt.Result<T,E>; export type O=A<number,string>;",
+      1,
+    ),
+    invalid(
+      "import type { Result as NativeResult, ResultAsync as NativeAsync } from 'neverthrow'; import * as nt from 'neverthrow'; type A<T,E>=nt.ResultAsync<T,E>; export type O=A<number,unknown>;",
+      1,
+    ),
+  ],
+});

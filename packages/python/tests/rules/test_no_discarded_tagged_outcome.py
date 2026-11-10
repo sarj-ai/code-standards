@@ -270,7 +270,7 @@ def test_generic_record_conventions_and_wire_tags(record: str, *, boolean: bool)
         ("type Result[T, E]", "Success.kind = str\ntype Result[T, E]"),
         ("def save()", "Result = Other\ndef save()"),
         ("def save()", "@decorator\ndef save()"),
-        ("def save()", "def save[T]()"),
+        ("def save()", "def save[T: str]()"),
     ],
     ids=(
         "bare-result",
@@ -295,7 +295,7 @@ def test_generic_record_conventions_and_wire_tags(record: str, *, boolean: bool)
         "mutated-record",
         "rebound-alias",
         "decorated-function",
-        "generic-function",
+        "bounded-generic-function",
     ),
 )
 def test_unproven_generic_contract_abstains(change: tuple[str, str]) -> None:
@@ -439,15 +439,15 @@ def test_escaped_callable_identity_abstains(escape: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "alias",
+    ("alias", "expected"),
     [
-        "saved = check\nsaved('other')",
-        "saved = check\ndef use(saved):\n    rewrite(saved)",
+        ("saved = check\nsaved('other')", 2),
+        ("saved = check\ndef use(saved):\n    rewrite(saved)", 1),
     ],
     ids=("direct-alias-call", "shadowed-alias-escape"),
 )
-def test_safe_callable_alias_preserves_original_warning(alias: str) -> None:
-    assert len(_check(_BASE + alias + "\ncheck('value')\n")) == 1
+def test_safe_callable_alias_preserves_original_warning(alias: str, expected: int) -> None:
+    assert len(_check(_BASE + alias + "\ncheck('value')\n")) == expected
 
 
 @pytest.mark.parametrize(
@@ -508,3 +508,134 @@ def test_imported_callable_requires_stable_non_generator_provider(tmp_path: Path
     consumer = package / "consumer.py"
     consumer.write_text("from app.models import check as inspect_value\ninspect_value('value')\n")
     assert analyze([NoDiscardedTaggedOutcome.id], [provider, consumer]) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias = check\nalias('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias: Callable[[str], Outcome] = check\nalias('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nfirst = check\nsecond = first\nsecond('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\ndef caller() -> None:\n    alias = check\n    alias('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias = check\n_ = alias('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias = check\n_: Outcome = alias('x')\n",
+            1,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias = check\nalias('x')\ncheck('x')\n",
+            2,
+        ),
+        (
+            "from typing import Literal\nfrom pydantic import BaseModel\nclass Success[T](BaseModel):\n    kind: Literal['success'] = 'success'\n    value: T\nclass Failure(BaseModel):\n    kind: Literal['error'] = 'error'\n    code: Literal['denied'] = 'denied'\ntype Outcome[T] = Success[T] | Failure\ndef check[T](value: T, *, accepted: bool) -> Outcome[T]:\n    if accepted:\n        return Success[T](value=value)\n    return Failure()\ncheck('x', accepted=False)\n",
+            1,
+        ),
+        (
+            "from typing import Literal\nfrom pydantic import BaseModel\nclass Success[T](BaseModel):\n    kind: Literal['success'] = 'success'\n    value: T\nclass Failure(BaseModel):\n    kind: Literal['error'] = 'error'\n    code: Literal['denied'] = 'denied'\ntype Outcome[T] = Success[T] | Failure\ndef check[T](value: T, *, accepted: bool) -> Outcome[T]:\n    if accepted:\n        return Success[T](value=value)\n    return Failure()\nalias = check\nalias('x', accepted=False)\n",
+            1,
+        ),
+        (
+            "from typing import Literal\nfrom pydantic import BaseModel\nclass Success[T](BaseModel):\n    kind: Literal['success'] = 'success'\n    value: T\nclass Failure(BaseModel):\n    kind: Literal['error'] = 'error'\n    code: Literal['denied'] = 'denied'\ntype Outcome[T] = Success[T] | Failure\ndef check[T: object](value: T, *, accepted: bool) -> Outcome[T]:\n    if accepted:\n        return Success[T](value=value)\n    return Failure()\ncheck('x', accepted=False)\n",
+            0,
+        ),
+        (
+            "from typing import Literal\nfrom pydantic import BaseModel\nclass Success[T](BaseModel):\n    kind: Literal['success'] = 'success'\n    value: T\nclass Failure(BaseModel):\n    kind: Literal['error'] = 'error'\n    code: Literal['denied'] = 'denied'\ntype Outcome[T] = Success[T] | Failure\ndef check[T = str](value: T, *, accepted: bool) -> Outcome[T]:\n    if accepted:\n        return Success[T](value=value)\n    return Failure()\ncheck('x', accepted=False)\n",
+            0,
+        ),
+        (
+            "from typing import Literal\nfrom pydantic import BaseModel\nclass Success[T](BaseModel):\n    kind: Literal['success'] = 'success'\n    value: T\nclass Failure(BaseModel):\n    kind: Literal['error'] = 'error'\n    code: Literal['denied'] = 'denied'\ntype Outcome[T] = Success[T] | Failure\ndef check[Outcome](value: T, *, accepted: bool) -> Outcome[T]:\n    if accepted:\n        return Success[T](value=value)\n    return Failure()\ncheck('x', accepted=False)\n",
+            0,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\nasync def check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias = check\nasync def caller() -> None:\n    await alias('x')\n",
+            1,
+        ),
+    ],
+    ids=(
+        "module-alias",
+        "annotated-alias",
+        "chained-alias",
+        "local-alias",
+        "underscore-alias",
+        "annotated-underscore",
+        "alias-and-direct",
+        "generic-direct",
+        "generic-alias",
+        "bounded-generic",
+        "defaulted-generic",
+        "return-head-shadow",
+        "awaited-alias",
+    ),
+)
+def test_callable_alias_and_generic_contract(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("declaration", "call"),
+    [
+        ("from app.models import check", "check('value', accepted=False)"),
+        ("from app.models import check as inspect_value", "inspect_value('value', accepted=False)"),
+        ("import app.models as provider", "provider.check('value', accepted=False)"),
+    ],
+    ids=("direct", "renamed", "namespace"),
+)
+def test_imported_plain_generic_producer(tmp_path: Path, declaration: str, call: str) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='outcomes'\nversion='0.0.0'\n")
+    provider = package / "models.py"
+    provider.write_text(
+        "from typing import Literal\n"
+        "from pydantic import BaseModel\n"
+        "class Success[T](BaseModel):\n"
+        "    kind: Literal['success'] = 'success'\n"
+        "    value: T\n"
+        "class Failure(BaseModel):\n"
+        "    kind: Literal['error'] = 'error'\n"
+        "    code: Literal['denied'] = 'denied'\n"
+        "type Outcome[T] = Success[T] | Failure\n"
+        "def check[T](value: T, *, accepted: bool) -> Outcome[T]:\n"
+        "    if accepted:\n"
+        "        return Success[T](value=value)\n"
+        "    return Failure()\n"
+    )
+    consumer = package / "consumer.py"
+    consumer.write_text(declaration + "\n" + call + "\n")
+    assert len(analyze([NoDiscardedTaggedOutcome.id], [provider, consumer])) == 1
+    consumer.write_text(declaration + "\ndef forward():\n    return " + call + "\n")
+    assert analyze([NoDiscardedTaggedOutcome.id], [provider, consumer]) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "alias = check\nfrom typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias('x')\n",
+            0,
+        ),
+        (
+            "from typing import Literal, Callable\nfrom pydantic import BaseModel\nclass Accepted(BaseModel):\n    kind: Literal['accepted']\n    value: str\nclass Rejected(BaseModel):\n    kind: Literal['rejected']\n    reason: str\ntype Outcome = Accepted | Rejected\ndef check(value: str) -> Outcome:\n    return Accepted(kind='accepted', value=value)\nalias=check; alias('x')\n",
+            1,
+        ),
+    ],
+    ids=("unbound-future-target", "same-line-assignment"),
+)
+def test_alias_target_source_order(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
