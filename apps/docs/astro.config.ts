@@ -1,7 +1,8 @@
+import { URL } from "node:url";
+
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
-import { URL } from "node:url";
 
 import cloudflareArtifacts from "./src/integrations/cloudflare-artifacts.ts";
 import { SITE_BASE_PATH, SITE_ORIGIN, siteHref } from "./src/lib/site.ts";
@@ -13,6 +14,7 @@ export default defineConfig({
   base: SITE_BASE_PATH,
   outDir: `./dist${SITE_BASE_PATH}`,
   output: "static",
+  build: { inlineStylesheets: "never" },
   trailingSlash: "always",
   compressHTML: true,
   markdown: {
@@ -34,25 +36,25 @@ export default defineConfig({
         resources: [{ resource: "'self'", kind: "element" }],
       },
       styleDirective: {
-        resources: [{ resource: "'unsafe-inline'", kind: "attribute" }],
+        resources: [
+          { resource: "'self'", kind: "element" },
+          { resource: "'unsafe-inline'", kind: "attribute" },
+        ],
       },
     },
   },
   integrations: [
     sitemap({
       filter: (page) =>
-        ![siteHref("/about/"), siteHref("/third-party-linters/")].includes(new URL(page).pathname),
+        ![siteHref("/about/"), siteHref("/third-party-linters/")].includes(
+          new URL(page).pathname,
+        ),
     }),
     starlight({
       title: "Sarj Standards",
-      description: "Deterministic code standards, diagnostics, and remediation.",
+      description:
+        "Deterministic code standards, diagnostics, and remediation.",
       favicon: "/favicon.ico",
-      logo: {
-        alt: "Sarj",
-        dark: "./public/sarj-logo-dark.webp",
-        light: "./public/sarj-logo-light.webp",
-        replacesTitle: true,
-      },
       disable404Route: true,
       customCss: ["@sarj/design/starlight.css", "./src/styles/global.css"],
       sidebar: [
@@ -71,6 +73,7 @@ export default defineConfig({
       tableOfContents: false,
       credits: false,
       components: {
+        Head: "./src/components/engineering-head.astro",
         Search: "./src/components/disabled-feature.astro",
         TableOfContents: "./src/components/disabled-feature.astro",
         MobileTableOfContents: "./src/components/disabled-feature.astro",

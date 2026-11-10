@@ -2,17 +2,22 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
-import { TextEncoder } from "node:util";
 import { URL } from "node:url";
+import { TextEncoder } from "node:util";
 import { gzipSync } from "node:zlib";
 
+import {
+  SITE_BASE_PATH,
+  SITE_ORIGIN,
+  siteHref,
+  siteUrl,
+} from "../src/lib/site.ts";
 import {
   parseCatalog,
   type ThirdPartyProvider,
   type ThirdPartyRule,
 } from "../src/lib/third-party-catalog.ts";
 import { array, record, text } from "./_json.ts";
-import { SITE_BASE_PATH, SITE_ORIGIN, siteHref, siteUrl } from "../src/lib/site.ts";
 
 const appRoot = resolve(import.meta.dirname, "..");
 const artifactPath = resolve(
@@ -22,6 +27,12 @@ const artifactPath = resolve(
 const assetRoot = resolve(appRoot, "dist");
 const distRoot = resolve(assetRoot, SITE_BASE_PATH.slice(1));
 const mode = process.argv[2];
+const engineeringDestinations = new Set([
+  "/",
+  "/projects/lra/ui/v1/docs.css",
+  "/projects/lra/ui/v1/navigation.js",
+  "/projects/lra/ui/v1/sarj-logo.svg",
+]);
 
 assert.ok(
   mode === "--source" || mode === "--dist",
@@ -140,9 +151,7 @@ function verifySource() {
     assert.ok(!ruleAnchors.has(anchor), `duplicate rule anchor ${anchor}`);
     ruleAnchors.add(anchor);
     httpsUrl(rule.docsUrl, `${label}.docsUrl`);
-    assert.ok(
-      rule.family === null || rule.family.length > 0,
-    );
+    assert.ok(rule.family === null || rule.family.length > 0);
     assert.ok(autofixValues.has(rule.autofix), `${label}.autofix is invalid`);
     assert.deepEqual(
       rule.profiles.map(({ name }) => name),
@@ -206,8 +215,14 @@ function nonemptyString(value: string, label: string) {
 }
 
 async function verifyDist(ruleCounts: Map<string, number>) {
-  assert.deepEqual((await readdir(assetRoot)).sort(), ["_headers", "_redirects", "projects"]);
-  assert.deepEqual(await readdir(resolve(assetRoot, "projects")), ["code-standards"]);
+  assert.deepEqual((await readdir(assetRoot)).sort(), [
+    "_headers",
+    "_redirects",
+    "projects",
+  ]);
+  assert.deepEqual(await readdir(resolve(assetRoot, "projects")), [
+    "code-standards",
+  ]);
   const headers = await readFile(resolve(assetRoot, "_headers"), "utf8");
   assert.ok(headers.startsWith(`${siteHref("/*")}\n`));
   assert.ok(!headers.includes("\n/*\n"));
@@ -218,12 +233,20 @@ async function verifyDist(ruleCounts: Map<string, number>) {
     "utf8",
   );
   assert.ok(
-    index.includes(`http-equiv="refresh" content="0;url=${siteHref("/third-party-linters/ruff/")}"`),
+    index.includes(
+      `http-equiv="refresh" content="0;url=${siteHref("/third-party-linters/ruff/")}"`,
+    ),
     "index must redirect to Ruff",
   );
   const redirects = await readFile(resolve(assetRoot, "_redirects"), "utf8");
   for (const source of ["/third-party-linters", "/third-party-linters/"]) {
-    assert.ok(redirects.split("\n").includes(`${siteHref(source)} ${siteHref("/third-party-linters/ruff/")} 301`));
+    assert.ok(
+      redirects
+        .split("\n")
+        .includes(
+          `${siteHref(source)} ${siteHref("/third-party-linters/ruff/")} 301`,
+        ),
+    );
   }
   const expectedDirectories = catalog.providers.map(({ id }) => id).sort();
   const actualDirectories = (
@@ -283,9 +306,7 @@ async function verifyDist(ruleCounts: Map<string, number>) {
 
   const sitemap = await readFile(resolve(distRoot, "sitemap-0.xml"), "utf8");
   assert.ok(
-    !sitemap.includes(
-      `<loc>${siteUrl("/third-party-linters/")}</loc>`,
-    ),
+    !sitemap.includes(`<loc>${siteUrl("/third-party-linters/")}</loc>`),
   );
   for (const provider of catalog.providers) {
     const totalPages = Math.ceil((ruleCounts.get(provider.id) ?? 0) / pageSize);
@@ -308,9 +329,16 @@ async function verifyInternalLinks() {
     for (const href of htmlHrefs(document)) {
       if (!href.startsWith("/") || href.startsWith("//")) continue;
       const path = new URL(href, SITE_ORIGIN).pathname;
-      assert.ok(path.startsWith(SITE_BASE_PATH), `${file}: link escapes project base: ${href}`);
+      if (engineeringDestinations.has(path)) continue;
+      assert.ok(
+        path.startsWith(SITE_BASE_PATH),
+        `${file}: link escapes project base: ${href}`,
+      );
       const target = decodeURIComponent(path.slice(1));
-      assert.ok(files.has(target) || files.has(`${target}index.html`), `${file}: missing link target: ${href}`);
+      assert.ok(
+        files.has(target) || files.has(`${target}index.html`),
+        `${file}: missing link target: ${href}`,
+      );
     }
   }
 }
@@ -580,9 +608,11 @@ function summaryParts(value: string) {
 }
 
 function providerPageHref(providerId: string, page: number) {
-  return siteHref(page === 1
-    ? `/third-party-linters/${providerId}/`
-    : `/third-party-linters/${providerId}/${String(page)}/`);
+  return siteHref(
+    page === 1
+      ? `/third-party-linters/${providerId}/`
+      : `/third-party-linters/${providerId}/${String(page)}/`,
+  );
 }
 
 function htmlHrefs(source: string) {

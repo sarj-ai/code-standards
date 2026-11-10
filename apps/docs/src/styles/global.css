@@ -44,19 +44,6 @@
   }
 }
 
-starlight-menu-button {
-  display: flex;
-  align-self: center;
-  align-items: center;
-}
-
-starlight-menu-button button {
-  top: calc((var(--sl-nav-height) - 2.75rem) / 2);
-  border: 1px solid var(--sarj-color-rule);
-  background: var(--sl-color-gray-6);
-  color: var(--sl-color-white);
-}
-
 .eyebrow {
   margin: 0 0 0.75rem;
   color: var(--sl-color-gray-2);
@@ -222,78 +209,6 @@ starlight-menu-button button {
   font-family: var(--sl-font-mono);
 }
 
-.directory-toolbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-block: 0.75rem 0.6rem;
-}
-.directory-title {
-  margin-block: 1.25rem 1rem;
-}
-
-.directory-status {
-  margin: 0;
-  color: var(--sl-color-gray-2);
-  font-family: var(--sl-font-mono);
-  font-size: 0.76rem;
-}
-
-.directory-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.75rem;
-  margin: 0;
-}
-
-.directory-filters label {
-  display: grid;
-  gap: 0.15rem;
-  color: var(--sl-color-gray-2);
-  font-size: 0.875rem;
-  min-width: 0;
-  margin: 0;
-}
-
-.directory-filters select,
-.directory-filters input,
-.directory-filters button {
-  min-height: 44px;
-  min-width: 0;
-  padding: 0.3rem 1.8rem 0.3rem 0.55rem;
-  border: 1px solid var(--sarj-color-rule);
-  border-radius: 0.3rem;
-  background: var(--sl-color-black);
-  color: var(--sl-color-white);
-  font: inherit;
-  letter-spacing: 0;
-  text-transform: none;
-  margin: 0;
-}
-
-.directory-search {
-  flex: 1 1 14rem;
-}
-.directory-search input {
-  width: 100%;
-}
-.directory-empty {
-  padding-block: 1rem;
-  color: var(--sl-color-gray-2);
-}
-.directory-filters :is(input, select, button):focus-visible {
-  outline: 2px solid var(--sl-color-accent);
-  outline-offset: 2px;
-}
-
-.directory-filters button {
-  padding-inline: 0.65rem;
-  cursor: pointer;
-}
-
 .rule-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--sarj-color-rule);
@@ -431,7 +346,11 @@ starlight-menu-button button {
 }
 
 .level--error {
-  border-color: color-mix(in srgb, var(--sarj-color-report) 65%, var(--sarj-color-rule));
+  border-color: color-mix(
+    in srgb,
+    var(--sarj-color-report) 65%,
+    var(--sarj-color-rule)
+  );
   color: var(--sarj-color-report);
 }
 
@@ -1098,31 +1017,6 @@ starlight-menu-button button {
     border-top: 1px solid var(--sarj-color-rule);
   }
 
-  .directory-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .directory-filters {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .directory-filters label:has([data-rule-sort]),
-  .directory-filters .directory-search {
-    grid-column: 1 / -1;
-  }
-
-  .directory-filters select,
-  .directory-filters button {
-    width: 100%;
-    min-height: 44px;
-  }
-
-  .directory-filters button {
-    grid-column: 1 / -1;
-  }
-
   .rule-table-wrap {
     overflow: hidden;
   }
@@ -1247,85 +1141,5 @@ starlight-menu-button button {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
-  }
-}
-
-/* Shared reading defaults for generated documentation. */
-:root {
-  --sl-font: ui-sans-serif, system-ui, sans-serif;
-  --sl-font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-html {
-  scroll-behavior: auto;
-  scroll-padding-block-start: calc(var(--sl-nav-height) + 1.5rem);
-}
-main {
-  min-inline-size: 0;
-}
-main :is(h1, h2, h3, h4) {
-  overflow-wrap: anywhere;
-}
-main :is(img, video) {
-  max-inline-size: 100%;
-  block-size: auto;
-}
-.sidebar-content a {
-  min-block-size: 2.75rem;
-  display: flex;
-  align-items: center;
-}
-@media (forced-colors: active) {
-  :focus-visible {
-    outline: 2px solid Highlight;
-    outline-offset: 3px;
-  }
-}
-@media print {
-  :root,
-  :root[data-theme="dark"] {
-    color-scheme: light;
-    --sl-color-black: #fff;
-    --sl-color-white: #000;
-    --sl-color-gray-1: #111;
-    --sl-color-gray-2: #222;
-    --sl-color-gray-3: #444;
-    --sl-content-inline-start: 0rem;
-    --sl-sidebar-width: 0rem;
-    --sl-content-width: 100%;
-  }
-  body,
-  .main-pane {
-    color: #000;
-    background: #fff;
-  }
-  main pre,
-  main code,
-  main pre span {
-    color: #000 !important;
-    background: transparent !important;
-  }
-  .page > header,
-  .sidebar-pane,
-  starlight-menu-button,
-  .pagination-links {
-    display: none;
-  }
-  .main-frame,
-  .main-pane {
-    margin: 0;
-    padding: 0;
-  }
-  main {
-    max-inline-size: none;
-  }
-  pre {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-  :is(h1, h2, h3) {
-    break-after: avoid;
-  }
-  :is(pre, table, figure) {
-    break-inside: avoid;
   }
 }
