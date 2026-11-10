@@ -1316,6 +1316,8 @@ def _units(
 def _is_index_candidate(source: str) -> bool:
     return (
         "import" in source
+        or "pytest_plugins" in source
+        or "pytest_generate_tests" in source
         or "NewType" in source
         or "class" in source
         or "spec" in source
