@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "40ca385a49619020ac9d086d18501af1a58d9521be6dd95a73d7b603698188c6",
-  "cliSha256": "c6f93b4935b73516cbbbf86aabb6282f4f2ba1089fceccdaa9a009ee3baea971",
+  "catalogSha256": "e9c151324b93ee3f917ea913c6db2751d83f8466a4ba922196f84cacfa69003d",
+  "cliSha256": "8a2c273f67d9dd625242f4ed4c8ca784b16f8c6857100f42b8f10ea8d65f04ae",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -23467,6 +23467,51 @@
           "files": [
             {
               "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  status TEXT NOT NULL CHECK (\n    status IN ('new', 'requested', 'confirmed', 'archived')\n  )\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "explicit-joint-status-domain",
+          "outcome": "accept",
+          "scenarioId": "joint-lifecycle",
+          "title": "A reviewed status preserves all four outcomes allowed by the implication chain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  status TEXT NOT NULL CHECK (status IN ('new', 'requested', 'confirmed')),\n  muted BOOLEAN NOT NULL\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "explicit-status-preserves-independent-flag",
+          "outcome": "accept",
+          "scenarioId": "independent-axis",
+          "title": "A reviewed status models three outcomes while muted remains independent"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  requested BOOLEAN NOT NULL,\n  confirmed BOOLEAN NOT NULL,\n  muted BOOLEAN NOT NULL,\n  CHECK (\n    (\n      NOT confirmed\n      OR requested\n    )\n    AND (\n      muted\n      OR NOT muted\n    )\n  )\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "independent-axis-is-preserved",
+          "outcome": "reject",
+          "scenarioId": "independent-axis",
+          "title": "A tautological flag does not join the dependent lifecycle factor"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
               "source": "CREATE TABLE job (\n  enabled BOOLEAN NOT NULL,\n  archived BOOLEAN NOT NULL\n);\n"
             }
           ],
@@ -23476,6 +23521,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unrelated flags retain their independent values"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  requested BOOLEAN NOT NULL,\n  confirmed BOOLEAN NOT NULL,\n  archived BOOLEAN NOT NULL,\n  CHECK (\n    NOT confirmed\n    OR requested\n  ),\n  CHECK (\n    NOT archived\n    OR confirmed\n  )\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "joint-lifecycle-constraints",
+          "outcome": "reject",
+          "scenarioId": "joint-lifecycle",
+          "title": "Multiple CHECKs jointly restrict three lifecycle observations"
         }
       ],
       "optionsSchemaSource": null

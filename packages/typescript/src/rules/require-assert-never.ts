@@ -8,7 +8,7 @@
  * The visitor runs the original's syntactic checks and collects the switches
  * they leave; `Program:exit` proves exhaustiveness for all of them at once,
  * in a few batched tsrs requests (discriminant and case types, union members,
- * then `typeToString` for the finite ones). The fix helper is
+ * then literal display names and native unique-symbol identities). The fix helper is
  * `_empty-assertion-fix.ts`.
  */
 
@@ -79,15 +79,26 @@ function exhaustiveSwitches(file: TsrsFile, candidates: readonly Candidate[]): b
     ...constituents.flatMap((members, i) => open[i] === true ? [] : members ?? []),
     ...finiteTests.filter((type) => type !== undefined),
   ])];
-  const names = file.batch(named.map((type) => file.checker.typeToString.gen(type)));
-  const nameOf = new Map(named.map((type, i) => [type, names[i]]));
+  const printable = named.filter((type) => (type.flags & file.flags.UniqueESSymbol) === 0);
+  const names = printable.length === 0 ? [] : file.batch(printable.map((type) => file.checker.typeToString.gen(type)));
+  const nameOf = new Map(printable.map((type, i) => [type, names[i]]));
   let offset = 0;
   return candidates.map((_candidate, i) => {
     const caseTypes = finiteTests.slice(offset, offset + (tests[i]?.length ?? 0));
     offset += tests[i]?.length ?? 0;
     if (open[i] === true) return false;
-    const handled = new Set(caseTypes.flatMap((type) => type === undefined ? [] : [nameOf.get(type)]));
-    return (constituents[i] ?? []).every((member) => handled.has(nameOf.get(member)));
+    const symbols = new Set(caseTypes.flatMap((type) =>
+      type !== undefined && (type.flags & file.flags.UniqueESSymbol) !== 0 ? [type.id] : []));
+    const handled = new Set(caseTypes.flatMap((type) => {
+      if (type === undefined || (type.flags & file.flags.UniqueESSymbol) !== 0) return [];
+      const name = nameOf.get(type);
+      return name === undefined ? [] : [name];
+    }));
+    return (constituents[i] ?? []).every((member) => {
+      if ((member.flags & file.flags.UniqueESSymbol) !== 0) return symbols.has(member.id);
+      const name = nameOf.get(member);
+      return name !== undefined && handled.has(name);
+    });
   });
 }
 
@@ -101,13 +112,13 @@ export default defineRule({
     type: "problem",
     fixable: "code",
     docs: {
-      description: "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
+      description: "Require a never witness in empty switch defaults so discriminated unions remain exhaustive at compile time.",
       url: docsUrl(NAME),
     },
     schema: [],
     messages: {
       missingAssertNever:
-        "Empty switch `default` case — add runtime handling or call `assertNever()` so the discriminated union is exhaustively checked at compile time.",
+        "Empty switch `default` case — add runtime handling or a never witness so the discriminated union is exhaustively checked at compile time.",
     },
   },
   createOnce(context) {

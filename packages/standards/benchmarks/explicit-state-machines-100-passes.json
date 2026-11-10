@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-10",
+  "scope": "100 distinct reviews of explicit state modeling; two existing rule owners repaired.",
+  "measurementBaselineRevision": "44039171ac5375d13742c8c22cd87590c89084ad",
+  "measuredSourceSha256": {
+    "packages/sql/src/sarj_sql_lint/rules/prefer_constrained_status.py": "546f320172c98780b0ea1225e2750b347afa8c918b2bde8c70bf0ec628850c5f",
+    "packages/sql/tests/rules/test_prefer_constrained_status.py": "a22df1c16c1d405d89bf323a6a7c3613a89e301c3bb75875b0904a95c445506a",
+    "packages/typescript/src/rules/require-assert-never.ts": "f0ecb9db042d6bf8051babc3d69f57b6c2eaf9d04c92c21d2a911f226c62eb19",
+    "packages/typescript/src/rules/_empty-assertion-fix.ts": "5081677c91e31d1689ad311b03dbfdfef0f859075089c91224848030baa5048f",
+    "packages/typescript/src/docs/require-assert-never.ts": "ce090e4d90f8c3b35c142869eaf0d85f62dd0555af22d535914078808d1de647",
+    "packages/typescript/tests/rules/require-assert-never.test.ts": "78f36489cba60bbe1308877a66809b68dec4ef2e215676da1e6a7776dbd0a9ed"
+  },
+  "reviewAreas": 100,
+  "completedReviewAreasAtMeasurement": 97,
+  "semanticReviewAreas": 96,
+  "qualificationAreas": [
+    "repeated finding identity",
+    "process cost and RSS",
+    "native qualification",
+    "atomic versions and delivery"
+  ],
+  "reviewDecisions": {
+    "retain": 61,
+    "change": 30,
+    "defer": 5
+  },
+  "changes": {
+    "sql:SARJ129": {
+      "level": "warning",
+      "evidence": "Conjoin overlapping pure CHECKs on directly typed, non-generated NOT NULL BOOLEAN columns. Report only irreducible factors of the accepted relation.",
+      "meaning": "Structural dependence is proven. Lifecycle intent, application writers/readers and temporal reachability need review.",
+      "bounds": {
+        "checkPredicatesPerTable": 32,
+        "predicateNodesPerTable": 512,
+        "referencedColumnsPerComponent": 6
+      },
+      "fix": "None. Schema and application transitions require a scoped reviewed migration.",
+      "declarationBoundary": "Empty delimited identifiers abstain because PostgreSQL rejects them even when SQLglot supplies an AST. Nonempty quoted-space identifiers remain supported. Four malformed declaration controls plus one valid counterexample pass."
+    },
+    "oxlint:require-assert-never": {
+      "level": "existing error",
+      "evidence": "A finite union switch has singleton cases covering every member and an otherwise empty default. Unique symbols use native compiler identity within the same snapshot.",
+      "meaning": "Repairs analyzer false positives caused by distinct unique symbols sharing a display string, and a proven autofix serialization failure caused by introducing a private helper dependency.",
+      "fix": "A closed synchronous string-literal dispatcher gets void (parameter satisfies never), with no helper dependency. The complete comment-free module has one exported dispatcher, optionally preceded by an exactly empty private assertNever helper. Direct calls and standalone function serialization preserve the primitive fallback for unexpected inputs. Symbolic and complex switches remain manual."
+    }
+  },
+  "curatedControls": [
+    {
+      "language": "sql",
+      "mode": "baseline",
+      "labels": 32,
+      "unit": "exact dependent field group",
+      "tp": 6,
+      "fp": 8,
+      "fn": 16,
+      "tn": 9,
+      "duplicates": 0
+    },
+    {
+      "language": "sql",
+      "mode": "candidate",
+      "labels": 32,
+      "unit": "exact dependent field group",
+      "tp": 17,
+      "fp": 2,
+      "fn": 5,
+      "tn": 11,
+      "duplicates": 0
+    },
+    {
+      "language": "typescript",
+      "mode": "baseline",
+      "labels": 12,
+      "unit": "switch diagnostic",
+      "tp": 4,
+      "fp": 4,
+      "fn": 0,
+      "tn": 5,
+      "duplicates": 0
+    },
+    {
+      "language": "typescript",
+      "mode": "candidate",
+      "labels": 12,
+      "unit": "switch diagnostic",
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8,
+      "duplicates": 0
+    }
+  ],
+  "curatedInterpretation": "Authored regression controls, not a blind domain-intent precision estimate. SQL scores exact field groups; overbroad groups count as both a miss and a false positive.",
+  "knownIntentFalsePositives": [
+    "permission implication",
+    "required protocol mirror"
+  ],
+  "unsupportedOpportunitiesCountedAsMisses": [
+    "nullable unknown state",
+    "seven connected axes",
+    "33 CHECK predicates",
+    "opaque helper predicate",
+    "local Boolean domain alias"
+  ],
+  "additionalReviewedMotivatingMisses": {
+    "count": 2,
+    "opportunities": [
+      "exception constructor and persistence-dependent failure disposition",
+      "helper-mediated task container coordination"
+    ],
+    "observedRelevantPythonOwnerFindingsBefore": [
+      0,
+      0
+    ],
+    "observedRelevantPythonOwnerFindingsAfter": [
+      0,
+      0
+    ],
+    "nativePositiveControlFindings": [
+      1,
+      1
+    ],
+    "interpretation": "Actual application preimages remain outside SARJ510/SARJ565 scope. These are two disclosed unsupported opportunities, separate from the curated SQL/TypeScript panel denominators."
+  },
+  "realCode": {
+    "sqlFiles": 345,
+    "typescriptFiles": 660,
+    "sqlStructuralCandidates": 1,
+    "typescriptFindings": 0,
+    "review": "The single SQL implication is structurally correct. A partial-index reader is visible; application writers and lifecycle intent are outside the SQL snapshot. Domain intent remains unclassified, so the candidate stays advisory.",
+    "interpretation": "Frozen real inputs, verified before and after. Raw findings require source review; zero hits do not establish precision or recall. TypeScript is a source sample without the complete application dependency graph."
+  },
+  "costMethod": "Four alternating fresh-process baseline/candidate rounds with identical tools and inputs. First round is process-cold; no filesystem caches are flushed. Warm median uses the remaining three rounds. GNU time reports maximum process RSS, not simultaneous process-family RSS. Shared-VM scheduling affects wall time.",
+  "processCosts": [
+    {
+      "language": "sql",
+      "mode": "baseline",
+      "corpus": "private-sql",
+      "files": 345,
+      "cold_s": 1.113478,
+      "warm_median_s": 0.867619,
+      "peak_rss_kib": 43056,
+      "findings": 1,
+      "stable": true
+    },
+    {
+      "language": "sql",
+      "mode": "baseline",
+      "corpus": "bounded-sql-controls",
+      "files": 4,
+      "cold_s": 1.008352,
+      "warm_median_s": 0.856194,
+      "peak_rss_kib": 40736,
+      "findings": 0,
+      "stable": true
+    },
+    {
+      "language": "sql",
+      "mode": "candidate",
+      "corpus": "private-sql",
+      "files": 345,
+      "cold_s": 0.924375,
+      "warm_median_s": 1.009918,
+      "peak_rss_kib": 41812,
+      "findings": 1,
+      "stable": true
+    },
+    {
+      "language": "sql",
+      "mode": "candidate",
+      "corpus": "bounded-sql-controls",
+      "files": 4,
+      "cold_s": 1.167329,
+      "warm_median_s": 1.248146,
+      "peak_rss_kib": 40440,
+      "findings": 1,
+      "stable": true
+    },
+    {
+      "language": "typescript",
+      "mode": "baseline",
+      "corpus": "private-typescript-sample",
+      "files": 250,
+      "cold_s": 0.829426,
+      "warm_median_s": 0.688131,
+      "peak_rss_kib": 121372,
+      "findings": 0,
+      "stable": true
+    },
+    {
+      "language": "typescript",
+      "mode": "baseline",
+      "corpus": "standards-typescript-sample",
+      "files": 410,
+      "cold_s": 1.832422,
+      "warm_median_s": 1.823421,
+      "peak_rss_kib": 147228,
+      "findings": 0,
+      "stable": true
+    },
+    {
+      "language": "typescript",
+      "mode": "candidate",
+      "corpus": "private-typescript-sample",
+      "files": 250,
+      "cold_s": 0.829082,
+      "warm_median_s": 0.614976,
+      "peak_rss_kib": 121672,
+      "findings": 0,
+      "stable": true
+    },
+    {
+      "language": "typescript",
+      "mode": "candidate",
+      "corpus": "standards-typescript-sample",
+      "files": 410,
+      "cold_s": 1.844501,
+      "warm_median_s": 1.744932,
+      "peak_rss_kib": 137392,
+      "findings": 0,
+      "stable": true
+    }
+  ],
+  "fullSqlProfiles": [
+    {
+      "corpus": "private-sql",
+      "unrelated_findings_unchanged": 1638,
+      "baseline_owner": 1,
+      "candidate_owner": 1
+    },
+    {
+      "corpus": "curated-sql-controls",
+      "unrelated_findings_unchanged": 32,
+      "baseline_owner": 14,
+      "candidate_owner": 19
+    }
+  ],
+  "existingFixCharacterization": {
+    "native_compiler": "tsrs 0.23.0-ts7.1.0-beta",
+    "labeled_programs_compile": 12,
+    "fixed_module_compiles": true,
+    "original_growing_domain_compiles": true,
+    "fixed_growing_domain_rejected": "TS1360",
+    "actual_fix_matches_authored_example": true,
+    "second_fix_byte_identical": true,
+    "runtime_inputs": 10,
+    "runtime_results_identical": true,
+    "serialized_runtime_results_identical": true,
+    "function_name_and_arity_preserved": true,
+    "opaque_property_reads": 0,
+    "witness": "void (parameter satisfies never)",
+    "limitation": "Only the declared closed synchronous literal dispatcher shapes are automatically fixed."
+  },
+  "qualification": "Complete exact-head native make verify and required CI are recorded on the pull request; this artifact contains measured source/corpus evidence and does not assert a future CI result.",
+  "privacy": "Private corpus paths, revisions, source, labels and inventory digests are omitted. Owner-only receipts preserve the executed identities."
+}
