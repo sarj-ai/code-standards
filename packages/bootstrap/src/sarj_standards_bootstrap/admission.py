@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 
 
 MAX_SLOTS: Final = 64
+MAX_DEFAULT_SLOTS: Final = 4
+CPUS_PER_SLOT: Final = 8
+MEMORY_GIB_PER_SLOT: Final = 12
 LEASE_ENV: Final = "SARJ_LOCAL_CHECK_LEASE"
 JSON_PARSER: Callable[[str], dict[str, object] | list[object] | str | int | float | bool | None] = json.loads
 
@@ -35,7 +38,7 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
     if os.name != "posix" or environment.get("CI", "").lower() in {"true", "1"}:
         yield
         return
-    slots = int(environment.get("SARJ_LOCAL_CHECK_JOBS", "1"))
+    slots = int(environment.get("SARJ_LOCAL_CHECK_JOBS", str(host_default_slots())))
     timeout = float(environment.get("SARJ_LOCAL_CHECK_WAIT_SECONDS", "3600"))
     if slots < 1 or not math.isfinite(timeout) or timeout < 0:
         message = "local check slots must be positive; wait timeout must be finite and nonnegative"
@@ -132,6 +135,17 @@ def _registered_waiter(directory: Path, wait: Wait) -> Generator[Path]:
             stack.callback(path.unlink, missing_ok=True)
             fcntl.flock(handle, fcntl.LOCK_EX)
         yield path
+
+
+def default_slots(cpus: int, memory_bytes: int) -> int:
+    # Must match sarj-ai/platform scripts/dev/run-local-check.py _default_slots,
+    # which documents the sizing; both launchers share this queue directory.
+    return max(1, min(MAX_DEFAULT_SLOTS, cpus // CPUS_PER_SLOT, memory_bytes // 2**30 // MEMORY_GIB_PER_SLOT))
+
+
+def host_default_slots() -> int:
+    cpus = (len(os.sched_getaffinity(0)) if sys.platform == "linux" else os.cpu_count()) or 1
+    return default_slots(cpus, os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"))
 
 
 def _capacity(directory: Path, slots: int) -> int:
