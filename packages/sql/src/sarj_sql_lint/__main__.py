@@ -94,7 +94,7 @@ def _source_diagnostics(path: Path, source: str, rules: Sequence[Rule], *, comme
         findings.extend(
             diagnostic
             for diagnostic in rule.check(path, source)
-            if (migration and diagnostic.code in {"SARJ114", "SARJ120", "SARJ128"})
+            if (migration and diagnostic.code in {"SARJ114", "SARJ120", "SARJ128", "SARJ131"})
             or not is_suppressed(source, diagnostic.line, diagnostic.code)
         )
     return findings

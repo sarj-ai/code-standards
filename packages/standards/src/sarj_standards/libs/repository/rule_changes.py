@@ -94,6 +94,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # rollbacks and comments that replace executable constraints or waive bans.
         "sql:no-noop-migration-down",
         "sql:no-migration-comments",
+        # User-requested blocking timeout policy: exact SET/RESET controls need
+        # scoped reasons; qualified with native fixtures and an immutable SQL corpus.
+        "sql:migration-timeout-requires-justification",
         # User-approved constructor ownership policy: inject import-proven HTTPX
         # clients and retain scoped composition ownership and async cleanup.
         "python:no-async-client-in-constructor",

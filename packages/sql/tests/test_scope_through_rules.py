@@ -29,6 +29,7 @@ _COPY_SIGNALS = (
     (RuleId("no-null-comparison"), "SELECT value = NULL;"),
     (RuleId("invalid-concurrent-ddl"), "DROP INDEX CONCURRENTLY item_a, item_b;"),
     (RuleId("invalid-postgres-ddl"), "CREATE UNIQUE INDEX item_key ON item USING hash (id);"),
+    (RuleId("migration-timeout-requires-justification"), "RESET lock_timeout;"),
 )
 
 
@@ -81,7 +82,7 @@ def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId
 # SARJ120 a stored SQL function, and SARJ102 + SARJ121 an unguarded fresh table
 # followed by a separately declared primary key, SARJ123 adjacent compatible
 # drops, SARJ124 ordinary NULL equality, SARJ125 a concurrent multi-index drop,
-# and SARJ126 a unique hash index. Timeout settings are optional.
+# and SARJ126 a unique hash index. These legacy rules do not require timeout headers.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -129,7 +130,7 @@ HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 MIGRATION_RULES = tuple(
     rule_cls
     for rule_cls in REGISTRY.values()
-    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130"}
+    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130", "SARJ131"}
 )
 DUMP_EXEMPT = MIGRATION_RULES
 

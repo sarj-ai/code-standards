@@ -14,6 +14,7 @@ from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
 from sarj_sql_lint.rules.invalid_concurrent_ddl import InvalidConcurrentDdl
 from sarj_sql_lint.rules.invalid_postgres_ddl import InvalidPostgresDdl
+from sarj_sql_lint.rules.migration_timeout_requires_justification import MigrationTimeoutRequiresJustification
 from sarj_sql_lint.rules.mixed_migration_phases import MixedMigrationPhases
 from sarj_sql_lint.rules.new_table_inline_constraints import NewTableInlineConstraints
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        MigrationTimeoutRequiresJustification.id: MigrationTimeoutRequiresJustification,
         DeclaredColumnBounds.id: DeclaredColumnBounds,
         NoMigrationComments.id: NoMigrationComments,
         NoNoopMigrationDown.id: NoNoopMigrationDown,

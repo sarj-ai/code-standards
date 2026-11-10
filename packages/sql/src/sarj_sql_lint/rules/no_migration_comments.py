@@ -27,6 +27,7 @@ from sarj_sql_lint.rule_base import (
     sql_comments,
 )
 from sarj_sql_lint.rules._copy_input import sql_before_copy_input
+from sarj_sql_lint.rules._migration_timeouts import migration_timeout_controls
 
 
 if TYPE_CHECKING:
@@ -68,7 +69,8 @@ class NoMigrationComments(Rule):
             "Express data invariants with SQL constraints and delete explanatory line/block comments and COMMENT ON "
             "statements that store prose. COMMENT ON with NULL or an empty string may remove existing comments. "
             "Put deployment context in the change description. Retain only executable runner, dialect, "
-            "and statement-boundary directives. Migration sarj-noqa comments are also reported."
+            "statement-boundary directives, and scoped timeout-justification directives bound to a matching "
+            "timeout statement. Migration sarj-noqa comments are also reported."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
@@ -79,6 +81,7 @@ class NoMigrationComments(Rule):
             "Strings and quoted identifiers are not comments, including scalar dollar-quoted data. Comments in executable bodies are checked.",
             "COMMENT ON cleanup using unquoted NULL or an empty plain, escape, or dollar-quoted string is allowed; quoted NULL and nonempty strings still store comments.",
             "Analysis stops before top-level COPY FROM STDIN; payloads and following commands are not inferred.",
+            "A standalone timeout-justification directive with a nonempty reason is preserved only immediately before its matching top-level timeout SET/RESET. Orphaned, mismatched and malformed directives remain comments.",
             "Conditional safe fixes replace empty PostgreSQL comments with whitespace that preserves token boundaries and physical newlines. They also reuse the existing banner and complete supported disabled-SQL line-comment profiles only when both rules report the same location. Arbitrary prose, declared ranges, COMMENT ON statements, directives, references, rollback guidance, suppression and license comments remain manual.",
             "Empty block comments between adjacent string literals remain manual to preserve PostgreSQL string-continuation boundaries. Empty comments elsewhere remain eligible with quoted data.",
             "Safe fixes preserve physical newlines and refuse COPY input, dollar-quoted data and procedural sources. Direct source-string fixes refuse a visible BOM prefix; file fixes preserve the original UTF-8 BOM through the shared file adapter. Generated migrations remain model-owned. No constraint is invented from prose.",
@@ -186,6 +189,11 @@ class NoMigrationComments(Rule):
         if is_dump_file(source, path) or not is_migration_source(path, source):
             return []
         lines = physical_lines(source)
+        timeout_directives = {
+            (justification.line, justification.column)
+            for control in migration_timeout_controls(source)
+            if (justification := control.justification) is not None
+        }
         findings = [
             Diagnostic(
                 path,
@@ -196,7 +204,7 @@ class NoMigrationComments(Rule):
                 "and move deployment context to the change description.",
             )
             for comment in sql_comments(source, mask_dollar_literals=True)
-            if not _is_tool_directive(comment, lines)
+            if (comment.line, comment.column) not in timeout_directives and not _is_tool_directive(comment, lines)
         ]
         masked = mask_sql(source, mask_dollar_literals=True)
         comment_statements = tuple(_COMMENT_ON.finditer(masked))
