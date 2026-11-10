@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards_bootstrap import admission
 from sarj_standards_bootstrap.admission import check_slot
 
 
@@ -62,7 +63,7 @@ def environment(tmp_path: Path) -> dict[str, str]:
         for key, value in os.environ.items()  # ruff: ignore[banned-api] -- preserve the test runner's Python path.
         if not key.startswith("SARJ_LOCAL_CHECK_")
     }
-    result.update(CI="false", SARJ_LOCAL_CHECK_STATE_DIR=str(tmp_path / "state"))
+    result.update(CI="false", SARJ_LOCAL_CHECK_JOBS="1", SARJ_LOCAL_CHECK_STATE_DIR=str(tmp_path / "state"))
     result["PATH"] = f"{tmp_path}{os.pathsep}{result['PATH']}"
     return result
 
@@ -427,7 +428,13 @@ def test_short_metadata_contentions_share_the_report_cadence(
         monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Native polling releases real lock contention at each sleep boundary.
             time, "sleep", release_after_poll
         )
-        with check_slot({"SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path), "SARJ_LOCAL_CHECK_WAIT_SECONDS": "10"}):
+        with check_slot(
+            {
+                "SARJ_LOCAL_CHECK_JOBS": "1",
+                "SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path),
+                "SARJ_LOCAL_CHECK_WAIT_SECONDS": "10",
+            }
+        ):
             assert clock[0] >= 1
     assert capsys.readouterr().err.count("waiting for admission metadata lock") == 1
 
@@ -517,3 +524,25 @@ def test_budget_expiring_at_an_occupied_slot_does_not_acquire_a_later_free_slot(
             pytest.fail("Occupied slot exhausted the budget before the next free slot")
     assert not (tmp_path / "slot-1.lock").exists()
     assert not list(tmp_path.glob("wait-*.lock"))
+
+
+@pytest.mark.parametrize(
+    ("cpus", "memory_gib", "expected"),
+    [(2, 8, 1), (8, 15.5, 1), (32, 31, 2), (16, 62, 2), (32, 62, 4), (128, 512, 4), (32, 23.9, 1)],
+)
+def test_default_capacity_follows_cpus_and_memory(cpus: int, memory_gib: float, expected: int) -> None:
+    assert admission.default_slots(cpus, int(memory_gib * 2**30)) == expected
+
+
+def test_unset_capacity_admits_with_the_host_default(environment: dict[str, str]) -> None:
+    options = {key: value for key, value in environment.items() if key != "SARJ_LOCAL_CHECK_JOBS"}
+    with check_slot(options):
+        assert options["SARJ_LOCAL_CHECK_JOBS"] == str(admission.host_default_slots())
+
+
+def test_shared_capacity_file_overrides_the_host_default(tmp_path: Path, environment: dict[str, str]) -> None:
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state/capacity.json").write_text('{"slots": 3}', encoding="utf-8")
+    options = {key: value for key, value in environment.items() if key != "SARJ_LOCAL_CHECK_JOBS"}
+    with check_slot(options):
+        assert options["SARJ_LOCAL_CHECK_JOBS"] == "3"
