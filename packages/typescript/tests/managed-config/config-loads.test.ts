@@ -79,6 +79,23 @@ const FILES: Readonly<Record<string, string>> = {
   "dist/built.ts": "export enum Built { Yes }\n",
   "src/worker-configuration.d.ts": "/* eslint-disable */\nexport declare const value: any;\n",
   "src/directives.ts": "// oxlint-disable-next-line no-console\nconsole.log(1);\n/* oxlint-disable no-console -- the CLI prints its report */\nconsole.log(2);\n",
+  "src/web-adapters.jsx": 'function Label(props) { return <label {...props} />; } const field = <Trigger render={<Button role="combobox" aria-expanded={open} />} />;\n',
+  "src/web-obsolete.jsx": '<img alt="" importance="high" />\n',
+  "src/web-markup.jsx": [
+    '<div><img src="/image.png" /><iframe src="https://example.com" />',
+    '<button aria-hidden="true">Close</button><a href="/next" tabIndex={1}>Next</a>',
+    '<link rel="preload" as="font" href="/font.woff2" />',
+    '<img src="/hero.png" alt="View" loading="lazy" fetchPriority="high" />',
+    '<form><input type="password" name="password" onPaste={event => event.preventDefault()} /></form></div>;',
+  ].join("\n"),
+  "src/web-markup-valid.jsx": [
+    '<div><img src="/image.png" alt="View" /><iframe src="https://example.com" title="Help" />',
+    '<dialog><input autoFocus aria-label="Name" /></dialog>',
+    '<link rel="preload" as="font" href="/font.woff2" crossOrigin="anonymous" />',
+    '<img src="/hero.png" alt="View" loading="eager" fetchPriority="high" /></div>;',
+  ].join("\n"),
+  "src/message-origin.js":
+    'window.addEventListener("message", event => event.origin.startsWith("https://trusted.example"));\n',
 };
 
 interface Diagnostic {
@@ -172,5 +189,34 @@ describe("the managed Oxlint config in a consumer", () => {
 
   it("applies the ignore patterns the consumer config spreads", () => {
     expect(codesOf("dist/built.ts")).toEqual([]);
+  });
+
+  it("preserves unresolved label adapters and render-prop roles", () => {
+    expect(codesOf("src/web-adapters.jsx").filter(code => code.startsWith("jsx-a11y("))).toEqual([]);
+  });
+
+  it("covers the obsolete attribute still accepted by the native upstream rule", () => {
+    expect(codesOf("src/web-obsolete.jsx")).not.toContain("react(no-unknown-property)");
+    expect(codesOf("src/web-obsolete.jsx")).toContain("@sarj(no-invalid-web-resource-hints)");
+  });
+
+  it("checks native accessibility and web guidance through the shipped preset", () => {
+    expect(codesOf("src/web-markup.jsx")).toEqual(
+      expect.arrayContaining([
+        "jsx-a11y(alt-text)",
+        "jsx-a11y(iframe-has-title)",
+        "jsx-a11y(no-aria-hidden-on-focusable)",
+        "jsx-a11y(tabindex-no-positive)",
+        "@sarj(no-invalid-web-resource-hints)",
+        "@sarj(no-password-get-form)",
+        "@sarj(no-blocked-input-paste)",
+      ]),
+    );
+    expect(codesOf("src/message-origin.js")).toContain("@sarj(no-message-origin-string-matching)");
+    expect(
+      codesOf("src/web-markup-valid.jsx").filter(
+        (code) => code.startsWith("jsx-a11y(") || code === "@sarj(no-invalid-web-resource-hints)",
+      ),
+    ).toEqual([]);
   });
 });

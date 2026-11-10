@@ -45,6 +45,7 @@ const CONTEXTS = [
 // oxlint.strict.mts; their package comes from that registration.
 const NATIVE_PLUGINS: Readonly<Record<string, string>> = {
   eslint: "ESLint core",
+  "jsx-a11y": "JSX accessibility",
   typescript: "TypeScript",
   unicorn: "Unicorn",
   react: "React",

@@ -23,6 +23,7 @@ import interfaceContractMembersPrivate from "./rules/interface-contract-members-
 import namedChildSchemaType from "./rules/named-child-schema-type.js";
 import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
 import noBespokeApiCaseConversion from "./rules/no-bespoke-api-case-conversion.js";
+import noBlockedInputPaste from "./rules/no-blocked-input-paste.js";
 import noBooleanSelectorParameter from "./rules/no-boolean-selector-parameter.js";
 import noBroadReturnType from "./rules/no-broad-return-type.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
@@ -56,6 +57,7 @@ import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-boun
 import noInOperatorOnBuiltInCollections from "./rules/no-in-operator-on-built-in-collections.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noInvalidTypedMutation from "./rules/no-invalid-typed-mutation.js";
+import noInvalidWebResourceHints from "./rules/no-invalid-web-resource-hints.js";
 import noInvalidZodCustomParse from "./rules/no-invalid-zod-custom-parse.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noJsonStringifyObjectEquality from "./rules/no-json-stringify-object-equality.js";
@@ -63,6 +65,7 @@ import noKnownValueWidening from "./rules/no-known-value-widening.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noLogicalOrFallback from "./rules/no-logical-or-fallback.js";
 import noLongComment from "./rules/no-long-comment.js";
+import noMessageOriginStringMatching from "./rules/no-message-origin-string-matching.js";
 import noMutatingContainerTransform from "./rules/no-mutating-container-transform.js";
 import noMutatingInputWithResult from "./rules/no-mutating-input-with-result.js";
 import noNegativeOnlyHttpStatusAssertion from "./rules/no-negative-only-http-status-assertion.js";
@@ -70,6 +73,7 @@ import noNumericSearchParamCoercion from "./rules/no-numeric-search-param-coerci
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noOxlintDirective from "./rules/no-oxlint-directive.js";
 import noPartialTypePredicate from "./rules/no-partial-type-predicate.js";
+import noPasswordGetForm from "./rules/no-password-get-form.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noProductionBrowserSourceMaps from "./rules/no-production-browser-source-maps.js";
 import noRawEnv from "./rules/no-raw-env.js";
@@ -157,6 +161,7 @@ import requireConstrainedSchemaInteger from "./rules/require-constrained-schema-
 import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
 import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
+import requireImeSafeEnterHandler from "./rules/require-ime-safe-enter-handler.js";
 import requireInterfaceForExportedClass from "./rules/require-interface-for-exported-class.js";
 import requireJwtLifetime from "./rules/require-jwt-lifetime.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
@@ -190,6 +195,7 @@ const RULES = {
   "named-child-schema-type": namedChildSchemaType,
   "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
   "no-bespoke-api-case-conversion": noBespokeApiCaseConversion,
+  "no-blocked-input-paste": noBlockedInputPaste,
   "no-boolean-selector-parameter": noBooleanSelectorParameter,
   "no-broad-return-type": noBroadReturnType,
   "no-client-side-data-fetching": noClientSideDataFetching,
@@ -223,6 +229,7 @@ const RULES = {
   "no-in-operator-on-built-in-collections": noInOperatorOnBuiltInCollections,
   "no-insecure-random-id": noInsecureRandomId,
   "no-invalid-typed-mutation": noInvalidTypedMutation,
+  "no-invalid-web-resource-hints": noInvalidWebResourceHints,
   "no-invalid-zod-custom-parse": noInvalidZodCustomParse,
   "no-json-stringify-error": noJsonStringifyError,
   "no-json-stringify-object-equality": noJsonStringifyObjectEquality,
@@ -230,6 +237,7 @@ const RULES = {
   "no-log-only-catch": noLogOnlyCatch,
   "no-logical-or-fallback": noLogicalOrFallback,
   "no-long-comment": noLongComment,
+  "no-message-origin-string-matching": noMessageOriginStringMatching,
   "no-mutating-container-transform": noMutatingContainerTransform,
   "no-mutating-input-with-result": noMutatingInputWithResult,
   "no-negative-only-http-status-assertion": noNegativeOnlyHttpStatusAssertion,
@@ -237,6 +245,7 @@ const RULES = {
   "no-offset-pagination": noOffsetPagination,
   "no-oxlint-directive": noOxlintDirective,
   "no-partial-type-predicate": noPartialTypePredicate,
+  "no-password-get-form": noPasswordGetForm,
   "no-positional-tuple-return": noPositionalTupleReturn,
   "no-production-browser-source-maps": noProductionBrowserSourceMaps,
   "no-raw-env": noRawEnv,
@@ -324,6 +333,7 @@ const RULES = {
   "require-explicit-contract-implementation": requireExplicitContractImplementation,
   "require-explicit-service-contract": requireExplicitServiceContract,
   "require-fetch-timeout": requireFetchTimeout,
+  "require-ime-safe-enter-handler": requireImeSafeEnterHandler,
   "require-interface-for-exported-class": requireInterfaceForExportedClass,
   "require-jwt-lifetime": requireJwtLifetime,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
@@ -336,7 +346,7 @@ const RULES = {
   "require-zod-form-validation": requireZodFormValidation,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "source-coupled-test": sourceCoupledTest,
-  "stepdown": stepdown,
+  stepdown: stepdown,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "test-loops-over-literal-cases": testLoopsOverLiteralCases,
   "test-phase-label-comment": testPhaseLabelComment,

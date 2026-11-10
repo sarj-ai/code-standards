@@ -240,6 +240,34 @@ const LIBRARY_LOADS = [
 // END GENERATED LIBRARY POLICY
 
 const RULES = {
+  // Audited browser guidance: literal semantic checks start at warning.
+  "jsx-a11y/alt-text": "warn",
+  "jsx-a11y/anchor-has-content": "warn",
+  "jsx-a11y/anchor-is-valid": "warn",
+  "jsx-a11y/aria-activedescendant-has-tabindex": "warn",
+  "jsx-a11y/aria-props": "warn",
+  "jsx-a11y/aria-proptypes": "warn",
+  "jsx-a11y/aria-role": "warn",
+  "jsx-a11y/aria-unsupported-elements": "warn",
+  "jsx-a11y/autocomplete-valid": "warn",
+  "jsx-a11y/heading-has-content": "warn",
+  "jsx-a11y/html-has-lang": "warn",
+  "jsx-a11y/iframe-has-title": "warn",
+  "jsx-a11y/interactive-supports-focus": "warn",
+  "jsx-a11y/lang": "warn",
+  "jsx-a11y/no-access-key": "warn",
+  "jsx-a11y/no-aria-hidden-on-focusable": "warn",
+  "jsx-a11y/no-distracting-elements": "warn",
+  "jsx-a11y/no-interactive-element-to-noninteractive-role": "warn",
+  "jsx-a11y/no-noninteractive-element-to-interactive-role": "warn",
+  "jsx-a11y/role-supports-aria-props": "warn",
+  "jsx-a11y/scope": "warn",
+  "jsx-a11y/tabindex-no-positive": "warn",
+  "@sarj/no-invalid-web-resource-hints": "warn",
+  "@sarj/no-password-get-form": "warn",
+  "@sarj/no-blocked-input-paste": "warn",
+  "@sarj/require-ime-safe-enter-handler": "warn",
+  "@sarj/no-message-origin-string-matching": "warn",
   // ESLint core (native).
   "array-callback-return": ["error", {"allowImplicit": false, "checkForEach": false, "allowVoid": false}],
   "arrow-body-style": ["warn", "as-needed"],
@@ -1236,7 +1264,7 @@ export function createConfig(options: ConfigOptions = {}): OxlintConfig {
   }
 
   return defineConfig({
-    plugins: ["eslint", "typescript", "unicorn", "react", "import", "promise", "oxc", "vitest"],
+    plugins: ["eslint", "typescript", "unicorn", "react", "jsx-a11y", "import", "promise", "oxc", "vitest"],
     jsPlugins: [
       { name: "@sarj", specifier: "@sarj/eslint-plugin" },
       { name: "eslint-js", specifier: "oxlint-plugin-eslint" },

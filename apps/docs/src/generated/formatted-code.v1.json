@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c7d57ba8e2a525e8dd7290428e2c275aad59ce135b85bab18d50ae3317be6a4e",
+  "catalogSha256": "858d166eaee2fdbd306e4fc859074008f64398e604be140b82aa750b551aab36",
   "cliSha256": "b382feec4cf4f8e6d7fe74b52f9beaf66640c04028724b30fb8b729fd329f39e",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -2265,6 +2265,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "oxlint:no-blocked-input-paste": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<input type=\"password\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "native-paste",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Allow native clipboard input"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<input type=\"password\" onPaste={(event) => event.preventDefault()} />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "pure-paste-blocker",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review unconditional paste cancellation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:no-boolean-selector-parameter": {
       "examples": [
         {
@@ -4177,6 +4212,71 @@
       ],
       "optionsSchemaSource": null
     },
+    "oxlint:no-invalid-web-resource-hints": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<link rel=\"preload\" as=\"font\" href=\"/font.woff2\" crossOrigin=\"anonymous\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "anonymous-font-preload",
+          "outcome": "accept",
+          "scenarioId": "font-preload",
+          "title": "Match the font request mode"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<img loading=\"eager\" fetchPriority=\"high\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "eager-critical-image",
+          "outcome": "accept",
+          "scenarioId": "image-loading",
+          "title": "Load a declared critical image eagerly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<link rel=\"preload\" as=\"font\" href=\"/font.woff2\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "font-preload-without-cors",
+          "outcome": "reject",
+          "scenarioId": "font-preload",
+          "title": "Review a non-reusable font preload"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<img loading=\"lazy\" fetchPriority=\"high\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "lazy-critical-image",
+          "outcome": "reject",
+          "scenarioId": "image-loading",
+          "title": "Review conflicting image hints"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:no-invalid-zod-custom-parse": {
       "examples": [
         {
@@ -4764,6 +4864,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "oxlint:no-message-origin-string-matching": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/listener.ts",
+              "source": "window.addEventListener(\"message\", (event) => {\n  if (event.origin === \"https://trusted.example\") accept(event.data);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/listener.ts",
+          "id": "exact-origin",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Compare an explicit trusted origin"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/listener.ts",
+              "source": "window.addEventListener(\"message\", (event) => {\n  if (event.origin.startsWith(\"https://trusted.example\")) accept(event.data);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/listener.ts",
+          "id": "prefix-origin",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review a spoofable origin prefix"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:no-mutating-container-transform": {
       "examples": [
         {
@@ -5082,6 +5217,41 @@
           "outcome": "reject",
           "scenarioId": "uuid",
           "title": "A rejected UUID candidate can still be a string"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:no-password-get-form": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<form>\n  <input type=\"password\" name=\"password\" />\n</form>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "default-get-password",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review password serialization into the URL"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/view.tsx",
+              "source": "<form method=\"post\">\n  <input type=\"password\" name=\"password\" />\n</form>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/view.tsx",
+          "id": "post-password",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Submit the password with POST"
         }
       ],
       "optionsSchemaSource": null
@@ -10108,6 +10278,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowIn\": {\n      \"description\": \"Glob patterns for wrapper modules exempt from the rule. Matched against the ABSOLUTE file path, so anchor with a `**/` prefix (e.g. `**/http-client.ts`).\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "oxlint:require-ime-safe-enter-handler": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/input.tsx",
+              "source": "<textarea\n  onKeyDown={(e) => {\n    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;\n    if (e.key === \"Enter\") {\n      e.preventDefault();\n      e.currentTarget.form?.requestSubmit();\n    }\n  }}\n/>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/input.tsx",
+          "id": "guarded-composition",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "guarded composition"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/input.tsx",
+              "source": "<textarea\n  onKeyDown={(e) => {\n    if (e.key === \"Enter\") e.currentTarget.form?.requestSubmit();\n  }}\n/>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/input.tsx",
+          "id": "interrupted-composition",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "interrupted composition"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "oxlint:require-interface-for-exported-class": {
       "examples": [

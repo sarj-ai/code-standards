@@ -44,6 +44,7 @@ _TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config doe
 
 
 class _UpstreamRuleEngine(StrEnum):
+    STYLELINT = "stylelint"
     CHECKOV = "checkov"
     KNIP = "knip"
     SHELLCHECK = "shellcheck"
@@ -847,6 +848,10 @@ def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector:
         from sarj_standards.libs.linting.sqlfluff_protocol import RULES  # ruff: ignore[import-outside-top-level] -- the opt-in adapter owns its upstream selectors.
 
         valid = rule in RULES
+    elif engine is _UpstreamRuleEngine.STYLELINT:
+        from sarj_standards.libs.linting.stylelint import RULES as STYLELINT_RULES  # ruff: ignore[import-outside-top-level] -- defer the CSS report adapter until its selector is used.
+
+        valid = rule in STYLELINT_RULES or rule == "CssSyntaxError"
     else:
         known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
         valid = rule in known

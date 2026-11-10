@@ -725,6 +725,7 @@ def _source_analyzer_coverage(
                 CoverageDisposition.NOT_REQUESTED,
             )
         )
+    coverage.extend(_css_source_coverage(selected_groups, adopted, typescript=typescript))
     if selected_groups.python and not python_type_check:
         coverage.append(
             CoverageNotice(
@@ -735,6 +736,18 @@ def _source_analyzer_coverage(
             )
         )
     return coverage
+
+
+def _css_source_coverage(groups: GroupedPaths, adopted: Manifest | None, *, typescript: bool) -> list[CoverageNotice]:
+    if not groups.css:
+        return []
+    if typescript and (adopted is None or "typescript" in adopted.configs):
+        return []
+    return [
+        CoverageNotice(
+            "stylelint", "disabled by repository capabilities", len(groups.css), CoverageDisposition.NOT_REQUESTED
+        )
+    ]
 
 
 def _prepared_only_analysis(
@@ -1166,6 +1179,17 @@ def _native_typescript_coverage(
             )
         )
 
+    if selected_groups.css and rule_selection is None:
+        enabled = adopted is None or "typescript" in adopted.configs
+        coverage.append(
+            CoverageNotice(
+                "stylelint",
+                "CSS analysis requires external trusted analysis" if enabled else "disabled by repository capabilities",
+                len(selected_groups.css),
+                CoverageDisposition.FAILED if enabled else CoverageDisposition.NOT_REQUESTED,
+            )
+        )
+
 
 def _analysis_baseline(
     root: Path, adopted: Manifest | None, normalized_mode: AnalysisMode
@@ -1240,6 +1264,7 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
     if RuleEngine.OXLINT in engines:
         routed.update(grouped.typescript)
     if selected is None:
+        routed.update(grouped.css)
         routed.update(grouped.kotlin)
         routed.update(grouped.swift)
     return routed

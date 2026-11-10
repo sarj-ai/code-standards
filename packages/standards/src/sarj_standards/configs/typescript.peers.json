@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Every npm package the TypeScript capability (Oxlint, oxfmt, tsrs, React Doctor) loads or",
+    "Every npm package the TypeScript capability (Oxlint, Stylelint, oxfmt, tsrs, React Doctor) loads or",
     "executes, at the exact versions this repo installs and tests: the binaries, the @sarj plugin",
     "the standalone upstream rule entrypoints, and the remaining plugins under `jsPlugins`.",
     "",
@@ -13,19 +13,20 @@
     "trust policies for that install only."
   ],
   "peers": {
-    "@sarj/eslint-plugin": "19.16.0",
+    "@sarj/eslint-plugin": "19.17.0",
     "eslint-plugin-zod": "5.2.2",
     "oxfmt": "0.76.0",
     "oxlint": "1.91.0",
     "oxlint-plugin-eslint": "1.91.0",
     "oxlint-plugin-react-doctor": "0.9.22",
     "parse5": "8.0.0",
+    "stylelint": "18.0.0",
     "syncpack": "15.3.3",
     "tsrs": "0.23.0-ts7.1.0-beta",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "19.16.0"
+    "@sarj/eslint-plugin": "19.17.0"
   },
   "platformPackages": {
     "oxfmt": [

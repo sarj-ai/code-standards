@@ -1,0 +1,120 @@
+{
+  "source": {
+    "repository": "GoogleChrome/modern-web-guidance",
+    "revision": "4dd968349e54ca45a05dd5c818fb035c9054b022"
+  },
+  "inventory": {
+    "documents": 237,
+    "tasks": 10917,
+    "codeExamples": 1319
+  },
+  "decision": "Ship 22 native JSX accessibility checks, 11 upstream Stylelint checks and six narrow custom checks at warning; retain conditional browser review criteria. No autofix is provided for the custom checks.",
+  "tools": {
+    "node": "24.22.1",
+    "oxlint": "1.91.0",
+    "stylelint": "18.0.0",
+    "vitest": "5.0.5"
+  },
+  "corpora": [
+    {
+      "visibility": "private",
+      "files": 1187,
+      "bytes": 5087704
+    },
+    {
+      "repository": "sarj-ai/code-standards",
+      "revision": "6d671023934c8515c678256fcfe6df4d378dd853",
+      "files": 438,
+      "bytes": 2818745
+    }
+  ],
+  "evaluation": {
+    "isolatedJavaScriptBatches": 7,
+    "javascriptTypeScriptFiles": 1625,
+    "standaloneCssFiles": 3,
+    "finalFindings": 0,
+    "executionErrors": 0,
+    "sourceChanged": false
+  },
+  "initialReview": {
+    "findingsReviewed": 6,
+    "adapterFalsePositives": 1,
+    "runtimeOrBuildDependent": 5,
+    "changes": [
+      "Omit native label-has-associated-control: prop-forwarding label adapters cannot prove a missing association.",
+      "Omit native role-has-required-aria-props: render-prop primitives may supply the missing attributes; verify final DOM instead.",
+      "Use maintained media-query-no-invalid ignoreFunctions for custom/theme compilation; keep standard invalid-query detection."
+    ]
+  },
+  "boundaries": [
+    "Every initial finding was inspected. Zero final natural positives do not establish field precision or recall.",
+    "Twelve public paired examples verify the five Oxlint rules; positive, negative and near-miss RuleTester cases and CSS tests provide activation evidence. They are curated examples, not independent field observations.",
+    "HTML/Astro templates, CSS-in-JS, referenced handlers, custom components, cross-file ownership, external cascade, computed DOM and actual browser interaction remain outside the stated static boundaries.",
+    "Private corpus source, paths, revisions and identifying hashes remain local. CSS bytes were verified against the declared archived Git commits; JavaScript digests were verified before and after isolated batches.",
+    "No formatter convergence claim is made for the six nonfixing custom rules; immutable corpus scans prove they did not rewrite source."
+  ],
+  "performance": {
+    "scope": "Only the newly selected JSX checks versus the same parser/plugin with those checks off; not the complete Standards preset or typed analysis.",
+    "files": 250,
+    "selection": "Deterministic random sample, seed 0, from the same immutable private corpus.",
+    "threads": 2,
+    "trials": {
+      "baseline": [
+        {
+          "seconds": 0.38,
+          "maxProcessRssKiB": 112108
+        },
+        {
+          "seconds": 0.31,
+          "maxProcessRssKiB": 116240
+        },
+        {
+          "seconds": 0.33,
+          "maxProcessRssKiB": 116420
+        },
+        {
+          "seconds": 0.32,
+          "maxProcessRssKiB": 116264
+        },
+        {
+          "seconds": 0.39,
+          "maxProcessRssKiB": 114076
+        }
+      ],
+      "candidate": [
+        {
+          "seconds": 1.05,
+          "maxProcessRssKiB": 133724
+        },
+        {
+          "seconds": 0.7,
+          "maxProcessRssKiB": 138880
+        },
+        {
+          "seconds": 0.69,
+          "maxProcessRssKiB": 137044
+        },
+        {
+          "seconds": 0.71,
+          "maxProcessRssKiB": 135712
+        },
+        {
+          "seconds": 0.7,
+          "maxProcessRssKiB": 133908
+        }
+      ]
+    },
+    "medians": {
+      "baseline": {
+        "seconds": 0.33,
+        "maxProcessRssKiB": 116240
+      },
+      "candidate": {
+        "seconds": 0.7,
+        "maxProcessRssKiB": 135712
+      }
+    },
+    "limitations": "Fresh processes on a warm filesystem; no shared cache eviction or persistent warmed-engine measurement. time reports maximum process RSS, not aggregate process-tree peak.",
+    "assessment": "The measured incremental median is 0.37 seconds and 19,472 KiB for this 250-file sample. It is a bounded cost observation, not a full-preset speed or memory guarantee."
+  }
+}
