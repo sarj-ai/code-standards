@@ -23,20 +23,20 @@
   "labeled_policy_sites": [
     {
       "mode": "baseline",
-      "labels": 26,
+      "labels": 28,
       "tp": 0,
       "fp": 0,
       "fn": 13,
-      "tn": 14,
+      "tn": 16,
       "duplicates": 0
     },
     {
       "mode": "candidate",
-      "labels": 26,
+      "labels": 28,
       "tp": 13,
       "fp": 0,
       "fn": 0,
-      "tn": 14,
+      "tn": 16,
       "duplicates": 0
     }
   ],
@@ -49,7 +49,7 @@
       "lock_timeout": 204,
       "statement_timeout": 207
     },
-    "review_result": "All reported lines independently match literal SET/SET LOCAL or RESET of the exact known settings; no known inspected policy false positives. Runtime intent and reason adequacy require review.",
+    "review_result": "All reported lines match direct known SET/SET LOCAL or RESET controls. All20forms and a deterministic50context stratified sample were reviewed; no known inspected policy false positives. Runtime intent and reason adequacy require review.",
     "duplicates": 0,
     "existing_comment_findings_before": 1109,
     "existing_comment_findings_after": 1109,
@@ -60,9 +60,9 @@
     {
       "mode": "baseline",
       "files": 345,
-      "cold_s": 1.609449,
-      "warm_median_s": 2.195005,
-      "peak_rss_kib": 45700,
+      "cold_s": 1.34185,
+      "warm_median_s": 1.972851,
+      "peak_rss_kib": 45500,
       "findings": {
         "SARJ128": 1109
       }
@@ -70,21 +70,21 @@
     {
       "mode": "candidate",
       "files": 345,
-      "cold_s": 3.003111,
-      "warm_median_s": 2.919042,
-      "peak_rss_kib": 43196,
+      "cold_s": 2.251267,
+      "warm_median_s": 1.705543,
+      "peak_rss_kib": 42616,
       "findings": {
         "SARJ128": 1109,
         "SARJ131": 411
       }
     }
   ],
-  "method": "Four alternating fresh-process runs; first is process-cold, remaining three warm median. No filesystem cache flush; maximum process RSS, not process-family sum. Shared-VM timings are noisy. Labeled policy sites, not runtime defects.",
+  "method": "Four alternating fresh-process runs; first is process-cold, remaining three warm median. No filesystem cache flush; maximum process RSS, not process-family sum. Shared-VM timings are noisy. Labeled policy sites, not runtime defects. The labeled corpus is an explicit new immutable snapshot after narrowing standalone SET syntax; the real corpus and baseline source remain unchanged.",
   "validation": {
-    "sql_tests_passed": 3785,
+    "sql_tests_passed": 3769,
     "standard_sql_skips": 4,
     "public_executable_examples": 4,
-    "new_rule_fixture_tests": 109,
+    "new_rule_fixture_tests": 93,
     "native_source_errors": 0,
     "strict_typing_errors": 0,
     "fix_idempotence": "No new SQL fix; qualified directives are unchanged by the existing comment fixer."
@@ -95,7 +95,8 @@
     "SQL-standard BEGIN ATOMIC: the whole file abstains",
     "COPY FROM STDIN payloads and following commands",
     "No semantic assessment of whether a reason is adequate",
-    "Generated migrations and explicit dumps remain outside the authored-migration policy; this source sample does not include every application dependency."
+    "Generated migrations and explicit dumps remain outside the authored-migration policy; this source sample does not include every application dependency.",
+    "Standalone SET FROM CURRENT and function configuration clauses; standalone syntax follows the PostgreSQL18 SET reference."
   ],
   "adoption": "Publish first. Preserve existing reviewed debt through the established fingerprint baseline and changed-line ratchet; do not rewrite historical SQL or silently recapture a baseline."
 }
