@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "858d166eaee2fdbd306e4fc859074008f64398e604be140b82aa750b551aab36",
-  "cliSha256": "fff516143e81b22cf8481780f9fc1a1311af3df7ff551ff0ae3c4602aaa94c7b",
+  "catalogSha256": "51064e1da4012112bc9701d7e05c759c09e179902cb5d6c8b9a6c9d7cabb1fc4",
+  "cliSha256": "bf020c9b8d6b711ca1c63b40a0c8b7f1bf8153c9b69bd4b27e90a80a65a33efd",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8300,6 +8300,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/projection.ts",
+              "source": "type Phase = \"ready\" | \"waiting\" | \"reconnecting\" | \"unknown\";\ndeclare function snapshot(): Phase;\nfunction state(timeout: boolean): { phase: Phase; timeout: boolean } {\n  const phase = snapshot();\n  return { phase, timeout };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/projection.ts",
+          "id": "authoritative-state",
+          "outcome": "accept",
+          "scenarioId": "state-projection",
+          "title": "Return the phase while preserving the independent timeout dimension"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/job.ts",
               "source": "function job(\n  done: boolean,\n): { phase: \"queued\"; ticket: string } | { phase: \"complete\" } {\n  return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" };\n}\n"
             }
@@ -8385,6 +8400,21 @@
           "outcome": "reject",
           "scenarioId": "switch-producer",
           "title": "A complete dispatcher preserves each returned variant"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/projection.ts",
+              "source": "type Phase = \"ready\" | \"waiting\" | \"unknown\";\ndeclare function snapshot(): Phase;\nfunction state(): { ready: boolean; waiting: boolean } {\n  const phase = snapshot();\n  return { ready: phase === \"ready\", waiting: phase === \"waiting\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/projection.ts",
+          "id": "immutable-state-projections",
+          "outcome": "reject",
+          "scenarioId": "state-projection",
+          "title": "Two predicates over one immutable phase cannot both be true"
         },
         {
           "expectedCount": 0,

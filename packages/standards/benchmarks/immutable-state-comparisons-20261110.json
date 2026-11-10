@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "rule": "oxlint:prefer-discriminated-union",
+  "decision": "extend-existing-warning-owner; no new automatic fix",
+  "contract": "Exactly one own final direct object return in a synchronous nongeneric producer; required Boolean fields compare the same earlier local const primitive snapshot by strict equality with distinct raw string/number singleton values. Both native read domains contain both constants and have at most 16 literal members. Reuse local flat contract resolution; cap 8 Boolean fields and 128 candidate pairs per file. Resolve enum declaration/member identity and reject local namespace mutation/escape. Preserve literal/payload precedence and report once per shared contract.",
+  "classification": "Demonstrated representation gap under the documented type/mutation assumptions; domain intent and shared contract migration require review. No runtime defect is claimed.",
+  "validation": {
+    "ruleRegressionCasesPassed": 159,
+    "executableExamplesPassed": 11,
+    "nativeCompiledControls": 20,
+    "projectionTruePositives": 5,
+    "acceptedOrUnsupportedControls": 15,
+    "inContractFalsePositives": 0,
+    "inContractFalseNegatives": 0,
+    "existingOwnerControlsRetained": 1,
+    "warningExit": 0,
+    "errorExit": 1,
+    "typeAwareOptOutPreservesLiteralOwner": true,
+    "nativeSuppressionPassed": true,
+    "malformedSourceRemainsParserError": true,
+    "fixModeChangesSource": false,
+    "secondFixPassChangesSource": false
+  },
+  "counterexamples": [
+    "Independent operations, historical observations and partial payloads retain their own dimensions.",
+    "Different lexical snapshots, mutable bindings, member reads/getters, duplicate enum runtime values and namespace aliases/escapes do not establish the supported evidence.",
+    "Inherited/generic/imported contracts, symbol/nullable/open domains, async producers, multiple own returns, spreads, eval and exceeded budgets abstain."
+  ],
+  "labeledOutsideContractMisses": [
+    {
+      "fixture": "open primitive domain",
+      "count": 1,
+      "reason": "Two immutable comparisons can still exclude true/true, but this first batch intentionally requires a finite type domain."
+    },
+    {
+      "fixture": "async snapshot across await",
+      "count": 1,
+      "reason": "The primitive snapshot survives await; this first batch deliberately excludes async producer lifecycle and assimilation."
+    }
+  ],
+  "corpus": {
+    "method": "run_isolated_corpora over unchanged content-pinned source inventories, 250-file maximum batches. Baseline package source is compatible with public main 570b51c0f1c10be2e16831e8f2fffd1d3ed2a215. Baseline and candidate each load exactly one frozen full plugin bundle with the same three related rules and the same pinned dependencies. Relevant declaration inputs were fingerprinted before and after. Private paths, revisions and identifying hashes are retained privately.",
+    "files": 1298,
+    "freshWorkers": 48,
+    "alternatingBaselineCandidatePairs": 4,
+    "rules": [
+      "prefer-discriminated-union",
+      "no-readonly-prop-state",
+      "require-assert-never"
+    ],
+    "reviewedNewFindings": 1,
+    "reviewedRepresentationGaps": 1,
+    "reviewedFalsePositives": 0,
+    "unreviewedNewFindings": 0,
+    "duplicateLocations": 0,
+    "interpretation": "The single new match projects one immutable connection phase to two exclusive predicates. Its independent timeout dimension and all SDK states must survive review. All observed matches were inspected; a denominator of one is not a general precision estimate. Zero-match files are unlabeled. No corpus recall is claimed.",
+    "measurements": [
+      {
+        "corpus": "public analyzer source",
+        "files": 242,
+        "bytes": 2142941,
+        "baseline": {
+          "freshProcessRoundWallSeconds": [
+            1.759,
+            3.687,
+            4.155,
+            1.606
+          ],
+          "freshProcessMedianWallSeconds": 2.723,
+          "firstRoundWallSeconds": 1.759,
+          "laterFilesystemWarmMedianWallSeconds": 3.687,
+          "medianWaitedChildCpuSeconds": 3.08,
+          "maximumObservedWaitedProcessMiB": 157.11,
+          "findingsPerRound": 0
+        },
+        "candidate": {
+          "freshProcessRoundWallSeconds": [
+            2.269,
+            2.056,
+            3.973,
+            2.788
+          ],
+          "freshProcessMedianWallSeconds": 2.529,
+          "firstRoundWallSeconds": 2.269,
+          "laterFilesystemWarmMedianWallSeconds": 2.788,
+          "medianWaitedChildCpuSeconds": 2.88,
+          "maximumObservedWaitedProcessMiB": 223.18,
+          "findingsPerRound": 0
+        },
+        "stableDiagnosticIdentities": true
+      },
+      {
+        "corpus": "private application source",
+        "files": 1056,
+        "bytes": 4486130,
+        "baseline": {
+          "freshProcessRoundWallSeconds": [
+            6.318,
+            13.392,
+            13.069,
+            5.795
+          ],
+          "freshProcessMedianWallSeconds": 9.694,
+          "firstRoundWallSeconds": 6.318,
+          "laterFilesystemWarmMedianWallSeconds": 13.069,
+          "medianWaitedChildCpuSeconds": 11.194,
+          "maximumObservedWaitedProcessMiB": 155.14,
+          "findingsPerRound": 0
+        },
+        "candidate": {
+          "freshProcessRoundWallSeconds": [
+            7.803,
+            7.399,
+            22.305,
+            8.14
+          ],
+          "freshProcessMedianWallSeconds": 7.972,
+          "firstRoundWallSeconds": 7.803,
+          "laterFilesystemWarmMedianWallSeconds": 8.14,
+          "medianWaitedChildCpuSeconds": 9.134,
+          "maximumObservedWaitedProcessMiB": 189.77,
+          "findingsPerRound": 1
+        },
+        "stableDiagnosticIdentities": true
+      }
+    ]
+  },
+  "costLimitations": [
+    "Each worker is a fresh CLI/native process. Later rounds warm filesystem caches, not an in-process type program; no operating-system cache flush is claimed.",
+    "Shared VM contention caused substantial timing variation; raw round totals are retained and faster candidate medians are not an optimization claim.",
+    "RSS is the maximum reported waited-process value, not a simultaneous process-family peak. CPU covers waited children and is not attributed to this rule alone.",
+    "These measurements cover three related owners, not full-profile or application build latency. The candidate shares its native service with the existing owners.",
+    "The timing data predates the unrelated browser/stylelint rebase onto public main 09ae71db3af268a627260666e75cc62700c02159. The analyzed rule bodies, shared type helpers and compiler versions are unchanged; these retained historical measurements do not qualify latency of the added stylelint entry point."
+  ],
+  "toolchain": {
+    "node": "24.22.1",
+    "npm": "12.2.1",
+    "uv": "0.13.5",
+    "python": "3.15.0",
+    "oxlint": "1.91.0",
+    "tsrs": "0.23.0-ts7.1.0-beta"
+  }
+}
