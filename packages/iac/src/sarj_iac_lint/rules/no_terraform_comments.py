@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import comment_locations
+from sarj_iac_lint._hcl import comment_locations, physical_lines
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -21,18 +22,27 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_SUMMARY_LIMIT = 80
+_SUMMARY_DIRECTIVE = re.compile(
+    r"\b(?:nosemgrep|noqa|nosec|nolint|nosonar|sarj-noqa)\b|\bkics-scan\s+ignore\b|"
+    r"generated.*(?:do not edit|don't edit)|(?:do not edit|don't edit).*generated",
+    re.IGNORECASE,
+)
+
+
 @final
 class NoTerraformComments(Rule):
     id = "no-terraform-comments"
     code = "SARJ216"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.ERROR,
-        summary="Keep Terraform source free of comments; express intent through names and descriptions.",
-        rationale="An explicit no-comment policy keeps infrastructure intent in executable names, descriptions and the change review.",
-        remediation="Remove the comment. Preserve necessary context in a descriptive name, description attribute or PR explanation; move tool policy into its supported configuration.",
+        summary="Express Terraform intent through names and descriptions, with optional concise module summaries.",
+        rationale="Names and descriptions carry executable intent. An optional short entrypoint summary exposes module purpose without a separate catalog.",
+        remediation="Use clear names and native descriptions. Opt into module_summaries for one short main.tf header; keep other context in the owning declaration or change review.",
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Core consumers may opt into [iac.no-terraform-comments] module_summaries = true. This permits one plain # summary of at most 80 characters on the first line of main.tf, followed by a blank line. Suppression and generated-file markers are excluded. Terraform validation still owns syntax; no Terraform values or outputs are added.",
             "At error level, takes precedence over the narrower comment-cruft and restated-comment rules when selected together for .tf source. Warning-stage adoption preserves existing errors.",
             "Applies to .tf source, including real comments in template interpolations; literal strings, heredoc script text and non-.tf inputs are not comments.",
             "One finding is emitted per comment token, including block comments and tool directives. This rule cannot suppress itself with another comment.",
@@ -110,10 +120,14 @@ class NoTerraformComments(Rule):
     )
     description = documentation.summary
 
+    def __init__(self, *, module_summaries: bool = False) -> None:
+        self.module_summaries = module_summaries
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if path.suffix.lower() != ".tf":
             return []
+        summary = (1, 1) if self.module_summaries and _module_summary(path, source) else None
         return [
             Diagnostic(
                 path,
@@ -125,4 +139,20 @@ class NoTerraformComments(Rule):
                 severity=DefaultLevel.ERROR,
             )
             for line, col in comment_locations(source)
+            if (line, col) != summary
         ]
+
+
+def _module_summary(path: Path, source: str) -> bool:
+    lines = physical_lines(source)
+    if path.name != "main.tf" or lines[1:2] != [""] or not lines[0].startswith("# "):
+        return False
+    text = lines[0][2:]
+    return (
+        len(lines[0]) <= _SUMMARY_LIMIT
+        and bool(text)
+        and text[0].isalpha()
+        and text == text.strip()
+        and _SUMMARY_DIRECTIVE.search(text) is None
+        and all(character not in "{}=:#" and character.isprintable() for character in text)
+    )

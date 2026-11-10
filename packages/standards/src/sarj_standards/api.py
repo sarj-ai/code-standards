@@ -392,6 +392,7 @@ class Standards:
                 python_jobs=1 if jobs == 1 else os.process_cpu_count() or 1,
                 staged=staged,
                 use_guard_contracts=normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE},
+                module_summaries=adopted is not None and adopted.terraform_module_summaries,
             )
             if rule_selection is None:
                 native = _with_library_policy(

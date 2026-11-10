@@ -20,6 +20,7 @@ from sarj_iac_lint.autofix import fix_source
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import DefaultLevel, Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
+from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks, guard_blocks
 
 
@@ -89,16 +90,21 @@ def _check(
     *,
     sources: SourceCatalog | None = None,
     guard_contracts: GuardContracts | None = None,
+    module_summaries: bool = False,
 ) -> list[Diagnostic]:
     unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
-    rules = [
-        NoTerraformGuardBlocks(guard_contracts) if name == NoTerraformGuardBlocks.id else REGISTRY[RuleId(name)]()
-        for name in rule_names
-    ]
+    rules: list[Rule] = []
+    for name in rule_names:
+        if name == NoTerraformGuardBlocks.id:
+            rules.append(NoTerraformGuardBlocks(guard_contracts))
+        elif name == NoTerraformComments.id:
+            rules.append(NoTerraformComments(module_summaries=module_summaries))
+        else:
+            rules.append(REGISTRY[RuleId(name)]())
     diags: list[Diagnostic] = []
     for p in _expand_paths(paths):
         source = (
@@ -203,8 +209,9 @@ def analyze(
     *,
     sources: SourceCatalog | None = None,
     guard_contracts: GuardContracts | None = None,
+    module_summaries: bool = False,
 ) -> list[Diagnostic]:
-    return _check(rule_ids, paths, sources=sources, guard_contracts=guard_contracts)
+    return _check(rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries)
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:

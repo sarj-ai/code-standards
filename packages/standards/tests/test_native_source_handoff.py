@@ -100,8 +100,11 @@ def _observe_completion(
                 *,
                 sources: SourceCatalog | None = None,
                 guard_contracts: GuardContracts | None = None,
+                module_summaries: bool = False,
             ) -> list[IacDiagnostic]:
-                result = original_iac(rule_ids, paths, sources=sources, guard_contracts=guard_contracts)
+                result = original_iac(
+                    rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+                )
                 completed(sources)
                 return result
 
