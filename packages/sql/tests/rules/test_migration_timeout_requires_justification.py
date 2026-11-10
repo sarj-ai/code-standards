@@ -36,7 +36,7 @@ def test_documented_examples() -> None:
 
 @pytest.mark.parametrize("setting", _SETTINGS, ids=_SETTINGS)
 @pytest.mark.parametrize("scope", ["", "LOCAL ", "SESSION "], ids=["plain", "transaction", "session"])
-@pytest.mark.parametrize("operator", ["= '5min'", "TO DEFAULT", "FROM CURRENT"], ids=["literal", "default", "current"])
+@pytest.mark.parametrize("operator", ["= '5min'", "TO DEFAULT"], ids=["literal", "default"])
 def test_all_timeout_set_forms_require_a_reason(setting: str, scope: str, operator: str) -> None:
     source = f"SET {scope}{setting} {operator};\n"
     [finding] = _check(source)
@@ -81,6 +81,11 @@ def test_zero_headers_cannot_exempt_themselves_as_a_dump() -> None:
         pytest.param("ALTER DATABASE app SET lock_timeout = '5s';", id="database-policy"),
         pytest.param("SELECT set_config('statement_timeout', '0', false);", id="dynamic-call-outside-contract"),
         pytest.param("RESET ALL;", id="global-reset-outside-contract"),
+        pytest.param("SET statement_timeout FROM CURRENT;", id="unsupported-standalone-current-form"),
+        pytest.param(
+            "CREATE FUNCTION f() RETURNS int LANGUAGE sql SET statement_timeout FROM CURRENT AS $$SELECT 1$$;",
+            id="function-option-outside-contract",
+        ),
         pytest.param("SELECT 'SET statement_timeout = 0;';", id="scalar-string"),
         pytest.param("SELECT $sql$SET lock_timeout = 0;$sql$;", id="scalar-dollar"),
         pytest.param('SELECT "SET statement_timeout = 0;";', id="quoted-identifier"),

@@ -3327,6 +3327,14 @@
       "outcome": "Retain SARJ130 WARNING without autofix. Require SQL proof only for explicit supported declarations; do not invent bounds from column names. Abstain on unknown constraints and inherited, computed or user-defined type contracts. Broader independent corpus calibration remains pending."
     },
     {
+      "task": "rule-audit/sql/migration-timeout-requires-justification",
+      "family": "sql",
+      "ruleId": "migration-timeout-requires-justification",
+      "state": "pending",
+      "evidence": "SARJ131 has 93 focused native fixtures and four executable examples. The 28-case labeled panel has 13 true positives, zero false positives or misses and 16 true negatives. An immutable 345-file private SQL source sample has 411 direct timeout controls across 144 files in 20 literal command forms. All reported command lines and every major form were inspected, including a deterministic round-robin stratified sample of 50 surrounding contexts, with zero known inspected policy false positives or duplicates. Existing migration-comment findings are unchanged. Four alternating fresh-process runs measure affected-owner warm medians of 1.973s baseline and 1.706s candidate. These source-policy observations do not estimate general runtime intent or real-source recall.",
+      "outcome": "Retain the explicitly requested ERROR policy without autofix: each direct top-level known timeout SET/RESET in an authored PostgreSQL migration needs its own matching adjacent reason directive. Review reason adequacy and operational timeout behavior manually. Generated migrations, explicit dumps and unsupported dynamic/body contexts retain their exclusions. Broader independent corpus and tool-compatibility calibration remains pending. Standalone syntax follows the PostgreSQL18 SET reference; FROM CURRENT is excluded and function options remain untouched."
+    },
+    {
       "task": "rule-audit/typescript/no-server-file-uploads",
       "family": "typescript",
       "ruleId": "no-server-file-uploads",

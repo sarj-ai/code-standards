@@ -102,8 +102,6 @@ def _timeout_setting(tokens: list[Token], uncommented: str, end: int) -> Timeout
         return None
     if consume(tokens, 0, "RESET"):
         return setting if cursor == len(tokens) else None
-    if sequence(tokens, cursor, ("FROM", "CURRENT")):
-        return setting if cursor + 2 == len(tokens) else None
     if cursor < len(tokens) and (tokens[cursor].text == "=" or consume(tokens, cursor, "TO")):
         value_start = tokens[cursor].start + len(tokens[cursor].text)
         return setting if uncommented[value_start:end].strip() else None
