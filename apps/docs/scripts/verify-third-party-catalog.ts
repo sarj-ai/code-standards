@@ -269,9 +269,10 @@ async function verifyDist(ruleCounts: Map<string, number>) {
   );
   for (const engineId of engineIds) {
     assert.ok(
-      stylesheet.includes(
-        `data-sidebar-engine='${engineId}'] {\n  --sidebar-engine-mark: url(`,
-      ),
+      new RegExp(
+        String.raw`data-sidebar-engine=(["'])${engineId}\1\]\s*\{\s*--sidebar-engine-mark:\s*url\(`,
+        "u",
+      ).test(stylesheet),
       `${engineId} must define a sidebar engine mark`,
     );
   }
