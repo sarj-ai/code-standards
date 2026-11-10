@@ -1,6 +1,8 @@
 ---
 import type { ThirdPartyProvider, ThirdPartyRule } from '../lib/third-party-catalog';
 import ThirdPartyProviderIcon from './ThirdPartyProviderIcon.astro';
+import Breadcrumbs from '@sarj/design/Breadcrumbs.astro';
+import { siteHref } from '../lib/site';
 
 interface Props {
   provider: ThirdPartyProvider;
@@ -16,11 +18,12 @@ const projectionDescription = {
 const displayedRuleCount = provider.id === 'mobsfscan' ? '51 runtime rules' : `${rules.length} rules`;
 ---
 
-<header class="provider-header">
+<header class="provider-header directory-heading">
   <div class="provider-header__identity">
     <ThirdPartyProviderIcon providerId={provider.id} />
     <div>
-      <h1>{provider.label}</h1>
+      <h1 class="engineering-visually-hidden">{provider.label}</h1>
+      <Breadcrumbs ancestors={[{ label: 'Rules', href: siteHref('/rules/') }]} current={provider.label} />
       <p>{displayedRuleCount} <span aria-hidden="true">·</span> <code>{provider.package}@{provider.version}</code></p>
       <p>{projectionDescription}</p>
     </div>

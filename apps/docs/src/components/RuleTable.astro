@@ -27,11 +27,11 @@ const rows = rules.map((rule) => ({
       <strong data-rule-count>{rules.length}</strong> <span data-rule-noun>{rules.length === 1 ? 'rule' : 'rules'}</span>
     </p>
     <div class="directory-filters" aria-label="Rule controls" data-rule-controls hidden>
-      <label class="directory-search">Search<input aria-label="Search rules" autocomplete="off" data-filter-query placeholder="Rule name or description" type="search" /></label>
-      {categories.length > 1 && <label>Category<select data-filter-category><option value="">All</option>{categories.map((category) => <option value={category}>{category}</option>)}</select></label>}
-      {languages.length > 1 && <label>Language<select data-filter-language><option value="">All</option>{languages.map((language) => <option value={language}>{language}</option>)}</select></label>}
-      <label>Sort by<select data-rule-sort><option value="name">Rule name</option><option value="newest">Introduced: newest first</option><option value="oldest">Introduced: oldest first</option></select></label>
-      <button type="button" data-filter-clear hidden>Clear filters</button>
+      <label class="directory-search"><span class="engineering-visually-hidden">Search rules</span><input autocomplete="off" data-filter-query placeholder="Search rules…" type="search" /></label>
+      {categories.length > 1 && <label><span class="engineering-visually-hidden">Category</span><select data-filter-category><option value="">All categories</option>{categories.map((category) => <option value={category}>{category}</option>)}</select></label>}
+      {languages.length > 1 && <label><span class="engineering-visually-hidden">Language</span><select data-filter-language><option value="">All languages</option>{languages.map((language) => <option value={language}>{language}</option>)}</select></label>}
+      <label><span class="engineering-visually-hidden">Sort by</span><select data-rule-sort><option value="name">Name</option><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
+      <button type="button" data-filter-clear hidden>Clear</button>
     </div>
   </div>
 

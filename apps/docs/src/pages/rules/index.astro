@@ -2,12 +2,17 @@
 import ReferencePage from '../../components/ReferencePage.astro';
 import RuleTable from '../../components/RuleTable.astro';
 import { catalog } from '../../lib/catalog';
+import Breadcrumbs from '@sarj/design/Breadcrumbs.astro';
+import { siteHref } from '../../lib/site';
 ---
 
 <ReferencePage
   title="Rules"
   description="Browse rule contracts and tested examples."
 >
-  <h1 class="directory-title">Rules</h1>
+  <header class="directory-heading">
+    <h1 class="engineering-visually-hidden">Rules</h1>
+    <Breadcrumbs ancestors={[{ label: 'Code Standards', href: siteHref('/') }]} current="Rules" />
+  </header>
   <RuleTable rules={catalog.rules} />
 </ReferencePage>

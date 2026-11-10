@@ -1,6 +1,8 @@
 ---
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleTable from '../../../components/RuleTable.astro';
+import Breadcrumbs from '@sarj/design/Breadcrumbs.astro';
+import { siteHref } from '../../../lib/site';
 import { ENGINES, catalog, engineLabel, rulesForEngine, type Engine } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/reference-sidebar';
 
@@ -21,6 +23,9 @@ const rules = rulesForEngine(engine);
   description={`Browse ${engineLabel(engine)} rule contracts and tested examples.`}
   sidebar={[...referenceSidebar]}
 >
-  <h1 class="directory-title">{engineLabel(engine)} rules</h1>
+  <header class="directory-heading">
+    <h1 class="engineering-visually-hidden">{engineLabel(engine)} rules</h1>
+    <Breadcrumbs ancestors={[{ label: 'Rules', href: siteHref('/rules/') }]} current={engineLabel(engine)} />
+  </header>
   <RuleTable rules={rules} />
 </ReferencePage>
