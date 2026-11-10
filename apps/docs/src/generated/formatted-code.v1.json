@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0a90d1eb4f46e2ec487103d8bf9d7dc46bdea82354d8aa485dfb21d0e7cc1544",
-  "cliSha256": "fa7940bb9197ecc0869bcd4efc316f4f9ac6eac8ec8baebc6cfab4344a454c7a",
+  "catalogSha256": "40ca385a49619020ac9d086d18501af1a58d9521be6dd95a73d7b603698188c6",
+  "cliSha256": "c6f93b4935b73516cbbbf86aabb6282f4f2ba1089fceccdaa9a009ee3baea971",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -19045,6 +19045,41 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/__init__.py",
+              "source": "\"\"\"Example application package.\"\"\"\n"
+            },
+            {
+              "path": "app/stores.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Queue(ABC):\n    @abstractmethod\n    def retry(self) -> bool: ...\n\n\nclass QueueStore(Queue):\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n\n    def retry(self) -> bool:\n        return True\n\n\nclass Owner:\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n\n    def read(self) -> bool:\n        return True\n"
+            },
+            {
+              "path": "tests/__init__.py",
+              "source": "\"\"\"Example test package.\"\"\"\n"
+            },
+            {
+              "path": "tests/conftest.py",
+              "source": "pytest_plugins = [\"tests.fixtures\"]\n"
+            },
+            {
+              "path": "tests/fixtures.py",
+              "source": "import pytest\nfrom app.stores import Owner, QueueStore\n\n\n@pytest.fixture\ndef resource() -> object:\n    return object()\n\n\n@pytest.fixture\ndef owner(resource: object) -> Owner:\n    return Owner(resource)\n\n\n@pytest.fixture\ndef queue_store(resource: object) -> QueueStore:\n    return QueueStore(resource)\n"
+            },
+            {
+              "path": "tests/test_retry.py",
+              "source": "def test_retry(queue_store):\n    assert queue_store.retry()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_retry.py",
+          "id": "requested-plugin-collaborator",
+          "outcome": "accept",
+          "scenarioId": "borrowed-fixture-resource",
+          "title": "Request the collaborator through pytest"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "tests/test_store.py",
               "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef test_read(store: Store):\n    assert store.read() == 1\n"
             }
@@ -19055,6 +19090,41 @@
           "outcome": "accept",
           "scenarioId": "supplied-store",
           "title": "Use the supplied store fixture"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "\"\"\"Example application package.\"\"\"\n"
+            },
+            {
+              "path": "app/stores.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Queue(ABC):\n    @abstractmethod\n    def retry(self) -> bool: ...\n\n\nclass QueueStore(Queue):\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n\n    def retry(self) -> bool:\n        return True\n\n\nclass Owner:\n    def __init__(self, resource: object) -> None:\n        self.resource = resource\n\n    def read(self) -> bool:\n        return True\n"
+            },
+            {
+              "path": "tests/__init__.py",
+              "source": "\"\"\"Example test package.\"\"\"\n"
+            },
+            {
+              "path": "tests/conftest.py",
+              "source": "pytest_plugins = [\"tests.fixtures\"]\n"
+            },
+            {
+              "path": "tests/fixtures.py",
+              "source": "import pytest\nfrom app.stores import Owner, QueueStore\n\n\n@pytest.fixture\ndef resource() -> object:\n    return object()\n\n\n@pytest.fixture\ndef owner(resource: object) -> Owner:\n    return Owner(resource)\n\n\n@pytest.fixture\ndef queue_store(resource: object) -> QueueStore:\n    return QueueStore(resource)\n"
+            },
+            {
+              "path": "tests/test_retry.py",
+              "source": "from app.stores import Owner, QueueStore\n\n\ndef test_retry(owner: Owner):\n    queue = QueueStore(owner.resource)\n    queue.retry()\n    assert owner.read()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_retry.py",
+          "id": "unrequested-plugin-collaborator",
+          "outcome": "reject",
+          "scenarioId": "borrowed-fixture-resource",
+          "title": "A visible plugin fixture owns the collaborator"
         }
       ],
       "optionsSchemaSource": null
