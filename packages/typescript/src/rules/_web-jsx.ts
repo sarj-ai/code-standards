@@ -1,4 +1,4 @@
-/** @fileoverview web-jsx — effective intrinsic JSX attributes, including spread uncertainty. */
+/** @fileoverview _web-jsx — effective intrinsic JSX attributes, including spread uncertainty. */
 import type { ESTree, SourceCode } from "../types.js";
 import { scopedStaticString } from "../utils/static-string.js";
 

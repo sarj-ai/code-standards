@@ -48,8 +48,11 @@ it("exports the Oxlint plugin as the package's main ESM entrypoint", async () =>
 
 it("needs no ESLint at runtime and requires tsrs", () => {
   expect(Object.keys(MANIFEST.dependencies).filter((name) => name === "eslint")).toEqual([]);
-  expect(Object.keys(MANIFEST.peerDependencies)).toEqual(["tsrs", "typescript"]);
-  expect(MANIFEST.peerDependenciesMeta).toEqual({ typescript: { optional: true } });
+  expect(Object.keys(MANIFEST.peerDependencies)).toEqual(["stylelint", "tsrs", "typescript"]);
+  expect(MANIFEST.peerDependenciesMeta).toEqual({
+    stylelint: { optional: true },
+    typescript: { optional: true },
+  });
 });
 
 it.each(["../package-lock.json", "../../../apps/docs/package-lock.json"])(
