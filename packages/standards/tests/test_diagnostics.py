@@ -1709,12 +1709,16 @@ def test_iac_native_binding_preserves_selected_source_catalog_identity(
         *,
         sources: SourceCatalog | None = None,
         guard_contracts: GuardContracts | None = None,
+        module_summaries: bool = False,
     ) -> list[IacDiagnostic]:
         assert rule_ids == ["require-deletion-protection"]
         assert paths == [target]
         assert sources is catalog
         assert guard_contracts is None
-        return analyze_iac(rule_ids, paths, sources=sources, guard_contracts=guard_contracts)
+        assert module_summaries is False
+        return analyze_iac(
+            rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+        )
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forward the actual public IaC checker while observing the typed integration boundary.
         iac_engine, "analyze", observed

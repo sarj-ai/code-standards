@@ -159,6 +159,7 @@ class Manifest:
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
     terraform_guard_contracts: str | None = None
+    terraform_module_summaries: bool = False
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
@@ -216,6 +217,8 @@ class Manifest:
             sections.append(
                 "\n[iac.no-terraform-guard-blocks]\ncontracts = " + _toml_string(self.terraform_guard_contracts) + "\n"
             )
+        if self.terraform_module_summaries:
+            sections.append("\n[iac.no-terraform-comments]\nmodule_summaries = true\n")
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
@@ -395,6 +398,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         terraform_guard_contracts=terraform_guard_contract_option(data),
+        terraform_module_summaries=_terraform_module_summaries(data),
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
@@ -1012,3 +1016,15 @@ def terraform_guard_contract_option(data: Mapping[str, object]) -> str | None:
         message = "SARJ222 supports only its fixed immutable guard-contract manifest"
         raise ValueError(message)
     return ".sarj-terraform-guards.json"
+
+
+def _terraform_module_summaries(data: Mapping[str, object]) -> bool:
+    options = _manifest_table(_manifest_table(data, "iac"), "no-terraform-comments")
+    if not options:
+        return False
+    match options:
+        case {"module_summaries": bool() as value} if len(options) == 1:
+            return value
+        case _:
+            message = "manifest [iac.no-terraform-comments] supports only boolean module_summaries"
+            raise ValueError(message)
