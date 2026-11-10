@@ -23,16 +23,19 @@ const rows = rules.map((rule) => ({
 
 <section class="rule-directory">
   <div class="directory-toolbar">
-    <p class="directory-status" aria-live="polite">
+    <p class="directory-status" aria-live="polite" aria-atomic="true">
       <strong data-rule-count>{rules.length}</strong> <span data-rule-noun>{rules.length === 1 ? 'rule' : 'rules'}</span>
     </p>
-    <div class="directory-filters" aria-label="Rule controls">
+    <div class="directory-filters" aria-label="Rule controls" data-rule-controls hidden>
+      <label class="directory-search">Search<input aria-label="Search rules" autocomplete="off" data-filter-query placeholder="Rule name or description" type="search" /></label>
       {categories.length > 1 && <label>Category<select data-filter-category><option value="">All</option>{categories.map((category) => <option value={category}>{category}</option>)}</select></label>}
       {languages.length > 1 && <label>Language<select data-filter-language><option value="">All</option>{languages.map((language) => <option value={language}>{language}</option>)}</select></label>}
       <label>Sort by<select data-rule-sort><option value="name">Rule name</option><option value="newest">Introduced: newest first</option><option value="oldest">Introduced: oldest first</option></select></label>
       <button type="button" data-filter-clear hidden>Clear filters</button>
     </div>
   </div>
+
+  <p class="directory-empty" data-filter-empty hidden>No rules match. Clear the filters or try another search.</p>
 
   <div class="rule-table-wrap">
     <table class="rule-table">
@@ -60,12 +63,14 @@ const rows = rules.map((rule) => ({
 </section>
 
 <script>
+  import { matchesRuleSearch, normalizeRuleSearch } from '../lib/rule-search';
   import { compareRules, ruleSort } from '../lib/rule-sort';
 
   for (const directory of document.querySelectorAll('.rule-directory')) {
     if (!(directory instanceof HTMLElement) || directory.dataset.filtersReady === 'true') continue;
     directory.dataset.filtersReady = 'true';
     const category = directory.querySelector('[data-filter-category]');
+    const query = directory.querySelector('[data-filter-query]');
     const language = directory.querySelector('[data-filter-language]');
     const sort = directory.querySelector('[data-rule-sort]');
     const clear = directory.querySelector('[data-filter-clear]');
@@ -73,30 +78,41 @@ const rows = rules.map((rule) => ({
     const rows = [...directory.querySelectorAll('tbody tr')].filter((row) => row instanceof HTMLTableRowElement);
     const count = directory.querySelector('[data-rule-count]');
     const noun = directory.querySelector('[data-rule-noun]');
+    const empty = directory.querySelector('[data-filter-empty]');
+    const searchText = new Map(rows.map((row) => [row, normalizeRuleSearch(row.textContent ?? '')]));
+    let currentSort = 'name';
     const params = new URLSearchParams(location.search);
     if (category instanceof HTMLSelectElement) category.value = params.get('category') ?? '';
     if (language instanceof HTMLSelectElement) language.value = params.get('language') ?? '';
     if (sort instanceof HTMLSelectElement) sort.value = ruleSort(params.get('sort'));
+    if (query instanceof HTMLInputElement) query.value = params.get('q') ?? '';
     const apply = () => {
+      const selectedQuery = query instanceof HTMLInputElement ? query.value : '';
       const selectedCategory = category instanceof HTMLSelectElement ? category.value : '';
       const selectedLanguage = language instanceof HTMLSelectElement ? language.value : '';
       const selectedSort = ruleSort(sort instanceof HTMLSelectElement ? sort.value : null);
       directory.querySelector('[data-sort-name]')?.setAttribute('aria-sort', selectedSort === 'name' ? 'ascending' : 'none');
       directory.querySelector('[data-sort-introduced]')?.setAttribute('aria-sort', selectedSort === 'newest' ? 'descending' : selectedSort === 'oldest' ? 'ascending' : 'none');
       const key = (row: HTMLTableRowElement) => ({ name: row.dataset.ruleName ?? '', key: row.dataset.ruleKey ?? '', introducedAt: row.dataset.introducedAt ?? null });
-      body?.append(...rows.toSorted((left, right) => compareRules(key(left), key(right), selectedSort)));
+      if (selectedSort !== currentSort) {
+        body?.append(...rows.toSorted((left, right) => compareRules(key(left), key(right), selectedSort)));
+        currentSort = selectedSort;
+      }
       let visible = 0;
       for (const row of rows) {
         if (!(row instanceof HTMLTableRowElement)) continue;
         const matchesCategory = !selectedCategory || row.dataset.category === selectedCategory;
         const matchesLanguage = !selectedLanguage || (row.dataset.languages?.split(' ').includes(selectedLanguage) ?? false);
-        row.hidden = !(matchesCategory && matchesLanguage);
+        row.hidden = !(matchesCategory && matchesLanguage && matchesRuleSearch(searchText.get(row) ?? '', selectedQuery));
         if (!row.hidden) visible += 1;
       }
       if (count) count.textContent = String(visible);
       if (noun) noun.textContent = visible === 1 ? 'rule' : 'rules';
-      if (clear instanceof HTMLButtonElement) clear.hidden = !(selectedCategory || selectedLanguage);
+      if (empty instanceof HTMLElement) empty.hidden = visible > 0;
+      if (clear instanceof HTMLButtonElement) clear.hidden = !(selectedCategory || selectedLanguage || selectedQuery || selectedSort !== 'name');
       const next = new URL(location.href);
+      if (selectedQuery) next.searchParams.set('q', selectedQuery);
+      else next.searchParams.delete('q');
       if (selectedCategory) next.searchParams.set('category', selectedCategory);
       else next.searchParams.delete('category');
       if (selectedLanguage) next.searchParams.set('language', selectedLanguage);
@@ -108,11 +124,16 @@ const rows = rules.map((rule) => ({
     category?.addEventListener('change', apply);
     language?.addEventListener('change', apply);
     sort?.addEventListener('change', apply);
+    query?.addEventListener('input', apply);
     clear?.addEventListener('click', () => {
       if (category instanceof HTMLSelectElement) category.value = '';
       if (language instanceof HTMLSelectElement) language.value = '';
+      if (query instanceof HTMLInputElement) query.value = '';
+      if (sort instanceof HTMLSelectElement) sort.value = 'name';
       apply();
+      if (query instanceof HTMLInputElement) query.focus();
     });
+    directory.querySelector<HTMLElement>('[data-rule-controls]')?.removeAttribute('hidden');
     apply();
   }
 </script>

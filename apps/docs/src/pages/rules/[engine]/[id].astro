@@ -40,7 +40,7 @@ const exampleScenarios = [...new Set(displayed.examples.map((example) => example
     <header class="rule-detail__header">
       <div class="rule-detail__toolbar">
         <nav class="rule-breadcrumb" aria-label="Breadcrumb">
-          <a href={siteHref(`/rules/${rule.engine}/`)}><EngineMark engine={rule.engine} /></a>
+          <a aria-label={`${engineLabel(rule.engine)} rules`} href={siteHref(`/rules/${rule.engine}/`)}><EngineMark engine={rule.engine} /></a>
           <span aria-hidden="true">·</span>
           <a href={siteHref(`/rules/?category=${rule.category}`)}>{rule.category}</a>
         </nav>

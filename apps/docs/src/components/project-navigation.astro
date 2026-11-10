@@ -1,0 +1,69 @@
+---
+import LOGO from "../../public/sarj-logo.svg?url&no-inline";
+
+const PROJECTS = [
+  ["code-standards", "Code Standards"],
+  ["repo-standards", "Repo Standards"],
+  ["lra", "Long Running Agent"],
+  ["wiki", "Wiki"],
+  ["workspace-sync", "Workspace Sync"],
+] as const;
+const CURRENT = "code-standards";
+---
+<div class="project-navigation">
+  <a aria-label="Sarj Engineering home" class="engineering-home-link" href="https://engineering.sarj.ai/">
+    <img alt="Sarj" decoding="async" height="28" src={LOGO} width="50" />
+  </a>
+  <details class="project-menu" data-project-menu>
+    <summary aria-label="Code Standards: choose engineering project"><span>Code Standards</span><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" width="16"><path d="m7 10 5 5 5-5" /></svg></summary>
+    <nav aria-label="Engineering projects">
+      <ul>
+        <li><a href="https://engineering.sarj.ai/">All projects</a></li>
+        {PROJECTS.map(([slug, name]) => <li><a aria-current={slug === CURRENT ? "true" : undefined} href={`https://engineering.sarj.ai/projects/${slug}/`}>{name}</a></li>)}
+        <li><a href="https://sarj.ai/blog/">Sarj Blog</a></li>
+      </ul>
+    </nav>
+  </details>
+</div>
+<script>
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>("[data-project-menu]")) {
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    });
+    menu.addEventListener("focusout", (event) => {
+      if (event.relatedTarget instanceof Node && !menu.contains(event.relatedTarget)) menu.open = false;
+    });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && menu.open) {
+        menu.open = false;
+        menu.querySelector("summary")?.focus();
+        event.stopPropagation();
+      }
+    });
+  }
+</script>
+<style>
+  .project-navigation { display: flex; align-items: center; gap: 0.75rem; min-inline-size: 0; }
+  .engineering-home-link { display: flex; align-items: center; flex: none; min-block-size: 44px; }
+  .engineering-home-link img { display: block; inline-size: 42px; block-size: auto; }
+  :global([data-theme="dark"]) .engineering-home-link img { filter: brightness(0) invert(1); }
+  .project-menu { position: relative; min-inline-size: 0; }
+  summary { display: flex; align-items: center; gap: 0.4rem; min-block-size: 44px; max-inline-size: clamp(8.5rem, 27vw, 14rem); padding-inline: 0.25rem; color: var(--sl-color-white); font-size: 0.875rem; font-weight: 600; cursor: pointer; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  summary svg { flex: none; }
+  nav { position: absolute; z-index: 80; inset-block-start: calc(100% + 0.4rem); inset-inline-start: -3.5rem; inline-size: min(18rem, calc(100vw - 2rem)); max-block-size: min(28rem, calc(100dvh - 6rem)); overflow-y: auto; overscroll-behavior: contain; padding: 0.4rem; border: 1px solid var(--sarj-color-rule); border-radius: 0.5rem; background: var(--sl-color-black); box-shadow: 0 0.5rem 1.5rem #0002; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  nav a { display: flex; align-items: center; min-block-size: 44px; padding: 0.5rem 0.75rem; border-radius: 0.25rem; color: var(--sl-color-white); font-size: 0.875rem; text-decoration: none; }
+  nav a:hover, nav a[aria-current] { color: var(--sl-color-accent-high); background: var(--sl-color-accent-low); }
+  :is(a, summary):focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
+  :global(.page > header .title-wrapper) { overflow: visible; }
+  @media (forced-colors: active) {
+    .engineering-home-link img { display: none !important; }
+    .engineering-home-link::after { content: "Sarj"; color: LinkText; }
+    nav { border-color: CanvasText; box-shadow: none; }
+    nav a[aria-current] { outline: 1px solid Highlight; }
+  }
+  @media print { .project-menu { display: none; } }
+</style>
+

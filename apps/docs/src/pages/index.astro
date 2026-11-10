@@ -6,15 +6,12 @@ import { siteHref } from '../lib/site.ts';
 ---
 
 <ReferencePage
-  title="About Sarj Standards"
-  description="Opinionated lint rules for concise, correct code."
+  title="Code Standards"
+  description="Lint rules and tested fixes for Python, TypeScript, SQL, infrastructure, and text."
 >
   <article class="about-page sarj-about-page">
-    <h1>About</h1>
-    <p>Writing code is now much easier than reading and reviewing code.</p>
-    <p>This linter provides <a href={siteHref('/rules/')}>100+ opinionated rules</a> that automatically flag violations.</p>
-    <p>Developers can spend less time in code review and write well-structured, correct code faster.</p>
-    <p>Use it with a coding agent and pre-commit so the agent automatically catches violations, fixes them, and commits the solution.</p>
+    <h1>Code Standards</h1>
+    <p>Check Python, TypeScript, SQL, infrastructure, and text from one CLI. <a href={siteHref('/rules/')}>Browse rules and tested fixes</a>, then run the checks locally or in CI.</p>
 
     <section>
       <h2>Quick setup</h2>
@@ -23,8 +20,8 @@ import { siteHref } from '../lib/site.ts';
     </section>
 
     <section class="sarj-related-standards" aria-labelledby="related-standards">
-      <h2 id="related-standards">Related standards</h2>
-      <p><a href="https://engineering.sarj.ai/projects/repo-standards/">Explore Sarj Repo Standards</a> for repository architecture, delivery, and API contract policy.</p>
+      <h2 id="related-standards">Repository checks</h2>
+      <p><a href="https://engineering.sarj.ai/projects/repo-standards/">Repo Standards</a> checks repository structure, pull requests, and Git history.</p>
     </section>
   </article>
 </ReferencePage>

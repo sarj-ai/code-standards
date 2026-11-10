@@ -45,8 +45,7 @@ export default defineConfig({
     }),
     starlight({
       title: "Sarj Standards",
-      description:
-        "Deterministic code standards, diagnostics, and remediation.",
+      description: "Deterministic code standards, diagnostics, and remediation.",
       favicon: "/favicon.ico",
       logo: {
         alt: "Sarj",
@@ -72,6 +71,10 @@ export default defineConfig({
       tableOfContents: false,
       credits: false,
       components: {
+        Search: "./src/components/disabled-feature.astro",
+        TableOfContents: "./src/components/disabled-feature.astro",
+        MobileTableOfContents: "./src/components/disabled-feature.astro",
+        SiteTitle: "./src/components/project-navigation.astro",
         PageTitle: "@sarj/design/PageAnchor.astro",
         Sidebar: "./src/components/Sidebar.astro",
       },
