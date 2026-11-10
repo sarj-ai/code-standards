@@ -53,7 +53,7 @@ from sarj_standards.libs.staged_git import staged_environment
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import mobile_tools, oxlint, security_tools
+from . import mobile_tools, oxlint, security_tools, stylelint
 from .execution_plan import RuffProjectPlan, ShellCheckFamilyPlan
 from .process import (
     OutputLimitError as OutputLimitError,
@@ -442,6 +442,7 @@ def analyze_external(
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
         reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
+    typescript_enabled = typescript and (capabilities is None or TYPESCRIPT_CAPABILITY in capabilities)
     reports.extend(
         _typescript_reports(
             routed.typescript,
@@ -450,9 +451,19 @@ def analyze_external(
             runner=execute,
             local_tools=local_tools,
             trust=normalized_trust,
-            enabled=typescript and (capabilities is None or TYPESCRIPT_CAPABILITY in capabilities),
+            enabled=typescript_enabled,
             request=_oxlint_request(rule_ids, upstream_rules),
             pass_on_unpruned_suppressions=pass_on_unpruned_suppressions,
+        )
+    )
+    reports.extend(
+        _stylesheet_reports(
+            routed.css,
+            root=root,
+            runner=execute,
+            local_tools=local_tools,
+            trust=normalized_trust,
+            enabled=typescript_enabled and rule_ids is None and not upstream_rules.ids,
         )
     )
     react_selection = _selected_react_doctor_projects(
@@ -517,6 +528,61 @@ def _oxlint_request(rule_ids: frozenset[str] | None, upstream: UpstreamRules) ->
         rules=frozenset({*(f"@sarj/{rule}" for rule in rule_ids or ()), *upstream.ids}),
         forced={**oxlint.REQUIRED_RULES, **advisories},
     )
+
+
+def _stylesheet_reports(
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    local_tools: bool,
+    trust: TrustMode,
+    enabled: bool,
+) -> tuple[ToolReport, ...]:
+    if not enabled or not files:
+        return ()
+    if trust is not TrustMode.TRUSTED:
+        issue = ExecutionIssue("stylelint", "trust-required", "CSS analysis requires trusted local Node tooling")
+        return (ToolReport("stylelint", Completion.FAILED, issues=(issue,)),)
+    adopted = manifest.load(root)
+    project = root / adopted.typescript_dest if adopted is not None else root
+    if local_tools and (issue := _missing_local_binary_issue("stylelint", project, root)) is not None:
+        return (ToolReport("stylelint", Completion.FAILED, issues=(issue,)),)
+    config = Path(__file__).resolve().parents[2] / "configs"
+    reports: list[ToolReport] = []
+    for offset in range(0, len(files), _SECURITY_BATCH_SIZE):
+        batch = tuple(files[offset : offset + _SECURITY_BATCH_SIZE])
+        argv = (
+            "stylelint",
+            "--config",
+            str(config / "stylelint.strict.json"),
+            "--config-basedir",
+            str(project),
+            "--ignore-path",
+            str(config / "stylelint.ignore"),
+            "--formatter",
+            "json",
+            "--",
+            *(str(root / path) for path in batch),
+        )
+        if local_tools:
+            argv = tuple(packagemanager.exec_argv(packagemanager.detect(project), *argv))
+            argv = _local_node_binary_argv("stylelint", argv, project, root)
+        reports.append(
+            _invoke_text_tool(
+                "stylelint",
+                argv,
+                cwd=project,
+                root=root,
+                runner=runner,
+                parser=partial(stylelint.parse, selected=batch),
+                finding_codes=frozenset({2}),
+                file_count=len(batch),
+                empty_payload="[]",
+                report_stream="stderr",
+            )
+        )
+    return tuple(reports)
 
 
 def _typescript_reports(
@@ -1057,15 +1123,19 @@ def _invoke_text_tool(
     file_count: int,
     fatal_codes: frozenset[int] = frozenset(),
     empty_payload: str = "",
+    report_stream: Literal["stdout", "stderr"] = "stdout",
 ) -> ToolReport:
     started = time.monotonic()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes process failures and diagnostics.
-        output = runner.run(process_request(argv, cwd=cwd))
+        request = process_request(argv, cwd=cwd)
+        if report_stream == "stderr":
+            request = replace(request, max_stderr_bytes=request.max_stdout_bytes)
+        output = runner.run(request)
         if output.returncode in fatal_codes or output.returncode not in {0, *finding_codes}:
             message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
             issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
             return ToolReport(name, Completion.FAILED, issues=(issue,))
-        payload = output.stdout.strip() or empty_payload
+        payload = (output.stderr if report_stream == "stderr" else output.stdout).strip() or empty_payload
         if not payload:
             diagnostics: tuple[Diagnostic, ...] = ()
         else:

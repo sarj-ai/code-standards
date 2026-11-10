@@ -14,7 +14,8 @@ from typing import Annotated, ClassVar, Final, Literal, NewType
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 import typer
 
-from sarj_standards.libs.linting import duplicate_code, security_tools
+from sarj_standards.libs.adoption import manifest
+from sarj_standards.libs.linting import duplicate_code, security_tools, stylelint
 from sarj_standards.libs.linting.devops_tools import TOOLS
 from sarj_standards.libs.linting.sqlfluff_protocol import SQLFLUFF_VERSION
 
@@ -68,6 +69,7 @@ type ProviderEngine = Literal[
     "react-doctor",
     "ruff",
     "sqlfluff",
+    "stylelint",
     "swiftformat",
     "swiftlint",
     "zizmor",
@@ -236,6 +238,7 @@ def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _Cat
         _duplicate_code_projection(),
         _application_modules_projection(),
         _embedded_sql_projection(),
+        _stylesheet_projection(),
     )
     rules = (
         *oxlint.rules,
@@ -599,6 +602,49 @@ def _application_modules_projection() -> _ToolProjection:
         profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
     )
     return _ToolProjection((provider,), (rule,))
+
+
+def _stylesheet_projection() -> _ToolProjection:
+    version = manifest.typescript_peers()["stylelint"]
+    provider = _Provider(
+        id="stylelint",
+        label="Stylelint",
+        engine="stylelint",
+        package="stylelint",
+        version=version,
+        homepage="https://stylelint.io/",
+        projection_scope="config-explicit",
+    )
+    custom = _Provider(
+        id="sarj-css",
+        label="Sarj CSS",
+        engine="stylelint",
+        package="@sarj/eslint-plugin",
+        version=manifest.typescript_peers()["@sarj/eslint-plugin"],
+        homepage="https://github.com/sarj-ai/code-standards",
+        projection_scope="config-explicit",
+    )
+    context = _Context(id=ContextId("source-css"), label="Selected CSS sources", level="warning")
+    rules = tuple(
+        _Rule(
+            key=f"{'sarj-css' if rule.startswith('@sarj/') else 'stylelint'}:{rule}",
+            provider="sarj-css" if rule.startswith("@sarj/") else "stylelint",
+            id=RuleId(rule),
+            display_id=DisplayRuleId(rule),
+            summary=summary,
+            docs_url=(
+                "https://github.com/sarj-ai/code-standards/tree/main/plugins/sarj-skills/skills/lint-rule-generator/references/modern-web-guidance.md"
+                if rule.startswith("@sarj/")
+                else f"https://stylelint.io/user-guide/rules/{rule}/"
+            ),
+            family="correctness",
+            autofix="available" if rule == "function-calc-no-unspaced-operator" else "none",
+            has_suggestions=False,
+            profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+        )
+        for rule, summary in stylelint.RULES.items()
+    )
+    return _ToolProjection((provider, custom), rules)
 
 
 def _embedded_sql_projection() -> _ToolProjection:

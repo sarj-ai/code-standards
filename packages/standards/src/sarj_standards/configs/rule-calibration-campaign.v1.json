@@ -3521,6 +3521,46 @@
       "family": "typescript",
       "ruleId": "prefer-configured-cloud-scope",
       "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/no-invalid-web-resource-hints",
+      "family": "typescript",
+      "ruleId": "no-invalid-web-resource-hints",
+      "state": "complete",
+      "evidence": "Paired public executable examples and positive/negative/near-miss Oxlint cases pass. Seven fresh isolated batches inspect 1,625 pinned JavaScript/TypeScript sources; all custom-rule natural findings are zero. Three pinned standalone CSS sources are checked separately. The six initial native findings were inspected and the preset was calibrated for adapters and compile-time values. Final replay has no findings or execution errors and preserves every source byte. Five interleaved equal-input timing pairs and redacted limitations are recorded in packages/standards/benchmarks/modern-web-guidance-20261110.json; private identifying evidence remains local. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the documented intrinsic JSX/binding boundary. Preserve unknown spreads, callbacks, ownership and valid alternatives. No natural positives were observed, so finite fixture results do not establish empirical field precision or recall; browser and cross-file behavior remains subject to the conditional review standard."
+    },
+    {
+      "task": "rule-audit/typescript/no-password-get-form",
+      "family": "typescript",
+      "ruleId": "no-password-get-form",
+      "state": "complete",
+      "evidence": "Paired public executable examples and positive/negative/near-miss Oxlint cases pass. Seven fresh isolated batches inspect 1,625 pinned JavaScript/TypeScript sources; all custom-rule natural findings are zero. Three pinned standalone CSS sources are checked separately. The six initial native findings were inspected and the preset was calibrated for adapters and compile-time values. Final replay has no findings or execution errors and preserves every source byte. Five interleaved equal-input timing pairs and redacted limitations are recorded in packages/standards/benchmarks/modern-web-guidance-20261110.json; private identifying evidence remains local. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the documented intrinsic JSX/binding boundary. Preserve unknown spreads, callbacks, ownership and valid alternatives. No natural positives were observed, so finite fixture results do not establish empirical field precision or recall; browser and cross-file behavior remains subject to the conditional review standard."
+    },
+    {
+      "task": "rule-audit/typescript/no-blocked-input-paste",
+      "family": "typescript",
+      "ruleId": "no-blocked-input-paste",
+      "state": "complete",
+      "evidence": "Paired public executable examples and positive/negative/near-miss Oxlint cases pass. Seven fresh isolated batches inspect 1,625 pinned JavaScript/TypeScript sources; all custom-rule natural findings are zero. Three pinned standalone CSS sources are checked separately. The six initial native findings were inspected and the preset was calibrated for adapters and compile-time values. Final replay has no findings or execution errors and preserves every source byte. Five interleaved equal-input timing pairs and redacted limitations are recorded in packages/standards/benchmarks/modern-web-guidance-20261110.json; private identifying evidence remains local. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the documented intrinsic JSX/binding boundary. Preserve unknown spreads, callbacks, ownership and valid alternatives. No natural positives were observed, so finite fixture results do not establish empirical field precision or recall; browser and cross-file behavior remains subject to the conditional review standard."
+    },
+    {
+      "task": "rule-audit/typescript/no-message-origin-string-matching",
+      "family": "typescript",
+      "ruleId": "no-message-origin-string-matching",
+      "state": "complete",
+      "evidence": "Paired public executable examples and positive/negative/near-miss Oxlint cases pass. Seven fresh isolated batches inspect 1,625 pinned JavaScript/TypeScript sources; all custom-rule natural findings are zero. Three pinned standalone CSS sources are checked separately. The six initial native findings were inspected and the preset was calibrated for adapters and compile-time values. Final replay has no findings or execution errors and preserves every source byte. Five interleaved equal-input timing pairs and redacted limitations are recorded in packages/standards/benchmarks/modern-web-guidance-20261110.json; private identifying evidence remains local. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the documented intrinsic JSX/binding boundary. Preserve unknown spreads, callbacks, ownership and valid alternatives. No natural positives were observed, so finite fixture results do not establish empirical field precision or recall; browser and cross-file behavior remains subject to the conditional review standard."
+    },
+    {
+      "task": "rule-audit/typescript/require-ime-safe-enter-handler",
+      "family": "typescript",
+      "ruleId": "require-ime-safe-enter-handler",
+      "state": "complete",
+      "evidence": "Paired public executable examples and positive/negative/near-miss Oxlint cases pass. Seven fresh isolated batches inspect 1,625 pinned JavaScript/TypeScript sources; all custom-rule natural findings are zero. Three pinned standalone CSS sources are checked separately. The six initial native findings were inspected and the preset was calibrated for adapters and compile-time values. Final replay has no findings or execution errors and preserves every source byte. Five interleaved equal-input timing pairs and redacted limitations are recorded in packages/standards/benchmarks/modern-web-guidance-20261110.json; private identifying evidence remains local. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the documented intrinsic JSX/binding boundary. Preserve unknown spreads, callbacks, ownership and valid alternatives. No natural positives were observed, so finite fixture results do not establish empirical field precision or recall; browser and cross-file behavior remains subject to the conditional review standard."
     }
   ]
 }

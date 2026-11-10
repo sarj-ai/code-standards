@@ -19,6 +19,7 @@ import { INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION } from "./interface-co
 import { NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION } from "./named-child-schema-type.js";
 import { NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION } from "./no-bare-return-from-test-catch.js";
 import { NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION } from "./no-bespoke-api-case-conversion.js";
+import { NO_BLOCKED_INPUT_PASTE_DOCUMENTATION } from "./no-blocked-input-paste.js";
 import { NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION } from "./no-boolean-selector-parameter.js";
 import { NO_BROAD_RETURN_TYPE_DOCUMENTATION } from "./no-broad-return-type.js";
 import { NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION } from "./no-client-side-data-fetching.js";
@@ -52,6 +53,7 @@ import { NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION } from "./no-impossible-
 import { NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION } from "./no-in-operator-on-built-in-collections.js";
 import { NO_INSECURE_RANDOM_ID_DOCUMENTATION } from "./no-insecure-random-id.js";
 import { NO_INVALID_TYPED_MUTATION_DOCUMENTATION } from "./no-invalid-typed-mutation.js";
+import { NO_INVALID_WEB_RESOURCE_HINTS_DOCUMENTATION } from "./no-invalid-web-resource-hints.js";
 import { NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION } from "./no-invalid-zod-custom-parse.js";
 import { NO_JSON_STRINGIFY_ERROR_DOCUMENTATION } from "./no-json-stringify-error.js";
 import { NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION } from "./no-json-stringify-object-equality.js";
@@ -59,6 +61,7 @@ import { NO_KNOWN_VALUE_WIDENING_DOCUMENTATION } from "./no-known-value-widening
 import { NO_LOG_ONLY_CATCH_DOCUMENTATION } from "./no-log-only-catch.js";
 import { NO_LOGICAL_OR_FALLBACK_DOCUMENTATION } from "./no-logical-or-fallback.js";
 import { NO_LONG_COMMENT_DOCUMENTATION } from "./no-long-comment.js";
+import { NO_MESSAGE_ORIGIN_STRING_MATCHING_DOCUMENTATION } from "./no-message-origin-string-matching.js";
 import { NO_MUTATING_CONTAINER_TRANSFORM_DOCUMENTATION } from "./no-mutating-container-transform.js";
 import { NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION } from "./no-mutating-input-with-result.js";
 import { NO_NEGATIVE_ONLY_HTTP_STATUS_ASSERTION_DOCUMENTATION } from "./no-negative-only-http-status-assertion.js";
@@ -66,6 +69,7 @@ import { NO_NUMERIC_SEARCH_PARAM_COERCION_DOCUMENTATION } from "./no-numeric-sea
 import { NO_OFFSET_PAGINATION_DOCUMENTATION } from "./no-offset-pagination.js";
 import { NO_OXLINT_DIRECTIVE_DOCUMENTATION } from "./no-oxlint-directive.js";
 import { NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION } from "./no-partial-type-predicate.js";
+import { NO_PASSWORD_GET_FORM_DOCUMENTATION } from "./no-password-get-form.js";
 import { NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION } from "./no-positional-tuple-return.js";
 import { NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION } from "./no-production-browser-source-maps.js";
 import { NO_RAW_ENV_DOCUMENTATION } from "./no-raw-env.js";
@@ -153,6 +157,7 @@ import { REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION } from "./require-cons
 import { REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION } from "./require-explicit-contract-implementation.js";
 import { REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION } from "./require-explicit-service-contract.js";
 import { REQUIRE_FETCH_TIMEOUT_DOCUMENTATION } from "./require-fetch-timeout.js";
+import { REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION } from "./require-ime-safe-enter-handler.js";
 import { REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION } from "./require-interface-for-exported-class.js";
 import { REQUIRE_JWT_LIFETIME_DOCUMENTATION } from "./require-jwt-lifetime.js";
 import { REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION } from "./require-pascal-case-zod-schema-name.js";
@@ -186,6 +191,7 @@ export const RULE_DOCUMENTATION = {
   "named-child-schema-type": NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION,
   "no-bare-return-from-test-catch": NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION,
   "no-bespoke-api-case-conversion": NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION,
+  "no-blocked-input-paste": NO_BLOCKED_INPUT_PASTE_DOCUMENTATION,
   "no-boolean-selector-parameter": NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION,
   "no-broad-return-type": NO_BROAD_RETURN_TYPE_DOCUMENTATION,
   "no-client-side-data-fetching": NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION,
@@ -199,7 +205,8 @@ export const RULE_DOCUMENTATION = {
   "no-declaration-comment-wall": NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   "no-detached-global-fetch": NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION,
   "no-discarded-validation-result": NO_DISCARDED_VALIDATION_RESULT_DOCUMENTATION,
-  "no-duplicate-lifecycle-refresh-listeners": NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
+  "no-duplicate-lifecycle-refresh-listeners":
+    NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
   "no-duplicate-test-case": NO_DUPLICATE_TEST_CASE_DOCUMENTATION,
   "no-dynamic-sql": NO_DYNAMIC_SQL_DOCUMENTATION,
   "no-enum": NO_ENUM_DOCUMENTATION,
@@ -219,6 +226,7 @@ export const RULE_DOCUMENTATION = {
   "no-in-operator-on-built-in-collections": NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION,
   "no-insecure-random-id": NO_INSECURE_RANDOM_ID_DOCUMENTATION,
   "no-invalid-typed-mutation": NO_INVALID_TYPED_MUTATION_DOCUMENTATION,
+  "no-invalid-web-resource-hints": NO_INVALID_WEB_RESOURCE_HINTS_DOCUMENTATION,
   "no-invalid-zod-custom-parse": NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION,
   "no-json-stringify-error": NO_JSON_STRINGIFY_ERROR_DOCUMENTATION,
   "no-json-stringify-object-equality": NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION,
@@ -226,6 +234,7 @@ export const RULE_DOCUMENTATION = {
   "no-log-only-catch": NO_LOG_ONLY_CATCH_DOCUMENTATION,
   "no-logical-or-fallback": NO_LOGICAL_OR_FALLBACK_DOCUMENTATION,
   "no-long-comment": NO_LONG_COMMENT_DOCUMENTATION,
+  "no-message-origin-string-matching": NO_MESSAGE_ORIGIN_STRING_MATCHING_DOCUMENTATION,
   "no-mutating-container-transform": NO_MUTATING_CONTAINER_TRANSFORM_DOCUMENTATION,
   "no-mutating-input-with-result": NO_MUTATING_INPUT_WITH_RESULT_DOCUMENTATION,
   "no-negative-only-http-status-assertion": NO_NEGATIVE_ONLY_HTTP_STATUS_ASSERTION_DOCUMENTATION,
@@ -233,6 +242,7 @@ export const RULE_DOCUMENTATION = {
   "no-offset-pagination": NO_OFFSET_PAGINATION_DOCUMENTATION,
   "no-oxlint-directive": NO_OXLINT_DIRECTIVE_DOCUMENTATION,
   "no-partial-type-predicate": NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION,
+  "no-password-get-form": NO_PASSWORD_GET_FORM_DOCUMENTATION,
   "no-positional-tuple-return": NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION,
   "no-production-browser-source-maps": NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION,
   "no-raw-env": NO_RAW_ENV_DOCUMENTATION,
@@ -283,7 +293,8 @@ export const RULE_DOCUMENTATION = {
   "prefer-immutable-module-constant": PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
   "prefer-input-group-search": PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION,
   "prefer-logical-tailwind-utilities": PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION,
-  "prefer-millisecond-control-duration-schema": PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
+  "prefer-millisecond-control-duration-schema":
+    PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
   "prefer-minimal-parameter-contract": PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION,
   "prefer-module-level-constant": PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   "prefer-module-level-refined-schema": PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION,
@@ -317,9 +328,11 @@ export const RULE_DOCUMENTATION = {
   "require-button-accessible-name": REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
   "require-camelcase-properties": REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
   "require-constrained-schema-integer": REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION,
-  "require-explicit-contract-implementation": REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION,
+  "require-explicit-contract-implementation":
+    REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION,
   "require-explicit-service-contract": REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION,
   "require-fetch-timeout": REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
+  "require-ime-safe-enter-handler": REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION,
   "require-interface-for-exported-class": REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION,
   "require-jwt-lifetime": REQUIRE_JWT_LIFETIME_DOCUMENTATION,
   "require-pascal-case-zod-schema-name": REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION,
@@ -332,7 +345,7 @@ export const RULE_DOCUMENTATION = {
   "require-zod-form-validation": REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION,
   "sole-export-matches-filename": SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION,
   "source-coupled-test": SOURCE_COUPLED_TEST_DOCUMENTATION,
-  "stepdown": STEPDOWN_DOCUMENTATION,
+  stepdown: STEPDOWN_DOCUMENTATION,
   "store-insert-requires-on-conflict": STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION,
   "test-loops-over-literal-cases": TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION,
   "test-phase-label-comment": TEST_PHASE_LABEL_COMMENT_DOCUMENTATION,

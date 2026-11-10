@@ -74,6 +74,8 @@ for (const {name,specifier} of ${JSON.stringify(jsPlugins(MANAGED))}) {
 await import("oxlint-plugin-react-doctor");
 await import("oxlint-plugin-react-doctor/core");
 await import("@sarj/eslint-plugin");
+const css = (await import("@sarj/eslint-plugin/stylelint")).default;
+if (css.ruleName !== "@sarj/no-modern-shorthand-reset") throw new Error("Missing packaged CSS rule");
 const next = (await import("@sarj/eslint-plugin/next")).default;
 if (Object.keys(next.rules).join() !== "no-location-assign-relative-destination") throw new Error("Unexpected Next rule export");
 console.log(JSON.stringify(loaded));`,

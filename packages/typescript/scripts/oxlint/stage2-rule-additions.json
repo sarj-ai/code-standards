@@ -1,5 +1,5 @@
 {
-  "description": "The record of the rules oxlint.strict.mts added with the switch to Oxlint, beyond what Platform's config already enabled; tests/managed-config/additions.test.ts checks the config against it. From the Oxlint rule survey (Platform/products, portal, ai, automations; Oxlint 1.91.0). Size and complexity limits were left out on purpose. Rules with existing findings start as warnings.",
+  "description": "Additional managed rules beyond the pre-migration ESLint inventory, including post-migration Modern Web Guidance coverage. tests/managed-config/additions.test.ts checks levels and scope. New web guidance checks begin at warning; contextual browser behavior remains subject to review.",
   "jsPlugins": [
     { "name": "@tanstack/query", "specifier": "@sarj/eslint-plugin/query", "surveyedVersion": "5.106.1" },
     { "name": "@eslint-react", "specifier": "@sarj/eslint-plugin/react-correctness", "surveyedVersion": "5.28.8" },
@@ -44,7 +44,34 @@
     "react/memo-dependencies": { "level": "error", "note": "React Compiler check, as in ashStack" },
     "react/invariant": { "level": "error", "note": "React Compiler check, as in ashStack" },
     "react/syntax": { "level": "error", "note": "React Compiler check, as in ashStack" },
-    "react/rule-suppression": { "level": "error", "note": "React Compiler check, as in ashStack" }
+    "react/rule-suppression": { "level": "error", "note": "React Compiler check, as in ashStack" },
+    "jsx-a11y/alt-text": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/anchor-has-content": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/anchor-is-valid": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/aria-activedescendant-has-tabindex": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/aria-props": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/aria-proptypes": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/aria-role": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/aria-unsupported-elements": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/autocomplete-valid": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/heading-has-content": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/html-has-lang": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/iframe-has-title": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/interactive-supports-focus": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/lang": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/no-access-key": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/no-aria-hidden-on-focusable": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/no-distracting-elements": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/no-interactive-element-to-noninteractive-role": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/no-noninteractive-element-to-interactive-role": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/role-supports-aria-props": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/scope": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "jsx-a11y/tabindex-no-positive": {"level": "warn", "note": "Modern Web Guidance: native accessibility check."},
+    "@sarj/no-invalid-web-resource-hints": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
+    "@sarj/no-password-get-form": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
+    "@sarj/no-blocked-input-paste": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
+    "@sarj/no-message-origin-string-matching": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
+    "@sarj/require-ime-safe-enter-handler": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."}
   },
   "later": {
     "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"

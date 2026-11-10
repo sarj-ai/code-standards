@@ -1,0 +1,32 @@
+{
+  "defaultSeverity": "warning",
+  "plugins": [
+    "@sarj/eslint-plugin/stylelint"
+  ],
+  "rules": {
+    "@sarj/no-modern-shorthand-reset": true,
+    "color-no-invalid-hex": true,
+    "custom-property-no-missing-var-function": true,
+    "declaration-block-no-shorthand-property-overrides": true,
+    "declaration-property-value-disallowed-list": {
+      "font-size": [
+        "/^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0?\\.[0-9]*[1-9][0-9]*)[pP][xX]$/"
+      ]
+    },
+    "font-family-no-duplicate-names": true,
+    "function-calc-no-unspaced-operator": true,
+    "function-linear-gradient-no-nonstandard-direction": true,
+    "keyframe-block-no-duplicate-selectors": true,
+    "keyframe-declaration-no-important": true,
+    "media-query-no-invalid": [
+      true,
+      {
+        "ignoreFunctions": [
+          "/^--/",
+          "theme"
+        ]
+      }
+    ],
+    "named-grid-areas-no-invalid": true
+  }
+}

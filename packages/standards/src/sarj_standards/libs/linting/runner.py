@@ -42,6 +42,7 @@ class _LoadedTool(NamedTuple):
 
 
 class _Tool(StrEnum):
+    CSS = "css"
     PYTHON = "python"
     SQL = "sql"
     IAC = "iac"
@@ -53,6 +54,7 @@ class _Tool(StrEnum):
 
 _SUFFIX_TO_TOOL = MappingProxyType(
     {
+        ".css": _Tool.CSS,
         ".astro": _Tool.TEXT,
         ".hcl": _Tool.IAC,
         ".py": _Tool.PYTHON,
@@ -175,6 +177,7 @@ class GroupedPaths:
     text: list[str] = field(default_factory=list)
     swift: list[str] = field(default_factory=list)
     typescript: list[str] = field(default_factory=list)
+    css: list[str] = field(default_factory=list)
 
 
 def run(
@@ -597,6 +600,8 @@ def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
 
 def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:
     match tool:
+        case _Tool.CSS:
+            grouped.css.append(path)
         case _Tool.PYTHON:
             grouped.python.append(path)
         case _Tool.SQL:

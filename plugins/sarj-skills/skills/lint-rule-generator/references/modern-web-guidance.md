@@ -1,0 +1,15 @@
+# Modern web guidance rule coverage
+
+See the [complete source/task audit](../../../../../docs/audits/modern-web-guidance.json) and [conditional web review policy](../../web-guidance-review/references/review-policy.md). Source-semantics rules belong in Code Standards. Extension asset/tree checks would belong in Repo Standards when an extension project needs them; no blanket filename rules are introduced for ordinary web applications.
+
+The [calibration report](../../../../../packages/standards/benchmarks/modern-web-guidance-20261110.json) records inspected findings, immutable replays, costs and limits.
+
+The managed preset enables 22 native jsx-a11y rules at warning. It preserves dialog autofocus and contextual role workarounds. Native label association and required-ARIA checks are omitted after the frozen corpus exposed unresolved prop-forwarding and render-prop associations; verify the final DOM instead. Existing React, Unicorn, security and Sarj rules retain ownership of overlapping checks; the resource-hint rule fills the verified obsolete importance gap in Oxlint 1.91.
+
+The new Oxlint advisories are `no-invalid-web-resource-hints`, `no-password-get-form`, `no-blocked-input-paste`, `no-message-origin-string-matching` and `require-ime-safe-enter-handler`. Their source-owned documentation and executable examples define the exact scope. They preserve unknown spreads, runtime ownership and alternative implementations instead of guessing an autofix.
+
+The TypeScript capability runs Stylelint 18.0.0 over selected CSS. Eleven upstream rules cover invalid colors, custom-property references, ordinary shorthand resets, plain pixel typography, duplicate font families, calculation spacing, gradient directions, keyframe selectors/importance, media-query syntax and named grid areas. Tailwind directives and future feature names remain permitted. Media-query validation ignores compile-time theme/custom functions, whose values require the build pipeline.
+
+`@sarj/no-modern-shorthand-reset` adds the missing reset-only relationships: `animation` resets `animation-timeline` and `animation-range*`; `transition` resets `transition-behavior`. It uses declaration order and importance, preserves later restoration, ignores initial or unresolved values and emits at most one warning per resetting shorthand. A transition explicitly retaining allow-discrete is preserved. The rule examines one declaration block, does not resolve the external cascade, and has no autofix because an intentional reset is possible. Keep a reasoned native Stylelint suppression for that intentional case.
+
+Stylelint's own shorthand map does not include these modern resets. ESLint CSS's relative-font-units also flags valid mixed-unit functions for this policy. CSSicorn's broader state-inference rules and html-eslint's literal attribute checks were considered; the latter does not respect effective JSX spread ordering. The selected maintained checks plus narrow semantic extensions avoid replacing the existing Oxlint pipeline or duplicating its findings.
