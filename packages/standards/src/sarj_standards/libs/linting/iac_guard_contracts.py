@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict
 import json
 import re
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 CONTRACT_PATH = ".sarj-terraform-guards.json"
 _OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _LIMIT = 500_000
+_PROMOTION_PARENT_COUNT = 2
 
 
 class CoreIAC:
@@ -53,7 +55,11 @@ class CoreIAC:
         introductions, current = active
         self._check_staged_manifest(current)
         paths = self._manifest_paths(current)
-        entries = self._original_entries(self._original_revision(introductions, current), paths)
+        sources = self._original_sources(introductions, current, paths)
+        entries = tuple(entry for path in paths for entry in self._original_entries(sources[path], (path,)))
+        original = self._original_revision(introductions, current)
+        inherited = frozenset(path for path in paths if sources[path] != original)
+        entries = self._preserve_relocated_guards(entries, current, inherited)
         if parse_unique_json(current) != parse_unique_json(self._serialize(entries)):
             message = "guard contracts differ from immutable original source"
             raise ValueError(message)
@@ -100,6 +106,61 @@ class CoreIAC:
         # parent independently proves these guards already existed here, without
         # depending on feature-branch commit IDs that squash/rebase can discard.
         return self._git("rev-parse", "--verify", f"{introduced}^1").strip()
+
+    def _original_sources(self, introductions: tuple[str, ...], current: str, paths: Sequence[str]) -> dict[str, str]:
+        revision = self._original_revision(introductions, current)
+        sources = {path: revision for path in paths if self._git("ls-tree", revision, "--", path)}
+        missing = tuple(path for path in paths if path not in sources)
+        if not missing:
+            return sources
+        if not introductions:
+            message = "guard original must be a regular immutable Git blob"
+            raise ValueError(message)
+        imported = self._imported_contract_source(introductions[0], current)
+        sources.update(self._original_sources(self._introductions(imported), current, missing))
+        return sources
+
+    def _imported_contract_source(self, introduced: str, current: str) -> str:
+        parents = self._git("show", "--no-patch", "--format=%P", introduced).split()
+        if len(parents) != _PROMOTION_PARENT_COUNT:
+            message = "missing guard originals require a two-parent contract promotion"
+            raise ValueError(message)
+        source = parents[1]
+        mode = self._git("ls-tree", source, "--", CONTRACT_PATH).split(maxsplit=1)
+        if not mode or mode[0] != "100644" or self._git("show", f"{source}:{CONTRACT_PATH}") != current:
+            message = "promoted guard contract differs from its immutable source"
+            raise ValueError(message)
+        # Existing target files still use the target's original guards. Only
+        # files absent there inherit the already-adopted source's provenance.
+        return source
+
+    def _preserve_relocated_guards(
+        self, entries: tuple[GuardContract, ...], current: str, inherited: frozenset[str]
+    ) -> tuple[GuardContract, ...]:
+        if not inherited:
+            return entries
+        guards = as_table(parse_unique_json(current))["guards"]
+        if not is_object_list(guards):
+            message = "guard contracts must contain existing guards"
+            raise ValueError(message)
+        expected = Counter(json.dumps(guard, sort_keys=True) for guard in guards)
+        moved = Counter(_module_guard_identity(entry) for entry in entries if entry.path in inherited)
+        preserved: list[GuardContract] = []
+        for entry in entries:
+            identity = json.dumps(asdict(entry), sort_keys=True)
+            if expected[identity]:
+                expected[identity] -= 1
+                preserved.append(entry)
+                continue
+            key = _module_guard_identity(entry)
+            if entry.path in inherited or not moved[key]:
+                message = "guard contracts differ from immutable original source"
+                raise ValueError(message)
+            moved[key] -= 1
+        if any(moved.values()):
+            message = "promoted guard files must preserve existing same-module guards"
+            raise ValueError(message)
+        return tuple(preserved)
 
     def _manifest_paths(self, source: str) -> tuple[str, ...]:
         value = as_table(parse_unique_json(source))
@@ -166,12 +227,12 @@ class CoreIAC:
             raise ValueError(message)
         return candidate.read_text(encoding="utf-8")
 
-    def _introductions(self) -> tuple[str, ...]:
+    def _introductions(self, revision: str = "HEAD") -> tuple[str, ...]:
         if not self._git("rev-parse", "--verify", "--quiet", "HEAD", absent_ok=True):
             return ()
         return tuple(
             self._git(
-                "log", "--first-parent", "--diff-filter=A", "--format=%H", "HEAD", "--", CONTRACT_PATH
+                "log", "--first-parent", "--diff-filter=A", "--format=%H", revision, "--", CONTRACT_PATH
             ).splitlines()
         )
 
@@ -217,3 +278,7 @@ def _entry_path(value: object) -> str:
         message = "guard contract path must be a string"
         raise TypeError(message)
     return relative_tf_path(path)
+
+
+def _module_guard_identity(entry: GuardContract) -> str:
+    return json.dumps((entry.path.rpartition("/")[0], entry.owner, entry.kind, entry.shape))
