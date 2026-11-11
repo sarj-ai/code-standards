@@ -121,7 +121,7 @@ function correlatedBooleanFields(
 }
 
 /** Exact Boolean domains, including one unmerged local alias, preserve both possible values. */
-function booleanType(type: ESTree.TSType | undefined, sourceCode: SourceCode): boolean {
+export function booleanType(type: ESTree.TSType | undefined, sourceCode: SourceCode): boolean {
   const domain = tagDomain(type, sourceCode);
   return domain?.size === 2 && domain.has(true) && domain.has(false);
 }
@@ -145,7 +145,7 @@ function restrictedVaryingPair(combinations: ReadonlySet<string>): boolean {
   return [0, 1].every(index => values.some(value => value[index] === "0") && values.some(value => value[index] === "1"));
 }
 
-function returnContract(node: Producer, sourceCode: SourceCode): Contract | undefined {
+export function returnContract(node: Producer, sourceCode: SourceCode): Contract | undefined {
   const annotation = node.returnType;
   if (!isPresent(annotation)) return undefined;
   let type = annotation.typeAnnotation;
@@ -178,7 +178,7 @@ function definitions(reference: ESTree.TSTypeReference, sourceCode: SourceCode):
 }
 
 /** Validate that every declared field has a unique, locally known name and optionality. */
-function objectContract(elements: readonly ESTree.TSSignature[]): ObjectContract | undefined {
+export function objectContract(elements: readonly ESTree.TSSignature[]): ObjectContract | undefined {
   const members = new Map<string, ESTree.TSPropertySignature>();
   const optional = new Set<string>();
   for (const member of elements) {
@@ -192,7 +192,7 @@ function objectContract(elements: readonly ESTree.TSSignature[]): ObjectContract
 }
 
 /** Compare produced keys with the declared contract before inferring their tag relationship. */
-function returnedProperties(
+export function returnedProperties(
   objects: readonly ESTree.ObjectExpression[],
   contract: ObjectContract,
 ): readonly ReadonlyMap<string, Node>[] | undefined {

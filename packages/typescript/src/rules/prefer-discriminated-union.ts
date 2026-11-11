@@ -10,8 +10,11 @@ import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js
 import { docsUrl } from "../utils/docs-url.js";
 import { isPresent } from "../utils/is-present.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { enclosingFunction } from "../utils/stable-value-binding.js";
+import { tsrsServices } from "../utils/tsrs-services.js";
 import { retainsNamedTypeUses } from "../utils/type-binding.js";
-import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
+import { hasIdentifierNamed, isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
+import { projectedBooleanEvidence, projectedBooleanPairs, type ProjectedBooleanPair } from "./_discriminated-union-projections.js";
 import { discriminatedUnionReturns, type DiscriminatedReturn } from "./_discriminated-union-returns.js";
 
 const NAME = "prefer-discriminated-union";
@@ -34,11 +37,14 @@ export default defineRule({
         "This producer returns tag-specific payloads for `{{tag}}`, but its flat return contract makes them optional. If these variants define the domain, use a discriminated union with each variant's required payload, or give this producer a precise return type separate from the broader contract.",
       preferProducedState:
         "This producer returns a restricted set of literal combinations for `{{fields}}`, while its Boolean fields permit all four. Review a union preserving every returned combination, or a typed disposition if these are domain phases. Other writers and readers of a shared contract require review.",
+      preferProjectedState:
+        "This producer compares the same immutable primitive snapshot with distinct state values for `{{fields}}`, but its Boolean return contract also permits true/true. Review returning the authoritative state or preserving every produced combination in a union. Keep independent dimensions and unknown states; other writers and readers of a shared contract require review.",
     },
   },
   createOnce(context) {
     const reportedContracts = new Set<Node>();
     const producers: Producer[] = [];
+    const returns = new Map<Producer, ESTree.ReturnStatement | null>();
 
     function rememberProducer(node: Producer): void {
       producers.push(node);
@@ -62,6 +68,7 @@ export default defineRule({
       before() {
         reportedContracts.clear();
         producers.length = 0;
+        returns.clear();
         const file = { filename: context.filename, cwd: context.cwd };
         if (isTestFile(file) || isGeneratedFile(file, context.sourceCode.text)) return false;
         return undefined;
@@ -69,8 +76,29 @@ export default defineRule({
       ArrowFunctionExpression: rememberProducer,
       FunctionDeclaration: rememberProducer,
       FunctionExpression: rememberProducer,
+      ReturnStatement(node): void {
+        const owner = enclosingFunction(node);
+        if (owner !== null) returns.set(owner, returns.has(owner) ? null : node);
+      },
       "Program:exit"(): void {
         for (const producer of producers) checkProducer(producer);
+        if (hasIdentifierNamed(context.sourceCode, "eval")) return;
+        const candidates: ProjectedBooleanPair[] = [];
+        for (const producer of producers) {
+          const returned = returns.get(producer);
+          if (!isPresent(returned)) continue;
+          candidates.push(...projectedBooleanPairs(producer, returned, context.sourceCode)
+            .filter(({ reportNode }) => !reportedContracts.has(reportNode)));
+          if (candidates.length > 128) return;
+        }
+        if (candidates.length === 0) return;
+        const evidence = tsrsServices(context)?.run((file) => projectedBooleanEvidence(file, candidates));
+        if (!isPresent(evidence)) return;
+        candidates.forEach(({ reportNode, left, right }, index) => {
+          if (evidence[index] !== true || reportedContracts.has(reportNode)) return;
+          reportedContracts.add(reportNode);
+          context.report({ node: reportNode, messageId: "preferProjectedState", data: { fields: [left.field, right.field].join("`, `") } });
+        });
       },
     };
   },

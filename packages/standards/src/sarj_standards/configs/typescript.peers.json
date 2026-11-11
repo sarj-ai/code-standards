@@ -13,7 +13,7 @@
     "trust policies for that install only."
   ],
   "peers": {
-    "@sarj/eslint-plugin": "19.17.0",
+    "@sarj/eslint-plugin": "19.18.0",
     "eslint-plugin-zod": "5.2.2",
     "oxfmt": "0.76.0",
     "oxlint": "1.91.0",
@@ -26,7 +26,7 @@
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "19.17.0"
+    "@sarj/eslint-plugin": "19.18.0"
   },
   "platformPackages": {
     "oxfmt": [
