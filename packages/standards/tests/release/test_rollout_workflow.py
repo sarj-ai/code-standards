@@ -833,6 +833,7 @@ def _unchanged_failures(tmp_path: Path, **values: str) -> _SkipResult:
         "CONSUMERS": '[{"name":"App","identity":"example/app@main","workflow_runner":"fixture-runner"}]',
         "CONSUMER_TOKEN": "consumer-token",
         "ACTIONS_TOKEN": "actions-token",
+        "BASE_SHA": "b" * 40,
         "CONTROLLER_SHA": "c" * 40,
         "EVENT_NAME": "schedule",
         "TRIGGERING_ACTOR": "someone",
