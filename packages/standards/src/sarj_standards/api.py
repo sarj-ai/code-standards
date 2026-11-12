@@ -109,6 +109,19 @@ class AnalysisMode(StrEnum):
     RAW = "raw"
 
 
+def _native_python_workers(group_jobs: int) -> int:
+    if group_jobs == 1:
+        return 1
+    available = os.process_cpu_count() or 1
+    budget = os.environ.get("SARJ_LOCAL_CHECK_WORKERS")  # ruff: ignore[banned-api] -- honor the native supervisor's explicit worker budget.
+    if budget is None:
+        return available
+    try:
+        return max(1, min(available, int(budget)))
+    except ValueError:
+        return 1
+
+
 def _analysis_manifest(root: Path, mode: AnalysisMode) -> Manifest | None:
     if mode is AnalysisMode.RAW:
         return None
@@ -389,7 +402,7 @@ class Standards:
                 policy=selection_policy,
                 grouped=selected_groups,
                 rule_selection=rule_selection,
-                python_jobs=1 if jobs == 1 else os.process_cpu_count() or 1,
+                python_jobs=_native_python_workers(jobs),
                 staged=staged,
                 use_guard_contracts=normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE},
                 module_summaries=adopted is not None and adopted.terraform_module_summaries,
