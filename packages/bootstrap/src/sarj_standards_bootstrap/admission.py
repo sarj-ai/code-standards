@@ -47,11 +47,11 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
     if not cache.is_absolute():
         cache = Path.home() / ".cache"
     directory = Path(environment.get("SARJ_LOCAL_CHECK_STATE_DIR", str(cache / "sarj" / "local-checks"))).resolve()
-    if _inherited_lease(directory, environment.get(LEASE_ENV)):
+    wait = Wait(started=time.monotonic(), timeout=timeout)
+    if _inherited_lease(directory, environment.get(LEASE_ENV), wait):
         yield
         return
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    wait = Wait(started=time.monotonic(), timeout=timeout)
     with _registered_waiter(directory, wait) as ticket_path:
         yield from _wait_for_slot(directory, slots, environment, wait, ticket_path)
 
@@ -66,31 +66,39 @@ def _wait_for_slot(
     import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
 
     while True:
-        capacity = _capacity(directory, slots)
-        position = _queue_position(directory, ticket_path, wait)
-        for slot in range(capacity) if position == 1 else ():
-            if wait.timeout > 0 and time.monotonic() - wait.started >= wait.timeout:
-                _pause(wait, "shared slot")
-            with (directory / f"slot-{slot}.lock").open("a+", encoding="utf-8") as handle:
-                try:
-                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    continue
-                marker = json.dumps(
-                    {"path": str(Path(handle.name)), "pid": os.getpid(), "token": secrets.token_hex(16)}
-                )
-                handle.seek(0)
-                handle.truncate()
-                handle.write(marker)
-                handle.flush()
-                ticket_path.unlink(missing_ok=True)
-                environment["SARJ_LOCAL_CHECK_JOBS"] = str(capacity)
-                environment[LEASE_ENV] = marker
-                environment["SARJ_LOCAL_CHECK_STATE_DIR"] = str(directory)
-                # POSIX exec replaces this launcher; its replacement owns the
-                # lock until the exact pinned checker exits, including uvx's wait.
-                flags = fcntl.fcntl(handle, fcntl.F_GETFD)
-                fcntl.fcntl(handle, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+        with ExitStack() as stack:
+            with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
+                _lock_queue(registration, wait)
+                capacity = _capacity(directory, slots)
+                position = _live_queue_position(directory, ticket_path)
+                available = position == 1 and _occupied_slots(directory) < capacity
+                for slot in range(capacity) if available else ():
+                    if wait.timeout > 0 and time.monotonic() - wait.started >= wait.timeout:
+                        _pause(wait, "shared slot")
+                    handle = stack.enter_context((directory / f"slot-{slot}.lock").open("a+", encoding="utf-8"))
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        continue
+                    marker = json.dumps(
+                        {"path": str(Path(handle.name)), "pid": os.getpid(), "token": secrets.token_hex(16)}
+                    )
+                    handle.seek(0)
+                    handle.truncate()
+                    handle.write(marker)
+                    handle.flush()
+                    ticket_path.unlink(missing_ok=True)
+                    environment["SARJ_LOCAL_CHECK_JOBS"] = str(capacity)
+                    environment[LEASE_ENV] = marker
+                    environment["SARJ_LOCAL_CHECK_STATE_DIR"] = str(directory)
+                    # The exec replacement owns this lock, while metadata is
+                    # released before execution or any admission polling.
+                    flags = fcntl.fcntl(handle, fcntl.F_GETFD)
+                    fcntl.fcntl(handle, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+                    break
+                else:
+                    handle = None
+            if handle is not None:
                 yield
                 return
         _pause(wait, f"one of {capacity} shared slot(s); queue position {position}")
@@ -161,10 +169,19 @@ def _capacity(directory: Path, slots: int) -> int:
     return capacity
 
 
-def _queue_position(directory: Path, ticket_path: Path, wait: Wait) -> int:
-    with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
-        _lock_queue(registration, wait)
-        return _live_queue_position(directory, ticket_path)
+def _occupied_slots(directory: Path) -> int:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
+    # Owners above a reduced limit still consume capacity until their checks exit.
+    # The caller holds queue.lock across these probes and the next reservation.
+    occupied = 0
+    for path in directory.glob("slot-*.lock"):
+        with path.open("r+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                occupied += 1
+    return occupied
 
 
 def _live_queue_position(directory: Path, ticket_path: Path) -> int:
@@ -193,16 +210,16 @@ def _ticket_is_live(path: Path) -> bool:
     return False
 
 
-def _inherited_lease(directory: Path, marker: str | None) -> bool:
+def _inherited_lease(directory: Path, marker: str | None, wait: Wait) -> bool:
     if not marker:
         return False
     try:
-        return _held_ancestor(directory, marker)
+        return _held_ancestor(directory, marker, wait)
     except OSError, ValueError, subprocess.TimeoutExpired:
         return False
 
 
-def _held_ancestor(directory: Path, marker: str) -> bool:
+def _held_ancestor(directory: Path, marker: str, wait: Wait) -> bool:
     import fcntl  # ruff: ignore[import-outside-top-level] -- called only by the POSIX reservation.
 
     lease = JSON_PARSER(marker)
@@ -214,15 +231,20 @@ def _held_ancestor(directory: Path, marker: str) -> bool:
     path = Path(raw_path)
     if path.parent != directory or not path.name.startswith("slot-") or path.suffix != ".lock":
         return False
-    with path.open("r+", encoding="utf-8") as handle:
-        if handle.read(4096) != marker or not _is_ancestor(pid):
-            return False
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True
-        fcntl.flock(handle, fcntl.LOCK_UN)
-    return False
+    if not _is_ancestor(pid):
+        return False
+    # A free-slot probe must not make an expired marker look like a held lease.
+    with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
+        _lock_queue(registration, wait)
+        with path.open("r+", encoding="utf-8") as handle:
+            if handle.read(4096) != marker:
+                return False
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        return False
 
 
 def _is_ancestor(pid: int) -> bool:
