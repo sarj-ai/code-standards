@@ -187,7 +187,7 @@ class NoTerraformGuardBlocks(Rule):
                 block.line,
                 block.col,
                 self.code,
-                f"Terraform {block.type} guard blocks are prohibited; move required policy to tests or deployment preflight before removing the block.",
+                f"Terraform {block.type} guard blocks are prohibited; reuse native or shared enforcement and preserve deployment invariants before removing the block.",
                 severity=documentation.default_level,
                 suppressible=self.contracts is None,
                 baselineable=self.contracts is None,
