@@ -34,8 +34,8 @@ const sources = new Map();
 const originalSources = new Map();
 const oxlintRoot = dirname(require.resolve("oxlint/package.json"));
 const installedOxlint = JSON.parse(readFileSync(join(oxlintRoot, "package.json"), "utf8"));
-if (installedOxlint.version !== "1.91.0")
-  throw new Error(`Expected Oxlint 1.91.0, found ${installedOxlint.version}`);
+if (installedOxlint.version !== "1.92.0")
+  throw new Error(`Expected Oxlint 1.92.0, found ${installedOxlint.version}`);
 const diagnostics = [];
 const isExcluded = (absolute) =>
   (request.excludedDirectories ?? []).some((directory) => contains(directory, absolute));

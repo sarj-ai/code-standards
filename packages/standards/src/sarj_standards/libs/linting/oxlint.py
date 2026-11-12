@@ -2,7 +2,7 @@
 #
 # This module owns everything Oxlint-specific so ``external.py``, ``lifecycle.py``
 # and ``autofix.py`` only wire it in. Facts it relies on were measured on Oxlint
-# 1.91.0; see ``tests/test_oxlint_*.py``.
+# 1.92.0; see ``tests/test_oxlint_*.py``.
 #
 # Selection
 #     ``select_oxlint_commands(root, paths, *, label, fix,

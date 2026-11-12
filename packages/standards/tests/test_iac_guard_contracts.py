@@ -495,3 +495,79 @@ def test_committed_contract_history_cannot_replace_frozen_policy(tmp_path: Path,
 
     with pytest.raises(ValueError, match=r"immutable.*changed|removed and reintroduced"):
         CoreIAC(tmp_path).prepare()
+
+
+def _promotion_branches(root: Path, *, destination: str = "new.tf", initial_extra: bool = True) -> bytes:
+    _git(root, "init", "--quiet", "--template=", "--initial-branch=dev")
+    extra = _ORIGINAL[_ORIGINAL.index("resource ") :].replace('"protected"', '"relocated"')
+    (root / "main.tf").write_text(_ORIGINAL + extra if initial_extra else _ORIGINAL)
+    _commit(root, "Original shared guards")
+    _git(root, "branch", "preview")
+    _git(root, "branch", "production")
+    (root / "main.tf").write_text(_ORIGINAL)
+    (root / destination).parent.mkdir(parents=True, exist_ok=True)
+    (root / destination).write_text(extra)
+    _commit(root, "Split existing dev guards before adoption")
+    manifest = CoreIAC(root).initialize(["main.tf", destination], original_revision=_git(root, "rev-parse", "HEAD"))
+    (root / CONTRACT_PATH).write_text(manifest, newline="\n")
+    (root / ".sarj-standards.toml").write_text(
+        Manifest(
+            version="9.4.6", configs=(), python_dest=".", typescript_dest=".", terraform_guard_contracts=CONTRACT_PATH
+        ).render()
+    )
+    _commit(root, "Adopt existing dev guards")
+    assert CoreIAC(root).prepare() is not None
+    return manifest.encode()
+
+
+@pytest.mark.parametrize("target", ["preview", "production"])
+@pytest.mark.parametrize("staged", [False, True])
+def test_promotion_preserves_previously_adopted_source_guards(tmp_path: Path, target: str, *, staged: bool) -> None:
+    manifest = _promotion_branches(tmp_path)
+    _git(tmp_path, "switch", "--quiet", "preview")
+    _git(tmp_path, "merge", "--no-ff", "-m", "Promote dev to preview", "dev")
+    if target == "production":
+        _git(tmp_path, "switch", "--quiet", target)
+        _git(tmp_path, "merge", "--no-ff", "-m", "Promote preview to production", "preview")
+
+    assert (tmp_path / CONTRACT_PATH).read_bytes() == manifest
+    assert CoreIAC(tmp_path, staged=staged).prepare() is not None
+    report = Standards(tmp_path).analyze([], rules=["iac:no-terraform-guard-blocks"])
+    assert report.issues == ()
+
+
+@pytest.mark.parametrize("change", ["target-guard", "source-guard", "manifest", "remove-reintroduce"])
+def test_promotion_still_rejects_guard_or_contract_drift(tmp_path: Path, change: str) -> None:
+    manifest = _promotion_branches(tmp_path)
+    if change == "target-guard":
+        _git(tmp_path, "switch", "--quiet", "preview")
+        (tmp_path / "main.tf").write_text(_ORIGINAL.replace("condition = var.approved", "condition = true"))
+        _commit(tmp_path, "Change target guard")
+    else:
+        match change:
+            case "source-guard":
+                (tmp_path / "new.tf").write_text(_ORIGINAL.replace("condition = var.approved", "condition = true"))
+            case "manifest":
+                (tmp_path / CONTRACT_PATH).write_bytes(manifest + b" ")
+            case _:
+                (tmp_path / CONTRACT_PATH).unlink()
+                _commit(tmp_path, "Remove source contract")
+                (tmp_path / CONTRACT_PATH).write_bytes(manifest)
+        _commit(tmp_path, "Change source after adoption")
+        _git(tmp_path, "switch", "--quiet", "preview")
+    _git(tmp_path, "merge", "--no-ff", "-Xours", "-m", "Promote source", "dev")
+
+    with pytest.raises(ValueError, match=r"guard|contract|immutable"):
+        CoreIAC(tmp_path).prepare()
+
+
+@pytest.mark.parametrize(("destination", "initial_extra"), [("module/new.tf", True), ("new.tf", False)])
+def test_promotion_cannot_grandfather_new_or_cross_module_guards(
+    tmp_path: Path, destination: str, *, initial_extra: bool
+) -> None:
+    _promotion_branches(tmp_path, destination=destination, initial_extra=initial_extra)
+    _git(tmp_path, "switch", "--quiet", "preview")
+    _git(tmp_path, "merge", "--no-ff", "-m", "Promote source", "dev")
+
+    with pytest.raises(ValueError, match=r"guard|contract|immutable"):
+        CoreIAC(tmp_path).prepare()
