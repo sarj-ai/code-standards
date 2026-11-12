@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
 from sarj_python_lint.rules._imports import ABC_SOURCES
@@ -65,6 +66,7 @@ _MIN_SWAPPABLE_ROLES = 2
 _SECOND_ARGUMENT = 1
 _PAIR_ARITY = 2
 _MAX_ALIAS_DEPTH = 8
+_SCOPE_CACHE_HISTORY = 7
 _COLLECTION_WRAPPERS = frozenset(
     {
         "AbstractSet",
@@ -156,6 +158,7 @@ class PreferNominalIdTypes(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "A single primitive ID field on a direct Pydantic model receives a warning when an explicit pattern already demonstrates its own identifier domain. Reuse or introduce a nominal ID while retaining the pattern and wire representation; an ID-shaped name alone is insufficient.",
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
             "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs, external/inherited contracts and raw-schema exclusions still apply.",
             "Direct implementations of stable same-file abstract contracts also receive the raw-ID advisory, including overrides. Imported, ambiguous, decorated, mutated and multiple-inheritance bases remain excluded. A contract with an existing swappable-ID error owns that diagnostic instead of repeating its implementation as warnings.",
@@ -383,6 +386,9 @@ class PreferNominalIdTypes(Rule):
                 )
 
         collect_boundary_diagnostics()
+        for model in tree.body:
+            if isinstance(model, ast.ClassDef) and model not in boundaries:
+                diagnostics.extend(self._raw_contract_diagnostics(model, context, facts))
         for method in _local_contract_implementations(context, original_facts):
             diagnostics.extend(self._raw_contract_diagnostics(method, context, facts, owned_contract=True))
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
@@ -395,12 +401,13 @@ class PreferNominalIdTypes(Rule):
         *,
         owned_contract: bool = False,
     ) -> list[Diagnostic]:
-        if not owned_contract and not _explicit_contract(node, context):
-            return []
+        explicit = owned_contract or _explicit_contract(node, context)
         raw_roles = [
             role
             for role in _boundary_roles(node, context.imports, facts)
-            if role.carrier.raw and role.name.endswith(("_id", "_ids"))
+            if role.carrier.raw
+            and role.name.endswith(("_id", "_ids"))
+            and (explicit or _pattern_identifier(node, role, context))
         ]
         return [
             Diagnostic(
@@ -442,7 +449,7 @@ class PreferNominalIdTypes(Rule):
                     _module_facts(module, sources, resolved, (), None)
             roles = _canonical_roles(sources, resolved)
             cached = _ScopeFacts(sources, resolved, roles)
-            self._scope_cache = [*self._scope_cache[-7:], cached]
+            self._scope_cache = [*self._scope_cache[-_SCOPE_CACHE_HISTORY:], cached]
         seed = _imported_facts(
             imports, sources, cached.resolved, (), tree, include_annotations=True, node_index=context.node_index
         )
@@ -1319,3 +1326,32 @@ def _canonical_roles(
             role = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first).lower()
             candidates.setdefault(role, []).append(facts.nominal_aliases[name])
     return {name: shapes[0] for name, shapes in candidates.items() if len(shapes) == 1}
+
+
+def _pattern_identifier(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+    role: _IdRole,
+    context: PythonFileContext,
+) -> bool:
+    if not isinstance(node, ast.ClassDef) or role.carrier.shape != "str":
+        return False
+    origins = AnnotationOrigins(context)
+    if not any(
+        origins.qualified(base, base) in {"pydantic.BaseModel", "pydantic.main.BaseModel"} for base in node.bases
+    ):
+        return False
+    return any(
+        isinstance(field, ast.AnnAssign)
+        and isinstance(field.target, ast.Name)
+        and field.target.id == role.name
+        and isinstance(field.value, ast.Call)
+        and origins.qualified(field.value.func, field.value) in {"pydantic.Field", "pydantic.fields.Field"}
+        and any(
+            keyword.arg == "pattern"
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
+            and bool(keyword.value.value)
+            for keyword in field.value.keywords
+        )
+        for field in node.body
+    )

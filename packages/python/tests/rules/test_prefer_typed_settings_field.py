@@ -16,7 +16,7 @@ _FIELDS = (
     ("positive", "count: int = Field(default=1, gt=0)", 1),
     ("nonnegative", "delay: float = Field(default=0.0, ge=0)", 1),
     ("typed-enum", "mode: Mode = Mode.CLOUD", 0),
-    ("plain", "label: str = 'deployment'", 0),
+    ("token-default", "label: str = 'deployment'", 1),
     ("typed-positive", "count: PositiveInt = 1", 0),
     ("required", "endpoint: str | None = Field(default=None)", 0),
 )
@@ -56,19 +56,21 @@ def test_settings_domain_contracts(
 
 
 @pytest.mark.parametrize(
-    "declaration",
+    ("declaration", "expected"),
     [
-        "timeout: int = Field(default=10, gt=1)",
-        "percentage: int = Field(default=1, ge=1, le=100)",
-        "url: HttpUrl = 'https://api.example.com'",
-        "port: int = 8000",
-        "token: str = ''",
-        "region: str = 'eu-west-1'",
+        ("timeout: int = Field(default=10, gt=1)", 1),
+        ("percentage: int = Field(default=1, ge=1, le=100)", 1),
+        ("url: HttpUrl = 'https://api.example.com'", 0),
+        ("port: int = 8000", 1),
+        ("token: str = ''", 0),
+        ("region: str = 'eu-west-1'", 1),
     ],
 )
-def test_does_not_guess_domain_contracts_from_names(rule: PreferTypedSettingsField, declaration: str) -> None:
+def test_domains_follow_annotation_and_default_evidence(
+    rule: PreferTypedSettingsField, declaration: str, expected: int
+) -> None:
     source = _PREFIX + "class Settings(BaseSettings):\n    " + declaration + "\n"
-    assert rule.check(Path("app/settings.py"), source) == []
+    assert len(rule.check(Path("app/settings.py"), source)) == expected
 
 
 def test_final_settings_class_keeps_its_domain_field_contract(rule: PreferTypedSettingsField) -> None:

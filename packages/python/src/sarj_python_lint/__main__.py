@@ -293,6 +293,8 @@ def analyze(
 
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
+        "SARJ008": frozenset({"SARJ568"}),
+        "SARJ071": frozenset({"SARJ569"}),
         "SARJ556": frozenset({"SARJ421"}),
         "SARJ020": frozenset({"SARJ437"}),
         "SARJ054": frozenset({"SARJ419"}),
@@ -310,7 +312,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # Visible FastAPI operations have a route-aware contract diagnostic.
         # Keep the annotation diagnostics when SARJ094 is absent, including
         # when a concrete response_model makes the route contract complete.
-        "SARJ094": frozenset({"SARJ008", "SARJ447"}),
+        "SARJ094": frozenset({"SARJ008", "SARJ447", "SARJ568"}),
         "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
         # A proven external or nested request boundary already requires schema
@@ -324,7 +326,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ450": frozenset({"SARJ521", "SARJ535"}),
         "SARJ521": frozenset({"SARJ535"}),
         "SARJ457": frozenset({"SARJ045", "SARJ526"}),
-        "SARJ465": frozenset({"SARJ071"}),
+        "SARJ465": frozenset({"SARJ071", "SARJ569"}),
         "SARJ491": frozenset({"SARJ400"}),
         "SARJ518": frozenset({"SARJ560"}),
     }
@@ -347,6 +349,10 @@ class _DiagnosticOwners:
     fields: tuple[ast.AnnAssign, ...]
 
     def location(self, diagnostic: Diagnostic) -> _OwnerLocation:
+        if diagnostic.code == "SARJ568":
+            if diagnostic.subject is DiagnosticSubject.RETURN:
+                return _OwnerLocation(*self.signatures.get(diagnostic.line, (diagnostic.line, diagnostic.col)))
+            return _OwnerLocation(diagnostic.line, diagnostic.col)
         if diagnostic.code in {"SARJ400", "SARJ491"}:
             return _field_owner_location(diagnostic, self.fields)
         owners = (
@@ -375,7 +381,8 @@ def deduplicate_diagnostics(
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
     needs_signature_owners = (
-        ("SARJ093" in codes and "SARJ034" in codes)
+        ("SARJ568" in codes and not codes.isdisjoint({"SARJ008", "SARJ094"}))
+        or ("SARJ093" in codes and "SARJ034" in codes)
         or ("SARJ447" in codes and "SARJ008" in codes)
         or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
     )
