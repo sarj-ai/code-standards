@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3e3bf7a8fc2e40f23e5a33d6e3d4b768303ff6665f11c8a2ee1272a82eb5e1e3",
-  "cliSha256": "5e4ebf83f9b0bc3379cf3bd9a2fa8cbb32721aaf85fa19515c3007b911683256",
+  "catalogSha256": "f0193c84f65ea0354e49ee9401b81d693f7093e10db69e89794fbcb5f4e1e0d4",
+  "cliSha256": "f36be488beee2d98a82a58410eb8c514beb9c03dd9b88bb456638db5b5809ffa",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1495,7 +1495,7 @@
           "id": "resource-precondition",
           "outcome": "reject",
           "scenarioId": "resource-lifecycle",
-          "title": "Move resource preconditions to deployment preflight"
+          "title": "Review resource preconditions with their existing enforcement owner"
         },
         {
           "expectedCount": 0,
