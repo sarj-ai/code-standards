@@ -293,6 +293,8 @@ def analyze(
 
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
+        "SARJ008": frozenset({"SARJ568"}),
+        "SARJ071": frozenset({"SARJ569"}),
         "SARJ556": frozenset({"SARJ421"}),
         "SARJ020": frozenset({"SARJ437"}),
         "SARJ054": frozenset({"SARJ419"}),
@@ -310,7 +312,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # Visible FastAPI operations have a route-aware contract diagnostic.
         # Keep the annotation diagnostics when SARJ094 is absent, including
         # when a concrete response_model makes the route contract complete.
-        "SARJ094": frozenset({"SARJ008", "SARJ447"}),
+        "SARJ094": frozenset({"SARJ008", "SARJ447", "SARJ568"}),
         "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
         # A proven external or nested request boundary already requires schema
@@ -324,7 +326,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ450": frozenset({"SARJ521", "SARJ535"}),
         "SARJ521": frozenset({"SARJ535"}),
         "SARJ457": frozenset({"SARJ045", "SARJ526"}),
-        "SARJ465": frozenset({"SARJ071"}),
+        "SARJ465": frozenset({"SARJ071", "SARJ569"}),
         "SARJ491": frozenset({"SARJ400"}),
         "SARJ518": frozenset({"SARJ560"}),
     }
@@ -347,6 +349,10 @@ class _DiagnosticOwners:
     fields: tuple[ast.AnnAssign, ...]
 
     def location(self, diagnostic: Diagnostic) -> _OwnerLocation:
+        if diagnostic.code == "SARJ568":
+            if diagnostic.subject is DiagnosticSubject.RETURN:
+                return _OwnerLocation(*self.signatures.get(diagnostic.line, (diagnostic.line, diagnostic.col)))
+            return _OwnerLocation(diagnostic.line, diagnostic.col)
         if diagnostic.code in {"SARJ400", "SARJ491"}:
             return _field_owner_location(diagnostic, self.fields)
         owners = (
@@ -375,18 +381,25 @@ def deduplicate_diagnostics(
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
     needs_signature_owners = (
-        ("SARJ093" in codes and "SARJ034" in codes)
+        ("SARJ568" in codes and not codes.isdisjoint({"SARJ008", "SARJ094"}))
+        or ("SARJ093" in codes and "SARJ034" in codes)
         or ("SARJ447" in codes and "SARJ008" in codes)
         or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
     )
     needs_composition_owners = {"SARJ066", "SARJ457"} <= codes
     needs_field_owners = {"SARJ400", "SARJ491"} <= codes
+    needs_outcome_owners = {"SARJ510", "SARJ571"} <= codes
     tree = (
         _diagnostic_owner_tree(source, context)
-        if needs_docstring_owners or needs_signature_owners or needs_composition_owners or needs_field_owners
+        if needs_docstring_owners
+        or needs_signature_owners
+        or needs_composition_owners
+        or needs_field_owners
+        or needs_outcome_owners
         else None
     )
     diags = _deduplicate_test_composition(diags, tree)
+    diags = _deduplicate_outcome_variants(diags, tree)
     owners = _DiagnosticOwners(
         docstrings=_docstring_owner_locations(tree) if needs_docstring_owners else {},
         signatures=_function_signature_owner_locations(tree) if needs_signature_owners else {},
@@ -458,6 +471,35 @@ def _deduplicate_test_composition(diags: list[Diagnostic], tree: ast.Module | No
         return severity is not None and (severity is Severity.ERROR or diagnostic.severity is Severity.WARNING)
 
     return [diagnostic for diagnostic in diags if not redundant(diagnostic)]
+
+
+def _deduplicate_outcome_variants(diags: list[Diagnostic], tree: ast.Module | None) -> list[Diagnostic]:
+    if tree is None or not {"SARJ510", "SARJ571"} <= {diagnostic.code for diagnostic in diags}:
+        return diags
+    proven = _proven_outcome_models(diags, tree)
+    return [
+        diagnostic
+        for diagnostic in diags
+        if not (
+            diagnostic.code == "SARJ571"
+            and any(_model_contains_line(model, diagnostic.line) for model in proven.get(diagnostic.path, ()))
+        )
+    ]
+
+
+def _proven_outcome_models(diags: list[Diagnostic], tree: ast.Module) -> dict[Path, list[ast.ClassDef]]:
+    models = tuple(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+    proven: dict[Path, list[ast.ClassDef]] = {}
+    for diagnostic in diags:
+        if diagnostic.code == "SARJ510" and diagnostic.severity is Severity.ERROR:
+            proven.setdefault(diagnostic.path, []).extend(
+                model for model in models if _model_contains_line(model, diagnostic.line)
+            )
+    return proven
+
+
+def _model_contains_line(model: ast.ClassDef, line: int) -> bool:
+    return model.lineno <= line <= (model.end_lineno or model.lineno)
 
 
 def _suppressed_diagnostics(

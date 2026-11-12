@@ -250,6 +250,7 @@ from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
+from sarj_python_lint.rules.no_magic_arithmetic import NoMagicArithmetic
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
 from sarj_python_lint.rules.no_psycopg_execution_in_loop import NoPsycopgExecutionInLoop
 from sarj_python_lint.rules.no_recording_store import NoRecordingStore
@@ -261,13 +262,17 @@ from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlash
 from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
+from sarj_python_lint.rules.numeric_literal_separators import NumericLiteralSeparators
 from sarj_python_lint.rules.prefer_application_model_joins import PreferApplicationModelJoins
 from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_coordinated_state_owner import PreferCoordinatedStateOwner
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
+from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
+from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMappingKeys
 from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
+from sarj_python_lint.rules.prefer_outcome_variants import PreferOutcomeVariants
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
@@ -293,6 +298,11 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferOutcomeVariants.id: PreferOutcomeVariants,
+        NoMagicArithmetic.id: NoMagicArithmetic,
+        PreferExplicitClassContract.id: PreferExplicitClassContract,
+        PreferNominalMappingKeys.id: PreferNominalMappingKeys,
+        NumericLiteralSeparators.id: NumericLiteralSeparators,
         PreferCoordinatedStateOwner.id: PreferCoordinatedStateOwner,
         PreferInjectedService.id: PreferInjectedService,
         PreferConfiguredCloudScope.id: PreferConfiguredCloudScope,

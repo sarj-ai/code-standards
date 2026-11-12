@@ -1,0 +1,69 @@
+{
+  "decision": "Expand existing field-domain and identifier owners; introduce SARJ567-SARJ571 at warning. Numeric decimal grouping has a safe native autofix. Semantic model changes require review.",
+  "corpora": [
+    {
+      "visibility": "private",
+      "pullRequests": 200,
+      "completePythonSnapshots": 453,
+      "bytes": 3799012,
+      "integrity": "Every nonremoved Python snapshot was retrieved at its recorded PR head; all 208 added-file reconstructions matched the authoritative head content. Snapshots are historical occurrences, not independent unique projects."
+    },
+    {
+      "project": "Pydantic",
+      "version": "2.14.1",
+      "files": 105,
+      "bytes": 1820880
+    }
+  ],
+  "evaluation": {
+    "method": "Canonical run_isolated_corpora, immutable inputs, fresh bounded processes and three repetitions per variant. Six original owners are compared with the same owners plus five new rules.",
+    "baselineFindings": 92,
+    "candidateFindings": 1419,
+    "additionalReviewFindings": 1327,
+    "removedFindings": 0,
+    "additionalByCode": {
+      "SARJ093": 4,
+      "SARJ530": 342,
+      "SARJ567": 220,
+      "SARJ568": 107,
+      "SARJ569": 12,
+      "SARJ570": 640,
+      "SARJ571": 2
+    },
+    "additionalByCorpus": {
+      "privateHistoricalPython": 1278,
+      "pydantic": 49
+    }
+  },
+  "calibration": {
+    "selection": "Deterministic stratified sample of distinct source blob, rule and location; seed 20261112. Sample labels describe policy advice, not confirmed runtime bugs.",
+    "initialDistinctFindings": 1257,
+    "sampled": 81,
+    "actionablePolicyAdvice": 70,
+    "exceptionsOrNearMisses": 11,
+    "refinement": "Remove four passive-holder class-contract findings. Retain open environment maps and scientific formulas as documented review boundaries. Nullable outcome advice moves from SARJ510 to its own warning owner SARJ571 without changing the evaluated match set.",
+    "remainingWork": "Complete per-rule field calibration before considering error promotion. Real-world false negatives, true negatives and recall were not estimated."
+  },
+  "performance": {
+    "baselineMedianSeconds": 24.245978,
+    "candidateSeconds": [23.818958, 23.035696, 21.62909],
+    "candidateMedianSeconds": 23.035696,
+    "baselinePeakProcessRssKiB": 154920,
+    "candidatePeakProcessRssKiB": 155628,
+    "limitations": "The retained original baseline and final candidate use identical immutable inputs. Fresh processes run on a warm filesystem on a shared VM; they are not paired final interleaved trials or warmed persistent engines. Maximum process RSS is not aggregate process-tree memory. No general speedup claim is supported."
+  },
+  "verification": [
+    "Focused production/metadata/fixer checks: 3090 tests pass before the final test-file ownership relocation; 92 affected tests pass after relocation.",
+    "Numeric fixes preserve AST values across physical LF, CRLF, CR and Unicode data; interpolation remains review-only. All 54 native safe-fix rules pass the physical-line matrix.",
+    "The owning outcome-rule module records both positive and clean direct checks in the real full-suite coverage recorder.",
+    "Canonical hooks pass; Python package CI passes on ae989c726640ce4af03536fed973a33026f084ce. Exact final-head native verification and branch gates remain required."
+  ],
+  "boundaries": [
+    "Token defaults do not prove a closed choice; recommend StrEnum or a nominal open string without changing accepted provider/model values.",
+    "Primitive maps do not prove a fixed record; TypedDict and nominal dynamic keys are alternatives. Unknown JSON and local algorithms retain their existing owners and exclusions.",
+    "Model ancestry, outcome shape and execution state need visible semantic evidence. Opaque imported contracts and intentional passive holders abstain.",
+    "Numeric factors can be legitimate scientific formulas; no semantic autofix is provided for magic arithmetic.",
+    "Publishing a bundle does not update consumer pins or intentionally excluded independent runtimes.",
+    "Private source, paths, revisions and identifying hashes remain local. Public evidence contains aggregates and limitations."
+  ]
+}
