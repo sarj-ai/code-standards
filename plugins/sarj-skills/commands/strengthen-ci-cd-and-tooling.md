@@ -21,3 +21,16 @@ across supported stacks while retaining authorization and capability boundaries;
 reuse the declared stack set. A stack comparison alone does not prove a defect.
 Use native lint, type, build and smoke checks first. Add operational unit tests
 only for a distinct missed wrong outcome; follow [test judgment](../skills/test-value/references/oracles.md).
+
+Keep IaC changes to the requested configuration and required delivery wiring.
+Use one-off disposable checks for change verification; keep rehearsal helpers
+and reports outside Git and summarize commands/results in the PR.
+Do not turn task verification into a new script, dependency, Make target or CI job.
+A permanent check needs a named recurring regression existing gates miss, an owned
+harness, a bounded runtime and an actionable failure. Reuse that harness; scope
+execution to affected inputs, including shared dependencies and security boundaries.
+
+Keep plans, state, logs, inventories and execution narratives out of the diff.
+Follow repository documentation policy; when a durable operator-contract update
+is allowed and required, make the smallest edit at its existing source. Do not
+append rollout diaries, verification transcripts or duplicated configuration.
