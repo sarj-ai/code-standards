@@ -118,7 +118,7 @@ def install_commands(
                 prepared=bool(adopted.prepared_targets) if adopted is not None else False,
             )
         )
-    commands.extend(_security_install_commands(root, ecosystems, adopted))
+    commands.extend(security_install_commands(root, ecosystems, adopted))
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         # Setup writes pnpm-workspace.yaml before this command executes because
@@ -186,7 +186,7 @@ def _has_legacy_in_project_bundle(python_root: Path) -> bool:
     return re.search(r"(?i)\bsarj[-_]lint[-_]configs\s*(?:\[[^]]+\])?\s*(?:==|>=|<=|~=|!=|>|<|@)", text) is not None
 
 
-def _security_install_commands(
+def security_install_commands(
     root: Path, ecosystems: scaffold.Ecosystems, adopted: manifest.Manifest | None
 ) -> list[Command]:
     commands: list[Command] = []

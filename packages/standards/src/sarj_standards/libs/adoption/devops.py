@@ -187,25 +187,39 @@ def _require_compose_pin(name: str, version: str | None) -> None:
 
 
 def setup_tools_only(root: Path) -> ToolsSetupResult:
-    from . import doctor, lifecycle  # ruff: ignore[import-outside-top-level] -- explicit installation starts after adoption initialization.
+    from . import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level] -- explicit installation starts after adoption initialization.
 
     root = root.resolve()
     adopted = manifest.load(root)
     if adopted is None:
         message = "tools-only setup requires an existing current-schema standards manifest"
         raise ValueError(message)
+    if adopted.terraform_guard_contracts is not None:
+        from sarj_standards.libs.linting.iac_guard_contracts import CoreIAC  # ruff: ignore[import-outside-top-level] -- verify configured immutable history before installing tools or starting analysis.
+
+        try:
+            CoreIAC(root).prepare()
+        except subprocess.SubprocessError as error:
+            message = (
+                "immutable Terraform guard history is unavailable; fetch the original commits and blobs before setup"
+            )
+            raise ValueError(message) from error
     files = doctor.authored_files(root)
     names = required_tools(
         root, files, capabilities=adopted.enabled_capabilities, prepared=bool(adopted.prepared_targets)
     )
     for name in names:
         _require_compose_pin(name, adopted.compose_version)
-    commands = install_commands(
-        root,
-        files,
-        capabilities=adopted.enabled_capabilities,
-        prepared=bool(adopted.prepared_targets),
-        compose_version=adopted.compose_version,
+    ecosystems = scaffold.detect_adopted(root, adopted)
+    commands = (
+        *install_commands(
+            root,
+            files,
+            capabilities=adopted.enabled_capabilities,
+            prepared=bool(adopted.prepared_targets),
+            compose_version=adopted.compose_version,
+        ),
+        *lifecycle.security_install_commands(root, ecosystems, adopted),
     )
     status = lifecycle.execute(commands)
     if status:
