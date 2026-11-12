@@ -6,6 +6,8 @@ description: Design and calibrate deterministic rules for demonstrated defects a
 Require reproduced failure, existing owner, enforcement gap, no-change harm,
 valid boundary and smallest fix. Unsupported/source-freezing proposals need
 explicit override. Prefer upstream controls or repairing their owner.
+Apply [validation admission](../../commands/strengthen-ci-cd-and-tooling.md) to
+preflight/readiness proposals too; a new helper's self-tests are not need evidence.
 
 State `Routing: <repository>, because <evidence>`: Git-tree facts belong in
 repo-standards; source/config semantics and integration in code-standards.
