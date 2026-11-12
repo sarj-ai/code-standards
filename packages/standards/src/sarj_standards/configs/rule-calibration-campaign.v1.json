@@ -3,6 +3,46 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/numeric-literal-separators",
+      "family": "python",
+      "ruleId": "numeric-literal-separators",
+      "state": "pending",
+      "evidence": "Immutable isolated evaluation of 453 historical Python snapshots and 105 Pydantic 2.14.1 files adds 220 numeric-grouping findings. Native safe-fix and physical-line tests preserve AST values across LF, CRLF, CR and Unicode data. Redacted audit counts, deterministic sample labels, timing and limits are in packages/standards/benchmarks/python-model-contracts-20261112.json.",
+      "outcome": "Ship SARJ567 at WARNING with safe decimal grouping autofix; keep interpolation review-only and preserve exponents, imaginary/radix literals, strings and comments. Broader per-rule field calibration remains pending before error promotion."
+    },
+    {
+      "task": "rule-audit/python/prefer-nominal-mapping-keys",
+      "family": "python",
+      "ruleId": "prefer-nominal-mapping-keys",
+      "state": "pending",
+      "evidence": "The same immutable 558-file evaluation adds 107 mapping-boundary findings. Fixtures cover public parameters, fields, aliases and returns, nominal keys, untyped-map owner precedence and local/private exclusions. The shared 81-finding stratified review is policy-advice calibration, not per-rule empirical precision. Redacted evidence is in packages/standards/benchmarks/python-model-contracts-20261112.json.",
+      "outcome": "Ship SARJ568 at WARNING without autofix. Recommend TypedDict for closed records or nominal/enum keys for dynamic domains; preserve arbitrary JSON and open environment maps. Complete per-rule calibration before considering errors."
+    },
+    {
+      "task": "rule-audit/python/prefer-explicit-class-contract",
+      "family": "python",
+      "ruleId": "prefer-explicit-class-contract",
+      "state": "pending",
+      "evidence": "The immutable evaluation adds 12 execution-contract findings after removing four passive-holder near misses. Fixtures cover retained collaborator reads, fresh lifecycle state, annotated assignments, operation counts, bases/decorators and stronger-owner precedence. Redacted aggregate review and performance evidence is in packages/standards/benchmarks/python-model-contracts-20261112.json.",
+      "outcome": "Ship SARJ569 at WARNING without autofix. Review a shared ABC/Protocol for visible execution behavior or explicitly final concrete ownership. Passive data holders, unknown ancestry and names alone do not prove a missing contract; broader field calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/no-magic-arithmetic",
+      "family": "python",
+      "ruleId": "no-magic-arithmetic",
+      "state": "pending",
+      "evidence": "The immutable evaluation adds 640 arithmetic/operational-limit findings. Fixtures cover arithmetic, slicing/range and import-proven sleep/timeout calls, with exclusions for small values, defaults, named constants and tests. The shared stratified review includes legitimate scientific-formula exceptions. Redacted evidence is in packages/standards/benchmarks/python-model-contracts-20261112.json.",
+      "outcome": "Ship SARJ570 at WARNING without autofix, complementing comparison-only magic-value checks. Ask for meaning and units or validated configuration; preserve intentional formulas with a reasoned exception. Per-rule empirical precision and recall remain unmeasured."
+    },
+    {
+      "task": "rule-audit/python/prefer-outcome-variants",
+      "family": "python",
+      "ruleId": "prefer-outcome-variants",
+      "state": "pending",
+      "evidence": "The immutable evaluation adds two nullable-outcome findings. Sixty-five owning-module cases cover supported record frameworks, aliases, nullable errors and independent outcome evidence; direct positive/clean recorder credit and cross-rule precedence pass. Redacted audit, sample and performance limits are in packages/standards/benchmarks/python-model-contracts-20261112.json.",
+      "outcome": "Ship SARJ571 at WARNING without autofix. Require multiple visible outcome signals, preserve partial-failure context and wire compatibility, exclude scalar uncertainty and telemetry, and yield to source-proven SARJ510 errors. Broader natural-positive calibration remains pending before promotion."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-guard-blocks",
       "family": "iac",
       "ruleId": "no-terraform-guard-blocks",
