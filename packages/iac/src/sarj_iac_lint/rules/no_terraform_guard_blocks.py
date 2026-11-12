@@ -36,12 +36,16 @@ class NoTerraformGuardBlocks(Rule):
         default_level=DefaultLevel.ERROR,
         summary="Ban Terraform validation, precondition, postcondition, and check blocks.",
         rationale=(
-            "The team keeps infrastructure declarations concise and owns custom deployment policy in tests and "
-            "deployment preflight. Guard blocks add a second policy layer to those declarations. This is an "
+            "The team keeps infrastructure declarations concise and reuses native provider controls and existing "
+            "shared policy. Guard blocks can add a second policy layer to those declarations. This is an "
             "explicit design policy, not a claim that Terraform conditions are invalid or always redundant."
         ),
         remediation=(
-            "Preserve existing deployment safety invariants. Use reviewed immutable guard contracts when "
+            "First identify the existing native or shared owner of the invariant. Do not replace a guard with "
+            "a bespoke verifier, source-text test, repeated API audit, or deployment wrapper merely to satisfy "
+            "this rule. Keep investigation and rollout readbacks one-off unless they close a demonstrated "
+            "recurring enforcement gap. Preserve existing deployment safety invariants. "
+            "Use reviewed immutable guard contracts when "
             "removing a guard would change deployment behavior. For other guards, move an invariant only after "
             "proving equivalent enforcement phase and behavior. "
             "Preserve Terraform types, provider validation, deletion protection and lifecycle settings. Review the "
@@ -75,7 +79,7 @@ class NoTerraformGuardBlocks(Rule):
             RuleExample(
                 example_id="resource-precondition",
                 scenario="resource-lifecycle",
-                title="Move resource preconditions to deployment preflight",
+                title="Review resource preconditions with their existing enforcement owner",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.iac(

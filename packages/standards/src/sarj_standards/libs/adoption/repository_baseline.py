@@ -56,6 +56,8 @@ PATH = ".repo-standards/baseline.json"
 # a separate provenance review. Empty baselines contain no accepted identities.
 # Policy 35 requires Merge Risk in active template scopes and changes that
 # rule's fingerprints again. Keep the same empty-or-no-review-policy boundary.
+# Policy 36 changes JavaScript severity and default selection. Only empty
+# policy 35 baselines can advance without accepting or discarding any debt.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -79,6 +81,7 @@ _IMAGE_ERROR_POLICY = 32
 _MIGRATION_COUNTS_POLICY = 33
 _PR_TEMPLATE_POLICY = 34
 _MERGE_RISK_POLICY = 35
+_TYPED_TOOLING_POLICY = 36
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -157,20 +160,23 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
-    if target_policy_version == _MERGE_RISK_POLICY and baseline.policy_version != _PR_TEMPLATE_POLICY:
-        intermediate = migrate(contents, manifest, target_policy_version=_PR_TEMPLATE_POLICY)
-        return migrate(intermediate, manifest, target_policy_version=_MERGE_RISK_POLICY)
-    if target_policy_version == _PR_TEMPLATE_POLICY and baseline.policy_version != _MIGRATION_COUNTS_POLICY:
-        intermediate = migrate(contents, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
-        return migrate(intermediate, manifest, target_policy_version=_PR_TEMPLATE_POLICY)
-    if target_policy_version == _MIGRATION_COUNTS_POLICY and baseline.policy_version != _IMAGE_ERROR_POLICY:
-        intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_ERROR_POLICY)
-        return migrate(intermediate, manifest, target_policy_version=_MIGRATION_COUNTS_POLICY)
+    predecessor = {
+        _TYPED_TOOLING_POLICY: _MERGE_RISK_POLICY,
+        _MERGE_RISK_POLICY: _PR_TEMPLATE_POLICY,
+        _PR_TEMPLATE_POLICY: _MIGRATION_COUNTS_POLICY,
+        _MIGRATION_COUNTS_POLICY: _IMAGE_ERROR_POLICY,
+    }.get(target_policy_version)
+    if predecessor is not None and baseline.policy_version < predecessor:
+        intermediate = migrate(contents, manifest, target_policy_version=predecessor)
+        return migrate(intermediate, manifest, target_policy_version=target_policy_version)
     if baseline.policy_version < _IMAGE_POLICY_BASE and target_policy_version in {31, 32}:
         intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_POLICY_BASE)
         return migrate(intermediate, manifest, target_policy_version=target_policy_version)
     transition = (baseline.policy_version, target_policy_version)
-    empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32)} and not baseline.fingerprints
+    empty_compatible = (
+        transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32), (_MERGE_RISK_POLICY, _TYPED_TOOLING_POLICY)}
+        and not baseline.fingerprints
+    )
     error_only_compatible = transition in {(29, 30), (31, 32)} and not baseline.include_warnings
     review_policy_absent = configured.pull_request is None or configured.pull_request.review_policy is None
     template_compatible = transition in {(33, 34), (34, 35)} and (not baseline.fingerprints or review_policy_absent)
