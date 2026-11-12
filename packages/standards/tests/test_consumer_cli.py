@@ -260,9 +260,15 @@ def test_yarn_workspace_setup_and_doctor_share_the_workspace_peer_set(
     yarn_shim = binaries / "yarn_shim.py"
     yarn_shim.write_text(
         "from pathlib import Path\n"
+        "import json\n"
         "import sys\n"
         "arguments = sys.argv[1:]\n"
         "if arguments[:1] == ['install']:\n"
+        "    package = Path('package.json')\n"
+        "    data = json.loads(package.read_text())\n"
+        "    if data.get('resolutions') == {}:\n"
+        "        del data['resolutions']\n"
+        "        package.write_text(json.dumps(data, indent=2) + '\\n')\n"
         "    binary = Path('node_modules/.bin/oxfmt')\n"
         "    binary.parent.mkdir(parents=True, exist_ok=True)\n"
         f"    binary.write_text({oxfmt!r})\n"
@@ -297,10 +303,11 @@ def test_yarn_workspace_setup_and_doctor_share_the_workspace_peer_set(
     )
     assert "note: oxfmt formatted 0 file(s) once" in capsys.readouterr().out
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
+    assert cli.main(["--root", str(tmp_path), "update", "--check", "--offline", "--no-install"]) == 0
 
     root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
-    assert "resolutions" in as_table(root_package)
+    assert "resolutions" not in as_table(root_package)
     assert manifest.typescript_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
     assert (web / "oxfmt.config.mts").is_file()
 
