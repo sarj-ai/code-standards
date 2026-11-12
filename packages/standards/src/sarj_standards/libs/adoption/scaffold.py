@@ -1865,7 +1865,7 @@ def _merge_override_entries(data: dict[str, _PackageValue], overrides: Overrides
         updated[name] = {**current_entry, **new_entry} if new_entry else value
     if client is PackageManager.NPM:
         _align_npm_direct_dependency_overrides(updated)
-    if updated != existing or not _has_path(data, overrides.key_path):
+    if updated != existing:
         _set_path(data, overrides.key_path, updated)
         return True
     return False
@@ -1889,13 +1889,6 @@ def _semver_major(value: object) -> int | None:
         return None
     match = re.match(r"^\s*(?:[~^]|>=?|<=?|=)?\s*v?(?P<major>\d+)(?:\.|\s|$)", value)
     return int(match.group("major")) if match is not None else None
-
-
-def _has_path(data: Mapping[str, _PackageValue], key_path: Sequence[str]) -> bool:
-    table: Mapping[str, _PackageValue] = data
-    for key in key_path[:-1]:
-        table = _package_table(table.get(key))
-    return key_path[-1] in table
 
 
 def _set_path(data: dict[str, _PackageValue], key_path: Sequence[str], value: _PackageValue) -> None:

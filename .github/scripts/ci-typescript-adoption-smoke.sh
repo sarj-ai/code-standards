@@ -13,12 +13,11 @@ if compgen -G "$repo/eslint*" >/dev/null; then
   echo "setup wrote ESLint configuration for the typescript capability" >&2
   exit 1
 fi
-jq --exit-status '.overrides == {}' "$repo/package.json" >/dev/null
+jq --exit-status 'has("overrides") | not' "$repo/package.json" >/dev/null
 jq --exit-status '.devDependencies | has("eslint") | not' "$repo/package.json" >/dev/null
 jq --exit-status '.devDependencies | has("oxlint") and has("oxfmt") and has("tsrs")' "$repo/package.json" >/dev/null
 
-# Resolution only, and without the unpublished @sarj/eslint-plugin pin:
-# this asserts the peer set + overrides setup wrote produce a tree npm accepts.
+# Resolve the tested peers without the unpublished plugin pin.
 resolution="$(mktemp -d)"
 cp "$repo/package.json" "$resolution/package.json"
 npm --prefix "$resolution" pkg delete 'devDependencies.@sarj/eslint-plugin'
@@ -48,3 +47,4 @@ printf 'export const greeting = "hello";\n' >"$repo/src/greeting.ts"
   exit 1
 }
 jq --exit-status '.exitCode == 0 and .completion == "complete"' "$repo/report.json" >/dev/null
+"$cli" --root "$repo" update --check --offline --no-install
