@@ -7,6 +7,11 @@
   Keep tables sparse after paths rejoin.
 - Prefer native schema/build/smoke checks. Source assertions need a reviewed
   security, packaging or compatibility contract.
+- Treat one-off IaC rollout and recovery rehearsals as task evidence. Add recurring
+  coverage only for a distinct regression an existing gate misses; retain required
+  permission, compatibility and recovery contracts when removing redundant checks.
+  Remove obsolete invocations and dependencies with the helper; renaming or moving
+  it does not reduce maintenance cost.
 - Test the claimed boundary: fakes prove orchestration, not SQL/commit visibility
   or collaborator behavior. Freshly read durable effects; check rejection absence,
   rollback after an effect and retry multiplicity where promised. Wire claims
