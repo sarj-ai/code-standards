@@ -2,6 +2,14 @@
 
 Apply [protocol](../skills/audit-protocol/SKILL.md).
 
+Before adding preflight/readiness commands, reports or shadow configuration
+schemas, name the current operational decision they change and the failure
+existing checks miss. Extend the enforcing owner first. Package ownership,
+passing self-tests or lists of unknowns do not establish need. Retire redundant
+helpers and tests that cover only them; preserve deployment, startup, admission
+and CI contracts.
+Apply this to application tooling and IaC.
+
 Trace required gates through delivery, deployment order, health/rollback and
 configuration drift. Optimize demonstrated bottlenecks using pinned
 baseline/candidate revisions and equivalent inputs, harness, caches and
