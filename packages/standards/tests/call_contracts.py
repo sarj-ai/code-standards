@@ -53,6 +53,7 @@ class StandardsAnalyzeOptions(TypedDict, total=False):
 
 class NativeAnalyzeOptions(TypedDict, total=False):
     root: Required[Path]
+    python_jobs: int
     python_baseline: Path | None
     policy: Policy | None
     grouped: GroupedPaths | None
