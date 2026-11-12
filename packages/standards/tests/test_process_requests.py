@@ -26,6 +26,35 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+@pytest.mark.parametrize("worker_limit", ["1", "3", None])
+def test_native_worker_limits_reach_analyzers_without_caller_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, worker_limit: str | None
+) -> None:
+    worker_names = (
+        "RAYON_NUM_THREADS",
+        "GOMAXPROCS",
+        "UV_CONCURRENT_BUILDS",
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "REACT_DOCTOR_PARALLEL",
+    )
+    for name in worker_names:
+        if worker_limit is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, worker_limit)
+    monkeypatch.setenv("SARJ_AUDIT_SECRET", "fixture-must-not-leak")
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/tmp/untrusted-fixture.cjs")
+    names = (*worker_names, "SARJ_AUDIT_SECRET", "NODE_OPTIONS")
+    command = f"import os; print(tuple(os.environ.get(name) for name in {names!r}))"
+
+    result = DEFAULT_EXECUTOR.run(process_request((sys.executable, "-c", command), cwd=tmp_path))
+
+    assert result.returncode == 0
+    assert not result.stderr
+    assert result.stdout.strip() == repr((worker_limit,) * len(worker_names) + (None, None))
+
+
 def _construct_with_mutable_input(request: ProcessRequest, mutable: bytearray) -> ProcessRequest:
     return ProcessRequest(
         request.argv,
