@@ -54,6 +54,7 @@ class NumericLiteralSeparators(Rule):
                 files=(ExampleFile.python("app/service.py", "RATE = 16000\n"),),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+                fixed_files=(ExampleFile.python("app/service.py", "RATE = 16_000\n"),),
                 public=True,
             ),
             RuleExample(

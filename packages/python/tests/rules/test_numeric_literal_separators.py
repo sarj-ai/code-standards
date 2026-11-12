@@ -26,12 +26,13 @@ def test_documented_examples() -> None:
         ("12345678901234567890", "12_345_678_901_234_567_890"),
     ],
 )
-def test_decimal_fix_preserves_ast_and_converges(literal: str, replacement: str) -> None:
-    source = f"é = -{literal}  # keep this comment\n"
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+def test_decimal_fix_preserves_ast_and_converges(literal: str, replacement: str, newline: str) -> None:
+    source = f"é = -{literal}  # keep this comment{newline}"
     findings = NumericLiteralSeparators().check(Path("app/audio.py"), source)
     assert len(findings) == 1
     fixed = apply_fixes(source, findings[0].fixes)
-    assert fixed == f"é = -{replacement}  # keep this comment\n"
+    assert fixed == f"é = -{replacement}  # keep this comment{newline}"
     assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(fixed))
     assert NumericLiteralSeparators().check(Path("app/audio.py"), fixed) == []
     assert fix_source(Path("app/audio.py"), source, rule_ids=["numeric-literal-separators"]) == fixed
@@ -71,3 +72,10 @@ def test_each_numeric_token_has_one_fix() -> None:
     assert apply_fixes(source, tuple(fix for finding in findings for fix in finding.fixes)) == (
         "rates = [16_000, 48_000]\n"
     )
+
+
+def test_unicode_line_separator_inside_data_preserves_numeric_value() -> None:
+    source = '_shadow = """RATE = 23000\u2028RATE = 34000"""\nRATE = 16000\n'
+    fixed = fix_source(Path("app/audio.py"), source, rule_ids=["numeric-literal-separators"])
+    assert fixed == source.replace("\nRATE = 16000\n", "\nRATE = 16_000\n")
+    assert ast.dump(ast.parse(fixed)) == ast.dump(ast.parse(source))

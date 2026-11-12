@@ -1500,8 +1500,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     if any(character in source for character in "\v\f\x1c\x1d\x1e\x85\u2028\u2029") or "\r" in source.replace(
         "\r\n", ""
     ):
-        # Only the closed alias builder owns aligned physical-line buffers and token coordinates here.
-        rules = [rule for rule in rules if rule.code == "SARJ531"]
+        # These contract-backed builders use aligned physical-line buffers and token coordinates.
+        rules = [rule for rule in rules if rule.code in {"SARJ531", "SARJ567"}]
     seen: set[bytes] = set()
     applied_codes: set[str] = set()
     passes = 0

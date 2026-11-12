@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-outcome-variants"),
+        module="sarj_python_lint.rules.prefer_outcome_variants",
+        class_name="PreferOutcomeVariants",
+        code="SARJ571",
+        description="Express nullable success and error state as tagged outcome variants.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-magic-arithmetic"),
         module="sarj_python_lint.rules.no_magic_arithmetic",
         class_name="NoMagicArithmetic",

@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._data_union_discriminator import data_union_diagnostics
-from sarj_python_lint.rules._nullable_outcome import nullable_outcome_diagnostics
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import (
     DECORATOR_SOURCES,
@@ -108,7 +107,7 @@ class PreferDiscriminatedModelUnion(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Nullable outcome records receive a review warning when a nullable error is paired with a success Boolean, a finite success/error Literal tag, a nullable payload, or a Result/Outcome name plus other fields. Direct Pydantic, dataclass, TypedDict, attrs and msgspec records, Optional/Union/Annotated aliases and quoted annotations are recognized. Names alone never trigger the warning. Separate variants, independent last-error telemetry, numeric uncertainty and mandatory error context are preserved. Structural migration stays manual because partial-progress and wire contracts matter.",
+            "Nullable outcome records without a proven validator dependency are reviewed separately by prefer-outcome-variants (SARJ571).",
             "Declared module-level unions of at least two source-visible direct dataclasses, Pydantic BaseModels or TypedDicts require a shared disjoint Literal field. PEP 604, typing Union, Optional, Annotated, forward references and bounded local aliases are supported; a None branch is allowed.",
             "The explicit-tag policy is a modeling preference: nominal variants already support isinstance narrowing. Explicitly specialized PEP 695 records and direct generic union declarations support ordinary payload parameters. Parameter-dependent tag domains remain uncertain; bounded, defaulted or variadic parameters, bare generic records and specialization through another generic union alias abstain. Scalar/container unions, inline annotations, inherited variants, behavior classes, unresolved variants and dynamic or ambiguous namespaces are excluded. Imported tag aliases are not resolved; an explicit literal field paired with an unresolved imported or local class domain abstains, as do opaque explicit Literal domains. Qualified imported domains and unsupported computed aliases remain uncertain rather than proving a missing tag.",
             "String, bytes, integer, Boolean and None tag values are supported. Boolean and integer Literal values retain their distinct static types; use identity checks when equality would conflate their runtime values. A bounded hierarchy of shared literal fields may distinguish nested groups; overlapping tags without a further discriminator still fail. Nested Literal domains and transparent Final, ReadOnly, Annotated and local alias wrappers are supported. TypedDict tags must be required; dataclass ClassVar tags must have a value. Direct import-proven InitVar annotations without defaults are constructor inputs rather than instance tags; quoted, wrapped, locally aliased or defaulted InitVar forms remain uncertain. Import-proven typing final decorators preserve record recognition. Explicit Pydantic callable Discriminators, bounded stable reusable metadata, single-value plain local class namespaces, literal immutable tuple projections and imported pydantic.types constructors are respected; source-proven string field names, including local bindings and concatenation, still need Literal fields. Source-proven string discriminator writes through stable aliases invalidate callable coverage; opaque mutation, helper escapes and excessive alias graphs abstain. Module bindings are independent of unrelated local parameters and their attribute writes; class annotation shadows and global rebinding remain excluded. Other runtime configuration and default correctness remain separate contracts. No automatic field addition is safe for every constructor or serializer.",
@@ -231,36 +230,6 @@ class PreferDiscriminatedModelUnion(Rule):
                 expected_count=0,
                 public=True,
             ),
-            RuleExample(
-                example_id="nullable-outcome-record",
-                scenario="nullable-outcome",
-                title="A nullable error and success flag admit contradictory outcomes",
-                outcome=ExampleOutcome.MATCH,
-                files=(
-                    ExampleFile.python(
-                        "app/models.py",
-                        "from pydantic import BaseModel\nclass AudioResult(BaseModel):\n    passed: bool = False\n    error: str | None = None\n    value: bytes | None = None\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("app/models.py"),
-                expected_count=1,
-                public=True,
-            ),
-            RuleExample(
-                example_id="separate-outcome-variants",
-                scenario="nullable-outcome",
-                title="Success and error variants have non-null payloads",
-                outcome=ExampleOutcome.NO_MATCH,
-                files=(
-                    ExampleFile.python(
-                        "app/models.py",
-                        "from typing import Literal\nfrom pydantic import BaseModel\nclass RunSuccess(BaseModel):\n    passed: Literal[True] = True\n    value: bytes\nclass RunError(BaseModel):\n    passed: Literal[False] = False\n    error: str\ntype RunResult = RunSuccess | RunError\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("app/models.py"),
-                expected_count=0,
-                public=True,
-            ),
         ),
     )
     description = documentation.summary
@@ -270,7 +239,6 @@ class PreferDiscriminatedModelUnion(Rule):
         if is_test_path(context.path):
             return []
         diagnostics = data_union_diagnostics(context, self.code)
-        diagnostics.extend(nullable_outcome_diagnostics(context, self.code))
         if "None" not in context.symbol_source or "model_validator" not in context.symbol_source:
             return diagnostics
         provenance = context.static_resource_provenance
@@ -280,14 +248,6 @@ class PreferDiscriminatedModelUnion(Rule):
             requirements = _model_requirements(model, context)
             if not requirements:
                 continue
-            diagnostics = [
-                finding
-                for finding in diagnostics
-                if not (
-                    finding.severity is Severity.WARNING
-                    and model.lineno <= finding.line <= (model.end_lineno or model.lineno)
-                )
-            ]
             first = requirements[0]
             if context.suppressions.is_suppressed(first.guard.lineno, self.code):
                 continue

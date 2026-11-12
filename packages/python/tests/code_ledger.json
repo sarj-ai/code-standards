@@ -354,5 +354,10 @@
   "SARJ563": "fastapi-route-declares-security",
   "SARJ564": "prefer-injected-service",
   "SARJ565": "prefer-coordinated-state-owner",
-  "SARJ566": "prefer-configured-cloud-scope"
+  "SARJ566": "prefer-configured-cloud-scope",
+  "SARJ567": "numeric-literal-separators",
+  "SARJ568": "prefer-nominal-mapping-keys",
+  "SARJ569": "prefer-explicit-class-contract",
+  "SARJ570": "no-magic-arithmetic",
+  "SARJ571": "prefer-outcome-variants"
 }

@@ -181,6 +181,7 @@
       "prefer-non-nullable-collection",
       "prefer-optional-composite",
       "prefer-or-pattern",
+      "prefer-outcome-variants",
       "prefer-precise-object-contract",
       "prefer-psycopg-executemany",
       "prefer-pydantic-json-value",
@@ -711,7 +712,8 @@
       "SARJ567",
       "SARJ568",
       "SARJ569",
-      "SARJ570"
+      "SARJ570",
+      "SARJ571"
     ],
     "sql": [
       "SARJ101",
