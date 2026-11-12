@@ -246,6 +246,55 @@ def test_shared_capacity_change_reaches_an_existing_waiter(tmp_path: Path, envir
             assert two.wait(timeout=10) == 7
 
 
+def test_capacity_reduction_waits_for_owners_above_the_new_limit(tmp_path: Path, environment: dict[str, str]) -> None:
+    first, second, third, recovery = (tmp_path / name for name in ("first", "second", "third", "recovery"))
+    options = {**environment, "SARJ_LOCAL_CHECK_JOBS": "2"}
+    with _launch(first, options) as one:
+        _started(first)
+        with _launch(second, options) as two:
+            _started(second)
+            (tmp_path / "state/capacity.json").write_text('{"slots": 1}', encoding="utf-8")
+            (first / "release").touch()
+            assert one.wait(timeout=10) == 7
+            with _launch(third, {**options, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}) as three:
+                (third / "release").touch()
+                _, stderr = three.communicate(timeout=10)
+                assert three.returncode == 2, stderr
+                assert "no shared slot" in stderr
+                assert not (third / "started").exists()
+                assert two.poll() is None
+            (second / "release").touch()
+            assert two.wait(timeout=10) == 7
+            with _launch(recovery, {**options, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}) as recovered:
+                _started(recovery)
+                (recovery / "release").touch()
+                assert recovered.wait(timeout=10) == 7
+
+
+def test_a_temporary_slot_probe_cannot_validate_a_stale_ancestor_marker(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    path = state / "slot-0.lock"
+    marker = json.dumps({"path": str(path), "pid": os.getpid(), "token": "stale"})
+    path.write_text(marker, encoding="utf-8")
+    options = {**environment, "SARJ_LOCAL_CHECK_LEASE": marker, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}
+    with (
+        (state / "queue.lock").open("a+", encoding="utf-8") as metadata,
+        path.open("r+", encoding="utf-8") as probe,
+    ):
+        fcntl.flock(metadata, fcntl.LOCK_EX)
+        fcntl.flock(probe, fcntl.LOCK_EX)
+        root = tmp_path / "stale-probe"
+        with _launch(root, options) as process:
+            (root / "release").touch()
+            _, stderr = process.communicate(timeout=10)
+            assert process.returncode == 2, stderr
+            assert "admission metadata lock" in stderr
+            assert not (root / "started").exists()
+
+
 def test_fifo_waiters_and_a_crashed_waiter_cannot_block_following_work(
     tmp_path: Path, environment: dict[str, str]
 ) -> None:
