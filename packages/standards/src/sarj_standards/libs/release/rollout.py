@@ -77,7 +77,13 @@ _NO_DIRECTIVE_REWRITES: Mapping[str, oxlint_directives.SourcePostimage] = Mappin
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 DEFAULT_WORKFLOW_RUNNER = "ubuntu-latest"
 WORKFLOW_RUNNERS = frozenset(
-    {DEFAULT_WORKFLOW_RUNNER, "ubuntu-24.04", "blacksmith-2vcpu-ubuntu-2404", "blacksmith-4vcpu-ubuntu-2404"}
+    {
+        DEFAULT_WORKFLOW_RUNNER,
+        "ubuntu-24.04",
+        "blacksmith-2vcpu-ubuntu-2404",
+        "blacksmith-4vcpu-ubuntu-2404",
+        "blacksmith-16vcpu-ubuntu-2404",
+    }
 )
 MAX_CONCURRENT_CONSUMERS = 16
 BASE_WATCH_POLL_SECONDS = 10
