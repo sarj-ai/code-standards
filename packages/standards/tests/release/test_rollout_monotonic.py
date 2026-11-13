@@ -22,7 +22,7 @@ def pull_payload(markers: str, *, head_sha: str = "a" * 40) -> str:
             {
                 "state": "OPEN",
                 "mergedAt": None,
-                "url": "https://example.invalid/pr/1",
+                "url": "https://github.com/example/consumer/pull/1",
                 "headRefName": "standards-rollout/current",
                 "headRefOid": head_sha,
                 "baseRefName": "main",

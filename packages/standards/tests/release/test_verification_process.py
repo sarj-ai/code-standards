@@ -4,6 +4,7 @@ from dataclasses import replace
 import os
 from pathlib import Path
 from selectors import DefaultSelector
+import signal
 import subprocess
 import sys
 import time
@@ -160,12 +161,12 @@ def test_full_transaction_cancels_dependency_update_before_staging(
             return super().run(command, cwd=cwd, check=check, env=env)
 
     def missing_status(_consumer: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
-        return rollout.Outcome(consumer, rollout.OutcomeState.MISSING)
+        return rollout.Outcome(consumer, rollout.RolloutMissing("managed rollout pull request absent"))
 
     def fresh_branch(
         _repo: Path, _version: str, _base_sha: str, _runner: rollout.CommandRunner
     ) -> rollout.BranchPreparation:
-        return rollout.BranchPreparation("standards-rollout/current", None)
+        return rollout.NewBranch("standards-rollout/current")
 
     def provisioned_tools(
         _repo: Path, _shim_directory: Path, _runner: rollout.CommandRunner, _environment: Mapping[str, str]
@@ -279,6 +280,47 @@ def test_initial_base_check_does_not_wait_for_poll_interval() -> None:
         result = runner.run((sys.executable, "-c", "import time; time.sleep(10)"), check=False)
     assert runner.moved_to == "b" * 40
     assert result.returncode == 125
+
+
+def test_base_watcher_refuses_concurrent_and_completed_reentry() -> None:
+    watcher = BaseWatch("a" * 40, lambda: None, 2)
+    with watcher, pytest.raises(ValueError, match="entered once"), watcher:
+        pytest.fail("a running watcher was entered twice")
+    with pytest.raises(ValueError, match="entered once"), watcher:
+        pytest.fail("a closed watcher was restarted")
+
+
+def test_command_execution_remains_valid_without_a_background_watcher() -> None:
+    watcher = BaseWatch("a" * 40, lambda: None, 2)
+    result = watcher.run((sys.executable, "-c", "print('complete')"))
+    assert result.returncode == 0
+    assert result.stdout == "complete\n"
+    assert watcher.moved_to is None
+
+
+def test_reaped_leader_cannot_authorize_signalling_its_old_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    process = subprocess.Popen((sys.executable, "-c", "pass"), start_new_session=True)
+    assert process.wait(timeout=5) == 0
+    signals: list[tuple[int, int]] = []
+
+    def record_signal(group: int, number: int) -> None:
+        signals.append((group, number))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the real reaped Popen must prevent every later numeric group signal.
+        os, "killpg", record_signal
+    )
+    verification_process._signal_group(process, signal.SIGKILL)  # ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage] -- exercise the ownership guard after actual wait/reap.
+    assert signals == []
+
+
+def test_closed_base_watcher_refuses_new_commands_before_launch(tmp_path: Path) -> None:
+    watcher = BaseWatch("a" * 40, lambda: None, 2)
+    with watcher:
+        pass
+    launched = tmp_path / "launched"
+    with pytest.raises(ValueError, match="closed"):
+        watcher.run((sys.executable, "-c", f"from pathlib import Path; Path({str(launched)!r}).touch()"))
+    assert not launched.exists()
 
 
 @pytest.mark.parametrize("extra_bytes", [0, 16])
@@ -438,6 +480,18 @@ def test_capture_limit_must_be_positive(limit: int) -> None:
 def test_capture_limit_rejects_boolean() -> None:
     with pytest.raises(TypeError, match="max_capture_bytes must be an integer"):
         BaseWatch("a" * 40, lambda: None, 5, max_capture_bytes=True)
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), -1, True])
+def test_command_timeout_rejects_unbounded_or_invalid_duration(timeout: float) -> None:
+    with pytest.raises(ValueError, match="command_timeout must be finite and non-negative"):
+        BaseWatch("a" * 40, lambda: None, timeout)
+
+
+@pytest.mark.parametrize("interval", [float("nan"), float("inf"), float("-inf"), 0, -1, True])
+def test_base_polling_rejects_unbounded_or_invalid_interval(interval: float) -> None:
+    with pytest.raises(ValueError, match="poll_interval must be finite and positive"):
+        BaseWatch("a" * 40, lambda: None, 5, poll_interval=interval)
 
 
 def test_capture_setup_failure_closes_partial_selector_and_reaps_owned_process(

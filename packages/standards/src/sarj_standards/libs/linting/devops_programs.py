@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from itertools import accumulate, chain
 from operator import itemgetter
 from pathlib import Path
@@ -9,7 +10,7 @@ import re
 import string
 import sys
 import tomllib
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, assert_never, override
 
 from pydantic import JsonValue
 from sarj_python_lint.interpreter_argv import UnprovableCommandError, classify_interpreter, unwrap_command
@@ -745,14 +746,30 @@ def _mise_task_fields(
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class _ShellEntrypoint:
+    block: ExecutionBlock
+
+
+@dataclass(frozen=True, slots=True)
+class _ExecEntrypoint:
+    block: ExecutionBlock
+
+
+class _AbsentEntrypoint(StrEnum):
+    UNKNOWN = "unknown"
+    CLEARED = "cleared"
+
+
+type _DockerEntrypoint = _AbsentEntrypoint | _ShellEntrypoint | _ExecEntrypoint
+
+
 @dataclass(slots=True)
 class _DockerStage:
     shell: tuple[str, ...] = ()
-    entrypoint: ExecutionBlock | None = None
+    entrypoint: _DockerEntrypoint = _AbsentEntrypoint.UNKNOWN
     command: ExecutionBlock | None = None
     healthcheck: _DockerInstruction | None = None
-    entrypoint_shell: bool = False
-    entrypoint_known: bool = False
     command_local: bool = False
 
     def consume(self, instruction: _DockerInstruction) -> list[ExecutionBlock]:
@@ -773,8 +790,12 @@ class _DockerStage:
             self.shell = words
         elif instruction.name == "entrypoint":
             words = _docker_json_argv(instruction.command)
-            self.entrypoint = _docker_execution(instruction, self.shell) if words != () else None
-            self.entrypoint_shell, self.entrypoint_known = words is None, True
+            if words == ():
+                self.entrypoint = _AbsentEntrypoint.CLEARED
+            elif words is None:
+                self.entrypoint = _ShellEntrypoint(_docker_execution(instruction, self.shell))
+            else:
+                self.entrypoint = _ExecEntrypoint(_docker_execution(instruction, self.shell))
             if not self.command_local:
                 self.command = None  # A new ENTRYPOINT clears inherited CMD.
         elif instruction.name == "cmd":
@@ -788,13 +809,19 @@ class _DockerStage:
 
     def blocks(self) -> list[ExecutionBlock]:
         result = [_docker_execution(self.healthcheck, self.shell)] if self.healthcheck is not None else []
-        entrypoint = self.entrypoint
-        if entrypoint is not None and self.entrypoint_shell:
-            return [*result, entrypoint]  # Shell-form ENTRYPOINT ignores CMD.
         command = self.command
-        if entrypoint is None and not self.entrypoint_known:
-            return result  # External image ENTRYPOINT defaults are unknown.
-        if entrypoint is None or not entrypoint.argv:
+        match self.entrypoint:
+            case _ShellEntrypoint(block=block):
+                return [*result, block]  # Shell-form ENTRYPOINT ignores CMD.
+            case _AbsentEntrypoint.UNKNOWN:
+                return result  # External image ENTRYPOINT defaults are unknown.
+            case _AbsentEntrypoint.CLEARED:
+                return [*result, *([command] if command is not None else [])]
+            case _ExecEntrypoint(block=entrypoint):
+                pass
+            case unreachable:
+                assert_never(unreachable)
+        if not entrypoint.argv:
             return [*result, *([command] if command is not None else [])]
         if command is None:
             return [*result, entrypoint]
@@ -835,7 +862,12 @@ def _docker_blocks(relative: str, source: str) -> list[ExecutionBlock]:
             stage = ""
             if match is not None:
                 inherited = stages.get(
-                    match[1].casefold(), _DockerStage(entrypoint_known=match[1].casefold() == "scratch")
+                    match[1].casefold(),
+                    _DockerStage(
+                        entrypoint=_AbsentEntrypoint.CLEARED
+                        if match[1].casefold() == "scratch"
+                        else _AbsentEntrypoint.UNKNOWN
+                    ),
                 )
                 state = replace(inherited, command_local=False)
                 stage = (match[2] or "").casefold()

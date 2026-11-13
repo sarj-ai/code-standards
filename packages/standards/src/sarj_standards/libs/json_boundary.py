@@ -1,4 +1,5 @@
 import json
+import math
 import re
 
 from pydantic import JsonValue, RootModel
@@ -20,7 +21,9 @@ def parse_json(text: str) -> JsonValue:
 
 
 def parse_json_documents(text: str) -> list[JsonValue]:
-    decoder = json.JSONDecoder()
+    decoder = json.JSONDecoder(
+        object_pairs_hook=_unique_pairs, parse_constant=_reject_json_constant, parse_float=_finite_json_float
+    )
     documents: list[JsonValue] = []
     offset = 0
     while offset < len(text):
@@ -40,7 +43,17 @@ def parse_json_documents(text: str) -> list[JsonValue]:
 
 
 def parse_unique_json(text: str) -> JsonValue:
-    return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_json_constant)  # pyright: ignore[reportAny] -- untyped parser boundary.
+    return json.loads(  # pyright: ignore[reportAny] -- stdlib validates the JSON grammar; callbacks refuse ambiguous objects and nonfinite numbers.
+        text, object_pairs_hook=_unique_pairs, parse_constant=_reject_json_constant, parse_float=_finite_json_float
+    )
+
+
+def _finite_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        msg = f"non-finite JSON number: {value}"
+        raise ValueError(msg)
+    return number
 
 
 def _reject_json_constant(value: str) -> None:

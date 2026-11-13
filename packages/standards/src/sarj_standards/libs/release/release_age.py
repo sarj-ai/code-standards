@@ -3,8 +3,9 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 import json
-from typing import TYPE_CHECKING, NamedTuple, Protocol, Self
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, Self, assert_never
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -21,9 +22,23 @@ if TYPE_CHECKING:
 _SCOPED_PACKAGE_PARTS = 2
 
 
-class _PublicationTime(NamedTuple):
-    available: bool
-    published: datetime | None
+class _MissingPublication(StrEnum):
+    UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True, slots=True)
+class _KnownPublication:
+    kind: ClassVar[Literal["known"]] = "known"
+    published: datetime
+
+    def __post_init__(self) -> None:
+        if self.published.utcoffset() is None:
+            message = "publication time must be timezone-aware"
+            raise ValueError(message)
+
+
+type _PublicationTime = _MissingPublication | _KnownPublication
 
 
 def load_exact_exclusions(path: Path) -> frozenset[str]:
@@ -174,7 +189,7 @@ def check_lockfile_release_age(
     clock: Callable[[], datetime] = _utc_now,
     concurrency: int = 12,
 ) -> ReleaseAgeReport:
-    if concurrency < 1:
+    if type(concurrency) is not int or concurrency < 1:
         msg = "release-age concurrency must be at least one"
         raise ValueError(msg)
     now = clock()
@@ -202,11 +217,15 @@ def _check_identity(
     now: datetime,
     fetcher: PackumentFetcher,
 ) -> ReleaseAgeFailure | None:
-    available, published = _publication_time(fetcher(identity.name), identity.version)
-    if not available:
-        return ReleaseAgeFailure(identity, "publication time unavailable")
-    if published is None:
-        return ReleaseAgeFailure(identity, "unknown days old")
+    match _publication_time(fetcher(identity.name), identity.version):
+        case _MissingPublication.UNAVAILABLE:
+            return ReleaseAgeFailure(identity, "publication time unavailable")
+        case _MissingPublication.INVALID:
+            return ReleaseAgeFailure(identity, "unknown days old")
+        case _KnownPublication(published):
+            pass
+        case _ as unexpected:
+            assert_never(unexpected)
     if published > cutoff:
         age_days = (now - published).total_seconds() / timedelta(days=1).total_seconds()
         return ReleaseAgeFailure(identity, f"{age_days:.1f} days old")
@@ -216,15 +235,14 @@ def _check_identity(
 def _publication_time(packument: Mapping[str, JsonValue], version: str) -> _PublicationTime:
     time_value = packument.get("time")
     if not isinstance(time_value, dict):
-        return _PublicationTime(available=False, published=None)
+        return _MissingPublication.UNAVAILABLE
     published = dict(time_value).get(version)
     if not isinstance(published, str):
-        return _PublicationTime(available=False, published=None)
+        return _MissingPublication.UNAVAILABLE
     try:
         parsed = datetime.fromisoformat(published)
     except ValueError:
-        return _PublicationTime(available=True, published=None)
-    return _PublicationTime(
-        available=True,
-        published=parsed.astimezone(UTC) if parsed.tzinfo is not None else None,
-    )
+        return _MissingPublication.INVALID
+    if parsed.utcoffset() is None:
+        return _MissingPublication.INVALID
+    return _KnownPublication(parsed.astimezone(UTC))

@@ -328,7 +328,7 @@ def test_changed_file_formatting_cannot_hide_in_an_unchanged_hunk(tmp_path: Path
     path.write_text("#!/bin/bash\nif true; then\necho ok\nfi\n")
     [report] = shell_format.analyze_sources(root=tmp_path, paths=(str(path),))
     finding = report.diagnostics[0]
-    scope = baseline.ChangedLineScope(frozenset({"job.sh"}), {"job.sh": frozenset({1})})
+    scope = baseline.KnownChangedLines(frozenset({"job.sh"}), {"job.sh": frozenset({1})})
     assert baseline.touches_changed_lines(finding, scope)
 
 

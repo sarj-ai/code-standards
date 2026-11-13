@@ -4,14 +4,16 @@ from codecs import getincrementaldecoder
 from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
+from enum import StrEnum
 from io import IncrementalNewlineDecoder
+import math
 import os
 from selectors import EVENT_READ, DefaultSelector
 import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- owns argv-only verification process groups.
 from threading import Event, Thread
 import time
-from typing import TYPE_CHECKING, Final, Self
+from typing import TYPE_CHECKING, Final, Self, assert_never
 
 
 if TYPE_CHECKING:
@@ -61,13 +63,51 @@ class _CapturedStream:
         return self.data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
 
 
+@dataclass(frozen=True, slots=True)
+class _RetainingBytes:
+    remaining: int
+
+
+class _TailRetention(StrEnum):
+    CANCELLED = "cancelled"
+    OVERFLOW = "overflow"
+
+
+type _Retention = _RetainingBytes | _TailRetention
+
+
+class _InactiveWatch(StrEnum):
+    NEW = "new"
+    CLOSED = "closed"
+
+
+@dataclass(frozen=True, slots=True)
+class _RunningWatch:
+    thread: Thread
+
+
+type _WatchLifecycle = _InactiveWatch | _RunningWatch
+
+
+class _UnmovedBase(StrEnum):
+    UNOBSERVED = "unobserved"
+    UNCHANGED = "unchanged"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class _MovedBase:
+    revision: str
+
+
+type _BaseObservation = _UnmovedBase | _MovedBase
+
+
 class _Capture:
     def __init__(self, process: subprocess.Popen[bytes], limit: int) -> None:
         self.stdout = _CapturedStream()
         self.stderr = _CapturedStream()
-        self.exceeded = False
-        self._remaining = limit
-        self._retaining = True
+        self._retention: _Retention = _RetainingBytes(limit)
         self._selector = DefaultSelector()
         self._pending: dict[int, tuple[IO[bytes], _CapturedStream]] = {}
         try:
@@ -100,8 +140,13 @@ class _Capture:
     def complete(self) -> bool:
         return not self._pending
 
+    @property
+    def exceeded(self) -> bool:
+        return self._retention is _TailRetention.OVERFLOW
+
     def keep_tails_only(self) -> None:
-        self._retaining = False
+        if isinstance(self._retention, _RetainingBytes):
+            self._retention = _TailRetention.CANCELLED
         self.stdout.data.clear()
         self.stderr.data.clear()
 
@@ -121,13 +166,18 @@ class _Capture:
                 pipe.close()
                 continue
             stream.feed(chunk)
-            if self._retaining:
-                if len(chunk) > self._remaining:
-                    self.exceeded = True
-                    self.keep_tails_only()
-                else:
-                    self._remaining -= len(chunk)
-                    stream.data.extend(chunk)
+            match self._retention:
+                case _RetainingBytes(remaining):
+                    if len(chunk) > remaining:
+                        self._retention = _TailRetention.OVERFLOW
+                        self.keep_tails_only()
+                    else:
+                        self._retention = _RetainingBytes(remaining - len(chunk))
+                        stream.data.extend(chunk)
+                case _TailRetention.CANCELLED | _TailRetention.OVERFLOW:
+                    pass
+                case _:
+                    assert_never(self._retention)
 
     def drain(self, process: subprocess.Popen[bytes], timeout: float) -> bool:
         deadline = time.monotonic() + timeout
@@ -154,17 +204,46 @@ class BaseWatch:
     poll_interval: float = 10
     phase: str = "verification"
     max_capture_bytes: int = field(default=_DEFAULT_MAX_CAPTURE_BYTES, kw_only=True)
-    moved_to: str | None = field(default=None, init=False)
-    stopped: Event = field(default_factory=Event, init=False)
     cancelled: Event = field(default_factory=Event, init=False)
-    thread: Thread | None = field(default=None, init=False)
+    _stop: Event = field(default_factory=Event, init=False)
+    _lifecycle: _WatchLifecycle = field(default=_InactiveWatch.NEW, init=False)
+    _base: _BaseObservation = field(default=_UnmovedBase.UNOBSERVED, init=False)
+
+    @property
+    def moved_to(self) -> str | None:
+        match self._base:
+            case _MovedBase(revision):
+                return revision
+            case _UnmovedBase():
+                return None
+            case _:
+                assert_never(self._base)
 
     def __post_init__(self) -> None:
         _capture_limit(self.max_capture_bytes)
+        if (
+            isinstance(self.command_timeout, bool)
+            or not math.isfinite(self.command_timeout)
+            or self.command_timeout < 0
+        ):
+            message = "command_timeout must be finite and non-negative"
+            raise ValueError(message)
+        if isinstance(self.poll_interval, bool) or not math.isfinite(self.poll_interval) or self.poll_interval <= 0:
+            message = "poll_interval must be finite and positive"
+            raise ValueError(message)
 
     def __enter__(self) -> Self:
-        self.thread = Thread(target=self._watch, name="standards-base-watch", daemon=True)
-        self.thread.start()
+        if self._lifecycle is not _InactiveWatch.NEW:
+            message = "base watcher can only be entered once"
+            raise ValueError(message)
+        thread = Thread(target=self._watch, name="standards-base-watch", daemon=True)
+        self._lifecycle = _RunningWatch(thread)
+        try:
+            thread.start()
+        except BaseException:
+            self._stop.set()
+            self._lifecycle = _InactiveWatch.CLOSED
+            raise
         return self
 
     def __exit__(
@@ -173,9 +252,15 @@ class BaseWatch:
         _value: BaseException | None,
         _traceback: TracebackType | None,
     ) -> None:
-        self.stopped.set()
-        if self.thread is not None:
-            self.thread.join()
+        self._stop.set()
+        match self._lifecycle:
+            case _RunningWatch(thread):
+                thread.join()
+            case _InactiveWatch.NEW | _InactiveWatch.CLOSED:
+                pass
+            case _:
+                assert_never(self._lifecycle)
+        self._lifecycle = _InactiveWatch.CLOSED
 
     def run(
         self,
@@ -185,6 +270,9 @@ class BaseWatch:
         check: bool = True,
         env: Mapping[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        if self._lifecycle is _InactiveWatch.CLOSED:
+            message = "closed base watcher cannot start another command"
+            raise ValueError(message)
         if self.cancelled.is_set():
             return _result(command, 125, "", f"consumer base changed; {self.phase} cancelled", check=check)
         limit = _capture_limit(self.max_capture_bytes)
@@ -227,15 +315,16 @@ class BaseWatch:
                 capture.read_ready(min(_POLL_SECONDS, remaining))
 
     def _watch(self) -> None:
-        while not self.stopped.is_set():
+        while not self._stop.is_set():
             current = self.read_base()
             # Unavailable evidence cannot establish movement. The controller
             # still requires its independent exact-base check before pushing.
             if current is not None and current != self.expected_base:
-                self.moved_to = current
+                self._base = _MovedBase(current)
                 self.cancelled.set()
                 return
-            if self.stopped.wait(self.poll_interval):
+            self._base = _UnmovedBase.UNAVAILABLE if current is None else _UnmovedBase.UNCHANGED
+            if self._stop.wait(self.poll_interval):
                 return
 
 
@@ -297,6 +386,8 @@ def _interrupt(
 
 
 def _signal_group(process: subprocess.Popen[bytes], number: int) -> None:
+    if process.returncode is not None:
+        return
     with suppress(ProcessLookupError):
         os.killpg(process.pid, number)
 

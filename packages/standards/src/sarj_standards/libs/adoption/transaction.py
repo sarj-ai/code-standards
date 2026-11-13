@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 import os
 from pathlib import Path
 import stat
 import tempfile
-from typing import Final, Self
+from types import MappingProxyType
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, Self, assert_never
 
 from sarj_rule_contracts import SourceChangedError, fix_file
 
@@ -20,6 +22,10 @@ from .configs import (
     OXLINT_PRESET,
     OXLINT_SUPPRESSIONS,
 )
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 _OWNED_NAMES: Final = frozenset(
@@ -143,18 +149,77 @@ def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
         os.fsync(handle.fileno())
 
 
-@dataclass
-class FileSnapshot:
-    contents: bytes | None
-    mode: int | None
-    group: int | None = None
+@dataclass(frozen=True, slots=True)
+class MissingFile:
+    kind: ClassVar[Literal["missing"]] = "missing"
+    contents: ClassVar[None] = None
+    mode: ClassVar[None] = None
+    group: ClassVar[None] = None
 
 
 @dataclass(frozen=True, slots=True)
-class _PendingMutation:
-    expected: bytes | None
+class ManagedFile:
+    kind: ClassVar[Literal["managed"]] = "managed"
+    contents: bytes
+    mode: int
+    group: ClassVar[None] = None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFile:
+    kind: ClassVar[Literal["source"]] = "source"
+    contents: bytes
+    mode: int
+    group: int
+
+
+type FileSnapshot = MissingFile | ManagedFile | SourceFile
+
+
+class CaptureMode(StrEnum):
+    MANAGED = "managed"
+    EXPLICIT = "explicit"
+    SOURCE = "source"
+
+
+@dataclass(frozen=True, slots=True)
+class _CapturedFile:
+    kind: ClassVar[Literal["captured"]] = "captured"
+    snapshot: FileSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class _PublishedFile:
+    kind: ClassVar[Literal["published"]] = "published"
+    snapshot: FileSnapshot
+    receipt: bytes | None
+
+
+@dataclass(frozen=True, slots=True)
+class _WritingFile:
+    kind: ClassVar[Literal["writing"]] = "writing"
+    previous: _CapturedFile | _PublishedFile
     intended: bytes | None
-    had_receipt: bool
+
+    @property
+    def snapshot(self) -> FileSnapshot:
+        return self.previous.snapshot
+
+
+type _UnrecoveredFile = _CapturedFile | _PublishedFile | _WritingFile
+
+
+@dataclass(frozen=True, slots=True)
+class _ReleasedFile:
+    kind: ClassVar[Literal["released"]] = "released"
+    previous: _UnrecoveredFile
+
+    @property
+    def snapshot(self) -> FileSnapshot:
+        return self.previous.snapshot
+
+
+type _FileMutation = _UnrecoveredFile | _ReleasedFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,28 +242,50 @@ class RollbackReport:
         return "; ".join(f"could not restore {issue.path}: {issue.detail}" for issue in self.issues)
 
 
+class _RecoveryPhase(StrEnum):
+    ACTIVE = "active"
+    RECOVERING = "recovering"
+
+
+@dataclass(frozen=True, slots=True)
+class _RecoveryComplete:
+    kind: ClassVar[Literal["recovered"]] = "recovered"
+    report: ClassVar[RollbackReport] = RollbackReport()
+
+
+type _Recovery = _RecoveryPhase | _RecoveryComplete
+
+
 @dataclass
 class FileTransaction:
     root: Path
-    before: dict[Path, FileSnapshot]
-    written: dict[Path, bytes | None]
+    _files: dict[Path, _FileMutation]
     absent_parents: set[Path]
-    explicit_only: bool = False
-    source_writes: bool = False
-    _pending: dict[Path, _PendingMutation] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _mode: CaptureMode
+    _recovery: _Recovery = field(init=False, default=_RecoveryPhase.ACTIVE)
+
+    @property
+    def before(self) -> Mapping[Path, FileSnapshot]:
+        return MappingProxyType({path: state.snapshot for path, state in self._files.items()})
+
+    @property
+    def written(self) -> Mapping[Path, bytes | None]:
+        receipts: dict[Path, bytes | None] = {}
+        for path, state in self._files.items():
+            unrecovered = state.previous if isinstance(state, _ReleasedFile) else state
+            settled = unrecovered.previous if isinstance(unrecovered, _WritingFile) else unrecovered
+            if isinstance(settled, _PublishedFile):
+                receipts[path] = settled.receipt
+        return MappingProxyType(receipts)
 
     @classmethod
-    def capture(
-        cls, root: Path, extra: tuple[Path, ...] = (), *, explicit_only: bool = False, source_writes: bool = False
-    ) -> Self:
+    def capture(cls, root: Path, extra: tuple[Path, ...] = (), *, mode: CaptureMode = CaptureMode.MANAGED) -> Self:
         resolved = root.resolve()
-        if source_writes:
-            if not explicit_only:
-                msg = "source transactions require explicit mutation targets"
-                raise ValueError(msg)
+        mode = CaptureMode(mode)
+        if mode is CaptureMode.SOURCE:
             validate_targets(resolved, extra)
-        candidates = set(extra) if explicit_only else _capture_candidates(resolved, extra)
-        before: dict[Path, FileSnapshot] = {}
+        candidates = _capture_candidates(resolved, extra) if mode is CaptureMode.MANAGED else set(extra)
+        files: dict[Path, _FileMutation] = {}
         absent_parents: set[Path] = set()
         for path in candidates:
             if is_link_like(path):
@@ -213,75 +300,136 @@ class FileTransaction:
             if path.is_file() and path.stat(follow_symlinks=False).st_nlink > 1:
                 msg = f"refusing hard-linked transaction target {path}"
                 raise OSError(msg)
-            before[path] = _snapshot(path, source_write=source_writes)
+            files[path] = _CapturedFile(_snapshot(path, mode))
             absent_parents.update(_absent_parents(resolved, path.parent))
-        if source_writes and any(snapshot.contents is None for snapshot in before.values()):
-            msg = "source transactions require existing regular files"
-            raise OSError(msg)
-        return cls(resolved, before, {}, absent_parents, explicit_only, source_writes)
+        return cls(resolved, files, absent_parents, mode)
+
+    def require_owned_writes(self) -> None:
+        self._require_active()
+        if self._mode is CaptureMode.MANAGED:
+            self._mode = CaptureMode.EXPLICIT
+
+    def allow_installer_mutations(self, paths: tuple[Path, ...]) -> None:
+        self._require_active()
+        if self._mode is CaptureMode.SOURCE:
+            msg = "source transactions cannot delegate installer mutations"
+            raise ValueError(msg)
+        files = dict(self._files)
+        for path in paths:
+            state = files[path]
+            match state:
+                case _WritingFile():
+                    msg = "pending mutation must be resolved before starting an installer"
+                    raise ValueError(msg)
+                case _ReleasedFile():
+                    msg = "recovered file cannot be delegated to an installer"
+                    raise ValueError(msg)
+                case _CapturedFile() | _PublishedFile():
+                    files[path] = _CapturedFile(state.snapshot)
+                case _:
+                    assert_never(state)
+        self._mode = CaptureMode.MANAGED
+        self._files = files
 
     def write_text(self, path: Path, contents: str) -> None:
         self.write_bytes(path, contents.encode("utf-8"))
 
     def write_bytes(self, path: Path, contents: bytes) -> None:
-        snapshot = self.before[path]
-        expected = self.written.get(path, snapshot.contents)
+        self._require_active()
+        previous = self._settled(path)
+        snapshot = previous.snapshot
+        expected = previous.receipt if isinstance(previous, _PublishedFile) else snapshot.contents
         assert_expected(self.root, path, expected)
         # A pending attempt does not claim untouched state, but survives interruption after replacement.
-        self._pending[path] = _PendingMutation(expected, contents, path in self.written)
-        if self.source_writes:
+        if isinstance(snapshot, SourceFile) and not isinstance(expected, bytes):
+            msg = "source transactions require an owned existing-file write"
+            raise OSError(msg)
+        self._files[path] = _WritingFile(previous, contents)
+        if isinstance(snapshot, SourceFile):
             try:
                 _write_source(self.root, path, contents, expected=expected, snapshot=snapshot)
             except SourceChangedError:
                 # This attempt never replaced the source; retain any earlier successful receipt.
-                self._pending.pop(path, None)
+                self._files[path] = previous
                 raise
         else:
             atomic_write_bytes(self.root, path, contents)
-        self.written[path] = contents
-        self._pending.pop(path, None)
+        self.record_write(path, contents)
 
     def remove_file(self, path: Path) -> None:
-        if self.source_writes:
+        self._require_active()
+        if self._mode is CaptureMode.SOURCE:
             msg = "source transactions do not support file deletion"
             raise ValueError(msg)
-        snapshot = self.before[path]
-        expected = self.written.get(path, snapshot.contents)
+        previous = self._settled(path)
+        expected = previous.receipt if isinstance(previous, _PublishedFile) else previous.snapshot.contents
         assert_expected(self.root, path, expected)
-        self._pending[path] = _PendingMutation(expected, None, path in self.written)
+        self._files[path] = _WritingFile(previous, None)
         remove_file(self.root, path)
-        self.written[path] = None
-        self._pending.pop(path, None)
+        self.record_write(path, None)
+
+    def _settled(self, path: Path) -> _CapturedFile | _PublishedFile:
+        state = self._files[path]
+        match state:
+            case _CapturedFile() | _PublishedFile():
+                return state
+            case _WritingFile() | _ReleasedFile():
+                msg = "pending mutation must be resolved before another write"
+                raise ValueError(msg)
+            case _:
+                assert_never(state)
+
+    def _require_active(self) -> None:
+        match self._recovery:
+            case _RecoveryPhase.ACTIVE:
+                return
+            case _RecoveryPhase.RECOVERING | _RecoveryComplete():
+                msg = "transaction recovery has begun; capture a new transaction for further writes"
+                raise ValueError(msg)
+            case _:
+                assert_never(self._recovery)
 
     def track(self, *paths: Path) -> None:
+        self._require_active()
         for path in paths:
             if is_link_like(path):
                 continue
-            if path not in self.before:
-                self.before[path] = _snapshot(path, source_write=self.source_writes)
+            if path not in self._files:
+                self._files[path] = _CapturedFile(_snapshot(path, self._mode))
                 self.absent_parents.update(_absent_parents(self.root, path.parent))
 
     def mark_written(self, *paths: Path) -> None:
         for path in paths:
-            self.written[path] = path.read_bytes() if path.is_file() else None
+            self.record_write(path, path.read_bytes() if path.is_file() else None)
+
+    def record_write(self, path: Path, contents: bytes | None) -> None:
+        self._require_active()
+        state = self._files[path]
+        if isinstance(state, _WritingFile) and contents != state.intended:
+            msg = "write acknowledgement differs from its pending mutation"
+            raise ValueError(msg)
+        if isinstance(state.snapshot, SourceFile) and contents is None:
+            msg = "source transactions cannot acknowledge file deletion"
+            raise ValueError(msg)
+        self._files[path] = _PublishedFile(state.snapshot, contents)
 
     def rollback(self) -> RollbackReport:
+        match self._recovery:
+            case _RecoveryComplete():
+                return self._recovery.report
+            case _RecoveryPhase.ACTIVE | _RecoveryPhase.RECOVERING:
+                self._recovery = _RecoveryPhase.RECOVERING
+            case _:
+                assert_never(self._recovery)
         issues: list[RollbackIssue] = []
-        for path, snapshot in self.before.items():
-            if self.explicit_only and path not in self.written and path not in self._pending:
+        for path, state in self._files.items():
+            if isinstance(state, _ReleasedFile):
                 continue
-            expected = self.written.get(path, _UNTRACKED)
-            issue = _restore_path(
-                self.root,
-                path,
-                snapshot,
-                expected,
-                source_write=self.source_writes,
-                pending=self._pending.get(path),
-                explicit_only=self.explicit_only,
-            )
+            issue = _restore_path(self.root, path, state, self._mode)
             if issue is not None:
                 issues.append(issue)
+            else:
+                self._files[path] = _ReleasedFile(state)
         for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
             try:
                 parent.rmdir()
@@ -290,7 +438,11 @@ class FileTransaction:
             except OSError:
                 # A non-empty directory contains state the transaction does not own.
                 continue
-        return RollbackReport(tuple(issues))
+        report = RollbackReport(tuple(issues))
+        if report.ok:
+            self._recovery = _RecoveryComplete()
+            return self._recovery.report
+        return report
 
 
 class _Untracked:
@@ -300,68 +452,85 @@ class _Untracked:
 _UNTRACKED: Final = _Untracked()
 
 
-def _snapshot(path: Path, *, source_write: bool = False) -> FileSnapshot:
+@dataclass(frozen=True, slots=True)
+class _RestoreFile:
+    expected: bytes | _Untracked | None
+
+
+def _snapshot(path: Path, mode: CaptureMode) -> FileSnapshot:
     if not path.is_file():
-        return FileSnapshot(None, None)
+        if mode is CaptureMode.SOURCE:
+            msg = "source transactions require existing regular files"
+            raise OSError(msg)
+        return MissingFile()
     metadata = path.stat(follow_symlinks=False)
-    return FileSnapshot(path.read_bytes(), stat.S_IMODE(metadata.st_mode), metadata.st_gid if source_write else None)
+    contents = path.read_bytes()
+    permissions = stat.S_IMODE(metadata.st_mode)
+    return (
+        SourceFile(contents, permissions, metadata.st_gid)
+        if mode is CaptureMode.SOURCE
+        else ManagedFile(contents, permissions)
+    )
 
 
 def _restore_path(
     root: Path,
     path: Path,
-    snapshot: FileSnapshot,
-    expected: bytes | _Untracked | None,
-    *,
-    source_write: bool = False,
-    pending: _PendingMutation | None = None,
-    explicit_only: bool = False,
+    state: _UnrecoveredFile,
+    mode: CaptureMode,
 ) -> RollbackIssue | None:
+    if isinstance(state, _CapturedFile) and mode is not CaptureMode.MANAGED:
+        return None
     try:
         validate_targets(root, (path,))
         current = path.read_bytes() if path.is_file() else None
     except OSError as exc:
         return RollbackIssue(path, str(exc))
-    if pending is not None:
-        # A completed receipt wins if interruption happened before the pending entry was removed.
-        receipt_published = _receipt_is_published(expected, pending)
-        if not receipt_published:
-            if current == pending.expected:
-                if explicit_only and isinstance(expected, _Untracked):
-                    return None
-            elif current == pending.intended:
-                expected = pending.intended
-            else:
-                return RollbackIssue(path, "changed concurrently after the standards write")
-    if not isinstance(expected, _Untracked) and current != expected:
-        return RollbackIssue(path, "changed concurrently after the standards write")
+    decision = _restore_decision(path, state, current, mode)
+    if not isinstance(decision, _RestoreFile):
+        return decision
     try:
-        if source_write:
-            _restore_source(root, path, snapshot, expected)
+        if isinstance(state.snapshot, SourceFile):
+            _restore_source(root, path, state.snapshot, decision.expected)
         else:
-            _apply_snapshot(root, path, snapshot)
+            _apply_snapshot(root, path, state.snapshot)
     except (OSError, ValueError) as exc:
         return RollbackIssue(path, str(exc))
     return None
 
 
-def _receipt_is_published(expected: bytes | _Untracked | None, pending: _PendingMutation) -> bool:
-    return not isinstance(expected, _Untracked) and (not pending.had_receipt or expected != pending.expected)
+def _restore_decision(
+    path: Path, state: _UnrecoveredFile, current: bytes | None, mode: CaptureMode
+) -> _RestoreFile | RollbackIssue | None:
+    settled = state.previous if isinstance(state, _WritingFile) else state
+    expected = settled.receipt if isinstance(settled, _PublishedFile) else _UNTRACKED
+    if isinstance(state, _WritingFile):
+        prior_contents = settled.receipt if isinstance(settled, _PublishedFile) else state.snapshot.contents
+        if current == prior_contents:
+            if mode is not CaptureMode.MANAGED and isinstance(settled, _CapturedFile):
+                return None
+        elif current == state.intended:
+            expected = state.intended
+        else:
+            return RollbackIssue(path, "changed concurrently after the standards write")
+    if not isinstance(expected, _Untracked) and current != expected:
+        return RollbackIssue(path, "changed concurrently after the standards write")
+    return _RestoreFile(expected)
 
 
 def _restore_source(
     root: Path,
     path: Path,
-    snapshot: FileSnapshot,
+    snapshot: SourceFile,
     expected: bytes | _Untracked | None,
 ) -> None:
-    if snapshot.contents is None or isinstance(expected, _Untracked):
+    if not isinstance(expected, bytes):
         msg = "source rollback requires an owned existing-file write"
         raise OSError(msg)
     _write_source(root, path, snapshot.contents, expected=expected, snapshot=snapshot)
 
 
-def _write_source(root: Path, path: Path, contents: bytes, *, expected: bytes | None, snapshot: FileSnapshot) -> None:
+def _write_source(root: Path, path: Path, contents: bytes, *, expected: bytes | None, snapshot: SourceFile) -> None:
     validate_targets(root, (path,))
 
     def transform(source: str) -> str:
@@ -378,13 +547,11 @@ def _write_source(root: Path, path: Path, contents: bytes, *, expected: bytes | 
 
 
 def _apply_snapshot(root: Path, path: Path, snapshot: FileSnapshot) -> None:
-    if snapshot.contents is None:
+    if isinstance(snapshot, MissingFile):
         if path.is_file() or is_link_like(path):
             path.unlink()
         return
-    atomic_write_bytes(root, path, snapshot.contents)
-    if snapshot.mode is not None:
-        path.chmod(snapshot.mode)
+    atomic_write_bytes(root, path, snapshot.contents, mode=snapshot.mode)
 
 
 def _absent_parents(root: Path, parent: Path) -> set[Path]:

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Literal, assert_never
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
@@ -109,13 +109,70 @@ class InitPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class InitResult:
-    status: int
-    sync: SyncResult | None = None
-    failure: InitFailure | None = None
-    error: str | None = None
+class InitSucceeded:
+    kind: ClassVar[Literal["succeeded"]] = "succeeded"
+    status: ClassVar[Literal[0]] = 0
+    failure: ClassVar[None] = None
+    error: ClassVar[None] = None
+    sync: SyncResult
     #: What the post-install TypeScript steps (oxfmt seeding and formatting) did.
     notes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.sync.status:
+            message = "successful initialization requires successful synchronization"
+            raise ValueError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class InitSyncFailed:
+    kind: ClassVar[Literal["sync-failed"]] = "sync-failed"
+    failure: ClassVar[Literal[InitFailure.SYNC]] = InitFailure.SYNC
+    notes: ClassVar[tuple[()]] = ()
+    sync: SyncResult
+    error: str | None = None
+
+    @property
+    def status(self) -> int:
+        return 2 if self.error else self.sync.status
+
+    def __post_init__(self) -> None:
+        if not self.sync.status:
+            message = "failed synchronization requires nonzero synchronization evidence"
+            raise ValueError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class InitInstallFailed:
+    kind: ClassVar[Literal["install-failed"]] = "install-failed"
+    status: ClassVar[Literal[2]] = 2
+    failure: ClassVar[Literal[InitFailure.INSTALL]] = InitFailure.INSTALL
+    notes: ClassVar[tuple[()]] = ()
+    sync: SyncResult
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class InitApplyFailed:
+    kind: ClassVar[Literal["apply-failed"]] = "apply-failed"
+    status: ClassVar[Literal[2]] = 2
+    failure: ClassVar[Literal[InitFailure.APPLY]] = InitFailure.APPLY
+    notes: ClassVar[tuple[()]] = ()
+    sync: ClassVar[None] = None
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class InitInterrupted:
+    kind: ClassVar[Literal["interrupted"]] = "interrupted"
+    status: ClassVar[Literal[130]] = 130
+    failure: ClassVar[Literal[InitFailure.INTERRUPTED]] = InitFailure.INTERRUPTED
+    notes: ClassVar[tuple[()]] = ()
+    sync: ClassVar[None] = None
+    error: str | None
+
+
+type InitResult = InitSucceeded | InitSyncFailed | InitInstallFailed | InitApplyFailed | InitInterrupted
 
 
 def plan_sync(
@@ -379,16 +436,16 @@ def plan_commit_policy(
 
 def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     if plan.sync is None:
-        return InitResult(2, failure=InitFailure.APPLY, error="setup plan is not applicable")
+        return InitApplyFailed("setup plan is not applicable")
     try:
         transaction.validate_targets(plan.sync.root, tuple(plan.preconditions))
         stale = any(
             (path.read_bytes() if path.is_file() else None) != expected for path, expected in plan.preconditions.items()
         )
     except OSError as exc:
-        return InitResult(2, failure=InitFailure.APPLY, error=str(exc))
+        return InitApplyFailed(str(exc))
     if stale:
-        return InitResult(2, failure=InitFailure.APPLY, error="setup plan is stale; rerun setup")
+        return InitApplyFailed("setup plan is stale; rerun setup")
     scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)) + tuple(
         plan.scaffold.deletes
     )
@@ -396,32 +453,38 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     file_transaction: transaction.FileTransaction | None = None
     try:
         file_transaction = transaction.FileTransaction.capture(plan.sync.root, scaffold_targets)
-        file_transaction.explicit_only = True
+        file_transaction.require_owned_writes()
         result = _apply_init_transaction(plan, file_transaction, install=install)
     except KeyboardInterrupt:
         rollback_error = _rollback_error(file_transaction)
         cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
-        return InitResult(
-            130,
-            failure=InitFailure.INTERRUPTED,
-            error=_join_errors(rollback_error, cleanup_error),
-        )
+        return InitInterrupted(_join_errors(rollback_error, cleanup_error))
     except OSError as exc:
         rollback_error = _rollback_error(file_transaction)
         cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
-        return InitResult(
-            2,
-            failure=InitFailure.APPLY,
-            error=_join_errors(str(exc), rollback_error, cleanup_error),
-        )
+        return InitApplyFailed(_join_errors(str(exc), rollback_error, cleanup_error) or "setup application failed")
     else:
-        if result.status:
-            rollback_error = _rollback_error(file_transaction)
-            cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
-            error = _join_errors(result.error, rollback_error, cleanup_error)
-            status = 2 if error or result.failure is InitFailure.INSTALL else result.status
-            return InitResult(status, result.sync, result.failure, error)
-        return result
+        if isinstance(result, InitSucceeded):
+            return result
+        rollback_error = _rollback_error(file_transaction)
+        cleanup_error = _cleanup_new_trees(generated_trees, failed=True)
+        return _init_recovery_details(result, _join_errors(result.error, rollback_error, cleanup_error))
+
+
+def _init_recovery_details(
+    result: InitSyncFailed | InitInstallFailed | InitApplyFailed | InitInterrupted, error: str | None
+) -> InitResult:
+    match result:
+        case InitSyncFailed():
+            return InitSyncFailed(result.sync, error)
+        case InitInstallFailed():
+            return InitInstallFailed(result.sync, error or result.error)
+        case InitApplyFailed():
+            return InitApplyFailed(error or result.error)
+        case InitInterrupted():
+            return InitInterrupted(error)
+        case _:
+            assert_never(result)
 
 
 def _generated_environment_trees(plan: InitPlan) -> tuple[tuple[Path, bool], ...]:
@@ -464,11 +527,11 @@ def _apply_init_transaction(
     install: bool,
 ) -> InitResult:
     if plan.sync is None:
-        return InitResult(2, failure=InitFailure.APPLY, error="setup plan is not applicable")
+        return InitApplyFailed("setup plan is not applicable")
     file_transaction.track(*(target.destination for target in plan.sync.targets))
     sync_result = _apply_planned_sync(plan.sync, plan.preconditions, file_transaction)
     if sync_result.status:
-        return InitResult(sync_result.status, sync_result, InitFailure.SYNC)
+        return InitSyncFailed(sync_result)
     scaffold.apply(plan.scaffold, preconditions=plan.preconditions, file_transaction=file_transaction)
     direct_targets = (
         *(target.destination for target in plan.sync.targets),
@@ -476,20 +539,14 @@ def _apply_init_transaction(
         *plan.scaffold.deletes,
     )
     if install:
-        file_transaction.explicit_only = False
-        for path in direct_targets:
-            if path.name in _INSTALL_MUTATED_NAMES:
-                file_transaction.written.pop(path, None)
+        file_transaction.allow_installer_mutations(
+            tuple(path for path in direct_targets if path.name in _INSTALL_MUTATED_NAMES)
+        )
         install_status = lifecycle.execute(plan.install_commands)
         if install_status:
-            return InitResult(
-                2,
-                sync_result,
-                InitFailure.INSTALL,
-                f"dependency or hook installer exited with status {install_status}",
-            )
+            return InitInstallFailed(sync_result, f"dependency or hook installer exited with status {install_status}")
         return _finish_typescript(plan, file_transaction, sync_result)
-    return InitResult(0, sync_result)
+    return InitSucceeded(sync_result)
 
 
 def _finish_typescript(
@@ -497,14 +554,14 @@ def _finish_typescript(
 ) -> InitResult:
     typescript_root = scaffold.configured_ecosystems(plan.scaffold.ecosystems, plan.scaffold.configs).typescript_root
     if typescript_root is None:
-        return InitResult(0, sync_result)
+        return InitSucceeded(sync_result)
     try:
         notes = typescript_tooling.finish(
             file_transaction.root, typescript_root, file_transaction, written={path for path, _ in plan.scaffold.writes}
         )
     except (OSError, ValueError) as exc:
-        return InitResult(2, sync_result, InitFailure.INSTALL, str(exc))
-    return InitResult(0, sync_result, notes=notes)
+        return InitInstallFailed(sync_result, str(exc))
+    return InitSucceeded(sync_result, notes=notes)
 
 
 def _apply_planned_sync(

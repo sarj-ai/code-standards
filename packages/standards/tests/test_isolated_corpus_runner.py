@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import os
 import sys
 import threading
 from types import SimpleNamespace
@@ -260,13 +261,26 @@ def test_five_repositories_use_five_real_fresh_processes(tmp_path: Path) -> None
     [("; time.sleep(60)", "descendant-survived"), ("", "orphan-survived")],
     ids=("running-parent", "successful-parent"),
 )
-def test_timeout_terminates_descendant_processes(tmp_path: Path, parent_tail: str, marker_name: str) -> None:
+def test_timeout_terminates_descendant_processes(
+    tmp_path: Path, parent_tail: str, marker_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     corpus = tmp_path / "corpus"
     corpus.mkdir()
     (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
     marker = tmp_path / marker_name
     grandchild = f"import time; from pathlib import Path; time.sleep(0.5); Path({str(marker)!r}).write_text('alive')"
     script = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]){parent_tail}"
+    kill_group = os.killpg
+    signalled: list[int] = []
+
+    def signal_owned_group(pid: int, signal: int) -> None:
+        os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        signalled.append(pid)
+        kill_group(pid, signal)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the actual signal syscall to verify ownership; injecting a fake process would omit the PID-reuse boundary.
+        os, "killpg", signal_owned_group
+    )
 
     with pytest.raises(CorpusLintError, match="exceeded"):
         run_isolated_corpora(
@@ -276,3 +290,4 @@ def test_timeout_terminates_descendant_processes(tmp_path: Path, parent_tail: st
         )
     threading.Event().wait(0.7)
     assert not marker.exists()
+    assert signalled

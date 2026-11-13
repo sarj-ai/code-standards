@@ -84,7 +84,18 @@ def test_requested_activation_cannot_silently_skip_an_existing_rollout(
     consumer = rollout.Consumer("fixture", "example/fixture", "main", ("true",))
 
     def status_one(item: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
-        return rollout.Outcome(item, state)
+        url = rollout.pull_request_url("https://github.com/example/fixture/pull/1")
+        result: rollout.RolloutResult
+        match state:
+            case rollout.OutcomeState.PR_OPEN:
+                result = rollout.PullRequestOpen(url)
+            case rollout.OutcomeState.MERGED:
+                result = rollout.RolloutMerged(url)
+            case rollout.OutcomeState.ALREADY_CURRENT:
+                result = rollout.AlreadyCurrent()
+            case _:
+                pytest.fail("fixture requires an existing rollout")
+        return rollout.Outcome(item, result)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- this public status seam supplies an existing rollout without querying GitHub.
         rollout, "status_one", status_one
@@ -97,7 +108,7 @@ def test_requested_activation_cannot_silently_skip_an_existing_rollout(
 
 def test_activation_plan_cannot_filter_out_a_current_consumer_as_success(monkeypatch: pytest.MonkeyPatch) -> None:
     consumer = rollout.Consumer("fixture", "example/fixture", "main", ("true",))
-    current = rollout.Outcome(consumer, rollout.OutcomeState.ALREADY_CURRENT)
+    current = rollout.Outcome(consumer, rollout.AlreadyCurrent())
 
     def verify_release(_version: str, _runner: rollout.CommandRunner) -> str:
         return "a" * 40

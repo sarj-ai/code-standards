@@ -182,6 +182,18 @@ def test_migrates_exact_eslint_config_keys_from_the_retirement_ledger(
     )
 
 
+@pytest.mark.parametrize("literal", ['"{"', '"}"', '"("', '")"', '"["', '"]"', '";"', '":"', "'{'", "`}`"])
+def test_config_migration_ignores_delimiters_inside_literal_values(tmp_path: Path, literal: str) -> None:
+    target = tmp_path / "oxlint.config.ts"
+    source = f"export default [{{ name: {literal}, rules: {{ '@sarj/zod-naming-convention': 'error' }} }}];\n"
+    expected = source.replace("'@sarj/zod-naming-convention':", "'@sarj/require-pascal-case-zod-schema-name':")
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == (retired_suppressions.Rewrite(target, expected),)
+    target.write_text(expected, encoding="utf-8")
+    assert retired_suppressions.plan((target,)) == ()
+
+
 @pytest.mark.parametrize("name", ["eslint.config.mts", "oxlint.config.ts"])
 def test_migrates_exact_key_in_exported_lint_config_call(tmp_path: Path, name: str) -> None:
     target = tmp_path / name

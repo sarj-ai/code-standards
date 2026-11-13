@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- report bounded immutable Git provenance failures.
 import time
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Protocol, runtime_checkable
 
 from sarj_rule_contracts import SourceCatalog, SourceSnapshot
 
@@ -170,7 +170,7 @@ def analyze(
         return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
     sources = SourceCatalog()
-    iac_contracts = _iac_contracts(root, staged=staged) if use_guard_contracts else _PreparedIAC()
+    iac_contracts = _iac_contracts(root, staged=staged) if use_guard_contracts else _NoGuardContracts()
     reports = tuple(
         report
         for report in (
@@ -788,16 +788,39 @@ def _relative_path(path: Path, root: Path) -> str:
 
 
 @dataclass(frozen=True)
-class _PreparedIAC:
-    contracts: "GuardContracts | None" = None
-    report: ToolReport | None = None
+class _NoGuardContracts:
+    kind: ClassVar[Literal["unconfigured"]] = "unconfigured"
+    contracts: ClassVar[None] = None
+    report: ClassVar[None] = None
+
+
+@dataclass(frozen=True)
+class _GuardContractsReady:
+    kind: ClassVar[Literal["ready"]] = "ready"
+    report: ClassVar[None] = None
+    contracts: "GuardContracts"
+
+
+@dataclass(frozen=True)
+class _GuardContractsFailed:
+    kind: ClassVar[Literal["failed"]] = "failed"
+    contracts: ClassVar[None] = None
+    issue: ExecutionIssue
+
+    @property
+    def report(self) -> ToolReport:
+        return ToolReport("sarj-iac-lint", Completion.FAILED, issues=(self.issue,))
+
+
+type _PreparedIAC = _NoGuardContracts | _GuardContractsReady | _GuardContractsFailed
 
 
 def _iac_contracts(root: Path, *, staged: bool) -> _PreparedIAC:
     from .iac_guard_contracts import CoreIAC  # ruff: ignore[import-outside-top-level] -- load the IaC contract adapter only during native analysis.
 
     try:
-        return _PreparedIAC(contracts=CoreIAC(root, staged=staged).prepare())
+        contracts = CoreIAC(root, staged=staged).prepare()
+        return _NoGuardContracts() if contracts is None else _GuardContractsReady(contracts)
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
         issue = ExecutionIssue("sarj-iac-lint", "guard-contract-failure", f"{type(exc).__name__}: {exc}")
-        return _PreparedIAC(report=ToolReport("sarj-iac-lint", Completion.FAILED, issues=(issue,)))
+        return _GuardContractsFailed(issue)
