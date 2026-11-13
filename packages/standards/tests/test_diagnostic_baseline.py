@@ -422,22 +422,31 @@ def test_baseline_writers_reject_fingerprints_the_reader_cannot_load(
 
 
 @pytest.mark.parametrize("operation", ["render", "merge"])
-def test_baseline_writers_round_trip_valid_fingerprints_and_counts(tmp_path: Path, operation: str) -> None:
+@pytest.mark.parametrize("budgeted", [False, True], ids=["all-findings", "existing-budget"])
+def test_baseline_writers_round_trip_valid_fingerprints_and_counts(
+    tmp_path: Path, operation: str, *, budgeted: bool
+) -> None:
     fingerprint = "c" * 64
     finding = Diagnostic("F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint=fingerprint)
+    new_finding = replace(finding, fingerprint="e" * 64, location=Location("new.py"))
     existing = Diagnostic("F841", "unused local", Severity.WARNING, "ruff", Location("old.py"), fingerprint="d" * 64)
     path = tmp_path / "baseline.json"
     path.write_text(baseline.render((existing,)), encoding="utf-8")
-    expected = {fingerprint: 2}
+    candidates = (finding, finding, new_finding)
+    expected = {fingerprint: 1 if budgeted else 2}
+    if budgeted:
+        candidates = baseline.within_budget(candidates, baseline.Budget({fingerprint: 1, "f" * 64: 3}, None))
+    else:
+        expected["e" * 64] = 1
 
     if operation == "render":
         rendered = baseline.render(
-            (finding, finding), bundle_version="9.0.0", consumer_base_sha="a" * 40, catalog_digest="b" * 64
+            candidates, bundle_version="9.0.0", consumer_base_sha="a" * 40, catalog_digest="b" * 64
         )
     else:
         rendered = baseline.merge_scoped(
             path,
-            (finding, finding),
+            candidates,
             selectors=("ruff:F401",),
             bundle_version="9.0.0",
             consumer_base_sha="a" * 40,
@@ -1131,7 +1140,8 @@ def test_baseline_init_records_todays_findings_for_every_authored_engine(tmp_pat
 
 
 @pytest.mark.usefixtures("checkov_process")
-def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path) -> None:
+@pytest.mark.parametrize("scoped", [False, True], ids=["full", "scoped"])
+def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path, *, scoped: bool) -> None:
     _configure_authored_engine_baseline_fixture(tmp_path)
     source = tmp_path / "main.tf"
     source.write_text(
@@ -1140,6 +1150,10 @@ def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path
     )
     assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
     _configure_authored_engine_baseline_fixture(tmp_path, "diagnostic-baseline.json")
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    budget_path = tmp_path / "accepted-budget.json"
+    budget_path.write_bytes(baseline_path.read_bytes())
+    budget = baseline.load(budget_path)
 
     settled = api.Standards(tmp_path).analyze()
     assert [item.code for item in settled.diagnostics] == []
@@ -1153,6 +1167,14 @@ def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path
     grown = api.Standards(tmp_path).analyze()
     assert "SARJ204" in [item.code for item in grown.diagnostics]
 
+    selectors = ["--rule", "iac:conditional-resource-presence"] if scoped else []
+    assert cli_main(["--root", str(tmp_path), "baseline", "update", "--budget", str(budget_path), *selectors]) == 0
+    refreshed = baseline.load(baseline_path)
+    assert refreshed
+    assert all(count <= budget.get(fingerprint, 0) for fingerprint, count in refreshed.items())
+    assert "SARJ204" in [item.code for item in api.Standards(tmp_path).analyze().diagnostics]
+    assert baseline.load(budget_path) == budget
+
 
 @pytest.mark.usefixtures("checkov_process")
 def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) -> None:
@@ -1165,6 +1187,10 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
 
     assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 2
     assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    original = baseline_path.read_bytes()
+    assert cli_main(["--root", str(tmp_path), "baseline", "update", "--budget", str(tmp_path / "missing.json")]) == 2
+    assert baseline_path.read_bytes() == original
 
 
 @pytest.mark.parametrize(

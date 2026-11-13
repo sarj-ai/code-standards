@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "f0193c84f65ea0354e49ee9401b81d693f7093e10db69e89794fbcb5f4e1e0d4",
-  "cliSha256": "8e89c152e90c6541bbd78a494c2043850ea0752f5295e84a3f5e8d8d61106403",
+  "cliSha256": "6d7f00c1b2a4cf5937461e51e8f8b33639088fe9c2561b63b265b43800373e52",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -25111,7 +25111,7 @@
       "update": "code-standards update [-h] [--check] [--offline] [--to VERSION] [--no-install] [--preserve-baselines]\n",
       "baseline": "code-standards baseline [-h] {init,update}\n",
       "baseline/init": "code-standards baseline init [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [FILES ...]\n",
-      "baseline/update": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]\n",
+      "baseline/update": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--budget BUDGET] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]\n",
       "ratchet": "code-standards ratchet [-h] {init,check,status,update}\n",
       "ratchet/init": "code-standards ratchet init [-h] [--baseline BASELINE] [--package PACKAGE ...] [--exclude-subtree EXCLUDE_SUBTREE ...]\n",
       "ratchet/check": "code-standards ratchet check [-h] [--baseline BASELINE] [--package PACKAGE ...] [--exclude-subtree EXCLUDE_SUBTREE ...]\n",

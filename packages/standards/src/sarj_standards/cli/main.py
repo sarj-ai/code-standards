@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
+    from sarj_standards.libs.diagnostics.baseline import Budget
     from sarj_standards.libs.linting import autofix
     from sarj_standards.libs.linting.external import UpstreamRules
     from sarj_standards.libs.repository import rule_catalog_artifact
@@ -183,6 +184,7 @@ class _Args:
     evaluation_scope: _EvaluationScope = _EvaluationScope.CORPUS
     required_added_level: str | None = None
     baseline: Path | None = None
+    baseline_budget: Path | None = None
     baseline_rules: list[str] = field(default_factory=list)
     react_doctor_triggered: bool = False
     package: list[str] = field(default_factory=list)
@@ -2695,13 +2697,14 @@ def cmd_baseline(args: _Args) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    budget = baseline.load_budget(args.baseline_budget) if args.baseline_budget is not None else None
     reports = _baseline_analysis_reports(args, root, selected)
     blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:
         for issue in blocked:
             print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
         return 2
-    eligible = _eligible_baseline_diagnostics(reports, args.baseline_rules)
+    eligible = _eligible_baseline_diagnostics(reports, args.baseline_rules, budget=budget)
     provenance = {
         "bundle_version": __version__,
         "consumer_base_sha": baseline.repository_base_sha(root),
@@ -2890,17 +2893,22 @@ def _react_doctor_baseline_report(
 
 
 def _eligible_baseline_diagnostics(
-    reports: Sequence[AnalysisReport], selectors: Sequence[str]
+    reports: Sequence[AnalysisReport], selectors: Sequence[str], *, budget: Budget | None = None
 ) -> tuple[Diagnostic, ...]:
     from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     selected = frozenset(_baseline_merge_selectors(selectors))
-    return tuple(
+    eligible = tuple(
         item
         for report in reports
         for item in report.iter_diagnostics()
         if baseline.is_baselineable(item) and (not selectors or _diagnostic_matches(item, selected))
     )
+    if budget is None:
+        return eligible
+    retained = baseline.within_budget(eligible, budget)
+    print(f"baseline refresh: {len(eligible) - len(retained)} new/increased diagnostic(s) left unaccepted")
+    return retained
 
 
 def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
@@ -3686,6 +3694,13 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         output: Annotated[
             Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
         ] = None,
+        budget: Annotated[
+            Path | None,
+            typer.Option(
+                "--budget",
+                help="cap refreshed fingerprints and counts at this existing baseline; new findings stay active",
+            ),
+        ] = None,
         trust_repository_code: Annotated[
             bool,
             typer.Option("--trust-repository-code", help="run repository-local analyzers that execute project code"),
@@ -3706,6 +3721,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="baseline",
                 baseline_cmd="update",
+                baseline_budget=budget,
                 jobs=jobs,
                 output=output if output is not None else None,
                 trust_repository_code=trust_repository_code,
