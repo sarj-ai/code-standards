@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import shutil
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 from sarj_iac_lint.__main__ import analyze
@@ -83,6 +83,8 @@ def guard_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _GuardFixt
             return _INTRODUCTION + "\n" if state.introduced else ""
         if arguments[:2] == ("rev-parse", "--verify"):
             return _REVISION + "\n"
+        if arguments[:2] == ("ls-tree", "-z"):
+            return "100644 blob fixture\tmain.tf\0"
         if arguments[0] in {"ls-tree", "ls-files"}:
             return "100644 blob fixture\tmain.tf\n"
         values = {
@@ -410,6 +412,66 @@ def _git(root: Path, *arguments: str) -> str:
 def _commit(root: Path, message: str) -> None:
     _git(root, "add", "--all")
     _git(root, "commit", "--quiet", "-m", message)
+
+
+@pytest.mark.parametrize(
+    ("name", "count"),
+    [("second.tf", 2), ("space name.tf", 2), ("tab\tname.tf", 2), ("literal[1].tf", 2), ("last.tf", 66)],
+)
+@pytest.mark.parametrize("staged", [False, True])
+def test_guard_provenance_batches_literal_paths(tmp_path: Path, name: str, count: int, *, staged: bool) -> None:
+    _git(tmp_path, "init", "--quiet", "--template=", "--initial-branch=main")
+    paths = ["main.tf", name, *(f"extra-{index}.tf" for index in range(count - 2))]
+    for path in paths:
+        (tmp_path / path).write_text(_ORIGINAL)
+    _commit(tmp_path, "Original guards")
+    revision = _git(tmp_path, "rev-parse", "HEAD")
+    manifest = CoreIAC(tmp_path).initialize(paths, original_revision=revision)
+    (tmp_path / CONTRACT_PATH).write_text(manifest)
+    (tmp_path / ".sarj-standards.toml").write_text(
+        Manifest(
+            version="9.4.6", configs=(), python_dest=".", typescript_dest=".", terraform_guard_contracts=CONTRACT_PATH
+        ).render()
+    )
+    _commit(tmp_path, "Adopt guards")
+    calls: list[tuple[str, ...]] = []
+
+    class RecordingCoreIAC(CoreIAC):
+        @override
+        def _git(self, *arguments: str, absent_ok: bool = False) -> str:
+            calls.append(arguments)
+            return super()._git(*arguments, absent_ok=absent_ok)
+
+    assert RecordingCoreIAC(tmp_path, staged=staged).prepare() is not None
+    tree_reads = [arguments for arguments in calls if arguments[0] == "ls-tree"]
+    assert len(tree_reads) == (2 if count == 2 else 4)
+    assert all(arguments[:4] == ("ls-tree", "-z", revision, "--") for arguments in tree_reads)
+    assert all(len(arguments) <= 68 for arguments in tree_reads)
+    assert [path for arguments in tree_reads for path in arguments[4:]] == sorted(paths) * 2
+    for path in paths:
+        assert calls.count(("show", f"{revision}:{path}")) == 1
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory", "missing"])
+def test_batched_guard_original_still_requires_regular_blob(tmp_path: Path, kind: str) -> None:
+    _git(tmp_path, "init", "--quiet", "--template=", "--initial-branch=main")
+    path = tmp_path / "main.tf"
+    if kind == "symlink":
+        path.symlink_to("target.tf")
+    elif kind == "directory":
+        path.mkdir()
+        (path / "nested.txt").write_text("original tree")
+    (tmp_path / "target.tf").write_text(_ORIGINAL)
+    _commit(tmp_path, "Original non-file guard path")
+    revision = _git(tmp_path, "rev-parse", "HEAD")
+    if kind == "symlink":
+        path.unlink()
+    elif kind == "directory":
+        (path / "nested.txt").unlink()
+        path.rmdir()
+    path.write_text(_ORIGINAL)
+    with pytest.raises(ValueError, match="regular immutable Git blob"):
+        CoreIAC(tmp_path).initialize(["main.tf"], original_revision=revision)
 
 
 def _adoption_branch(root: Path, source: str = _ORIGINAL) -> bytes:
