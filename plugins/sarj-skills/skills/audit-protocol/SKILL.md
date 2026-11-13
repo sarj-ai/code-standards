@@ -12,6 +12,9 @@ and generated/vendor/fixture data. Run native checks before judging
 uncovered behavior; inspect framework guards.
 Require completed exit statuses; interrupted checks are inconclusive.
 Keep reports ignored and private; redact secrets/identifiers.
+Follow [validation admission](../../commands/strengthen-ci-cd-and-tooling.md)
+before adding verification helpers, preflight/readiness layers or CI jobs, including
+inside application packages. For IaC, also follow its delivery/prose boundaries.
 
 Report severity, location, evidence, impact, smallest fix, confidence and owning
 tool/rule or `judgment-only`; report clean scopes too.

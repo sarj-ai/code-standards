@@ -220,10 +220,11 @@ def test_tools_only_requires_existing_current_manifest(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("install_status", [0, 7])
+@pytest.mark.parametrize("security", [(), ("checkov",), ("zizmor",), ("checkov", "zizmor")])
 def test_tools_only_install_preserves_files_and_never_installs_hooks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, install_status: int
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, install_status: int, security: tuple[str, ...]
 ) -> None:
-    adopted = manifest.Manifest("8.2.0", (), ".", ".")
+    adopted = manifest.Manifest("9.29.6", security, ".", ".")
     path = tmp_path / manifest.MANIFEST_NAME
     path.write_text(adopted.render(), encoding="utf-8")
     workflow = tmp_path / ".github" / "workflows" / "standards.yml"
@@ -232,7 +233,9 @@ def test_tools_only_install_preserves_files_and_never_installs_hooks(
         "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo fixture\n",
         encoding="utf-8",
     )
-    before = {file: file.read_bytes() for file in (path, workflow)}
+    infrastructure = tmp_path / "main.tf"
+    infrastructure.write_text('resource "terraform_data" "fixture" {}\n', encoding="utf-8")
+    before = {file: file.read_bytes() for file in (path, workflow, infrastructure)}
     commands: list[lifecycle.Command] = []
     attested: list[Path] = []
 
@@ -255,9 +258,19 @@ def test_tools_only_install_preserves_files_and_never_installs_hooks(
     result = devops.setup_tools_only(tmp_path)
     assert result.status == install_status
     assert result.findings == ()
-    assert [command.label for command in commands] == ["Pinned native DevOps tools"]
+    selected = [name for name in ("zizmor", "checkov") if name in security]
+    assert [command.label for command in commands] == [
+        "Pinned native DevOps tools",
+        "Pinned TFLint Google plugin",
+        *(f"prepare pinned {name}" for name in selected),
+    ]
     assert "aqua:rhysd/actionlint@1.7.12" in commands[0].argv
     assert commands[0].argv[:5] == ("mise", "--no-config", "--no-env", "--no-hooks", "install")
+    assert [command.argv for command in commands[2:]] == [
+        ("uvx", "--no-config", "--isolated", "--python", "3.12", "--from", f"{name}=={version}", name, "--version")
+        for name, version in (("zizmor", "1.31.1"), ("checkov", "3.3.30"))
+        if name in security
+    ]
     assert attested == ([tmp_path] if install_status == 0 else [])
     assert {file: file.read_bytes() for file in before} == before
 

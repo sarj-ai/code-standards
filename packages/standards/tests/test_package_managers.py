@@ -527,7 +527,7 @@ def test_pnpm_workspace_flow_overrides_fail_without_duplicate_keys(tmp_path: Pat
     assert workspace.read_text(encoding="utf-8") == flow
 
 
-def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
+def test_init_omits_unused_yarn_override_container(tmp_path: Path) -> None:
     _project(tmp_path, "yarn.lock", {"name": "web", "packageManager": "yarn@4.15.0"})
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
@@ -535,8 +535,7 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     written = manifest.as_table(parsed)
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
-    resolutions = manifest.table_field(written, "resolutions")
-    assert resolutions == {}
+    assert "resolutions" not in written
     assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
 
 

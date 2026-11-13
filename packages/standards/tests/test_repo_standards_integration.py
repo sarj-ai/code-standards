@@ -675,6 +675,7 @@ def test_selected_adoption_reports_missing_manifest_when_worktree_marker_is_dele
 
 
 _JAVASCRIPT_RULE = "repository/artifacts/untyped-javascript"
+_OPERATIONAL_TEST_RULE = "repository/artifacts/operational-script-tests"
 _LOCAL_RESIDUE_RULE = "repository/artifacts/local-residue"
 
 
@@ -724,10 +725,11 @@ def _typed_policy_repository(
 def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], *, staged: bool, include_warnings: bool
 ) -> None:
-    _typed_policy_repository(tmp_path, include_warnings=include_warnings)
-    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    _typed_policy_repository(tmp_path, include_warnings=include_warnings, rule_id=_OPERATIONAL_TEST_RULE)
+    (tmp_path / ".github/scripts").mkdir(parents=True)
+    (tmp_path / ".github/scripts/app.test.mts").write_text("export {};\n", encoding="utf-8")
     if staged:
-        subprocess.run(("git", "add", "tool.mjs"), cwd=tmp_path, check=True)
+        subprocess.run(("git", "add", ".github/scripts/app.test.mts"), cwd=tmp_path, check=True)
     else:
         _commit(tmp_path)
 
@@ -737,7 +739,7 @@ def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
     assert report.completion.value == "complete"
     assert report.issues == ()
     assert len(report.diagnostics) == 1
-    assert report.diagnostics[0].rule_id == _JAVASCRIPT_RULE
+    assert report.diagnostics[0].rule_id == _OPERATIONAL_TEST_RULE
     assert report.diagnostics[0].severity.value == "warning"
     native = next(tool for tool in report.tools if tool.name == "repo-standards")
     assert native.policy_failed is include_warnings
@@ -751,13 +753,13 @@ def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
     if staged:
         arguments.append("--staged")
     else:
-        arguments.append("tool.mjs")
+        arguments.append(".github/scripts/app.test.mts")
     assert main(arguments) == int(include_warnings)
     if staged:
         capsys.readouterr()
         assert main(["--root", str(tmp_path), "check", "--staged"]) == int(include_warnings)
         output = capsys.readouterr().out
-        assert _JAVASCRIPT_RULE in output
+        assert _OPERATIONAL_TEST_RULE in output
         assert ("retry the commit" in output) is include_warnings
 
 
@@ -830,8 +832,11 @@ def test_local_residue_warning_survives_canonical_routing_for_non_source_extensi
 def test_warning_ratchet_marker_uses_exact_selected_git_baseline(
     tmp_path: Path, *, staged: bool, selected_marker: bool
 ) -> None:
-    baseline = _typed_policy_repository(tmp_path, include_warnings=not selected_marker if staged else selected_marker)
-    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    baseline = _typed_policy_repository(
+        tmp_path, include_warnings=not selected_marker if staged else selected_marker, rule_id=_OPERATIONAL_TEST_RULE
+    )
+    (tmp_path / ".github/scripts").mkdir(parents=True)
+    (tmp_path / ".github/scripts/app.test.mts").write_text("export {};\n", encoding="utf-8")
     _commit(tmp_path)
     contents = adoption_manifest.as_table(parse_json(baseline.read_text(encoding="utf-8")))
     contents["include_warnings"] = selected_marker

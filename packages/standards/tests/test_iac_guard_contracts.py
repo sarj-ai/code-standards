@@ -11,6 +11,7 @@ from sarj_iac_lint.guard_contracts import GuardContracts, contracts_for_source, 
 from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks
 
 from sarj_standards.api import AnalysisMode, Standards
+from sarj_standards.libs.adoption import devops
 from sarj_standards.libs.adoption.manifest import Manifest, as_table, load
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.analysis import analyze as analyze_core
@@ -126,6 +127,21 @@ def guard_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _GuardFixt
 
 def _configuration() -> str:
     return '[iac.no-terraform-guard-blocks]\ncontracts = ".sarj-terraform-guards.json"\n'
+
+
+def test_tools_setup_rejects_invalid_guard_provenance_before_installation(
+    guard_adapter: _GuardFixture,
+) -> None:
+    root = guard_adapter.adapter.root
+    (root / ".sarj-standards.toml").write_text(
+        Manifest(
+            version="9.4.5", configs=(), python_dest=".", typescript_dest=".", terraform_guard_contracts=CONTRACT_PATH
+        ).render()
+    )
+    guard_adapter.state.original = _ORIGINAL.replace("condition = var.approved", "condition = true")
+
+    with pytest.raises(ValueError, match="immutable original source"):
+        devops.setup_tools_only(root)
 
 
 def test_guard_contract_manifest_roundtrip(tmp_path: Path) -> None:

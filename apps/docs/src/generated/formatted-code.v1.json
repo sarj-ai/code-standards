@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "51064e1da4012112bc9701d7e05c759c09e179902cb5d6c8b9a6c9d7cabb1fc4",
-  "cliSha256": "7f954de8d3b9398c4e671923b80aca6e29bca30bf50a101d9bb977b9cda1cf55",
+  "catalogSha256": "f0193c84f65ea0354e49ee9401b81d693f7093e10db69e89794fbcb5f4e1e0d4",
+  "cliSha256": "2698ce619c3ce9a0603f88ae44a8854948b7ed0162da193fc899cc5865ca70ed",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1495,7 +1495,7 @@
           "id": "resource-precondition",
           "outcome": "reject",
           "scenarioId": "resource-lifecycle",
-          "title": "Move resource preconditions to deployment preflight"
+          "title": "Review resource preconditions with their existing enforcement owner"
         },
         {
           "expectedCount": 0,
@@ -14804,6 +14804,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-magic-arithmetic": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "PCM16_SCALE = 32_768\n\n\ndef normalize(sample):\n    return sample / PCM16_SCALE\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "declared-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The contract is explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def normalize(sample):\n    return sample / 32768\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "undeclared-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The contract is implicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-mocked-pydantic-value-object": {
       "examples": [
         {
@@ -17259,6 +17294,46 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:numeric-literal-separators": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "RATE = 16_000\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "declared-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The contract is explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "RATE = 16000\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "RATE = 16_000\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "undeclared-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The contract is implicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:opaque-parametrize-case-needs-id": {
       "examples": [
         {
@@ -17920,6 +17995,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Only the email variant requires an address; pickup preserves its optional address"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-explicit-class-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from httpx import AsyncClient\nfrom typing import Protocol\n\n\nclass ExecutionPort(Protocol):\n    def run(self): ...\n    def cancel(self): ...\n\n\nclass Execution(ExecutionPort):\n    def __init__(self, client: AsyncClient, state):\n        self.client = client\n        self.state = state\n        self.cancelled = False\n\n    def run(self):\n        return self.client.send(self.state)\n\n    def cancel(self):\n        self.state = None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "declared-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The contract is explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from httpx import AsyncClient\n\n\nclass Execution:\n    def __init__(self, client: AsyncClient, state):\n        self.client = client\n        self.state = state\n        self.cancelled = False\n\n    def run(self):\n        return self.client.send(self.state)\n\n    def cancel(self):\n        self.state = None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "undeclared-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The contract is implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -18907,6 +19017,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-nominal-mapping-keys": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import TypedDict\n\n\nclass Timings(TypedDict):\n    total: float\n\n\nclass Report:\n    timings: Timings\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "declared-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The contract is explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Report:\n    timings: dict[str, float]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "undeclared-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The contract is implicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-non-nullable-collection": {
       "examples": [
         {
@@ -19008,6 +19153,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One or-pattern owns the shared body"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-outcome-variants": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass AudioResult(BaseModel):\n    passed: bool = False\n    error: str | None = None\n    value: bytes | None = None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "nullable-outcome-record",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A nullable error and success flag admit contradictory outcomes"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass RunSuccess(BaseModel):\n    passed: Literal[True] = True\n    value: bytes\n\n\nclass RunError(BaseModel):\n    passed: Literal[False] = False\n    error: str\n\n\ntype RunResult = RunSuccess | RunError\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "separate-outcome-variants",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Success and error variants have non-null payloads"
         }
       ],
       "optionsSchemaSource": null
@@ -20186,6 +20366,66 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The field retains its domain type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, PositiveFloat\n\n\nclass Audio(BaseModel):\n    duration_seconds: PositiveFloat\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "positive-model-measurement",
+          "outcome": "accept",
+          "scenarioId": "numeric-model-domain",
+          "title": "The model declares a positive measurement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    voice: str = \"voice_a\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "raw-token-default",
+          "outcome": "reject",
+          "scenarioId": "token-default-domain",
+          "title": "A raw token default does not declare its domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from enum import StrEnum\nfrom pydantic_settings import BaseSettings\n\n\nclass Voice(StrEnum):\n    MAIN = \"voice_a\"\n\n\nclass Settings(BaseSettings):\n    voice: Voice = Voice.MAIN\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "typed-token-default",
+          "outcome": "accept",
+          "scenarioId": "token-default-domain",
+          "title": "A closed token default retains its enum domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Audio(BaseModel):\n    duration_seconds: float\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "unbounded-model-measurement",
+          "outcome": "reject",
+          "scenarioId": "numeric-model-domain",
+          "title": "A measurement has no declared numeric domain"
         }
       ],
       "optionsSchemaSource": null

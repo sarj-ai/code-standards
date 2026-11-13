@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from typing import TYPE_CHECKING, Unpack
@@ -119,6 +120,54 @@ def test_canonical_analysis_routes_the_repository_only_once(
 
     assert report.conclusion is api.Conclusion.PASSED
     assert len(routed) == 1
+
+
+@pytest.mark.parametrize(
+    ("budget", "jobs", "cpus", "expected"),
+    [
+        pytest.param("2", 2, 14, 2, id="shared-budget"),
+        pytest.param("20", 2, 14, 14, id="cpu-limit"),
+        pytest.param(None, 2, 14, 14, id="standalone"),
+        pytest.param("2", 1, 14, 1, id="explicit-serial"),
+        pytest.param("2", 2, None, 1, id="unknown-cpu-count"),
+        pytest.param("", 2, 14, 1, id="empty-budget"),
+        pytest.param("invalid", 2, 14, 1, id="invalid-budget"),
+        pytest.param("0", 2, 14, 1, id="zero-budget"),
+        pytest.param("-2", 2, 14, 1, id="negative-budget"),
+    ],
+)
+def test_native_python_analysis_respects_shared_worker_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    budget: str | None,
+    jobs: int,
+    cpus: int | None,
+    expected: int,
+) -> None:
+    (tmp_path / "service.py").write_text("value = 1\n", encoding="utf-8")
+    if budget is None:
+        monkeypatch.delenv("SARJ_LOCAL_CHECK_WORKERS", raising=False)
+    else:
+        monkeypatch.setenv("SARJ_LOCAL_CHECK_WORKERS", budget)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- control the CPU lookup used by worker dispatch.
+        os, "process_cpu_count", lambda: cpus
+    )
+    observed: list[int] = []
+
+    def native(_paths: Sequence[str], **kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
+        assert "python_jobs" in kwargs
+        observed.append(kwargs["python_jobs"])
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the real API's native worker dispatch.
+        api, "analyze_paths", native
+    )
+
+    report = api.Standards(tmp_path).analyze(["service.py"], jobs=jobs)
+
+    assert report.conclusion is api.Conclusion.PASSED
+    assert observed == [expected]
 
 
 @pytest.mark.parametrize("name", ["eslint.strict.mjs", "eslint.strict.ts"])

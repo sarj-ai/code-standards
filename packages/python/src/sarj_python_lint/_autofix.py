@@ -85,6 +85,7 @@ _CONSTANT_TRUE_DEPTH_LIMIT = 32
 _INERT_DEFAULT_NODE_LIMIT: Final = 128
 # Bound accepted revisions; each rule still owns its work and replacement size.
 _MAX_FIX_PASSES: Final = 256
+_TRIPLE_QUOTE_LENGTH: Final = 3
 _PURE_STRING_TRANSFORMS: Final[dict[str, str]] = {
     "strip": "stripped_value",
     "lower": "lowered_value",
@@ -451,7 +452,7 @@ def _strict_end_literal(literal: str) -> str | None:
         return None
     prefix = literal[: len(literal) - len(literal.lstrip("rRuU"))]
     quote = literal[len(prefix) : len(prefix) + 1]
-    if quote not in {"'", '"'} or literal[len(prefix) :].startswith(quote * 3):
+    if quote not in {"'", '"'} or literal[len(prefix) :].startswith(quote * _TRIPLE_QUOTE_LENGTH):
         return None
     ending = "\\Z" if "r" in prefix.lower() else "\\\\Z"
     return literal[:-2] + ending + quote
@@ -472,6 +473,12 @@ def _sql_alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 def _alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     if not diagnostic.fixes:
         return source.aliases.fixes(diagnostic)
+    return _native_fix(source, diagnostic)
+
+
+def _native_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+    if not diagnostic.fixes:
+        return []
     validated = apply_native_fixes(source.text, diagnostic.fixes)
     edits = [
         TextEdit(
@@ -483,7 +490,7 @@ def _alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
         for edit in fix.edits
     ]
     if apply_edits(source.text, edits) != validated:
-        msg = "native alias fix coordinates differ from contract edits"
+        msg = "native fix coordinates differ from contract edits"
         raise ValueError(msg)
     return edits
 
@@ -1464,6 +1471,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ526": _declared_testing_fix,
     "SARJ528": _declared_contract_fix,
     "SARJ531": _alias_fix,
+    "SARJ567": _native_fix,
     "SARJ477": _parameter_fix,
     "SARJ488": _exception_fix,
     "SARJ504": _jwt_fix,
@@ -1492,8 +1500,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     if any(character in source for character in "\v\f\x1c\x1d\x1e\x85\u2028\u2029") or "\r" in source.replace(
         "\r\n", ""
     ):
-        # Only the closed alias builder owns aligned physical-line buffers and token coordinates here.
-        rules = [rule for rule in rules if rule.code == "SARJ531"]
+        # These contract-backed builders use aligned physical-line buffers and token coordinates.
+        rules = [rule for rule in rules if rule.code in {"SARJ531", "SARJ567"}]
     seen: set[bytes] = set()
     applied_codes: set[str] = set()
     passes = 0
