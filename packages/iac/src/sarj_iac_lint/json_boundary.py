@@ -2,7 +2,10 @@ import json
 from typing import TypeIs
 
 
-def parse_json(text: str) -> object:
+type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
+
+
+def parse_json(text: str) -> JsonValue:
     return json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib parser boundary.
 
 
