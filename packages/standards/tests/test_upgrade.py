@@ -34,6 +34,8 @@ from sarj_standards.libs.json_boundary import parse_json
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+    from pydantic import JsonValue
+
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
 
@@ -175,6 +177,79 @@ def test_preserved_update_accepts_a_provenance_only_diagnostic_baseline_refresh(
     assert path.read_bytes() != before
     assert baseline.provenance_only_change(before, path.read_bytes())
     assert f'"bundleVersion": "{manifest.adopted_version()}"' in path.read_text()
+
+
+def _adopt_repository_baseline(root: Path) -> Path:
+    configured = b'repository_id = "fixture"\ncomponents = []\n'
+    path = root / repository_baseline.PATH
+    path.parent.mkdir(exist_ok=True)
+    (path.parent / "repository.toml").write_bytes(configured)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "repository_id": "fixture",
+                "policy": "sarj",
+                "policy_version": 35,
+                "scope_digest": scope_digest(parse_manifest_bytes(configured)),
+                "include_warnings": True,
+                "fingerprints": [],
+            }
+        )
+        + "\n"
+    )
+    path.chmod(0o640)
+    return path
+
+
+def test_preserved_update_accepts_reviewed_repository_policy_metadata(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    path = _adopt_repository_baseline(tmp_path)
+    before = path.read_bytes()
+
+    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 0
+    assert path.read_bytes() == repository_baseline.migrate(
+        before,
+        (path.parent / "repository.toml").read_bytes(),
+        target_policy_version=SarjPolicy.policy_version,
+    )
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert _main(["--root", str(tmp_path), "update", "--offline", "--preserve-baselines"]) == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("fingerprints", ["a" * 64]),
+        ("include_warnings", False),
+        ("repository_id", "another-repository"),
+        ("policy", "another-policy"),
+        ("scope_digest", "f" * 64),
+        ("schema_version", 3),
+        ("policy_version", 37),
+        ("policy_version", 34),
+        ("budget", 1),
+    ],
+)
+def test_preserved_update_refuses_unreviewed_repository_baseline_changes(
+    tmp_path: Path, field: str, value: JsonValue
+) -> None:
+    _outdated_python_repo(tmp_path)
+    path = _adopt_repository_baseline(tmp_path)
+    plan = upgrade.build_plan(tmp_path)
+    expected = dict(plan.scaffold_plan.writes)[path]
+    changed = parse_json(expected)
+    assert isinstance(changed, dict)
+    changed[field] = value
+    plan.scaffold_plan.writes = [
+        (target, json.dumps(changed) + "\n" if target == path else contents)
+        for target, contents in plan.scaffold_plan.writes
+    ]
+    before = {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()}
+
+    assert path in upgrade.baseline_and_suppression_changes(plan)
+    assert upgrade.apply(plan, install=False, preserve_baselines=True) == 2
+    assert {item: (item.read_bytes(), item.stat().st_mode) for item in tmp_path.rglob("*") if item.is_file()} == before
 
 
 @pytest.mark.parametrize(
