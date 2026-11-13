@@ -25,7 +25,9 @@ def test_registry_routes_only_the_selected_consumer_to_an_allowed_host(tmp_path:
     path.write_text(REGISTRY + f'workflow_runner = "{runner}"\n')
 
     consumer = rollout.load_registry(path)[0]
-    matrix = rollout.pending_matrix((rollout.Outcome(consumer, rollout.OutcomeState.MISSING),))
+    matrix = rollout.pending_matrix(
+        (rollout.Outcome(consumer, rollout.RolloutMissing("managed rollout pull request absent")),)
+    )
 
     assert consumer.workflow_runner == runner
     assert consumer.requires_approval
@@ -60,9 +62,16 @@ def test_runner_opt_in_keeps_approval_and_wave_barriers(tmp_path: Path) -> None:
     path.write_text(REGISTRY + 'workflow_runner = "blacksmith-4vcpu-ubuntu-2404"\n')
     consumer = rollout.load_registry(path)[0]
 
-    assert rollout.pending_matrix((rollout.Outcome(consumer, rollout.OutcomeState.PR_OPEN),)) == []
-    assert rollout.pending_matrix((rollout.Outcome(consumer, rollout.OutcomeState.ALREADY_CURRENT),)) == []
     assert (
-        rollout.pending_matrix((rollout.Outcome(consumer, rollout.OutcomeState.BLOCKED, detail="owner approval"),))
+        rollout.pending_matrix(
+            (
+                rollout.Outcome(
+                    consumer,
+                    rollout.PullRequestOpen(rollout.pull_request_url("https://github.com/example/consumer/pull/1")),
+                ),
+            )
+        )
         == []
     )
+    assert rollout.pending_matrix((rollout.Outcome(consumer, rollout.AlreadyCurrent()),)) == []
+    assert rollout.pending_matrix((rollout.Outcome(consumer, rollout.RolloutBlocked("owner approval")),)) == []

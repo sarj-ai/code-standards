@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "repository": "sarj-ai/code-standards",
+  "scope": "Core adoption, verification, artifact/release and rollout coordination, shared Repo Standards consumption, and discovered parser/corpus state. Each listed model has one authoritative implementation; retained protocols and external ownership exceptions are recorded below.",
+  "tables": {
+    "ownedApplicationTables": [],
+    "decision": "No database drivers or executed DDL in maintained Python packages; no TypeScript SQLite imports; documentation Worker binds ASSETS only. SQL examples are analyzer fixtures, not application tables. No migration is required for this repository."
+  },
+  "machines": [
+    {
+      "id": "retired-directives",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py",
+      "old": "state string plus optional match, tokens and reason",
+      "replacement": "NoDirective | AmbiguousDirective | ValidDirective(required nonempty tokens, match, reason)",
+      "eventsAndCommands": "parse and rewrite",
+      "guardsAndEffects": "Ambiguous directives never authorize rewrites; token kind precedes punctuation interpretation",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "javascript-stack",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py",
+      "old": "parallel depth/closing stack and loosely typed frames",
+      "replacement": "JavaScriptGroup | JavaScriptObject; one authoritative frame stack",
+      "eventsAndCommands": "open/close delimiter, punctuation, quoted token",
+      "guardsAndEffects": "Quoted tokens cannot mutate grammar depth; preserve wrappers, JSX refusal and config ownership",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "quote-modes",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py",
+      "old": "open quote strings and flags",
+      "replacement": "separate closed JavaScript and HCL quote enums",
+      "eventsAndCommands": "quote, escape, newline, end of input",
+      "guardsAndEffects": "Preserve different language escaping and incomplete-input refusal",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "scaffold-json",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+      "old": "(document?, error?)",
+      "replacement": "ParsedJsonObject | InvalidJsonObject",
+      "eventsAndCommands": "parse existing pyright configuration",
+      "guardsAndEffects": "No write plan from malformed or nonobject JSON",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "hook-migration",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+      "old": "(migrated?, error?) including ambiguous both-empty tuple",
+      "replacement": "NoOfficialHook | RejectedHookMigration | MigratedHook",
+      "eventsAndCommands": "inspect official hook block and plan replacement",
+      "guardsAndEffects": "Only validated official blocks migrate; retain custom blocks, indentation and line endings",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "file-snapshots",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/transaction.py",
+      "old": "nullable bytes, mode and group bag",
+      "replacement": "MissingFile | ManagedFile(bytes,mode) | SourceFile(bytes,mode,group)",
+      "eventsAndCommands": "capture and source validation",
+      "guardsAndEffects": "Reject symlinks, hardlinks, outside-root and missing source targets",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "capture-ownership",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/transaction.py",
+      "old": "explicit_writes_only and source_mode booleans",
+      "replacement": "CaptureMode MANAGED | EXPLICIT | SOURCE",
+      "eventsAndCommands": "capture, require_owned_writes, allow_installer_mutations",
+      "guardsAndEffects": "Installer delegation cannot release source ownership or pending writes",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "file-publication",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/transaction.py",
+      "old": "before/written/pending maps plus receipt-presence flags",
+      "replacement": "Captured | Published | Writing(previous,intended) | Released(previous)",
+      "eventsAndCommands": "track, publish intent, atomic write, acknowledge, release",
+      "guardsAndEffects": "Intent precedes side effect; receipt follows effect; uncertain publication preserves Writing and prior receipt",
+      "recovery": "A crash between intent and receipt leaves Writing, not a fabricated non-action. SourceChanged restores only the known prior receipt; other interruptions preserve uncertainty for guarded rollback."
+    },
+    {
+      "id": "rollback",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/transaction.py",
+      "old": "repeated snapshot restoration without explicit per-path completion",
+      "replacement": "ACTIVE | RECOVERING | Complete; each acknowledged path becomes Released",
+      "eventsAndCommands": "begin recovery, decide restore, restore, acknowledge, retry",
+      "guardsAndEffects": "CAS on captured bytes/mode/group; retry only unresolved paths and never overwrite later human edits",
+      "recovery": "Persisted files are compared to captured and published bytes/mode/group. Released paths are never restored again. Partial recovery retries unresolved paths; completed recovery is an idempotent no-op."
+    },
+    {
+      "id": "setup-result",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/service.py",
+      "old": "status/failure/sync/error optional-field bag",
+      "replacement": "InitSucceeded | InitSyncFailed | InitInstallFailed | InitApplyFailed | InitInterrupted",
+      "eventsAndCommands": "apply scaffold, sync, install, interrupt, recover",
+      "guardsAndEffects": "Successful sync required for success; retain rollback and cleanup failure evidence; status130 remains interruption",
+      "recovery": "Interruption remains exit130. Rollback and cleanup failures remain attached to the specific failure result; cleanup cannot convert a failed sync/install into success."
+    },
+    {
+      "id": "tested-artifact",
+      "source": "packages/standards/src/sarj_standards/libs/release/ci_artifacts.py",
+      "old": "waiting boolean plus optional artifact",
+      "replacement": "AwaitingArtifact | FreshValidationRequired | VerifiedArtifact(required source/run/attempt/repository/artifact)",
+      "eventsAndCommands": "lookup job, select artifact, download, verify current attempt",
+      "guardsAndEffects": "Strict nonbool positive IDs and complete counts; exact workflow, repository, source and explicit job attempt",
+      "recovery": "Re-read the exact provider run/attempt before reuse. Download and extraction stay private until verification; missing, failed, skipped, changed or ambiguous proof selects fresh canonical verification."
+    },
+    {
+      "id": "artifact-publication",
+      "source": "packages/standards/src/sarj_standards/libs/release/ci_artifacts.py",
+      "old": "extract before final provider identity check",
+      "replacement": "private staging followed by final identity check and destination publication",
+      "eventsAndCommands": "download, validate archive, re-read run, copy verified payload",
+      "guardsAndEffects": "Digest, member limits, traversal and source markers verified; current-attempt changes cannot publish files",
+      "recovery": "Re-read the exact provider run/attempt before reuse. Download and extraction stay private until verification; missing, failed, skipped, changed or ambiguous proof selects fresh canonical verification."
+    },
+    {
+      "id": "reviewed-analysis",
+      "source": "packages/standards/src/sarj_standards/libs/release/reviewed_analysis.py",
+      "old": "source_run? plus checks tuple/reason; files left after rejected rerun",
+      "replacement": "FreshAnalysis | VerifiedReviewedAnalysis(required run/attempt/source/tree/base, nonempty checks)",
+      "eventsAndCommands": "find merged PR, verify certificates, re-read attempt, publish",
+      "guardsAndEffects": "Final exact run observation precedes destination writes; strict unique finite JSON; existing evidence is never overwritten",
+      "recovery": "Re-read the exact provider run/attempt before reuse. Download and extraction stay private until verification; missing, failed, skipped, changed or ambiguous proof selects fresh canonical verification."
+    },
+    {
+      "id": "publication-age",
+      "source": "packages/standards/src/sarj_standards/libs/release/release_age.py",
+      "old": "available boolean plus optional publication datetime",
+      "replacement": "MissingPublication UNAVAILABLE | INVALID, or KnownPublication(aware datetime)",
+      "eventsAndCommands": "read registry publication and compare minimum age",
+      "guardsAndEffects": "Reject naive dates and nonpositive/noninteger concurrency; unknown age remains distinct from unavailable metadata",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "rollout-command",
+      "source": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "old": "mutable parser bag consumed directly by execution",
+      "replacement": "VerifyPublishedRelease | PlanRollout | InspectRollout | ApplyRollout | ReconcileRollout; ExactVersion | LatestVersion",
+      "eventsAndCommands": "decode CLI input, validate, execute selected command",
+      "guardsAndEffects": "Only reconciliation can select latest; reject invalid timeout/concurrency/version before registry reads or commands; exhaustive command match",
+      "recovery": "Reconciliation re-reads current consumer refs and managed PR provenance. Ref uncertainty holds publication; no duplicate managed PR is inferred from a transient empty read. Preserve baseline snapshots and exact push leases."
+    },
+    {
+      "id": "rollout-branch",
+      "source": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "old": "branch with independently nullable previous SHA/tree/base",
+      "replacement": "NewBranch | ExistingManagedBranch(required previous SHA,tree,base)",
+      "eventsAndCommands": "read remote ref, fetch provenance, prepare, compare tree, push with lease",
+      "guardsAndEffects": "Remote errors are not absence; preserve single-parent/trailer/tree/ancestry/downgrade checks and exact force-with-lease",
+      "recovery": "Reconciliation re-reads current consumer refs and managed PR provenance. Ref uncertainty holds publication; no duplicate managed PR is inferred from a transient empty read. Preserve baseline snapshots and exact push leases."
+    },
+    {
+      "id": "rollout-result",
+      "source": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "old": "seven status values plus default empty URL/detail",
+      "replacement": "AlreadyCurrent | RolloutBlocked | RolloutFailed | RolloutMerged | RolloutMissing | PullRequestOpen | WouldCreateBranch",
+      "eventsAndCommands": "observe PR, hold, fail, merge, refresh, preview",
+      "guardsAndEffects": "Open/merged results require valid GitHub PR URLs; known old PRs remain attached to blocked/missing results; elapsed timing is independent Only an explicit empty provider array proves PR absence; malformed/ambiguous provider JSON cannot authorize creation.",
+      "recovery": "Reconciliation re-reads current consumer refs and managed PR provenance. Ref uncertainty holds publication; no duplicate managed PR is inferred from a transient empty read. Preserve baseline snapshots and exact push leases."
+    },
+    {
+      "id": "rollout-baseline",
+      "source": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "old": "independently nullable baseline path/expected bytes",
+      "replacement": "NoDeclaredBaseline | MissingBaseline(path) | ExistingBaseline(path,bytes)",
+      "eventsAndCommands": "bootstrap, snapshot, optionally generate, verify immutable baseline",
+      "guardsAndEffects": "Preserve baseline path, bytes, mode and group; failed bootstrap cannot refresh a baseline",
+      "recovery": "Reconciliation re-reads current consumer refs and managed PR provenance. Ref uncertainty holds publication; no duplicate managed PR is inferred from a transient empty read. Preserve baseline snapshots and exact push leases."
+    },
+    {
+      "id": "capture-budget",
+      "source": "packages/standards/src/sarj_standards/libs/release/verification_process.py",
+      "old": "remaining/exceeded/retaining flag combinations",
+      "replacement": "RetainingBytes(remaining) | TailRetention.CANCELLED | OVERFLOW",
+      "eventsAndCommands": "retain chunk, cancel retention, overflow, collect tails",
+      "guardsAndEffects": "Combined stdout/stderr cap, incremental UTF-8 decoding and bounded failure tails; overflow cannot be cleared by cleanup",
+      "recovery": "Cancel or time out the owned worker, retain bounded failure output, terminate only an unreaped owned process group, reap the process and join owned readers. Unknown base observation cannot qualify publication."
+    },
+    {
+      "id": "base-watch-lifecycle",
+      "source": "packages/standards/src/sarj_standards/libs/release/verification_process.py",
+      "old": "optional thread and stopped flag",
+      "replacement": "InactiveWatch NEW | CLOSED, or RunningWatch(required thread)",
+      "eventsAndCommands": "enter, start, watch, close, join",
+      "guardsAndEffects": "No context re-entry or command after close; direct bounded execution before context remains valid; never signal a reaped leader",
+      "recovery": "Cancel or time out the owned worker, retain bounded failure output, terminate only an unreaped owned process group, reap the process and join owned readers. Unknown base observation cannot qualify publication."
+    },
+    {
+      "id": "base-observation",
+      "source": "packages/standards/src/sarj_standards/libs/release/verification_process.py",
+      "old": "optional moved_to SHA interpreted as stability",
+      "replacement": "UNOBSERVED | UNCHANGED | UNAVAILABLE | MovedBase(required revision)",
+      "eventsAndCommands": "read base, observe change, cancel worker",
+      "guardsAndEffects": "Unavailable observation proves neither stability nor movement; preserve independent final exact-base publication guard",
+      "recovery": "Cancel or time out the owned worker, retain bounded failure output, terminate only an unreaped owned process group, reap the process and join owned readers. Unknown base observation cannot qualify publication."
+    },
+    {
+      "id": "markdown-scan",
+      "source": "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py",
+      "old": "in_fence/fence/in_html/start/parts combinations",
+      "replacement": "MarkdownText | MarkdownFence BACKTICK/TILDE | OpenHtmlComment(required start,parts)",
+      "eventsAndCommands": "open/close fence, open/continue/close HTML comment, EOF",
+      "guardsAndEffects": "Fence markers inside HTML stay comment content; opposite fence cannot close current fence; preserve unfinished input evidence",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "iac-preparation",
+      "source": "packages/standards/src/sarj_standards/libs/linting/analysis.py",
+      "old": "(contracts?,report?) including both absent or present",
+      "replacement": "NoGuardContracts | GuardContractsReady(required contracts) | GuardContractsFailed(required issue)",
+      "eventsAndCommands": "read immutable contracts, validate, prepare or fail",
+      "guardsAndEffects": "Failure report is derived from required failure evidence; no successful analysis from invalid contracts",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "changed-line-scope",
+      "source": "packages/standards/src/sarj_standards/libs/diagnostics/baseline.py",
+      "old": "paths/lines plus failed boolean",
+      "replacement": "KnownChangedLines(required paths/lines) | UnavailableChangedLines",
+      "eventsAndCommands": "query names and patch, validate immutable input, use scope",
+      "guardsAndEffects": "Only successful scope exposes paths/lines; failed/missing Git information remains conservative and cannot discount findings",
+      "recovery": "A failed Git lookup produces UnavailableChangedLines; every potentially affected diagnostic stays actionable. No empty successful diff is fabricated."
+    },
+    {
+      "id": "corpus-verification",
+      "source": "packages/standards/src/sarj_standards/libs/corpus/snapshot.py",
+      "old": "frozen snapshot mutated through object.__setattr__(verified=True)",
+      "replacement": "CorpusSnapshot observation | VerifiedCorpusSnapshot evidence; VerifiedInventory and EvaluationEvidence require verified type",
+      "eventsAndCommands": "hash inventory, verify digest/revision, consume qualified evidence",
+      "guardsAndEffects": "Verify immutable content and revision; strict count/privacy boundary; preserve private redaction and refuse mutation during evaluation",
+      "recovery": "Recompute the selected inventory, digest and Git revision. Drift or unreadable evidence refuses evaluation; observed snapshots cannot satisfy the verified-evidence type."
+    },
+    {
+      "id": "corpus-output",
+      "source": "packages/standards/src/sarj_standards/libs/rules/corpus_runner.py",
+      "old": "retained_bytes and truncated duplicated stored bytes/counts",
+      "replacement": "one byte payload plus total_bytes and lines; retention and truncation derived",
+      "eventsAndCommands": "drain stdout/stderr, cap, report or fail",
+      "guardsAndEffects": "Truncation is exactly total_bytes > retained length; output over cap never qualifies a batch",
+      "recovery": "Cancel or time out the owned worker, retain bounded failure output, terminate only an unreaped owned process group, reap the process and join owned readers. Unknown base observation cannot qualify publication."
+    },
+    {
+      "id": "docker-entrypoint",
+      "source": "packages/standards/src/sarj_standards/libs/linting/devops_programs.py",
+      "old": "optional entrypoint plus entrypoint_shell/entrypoint_known booleans",
+      "replacement": "UNKNOWN | CLEARED | ShellEntrypoint(block) | ExecEntrypoint(block)",
+      "eventsAndCommands": "FROM, ENTRYPOINT, CMD, SHELL, HEALTHCHECK, ONBUILD",
+      "guardsAndEffects": "Unknown image defaults do not become known absence; preserve inherited CMD clearing, shell-vs-exec composition and stage inheritance; exhaustive handling",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "publication-manifest",
+      "source": "packages/standards/src/sarj_standards/libs/release/tags.py",
+      "old": "independently optional manifest path and format",
+      "replacement": "optional ManifestSource(required path,format)",
+      "eventsAndCommands": "resolve release target and sibling publications",
+      "guardsAndEffects": "A publication cannot declare half a manifest location; immutable tag and registry guards unchanged",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "archive-identity",
+      "source": "packages/standards/src/sarj_standards/libs/release/artifacts.py",
+      "old": "identity_verified boolean alongside member set",
+      "replacement": "validated manifest membership in one authoritative validated-member set",
+      "eventsAndCommands": "verify namespace, identity, exports and lifecycle scripts",
+      "guardsAndEffects": "Reject duplicate normalized paths, links, traversal, source maps, duplicate/nonfinite JSON and oversized metadata before qualification",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    },
+    {
+      "id": "rule-change",
+      "source": "packages/standards/src/sarj_standards/libs/repository/rule_changes.py",
+      "old": "change kind plus nullable before and after descriptors",
+      "replacement": "AddedRuleV1(required after) | RemovedRuleV1(required before) | ModifiedRuleV1(required before and after)",
+      "eventsAndCommands": "compare immutable revision inventories and emit typed delta",
+      "guardsAndEffects": "An added/removed/modified event cannot omit its required descriptor; preserve policy approvals and stable serialized V1 wire format",
+      "recovery": "This is a pure parse/analysis result, not a durable job. Recompute from the validated immutable input; malformed input is refused before any dependent write or qualification."
+    }
+  ],
+  "justifiedRetentions": [
+    {
+      "id": "native-bootstrap",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/native_bootstrap.py",
+      "reason": "Retain its dependency-free, explicitly bounded three-round mirror algorithm. Typed permanent-source errors retire a source; transient failures keep it eligible. Only a checksum-verified file is atomically renamed. No persisted retry journal or competing application source of truth exists."
+    },
+    {
+      "id": "public-diagnostic-schema",
+      "source": "packages/standards/src/sarj_standards/libs/diagnostics/models.py",
+      "reason": "AnalysisReport, ToolReport and RuleExecution already have closed enums, frozen values and centralized runtime cross-field invariants. Quantities and external tool coverage are runtime evidence; incomplete execution must retain issues and cannot qualify as success. The V1 output schema and normalized cache readers remain authoritative."
+    },
+    {
+      "id": "public-sdk-result",
+      "source": "packages/standards/src/sarj_standards/api.py",
+      "reason": "The existing frozen Status result already validates its enum and status/exit-code agreement centrally. Findings and changes are valid shared data for all six outcomes; no lifecycle writer mutates this result."
+    },
+    {
+      "id": "os-process-authority",
+      "source": "packages/standards/src/sarj_standards/libs/rules/corpus_runner.py",
+      "reason": "Use the owned Popen handle, reader-thread completion and cancellation Event as the authoritative external synchronization ports instead of duplicating OS states. Keep the session leader unreaped until inherited pipes close, refuse signaling after reap, and reap/close on failed thread startup or interruption. POSIX ownership is tested with waitid(WNOWAIT) before the real group signal."
+    },
+    {
+      "id": "external-provider-telemetry",
+      "source": "packages/standards/src/sarj_standards/libs/release/status.py",
+      "reason": "Display raw GitHub job observations without interpreting missing or unknown provider data as successful qualification. Exact source/run/attempt proofs in the qualification paths authorize reuse and publication."
+    },
+    {
+      "id": "parser-configuration-records",
+      "source": "packages/standards/src/sarj_standards/cli/main.py",
+      "reason": "Retain the Typer parsing buffer at its input boundary. Execution-specific rollout data is converted to closed requests. CheckScope request scope and resolved PR scope are independent and can both be true; React Doctor triggering and staged Git environment are independent facts, not mutually exclusive lifecycle states."
+    },
+    {
+      "id": "independent-policy-options",
+      "source": "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
+      "reason": "Keep independently validated language destinations, exclusions, baseline policies and analyzer configuration. A default root or missing optional provider fact is not a disabled/completed job. Manifest parsing and source preconditions remain required."
+    },
+    {
+      "id": "shared-analyzer-algorithms",
+      "source": "packages/standards/src/sarj_standards/libs/linting",
+      "reason": "Retain bounded AST/schema/graph walks and normalized source-coordinate records, including parser-owned partial observations. They do not own application jobs, approvals or external business effects. The shared public analyzers have consumers outside the named applications; absence from one application is not evidence that a published rule is unused."
+    }
+  ],
+  "sharedDependency": "Repo Standards 7.0.0 replaces the former nullable analysis selection/commit-result consumer assumptions; the dependency owns repository policy rather than a second Core state model."
+}

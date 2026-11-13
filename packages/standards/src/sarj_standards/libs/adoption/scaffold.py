@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import shlex
 import tomllib
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, assert_never
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -54,14 +54,39 @@ if TYPE_CHECKING:
 type _PackageValue = JsonValue | OverrideValue | dict[str, _PackageValue]
 
 
-class _JsonObjectResult(NamedTuple):
-    document: dict[str, JsonValue] | None
-    error: str | None
+@dataclass(frozen=True, slots=True)
+class _ParsedJsonObject:
+    kind: ClassVar[Literal["parsed"]] = "parsed"
+    document: dict[str, JsonValue]
 
 
-class _HookMigration(NamedTuple):
-    migrated: str | None
-    error: str | None
+@dataclass(frozen=True, slots=True)
+class _InvalidJsonObject:
+    kind: ClassVar[Literal["invalid"]] = "invalid"
+    error: str
+
+
+type _JsonObjectResult = _ParsedJsonObject | _InvalidJsonObject
+
+
+@dataclass(frozen=True, slots=True)
+class _NoOfficialHook:
+    kind: ClassVar[Literal["no-official-hook"]] = "no-official-hook"
+
+
+@dataclass(frozen=True, slots=True)
+class _RejectedHookMigration:
+    kind: ClassVar[Literal["rejected"]] = "rejected"
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class _MigratedHook:
+    kind: ClassVar[Literal["migrated"]] = "migrated"
+    source: str
+
+
+type _HookMigration = _NoOfficialHook | _RejectedHookMigration | _MigratedHook
 
 
 @dataclass(frozen=True)
@@ -1502,10 +1527,11 @@ def _plan_python_typechecker(root: Path, plan: Plan, python_target: str | None, 
 
 
 def _plan_existing_pyright(pyright: Path, plan: Plan, python_target: str | None) -> None:
-    document, error = _json_object(pyright)
-    if error is not None:
-        plan.errors.append(f"cannot safely wire {pyright}: {error}")
-    elif document is not None:
+    result = _json_object(pyright)
+    if isinstance(result, _InvalidJsonObject):
+        plan.errors.append(f"cannot safely wire {pyright}: {result.error}")
+    else:
+        document = result.document
         existing_pyright_extend = document.get("extends")
         if existing_pyright_extend not in {None, _LEGACY_PYRIGHT_POLICY_PARENT, _PYRIGHT_POLICY_PARENT}:
             plan.errors.append(
@@ -1575,11 +1601,11 @@ def _json_object(path: Path) -> _JsonObjectResult:
     try:
         parsed = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        return _JsonObjectResult(None, str(exc))
+        return _InvalidJsonObject(str(exc))
     if not isinstance(parsed, dict):
-        return _JsonObjectResult(None, "expected a JSON object")
+        return _InvalidJsonObject("expected a JSON object")
     document = dict(parsed)
-    return _JsonObjectResult(document, None)
+    return _ParsedJsonObject(document)
 
 
 def _plan_typescript(repository: Path, root: Path, plan: Plan) -> None:
@@ -1930,15 +1956,20 @@ def _plan_existing_precommit(root: Path, path: Path, block: str, plan: Plan) -> 
         plan.errors.append(f"cannot safely read {path}: {exc}")
         return
     runner_prefix = launcher.repository_command()
-    migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
-    if migration_error is not None:
-        plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
-        return
-    if migrated is not None:
-        migrated = _match_newline_style(text, migrated)
-        hooks.validate_precommit_configuration(migrated)
-        plan.writes.append((path, migrated))
-        return
+    migration = _migrate_official_remote_hook(text, runner_prefix)
+    match migration:
+        case _RejectedHookMigration():
+            plan.errors.append(f"cannot safely migrate {path}: {migration.error}")
+            return
+        case _MigratedHook():
+            migrated = _match_newline_style(text, migration.source)
+            hooks.validate_precommit_configuration(migrated)
+            plan.writes.append((path, migrated))
+            return
+        case _NoOfficialHook():
+            pass
+        case _:
+            assert_never(migration)
     custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards['\"]?\s*$", text) is not None
     owned_hook = _has_owned_hooks(text)
     if custom_legacy:
@@ -2043,21 +2074,21 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
         block for block in hooks.precommit_repo_blocks(text) if hooks.is_official_standards_repo(block.repository)
     )
     if not official:
-        return _HookMigration(None, None)
+        return _NoOfficialHook()
     for block in official:
         error = _official_hook_error(block)
         if error is not None:
-            return _HookMigration(None, error)
+            return _RejectedHookMigration(error)
     first = official[0].start
     removed = text
     for block in reversed(official):
         removed = removed[: block.start] + removed[block.end :]
     item_indents = {block.indent for block in official}
     if len(item_indents) != 1:
-        return _HookMigration(None, "official Standards repository blocks use inconsistent indentation")
+        return _RejectedHookMigration("official Standards repository blocks use inconsistent indentation")
     insertion = _precommit_check_block(runner_prefix, item_indent=item_indents.pop())
     migrated = removed[:first] + insertion + removed[first:]
-    return _HookMigration(_canonicalize_owned_hooks(migrated, runner_prefix), None)
+    return _MigratedHook(_canonicalize_owned_hooks(migrated, runner_prefix))
 
 
 def _official_hook_error(block: hooks.PrecommitRepoBlock) -> str | None:

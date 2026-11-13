@@ -145,7 +145,7 @@ def sync(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None 
     paths = (repository / _REPOSITORY_INVENTORY_PATH,)
     if python_rule_descriptors.enabled(repository):
         paths = (*paths, repository / python_rule_descriptors.DESCRIPTOR_PATH)
-    mutation = transaction.FileTransaction.capture(repository, paths, explicit_only=True)
+    mutation = transaction.FileTransaction.capture(repository, paths, mode=transaction.CaptureMode.EXPLICIT)
     try:
         return _synchronize(repository, check=False, writer=mutation.write_text)
     except BaseException:

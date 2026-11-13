@@ -488,6 +488,7 @@ def test_native_commit_fixes_the_actual_pending_index_and_preserves_index_entrie
     )
 
     assert result.returncode != 0, result.stdout + result.stderr
+    assert receipt.is_file(), result.stdout + result.stderr
     observed = parse_json(receipt.read_text())
     assert isinstance(observed, dict)
     assert observed["exit"] == 1

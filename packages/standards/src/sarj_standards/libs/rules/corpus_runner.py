@@ -9,7 +9,12 @@ import threading
 import time
 from typing import TYPE_CHECKING, Final
 
-from sarj_standards.libs.corpus.snapshot import CorpusSnapshot, selected_files, snapshot_inventory, verify_inventory
+from sarj_standards.libs.corpus.snapshot import (
+    VerifiedCorpusSnapshot,
+    selected_files,
+    snapshot_inventory,
+    verify_inventory,
+)
 
 
 if TYPE_CHECKING:
@@ -70,10 +75,16 @@ class CorpusLintError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class _StreamSummary:
     data: bytes
-    retained_bytes: int
     total_bytes: int
     lines: int
-    truncated: bool
+
+    @property
+    def retained_bytes(self) -> int:
+        return len(self.data)
+
+    @property
+    def truncated(self) -> bool:
+        return self.total_bytes > self.retained_bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +276,7 @@ def _run_process(
     stderr = process.stderr
     if stdout is None or stderr is None:  # pragma: no cover - PIPE guarantees both streams.
         process.kill()
+        process.wait()
         msg = "corpus process did not expose output pipes"
         raise OSError(msg)
 
@@ -274,24 +286,19 @@ def _run_process(
         threading.Thread(target=_drain_stream, args=(stdout, max_output_bytes, exceeded, summaries, 0), daemon=True),
         threading.Thread(target=_drain_stream, args=(stderr, max_output_bytes, exceeded, summaries, 1), daemon=True),
     )
-    for thread in threads:
-        thread.start()
     try:
-        returncode = _wait_for_process(process, exceeded, deadline, argv, timeout)
-    except subprocess.TimeoutExpired:
+        for thread in threads:
+            thread.start()
+        returncode = _wait_for_process(process, exceeded, deadline, argv, timeout, threads=threads)
+    except BaseException:
         _terminate_process_group(process)
         process.wait()
         for thread in threads:
-            thread.join()
+            if thread.ident is not None:
+                thread.join()
+        stdout.close()
+        stderr.close()
         raise
-
-    for thread in threads:
-        thread.join(max(0.0, deadline - time.monotonic()))
-    if any(thread.is_alive() for thread in threads):
-        _terminate_process_group(process)
-        for thread in threads:
-            thread.join()
-        raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
 
     stdout_summary, stderr_summary = summaries
     if stdout_summary is None or stderr_summary is None:  # pragma: no cover - threads always assign on EOF.
@@ -306,18 +313,24 @@ def _wait_for_process(
     deadline: float,
     argv: tuple[str, ...],
     timeout: timedelta,
+    *,
+    threads: tuple[threading.Thread, ...],
 ) -> int:
-    while process.poll() is None and not exceeded.is_set():
+    # Keep the session leader unreaped until its inherited pipes close, so its
+    # numeric process-group identity cannot be reused before descendant cleanup.
+    while any(thread.is_alive() for thread in threads) and not exceeded.is_set():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
-        try:
-            process.wait(timeout=min(0.05, remaining))
-        except subprocess.TimeoutExpired:
-            continue
-    if exceeded.is_set() and process.poll() is None:
+        for thread in threads:
+            thread.join(min(0.05, remaining))
+    if exceeded.is_set():
         _terminate_process_group(process)
-    return process.wait()
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    if any(thread.is_alive() for thread in threads):
+        raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
+    return process.wait(timeout=max(0.0, deadline - time.monotonic()))
 
 
 def _drain_stream(
@@ -332,7 +345,6 @@ def _drain_stream(
     total_bytes = 0
     newline_count = 0
     has_trailing_content = False
-    truncated = False
     try:
         while chunk := stream.read(_READ_SIZE):
             total_bytes += len(chunk)
@@ -343,21 +355,20 @@ def _drain_stream(
                 retained.extend(chunk[:remaining])
                 retained_bytes += min(len(chunk), remaining)
             if len(chunk) > remaining:
-                truncated = True
                 exceeded.set()
                 break
     finally:
         stream.close()
     summaries[index] = _StreamSummary(
         bytes(retained),
-        retained_bytes,
         total_bytes,
         newline_count + int(has_trailing_content),
-        truncated,
     )
 
 
 def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
+    if process.returncode is not None:
+        return
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -367,7 +378,7 @@ def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
         process.kill()
 
 
-def _assert_corpus_unchanged(source: CorpusSource, files: tuple[Path, ...], verified: CorpusSnapshot) -> None:
+def _assert_corpus_unchanged(source: CorpusSource, files: tuple[Path, ...], verified: VerifiedCorpusSnapshot) -> None:
     try:
         if selected_files(source) != files:
             msg = f"corpus {source.report_name} changed during evaluation"

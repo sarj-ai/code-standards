@@ -184,7 +184,7 @@ def fix_paths(root: Path, paths: Sequence[str], *, policy: Policy | None = None)
     grouped = runner.group_paths([str(repository / path) for path in paths], policy=effective)
     changes = _plan(repository, effective, grouped)
     mutation = transaction.FileTransaction.capture(
-        repository, tuple(change.path for change in changes), explicit_only=True, source_writes=True
+        repository, tuple(change.path for change in changes), mode=transaction.CaptureMode.SOURCE
     )
     # Validate every captured preimage before the first source write.
     for change in changes:

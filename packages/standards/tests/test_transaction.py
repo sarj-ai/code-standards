@@ -4,13 +4,13 @@ from functools import partial
 import os
 from pathlib import Path
 import stat
-from typing import Literal, override
+from typing import Literal
 
 import pytest
 from sarj_rule_contracts import SourceChangedError
 
 from sarj_standards.libs.adoption import transaction as transaction_module
-from sarj_standards.libs.adoption.transaction import FileTransaction, assert_expected, validate_targets
+from sarj_standards.libs.adoption.transaction import CaptureMode, FileTransaction, assert_expected, validate_targets
 
 
 def test_rollback_restores_file_permission_bits(tmp_path: Path) -> None:
@@ -43,6 +43,50 @@ def test_rollback_does_not_overwrite_detectable_concurrent_content(tmp_path: Pat
     assert owned.read_text(encoding="utf-8") == "concurrent edit\n"
 
 
+@pytest.mark.parametrize("mode", [CaptureMode.EXPLICIT, CaptureMode.SOURCE])
+def test_completed_rollback_retries_preserve_later_human_edits(tmp_path: Path, mode: CaptureMode) -> None:
+    owned = tmp_path / "owned.txt"
+    owned.write_bytes(b"original\n")
+    owned.chmod(0o640)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=mode)
+    captured.write_bytes(owned, b"standards\n")
+
+    assert captured.rollback().ok
+    assert owned.read_bytes() == b"original\n"
+    assert stat.S_IMODE(owned.stat().st_mode) == 0o640
+    owned.write_bytes(b"later human edit\n")
+    owned.chmod(0o600)
+
+    assert captured.rollback().ok
+    with pytest.raises(ValueError, match="recovery has begun"):
+        captured.write_bytes(owned, b"must not write\n")
+    assert owned.read_bytes() == b"later human edit\n"
+    assert stat.S_IMODE(owned.stat().st_mode) == 0o600
+
+
+def test_partial_rollback_retries_only_unresolved_files(tmp_path: Path) -> None:
+    first, second = tmp_path / "first.txt", tmp_path / "second.txt"
+    first.write_bytes(b"first original\n")
+    second.write_bytes(b"second original\n")
+    captured = FileTransaction.capture(tmp_path, (first, second), mode=CaptureMode.EXPLICIT)
+    captured.write_bytes(first, b"first standards\n")
+    captured.write_bytes(second, b"second standards\n")
+    second.write_bytes(b"concurrent edit\n")
+
+    report = captured.rollback()
+    assert len(report.issues) == 1
+    assert report.issues[0].path == second
+    assert first.read_bytes() == b"first original\n"
+    first.write_bytes(b"later first edit\n")
+    first.chmod(0o600)
+    second.write_bytes(b"second standards\n")
+
+    assert captured.rollback().ok
+    assert first.read_bytes() == b"later first edit\n"
+    assert stat.S_IMODE(first.stat().st_mode) == 0o600
+    assert second.read_bytes() == b"second original\n"
+
+
 def test_rollback_removes_only_new_empty_parent_directories(tmp_path: Path) -> None:
     generated = tmp_path / "new" / "deep" / "generated.txt"
     transaction = FileTransaction.capture(tmp_path, (generated,))
@@ -61,8 +105,8 @@ def test_rollback_reports_permission_failure_without_raising(tmp_path: Path, mon
     transaction = FileTransaction.capture(tmp_path, (owned,))
     owned.write_text("after\n", encoding="utf-8")
 
-    def denied(_root: Path, _path: Path, _contents: bytes) -> None:
-        message = "read-only filesystem"
+    def denied(_root: Path, _path: Path, _contents: bytes, *, mode: int | None = None) -> None:
+        message = f"read-only filesystem (requested mode {mode})"
         raise PermissionError(message)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- write failure injection verifies transaction rollback.
@@ -108,7 +152,7 @@ def test_rollback_restores_real_mutation_interrupted_before_receipt(
     replacement = b"after\n"
     owned.write_bytes(original)
     owned.chmod(0o640)
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.EXPLICIT)
     real_write = transaction_module.atomic_write_bytes
     real_remove = transaction_module.remove_file
     effects: list[str] = []
@@ -155,7 +199,7 @@ def test_source_rollback_restores_real_replacement_interrupted_before_receipt(
     owned.write_bytes(original)
     owned.chmod(0o640)
     group = owned.stat().st_gid
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True, source_writes=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.SOURCE)
     real_replace = Path.replace
     effects: list[Path] = []
 
@@ -191,7 +235,7 @@ def test_rejected_later_source_write_retains_receipt_and_preserves_concurrent_by
     owned.write_bytes(b"before\n")
     first = b"first\n"
     foreign = b"independent edit\n"
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True, source_writes=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.SOURCE)
     captured.write_bytes(owned, first)
     native_fsync = os.fsync
 
@@ -223,7 +267,7 @@ def test_unperformed_first_write_does_not_claim_concurrent_permissions(
     original = b"before\n"
     owned.write_bytes(original)
     owned.chmod(0o640)
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.EXPLICIT)
 
     def interrupt_before_write(_root: Path, path: Path, _contents: bytes) -> None:
         path.chmod(0o600)
@@ -248,7 +292,7 @@ def test_interrupted_later_write_retains_the_earlier_successful_receipt(
     owned = tmp_path / "owned.txt"
     original = b"before\n"
     owned.write_bytes(original)
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.EXPLICIT)
     captured.write_bytes(owned, b"first\n")
     real_write = transaction_module.atomic_write_bytes
 
@@ -275,7 +319,7 @@ def test_pending_write_preserves_a_different_concurrent_content_edit(
 ) -> None:
     owned = tmp_path / "owned.txt"
     owned.write_bytes(b"before\n")
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.EXPLICIT)
     real_write = transaction_module.atomic_write_bytes
     foreign = b"independent edit\n"
 
@@ -297,24 +341,29 @@ def test_pending_write_preserves_a_different_concurrent_content_edit(
     assert owned.read_bytes() == foreign
 
 
-def test_published_receipt_precedes_stale_pending_state(tmp_path: Path) -> None:
+def test_published_receipt_preserves_a_concurrent_edit_after_acknowledgement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     owned = tmp_path / "owned.txt"
     original = b"before\n"
     replacement = b"after\n"
     owned.write_bytes(original)
     owned.chmod(0o640)
-    captured = FileTransaction.capture(tmp_path, (owned,), explicit_only=True)
+    captured = FileTransaction.capture(tmp_path, (owned,), mode=CaptureMode.EXPLICIT)
 
-    class ConcurrentAfterReceipt(dict[Path, bytes | None]):  # ruff: ignore[subclass-builtin] -- observe the real public receipt insertion while preserving its mapping behavior.
-        @override
-        def __setitem__(self, key: Path, value: bytes | None) -> None:
-            super().__setitem__(key, value)
-            if key == owned and value == replacement:
-                owned.write_bytes(original)
-                owned.chmod(0o600)
-                raise KeyboardInterrupt
+    real_record = FileTransaction.record_write
 
-    captured.written = ConcurrentAfterReceipt()
+    def record_then_interrupt(files: FileTransaction, path: Path, contents: bytes | None) -> None:
+        real_record(files, path, contents)
+        if path == owned and contents == replacement:
+            assert files.written[path] == replacement
+            owned.write_bytes(original)
+            owned.chmod(0o600)
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interrupt after the actual receipt transition, retaining the real concurrent bytes/mode oracle.
+        FileTransaction, "record_write", record_then_interrupt
+    )
 
     with pytest.raises(KeyboardInterrupt):
         captured.write_bytes(owned, replacement)

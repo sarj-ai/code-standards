@@ -10,6 +10,7 @@ from enum import StrEnum
 from functools import partial
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -20,7 +21,7 @@ import tempfile
 import time
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard, assert_never
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NamedTuple, NewType, Protocol, TypeGuard, assert_never
 from urllib.parse import quote
 
 from packaging.version import InvalidVersion, Version
@@ -55,7 +56,7 @@ from sarj_standards.libs.adoption.configs import (
     OXLINT_SUPPRESSIONS,
 )
 from sarj_standards.libs.diagnostics import baseline as diagnostic_baseline
-from sarj_standards.libs.json_boundary import parse_json, parse_json_documents
+from sarj_standards.libs.json_boundary import parse_json, parse_json_documents, parse_unique_json
 from sarj_standards.libs.linting import directive_formatter, native_byte_bridge, oxlint, oxlint_directives
 from sarj_standards.libs.release import metadata_verification, retirement
 from sarj_standards.libs.release.verification_process import BaseWatch
@@ -282,6 +283,106 @@ class RolloutArgs:
     preserve_baselines: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class ExactVersion:
+    value: str
+
+    def __post_init__(self) -> None:
+        validate_version(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class LatestVersion:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class ConsumerSelection:
+    registry: Path
+    channel: RolloutChannel
+    consumer: str | None
+    jobs: int
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyPublishedRelease:
+    kind: ClassVar[Literal["verify-release"]] = "verify-release"
+    version: ExactVersion
+
+
+@dataclass(frozen=True, slots=True)
+class PlanRollout:
+    kind: ClassVar[Literal["plan"]] = "plan"
+    version: ExactVersion
+    selection: ConsumerSelection
+    enable_repository_rules: tuple[str, ...]
+    github_output: Path | None
+
+
+@dataclass(frozen=True, slots=True)
+class InspectRollout:
+    kind: ClassVar[Literal["status"]] = "status"
+    version: ExactVersion
+    selection: ConsumerSelection
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyRollout:
+    kind: ClassVar[Literal["apply"]] = "apply"
+    version: ExactVersion
+    selection: ConsumerSelection
+    dry_run: bool
+    preserve_baselines: bool
+    enable_repository_rules: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReconcileRollout:
+    kind: ClassVar[Literal["reconcile"]] = "reconcile"
+    version: ExactVersion | LatestVersion
+    selection: ConsumerSelection
+    dry_run: bool
+    preserve_baselines: bool
+    enable_repository_rules: ClassVar[tuple[str, ...]] = ()
+
+
+type RolloutRequest = VerifyPublishedRelease | PlanRollout | InspectRollout | ApplyRollout | ReconcileRollout
+
+
+def rollout_request(args: RolloutArgs) -> RolloutRequest:
+    if type(args.jobs) is not int or not 1 <= args.jobs <= MAX_CONCURRENT_CONSUMERS:
+        msg = "rollout jobs must be an integer within the consumer concurrency limit"
+        raise RolloutError(msg)
+    if isinstance(args.command_timeout, bool) or not math.isfinite(args.command_timeout) or args.command_timeout <= 0:
+        msg = "rollout command timeout must be finite and positive"
+        raise RolloutError(msg)
+    selection = ConsumerSelection(args.registry, args.channel, args.consumer, args.jobs)
+    if args.command is RolloutCommand.RECONCILE:
+        if args.enable_repository_rules:
+            msg = "reconcile cannot activate repository rules; use a reviewed plan or apply command"
+            raise RolloutError(msg)
+        version = LatestVersion() if args.version is None else ExactVersion(args.version)
+        return ReconcileRollout(version, selection, args.dry_run, args.preserve_baselines)
+    if args.command is None:
+        msg = "rollout command is required"
+        raise RolloutError(msg)
+    if args.version is None:
+        msg = f"{args.command.value} requires an exact published version"
+        raise RolloutError(msg)
+    exact = ExactVersion(args.version)
+    match args.command:
+        case RolloutCommand.VERIFY_RELEASE:
+            return VerifyPublishedRelease(exact)
+        case RolloutCommand.PLAN:
+            return PlanRollout(exact, selection, args.enable_repository_rules, args.github_output)
+        case RolloutCommand.STATUS:
+            return InspectRollout(exact, selection)
+        case RolloutCommand.APPLY:
+            return ApplyRollout(exact, selection, args.dry_run, args.preserve_baselines, args.enable_repository_rules)
+        case unreachable:
+            assert_never(unreachable)
+
+
 class CommandRunner(Protocol):
     def run(
         self,
@@ -296,6 +397,15 @@ class CommandRunner(Protocol):
 @dataclass(frozen=True)
 class SubprocessRunner:
     command_timeout: float = 900
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.command_timeout, bool)
+            or not math.isfinite(self.command_timeout)
+            or self.command_timeout <= 0
+        ):
+            msg = "rollout command timeout must be finite and positive"
+            raise RolloutError(msg)
 
     def run(
         self,
@@ -368,13 +478,113 @@ class OutcomeState(StrEnum):
     WOULD_CREATE = "would-create"
 
 
+PullRequestUrl = NewType("PullRequestUrl", str)
+
+
+def pull_request_url(value: str) -> PullRequestUrl:
+    if re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*", value) is None:
+        msg = "managed rollout PR has no valid GitHub pull-request URL"
+        raise RolloutError(msg)
+    return PullRequestUrl(value)
+
+
+def known_pull_request_url(value: str) -> PullRequestUrl | None:
+    return pull_request_url(value) if value else None
+
+
+@dataclass(frozen=True, slots=True)
+class AlreadyCurrent:
+    state: ClassVar[Literal[OutcomeState.ALREADY_CURRENT]] = OutcomeState.ALREADY_CURRENT
+    url: ClassVar[None] = None
+    detail: ClassVar[str] = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutBlocked:
+    state: ClassVar[Literal[OutcomeState.BLOCKED]] = OutcomeState.BLOCKED
+    detail: str
+    url: PullRequestUrl | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutFailed:
+    state: ClassVar[Literal[OutcomeState.ERROR]] = OutcomeState.ERROR
+    url: ClassVar[None] = None
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutMerged:
+    state: ClassVar[Literal[OutcomeState.MERGED]] = OutcomeState.MERGED
+    detail: ClassVar[str] = ""
+    url: PullRequestUrl
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutMissing:
+    state: ClassVar[Literal[OutcomeState.MISSING]] = OutcomeState.MISSING
+    detail: str
+    url: PullRequestUrl | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestOpen:
+    state: ClassVar[Literal[OutcomeState.PR_OPEN]] = OutcomeState.PR_OPEN
+    detail: ClassVar[str] = ""
+    url: PullRequestUrl
+
+
+@dataclass(frozen=True, slots=True)
+class WouldCreateBranch:
+    state: ClassVar[Literal[OutcomeState.WOULD_CREATE]] = OutcomeState.WOULD_CREATE
+    url: ClassVar[None] = None
+    branch: str
+
+    @property
+    def detail(self) -> str:
+        return self.branch
+
+
+type RolloutResult = (
+    AlreadyCurrent
+    | RolloutBlocked
+    | RolloutFailed
+    | RolloutMerged
+    | RolloutMissing
+    | PullRequestOpen
+    | WouldCreateBranch
+)
+
+
 @dataclass(frozen=True)
 class Outcome:
     consumer: Consumer
-    state: OutcomeState
-    url: str = ""
-    detail: str = ""
+    result: RolloutResult
     elapsed_seconds: float | None = None
+
+    @property
+    def state(self) -> OutcomeState:
+        match self.result:
+            case (
+                AlreadyCurrent()
+                | RolloutBlocked()
+                | RolloutFailed()
+                | RolloutMerged()
+                | RolloutMissing()
+                | PullRequestOpen()
+                | WouldCreateBranch()
+            ):
+                return self.result.state
+            case unreachable:
+                assert_never(unreachable)
+
+    @property
+    def url(self) -> str:
+        return self.result.url or ""
+
+    @property
+    def detail(self) -> str:
+        return self.result.detail
 
     def as_dict(self) -> dict[str, str | float | None]:
         return {
@@ -395,11 +605,22 @@ class Plan:
 
 
 @dataclass(frozen=True)
-class BranchPreparation:
+class NewBranch:
+    kind: ClassVar[Literal["new"]] = "new"
+    previous_sha: ClassVar[None] = None
     branch: str
-    previous_sha: str | None
-    previous_tree: str | None = None
-    previous_base: str | None = None
+
+
+@dataclass(frozen=True)
+class ExistingManagedBranch:
+    kind: ClassVar[Literal["existing-managed"]] = "existing-managed"
+    branch: str
+    previous_sha: str
+    previous_tree: str
+    previous_base: str
+
+
+type BranchPreparation = NewBranch | ExistingManagedBranch
 
 
 class ProvisionedTools(NamedTuple):
@@ -509,9 +730,9 @@ def stdout(result: subprocess.CompletedProcess[str]) -> str:
 def json_result(result: subprocess.CompletedProcess[str]) -> JsonValue:
     rendered = stdout(result)
     try:
-        parsed = parse_json(rendered or "null")
-    except json.JSONDecodeError as exc:
-        msg = f"command returned invalid JSON: {rendered[:200]}"
+        parsed = parse_unique_json(rendered or "null")
+    except ValueError as exc:
+        msg = "command returned invalid or ambiguous JSON"
         raise RolloutError(msg) from exc
     else:
         return parsed
@@ -650,13 +871,19 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
         )
     )
     payload = json_result(result)
-    if not isinstance(payload, list) or not payload:
+    if not isinstance(payload, list):
+        msg = f"{consumer.name}: managed rollout PR lookup did not return an array"
+        raise RolloutError(msg)
+    if not payload:
         return None
     if len(payload) != 1:
         msg = f"{consumer.name}: multiple rollout PRs exist for {rollout_branch(version)}"
         raise RolloutError(msg)
     first = payload[0]
-    return first if isinstance(first, dict) else None
+    if not isinstance(first, dict):
+        msg = f"{consumer.name}: managed rollout PR lookup did not return a pull request"
+        raise RolloutError(msg)
+    return first
 
 
 def pull_identity_matches(consumer: Consumer, version: str, pull: Mapping[str, object]) -> bool:
@@ -691,8 +918,8 @@ def closed_rollout_decline(consumer: Consumer, version: str, runner: CommandRunn
         result = runner.run(("gh", "api", "--method", "GET", "--paginate", endpoint), check=False)
         pages = parse_json_documents(stdout(result)) if result.returncode == 0 else None
         return _closed_history_decline(consumer, version, pages)
-    except OSError, RolloutError, json.JSONDecodeError:
-        return Outcome(consumer, OutcomeState.BLOCKED, detail=CLOSED_ROLLOUT_UNAVAILABLE)
+    except OSError, RolloutError, ValueError:
+        return Outcome(consumer, RolloutBlocked(CLOSED_ROLLOUT_UNAVAILABLE))
 
 
 def _closed_history_decline(consumer: Consumer, version: str, pages: JsonValue) -> Outcome | None:
@@ -739,9 +966,10 @@ def _closed_pull_decline(consumer: Consumer, version: str, pull: JsonValue) -> O
         raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
     return Outcome(
         consumer,
-        OutcomeState.BLOCKED,
-        url,
-        "managed rollout was closed without merging for this version; reopen that PR to retry",
+        RolloutBlocked(
+            "managed rollout was closed without merging for this version; reopen that PR to retry",
+            url=known_pull_request_url(url),
+        ),
     )
 
 
@@ -799,41 +1027,55 @@ def open_pull_commit_provenance(
     url = str(pull.get("url", ""))
     head_sha = pull.get("headRefOid")
     if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout PR has no valid head commit SHA")
+        return Outcome(
+            consumer, RolloutBlocked("managed rollout PR has no valid head commit SHA", url=known_pull_request_url(url))
+        )
     commit = runner.run(
         ("gh", "api", f"repos/{consumer.repository}/commits/{head_sha}"),
         check=False,
     )
     if commit.returncode != 0:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit provenance could not be read")
+        return Outcome(
+            consumer,
+            RolloutBlocked("managed rollout commit provenance could not be read", url=known_pull_request_url(url)),
+        )
     try:
         payload = json_result(commit)
     except RolloutError:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit provenance is malformed")
+        return Outcome(
+            consumer, RolloutBlocked("managed rollout commit provenance is malformed", url=known_pull_request_url(url))
+        )
     parents_value = payload.get("parents") if is_object(payload) else None
     parents = parents_value if is_array(parents_value) else []
     parent_shas = tuple(sha for item in parents if is_object(item) and isinstance((sha := item.get("sha")), str))
     if len(parents) != 1 or len(parent_shas) != 1 or re.fullmatch(r"[0-9a-f]{40}", parent_shas[0]) is None:
         return Outcome(
-            consumer, OutcomeState.BLOCKED, url, "managed rollout head must be exactly one commit with one parent"
+            consumer,
+            RolloutBlocked(
+                "managed rollout head must be exactly one commit with one parent", url=known_pull_request_url(url)
+            ),
         )
     commit_metadata = payload.get("commit") if is_object(payload) else None
     message = commit_metadata.get("message") if is_object(commit_metadata) else None
     tree = commit_metadata.get("tree") if is_object(commit_metadata) else None
     tree_sha = tree.get("sha") if is_object(tree) else None
     if not managed_tree_provenance_matches(message, tree_sha):
-        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit tree provenance does not match")
+        return Outcome(
+            consumer,
+            RolloutBlocked("managed rollout commit tree provenance does not match", url=known_pull_request_url(url)),
+        )
     try:
         base_sha = live_consumer_base_sha(consumer, runner)
     except RolloutError as exc:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, str(exc))
+        return Outcome(consumer, RolloutBlocked(str(exc), url=known_pull_request_url(url)))
     if parent_shas[0] != base_sha:
         return Outcome(
             consumer,
-            OutcomeState.MISSING,
-            url,
-            f"managed rollout commit parent {parent_shas[0]} no longer matches current consumer base {base_sha}; "
-            "reconcile will refresh this managed PR",
+            RolloutMissing(
+                f"managed rollout commit parent {parent_shas[0]} no longer matches current consumer base {base_sha}; "
+                "reconcile will refresh this managed PR",
+                url=known_pull_request_url(url),
+            ),
         )
     return None
 
@@ -847,7 +1089,7 @@ def failed_verification_outcome(consumer: Consumer, pull: Mapping[str, object], 
         and open_pull_commit_provenance(consumer, pull, runner) is None
     )
     detail = VERIFICATION_UNCHANGED_DETAIL if unchanged else VERIFICATION_RETRY_DETAIL
-    return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), detail)
+    return Outcome(consumer, RolloutBlocked(detail, url=known_pull_request_url(str(pull.get("url", "")))))
 
 
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
@@ -855,37 +1097,40 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
     if pull is None:
         adopted = manifest_version(base_manifest(consumer, runner) or "")
         if adopted == version:
-            return Outcome(consumer, OutcomeState.ALREADY_CURRENT)
+            return Outcome(consumer, AlreadyCurrent())
         if (declined := closed_rollout_decline(consumer, version, runner)) is not None:
             return declined
-        return Outcome(consumer, OutcomeState.MISSING, detail=f"base branch has {adopted or 'no readable manifest'}")
+        return Outcome(consumer, RolloutMissing(f"base branch has {adopted or 'no readable manifest'}"))
     if not pull_identity_matches(consumer, version, pull):
         return Outcome(
             consumer,
-            OutcomeState.BLOCKED,
-            str(pull.get("url", "")),
-            "rollout PR ownership marker, head, or base does not match",
+            RolloutBlocked(
+                "rollout PR ownership marker, head, or base does not match",
+                url=known_pull_request_url(str(pull.get("url", ""))),
+            ),
         )
     try:
         desired = desired_version(str(pull.get("body", "")))
         reject_rollout_downgrade(desired, version)
     except RolloutError as exc:
-        return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
+        return Outcome(consumer, RolloutBlocked(str(exc), url=known_pull_request_url(str(pull.get("url", "")))))
     if desired != version:
         if (declined := closed_rollout_decline(consumer, version, runner)) is not None:
             return declined
         return Outcome(
             consumer,
-            OutcomeState.MISSING,
-            str(pull.get("url", "")),
-            "open managed PR targets an older Standards release",
+            RolloutMissing(
+                "open managed PR targets an older Standards release",
+                url=known_pull_request_url(str(pull.get("url", ""))),
+            ),
         )
     if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
         return failed_verification_outcome(consumer, pull, runner)
     if pull.get("mergedAt") is None and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None:
         return provenance
-    state = OutcomeState.MERGED if pull.get("mergedAt") else OutcomeState.PR_OPEN
-    return Outcome(consumer, state, str(pull.get("url", "")))
+    url = pull_request_url(str(pull.get("url", "")))
+    result = RolloutMerged(url) if pull.get("mergedAt") else PullRequestOpen(url)
+    return Outcome(consumer, result)
 
 
 def status(version: str, consumers: Sequence[Consumer], runner: CommandRunner, *, jobs: int = 1) -> tuple[Outcome, ...]:
@@ -898,11 +1143,11 @@ def consumer_outcome(consumer: Consumer, operation: Callable[[Consumer], Outcome
     try:
         outcome = operation(consumer)
     except ConsumerBaseMovedError as exc:
-        outcome = Outcome(consumer, OutcomeState.MISSING, detail=str(exc))
+        outcome = Outcome(consumer, RolloutMissing(str(exc)))
     except subprocess.CalledProcessError as exc:
-        outcome = Outcome(consumer, OutcomeState.ERROR, detail=process_failure_detail(exc))
+        outcome = Outcome(consumer, RolloutFailed(process_failure_detail(exc)))
     except (OSError, RolloutError) as exc:
-        outcome = Outcome(consumer, OutcomeState.ERROR, detail=str(exc))
+        outcome = Outcome(consumer, RolloutFailed(str(exc)))
     return replace(outcome, elapsed_seconds=round(time.monotonic() - started, 3))
 
 
@@ -1621,7 +1866,9 @@ def assert_preserved_baselines(repo: Path, expected: Mapping[Path, adoption_tran
         return
     paths = tuple(expected)
     adoption_transaction.validate_targets(repo, paths)
-    current = adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
+    current = adoption_transaction.FileTransaction.capture(
+        repo, paths, mode=adoption_transaction.CaptureMode.EXPLICIT
+    ).before
     if current != expected:
         msg = "consumer verification mutated controller-owned baseline bytes or metadata"
         raise RolloutError(msg)
@@ -1641,7 +1888,9 @@ def refresh_preserved_provenance(
         return PreservedBaselines(expected)
     paths = tuple(expected)
     adoption_transaction.validate_targets(repo, paths)
-    current = adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
+    current = adoption_transaction.FileTransaction.capture(
+        repo, paths, mode=adoption_transaction.CaptureMode.EXPLICIT
+    ).before
     diagnostic = _diagnostic_baseline_path(repo)
     for path, before in expected.items():
         after = current[path]
@@ -1674,7 +1923,9 @@ def snapshot_consumer_baselines(
         names.add(adopted.diagnostic_baseline)
     paths = tuple(repo / name for name in sorted(names))
     adoption_transaction.validate_targets(repo, paths)
-    return adoption_transaction.FileTransaction.capture(repo, paths, explicit_only=True).before
+    return adoption_transaction.FileTransaction.capture(
+        repo, paths, mode=adoption_transaction.CaptureMode.EXPLICIT
+    ).before
 
 
 def repository_baseline_migration(
@@ -2024,7 +2275,7 @@ def prepare_branch(
     previous_sha = remote_branch_sha(repo, branch, runner)
     if previous_sha is None:
         runner.run(("git", "switch", "-c", branch, base_sha), cwd=repo)
-        return BranchPreparation(branch, None)
+        return NewBranch(branch)
     runner.run(("git", "fetch", "origin", branch), cwd=repo)
     message = stdout(runner.run(("git", "show", "-s", "--format=%B", "FETCH_HEAD"), cwd=repo))
     fetched_commit = stdout(runner.run(("git", "rev-list", "--parents", "-n", "1", "FETCH_HEAD"), cwd=repo)).split()
@@ -2058,7 +2309,7 @@ def prepare_branch(
     previous_version = message.splitlines()[0].removeprefix(BOT_COMMIT_PREFIX)
     reject_rollout_downgrade(previous_version, version)
     runner.run(("git", "switch", "-C", branch, base_sha), cwd=repo)
-    return BranchPreparation(branch, previous_sha, declared_trees[0], fetched_commit[1])
+    return ExistingManagedBranch(branch, previous_sha, declared_trees[0], fetched_commit[1])
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
@@ -2165,7 +2416,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
     if not _rollout_update_required(consumer, existing):
         return existing
     if dry_run:
-        return Outcome(consumer, OutcomeState.WOULD_CREATE, detail=rollout_branch(version))
+        return Outcome(consumer, WouldCreateBranch(rollout_branch(version)))
     # Consumer package managers can leave short-lived background cleanup work
     # behind after their command exits. The hosted runner discards this
     # workspace, so a best-effort temporary-directory cleanup must never mask
@@ -2265,7 +2516,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 previous_react_doctor_policy,
                 react_doctor_policy_snapshot(repo),
             )
-            allowed_baseline_paths, baseline_path, expected_baseline, bootstrap = _prepare_rollout_baseline(
+            baseline = _prepare_rollout_baseline(
                 consumer,
                 repo,
                 candidate_runner,
@@ -2277,7 +2528,8 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 repository_baseline_paths=tuple(repository_baselines),
                 regenerate=migration.regenerates_baseline,
             )
-            allowed_baseline_paths |= refreshed_baselines.refreshed
+            allowed_baseline_paths = baseline.allowed_paths | refreshed_baselines.refreshed
+            baseline_path, expected_baseline, bootstrap = baseline.path, baseline.expected, baseline.bootstrap
             assert_preserved_baselines(repo, preserved)
             if bootstrap is None:
                 if oxlint_directives.SUPPORTS_DIRECTIVE_REWRITES:
@@ -2499,7 +2751,7 @@ def push_rollout_head(
         msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
         raise RolloutError(msg)
     head_tree = stdout(runner.run(("git", "rev-parse", "HEAD^{tree}"), cwd=repo))
-    if preparation.previous_sha is not None and (preparation.previous_tree, preparation.previous_base) == (
+    if isinstance(preparation, ExistingManagedBranch) and (preparation.previous_tree, preparation.previous_base) == (
         head_tree,
         base_sha,
     ):
@@ -2565,7 +2817,7 @@ def apply(
     ready: list[Consumer] = []
     for target in targets:
         if not prior_wave_is_adopted(target, prior_status):
-            settled[target] = Outcome(target, OutcomeState.BLOCKED, detail="prior rollout wave has not merged cleanly")
+            settled[target] = Outcome(target, RolloutBlocked("prior rollout wave has not merged cleanly"))
         elif (
             known := next((item for item in prior_status if item.consumer == target), None)
         ) is not None and known.state in {
@@ -2675,42 +2927,44 @@ def pending_matrix(outcomes: Sequence[Outcome]) -> list[dict[str, str]]:
 
 
 def execute(args: RolloutArgs, runner: CommandRunner) -> int:
-    if args.command is RolloutCommand.VERIFY_RELEASE:
-        return _print_verified_release(args.version, runner)
-    consumers = select_channel(load_registry(args.registry), args.channel)
+    request = rollout_request(args)
+    if isinstance(request, VerifyPublishedRelease):
+        return _print_verified_release(request.version.value, runner)
+    selection = request.selection
+    consumers = select_channel(load_registry(selection.registry), selection.channel)
     if not consumers:
-        msg = f"rollout channel {args.channel!r} selects no consumers"
+        msg = f"rollout channel {selection.channel!r} selects no consumers"
         raise RolloutError(msg)
-    targets = select_consumer(consumers, args.consumer)
-    version = validate_version(args.version) if args.version else latest_version(runner)
-    match args.command:
-        case RolloutCommand.PLAN:
+    targets = select_consumer(consumers, selection.consumer)
+    version = request.version.value if isinstance(request.version, ExactVersion) else latest_version(runner)
+    match request:
+        case PlanRollout():
             rollout_plan = plan(
-                version, targets, runner, jobs=args.jobs, enable_repository_rules=args.enable_repository_rules
+                version, targets, runner, jobs=selection.jobs, enable_repository_rules=request.enable_repository_rules
             )
             outcomes = rollout_plan.outcomes
             print_outcomes(version, outcomes, source_sha=rollout_plan.source_sha)
-            if args.github_output is not None:
-                with args.github_output.open("a", encoding="utf-8") as output:
+            if request.github_output is not None:
+                with request.github_output.open("a", encoding="utf-8") as output:
                     output.write(f"consumers={json.dumps(pending_matrix(outcomes))}\n")
-        case RolloutCommand.STATUS:
-            outcomes = status(version, targets, runner, jobs=args.jobs)
+        case InspectRollout():
+            outcomes = status(version, targets, runner, jobs=selection.jobs)
             print_outcomes(version, outcomes)
             if any(item.state in {OutcomeState.BLOCKED, OutcomeState.ERROR} for item in outcomes):
                 return 2
             return (
                 0 if all(item.state in {OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in outcomes) else 1
             )
-        case RolloutCommand.APPLY | RolloutCommand.RECONCILE:
+        case ApplyRollout() | ReconcileRollout():
             outcomes = apply(
                 version,
                 consumers,
                 runner,
-                dry_run=args.dry_run,
-                preserve_baselines=args.preserve_baselines,
-                consumer=args.consumer,
-                jobs=args.jobs,
-                enable_repository_rules=args.enable_repository_rules,
+                dry_run=request.dry_run,
+                preserve_baselines=request.preserve_baselines,
+                consumer=selection.consumer,
+                jobs=selection.jobs,
+                enable_repository_rules=request.enable_repository_rules,
             )
             print_outcomes(version, outcomes)
             if any(
@@ -2719,19 +2973,12 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
                 for item in outcomes
             ):
                 return 1
-        case None:
-            msg = "rollout command is required"
-            raise RolloutError(msg)
         case unreachable:
             assert_never(unreachable)
     return 0
 
 
-def _print_verified_release(version: str | None, runner: CommandRunner) -> int:
-    if version is None:
-        msg = "verify-release requires an exact published version"
-        raise RolloutError(msg)
-    version = validate_version(version)
+def _print_verified_release(version: str, runner: CommandRunner) -> int:
     sha = verify_release(version, runner)
     sys.stdout.write(json.dumps({"version": version, "source_sha": sha}) + "\n")
     return 0
@@ -3181,22 +3428,24 @@ def _publish_rollout_pull(
     if pull is not None and pull.get("headRefOid") != pushed_head_sha:
         return Outcome(
             consumer,
-            OutcomeState.MISSING,
-            str(pull.get("url", "")),
-            "managed rollout PR head does not match the pushed commit; refusing metadata update",
+            RolloutMissing(
+                "managed rollout PR head does not match the pushed commit; refusing metadata update",
+                url=known_pull_request_url(str(pull.get("url", ""))),
+            ),
         )
     if pull is not None:
         if not pull_identity_matches(consumer, version, pull):
             return Outcome(
                 consumer,
-                OutcomeState.BLOCKED,
-                str(pull.get("url", "")),
-                "rollout PR ownership marker, head, or base does not match before update",
+                RolloutBlocked(
+                    "rollout PR ownership marker, head, or base does not match before update",
+                    url=known_pull_request_url(str(pull.get("url", ""))),
+                ),
             )
         try:
             reject_rollout_downgrade(desired_version(str(pull.get("body", ""))), version)
         except RolloutError as exc:
-            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
+            return Outcome(consumer, RolloutBlocked(str(exc), url=known_pull_request_url(str(pull.get("url", "")))))
     body = rollout_pull_body(
         consumer,
         version,
@@ -3222,9 +3471,9 @@ def _publish_rollout_pull(
                 body,
             )
         )
-        url = stdout(created)
+        url = pull_request_url(stdout(created))
     else:
-        url = str(pull.get("url", ""))
+        url = pull_request_url(str(pull.get("url", "")))
         runner.run(
             (
                 "gh",
@@ -3243,9 +3492,9 @@ def _publish_rollout_pull(
     if refreshed_pull is None:
         return Outcome(
             consumer,
-            OutcomeState.BLOCKED,
-            url,
-            "managed rollout PR could not be read after create or edit",
+            RolloutBlocked(
+                "managed rollout PR could not be read after create or edit", url=known_pull_request_url(url)
+            ),
         )
     refreshed_pull = _wait_for_pushed_pull_head(
         consumer, version, runner, refreshed_pull, pushed_head_sha=pushed_head_sha, sleep=sleep
@@ -3254,20 +3503,22 @@ def _publish_rollout_pull(
     if not pull_identity_matches(consumer, version, refreshed_pull):
         return Outcome(
             consumer,
-            OutcomeState.BLOCKED,
-            refreshed_url,
-            "rollout PR ownership marker, head, or base does not match after update",
+            RolloutBlocked(
+                "rollout PR ownership marker, head, or base does not match after update",
+                url=known_pull_request_url(refreshed_url),
+            ),
         )
     if refreshed_pull.get("headRefOid") != pushed_head_sha:
         return Outcome(
             consumer,
-            OutcomeState.MISSING,
-            refreshed_url,
-            "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
+            RolloutMissing(
+                "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
+                url=known_pull_request_url(refreshed_url),
+            ),
         )
     if (provenance := open_pull_commit_provenance(consumer, refreshed_pull, runner)) is not None:
         return provenance
-    url = refreshed_url
+    url = pull_request_url(refreshed_url)
     if consumer.auto_merge and not verification_failure:
         runner.run(
             (
@@ -3285,8 +3536,11 @@ def _publish_rollout_pull(
             check=False,
         )
     if verification_failure:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, f"{VERIFICATION_FAILED_DETAIL}; PR opened for remediation")
-    return Outcome(consumer, OutcomeState.PR_OPEN, url)
+        return Outcome(
+            consumer,
+            RolloutBlocked(f"{VERIFICATION_FAILED_DETAIL}; PR opened for remediation", url=known_pull_request_url(url)),
+        )
+    return Outcome(consumer, PullRequestOpen(pull_request_url(url)))
 
 
 def rollout_pull_body(
@@ -3354,11 +3608,43 @@ def _wait_for_pushed_pull_head(
     return pull
 
 
-class _RolloutBaseline(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class NoDeclaredBaseline:
+    kind: ClassVar[Literal["undeclared"]] = "undeclared"
+    path: ClassVar[None] = None
+    expected: ClassVar[None] = None
+
+
+@dataclass(frozen=True, slots=True)
+class MissingBaseline:
+    kind: ClassVar[Literal["missing"]] = "missing"
+    expected: ClassVar[None] = None
+    path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class ExistingBaseline:
+    kind: ClassVar[Literal["existing"]] = "existing"
+    path: Path
+    expected: bytes
+
+
+type BaselineSnapshot = NoDeclaredBaseline | MissingBaseline | ExistingBaseline
+
+
+@dataclass(frozen=True, slots=True)
+class _RolloutBaseline:
     allowed_paths: frozenset[str]
-    path: Path | None
-    expected: bytes | None
+    snapshot: BaselineSnapshot
     bootstrap: subprocess.CompletedProcess[str] | None
+
+    @property
+    def path(self) -> Path | None:
+        return self.snapshot.path
+
+    @property
+    def expected(self) -> bytes | None:
+        return self.snapshot.expected
 
 
 def _prepare_rollout_baseline(
@@ -3405,10 +3691,14 @@ def _prepare_rollout_baseline(
             baseline_path=baseline_path,
             selectors=() if regenerate else baseline_rules,
         )
-    expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
-    return _RolloutBaseline(
-        frozenset() if preserve_baselines else allowed_baseline_paths, baseline_path, expected_baseline, bootstrap
-    )
+    snapshot: BaselineSnapshot
+    if baseline_path is None:
+        snapshot = NoDeclaredBaseline()
+    elif baseline_path.is_file():
+        snapshot = ExistingBaseline(baseline_path, baseline_path.read_bytes())
+    else:
+        snapshot = MissingBaseline(baseline_path)
+    return _RolloutBaseline(frozenset() if preserve_baselines else allowed_baseline_paths, snapshot, bootstrap)
 
 
 def _generate_baseline(

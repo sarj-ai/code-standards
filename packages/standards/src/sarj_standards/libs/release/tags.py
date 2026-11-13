@@ -50,11 +50,16 @@ class ReleaseTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class ManifestSource:
+    path: Path
+    format: ManifestFormat
+
+
+@dataclass(frozen=True, slots=True)
 class ReleasePublication:
     registry: RegistryKind
     name: str
-    manifest: Path | None = None
-    format: ManifestFormat | None = None
+    manifest: ManifestSource | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +101,9 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
             "toml",
             (
                 ReleasePublication("pypi", "code-standards"),
-                ReleasePublication("pypi", "sarj-standards", Path("packages/standards-compat/pyproject.toml"), "toml"),
+                ReleasePublication(
+                    "pypi", "sarj-standards", ManifestSource(Path("packages/standards-compat/pyproject.toml"), "toml")
+                ),
             ),
         ),
         ReleaseTargetId.TSCONFIG: ReleaseTarget(
@@ -121,7 +128,10 @@ RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
         name: tuple(
             dict.fromkeys(
                 path.as_posix()
-                for manifest in (target.manifest, *(item.manifest for item in target.publications if item.manifest))
+                for manifest in (
+                    target.manifest,
+                    *(item.manifest.path for item in target.publications if item.manifest),
+                )
                 for path in (manifest, manifest.parent / "LICENSE")
             )
         )
@@ -135,9 +145,9 @@ def release_manifests(target: ReleaseTarget) -> tuple[tuple[Path, ManifestFormat
     return (
         (target.manifest, target.format),
         *(
-            (publication.manifest, publication.format)
+            (publication.manifest.path, publication.manifest.format)
             for publication in target.publications
-            if publication.manifest is not None and publication.format is not None
+            if publication.manifest is not None
         ),
     )
 

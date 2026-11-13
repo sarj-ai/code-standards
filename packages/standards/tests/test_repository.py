@@ -815,6 +815,22 @@ def test_comment_corpus_extracts_every_supported_language(
     assert all(excluded not in record["text"] for record in records)
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("~~~\n<!-- hidden -->\n```\n<!-- also hidden -->\n~~~\n<!-- visible -->", ["visible"]),
+        ("<!-- first\n```\nlast -->\n<!-- second -->", ["first\n```\nlast", "second"]),
+        ("<!-- unterminated\n~~~\nretained", ["unterminated\n~~~\nretained"]),
+    ],
+    ids=["different-fence-keeps-block-open", "fence-inside-comment", "unterminated-comment"],
+)
+def test_markdown_modes_preserve_comment_ownership_and_unfinished_input(
+    tmp_path: Path, source: str, expected: list[str]
+) -> None:
+    (tmp_path / "README.md").write_text(source, encoding="utf-8")
+    assert [record["text"] for record in comment_corpus.records([tmp_path])] == expected
+
+
 def test_comment_corpus_skips_symlinked_files(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
     outside.write_text("# Sensitive explanation.\n", encoding="utf-8")

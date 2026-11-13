@@ -12,7 +12,7 @@ from sarj_standards import api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import doctor, lifecycle
 from sarj_standards.libs.adoption.manifest import ExclusionOverride, Manifest
-from sarj_standards.libs.adoption.transaction import FileTransaction
+from sarj_standards.libs.adoption.transaction import CaptureMode, FileTransaction
 from sarj_standards.libs.diagnostics import Completion, FixSafety, Severity, to_json, to_sarif
 from sarj_standards.libs.linting.analysis import analyze
 from sarj_standards.libs.linting.policy import Policy
@@ -363,7 +363,7 @@ def test_source_transaction_preserves_bytes_mode_and_group_on_rollback(tmp_path:
     path.write_bytes(original)
     path.chmod(0o751)
     group = path.stat().st_gid
-    transaction = FileTransaction.capture(tmp_path, (path,), explicit_only=True, source_writes=True)
+    transaction = FileTransaction.capture(tmp_path, (path,), mode=CaptureMode.SOURCE)
     transaction.write_bytes(path, replacement)
     assert path.read_bytes() == replacement
     assert path.stat().st_mode & 0o777 == 0o751
@@ -384,7 +384,7 @@ def test_source_transaction_fsync_race_preserves_concurrent_bytes_and_rolls_back
     concurrent = original + b"unrelated = 1\n"
     for path in (first, last):
         path.write_bytes(original)
-    transaction = FileTransaction.capture(tmp_path, (first, last), explicit_only=True, source_writes=True)
+    transaction = FileTransaction.capture(tmp_path, (first, last), mode=CaptureMode.SOURCE)
     native_fsync = os.fsync
 
     def concurrent_fsync(descriptor: int) -> None:

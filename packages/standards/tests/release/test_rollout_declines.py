@@ -25,6 +25,21 @@ def consumer() -> rollout.Consumer:
     return rollout.Consumer("Consumer", "example/consumer", "main", ("make", "check"))
 
 
+@pytest.mark.parametrize("payload", ["", "null", "{}", "false", "[null]", "[false]", '[{"number":1,"number":2}]'])
+def test_ambiguous_lookup_cannot_authorize_a_new_managed_pull_request(payload: str) -> None:
+    runner = FakeRolloutRunner([(0, payload)])
+    with pytest.raises(rollout.RolloutError, match=r"managed rollout PR lookup|invalid or ambiguous JSON"):
+        rollout.apply_one(consumer(), VERSION, runner, dry_run=False)
+    assert len(runner.commands) == 1
+    assert runner.commands[0][:3] == ("gh", "pr", "list")
+
+
+def test_confirmed_empty_provider_array_is_distinct_from_unknown_lookup() -> None:
+    runner = FakeRolloutRunner([(0, "[]")])
+    assert rollout.pull_request(consumer(), VERSION, runner) is None
+    assert len(runner.commands) == 1
+
+
 def closed_pull(version: str = VERSION) -> dict[str, JsonValue]:
     return {
         "state": "closed",
@@ -396,8 +411,8 @@ def test_ambiguous_owned_version_is_not_permission_to_retry(desired: str) -> Non
 
 def test_declined_earlier_wave_does_not_unlock_later_consumers() -> None:
     early = replace(consumer(), channel=rollout.RolloutChannel.CANARY)
-    declined = rollout.Outcome(early, rollout.OutcomeState.BLOCKED, detail="declined")
-    later = rollout.Outcome(consumer(), rollout.OutcomeState.MISSING)
+    declined = rollout.Outcome(early, rollout.RolloutBlocked("declined"))
+    later = rollout.Outcome(consumer(), rollout.RolloutMissing("managed rollout pull request absent"))
 
     assert rollout.pending_matrix((declined, later)) == []
     assert not rollout.prior_wave_is_adopted(consumer(), (declined, later))
@@ -410,7 +425,7 @@ def test_close_during_verification_blocks_git_transport(tmp_path: Path) -> None:
         rollout.push_rollout_head(
             tmp_path,
             consumer(),
-            rollout.BranchPreparation("standards-rollout/current", None),
+            rollout.NewBranch("standards-rollout/current"),
             "b" * 40,
             runner,
             version=VERSION,
@@ -452,7 +467,7 @@ def test_fork_or_unknown_open_record_cannot_override_a_known_decline(
         rollout.push_rollout_head(
             tmp_path,
             consumer(),
-            rollout.BranchPreparation("standards-rollout/current", None),
+            rollout.NewBranch("standards-rollout/current"),
             "b" * 40,
             runner,
             version=VERSION,
@@ -474,7 +489,7 @@ def test_owned_reopen_after_verification_keeps_normal_guarded_push(
     pushed = rollout.push_rollout_head(
         tmp_path,
         consumer(),
-        rollout.BranchPreparation("standards-rollout/current", None),
+        rollout.NewBranch("standards-rollout/current"),
         "b" * 40,
         runner,
         version=VERSION,

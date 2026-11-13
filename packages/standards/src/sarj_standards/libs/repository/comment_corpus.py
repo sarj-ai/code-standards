@@ -123,10 +123,22 @@ class _QuotedPosition:
     quote: str | None
 
 
-@dataclass(frozen=True, slots=True)
-class _FenceState:
-    in_fence: bool
-    fence: str
+class _MarkdownText(StrEnum):
+    CONTENT = "content"
+
+
+class _MarkdownFence(StrEnum):
+    BACKTICK = "`"
+    TILDE = "~"
+
+
+@dataclass(slots=True)
+class _OpenHtmlComment:
+    start_line: int
+    parts: list[str]
+
+
+type _MarkdownState = _MarkdownText | _MarkdownFence | _OpenHtmlComment
 
 
 def _require_supported_platform() -> None:
@@ -559,30 +571,22 @@ def _hash_comment_index(line: str) -> int | None:
     return None
 
 
-def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-many-locals] -- scanner keeps independent fence and HTML-comment state
+def _markdown_comments(source: str) -> list[_CommentUnit]:
     found: list[_CommentUnit] = []
-    in_fence = False
-    fence = ""
-    in_html = False
-    html_start = 0
-    html_parts: list[str] = []
+    state: _MarkdownState = _MarkdownText.CONTENT
     for line_number, raw in enumerate(source.splitlines(), start=1):
         stripped = raw.lstrip()
-        if not in_html and (match := re.match(r"(`{3,}|~{3,})", stripped)):
-            marker = match.group(1)
-            state = _markdown_fence_state(marker, in_fence=in_fence, fence=fence)
-            in_fence = state.in_fence
-            fence = state.fence
+        if not isinstance(state, _OpenHtmlComment) and (match := re.match(r"(`{3,}|~{3,})", stripped)):
+            state = _markdown_fence_state(match.group(1), state)
             continue
-        if in_fence:
+        if isinstance(state, _MarkdownFence):
             continue
-        if in_html:
+        if isinstance(state, _OpenHtmlComment):
             before, separator, _after = raw.partition("-->")
-            html_parts.append(before)
+            state.parts.append(before)
             if separator:
-                found.append(_CommentUnit(html_start, CommentKind.COMMENT, "\n".join(html_parts).strip()))
-                in_html = False
-                html_parts = []
+                found.append(_CommentUnit(state.start_line, CommentKind.COMMENT, "\n".join(state.parts).strip()))
+                state = _MarkdownText.CONTENT
             continue
         if stripped.startswith("[//]:"):
             found.append(_CommentUnit(line_number, CommentKind.COMMENT, stripped.removeprefix("[//]:").strip()))
@@ -594,11 +598,9 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
         if closer:
             found.append(_CommentUnit(line_number, CommentKind.COMMENT, body.strip()))
         else:
-            in_html = True
-            html_start = line_number
-            html_parts = [rest]
-    if in_html:
-        found.append(_CommentUnit(html_start, CommentKind.COMMENT, "\n".join(html_parts).strip()))
+            state = _OpenHtmlComment(line_number, [rest])
+    if isinstance(state, _OpenHtmlComment):
+        found.append(_CommentUnit(state.start_line, CommentKind.COMMENT, "\n".join(state.parts).strip()))
     return found
 
 
@@ -636,12 +638,15 @@ def _sql_quoted_character(source: str, index: int, line: int, quote: str | None)
     return _QuotedPosition(index=index, line=line, quote=quote)
 
 
-def _markdown_fence_state(marker: str, *, in_fence: bool, fence: str) -> _FenceState:
-    if not in_fence:
-        in_fence, fence = True, marker[0]
-    elif marker[0] == fence:
-        in_fence, fence = False, ""
-    return _FenceState(in_fence=in_fence, fence=fence)
+def _markdown_fence_state(marker: str, state: _MarkdownText | _MarkdownFence) -> _MarkdownText | _MarkdownFence:
+    fence = _MarkdownFence(marker[0])
+    match state:
+        case _MarkdownText.CONTENT:
+            return fence
+        case _MarkdownFence():
+            return _MarkdownText.CONTENT if state is fence else state
+        case unreachable:
+            assert_never(unreachable)
 
 
 def _javascript_quoted_character(source: str, index: int, line: int, quote: str | None) -> _QuotedPosition:

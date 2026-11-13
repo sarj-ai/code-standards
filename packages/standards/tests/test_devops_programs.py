@@ -771,8 +771,8 @@ def test_payload_body_edit_invalidates_baseline_but_next_field_does_not(tmp_path
     report = analyze([relative], root=tmp_path)
     (finding,) = [item for item in report.diagnostics if item.code == "SARJ310"]
     assert finding.location.region is not None
-    changed_body = baseline.ChangedLineScope(frozenset({relative}), {relative: frozenset({5})})
-    changed_next_field = baseline.ChangedLineScope(frozenset({relative}), {relative: frozenset({6})})
+    changed_body = baseline.KnownChangedLines(frozenset({relative}), {relative: frozenset({5})})
+    changed_next_field = baseline.KnownChangedLines(frozenset({relative}), {relative: frozenset({6})})
     assert baseline.touches_changed_lines(finding, changed_body)
     assert not baseline.touches_changed_lines(finding, changed_next_field)
 

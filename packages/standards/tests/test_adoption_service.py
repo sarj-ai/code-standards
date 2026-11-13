@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
-from pathlib import Path
 import sys
-from typing import TYPE_CHECKING, overload, override
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,6 +20,7 @@ from sarj_standards.libs.adoption.service import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
+    from pathlib import Path
     from types import FrameType
 
 
@@ -33,6 +34,16 @@ def _python_project(root: Path) -> None:
         '[project]\nname = "consumer"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n',
         encoding="utf-8",
     )
+
+
+def test_setup_outcomes_refuse_contradictory_sync_evidence() -> None:
+    successful = service.SyncResult((), check=False)
+    assert service.InitSucceeded(successful).status == 0
+    with pytest.raises(ValueError, match="nonzero synchronization evidence"):
+        service.InitSyncFailed(successful)
+    assert service.InitInterrupted(None).status == 130
+    with pytest.raises(TypeError, match="status"):
+        replace(service.InitSucceeded(successful), status=2)
 
 
 def test_sync_service_plans_and_applies_without_cli_state(tmp_path: Path) -> None:
@@ -479,11 +490,11 @@ def test_init_service_preserves_concurrent_edit_when_interrupted_after_direct_wr
                 observed.append("receipt")
                 target.write_bytes(independent)
             elif frame.f_code is apply_code:
-                assert isinstance(argument, service.InitResult)
+                assert isinstance(argument, service.InitSucceeded)
                 assert argument.status == 0
                 captured = locals_view.get("file_transaction")
                 assert isinstance(captured, transaction.FileTransaction)
-                assert captured.explicit_only
+                assert captured.written[target] == intended
                 assert target.read_bytes() == independent
                 observed.append("interrupt")
                 raise KeyboardInterrupt
@@ -505,7 +516,7 @@ def test_init_service_preserves_concurrent_edit_when_interrupted_after_direct_wr
     assert target.read_bytes() == independent
 
 
-def test_init_service_restores_direct_files_when_interrupted_after_dropping_installer_receipt(
+def test_init_service_restores_direct_files_when_interrupted_after_installer_ownership_transition(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -517,50 +528,25 @@ def test_init_service_restores_direct_files_when_interrupted_after_dropping_inst
     originals = dict(plan.preconditions)
     assert originals[project] == project.read_bytes()
     popped: list[Path] = []
-    missing = object()
+    real_delegate = transaction.FileTransaction.allow_installer_mutations
 
-    class InterruptAfterPop(dict[Path, bytes | None]):  # ruff: ignore[subclass-builtin] -- exercise real dict pop after successful receipt removal.
-        @overload
-        def pop(self, key: Path, /) -> bytes | None: ...
-
-        @overload
-        def pop(self, key: Path, default: bytes | None, /) -> bytes | None: ...
-
-        @overload
-        def pop[T](self, key: Path, default: T, /) -> bytes | T | None: ...
-
-        @override
-        def pop(self, key: Path, default: object = missing, /) -> object:
-            present = key in self
-            value = super().pop(key) if default is missing else super().pop(key, default)
-            if present and not popped:
-                assert key == project
-                assert isinstance(value, bytes)
-                assert key.read_bytes() == value
-                assert value != originals[key]
-                popped.append(key)
-                raise KeyboardInterrupt
-            return value
-
-    real_capture = transaction.FileTransaction.capture
-
-    def capture(
-        root: Path,
-        extra: tuple[Path, ...] = (),
-        *,
-        explicit_only: bool = False,
-        source_writes: bool = False,
-    ) -> transaction.FileTransaction:
-        captured = real_capture(root, extra, explicit_only=explicit_only, source_writes=source_writes)
-        captured.written = InterruptAfterPop(captured.written)
-        return captured
+    def delegate_then_interrupt(files: transaction.FileTransaction, paths: tuple[Path, ...]) -> None:
+        assert project in paths
+        receipt = files.written[project]
+        assert isinstance(receipt, bytes)
+        assert project.read_bytes() == receipt
+        assert receipt != originals[project]
+        real_delegate(files, paths)
+        assert project not in files.written
+        popped.append(project)
+        raise KeyboardInterrupt
 
     def forbid_install(_commands: Iterable[lifecycle.Command]) -> int:
         message = "installers must not run after the receipt transition is interrupted"
         raise AssertionError(message)
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- wraps real captured receipts to interrupt immediately after an actual pop
-        transaction.FileTransaction, "capture", staticmethod(capture)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interrupt after the real installer ownership transition, before executing any installer.
+        transaction.FileTransaction, "allow_installer_mutations", delegate_then_interrupt
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forbids installer execution after the receipt transition interruption
         lifecycle, "execute", forbid_install

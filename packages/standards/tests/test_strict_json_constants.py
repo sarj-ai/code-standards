@@ -23,8 +23,14 @@ def test_strict_json_preserves_words_and_legal_numeric_grammar() -> None:
         "NaN": 1,
         "words": ["Infinity", "-Infinity"],
     }
-    assert parse_unique_json("1e999") == math.inf
-    assert parse_unique_json("-1e999") == -math.inf
+    assert parse_unique_json("1e308") == pytest.approx(1e308, rel=0, abs=0)
+    assert parse_unique_json("-1e308") == pytest.approx(-1e308, rel=0, abs=0)
+
+
+@pytest.mark.parametrize("number", ["1e999", "-1e999"])
+def test_strict_json_refuses_overflowing_exponents_before_they_become_infinite(number: str) -> None:
+    with pytest.raises(ValueError, match="non-finite JSON number"):
+        parse_unique_json(number)
 
 
 def test_permissive_json_contract_is_preserved() -> None:

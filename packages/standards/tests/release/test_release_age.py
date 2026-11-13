@@ -173,6 +173,22 @@ def test_check_lockfile_release_age_reports_invalid_publication_time(tmp_path: P
     assert [str(failure) for failure in report.failures] == ["a@1.0.0: unknown days old"]
 
 
+@pytest.mark.parametrize("concurrency", [True, False, 0, -1])
+def test_release_age_refuses_invalid_worker_counts_before_fetch(tmp_path: Path, concurrency: int) -> None:
+    with pytest.raises(ValueError, match="concurrency must be at least one"):
+        check_lockfile_release_age(tmp_path / "not-read.json", concurrency=concurrency)
+
+
+def test_naive_publication_timestamp_cannot_qualify_release_age(tmp_path: Path) -> None:
+    lockfile = _lockfile(tmp_path, {"node_modules/a": {"version": "1.0.0"}})
+    report = check_lockfile_release_age(
+        lockfile,
+        fetcher=lambda _name: {"time": {"1.0.0": "2024-01-01T00:00:00"}},
+        clock=lambda: datetime(2025, 2, 1, tzinfo=UTC),
+    )
+    assert [str(failure) for failure in report.failures] == ["a@1.0.0: unknown days old"]
+
+
 @pytest.mark.parametrize("days", ["-1", "1.5", "nope", " 01 "])
 def test_release_age_policy_rejects_invalid_days(days: str) -> None:
     with pytest.raises(ValueError, match="non-negative integer"):

@@ -176,7 +176,7 @@ def fix_sources(root: Path, paths: Sequence[str]) -> int:
     try:
         pending = _plan_fixes(root, paths)
         captured = transaction.FileTransaction.capture(
-            root, tuple(path for path, _formatted, _before in pending), explicit_only=True
+            root, tuple(path for path, _formatted, _before in pending), mode=transaction.CaptureMode.EXPLICIT
         )
         _apply_fixes(root, pending, captured)
     except (OSError, UnicodeError, ValueError, NativeToolError, subprocess.SubprocessError) as error:

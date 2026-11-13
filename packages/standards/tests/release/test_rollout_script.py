@@ -558,10 +558,16 @@ def test_later_wave_is_blocked_until_prior_wave_merges(
         jobs: int = 1,
     ) -> tuple[rollout.Outcome, ...]:
         assert jobs == 1
-        return (rollout.Outcome(canary, rollout.OutcomeState.PR_OPEN),)
+        return (
+            rollout.Outcome(
+                canary, rollout.PullRequestOpen(rollout.pull_request_url("https://github.com/example/consumer/pull/1"))
+            ),
+        )
 
     def fake_status_one(target: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
-        return rollout.Outcome(target, rollout.OutcomeState.PR_OPEN)
+        return rollout.Outcome(
+            target, rollout.PullRequestOpen(rollout.pull_request_url("https://github.com/example/consumer/pull/1"))
+        )
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
         rollout, "verify_release", fake_verify_release
@@ -599,7 +605,9 @@ def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPat
         assert dry_run is False
         assert enable_repository_rules == ()
         applied.append(item.identity)
-        return rollout.Outcome(item, rollout.OutcomeState.PR_OPEN)
+        return rollout.Outcome(
+            item, rollout.PullRequestOpen(rollout.pull_request_url("https://github.com/example/consumer/pull/1"))
+        )
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
         rollout, "verify_release", fake_verify_release
@@ -1301,7 +1309,7 @@ def managed_open_pr_payload(
     cached_base_sha: str,
     head_sha: str,
     *,
-    url: str = "https://pr/1",
+    url: str = "https://github.com/example/consumer/pull/1",
 ) -> str:
     return json.dumps(
         [
@@ -1348,7 +1356,7 @@ class TestStatus:
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
         assert result.state == "pr-open"
-        assert result.url == "https://pr/1"
+        assert result.url == "https://github.com/example/consumer/pull/1"
         assert "--head" in runner.commands[0]
         assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
 
@@ -1502,7 +1510,7 @@ class TestStatus:
                 {
                     "state": "MERGED",
                     "mergedAt": "now",
-                    "url": "https://pr/1",
+                    "url": "https://github.com/example/consumer/pull/1",
                     "headRefName": "standards-rollout/current",
                     "baseRefName": "main",
                     "body": marker + "\n" + rollout.desired_marker("5.8.1"),
@@ -1519,7 +1527,7 @@ class TestStatus:
                 {
                     "state": "OPEN",
                     "mergedAt": None,
-                    "url": "https://pr/1",
+                    "url": "https://github.com/example/consumer/pull/1",
                     "headRefName": "standards-rollout/current",
                     "baseRefName": "main",
                     "body": rollout.pr_marker(consumer(), "5.8.0") + "\n" + rollout.desired_marker("5.8.0"),
@@ -1530,7 +1538,7 @@ class TestStatus:
         result = rollout.status_one(consumer(), "5.8.1", FakeRunner([(0, payload)]))
 
         assert result.state == "missing"
-        assert result.url == "https://pr/1"
+        assert result.url == "https://github.com/example/consumer/pull/1"
         assert "older" in result.detail
 
     def test_closed_historical_pr_does_not_block_a_new_rollout(self) -> None:
@@ -1547,7 +1555,7 @@ class TestStatus:
                 {
                     "state": "OPEN",
                     "mergedAt": None,
-                    "url": "https://pr/1",
+                    "url": "https://github.com/example/consumer/pull/1",
                     "headRefName": "standards-rollout/v5.8.1",
                     "baseRefName": "wrong-base",
                     "body": "human-authored",
@@ -1714,12 +1722,12 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         def missing_status(
             _consumer: rollout.Consumer, _version: str, _runner: rollout.CommandRunner
         ) -> rollout.Outcome:
-            return rollout.Outcome(consumer(), rollout.OutcomeState.MISSING)
+            return rollout.Outcome(consumer(), rollout.RolloutMissing("managed rollout pull request absent"))
 
         def fresh_branch(
             _repo: Path, _version: str, _base_sha: str, _runner: rollout.CommandRunner
         ) -> rollout.BranchPreparation:
-            return rollout.BranchPreparation("standards-rollout/current", None)
+            return rollout.NewBranch("standards-rollout/current")
 
         def fixed_temporary_directory(**kwargs: Unpack[TemporaryDirectoryOptions]) -> FixedTemporaryDirectory:
             assert kwargs == {"prefix": "standards-rollout-", "ignore_cleanup_errors": True}
@@ -1876,7 +1884,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 if rendered == ("git", "rev-parse", "FETCH_HEAD"):
                     return subprocess.CompletedProcess(rendered, 0, base_sha + "\n", "")
                 if rendered[:3] == ("gh", "pr", "create"):
-                    return subprocess.CompletedProcess(rendered, 0, "https://example.test/pr/1\n", "")
+                    return subprocess.CompletedProcess(rendered, 0, "https://github.com/example/consumer/pull/1\n", "")
                 if rendered[:3] == ("gh", "pr", "merge"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[:2] == ("gh", "api") and rendered[2].startswith("repos/example/consumer/commits/"):
@@ -1951,7 +1959,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _version: str,
             _runner: rollout.CommandRunner,
         ) -> rollout.Outcome:
-            return rollout.Outcome(selected_consumer, rollout.OutcomeState.MISSING)
+            return rollout.Outcome(selected_consumer, rollout.RolloutMissing("managed rollout pull request absent"))
 
         def fresh_branch(
             _repo: Path,
@@ -1959,7 +1967,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _base_sha: str,
             _runner: rollout.CommandRunner,
         ) -> rollout.BranchPreparation:
-            return rollout.BranchPreparation("standards-rollout/current", None)
+            return rollout.NewBranch("standards-rollout/current")
 
         def fixed_temporary_directory(**_kwargs: Unpack[TemporaryDirectoryOptions]) -> FixedTemporaryDirectory:
             return FixedTemporaryDirectory()
@@ -2007,7 +2015,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             return {
                 "state": "OPEN",
                 "mergedAt": None,
-                "url": "https://example.test/pr/1",
+                "url": "https://github.com/example/consumer/pull/1",
                 "headRefName": "standards-rollout/current",
                 "baseRefName": "main",
                 "headRefOid": head_sha,
@@ -2138,7 +2146,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
     def test_identical_patch_on_the_same_base_keeps_the_remote_head_without_pushing(self, tmp_path: Path) -> None:
         base_sha, previous_sha, head_sha, tree_sha = "a" * 40, "b" * 40, "c" * 40, "d" * 40
-        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, tree_sha, base_sha)
+        preparation = rollout.ExistingManagedBranch("standards-rollout/current", previous_sha, tree_sha, base_sha)
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha)])
 
         pushed = rollout.push_rollout_head(
@@ -2169,7 +2177,16 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         monkeypatch.setenv("GH_TOKEN", "push-secret")
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         base_sha, head_sha, tree_sha = "a" * 40, "c" * 40, "d" * 40
-        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, previous_tree, previous_base)
+        if previous_sha is None:
+            assert previous_tree is None
+            assert previous_base is None
+            preparation = rollout.NewBranch("standards-rollout/current")
+        else:
+            assert previous_tree is not None
+            assert previous_base is not None
+            preparation = rollout.ExistingManagedBranch(
+                "standards-rollout/current", previous_sha, previous_tree, previous_base
+            )
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha), (0, "")])
 
         pushed = rollout.push_rollout_head(
@@ -2208,6 +2225,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
 
+        assert isinstance(prepared, rollout.ExistingManagedBranch)
         assert prepared.previous_sha == old_sha
         assert (prepared.previous_tree, prepared.previous_base) == (tree_sha, old_base_sha)
         assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
@@ -2616,7 +2634,11 @@ jobs:
 
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         blocked = rollout.Outcome(
-            consumer(), rollout.OutcomeState.BLOCKED, "https://pr/1", "consumer verification failed; fix it"
+            consumer(),
+            rollout.RolloutBlocked(
+                "consumer verification failed; fix it",
+                url=rollout.known_pull_request_url("https://github.com/example/consumer/pull/1"),
+            ),
         )
 
         def blocked_status(

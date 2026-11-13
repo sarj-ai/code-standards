@@ -11,11 +11,13 @@ from zipfile import ZipFile
 import pytest
 
 import sarj_standards
-from sarj_standards.libs.release.ci_artifacts import WorkflowRunId
+from sarj_standards.libs.release.ci_artifacts import WorkflowRunAttempt, WorkflowRunId
 from sarj_standards.libs.release.process import ProcessFailureError, ProcessResult, run_process
 from sarj_standards.libs.release.reviewed_analysis import (
     AnalysisProof,
     CheckKind,
+    FreshAnalysis,
+    VerifiedReviewedAnalysis,
     find_reviewed_run,
     reuse_reviewed_analysis,
     verify_analysis_archive,
@@ -82,6 +84,8 @@ class _Gateway:
         if argv[0] == "git":
             return ProcessResult(0, BASE if argv[-1].endswith("^") else TREE)
         assert argv[:4] == ("gh", "api", "--method", "GET")
+        if "/jobs?" in argv[4]:
+            assert argv[4] == "repos/owner/repo/actions/runs/5/attempts/1/jobs?per_page=100"
         return ProcessResult(0, self.responses.pop(0))
 
 
@@ -156,7 +160,7 @@ def _archive(
         comparison_base=base,
         tree=tree,
         run_id=WorkflowRunId(5),
-        run_attempt=attempt,
+        run_attempt=WorkflowRunAttempt(attempt),
         kind=kind,
     )
     archive = root / "analysis.zip"
@@ -319,6 +323,70 @@ def test_verified_ci_proof_controls_reuse_and_rerun_races_fail_closed(tmp_path: 
             downloader=download,
         )
         assert report.checks == expected
+        destination = tmp_path / f"out-{attempt}"
+        if attempt == 1:
+            assert isinstance(report, VerifiedReviewedAnalysis)
+            assert report.run_attempt == WorkflowRunAttempt(1)
+            assert (report.source_commit, report.tree, report.comparison_base) == (SHA, TREE, BASE)
+            assert (destination / "ci/proof.json").is_file()
+        else:
+            assert isinstance(report, FreshAnalysis)
+            assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    ("original", "invalid"),
+    [
+        ('"schema_version":1', '"schema_version":true'),
+        ('"run_id":5', '"run_id":true'),
+        ('"run_attempt":1', '"run_attempt":true'),
+        ('"run_attempt":1', '"run_attempt":0'),
+        ('"run_id":5', '"run_id":5,"run_id":6'),
+    ],
+    ids=["boolean-schema", "boolean-run", "boolean-attempt", "zero-attempt", "duplicate-run"],
+)
+def test_ambiguous_proof_is_rejected_before_publishing(tmp_path: Path, original: str, invalid: str) -> None:
+    archive = _archive(tmp_path)
+    with ZipFile(archive.path) as bundle:
+        proof = bundle.read("proof.json").decode("utf-8")
+    assert original in proof
+    with ZipFile(archive.path, "w") as bundle:
+        bundle.writestr("proof.json", proof.replace(original, invalid))
+    digest = "sha256:" + hashlib.sha256(archive.path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match=r"schema_version|run_id|run_attempt|duplicate JSON key"):
+        _verify(_Archive(archive.path, digest), tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        _run().replace('"total_count": 1', '"total_count": true'),
+        _run().replace('"total_count": 1', '"total_count": -1'),
+        _run().replace('"run_attempt": 1', '"run_attempt": true'),
+        _run().replace('"id": 5', '"id": true'),
+        _run().replace('"id": 5', '"id": 5, "id": 6'),
+    ],
+    ids=["boolean-total", "negative-total", "boolean-attempt", "boolean-run", "duplicate-run"],
+)
+def test_invalid_provider_identity_requires_fresh_checks_without_outputs(tmp_path: Path, runs: str) -> None:
+    destination = tmp_path / "out"
+    report = reuse_reviewed_analysis(
+        tmp_path, "owner/repo", SHA, destination, base=BASE, event="push", runner=_Gateway(tmp_path, [_pulls(), runs])
+    )
+    assert isinstance(report, FreshAnalysis)
+    assert not destination.exists()
+
+
+def test_existing_verified_payload_is_never_overwritten(tmp_path: Path) -> None:
+    archive = _archive(tmp_path)
+    destination = tmp_path / "out"
+    destination.mkdir()
+    sentinel = destination / "proof.json"
+    sentinel.write_bytes(b"retained existing evidence")
+    with pytest.raises(FileExistsError):
+        _verify(archive, destination)
+    assert sentinel.read_bytes() == b"retained existing evidence"
 
 
 def test_metadata_and_release_helpers_do_not_load_the_sdk(tmp_path: Path) -> None:

@@ -50,7 +50,8 @@ class FakeRolloutRunner:
             version = command[command.index("--from") + 1].removeprefix("code-standards==")
             returncode, stdout = 0, f"code-standards {version}"
         else:
-            returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
+            default = "[]" if rendered[:3] == ("gh", "pr", "list") else ""
+            returncode, stdout = self.responses.pop(0) if self.responses else (0, default)
         result = subprocess.CompletedProcess(rendered, returncode, stdout, self.stderr)
         if check and returncode:
             raise subprocess.CalledProcessError(returncode, rendered, output=stdout, stderr=self.stderr or None)
