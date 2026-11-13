@@ -711,6 +711,8 @@ def _migrated_script(command: JsonValue, *, lint: str, replace_eslint: bool) -> 
 
 
 def _simple_arguments(words: Sequence[str], *, binary: str, check: bool) -> tuple[list[str], bool, bool] | None:
+    if binary in {"eslint", "oxlint"} and "-c" in words:
+        return None
     paths: list[str] = []
     fix = False
     index = 0

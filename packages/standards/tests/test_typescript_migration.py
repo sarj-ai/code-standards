@@ -522,6 +522,20 @@ def test_migrated_scripts(scripts: dict[str, str], replace_eslint: bool, expecte
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "eslint -c strict.mjs src",
+        "oxlint -c oxlint.config.mts --type-aware --type-check .",
+        "OXLINT_TSGOLINT_PATH=./node_modules/.bin/tsrs-lint oxlint -c oxlint.config.mts --type-aware --type-check . --fix",
+    ],
+)
+def test_short_linter_config_preserves_configuration_and_source_scope(command: str) -> None:
+    migrated = typescript_migration.migrated_scripts({"lint": command}, lint="LINT", replace_eslint=True)
+
+    assert migrated["lint"] == command
+
+
+@pytest.mark.parametrize(
     ("root_config", "tooling_options"),
     [
         ('{ "compilerOptions": { "strict": true }, "include": ["src"] }\n', {}),
