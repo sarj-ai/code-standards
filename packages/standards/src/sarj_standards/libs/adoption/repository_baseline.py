@@ -94,6 +94,15 @@ def read_optional(root: Path) -> bytes | None:
     return path.read_bytes()
 
 
+def compatible_policy_change(root: Path, before: bytes, after: bytes) -> bool:
+    try:
+        configured = (root / ".repo-standards/repository.toml").read_bytes()
+        target = parse_baseline_bytes(after).policy_version
+        return after == migrate(before, configured, target_policy_version=target)
+    except OSError, TypeError, ValueError:
+        return False
+
+
 # Fingerprints of the committed findings on files the migration deletes. The Oxlint migration deletes
 # eslint.config.mjs and eslint.strict.mjs; Repo Standards rejects a baseline that still accepts a finding
 # on a file that is gone ("resolved fingerprints"). Without a baseline, or when the analysis is incomplete,

@@ -478,7 +478,8 @@ def unmigrated_retired_findings(plan: UpgradePlan, findings: Sequence[doctor.Fin
 
 
 def baseline_and_suppression_changes(plan: UpgradePlan) -> tuple[Path, ...]:
-    protected = {plan.root / repository_baseline.PATH}
+    repository = plan.root / repository_baseline.PATH
+    protected = {repository}
     if plan.adopted.diagnostic_baseline is not None:
         protected.add(plan.root / plan.adopted.diagnostic_baseline)
     writes = [*plan.baseline_writes, *plan.suppression_writes]
@@ -494,6 +495,12 @@ def baseline_and_suppression_changes(plan: UpgradePlan) -> tuple[Path, ...]:
         if (before := plan.preconditions.get(path)) != (after := contents.encode("utf-8"))
         # A bundle bump rewrites only the diagnostic baseline's provenance; its accepted entries stay put.
         and not (path == diagnostic and before is not None and baseline.provenance_only_change(before, after))
+        # Reuse the reviewed policy transitions; the exact migration retains every other baseline byte.
+        and not (
+            path == repository
+            and before is not None
+            and repository_baseline.compatible_policy_change(plan.root, before, after)
+        )
     }
     changed.update(
         target

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import asdict
+from itertools import batched, groupby
 import json
 import re
 import shutil
@@ -26,6 +27,7 @@ CONTRACT_PATH = ".sarj-terraform-guards.json"
 _OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _LIMIT = 500_000
 _PROMOTION_PARENT_COUNT = 2
+_TREE_BATCH_SIZE = 64
 
 
 class CoreIAC:
@@ -56,7 +58,11 @@ class CoreIAC:
         self._check_staged_manifest(current)
         paths = self._manifest_paths(current)
         sources = self._original_sources(introductions, current, paths)
-        entries = tuple(entry for path in paths for entry in self._original_entries(sources[path], (path,)))
+        entries = tuple(
+            entry
+            for revision, grouped_paths in groupby(paths, key=sources.__getitem__)
+            for entry in self._original_entries(revision, tuple(grouped_paths))
+        )
         original = self._original_revision(introductions, current)
         inherited = frozenset(path for path in paths if sources[path] != original)
         entries = self._preserve_relocated_guards(entries, current, inherited)
@@ -109,7 +115,8 @@ class CoreIAC:
 
     def _original_sources(self, introductions: tuple[str, ...], current: str, paths: Sequence[str]) -> dict[str, str]:
         revision = self._original_revision(introductions, current)
-        sources = {path: revision for path in paths if self._git("ls-tree", revision, "--", path)}
+        modes = self._tree_modes(revision, paths)
+        sources = {path: revision for path in paths if path in modes}
         missing = tuple(path for path in paths if path not in sources)
         if not missing:
             return sources
@@ -182,12 +189,13 @@ class CoreIAC:
         if not paths or len(set(paths)) != len(paths):
             message = "guard contract capture needs unique existing paths"
             raise ValueError(message)
-        entries: list[GuardContract] = []
         for path in sorted(paths):
             relative_tf_path(path)
             self._contained(path)
-            mode = self._git("ls-tree", revision, "--", path).split(maxsplit=1)
-            if not mode or mode[0] != "100644":
+        modes = self._tree_modes(revision, paths)
+        entries: list[GuardContract] = []
+        for path in sorted(paths):
+            if modes.get(path) != "100644":
                 message = "guard original must be a regular immutable Git blob"
                 raise ValueError(message)
             found = contracts_for_source(path, self._git("show", f"{revision}:{path}"))
@@ -196,6 +204,15 @@ class CoreIAC:
                 raise ValueError(message)
             entries.extend(found)
         return tuple(entries)
+
+    def _tree_modes(self, revision: str, paths: Sequence[str]) -> dict[str, str]:
+        modes: dict[str, str] = {}
+        for batch in batched(paths, _TREE_BATCH_SIZE, strict=False):
+            for record in self._git("ls-tree", "-z", revision, "--", *batch).split("\0"):
+                if record:
+                    metadata, path = record.split("\t", maxsplit=1)
+                    modes[path] = metadata.split(maxsplit=1)[0]
+        return modes
 
     def _verify_current(self, entries: Sequence[GuardContract]) -> None:
         from sarj_iac_lint.guard_contracts import verify_sources  # ruff: ignore[import-outside-top-level] -- load only for selected IaC contract analysis.

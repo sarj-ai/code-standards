@@ -69,6 +69,22 @@ def test_known_policy_migration_changes_only_the_version_bytes(
 
 
 @pytest.mark.parametrize(
+    ("before", "after", "fingerprints", "compatible"),
+    [(35, 36, (), True), (35, 36, ("a" * 64,), False), (25, 26, ("a" * 64,), True), (35, 37, (), False)],
+)
+def test_policy_change_classification_uses_reviewed_compatibility(
+    tmp_path: Path, before: int, after: int, fingerprints: tuple[str, ...], compatible: bool
+) -> None:
+    configured = tmp_path / ".repo-standards" / "repository.toml"
+    configured.parent.mkdir()
+    configured.write_bytes(_MANIFEST)
+    original = _baseline(before, fingerprints=fingerprints)
+    proposed = original.replace(f'"policy_version": {before}'.encode(), f'"policy_version": {after}'.encode())
+
+    assert repository_baseline.compatible_policy_change(tmp_path, original, proposed) is compatible
+
+
+@pytest.mark.parametrize(
     "fingerprints",
     [
         pytest.param((), id="empty-warning-ratchet"),
