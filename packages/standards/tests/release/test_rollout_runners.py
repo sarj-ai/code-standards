@@ -18,7 +18,14 @@ REGISTRY = (
 
 
 @pytest.mark.parametrize(
-    "runner", ["ubuntu-latest", "ubuntu-24.04", "blacksmith-2vcpu-ubuntu-2404", "blacksmith-4vcpu-ubuntu-2404"]
+    "runner",
+    [
+        "ubuntu-latest",
+        "ubuntu-24.04",
+        "blacksmith-2vcpu-ubuntu-2404",
+        "blacksmith-4vcpu-ubuntu-2404",
+        "blacksmith-16vcpu-ubuntu-2404",
+    ],
 )
 def test_registry_routes_only_the_selected_consumer_to_an_allowed_host(tmp_path: Path, runner: str) -> None:
     path = tmp_path / "registry.toml"
@@ -44,7 +51,7 @@ def test_registry_routes_only_the_selected_consumer_to_an_allowed_host(tmp_path:
         pytest.param("false", id="boolean"),
         pytest.param("[]", id="array"),
         pytest.param('"self-hosted"', id="unapproved-host"),
-        pytest.param('"blacksmith-8vcpu-ubuntu-2404"', id="unbounded-host"),
+        pytest.param('"blacksmith-8vcpu-ubuntu-2404"', id="unapproved-profile"),
         pytest.param('"ubuntu-latest\\nself-hosted"', id="multiline"),
         pytest.param('"${{ secrets.TOKEN }}"', id="workflow-expression"),
     ],
