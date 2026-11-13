@@ -152,12 +152,21 @@ dev-dependencies = ["backports.cached-property"]
     }
 
 
-def test_scan_requirements_supports_includes_urls_editables_and_ignores_constraints(tmp_path: Path) -> None:
+@pytest.mark.parametrize("line_ending", ["\n", "\r\n"])
+def test_scan_requirements_supports_includes_urls_editables_and_ignores_constraints(
+    tmp_path: Path, line_ending: str
+) -> None:
     requirements = tmp_path / "requirements"
     requirements.mkdir()
-    (tmp_path / "requirements.in").write_text(
-        "-r requirements/dev.in\n-c constraints.txt\nrequests @ https://example.test/a.whl\npandas>=2 # data frames\n",
-        encoding="utf-8",
+    (tmp_path / "requirements.in").write_bytes(
+        (
+            "-r requirements/dev.in\n-c constraints.txt\n"
+            "certifi==2026.10.23 \\\n    --hash=sha256:abc \\\n    --hash=sha256:def\n"
+            "requests @ https://example.test/a.whl \\\n    --hash=sha256:abc\n"
+            "pandas>=2 # data frames\n"
+        )
+        .replace("\n", line_ending)
+        .encode("utf-8")
     )
     (requirements / "dev.in").write_text("-e git+https://example.test/project#egg=UJSON\n", encoding="utf-8")
     (tmp_path / "constraints.txt").write_text("pandas==1\n", encoding="utf-8")
@@ -293,6 +302,8 @@ def test_dependency_scan_does_not_enter_ignored_subtrees(
         ("pyproject.toml", "[project\ndependencies=[]"),
         ("package.json", '{"dependencies": []}'),
         ("requirements.txt", "not a valid !!! requirement"),
+        ("requirements.txt", "not a valid !!! \\\n    requirement"),
+        ("requirements.txt", "requests\\\\\n    --hash=sha256:abc\n"),
     ],
 )
 def test_scan_fails_closed_on_malformed_applicable_manifests(tmp_path: Path, name: str, content: str) -> None:
