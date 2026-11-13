@@ -1164,6 +1164,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
     permissions:
       contents: read
       security-events: write

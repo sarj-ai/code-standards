@@ -175,9 +175,23 @@ class _SarifDriver(BaseModel):
     name: Literal["CodeQL"]
 
 
+class _SarifExtension(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
+    name: str
+
+
 class _SarifTool(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     driver: _SarifDriver
+    extensions: tuple[_SarifExtension, ...] = ()
+
+    @field_validator("extensions")
+    @classmethod
+    def require_full_source_queries(cls, value: tuple[_SarifExtension, ...]) -> tuple[_SarifExtension, ...]:
+        if any(extension.name == "codeql-action/pr-diff-range" for extension in value):
+            msg = "diff-limited CodeQL results require fresh full-source analysis"
+            raise ValueError(msg)
+        return value
 
 
 class _SarifRun(BaseModel):

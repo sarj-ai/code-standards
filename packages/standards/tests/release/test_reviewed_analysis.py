@@ -239,6 +239,101 @@ def test_codeql_proof_without_results_is_not_a_security_certificate(tmp_path: Pa
         _verify(archive, tmp_path / "unverified", kind=CheckKind.PYTHON)
 
 
+def _codeql_archive(root: Path, kind: CheckKind, *, diff_limited: bool) -> _Archive:
+    archive = _archive(root, kind=kind)
+    extensions = [{"name": "codeql/python-queries"}]
+    if diff_limited:
+        extensions.append({"name": "codeql-action/pr-diff-range"})
+    report = json.dumps(
+        {
+            "version": "2.1.0",
+            "runs": [
+                {"tool": {"driver": {"name": "CodeQL"}}},
+                {
+                    "tool": {"driver": {"name": "CodeQL"}, "extensions": extensions},
+                    "results": [{"ruleId": "retained-security-finding", "level": "error"}],
+                },
+            ],
+        }
+    )
+    with ZipFile(archive.path) as bundle:
+        proof = bundle.read("proof.json")
+    with ZipFile(archive.path, "w") as bundle:
+        bundle.writestr("proof.json", proof)
+        bundle.writestr("results.sarif", report)
+    return _Archive(archive.path, "sha256:" + hashlib.sha256(archive.path.read_bytes()).hexdigest())
+
+
+@pytest.mark.parametrize("kind", [CheckKind.PYTHON, CheckKind.JAVASCRIPT])
+def test_diff_limited_codeql_is_rejected_before_extraction(tmp_path: Path, kind: CheckKind) -> None:
+    archive = _codeql_archive(tmp_path, kind, diff_limited=True)
+    destination = tmp_path / "unverified"
+    with pytest.raises(ValueError, match="diff-limited CodeQL"):
+        _verify(archive, destination, kind=kind)
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("kind", [CheckKind.PYTHON, CheckKind.JAVASCRIPT])
+def test_full_source_codeql_preserves_findings_and_query_extensions(tmp_path: Path, kind: CheckKind) -> None:
+    archive = _codeql_archive(tmp_path, kind, diff_limited=False)
+    destination = tmp_path / "verified"
+    _verify(archive, destination, kind=kind)
+    with ZipFile(archive.path) as bundle:
+        assert (destination / "results.sarif").read_bytes() == bundle.read("results.sarif")
+
+
+@pytest.mark.parametrize("diff_limited", [False, True])
+def test_diff_limited_reviewed_analysis_requires_fresh_execution(tmp_path: Path, diff_limited: bool) -> None:
+    archive = _codeql_archive(tmp_path, CheckKind.PYTHON, diff_limited=diff_limited)
+    artifacts = json.dumps(
+        {
+            "total_count": 1,
+            "artifacts": [
+                {
+                    "id": 7,
+                    "name": "reviewed-codeql-python-1",
+                    "expired": False,
+                    "digest": archive.digest,
+                    "workflow_run": {
+                        "id": 5,
+                        "head_sha": HEAD,
+                        "head_branch": "topic",
+                        "repository_id": 3,
+                        "head_repository_id": 3,
+                    },
+                }
+            ],
+        }
+    )
+    jobs = '{"total_count":1,"jobs":[{"name":"codeql (python)","status":"completed","conclusion":"success"}]}'
+
+    def download(argv: tuple[str, ...], *, cwd: Path, destination: Path) -> None:
+        assert cwd == tmp_path
+        assert argv == ("gh", "api", "repos/owner/repo/actions/artifacts/7/zip")
+        destination.write_bytes(archive.path.read_bytes())
+
+    gateway = _Gateway(tmp_path, [_pulls(), _run(), jobs, artifacts, _run(wrapper=False)])
+    destination = tmp_path / "reused"
+    report = reuse_reviewed_analysis(
+        tmp_path,
+        "owner/repo",
+        SHA,
+        destination,
+        base=BASE,
+        event="push",
+        runner=gateway,
+        downloader=download,
+    )
+    if diff_limited:
+        assert isinstance(report, FreshAnalysis)
+        assert report.checks == ()
+        assert not destination.exists()
+    else:
+        assert isinstance(report, VerifiedReviewedAnalysis)
+        assert report.checks == (CheckKind.PYTHON,)
+        assert (destination / "codeql-python/results.sarif").is_file()
+
+
 def test_wheel_source_marker_must_match_its_reviewed_commit(tmp_path: Path) -> None:
     archive = _archive(tmp_path, kind=CheckKind.WHEELS, wheel_source=HEAD)
     with pytest.raises(ValueError, match="source commit"):
