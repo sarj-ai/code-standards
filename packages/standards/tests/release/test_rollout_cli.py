@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -185,3 +186,63 @@ def test_preservation_keeps_existing_rollout_argument_positions() -> None:
 
     assert args.channel is rollout.RolloutChannel.CANARY
     assert not args.preserve_baselines
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        rollout.RolloutCommand.PLAN,
+        rollout.RolloutCommand.APPLY,
+        rollout.RolloutCommand.STATUS,
+        rollout.RolloutCommand.VERIFY_RELEASE,
+    ],
+)
+def test_missing_exact_version_never_reads_registry_or_launches_commands(
+    command: rollout.RolloutCommand, tmp_path: Path
+) -> None:
+    runner = FakeRolloutRunner()
+    args = rollout.RolloutArgs(registry=tmp_path / "absent.toml", command=command)
+    with pytest.raises(rollout.RolloutError, match="requires an exact published version"):
+        rollout.execute(args, runner)
+    assert runner.commands == []
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), 0, -1, True])
+def test_invalid_timeout_never_starts_a_rollout_or_subprocess(timeout: float) -> None:
+    runner = FakeRolloutRunner()
+    args = rollout.RolloutArgs(command=rollout.RolloutCommand.RECONCILE, command_timeout=timeout)
+    with pytest.raises(rollout.RolloutError, match="finite and positive"):
+        rollout.execute(args, runner)
+    with pytest.raises(rollout.RolloutError, match="finite and positive"):
+        rollout.SubprocessRunner(command_timeout=timeout)
+    assert runner.commands == []
+
+
+@pytest.mark.parametrize("jobs", [True, 0, -1, rollout.MAX_CONCURRENT_CONSUMERS + 1])
+def test_invalid_concurrency_never_starts_a_rollout(jobs: int) -> None:
+    runner = FakeRolloutRunner()
+    with pytest.raises(rollout.RolloutError, match="consumer concurrency limit"):
+        rollout.execute(rollout.RolloutArgs(command=rollout.RolloutCommand.RECONCILE, jobs=jobs), runner)
+    assert runner.commands == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["", "https://pr/1", "https://github.com/example/consumer/pull/0", "https://github.com/example/consumer/issues/1"],
+)
+def test_invalid_provider_url_cannot_qualify_a_merged_rollout(url: str) -> None:
+    consumer = rollout.Consumer("Consumer", "example/consumer", "main", ("true",))
+    version = "9.32.1"
+    provider = [
+        {
+            "url": url,
+            "mergedAt": "2026-11-13T00:00:00Z",
+            "headRefName": rollout.rollout_branch(version),
+            "baseRefName": "main",
+            "body": rollout.pr_marker(consumer, version) + "\n" + rollout.desired_marker(version),
+        }
+    ]
+    runner = FakeRolloutRunner([(0, json.dumps(provider))])
+    with pytest.raises(rollout.RolloutError, match="valid GitHub pull-request URL"):
+        rollout.status_one(consumer, version, runner)
+    assert len(runner.commands) == 1

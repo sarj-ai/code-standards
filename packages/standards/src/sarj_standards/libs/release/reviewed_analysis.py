@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 import hashlib
+import json
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -11,10 +13,16 @@ from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, NewType
 from zipfile import BadZipFile, ZipFile
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 import typer
 
-from sarj_standards.libs.release.ci_artifacts import RepositoryId, TestedArtifact, WorkflowRunId
+from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.release.ci_artifacts import (
+    RepositoryId,
+    TestedArtifact,
+    WorkflowRunAttempt,
+    WorkflowRunId,
+)
 from sarj_standards.libs.release.process import (
     ProcessFailureError,
     ProcessFileRunner,
@@ -56,38 +64,63 @@ _JOB_NAMES: Final[dict[CheckKind, str]] = {
 
 
 class AnalysisProof(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True, strict=True)
     schema_version: Literal[1]
     repository: str
     source_commit: str = Field(pattern=_SHA_PATTERN, min_length=40, max_length=40)
     comparison_base: str = Field(pattern=_SHA_PATTERN, min_length=40, max_length=40)
     tree: str = Field(pattern=_SHA_PATTERN, min_length=40, max_length=40)
     run_id: WorkflowRunId = Field(gt=0)
-    run_attempt: int = Field(ge=1)
+    run_attempt: WorkflowRunAttempt = Field(ge=1)
     kind: CheckKind
 
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def exact_schema_version(cls, value: object) -> object:
+        if type(value) is not int or value != 1:
+            msg = "reviewed analysis requires integer schema version 1"
+            raise ValueError(msg)
+        return value
 
-class ReviewedAnalysis(BaseModel):
-    source_run: WorkflowRunId | None = None
-    checks: tuple[CheckKind, ...] = ()
+
+@dataclass(frozen=True, slots=True)
+class FreshAnalysis:
+    kind: ClassVar[Literal["fresh"]] = "fresh"
+    source_run: ClassVar[None] = None
+    checks: ClassVar[tuple[CheckKind, ...]] = ()
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class VerifiedReviewedAnalysis:
+    kind: ClassVar[Literal["verified"]] = "verified"
+    reason: ClassVar[str] = "verified identical reviewed Git tree"
+    source_run: WorkflowRunId
+    run_attempt: WorkflowRunAttempt
+    source_commit: str
+    tree: str
+    comparison_base: str
+    checks: tuple[CheckKind, *tuple[CheckKind, ...]]
+
+
+type ReviewedAnalysis = FreshAnalysis | VerifiedReviewedAnalysis
+
+
 class _Repository(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     repository_id: RepositoryId = Field(alias="id", gt=0)
     full_name: str
 
 
 class _Revision(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     sha: str = Field(pattern=_SHA_PATTERN, min_length=40, max_length=40)
     ref: str
     repo: _Repository | None
 
 
 class _Pull(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     number: PullNumber = Field(gt=0)
     merge_commit_sha: str | None
     merged_at: datetime | None
@@ -96,13 +129,13 @@ class _Pull(BaseModel):
 
 
 class _Pulls(RootModel[tuple[_Pull, ...]]):
-    pass
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, strict=True)
 
 
 class _Run(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     run_id: WorkflowRunId = Field(alias="id", gt=0)
-    run_attempt: int = Field(ge=1)
+    run_attempt: WorkflowRunAttempt = Field(ge=1)
     head_sha: str = Field(pattern=_SHA_PATTERN, min_length=40, max_length=40)
     head_repository: _Repository
     event: str
@@ -113,47 +146,47 @@ class _Run(BaseModel):
 
 
 class _Runs(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
-    total_count: int
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
+    total_count: int = Field(ge=0)
     workflow_runs: tuple[_Run, ...]
 
 
 class _Job(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     name: str
     status: str
     conclusion: str | None
 
 
 class _Jobs(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
-    total_count: int
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
+    total_count: int = Field(ge=0)
     jobs: tuple[_Job, ...]
 
 
 class _Artifacts(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
-    total_count: int
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
+    total_count: int = Field(ge=0)
     artifacts: tuple[TestedArtifact, ...]
 
 
 class _SarifDriver(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     name: Literal["CodeQL"]
 
 
 class _SarifTool(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     driver: _SarifDriver
 
 
 class _SarifRun(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     tool: _SarifTool
 
 
 class _Sarif(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     version: Literal["2.1.0"]
     runs: tuple[_SarifRun, ...] = Field(min_length=1)
 
@@ -235,14 +268,16 @@ def verify_analysis_archive(
             raise ValueError(msg)
     with ZipFile(archive) as bundle:
         paths = _archive_paths(bundle, kind)
-        proof = AnalysisProof.model_validate_json(bundle.read("proof.json"))
+        proof_json = bundle.read("proof.json").decode("utf-8")
+        parse_unique_json(proof_json)
+        proof = AnalysisProof.model_validate_json(proof_json)
         actual = (proof.repository, proof.tree, proof.comparison_base, proof.run_id, proof.run_attempt, proof.kind)
         expected = (repository, tree, base, run_id, run_attempt, kind)
         if actual != expected:
             msg = "reviewed analysis proof does not match the checked tree and run"
             raise ValueError(msg)
         _verify_results(bundle, paths, proof)
-        destination.mkdir(parents=True, exist_ok=True)
+        destination.mkdir(parents=True, exist_ok=False)
         for path in paths:
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -280,7 +315,9 @@ def _verify_results(bundle: ZipFile, paths: tuple[PurePosixPath, ...], proof: An
         msg = "reviewed CodeQL proof requires its SARIF results"
         raise ValueError(msg)
     for path in sarif_paths:
-        _Sarif.model_validate_json(bundle.read(str(path)))
+        document = bundle.read(str(path)).decode("utf-8")
+        parse_unique_json(document)
+        _Sarif.model_validate_json(document)
     if proof.kind == CheckKind.WHEELS:
         if bundle.read("SOURCE_COMMIT").decode("ascii").strip() != proof.source_commit:
             msg = "reviewed wheel source commit does not match its proof"
@@ -319,14 +356,14 @@ def reuse_reviewed_analysis(
     downloader: ProcessFileRunner = run_process_to_file,
 ) -> ReviewedAnalysis:
     if event != "push":
-        return ReviewedAnalysis(reason="fresh analysis for PR, weekly/manual audit or unknown event")
+        return FreshAnalysis(reason="fresh analysis for PR, weekly/manual audit or unknown event")
     if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) is None or re.fullmatch(_SHA_PATTERN, sha) is None:
         msg = "reviewed analysis requires a repository and full commit SHA"
         raise ValueError(msg)
     try:
         return _reuse(root, repository, sha, destination, base=base, runner=runner, downloader=downloader)
     except (ProcessFailureError, OSError, ValueError, BadZipFile, KeyError) as error:
-        return ReviewedAnalysis(reason=f"fresh analysis: reviewed proof unavailable ({type(error).__name__})")
+        return FreshAnalysis(reason=f"fresh analysis: reviewed proof unavailable ({type(error).__name__})")
 
 
 def _reuse(
@@ -341,37 +378,45 @@ def _reuse(
 ) -> ReviewedAnalysis:
     parent = runner(("git", "rev-parse", f"{sha}^"), cwd=root, capture_output=True).stdout.strip()
     if parent != base:
-        return ReviewedAnalysis(reason="fresh checks: push comparison does not match the merge parent")
+        return FreshAnalysis(reason="fresh checks: push comparison does not match the merge parent")
     run = find_reviewed_run(root, repository, sha, runner=runner)
     if run is None:
-        return ReviewedAnalysis(reason="no recent successful own-repository merged-PR CI")
+        return FreshAnalysis(reason="no recent successful own-repository merged-PR CI")
     tree = runner(("git", "rev-parse", f"{sha}^{{tree}}"), cwd=root, capture_output=True).stdout.strip()
     jobs = _Jobs.model_validate_json(
-        _api(root, f"repos/{repository}/actions/runs/{run.run_id}/jobs?per_page=100", runner)
+        _api(root, f"repos/{repository}/actions/runs/{run.run_id}/attempts/{run.run_attempt}/jobs?per_page=100", runner)
     )
     artifacts = _Artifacts.model_validate_json(
         _api(root, f"repos/{repository}/actions/runs/{run.run_id}/artifacts?per_page=100", runner)
     )
     if jobs.total_count != len(jobs.jobs) or artifacts.total_count != len(artifacts.artifacts):
-        return ReviewedAnalysis(reason="incomplete reviewed CI job/artifact response")
-    checks = _verified_checks(
-        root,
-        repository,
-        tree,
-        run,
-        base=base,
-        jobs=jobs,
-        artifacts=artifacts,
-        destination=destination,
-        downloader=downloader,
-    )
-    latest = _Run.model_validate_json(_api(root, f"repos/{repository}/actions/runs/{run.run_id}", runner))
-    if latest != run:
-        return ReviewedAnalysis(reason="reviewed CI changed while verifying its certificates")
-    return ReviewedAnalysis(
-        source_run=run.run_id if checks else None,
-        checks=checks,
-        reason="verified identical reviewed Git tree" if checks else "no matching checked-tree certificates",
+        return FreshAnalysis(reason="incomplete reviewed CI job/artifact response")
+    with TemporaryDirectory(prefix="sarj-reviewed-checks-") as temporary:
+        staged = Path(temporary) / "checks"
+        checks = _verified_checks(
+            root,
+            repository,
+            tree,
+            run,
+            base=base,
+            jobs=jobs,
+            artifacts=artifacts,
+            destination=staged,
+            downloader=downloader,
+        )
+        latest = _Run.model_validate_json(_api(root, f"repos/{repository}/actions/runs/{run.run_id}", runner))
+        if latest != run:
+            return FreshAnalysis(reason="reviewed CI changed while verifying its certificates")
+        if not checks:
+            return FreshAnalysis(reason="no matching checked-tree certificates")
+        shutil.copytree(staged, destination)
+    return VerifiedReviewedAnalysis(
+        source_run=run.run_id,
+        run_attempt=run.run_attempt,
+        source_commit=sha,
+        tree=tree,
+        comparison_base=base,
+        checks=(checks[0], *checks[1:]),
     )
 
 
@@ -435,7 +480,9 @@ def _verified_checks(
 
 
 def _api(root: Path, endpoint: str, runner: ProcessRunner) -> str:
-    return runner(("gh", "api", "--method", "GET", endpoint), cwd=root, capture_output=True).stdout
+    document = runner(("gh", "api", "--method", "GET", endpoint), cwd=root, capture_output=True).stdout
+    parse_unique_json(document)
+    return document
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -463,7 +510,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if report.source_run:
                 stream.write(f"Source: https://github.com/{repository}/actions/runs/{report.source_run}\n\n")
             stream.write(f"Reused checks: {', '.join(report.checks) or 'none'}\n")
-        sys.stdout.write(report.model_dump_json() + "\n")
+        sys.stdout.write(
+            json.dumps({"source_run": report.source_run, "checks": report.checks, "reason": report.reason}) + "\n"
+        )
 
     app(args=None if argv is None else list(argv), prog_name="reviewed-analysis", standalone_mode=False)
     return 0

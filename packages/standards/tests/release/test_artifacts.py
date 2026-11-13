@@ -136,3 +136,32 @@ def test_verify_package_tarball_binds_name_and_version(tmp_path: Path) -> None:
             expected_name="@sarj/tsconfig",
             expected_version="9.12.1",
         )
+
+
+def test_duplicate_archive_path_cannot_qualify_two_different_payloads(tmp_path: Path) -> None:
+    archive = tmp_path / "package.tgz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name, contents in [
+            ("package/LICENSE", b"MIT"),
+            ("package/dist/index.js", b"export {};"),
+            ("package/dist/index.js", b"unexpected payload"),
+        ]:
+            member = tarfile.TarInfo(name)
+            member.size = len(contents)
+            bundle.addfile(member, io.BytesIO(contents))
+    with pytest.raises(ValueError, match="duplicate path"):
+        verify_package_tarball(archive, ("dist/index.js",))
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [b'{"name":"expected","name":"other"}', b'{"size":1e999}', b'{"padding":"' + b"x" * 1_000_000 + b'"}'],
+    ids=["duplicate-identity", "nonfinite-value", "oversized-manifest"],
+)
+def test_ambiguous_or_unbounded_package_metadata_cannot_qualify_a_release(tmp_path: Path, manifest: bytes) -> None:
+    archive = tmp_path / "package.tgz"
+    _tarball(
+        archive, {"package/LICENSE": b"MIT", "package/package.json": manifest, "package/dist/index.js": b"export {};"}
+    )
+    with pytest.raises(ValueError, match=r"duplicate JSON key|non-finite JSON number|exceeds the byte limit"):
+        verify_package_tarball(archive, ("dist/index.js",))

@@ -297,7 +297,7 @@ def fix_sources(root: Path, paths: Sequence[str]) -> int:
     files = _directive_sources(repository, paths)
     selection = oxlint.select_oxlint_commands(repository, files, label="unused directives")
     batch = transaction.FileTransaction.capture(
-        repository, tuple(repository / name for name in files), explicit_only=True, source_writes=True
+        repository, tuple(repository / name for name in files), mode=transaction.CaptureMode.SOURCE
     )
     try:
         for command in selection.commands:
@@ -444,9 +444,7 @@ def apply(root: Path, expected: Mapping[str, SourcePostimage]) -> None:
     frozen = dict(expected)
     index = _index(repository) if frozen else None
     paths = _expected(repository, frozen, after=False)
-    batch = transaction.FileTransaction.capture(
-        repository, tuple(paths.values()), explicit_only=True, source_writes=True
-    )
+    batch = transaction.FileTransaction.capture(repository, tuple(paths.values()), mode=transaction.CaptureMode.SOURCE)
     _expected(repository, frozen, after=False)
     try:
         _write_postimages(repository, frozen, paths=paths, batch=batch, index=index)

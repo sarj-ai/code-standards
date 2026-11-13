@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import StrEnum
 import io
 import json
 from pathlib import Path
 import re
 import tokenize
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, assert_never
 
 from sarj_standards.libs.repository import ledger
 
@@ -35,7 +35,10 @@ _LINT_SUPPRESSIONS: Final = frozenset({LEGACY_ESLINT_SUPPRESSIONS, OXLINT_SUPPRE
 _RATCHET_SUPPRESSIONS: Final = "suppression-baseline.json"
 _LINT_CONFIG_NAMES: Final = re.compile(r"^(?:eslint|oxlint)\.config\.(?:[cm]?[jt]s)$")
 _PROPERTY_KEY_OFFSET: Final = 2
-_JAVASCRIPT_CLOSING: Final = MappingProxyType({"(": ")", "[": "]", "{": "}"})
+type _JavaScriptClosing = Literal[")", "]", "}"]
+
+
+_JAVASCRIPT_CLOSING: Final[Mapping[str, _JavaScriptClosing]] = MappingProxyType({"(": ")", "[": "]", "{": "}"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,10 +47,17 @@ class Rewrite:
     contents: str
 
 
-class _DirectiveState(Enum):
-    NONE = auto()
-    VALID = auto()
-    AMBIGUOUS = auto()
+class _JavaScriptQuote(StrEnum):
+    OUTSIDE = ""
+    SINGLE = "'"
+    DOUBLE = '"'
+    TEMPLATE = "`"
+
+
+class _HclQuote(StrEnum):
+    OUTSIDE = ""
+    SINGLE = "'"
+    DOUBLE = '"'
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,26 +67,52 @@ class _CommentSpan:
 
 
 @dataclass(frozen=True, slots=True)
-class _Directive:
-    state: _DirectiveState
-    tokens: tuple[str, ...] = ()
-    match: re.Match[str] | None = None
-    reason: str = ""
+class _NoDirective:
+    kind: ClassVar[Literal["none"]] = "none"
+
+
+@dataclass(frozen=True, slots=True)
+class _AmbiguousDirective:
+    kind: ClassVar[Literal["ambiguous"]] = "ambiguous"
+
+
+type _RuleTokens = tuple[str, *tuple[str, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidDirective:
+    kind: ClassVar[Literal["valid"]] = "valid"
+    tokens: _RuleTokens
+    match: re.Match[str]
+    reason: str
+
+
+type _Directive = _NoDirective | _AmbiguousDirective | _ValidDirective
 
 
 @dataclass(frozen=True, slots=True)
 class _JavaScriptToken:
-    kind: str
+    kind: Literal["identifier", "punctuation", "string", "template"]
     value: str
     start: int
     end: int
 
 
 @dataclass(frozen=True, slots=True)
-class _JavaScriptFrame:
-    closing: str
+class _JavaScriptGroup:
+    closing: Literal[")", "]"]
     eligible: bool
-    role: str = "container"
+    role: ClassVar[Literal["container"]] = "container"
+
+
+@dataclass(frozen=True, slots=True)
+class _JavaScriptObject:
+    role: Literal["config", "rules", "nested"]
+    closing: ClassVar[Literal["}"]] = "}"
+    eligible: ClassVar[Literal[False]] = False
+
+
+type _JavaScriptFrame = _JavaScriptGroup | _JavaScriptObject
 
 
 def supports(path: Path) -> bool:
@@ -136,12 +172,17 @@ def reference_counts(path: Path, text: str, *, retired: tuple[ledger.Retired, ..
     for span in spans:
         comment = text[span.start : span.end]
         directive = _classify_directive(path, comment)
-        if directive.state is _DirectiveState.VALID:
-            for token in directive.tokens:
-                if token in entries:
-                    counts[token] = counts.get(token, 0) + 1
-        elif directive.state is _DirectiveState.AMBIGUOUS:
-            _add_pattern_hits(counts, retired, comment)
+        match directive:
+            case _ValidDirective():
+                for token in directive.tokens:
+                    if token in entries:
+                        counts[token] = counts.get(token, 0) + 1
+            case _AmbiguousDirective():
+                _add_pattern_hits(counts, retired, comment)
+            case _NoDirective():
+                pass
+            case _:
+                assert_never(directive)
 
     # Mask comments to avoid counting directives twice when scanning config and fixture references.
     uncomments = _mask_spans(text, spans)
@@ -301,7 +342,7 @@ def rewrite_directives(path: Path, text: str, targets: Mapping[str, tuple[str, .
     for span in reversed(_comment_spans(path, text)):
         comment = text[span.start : span.end]
         directive = _classify_directive(path, comment)
-        if directive.state is not _DirectiveState.VALID or not any(token in targets for token in directive.tokens):
+        if not isinstance(directive, _ValidDirective) or not any(token in targets for token in directive.tokens):
             continue
         replacement = _rewrite_valid_directive(directive, targets)
         if replacement:
@@ -362,13 +403,13 @@ def _lint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int],
     frames: list[_JavaScriptFrame] = []
     matches: list[tuple[int, int]] = []
     for index, token in enumerate(tokens):
-        if token.value in {"(", "["}:
+        if token.kind == "punctuation" and token.value in {"(", "["}:
             frames.append(_javascript_group_frame(tokens, index, frames, token))
             continue
-        if token.value == "{":
+        if token.kind == "punctuation" and token.value == "{":
             frames.append(_javascript_object_frame(tokens, index, frames))
             continue
-        if token.value in {")", "]", "}"}:
+        if token.kind == "punctuation" and token.value in {")", "]", "}"}:
             if not frames or frames[-1].closing != token.value:
                 return None
             frames.pop()
@@ -380,12 +421,12 @@ def _lint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int],
 
 def _javascript_object_frame(
     tokens: tuple[_JavaScriptToken, ...], index: int, frames: list[_JavaScriptFrame]
-) -> _JavaScriptFrame:
-    previous = tokens[index - 1].value if index else "default"
+) -> _JavaScriptObject:
+    previous = _previous_grammar_token(tokens, index)
     property_name = (
         tokens[index - _PROPERTY_KEY_OFFSET].value if index >= _PROPERTY_KEY_OFFSET and previous == ":" else None
     )
-    parent_object = next((frame for frame in reversed(frames) if frame.closing == "}"), None)
+    parent_object = next((frame for frame in reversed(frames) if isinstance(frame, _JavaScriptObject)), None)
     if property_name == "rules" and parent_object is not None and parent_object.role == "config":
         role = "rules"
     elif (frames[-1].eligible if frames else True) and previous in {
@@ -397,15 +438,22 @@ def _javascript_object_frame(
         role = "config"
     else:
         role = "nested"
-    return _JavaScriptFrame(closing="}", eligible=False, role=role)
+    return _JavaScriptObject(role=role)
 
 
 def _javascript_group_frame(
     tokens: tuple[_JavaScriptToken, ...], index: int, frames: list[_JavaScriptFrame], token: _JavaScriptToken
-) -> _JavaScriptFrame:
-    previous = tokens[index - 1].value if index else "default"
+) -> _JavaScriptGroup:
+    previous = _previous_grammar_token(tokens, index)
     eligible = (frames[-1].eligible if frames else True) and previous != ":"
-    return _JavaScriptFrame(")" if token.value == "(" else "]", eligible)
+    return _JavaScriptGroup(")" if token.value == "(" else "]", eligible)
+
+
+def _previous_grammar_token(tokens: tuple[_JavaScriptToken, ...], index: int) -> str | None:
+    if not index:
+        return "default"
+    previous = tokens[index - 1]
+    return previous.value if previous.kind in {"identifier", "punctuation"} else None
 
 
 def _is_expected_rule_key(
@@ -419,7 +467,7 @@ def _is_expected_rule_key(
         return False
     if not frames or frames[-1].role != "rules":
         return False
-    return index + 1 < len(tokens) and tokens[index + 1].value == ":"
+    return index + 1 < len(tokens) and tokens[index + 1].kind == "punctuation" and tokens[index + 1].value == ":"
 
 
 def _export_default_expression_tokens(text: str) -> tuple[_JavaScriptToken, ...] | None:
@@ -435,19 +483,19 @@ def _export_default_expression_tokens(text: str) -> tuple[_JavaScriptToken, ...]
     if len(anchors) != 1:
         return None
     selected: list[_JavaScriptToken] = []
-    depth = 0
-    pending: list[str] = []
+    pending: list[_JavaScriptClosing] = []
     for token in tokens[anchors[0] + 2 :]:
-        if token.value == ";" and depth == 0:
+        if token.kind == "punctuation" and token.value == ";" and not pending:
             break
         selected.append(token)
-        if token.value in _JAVASCRIPT_CLOSING:
+        if token.kind == "punctuation" and token.value in _JAVASCRIPT_CLOSING:
             pending.append(_JAVASCRIPT_CLOSING[token.value])
-            depth += 1
-        elif token.value in {")", "]", "}"}:
-            if not pending or pending.pop() != token.value:
-                return None
-            depth -= 1
+        elif (
+            token.kind == "punctuation"
+            and token.value in {")", "]", "}"}
+            and (not pending or pending.pop() != token.value)
+        ):
+            return None
     return tuple(selected) if not pending else None
 
 
@@ -511,22 +559,21 @@ def _classify_directive(path: Path, comment: str) -> _Directive:
     match = pattern.fullmatch(comment)
     if match is None:
         lowered = comment.lower()
-        state = _DirectiveState.AMBIGUOUS if any(marker in lowered for marker in markers) else _DirectiveState.NONE
-        return _Directive(state)
+        return _AmbiguousDirective() if any(marker in lowered for marker in markers) else _NoDirective()
     reason_match = _REASON.fullmatch(match.group("body"))
     if reason_match is None:
-        return _Directive(_DirectiveState.AMBIGUOUS)
+        return _AmbiguousDirective()
     tokens = _comma_delimited_tokens(reason_match.group("rules"), valid)
-    if not tokens:
-        return _Directive(_DirectiveState.AMBIGUOUS)
-    return _Directive(_DirectiveState.VALID, tokens, match, reason_match.group("reason") or "")
+    if tokens is None:
+        return _AmbiguousDirective()
+    return _ValidDirective(tokens, match, reason_match.group("reason") or "")
 
 
-def _comma_delimited_tokens(body: str, valid: Callable[[str], re.Match[str] | None]) -> tuple[str, ...]:
+def _comma_delimited_tokens(body: str, valid: Callable[[str], re.Match[str] | None]) -> _RuleTokens | None:
     raw = tuple(part.strip() for part in body.strip().split(","))
     if not raw or any(not token or valid(token) is None for token in raw):
-        return ()
-    return raw
+        return None
+    return raw[0], *raw[1:]
 
 
 def _comment_spans(path: Path, text: str) -> tuple[_CommentSpan, ...]:
@@ -545,11 +592,17 @@ def _hcl_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
     masked = _mask_spans(text, tuple(spans))
     offset = 0
     for line in masked.splitlines(keepends=True):
-        quote: str | None = None
+        quote = _HclQuote.OUTSIDE
         for index, character in enumerate(line):
             if character in {'"', "'"} and (index == 0 or line[index - 1] != "\\"):
-                quote = None if quote == character else character if quote is None else quote
-            elif character == "#" and quote is None:
+                quote = (
+                    _HclQuote.OUTSIDE
+                    if quote.value == character
+                    else _HclQuote(character)
+                    if quote is _HclQuote.OUTSIDE
+                    else quote
+                )
+            elif character == "#" and quote is _HclQuote.OUTSIDE:
                 spans.append(_CommentSpan(offset + index, offset + len(line.rstrip("\r\n"))))
                 break
         offset += len(line)
@@ -572,21 +625,21 @@ def _python_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
 def _javascript_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
     spans: list[_CommentSpan] = []
     index = 0
-    quote: str | None = None
+    quote = _JavaScriptQuote.OUTSIDE
     while index < len(text):
         char = text[index]
         if char == "\n":
-            if quote in {"'", '"'}:
-                quote = None
+            if quote in {_JavaScriptQuote.SINGLE, _JavaScriptQuote.DOUBLE}:
+                quote = _JavaScriptQuote.OUTSIDE
             index += 1
             continue
-        if quote is not None:
-            if char == quote and not _escaped(text, index):
-                quote = None
+        if quote is not _JavaScriptQuote.OUTSIDE:
+            if char == quote.value and not _escaped(text, index):
+                quote = _JavaScriptQuote.OUTSIDE
             index += 1
             continue
         if char in {"'", '"', "`"}:
-            quote = char
+            quote = _JavaScriptQuote(char)
             index += 1
             continue
         if char == "/" and index + 1 < len(text) and not _escaped(text, index):
@@ -652,10 +705,8 @@ def _looks_like_ambiguous_reference(line: str) -> bool:
     )
 
 
-def _rewrite_valid_directive(directive: _Directive, targets: Mapping[str, tuple[str, ...]]) -> str:
+def _rewrite_valid_directive(directive: _ValidDirective, targets: Mapping[str, tuple[str, ...]]) -> str:
     match = directive.match
-    if match is None:
-        return ""
     migrated = tuple(dict.fromkeys(target for token in directive.tokens for target in targets.get(token, (token,))))
     if migrated:
         close = match.groupdict().get("close") or ""

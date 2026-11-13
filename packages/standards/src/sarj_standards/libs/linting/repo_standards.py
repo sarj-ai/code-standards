@@ -10,6 +10,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-on
 from typing import TYPE_CHECKING
 
 from repo_standards.core.models import (
+    CurrentRatchetEntry,
     Diagnostic as RepositoryDiagnostic,
     InputProvenance,
     Mode,
@@ -24,6 +25,7 @@ from repo_standards.repository import (
     parse_baseline_bytes,
     parse_manifest_bytes,
     read_tracked_blob_contents,
+    select_analysis,
 )
 
 from sarj_standards.libs.diagnostics import (
@@ -77,9 +79,11 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
     report = analyze_repository(
         RepositoryAnalysisRequest(
             root=root,
-            baseline_path=_BASELINE.as_posix() if has_baseline else None,
-            mode=Mode.RATCHET if has_baseline else Mode.STRICT,
-            include_warnings=include_warnings,
+            selection=select_analysis(
+                Mode.RATCHET if has_baseline else Mode.STRICT,
+                _BASELINE.as_posix() if has_baseline else None,
+                include_warnings=include_warnings,
+            ),
             staged=staged,
             base_revision=_comparison_base(root) if not staged else None,
             as_of=datetime.now(UTC).date(),
@@ -137,8 +141,8 @@ def _rejected_warning_fingerprints(ratchet: RatchetComparison | None) -> frozens
     return frozenset(
         entry.fingerprint
         for entry in ratchet.entries
-        if entry.classification is RatchetClassification.NEW
-        and entry.diagnostic is not None
+        if isinstance(entry, CurrentRatchetEntry)
+        and entry.classification is RatchetClassification.NEW
         and entry.diagnostic.severity == "warning"
         and entry.diagnostic.disposition != "excepted"
     )

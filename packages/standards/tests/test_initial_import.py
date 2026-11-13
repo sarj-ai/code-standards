@@ -96,7 +96,7 @@ def test_initial_import_preserves_the_original_delta_and_new_debt(
     original = baseline.changed_line_scope(imported.original, staged=False)
     ordinary = baseline.changed_line_scope(imported.root, staged=True)
     ordinary_report = api.Standards(imported.root).analyze(["app.py"], staged=True, rules=_RULES)
-    assert ordinary is not None
+    assert isinstance(ordinary, baseline.KnownChangedLines)
     assert ordinary.lines["app.py"] == frozenset({1, 2, 3})
     assert len(ordinary_report.diagnostics) == 2
     assert sum(tool.baselined_count for tool in ordinary_report.tools) == 0
@@ -109,7 +109,7 @@ def test_initial_import_preserves_the_original_delta_and_new_debt(
     assert context is not None
     assert context.parent == imported.parent
     assert scope == original
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines["app.py"] == frozenset({3})
     assert report.issues == ()
     assert report.exit_code == 1
@@ -221,8 +221,7 @@ def test_initial_import_preserves_rename_and_non_ascii_line_attribution(
 
     scope = baseline.changed_line_scope(imported.root, staged=True, paths=(name,))
 
-    assert scope is not None
-    assert not scope.failed
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.paths == frozenset({name})
     assert scope.lines[name] == frozenset({4})
 
@@ -235,8 +234,7 @@ def test_initial_import_uses_actual_objects_despite_replacement_refs(
 
     scope = baseline.changed_line_scope(imported.root, staged=True, paths=("app.py",))
 
-    assert scope is not None
-    assert not scope.failed
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines["app.py"] == frozenset({3})
 
 
@@ -270,8 +268,7 @@ def test_initial_import_uses_the_prospective_index(imported: ImportRepository, m
     environment = staged_environment(imported.root)
     report = api.Standards(imported.root).analyze(["app.py"], staged=True, rules=_RULES)
 
-    assert scope is not None
-    assert not scope.failed
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines["app.py"] == frozenset({3})
     assert environment["GIT_INDEX_FILE"] == str(pending)
     assert environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] == str(imported.original / ".git/objects")
@@ -332,7 +329,7 @@ def test_initial_import_rejects_failed_scope_and_preserves_findings(
         assert root == imported.root
         assert staged
         assert paths is not None
-        return baseline.ChangedLineScope(frozenset(paths), {}, failed=True)
+        return baseline.UnavailableChangedLines()
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inject a transient diff failure after the real source context validated, while retaining real native analyzer findings.
         baseline, "changed_line_scope", failed_comparison

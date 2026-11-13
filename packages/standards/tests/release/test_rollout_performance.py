@@ -249,20 +249,22 @@ def test_progress_keeps_stdout_valid_json(capsys: pytest.CaptureFixture[str]) ->
 
 def test_planner_skips_settled_consumers_and_closed_waves() -> None:
     outcomes = (
-        rollout.Outcome(FLEET[0], rollout.OutcomeState.PR_OPEN),
-        rollout.Outcome(FLEET[1], rollout.OutcomeState.MISSING),
-        rollout.Outcome(FLEET[2], rollout.OutcomeState.MISSING),
+        rollout.Outcome(
+            FLEET[0], rollout.PullRequestOpen(rollout.pull_request_url("https://github.com/example/consumer/pull/1"))
+        ),
+        rollout.Outcome(FLEET[1], rollout.RolloutMissing("managed rollout pull request absent")),
+        rollout.Outcome(FLEET[2], rollout.RolloutMissing("managed rollout pull request absent")),
     )
 
     assert rollout.pending_matrix(outcomes) == []
-    advanced = (rollout.Outcome(FLEET[0], rollout.OutcomeState.ALREADY_CURRENT), *outcomes[1:])
+    advanced = (rollout.Outcome(FLEET[0], rollout.AlreadyCurrent()), *outcomes[1:])
     assert rollout.pending_matrix(advanced) == [{"name": FLEET[1].name, "identity": FLEET[1].identity}]
 
 
 def test_planner_retries_failed_verification_but_preserves_unowned_prs() -> None:
-    failed = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail=rollout.VERIFICATION_RETRY_DETAIL)
-    unchanged = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail=rollout.VERIFICATION_UNCHANGED_DETAIL)
-    unowned = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail="ownership marker does not match")
+    failed = rollout.Outcome(FLEET[0], rollout.RolloutBlocked(rollout.VERIFICATION_RETRY_DETAIL))
+    unchanged = rollout.Outcome(FLEET[0], rollout.RolloutBlocked(rollout.VERIFICATION_UNCHANGED_DETAIL))
+    unowned = rollout.Outcome(FLEET[0], rollout.RolloutBlocked("ownership marker does not match"))
 
     assert rollout.pending_matrix((failed,)) == [{"name": FLEET[0].name, "identity": FLEET[0].identity}]
     assert rollout.pending_matrix((unowned,)) == []

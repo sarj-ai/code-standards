@@ -686,7 +686,7 @@ def test_changed_line_query_handles_literal_paths_and_oversized_scope(
     paths = (filename, *(f"missing/{index:04d}/" + "x" * 100 for index in range(700))) if oversized else (filename,)
     scope = baseline.changed_line_scope(git_root, staged=staged, paths=paths)
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     expected = frozenset({filename, "app1.py", "unrelated.txt"}) if oversized else frozenset({filename})
     assert scope.paths == expected
     assert scope.lines == dict.fromkeys(expected, frozenset({2}))
@@ -713,7 +713,7 @@ def test_scoped_changed_lines_preserve_distant_baselines_after_a_rename(
     distant = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("new.py", position=Position(1, 0, 10)))
     edited = replace(distant, location=Location("new.py", position=Position(90, 0, 1000)))
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines == {"new.py": frozenset({91})}
     assert not baseline.touches_changed_lines(distant, scope)
     assert baseline.touches_changed_lines(edited, scope)
@@ -776,8 +776,7 @@ def test_nonstaged_changed_scope_ignores_a_foreign_hook_repository(
 
     scope = baseline.changed_line_scope(git_root, staged=False, paths=(source.name,))
 
-    assert scope is not None
-    assert not scope.failed
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.paths == frozenset({"app.py"})
     assert scope.lines == {"app.py": frozenset({2})}
     assert ((git_root / ".git/index").read_bytes(), (foreign / ".git/index").read_bytes()) == before
@@ -817,7 +816,7 @@ def test_changed_line_paths_preserve_baselines_with_custom_git_configuration(
     old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location(filename, position=Position(0, 0, 0)))
     changed = replace(old, location=Location(filename, position=Position(1, 0, 4)))
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines == {filename: frozenset({2})}
     assert not baseline.touches_changed_lines(old, scope)
     assert baseline.touches_changed_lines(changed, scope)
@@ -855,7 +854,7 @@ def test_non_utf8_git_paths_preserve_byte_identity(monkeypatch: pytest.MonkeyPat
 
     scope = baseline.changed_line_scope(tmp_path, staged=True)
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.paths == frozenset({filename})
     assert scope.lines == {filename: frozenset({2})}
 
@@ -881,7 +880,7 @@ def test_changed_lines_are_relative_to_the_analysis_root(
     old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("app.py", position=Position(0, 0, 0)))
     changed = replace(old, location=Location("app.py", position=Position(1, 0, 4)))
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.paths == frozenset({"app.py"})
     assert not baseline.touches_changed_lines(old, scope)
     assert baseline.touches_changed_lines(changed, scope)
@@ -935,7 +934,7 @@ def test_changed_line_analysis_does_not_execute_text_converters(git_root: Path) 
     scope = baseline.changed_line_scope(git_root, staged=True)
 
     assert not converter.with_suffix(".ran").exists()
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines["app.py"] == frozenset({2})
 
 
@@ -985,7 +984,7 @@ def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
         changed_scope=scope,
     )
 
-    assert scope is not None
+    assert isinstance(scope, baseline.KnownChangedLines)
     assert scope.lines == {"app.py": frozenset(boundaries)}
     assert tuple(
         finding.location.position.line + 1 for finding in visible.diagnostics if finding.location.position
@@ -993,7 +992,7 @@ def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
 
 
 def test_deletion_boundaries_affect_spanning_regions_and_file_level_findings() -> None:
-    scope = baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset({3, 4})})
+    scope = baseline.KnownChangedLines(frozenset({"app.py"}), {"app.py": frozenset({3, 4})})
     distant = Diagnostic(
         "X", "old", Severity.ERROR, "ruff", Location("app.py", region=Region(Position(0, 0, 0), Position(1, 0, 1)))
     )
@@ -1017,7 +1016,7 @@ def test_deletion_boundaries_affect_spanning_regions_and_file_level_findings() -
 )
 def test_changed_lines_use_exclusive_range_ends(start: Position, end: Position, changed: int, touches: bool) -> None:
     finding = Diagnostic("X", "existing", Severity.ERROR, "ruff", Location("app.py", region=Region(start, end)))
-    scope = baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset({changed})})
+    scope = baseline.KnownChangedLines(frozenset({"app.py"}), {"app.py": frozenset({changed})})
 
     assert baseline.touches_changed_lines(finding, scope) is touches
 
@@ -1025,9 +1024,9 @@ def test_changed_lines_use_exclusive_range_ends(start: Position, end: Position, 
 @pytest.mark.parametrize(
     "scope",
     [
-        baseline.ChangedLineScope(frozenset(), {}, failed=True),
-        baseline.ChangedLineScope(frozenset({"app.py"}), {}),
-        baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset()}),
+        baseline.UnavailableChangedLines(),
+        baseline.KnownChangedLines(frozenset({"app.py"}), {}),
+        baseline.KnownChangedLines(frozenset({"app.py"}), {"app.py": frozenset()}),
     ],
     ids=("failed-diff", "missing-hunks", "empty-hunks"),
 )

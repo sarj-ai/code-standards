@@ -123,16 +123,33 @@ class RuleDescriptorV1(TypedDict):
     test: str
 
 
-type ChangeKind = Literal["added", "removed", "implementation-changed", "policy-changed"]
 type RuleLevel = Literal["error", "warning"]
 
 
-class RuleChangeV1(TypedDict):
-    kind: ChangeKind
+class _RuleChangeIdentity(TypedDict):
     key: str
     releaseTarget: str
-    before: RuleDescriptorV1 | None
-    after: RuleDescriptorV1 | None
+
+
+class AddedRuleV1(_RuleChangeIdentity):
+    kind: Literal["added"]
+    before: None
+    after: RuleDescriptorV1
+
+
+class RemovedRuleV1(_RuleChangeIdentity):
+    kind: Literal["removed"]
+    before: RuleDescriptorV1
+    after: None
+
+
+class ModifiedRuleV1(_RuleChangeIdentity):
+    kind: Literal["implementation-changed", "policy-changed"]
+    before: RuleDescriptorV1
+    after: RuleDescriptorV1
+
+
+type RuleChangeV1 = AddedRuleV1 | RemovedRuleV1 | ModifiedRuleV1
 
 
 class RuleChangeSetV1(TypedDict):
@@ -174,20 +191,55 @@ def compare(
         old_descriptor = old["descriptors"].get(key)
         new_descriptor = new["descriptors"].get(key)
         if old_descriptor is None:
-            changes.append(_change("added", key, None, new_descriptor))
+            if new_descriptor is None:
+                msg = "a rule comparison key must have a before or after descriptor"
+                raise ValueError(msg)
+            changes.append(
+                {
+                    "kind": "added",
+                    "key": key,
+                    "releaseTarget": new_descriptor["releaseTarget"],
+                    "before": None,
+                    "after": new_descriptor,
+                }
+            )
             continue
         if new_descriptor is None:
-            changes.append(_change("removed", key, old_descriptor, None))
+            changes.append(
+                {
+                    "kind": "removed",
+                    "key": key,
+                    "releaseTarget": old_descriptor["releaseTarget"],
+                    "before": old_descriptor,
+                    "after": None,
+                }
+            )
             continue
         old_catalog = old["catalog"][key]
         new_catalog = new["catalog"][key]
         if any(old_catalog.get(field) != new_catalog.get(field) for field in _POLICY_FIELDS):
-            changes.append(_change("policy-changed", key, old_descriptor, new_descriptor))
+            changes.append(
+                {
+                    "kind": "policy-changed",
+                    "key": key,
+                    "releaseTarget": new_descriptor["releaseTarget"],
+                    "before": old_descriptor,
+                    "after": new_descriptor,
+                }
+            )
         if (
             _implementation_projection(old_catalog) != _implementation_projection(new_catalog)
             or old["implementation_blobs"][key] != new["implementation_blobs"][key]
         ):
-            changes.append(_change("implementation-changed", key, old_descriptor, new_descriptor))
+            changes.append(
+                {
+                    "kind": "implementation-changed",
+                    "key": key,
+                    "releaseTarget": new_descriptor["releaseTarget"],
+                    "before": old_descriptor,
+                    "after": new_descriptor,
+                }
+            )
     changes.sort(key=itemgetter("key", "kind"))
     changed_selectors = sorted({change["key"] for change in changes})
     identity: dict[str, object] = {
@@ -215,7 +267,6 @@ def added_rules_at_other_levels(comparison: RuleChangeSetV1, *, required: RuleLe
         change["key"]
         for change in comparison["changes"]
         if change["kind"] == "added"
-        and change["after"] is not None
         and change["after"]["defaultLevel"] != required
         and not (
             required == "warning"
@@ -223,25 +274,6 @@ def added_rules_at_other_levels(comparison: RuleChangeSetV1, *, required: RuleLe
             and change["key"] in _ERROR_FIRST_APPROVALS
         )
     ]
-
-
-def _change(
-    kind: ChangeKind,
-    key: str,
-    before: RuleDescriptorV1 | None,
-    after: RuleDescriptorV1 | None,
-) -> RuleChangeV1:
-    current = after if after is not None else before
-    if current is None:  # pragma: no cover - compare only emits changes with at least one descriptor
-        msg = "a rule change must contain a before or after descriptor"
-        raise ValueError(msg)
-    return {
-        "kind": kind,
-        "key": key,
-        "releaseTarget": current["releaseTarget"],
-        "before": before,
-        "after": after,
-    }
 
 
 def _implementation_projection(rule: dict[str, JsonValue]) -> dict[str, JsonValue]:

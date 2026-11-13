@@ -92,7 +92,7 @@ def _set_warning(
     if python_rule_descriptors.enabled(repository):
         managed = (*managed, python_rule_descriptors.DESCRIPTOR_PATH)
     paths = (edit.path, *(repository / path for path in managed))
-    mutation = transaction.FileTransaction.capture(repository, paths, explicit_only=True)
+    mutation = transaction.FileTransaction.capture(repository, paths, mode=transaction.CaptureMode.EXPLICIT)
     try:
         if edit.before != edit.after:
             transaction.assert_expected(repository, edit.path, edit.before.encode("utf-8"))

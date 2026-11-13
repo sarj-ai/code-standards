@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 from pydantic import JsonValue
 
@@ -39,10 +39,18 @@ _MAX_DIFF_PATH_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class ChangedLineScope:
+class KnownChangedLines:
+    failed: ClassVar[Literal[False]] = False
     paths: frozenset[str]
     lines: dict[str, frozenset[int]]
-    failed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class UnavailableChangedLines:
+    failed: ClassVar[Literal[True]] = True
+
+
+type ChangedLineScope = KnownChangedLines | UnavailableChangedLines
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,18 +90,18 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     if not staged and not base:
         return None
     if not staged and _GIT_SHA.fullmatch(base) is None:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     try:
         environment = staged_environment(root) if staged else isolated_environment()
     except OSError, ValueError:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     git = shutil.which("git")
     if git is None:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     try:
         context = initial_import.load(root, staged=staged)
     except ValueError:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     # The validated index equals source; immutable endpoints keep both patch reads on that exact delta.
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
     if context is not None:
@@ -153,15 +161,17 @@ def _read_changed_scope(
             timeout=30,
         )
     except OSError, ValueError, subprocess.TimeoutExpired:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     if names.returncode != 0 or patch.returncode != 0:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     try:
         initial_import.validate(root, context, staged=staged)
     except ValueError:
-        return ChangedLineScope(frozenset(), {}, failed=True)
+        return UnavailableChangedLines()
     affected = changes.paths & frozenset(selected) if selected else changes.paths
-    return ChangedLineScope(affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
+    return KnownChangedLines(
+        affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape"))
+    )
 
 
 def _changed_paths(payload: bytes) -> _ChangedPaths:
@@ -225,7 +235,7 @@ def _patch_path(value: str) -> str:
 def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None) -> bool:
     if scope is None:
         return False
-    if scope.failed:
+    if isinstance(scope, UnavailableChangedLines):
         return True
     path = diagnostic.location.path
     if path not in scope.paths:

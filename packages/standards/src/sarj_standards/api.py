@@ -24,6 +24,7 @@ from .libs.adoption.manifest import load as load_manifest
 from .libs.adoption.scaffold import detect
 from .libs.adoption.service import (
     InitPlan,
+    InitSucceeded,
     apply_init,
     apply_sync,
     plan_init,
@@ -223,10 +224,10 @@ class Standards:
         applied = apply_init(plan, install=install)
         findings = (
             ()
-            if applied.error is None
+            if isinstance(applied, InitSucceeded) or applied.error is None
             else (
                 Finding(
-                    f"setup.{applied.failure.value if applied.failure is not None else 'apply'}.failed",
+                    f"setup.{applied.failure.value}.failed",
                     "error",
                     applied.error,
                 ),
@@ -856,7 +857,7 @@ def _analysis_changed_scope(
         or (shell_format and item.source == "shfmt" and item.rule_id == "format")
     )
     scope = diagnostic_baseline.changed_line_scope(root, staged=staged, paths=paths) if paths else None
-    if trusted and scope is not None and not scope.failed and scope.paths and budget.counts:
+    if trusted and isinstance(scope, diagnostic_baseline.KnownChangedLines) and scope.paths and budget.counts:
         from .libs.linting import format_only  # ruff: ignore[import-outside-top-level] -- native proof is only needed when changed source intersects an accepted diagnostic budget.
 
         equivalent = format_only.equivalent_paths(root, scope.paths, staged=staged)
@@ -883,7 +884,10 @@ def _with_shell_format_severity(
                     required
                     or (
                         changed_scope is not None
-                        and (changed_scope.failed or item.location.path in changed_scope.paths)
+                        and (
+                            isinstance(changed_scope, diagnostic_baseline.UnavailableChangedLines)
+                            or item.location.path in changed_scope.paths
+                        )
                     )
                 )
                 else item

@@ -9,6 +9,7 @@ import pytest
 from repo_standards.core.engine import baseline_from_report
 from repo_standards.core.models import (
     ComponentId,
+    CurrentRatchetEntry,
     Diagnostic as RepositoryDiagnostic,
     FindingsReport,
     Mode,
@@ -16,7 +17,6 @@ from repo_standards.core.models import (
     PolicyId,
     RatchetClassification,
     RatchetComparison,
-    RatchetEntry,
     RelatedLocation as RepositoryRelatedLocation,
     Remediation,
     RepositoryId,
@@ -277,7 +277,9 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
         scope_digest="0" * 64,
         summary={"diagnostics": 1, "errors": 1, "warnings": 0},
         diagnostics=(diagnostic,),
-        ratchet=RatchetComparison((RatchetEntry(diagnostic.fingerprint, RatchetClassification.KNOWN, diagnostic),)),
+        ratchet=RatchetComparison(
+            (CurrentRatchetEntry(diagnostic.fingerprint, RatchetClassification.KNOWN, diagnostic),)
+        ),
     )
 
     def analyze_repository(_request: RepositoryAnalysisRequest) -> FindingsReport:

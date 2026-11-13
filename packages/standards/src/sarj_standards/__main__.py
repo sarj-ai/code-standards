@@ -26,23 +26,21 @@ def main(argv: list[str] | None = None) -> int:
         and arguments[0] == "commit-message"
         and not arguments[1].startswith("-")
     ):
-        from repo_standards.core.commit_message import check_commit_message_file  # ruff: ignore[import-outside-top-level] -- reuse the canonical validator without loading unrelated commands.
+        from repo_standards.core.commit_message import (  # ruff: ignore[import-outside-top-level] -- reuse the canonical validator without loading unrelated commands.
+            ValidCommitMessage,
+            check_commit_message_file,
+        )
 
         result = None
         try:
-            accepted = (
-                Path.cwd().resolve().is_dir()
-                and (
-                    result := check_commit_message_file(Path(arguments[1]), fix_safe=False, allow_temporary=True)
-                ).satisfied
-                and result.replacement_header is None
-            )
+            if Path.cwd().resolve().is_dir():
+                result = check_commit_message_file(Path(arguments[1]), fix_safe=False, allow_temporary=True)
         except KeyboardInterrupt:
             sys.stderr.write("error: interrupted\n")
             return 130
         except OSError, ValueError:
-            accepted = False
-        if accepted and result is not None:
+            pass
+        if isinstance(result, ValidCommitMessage):
             from repo_standards.core.subject import subject_advisories  # ruff: ignore[import-outside-top-level] -- keep the accepted commit path independent of the full command graph.
 
             for advice in subject_advisories(result.header):

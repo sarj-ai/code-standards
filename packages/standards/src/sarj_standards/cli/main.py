@@ -19,7 +19,11 @@ from typing import TYPE_CHECKING, Annotated, Final, NoReturn
 
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, JsonValue, ValidationError
-from repo_standards.core.commit_message import check_local_commit_message_file
+from repo_standards.core.commit_message import (
+    AppliedCommitRepair,
+    check_local_commit_message_file,
+    is_commit_message_satisfied,
+)
 from repo_standards.core.subject import subject_advisories
 import typer
 
@@ -968,7 +972,7 @@ def _apply_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> int:
     from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     result = service.apply_init(init_plan, install=not args.no_install)
-    if result.status:
+    if not isinstance(result, service.InitSucceeded):
         event = "interrupted" if result.failure is service.InitFailure.INTERRUPTED else "failed"
         print(
             f"error: initialization {event}; rollback and generated-environment cleanup were attempted",
@@ -977,8 +981,7 @@ def _apply_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> int:
         if result.error:
             print(f"detail: {result.error}", file=sys.stderr)
         return result.status
-    if result.sync is not None:
-        _render_sync(result.sync)
+    _render_sync(result.sync)
     for note in result.notes:
         print(f"note: {note}")
     if not args.no_install:
@@ -3019,13 +3022,13 @@ def cmd_commit_message(args: _Args) -> int:
         root=_resolve_dest(args.dest),
         fix_safe=True,
     )
-    if result.fix_applied:
+    if isinstance(result, AppliedCommitRepair):
         print("Commit message: safely normalized; validation passed.")
-    if result.satisfied:
+    if is_commit_message_satisfied(result):
         for advice in subject_advisories(result.header):
             print(f"Advisory: {advice.code}\n{advice.message}\n{advice.remediation}")
         return 0
-    finding = result.findings[0]
+    finding = result.finding
     print(f"Commit message: {finding.code}", file=sys.stderr)
     print(finding.message, file=sys.stderr)
     print(f"Fix: {finding.remediation}", file=sys.stderr)

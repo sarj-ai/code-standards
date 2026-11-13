@@ -136,7 +136,7 @@ def apply(plan: AuthoringPlan, root: Path) -> None:
     paths = tuple(edit.path for edit in edits)
     if plan.descriptors is not None:
         paths = (*paths, plan.descriptors.path)
-    mutation = transaction.FileTransaction.capture(root, paths, explicit_only=True)
+    mutation = transaction.FileTransaction.capture(root, paths, mode=transaction.CaptureMode.EXPLICIT)
     try:
         _write_scaffold(plan, root, edits, mutation)
     except BaseException:

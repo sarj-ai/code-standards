@@ -89,7 +89,9 @@ def test_an_existing_config_is_never_seeded_again(tmp_path: Path) -> None:
 def test_finish_seeds_from_biome_disables_its_formatter_and_formats_once(tmp_path: Path) -> None:
     root = _repository(tmp_path, {"biome.json": _BIOME, "src/a.ts": 'export const a = "x"\n'})
     _with_tools(root)
-    files = transaction.FileTransaction.capture(root, (root / "src/a.ts", root / "biome.json"), explicit_only=True)
+    files = transaction.FileTransaction.capture(
+        root, (root / "src/a.ts", root / "biome.json"), mode=transaction.CaptureMode.EXPLICIT
+    )
 
     notes = typescript_tooling.finish(root, root, files, written=())
 
@@ -117,7 +119,7 @@ def test_finish_formats_a_scaffolded_entrypoint_without_reformatting_the_reposit
     _with_tools(root)
     entrypoint = root / "oxlint.config.mts"
     entrypoint.write_text(typescript_migration.render_entrypoint(), encoding="utf-8")
-    files = transaction.FileTransaction.capture(root, (), explicit_only=True)
+    files = transaction.FileTransaction.capture(root, (), mode=transaction.CaptureMode.EXPLICIT)
 
     assert typescript_tooling.finish(root, root, files, written=(entrypoint,)) == ()
 
@@ -150,7 +152,7 @@ def test_real_oxfmt_roundtrip_is_idempotent(tmp_path: Path) -> None:
     root = _repository(tmp_path, {".oxfmtrc.json": '{"ignorePatterns": ["dist/**"], "printWidth": 120}'})
     _with_tools(root)
     seeding = typescript_tooling.plan_oxfmt_config(root)
-    files = transaction.FileTransaction.capture(root, (), explicit_only=True)
+    files = transaction.FileTransaction.capture(root, (), mode=transaction.CaptureMode.EXPLICIT)
     for path, text in seeding.writes:
         files.track(path)
         files.write_text(path, text)

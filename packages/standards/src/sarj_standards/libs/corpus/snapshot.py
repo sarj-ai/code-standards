@@ -31,9 +31,15 @@ class CorpusSnapshot:
     bytes: int
     revision: str | None = None
     private: bool = field(default=False, repr=False, compare=False)
-    verified: bool = field(default=False, init=False, repr=False, compare=False)
+
+    @property
+    def verified(self) -> bool:
+        return False
 
     def __post_init__(self) -> None:
+        if type(self.files) is not int or type(self.bytes) is not int or type(self.private) is not bool:
+            msg = "corpus snapshot counts must be integers and privacy must be boolean"
+            raise TypeError(msg)
         if not self.name or not _DIGEST.fullmatch(self.digest):
             msg = "corpus snapshot requires a name and sha256 digest"
             raise ValueError(msg)
@@ -53,8 +59,15 @@ class CorpusSnapshot:
         )
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class VerifiedCorpusSnapshot(CorpusSnapshot):
+    @property
+    def verified(self) -> bool:
+        return True
+
+
 class VerifiedInventory(NamedTuple):
-    snapshot: CorpusSnapshot
+    snapshot: VerifiedCorpusSnapshot
     files: tuple[Path, ...]
 
 
@@ -128,7 +141,7 @@ def _matches(path: str, patterns: tuple[str, ...]) -> bool:
     )
 
 
-def verify(source: CorpusSource) -> CorpusSnapshot:
+def verify(source: CorpusSource) -> VerifiedCorpusSnapshot:
     verified, _files = verify_inventory(source)
     return verified
 
@@ -148,7 +161,7 @@ def verify_inventory(source: CorpusSource) -> VerifiedInventory:
         else:
             msg = f"corpus {source.report_name} revision drifted: expected {source.revision}, found {actual.revision}"
         raise ValueError(msg)
-    verified = CorpusSnapshot(
+    verified = VerifiedCorpusSnapshot(
         actual.name,
         actual.digest,
         actual.files,
@@ -156,7 +169,6 @@ def verify_inventory(source: CorpusSource) -> VerifiedInventory:
         actual.revision,
         private=actual.private,
     )
-    object.__setattr__(verified, "verified", True)  # ruff: ignore[unnecessary-dunder-call] -- frozen evidence token.
     return VerifiedInventory(verified, files)
 
 

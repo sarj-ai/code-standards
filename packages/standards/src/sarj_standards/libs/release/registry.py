@@ -101,8 +101,8 @@ def target_requirements(root: Path, target_name: str) -> tuple[RegistryRequireme
     resolved = root.resolve()
     requirements: list[RegistryRequirement] = []
     for publication in target.publications:
-        manifest = target.manifest if publication.manifest is None else publication.manifest
-        manifest_format = target.format if publication.format is None else publication.format
+        manifest = target.manifest if publication.manifest is None else publication.manifest.path
+        manifest_format = target.format if publication.manifest is None else publication.manifest.format
         version = read_manifest_version(resolved / manifest, manifest_format)
         requirements.append(RegistryRequirement(publication.registry, publication.name, version))
     primary_version = requirements[0].version

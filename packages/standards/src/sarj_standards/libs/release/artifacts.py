@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path, PurePosixPath
 import tarfile
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 import zipfile
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 
 
@@ -17,11 +17,15 @@ if TYPE_CHECKING:
 
 
 _INSTALL_LIFECYCLE_SCRIPTS = frozenset({"preinstall", "install", "postinstall", "prepare"})
+_MAX_PACKAGE_MANIFEST_BYTES = 1_000_000
 
 
-class _InspectedMembers(NamedTuple):
-    found: set[str]
-    identity_verified: bool
+def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for field in ("main", "module", "types"):
+        candidates.extend(_exported_paths(_json_value(package_json.get(field))))
+    candidates.extend(_exported_paths(_json_value(package_json.get("exports"))))
+    return tuple(dict.fromkeys(_safe_artifact_path(path) for path in candidates))
 
 
 def _json_value(value: object) -> JsonValue:
@@ -35,14 +39,6 @@ def _json_value(value: object) -> JsonValue:
         case _:
             msg = "JSON contains an unsupported value"
             raise TypeError(msg)
-
-
-def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ...]:
-    candidates: list[str] = []
-    for field in ("main", "module", "types"):
-        candidates.extend(_exported_paths(_json_value(package_json.get(field))))
-    candidates.extend(_exported_paths(_json_value(package_json.get("exports"))))
-    return tuple(dict.fromkeys(_safe_artifact_path(path) for path in candidates))
 
 
 def _exported_paths(value: JsonValue) -> tuple[str, ...]:
@@ -69,8 +65,7 @@ def _safe_artifact_path(value: str) -> str:
 def load_package_json(package_root: Path) -> dict[str, JsonValue]:
     manifest = package_root / "package.json"
     try:
-        untyped: object = parse_json(manifest.read_text(encoding="utf-8"))
-        value = _json_value(untyped)
+        value = parse_unique_json(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read {manifest}: {exc}"
         raise ValueError(msg) from exc
@@ -112,7 +107,7 @@ def verify_package_tarball(
     expected = {"package/LICENSE", *(f"package/{path}" for path in required)}
     try:
         with tarfile.open(tarball, mode="r:gz") as archive:
-            found, identity_verified = _inspect_members(
+            found = _inspect_members(
                 archive,
                 expected,
                 expected_name=expected_name,
@@ -125,7 +120,7 @@ def verify_package_tarball(
     if missing:
         msg = f"packed artifact omits exported entry point: {missing[0].removeprefix('package/')}"
         raise ValueError(msg)
-    if (expected_name is not None or expected_version is not None) and not identity_verified:
+    if (expected_name is not None or expected_version is not None) and "package/package.json" not in found:
         msg = "package archive omits package/package.json identity"
         raise ValueError(msg)
     return tuple(required)
@@ -149,29 +144,36 @@ def _inspect_members(
     *,
     expected_name: str | None,
     expected_version: str | None,
-) -> _InspectedMembers:
+) -> set[str]:
     found: set[str] = set()
-    identity_verified = False
-    for member in archive.getmembers():
-        path = PurePosixPath(member.name)
-        if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != "package":
-            msg = f"unsafe path in package archive: {member.name}"
-            raise ValueError(msg)
-        if member.issym() or member.islnk():
-            msg = f"links are forbidden in package archive: {member.name}"
-            raise ValueError(msg)
-        if member.isfile() and member.name.endswith(".map"):
-            msg = f"source maps are forbidden in package archive: {member.name}"
-            raise ValueError(msg)
+    members = archive.getmembers()
+    if len({PurePosixPath(member.name) for member in members}) != len(members):
+        msg = "duplicate path in package archive"
+        raise ValueError(msg)
+    for member in members:
+        _validate_package_member(member)
         if member.name == "package/package.json" and member.isfile():
             _inspect_package_manifest(archive, member, expected_name=expected_name, expected_version=expected_version)
-            identity_verified = True
+            found.add(member.name)
         if member.name in expected:
             if not member.isfile() or member.size == 0:
                 msg = f"packed entry point is missing, empty, or not a regular file: {member.name}"
                 raise ValueError(msg)
             found.add(member.name)
-    return _InspectedMembers(found, identity_verified)
+    return found
+
+
+def _validate_package_member(member: tarfile.TarInfo) -> None:
+    path = PurePosixPath(member.name)
+    if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != "package":
+        msg = f"unsafe path in package archive: {member.name}"
+        raise ValueError(msg)
+    if member.issym() or member.islnk():
+        msg = f"links are forbidden in package archive: {member.name}"
+        raise ValueError(msg)
+    if member.isfile() and member.name.endswith(".map"):
+        msg = f"source maps are forbidden in package archive: {member.name}"
+        raise ValueError(msg)
 
 
 def _inspect_package_manifest(
@@ -186,7 +188,11 @@ def _inspect_package_manifest(
         msg = "could not read package/package.json from package archive"
         raise ValueError(msg)
     try:
-        manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny] -- the stdlib decoder is untyped; validate this payload before using it as release metadata.
+        source = manifest_file.read(_MAX_PACKAGE_MANIFEST_BYTES + 1)
+        if len(source) > _MAX_PACKAGE_MANIFEST_BYTES:
+            msg = "package archive manifest exceeds the byte limit"
+            raise ValueError(msg)
+        manifest: object = parse_unique_json(source.decode("utf-8"))
     except json.JSONDecodeError as exc:
         msg = "package archive contains invalid package/package.json"
         raise ValueError(msg) from exc

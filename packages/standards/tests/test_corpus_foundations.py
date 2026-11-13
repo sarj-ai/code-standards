@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import shutil
 import subprocess
@@ -76,12 +77,26 @@ def test_snapshot_value_rejects_invalid_or_empty_identity() -> None:
         CorpusSnapshot("sample", _EMPTY_DIGEST, 0, -1)
 
 
+@pytest.mark.parametrize("field", ["files", "bytes", "private"])
+def test_snapshot_replacement_rejects_ambiguous_counts_or_privacy(field: str) -> None:
+    observed = CorpusSnapshot("sample", _EMPTY_DIGEST, 1, 0)
+    changes = {field: 1 if field == "private" else True}
+    with pytest.raises(TypeError, match="counts must be integers and privacy must be boolean"):
+        replace(observed, **changes)
+
+
 def test_verify_requires_the_declared_content_digest(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
     actual = snapshot(_source(tmp_path))
 
     verified = verify(_source(tmp_path, digest=actual.digest))
-    assert verified == actual
+    assert (verified.name, verified.digest, verified.files, verified.bytes, verified.revision) == (
+        actual.name,
+        actual.digest,
+        actual.files,
+        actual.bytes,
+        actual.revision,
+    )
     assert verified.verified is True
     assert actual.verified is False
     with pytest.raises(ValueError, match="digest drifted"):

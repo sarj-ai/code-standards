@@ -6,7 +6,7 @@ from enum import StrEnum
 import math
 from typing import TYPE_CHECKING, Protocol
 
-from sarj_standards.libs.corpus import CorpusSnapshot
+from sarj_standards.libs.corpus.snapshot import VerifiedCorpusSnapshot
 
 from .contracts import EvaluationCase, ExpectedOutcome, Finding, RuleProblem
 
@@ -62,14 +62,18 @@ class CaseEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationEvidence:
-    corpora: tuple[CorpusSnapshot, ...]
+    corpora: tuple[VerifiedCorpusSnapshot, ...]
     sample_method: str
     elapsed: timedelta
     baseline: timedelta
     maximum_slowdown: float = 1.25
 
     def __post_init__(self) -> None:
-        if not self.corpora or not all(corpus.verified for corpus in self.corpora) or not self.sample_method.strip():
+        if (
+            not self.corpora
+            or not all(type(corpus) is VerifiedCorpusSnapshot for corpus in self.corpora)
+            or not self.sample_method.strip()
+        ):
             msg = "evaluation evidence requires verified corpora and a sampling method"
             raise ValueError(msg)
         if (

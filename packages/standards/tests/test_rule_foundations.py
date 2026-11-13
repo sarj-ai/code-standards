@@ -379,8 +379,6 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
     source_file = tmp_path / "case.py"
     source_file.write_text("pass\n", encoding="utf-8")
     unverified = snapshot(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, "sha256:" + "0" * 64, ("*.py",)))
-    with pytest.raises(ValueError, match="verified corpora"):
-        EvaluationEvidence((unverified,), "all cases", timedelta(seconds=1), timedelta(seconds=1))
     verified = verify(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, unverified.digest, ("*.py",)))
     fast = EvaluationEvidence(
         (verified,),
@@ -389,6 +387,8 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
         timedelta(seconds=1),
         maximum_slowdown=1.25,
     )
+    with pytest.raises(ValueError, match="verified corpora"):
+        replace(fast, corpora=(unverified,))
     cases = (
         EvaluationCase("positive", Language.PYTHON, "pass", ExpectedOutcome.MATCH),
         EvaluationCase("negative", Language.PYTHON, "return None", ExpectedOutcome.NO_MATCH),
