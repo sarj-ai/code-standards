@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sarj:calm:module-architecture:1",
+  "title": "Sarj module architecture CALM decorator",
+  "description": "Organization-specific profile of CALM 1.3 decorators. Source annotations are captions followed by @architecture, min_view and replacement, separated by single spaces.",
+  "allOf": [
+    {
+      "$ref": "https://calm.finos.org/release/1.3/meta/decorators.json#/defs/decorator"
+    },
+    {
+      "properties": {
+        "type": { "const": "sarj-module-architecture" },
+        "data": { "$ref": "#/$defs/annotation" }
+      }
+    }
+  ],
+  "$defs": {
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "min_view", "replacement"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[A-Za-z](?:[A-Za-z0-9 /(),.'-]*[A-Za-z0-9)])?$",
+          "description": "Short role-oriented caption, reusing the module's existing purpose. No technology inventory or sensitive literals."
+        },
+        "min_view": {
+          "type": "string",
+          "enum": ["overview", "standard", "detailed"],
+          "description": "Cumulative visibility: overview appears in all views; standard in standard and detailed; detailed only in detailed. Hidden elements aggregate into their nearest visible parent, retaining source elements and relationship provenance in the complete export. These are presentation levels, not C4 abstractions."
+        },
+        "replacement": {
+          "type": "string",
+          "enum": ["contract", "migration", "redesign", "unknown"],
+          "description": "Reviewed architectural boundary. contract: preserve externally consumed interfaces without persistent data/state conversion. migration: preserve those interfaces but require persistent data/state conversion. redesign: require consumer/interface changes, whether or not migration is also needed. unknown: unassessed. Interface means consumed API, protocol and data contract, not a fixed endpoint literal. Classify redesign before migration before contract; never infer safety, hot swapping, zero downtime or a Terraform no-op. Render explicit badges; migration/redesign retain that qualification when visually abstracted; unknown never implies replaceable."
+        }
+      }
+    }
+  }
+}

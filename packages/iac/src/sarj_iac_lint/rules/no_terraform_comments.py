@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import comment_locations, physical_lines
+from sarj_iac_lint.architecture import ArchitectureAnnotationError, parse_module_annotation
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -43,6 +44,8 @@ class NoTerraformComments(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Core consumers may opt into [iac.no-terraform-comments] module_summaries = true. This permits one plain # summary of at most 80 characters on the first line of main.tf, followed by a blank line. Suppression and generated-file markers are excluded. Terraform validation still owns syntax; no Terraform values or outputs are added.",
+            "With that opt-in, # <purpose> @architecture <min_view> <replacement> adds typed data to the same header. The purpose is at most 40 characters; min_view is overview, standard or detailed; replacement is contract, migration, redesign or unknown. Single spaces separate the marker and enum tokens. The packaged module-architecture.v1.schema.json is the authoritative CALM 1.3 decorator profile; Python types are generated from it. Missing metadata stays unassessed, never implicitly contract-replaceable. This is a Sarj profile, not Terraform metadata or C4 levels.",
+            "Malformed, misplaced and conflicting annotations are rejected without echoing their contents. No keyed/JSON syntax, duplicate keys or unknown fields are accepted. Overview visibility is cumulative; filtering never removes complete-export facts. Replacement badges express interface/data migration cost, never hot-swap, downtime or Terraform plan safety. Annotation edits can change deployment hashes and require separate live qualification.",
             "At error level, takes precedence over the narrower comment-cruft and restated-comment rules when selected together for .tf source. Warning-stage adoption preserves existing errors.",
             "Applies to .tf source, including real comments in template interpolations; literal strings, heredoc script text and non-.tf inputs are not comments.",
             "One finding is emitted per comment token, including block comments and tool directives. This rule cannot suppress itself with another comment.",
@@ -127,6 +130,11 @@ class NoTerraformComments(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if path.suffix.lower() != ".tf":
             return []
+        if self.module_summaries:
+            try:
+                parse_module_annotation(path, source)
+            except ArchitectureAnnotationError as error:
+                return [Diagnostic(path, 1, 1, self.code, str(error), suppressible=False, severity=DefaultLevel.ERROR)]
         summary = (1, 1) if self.module_summaries and _module_summary(path, source) else None
         return [
             Diagnostic(

@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "9.32.1"
+version = "9.33.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -871,15 +871,17 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.41.1"
+version = "0.42.0"
 source = { editable = "../iac" }
 dependencies = [
+    { name = "jsonschema" },
     { name = "sarj-rule-contracts" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "jsonschema", specifier = "==4.26.0" },
     { name = "sarj-rule-contracts", editable = "../contracts" },
     { name = "typer", specifier = "==0.27.3" },
 ]
