@@ -950,6 +950,17 @@
             {
               "choices": [],
               "kind": "option",
+              "metavar": "BUDGET",
+              "names": [
+                "--budget"
+              ],
+              "repeatable": false,
+              "required": false,
+              "summary": "cap refreshed fingerprints and counts at this existing baseline; new findings stay active"
+            },
+            {
+              "choices": [],
+              "kind": "option",
               "metavar": null,
               "names": [
                 "--trust-repository-code"
@@ -986,7 +997,7 @@
             "update"
           ],
           "summary": "re-record the diagnostic baseline after reviewed cleanup",
-          "usage": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]"
+          "usage": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--budget BUDGET] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]"
         }
       ],
       "name": "baseline",
@@ -3361,6 +3372,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.34.2).",
-  "version": "9.34.2"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.35.0).",
+  "version": "9.35.0"
 }
