@@ -34,9 +34,11 @@ Keep IaC changes to the requested configuration and required delivery wiring.
 Use one-off disposable checks for change verification; keep rehearsal helpers
 and reports outside Git and summarize commands/results in the PR.
 Do not turn task verification into a new script, dependency, Make target or CI job.
-A permanent check needs a named recurring regression existing gates miss, an owned
-harness, a bounded runtime and an actionable failure. Reuse that harness; scope
-execution to affected inputs, including shared dependencies and security boundaries.
+A permanent check needs a named recurring regression existing gates miss, a recurring
+caller, an owned harness, bounded runtime and an actionable failure. Count the whole
+harness as maintained code; reuse existing clients and typed contracts, and remove
+unused options, copied deployment inputs and duplicate reports. Scope execution to
+affected inputs, including shared dependencies and security boundaries.
 
 Keep plans, state, logs, inventories and execution narratives out of the diff.
 Follow repository documentation policy; when a durable operator-contract update
