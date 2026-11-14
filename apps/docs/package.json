@@ -32,7 +32,7 @@
     "@astrojs/check": "0.9.12",
     "@astrojs/sitemap": "3.7.4",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
-    "oxlint": "1.91.0",
+    "oxlint": "1.92.0",
     "prettier": "3.9.10",
     "prettier-plugin-sh": "0.20.2",
     "prettier-plugin-toml": "4.1.0",

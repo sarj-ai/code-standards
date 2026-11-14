@@ -50,7 +50,7 @@ def installation(tmp_path_factory: pytest.TempPathFactory) -> Path:
             {
                 "private": True,
                 "dependencies": {
-                    "oxlint": "1.91.0",
+                    "oxlint": "1.92.0",
                     "oxlint-plugin-react-doctor": "0.9.22",
                     "parse5": "8.0.0",
                 },

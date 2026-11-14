@@ -1,4 +1,4 @@
-import { defineConfig } from "oxlint";
+import { defineConfig, type OxlintConfig } from "oxlint";
 
 import repositoryTooling from "../../.github/scripts/oxlint.config.mts";
 import { SARJ_RULES } from "../../packages/typescript/oxlint.config.mts";
@@ -41,7 +41,7 @@ const CLIENT_SCRIPT_RULES_ESLINT_NEVER_RAN = {
   ],
 } as const;
 
-export default defineConfig({
+const config: OxlintConfig = {
   extends: [repositoryTooling],
   jsPlugins: [{ name: "@sarj", specifier: "@sarj/eslint-plugin" }],
   ignorePatterns: [".astro/**", "dist/**"],
@@ -88,4 +88,6 @@ export default defineConfig({
       rules: Object.fromEntries(rules.map((rule) => [rule, "off" as const])),
     })),
   ],
-});
+};
+
+export default defineConfig(config);
