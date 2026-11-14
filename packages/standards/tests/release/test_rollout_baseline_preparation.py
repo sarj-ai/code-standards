@@ -7,7 +7,10 @@ import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
+from repo_standards.core.canonical import scope_digest
+from repo_standards.repository import parse_manifest_bytes
 
+from sarj_standards.libs.adoption import repository_baseline
 from sarj_standards.libs.release import rollout
 
 
@@ -239,6 +242,100 @@ def test_preservation_accepts_a_provenance_only_diagnostic_baseline_refresh(tmp_
     path.write_bytes(_baseline_bytes("9.2.3", ({**_ENTRY, "count": 3},)))
     with pytest.raises(rollout.RolloutError, match="controller-owned"):
         rollout.assert_preserved_baselines(tmp_path, refreshed.snapshots)
+
+
+_REPOSITORY_MANIFEST = b'repository_id = "fixture"\ncomponents = []\n'
+
+
+def _preserved_repository_baseline(
+    root: Path, version: int = 35, fingerprints: tuple[str, ...] = ()
+) -> Mapping[Path, FileSnapshot]:
+    _preserved_diagnostic_baseline(root)
+    path = root / repository_baseline.PATH
+    path.parent.mkdir()
+    (path.parent / "repository.toml").write_bytes(_REPOSITORY_MANIFEST)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "repository_id": "fixture",
+                "policy": "sarj",
+                "policy_version": version,
+                "scope_digest": scope_digest(parse_manifest_bytes(_REPOSITORY_MANIFEST)),
+                "include_warnings": True,
+                "fingerprints": list(fingerprints),
+            }
+        )
+        + "\n"
+    )
+    path.chmod(0o640)
+    consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"))
+    return rollout.snapshot_consumer_baselines(root, consumer)
+
+
+@pytest.mark.parametrize(("before", "after", "fingerprints"), [(35, 36, ()), (25, 26, ("a" * 64,))])
+def test_preservation_refreshes_reviewed_repository_policy_before_bootstrap(
+    tmp_path: Path, before: int, after: int, fingerprints: tuple[str, ...]
+) -> None:
+    preserved = _preserved_repository_baseline(tmp_path, before, fingerprints)
+    path = tmp_path / repository_baseline.PATH
+    original = path.read_bytes()
+    migrated = repository_baseline.migrate(original, _REPOSITORY_MANIFEST, target_policy_version=after)
+    path.write_bytes(migrated)
+    (tmp_path / "diagnostic-baseline.json").write_bytes(_baseline_bytes("9.35.4"))
+
+    refreshed = rollout.refresh_preserved_provenance(tmp_path, preserved)
+    runner = BaselineRunner(tmp_path)
+    result = _prepare(tmp_path, runner, preserve_baselines=True)
+
+    assert refreshed.refreshed == frozenset({repository_baseline.PATH, "diagnostic-baseline.json"})
+    assert refreshed.snapshots[path].contents == path.read_bytes() == migrated
+    assert (refreshed.snapshots[path].mode, refreshed.snapshots[path].group) == (
+        preserved[path].mode,
+        preserved[path].group,
+    )
+    assert result.expected == _baseline_bytes("9.35.4")
+    assert len(runner.commands) == 1
+    rollout.assert_preserved_baselines(tmp_path, refreshed.snapshots)
+    rollout.reject_unsafe_diff(tuple(refreshed.refreshed), allowed_baseline_paths=refreshed.refreshed)
+    path.write_bytes(original)
+    with pytest.raises(rollout.RolloutError, match="controller-owned"):
+        rollout.assert_preserved_baselines(tmp_path, refreshed.snapshots)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["fingerprints", "warnings", "scope", "identity", "chmod", "create", "delete", "unreviewed-debt"],
+)
+def test_preservation_refuses_repository_debt_or_metadata_changes(tmp_path: Path, mutation: str) -> None:
+    preserved = _preserved_repository_baseline(
+        tmp_path, fingerprints=("a" * 64,) if mutation == "unreviewed-debt" else ()
+    )
+    path = tmp_path / repository_baseline.PATH
+    proposed = path.read_bytes().replace(b'"policy_version": 35', b'"policy_version": 36')
+    match mutation:
+        case "fingerprints":
+            proposed = proposed.replace(b'"fingerprints": []', f'"fingerprints": ["{"a" * 64}"]'.encode())
+        case "warnings":
+            proposed = proposed.replace(b'"include_warnings": true', b'"include_warnings": false')
+        case "scope":
+            proposed = proposed.replace(scope_digest(parse_manifest_bytes(_REPOSITORY_MANIFEST)).encode(), b"f" * 64)
+        case "identity":
+            proposed = proposed.replace(b'"repository_id": "fixture"', b'"repository_id": "another"')
+        case "create":
+            path.unlink()
+            consumer = rollout.Consumer("Example", "example/consumer", "main", ("make", "check"))
+            preserved = rollout.snapshot_consumer_baselines(tmp_path, consumer)
+        case _:
+            pass
+    path.write_bytes(proposed)
+    if mutation == "chmod":
+        path.chmod(0o600)
+    elif mutation == "delete":
+        path.unlink()
+
+    with pytest.raises(rollout.RolloutError, match="controller-owned"):
+        rollout.refresh_preserved_provenance(tmp_path, preserved)
 
 
 @pytest.mark.parametrize("mutation", ["added-entry", "removed-entry", "changed-count", "chmod", "other-baseline"])
