@@ -365,6 +365,7 @@ def test_upgrade_repairs_adopted_security_config_and_prepares_only_that_tool(
 def test_upgrade_migrates_baseline_provenance_without_increasing_approved_debt(
     tmp_path: Path, include_retired: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "3" * 40)
     _outdated_python_repo(tmp_path)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
