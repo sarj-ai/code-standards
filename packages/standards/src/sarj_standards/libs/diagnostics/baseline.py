@@ -504,7 +504,9 @@ def remove_rules(
         "schemaVersion": SCHEMA_VERSION,
         "provenance": {
             "bundleVersion": bundle_version,
-            "consumerBaseSha": consumer_base_sha,
+            "consumerBaseSha": (
+                consumer_base_sha if document.provenance is None else document.provenance.consumer_base_sha
+            ),
             "catalogDigest": catalog_digest,
         },
         "diagnostics": preserved,
