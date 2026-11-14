@@ -1889,7 +1889,7 @@ class PreservedBaselines:
 def refresh_preserved_provenance(
     repo: Path, expected: Mapping[Path, adoption_transaction.FileSnapshot]
 ) -> PreservedBaselines:
-    # A bundle update rewrites only the diagnostic baseline's provenance; accept exactly that refresh.
+    # Advance snapshots only for canonical diagnostic or reviewed repository policy metadata refreshes.
     if not expected:
         return PreservedBaselines(expected)
     paths = tuple(expected)
@@ -1901,11 +1901,16 @@ def refresh_preserved_provenance(
     for path, before in expected.items():
         after = current[path]
         if after != before and not (
-            path == diagnostic
-            and before.contents is not None
+            before.contents is not None
             and after.contents is not None
             and (before.mode, before.group) == (after.mode, after.group)
-            and diagnostic_baseline.provenance_only_change(before.contents, after.contents)
+            and (
+                (path == diagnostic and diagnostic_baseline.provenance_only_change(before.contents, after.contents))
+                or (
+                    path == repo / repository_baseline.PATH
+                    and repository_baseline.compatible_policy_change(repo, before.contents, after.contents)
+                )
+            )
         ):
             msg = "consumer verification mutated controller-owned baseline bytes or metadata"
             raise RolloutError(msg)
