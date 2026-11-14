@@ -110,6 +110,35 @@ def test_exact_legacy_fingerprint_is_required(tmp_path: Path) -> None:
     assert (tmp_path / "diagnostic-baseline.json").read_text(encoding="utf-8") == document
 
 
+def test_retired_rule_migration_keeps_relocated_owner_budget(tmp_path: Path) -> None:
+    source = _function()
+    subject = _subject(tmp_path, source)
+    path = tmp_path / "diagnostic-baseline.json"
+    subject.target.write_text("# unrelated prefix\n\n" + source, encoding="utf-8")
+    _git(tmp_path, "add", "app.py")
+    _git(tmp_path, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "move")
+
+    migrated = baseline.remove_rules(
+        path,
+        selectors=("sarj-text-lint:unpinned-github-action",),
+        bundle_version=api.__version__,
+        consumer_base_sha=_git(tmp_path, "rev-parse", "HEAD"),
+        catalog_digest=baseline.bundled_catalog_digest(),
+    )
+    path.write_text(migrated.contents, encoding="utf-8")
+    policy = api.Standards(tmp_path).analyze([str(subject.target)], rules=_RULES)
+
+    assert policy.diagnostics == ()
+    assert policy.issues == ()
+    assert sum(tool.baselined_count for tool in policy.tools) == 1
+    subject.target.write_text(
+        "# unrelated prefix\n\n" + source + "    if value:\n        value += 1\n", encoding="utf-8"
+    )
+    changed = api.Standards(tmp_path).analyze([str(subject.target)], rules=_RULES)
+    assert len(changed.diagnostics) == 1
+    assert path.read_text(encoding="utf-8") == migrated.contents
+
+
 def test_replaced_git_blobs_cannot_substitute_the_provenance_owner(tmp_path: Path) -> None:
     source = _function()
     subject = _subject(tmp_path, source)
