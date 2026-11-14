@@ -1,36 +1,49 @@
-schema = 4
-bundle = "9.36.0"
+# Managed by `code-standards setup`; commit this file.
+bundle = "9.36.1"
 rule_profile = "all"
+schema = 4
 
 [capabilities]
-# The TypeScript package defines the managed Oxlint preset itself, so its
-# authored config is validated by the package's full lint/runtime suite instead
-# of importing the consumer preset from itself.
-disable = ["typescript", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "shellcheck", "taplo", "yamllint", "checkov", "zizmor", "jscpd", "sqlfluff"]
+disable = [
+  "typescript",
+  "swiftformat",
+  "swiftlint",
+  "ktlint",
+  "detekt",
+  "mobile-security",
+  "markdownlint",
+  "shellcheck",
+  "taplo",
+  "yamllint",
+  "zizmor",
+  "checkov",
+  "jscpd",
+  "knip",
+  "sqlfluff",
+]
 
-
-[devops]
-compose_version = "5.6.1"
+[artifacts]
+durable = [
+  "**/README.md",
+  "docs/**",
+  "**/docs/**",
+  "architecture/**",
+  "**/adr/**",
+  ".github/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+]
 
 [dest]
-python = "."
-typescript = "packages/typescript"
-swift = "."
 kotlin = "."
+python = "."
+swift = "."
+typescript = "packages/typescript"
 
 [hooks]
 manager = "lefthook"
 
-[doctor]
-exclude = [
-  "packages/standards/tests/test_doctor.py",
-  "packages/standards/tests/test_rule_ledger.py",
-  "packages/standards/tests/test_upgrade.py",
-]
-
 [verify]
-# Keep the ordinary Standards command aligned with the zero-diagnostic dogfood
-# gate: every maintained Python implementation and test package is in scope.
 paths = [
   "README.md",
   "packages/contracts/src",
@@ -45,6 +58,16 @@ paths = [
   "packages/standards/src",
   "packages/standards/tests",
 ]
+
+[doctor]
+exclude = [
+  "packages/standards/tests/test_doctor.py",
+  "packages/standards/tests/test_rule_ledger.py",
+  "packages/standards/tests/test_upgrade.py",
+]
+
+[devops]
+compose_version = "5.6.1"
 
 [repository]
 canonical_config_dir = "packages/standards/src/sarj_standards/configs"
@@ -327,7 +350,6 @@ path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "contracts"
 selector = "sarj-rule-contracts"
-
 
 [[repository.version_references]]
 path = "pyproject.toml"
