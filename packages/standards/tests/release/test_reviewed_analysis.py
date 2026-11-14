@@ -382,11 +382,11 @@ def test_existing_verified_payload_is_never_overwritten(tmp_path: Path) -> None:
     archive = _archive(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
-    sentinel = destination / "proof.json"
-    sentinel.write_bytes(b"retained existing evidence")
+    retained_proof = destination / "proof.json"
+    retained_proof.write_bytes(b"retained existing evidence")
     with pytest.raises(FileExistsError):
         _verify(archive, destination)
-    assert sentinel.read_bytes() == b"retained existing evidence"
+    assert retained_proof.read_bytes() == b"retained existing evidence"
 
 
 def test_metadata_and_release_helpers_do_not_load_the_sdk(tmp_path: Path) -> None:
