@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_REVISION = "c7ea4fb67b0be318b24935b1caa31835130b55f2"
+_REVISION = "0caf37b259928968eb78149f74af30a840c1310b"
 
 
 def test_repo_standards_dependency_pin_tracks_the_installed_package() -> None:
@@ -43,7 +43,7 @@ def test_existing_workflow_actions_preserve_options_and_quotes(tmp_path: Path, a
 
     [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.4.2"})
 
-    expected = original.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v7.0.1")
+    expected = original.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v8.0.0")
     assert update.contents == expected
     assert update.packages == ("repo-standards",)
     workflow.write_text(update.contents, encoding="utf-8")
@@ -88,7 +88,7 @@ def test_action_update_respects_doctor_exclusions_and_workflow_boundary(tmp_path
 def test_generated_commit_policy_uses_the_published_repo_standards_identity() -> None:
     assert manifest.installed_versions()["repo-standards"] == manifest.REPO_STANDARDS_VERSION
     assert (
-        f"sarj-ai/repo-standards/pull-request-commits@{_REVISION} # v7.0.1" in scaffold.commit_policy_github_workflow()
+        f"sarj-ai/repo-standards/pull-request-commits@{_REVISION} # v8.0.0" in scaffold.commit_policy_github_workflow()
     )
 
 
@@ -116,7 +116,7 @@ def test_upgrade_composes_action_pins_with_a_legacy_workflow_migration(tmp_path:
 
     expected = original.replace(" verify", " check --trust-repository-code")
     if not excluded:
-        expected = expected.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v7.0.1")
+        expected = expected.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v8.0.0")
     assert workflow.read_text(encoding="utf-8") == expected
     assert workflow not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0

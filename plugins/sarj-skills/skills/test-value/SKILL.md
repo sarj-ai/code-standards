@@ -7,9 +7,10 @@ Run `code-standards observe --test-value --base BASE` for changes; omit `--base`
 for the suite. Executable Oxlint config needs `--trust-repository-code`.
 Check changed fixtures/consumers with `code-standards check`.
 
-Name the contract, plausible wrong outcome and cheapest faithful oracle. Reuse
-sufficient coverage; review comments/coverage percentages alone justify no test.
-Retain required gates.
+Name the contract, plausible wrong outcome, recurring consumer and cheapest faithful
+oracle. Charge probes, fixtures, wrappers and cleanup the same review cost as
+production code. Reuse sufficient coverage; line counts, coverage percentages and
+helper self-tests alone justify no addition. Retain required gates.
 
 Delete/merge only when retained cases reject the same wrong outcomes with
 compatible inputs, actions, fixtures, marks, runtime, order and effects.
