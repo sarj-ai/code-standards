@@ -1819,6 +1819,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         (repo / "suppression-baseline.json").write_bytes(
             (Path(__file__).parents[1] / "fixtures" / "retirement" / "suppression-baseline.json.txt").read_bytes()
         )
+        write_consumer_body_policy(
+            repo, ("What & why", "How to read this PR", "QA impact / blast radius", "Test evidence")
+        )
         retired_expected = retirement.expected_rewrites(repo, frozenset())
         monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models the installed bundle version process global
             retirement, "__version__", "5.8.1"
@@ -1844,7 +1847,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 _exc_value: BaseException | None,
                 _traceback: TracebackType | None,
             ) -> None:
-                return None
+                # Publication must retain policy after its temporary checkout is removed.
+                (repo / ".repo-standards/repository.toml").rename(tmp_path / "saved-policy.toml")
 
         @final
         class AutofixingRunner:
@@ -2054,6 +2058,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             return
 
         result = rollout.apply_one(selected_consumer, "5.8.1", runner)
+        assert not (repo / ".repo-standards/repository.toml").exists()
+        (tmp_path / "saved-policy.toml").rename(repo / ".repo-standards/repository.toml")
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
@@ -2094,6 +2100,13 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
         pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
         _assert_published_scope(repo, base_sha, pull_request_body)
+        assert (
+            missing_required_body_sections(
+                pull_request_body, ("What & why", "How to read this PR", "QA impact / blast radius", "Test evidence")
+            )
+            == ()
+        )
+        assert "## Risk and rollback" in pull_request_body
         if dirty_runs == frozenset({1, 2}):
             assert "did not converge" in pull_request_body
         if target_moves:
@@ -2742,6 +2755,92 @@ def test_rollout_scope_links_the_exact_commit_instead_of_repeating_paths() -> No
 
     assert f"[3 paths](https://github.com/example/other/commit/{'b' * 40})" in body
     assert all(path not in body for path in paths)
+
+
+@pytest.mark.parametrize(
+    "required",
+    [
+        ("What & why", "How to read this PR", "QA impact / blast radius", "Test evidence"),
+        ("Summary", "Scope accounting", "QA impact / blast radius", "Test evidence"),
+    ],
+)
+def test_consumer_body_policy_is_loaded_and_satisfied(tmp_path: Path, required: tuple[str, ...]) -> None:
+    write_consumer_body_policy(tmp_path, required)
+
+    sections = rollout.rollout_body_sections(tmp_path)
+    body = rollout.rollout_pull_body(
+        consumer(),
+        "9.8.1",
+        pushed_head_sha="a" * 40,
+        branch_paths=(MANIFEST, ".github/workflows/check.yml"),
+        verification_failure="",
+        required_body_sections=sections,
+    )
+
+    assert set(required) <= set(sections)
+    assert missing_required_body_sections(body, sections) == ()
+    assert analyze_description(body).prose_characters <= 1000
+    if "How to read this PR" in required:
+        assert "## Risk and rollback" in body
+        assert "Planned QA:" in body
+        assert "## Promotion prerequisites\n\nNone." in body
+        assert "## Summary" not in body
+    else:
+        assert "## Summary" in body
+        assert "## Scope accounting" in body
+        assert analyze_description(body).prose_characters <= 500
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        None,
+        'repository_id = "fixture"\ncomponents = []\n',
+        'repository_id = "fixture"\ncomponents = []\n[pull_request.commit_history]\nadvisory_base_ref = "main"\n',
+    ],
+)
+def test_consumer_body_policy_is_optional_for_unconfigured_repositories(
+    tmp_path: Path,
+    configuration: str | None,
+) -> None:
+    if configuration is not None:
+        policy = tmp_path / ".repo-standards/repository.toml"
+        policy.parent.mkdir()
+        policy.write_text(configuration)
+    assert rollout.rollout_body_sections(tmp_path) == ()
+
+
+def test_consumer_body_policy_rejects_malformed_configuration(tmp_path: Path) -> None:
+    policy = tmp_path / ".repo-standards/repository.toml"
+    policy.parent.mkdir()
+    policy.write_text("[invalid")
+
+    with pytest.raises(rollout.RolloutError, match="body policy"):
+        rollout.rollout_body_sections(tmp_path)
+
+
+def test_consumer_body_policy_refuses_to_publish_missing_sections() -> None:
+    with pytest.raises(rollout.RolloutError, match="required sections"):
+        rollout.rollout_pull_body(
+            consumer(),
+            "9.8.1",
+            pushed_head_sha="a" * 40,
+            branch_paths=(MANIFEST,),
+            verification_failure="",
+            required_body_sections=("Consumer-specific evidence",),
+        )
+
+
+def write_consumer_body_policy(repo: Path, sections: tuple[str, ...]) -> None:
+    policy = repo / ".repo-standards/repository.toml"
+    policy.parent.mkdir()
+    policy.write_text(
+        'repository_id = "fixture"\ncomponents = []\n'
+        '[pull_request.commit_history]\nadvisory_base_ref = "main"\n'
+        "[pull_request.review_policy]\nzero_review_below_counted_lines = 50\n"
+        'two_reviews_above_counted_lines = 500\nmigration_roots = []\nrequired_checks = ["check"]\n'
+        f"required_body_sections = {json.dumps(sections)}\n"
+    )
 
 
 def _assert_published_scope(repo: Path, base_sha: str, pull_request_body: str) -> None:
