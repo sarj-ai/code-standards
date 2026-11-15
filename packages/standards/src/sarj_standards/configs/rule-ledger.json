@@ -142,6 +142,7 @@
       "no-unknown-pydantic-validator-field",
       "no-unnecessary-docstring",
       "no-unobserved-task-exception",
+      "no-unscoped-async-client-factory",
       "no-unused-copy-result",
       "no-unused-underscored-keyword-parameter",
       "no-unused-value-marker",
@@ -725,7 +726,8 @@
       "SARJ573",
       "SARJ574",
       "SARJ575",
-      "SARJ576"
+      "SARJ576",
+      "SARJ577"
     ],
     "sql": [
       "SARJ101",
