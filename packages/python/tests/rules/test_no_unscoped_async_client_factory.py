@@ -293,7 +293,7 @@ FACTORY_CASES = (
 def test_factory_cases(case: EvaluationCase) -> None:
     findings = NoUnscopedAsyncClientFactory().check(Path("app/service.py"), case.source)
     assert [finding.severity for finding in findings] == (
-        [Severity.WARNING] if case.expected is ExpectedOutcome.MATCH else []
+        [Severity.ERROR] if case.expected is ExpectedOutcome.MATCH else []
     )
 
 
@@ -364,10 +364,10 @@ def test_constructor_allocations_stay_with_sarj549(tmp_path: Path) -> None:
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ549", 4), ("SARJ577", 6)]
 
 
-def test_warning_policy_has_no_unsafe_autofix() -> None:
+def test_error_policy_has_no_unsafe_autofix() -> None:
     documentation = NoUnscopedAsyncClientFactory.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
 
 

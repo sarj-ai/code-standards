@@ -11,7 +11,7 @@ const RENDER_PHASE =
   "import { useState } from 'react'; export function Panel({ request }: { request: boolean }) { const [dialog, setDialog] = useState({ open: request, request }); if (dialog.request !== request) { setDialog({ open: request || dialog.open, request }); } return <p>{String(dialog.open)}</p>; }";
 
 export const REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Use the updater form when the next React state is built from the current state.",
   rationale:
     "A state variable holds the snapshot from the render that created the callback. After an await, in a timer, promise callback, subscription or effect, or when two updates run before React re-renders, that snapshot is stale. `setItems([...items, item])` then drops whatever another update added in the meantime. An updater receives the latest queued state, so each update builds on the one before it.",
