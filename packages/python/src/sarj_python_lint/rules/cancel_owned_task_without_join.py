@@ -80,7 +80,7 @@ class CancelOwnedTaskWithoutJoin(Rule):
         diagnostics: list[Diagnostic] = []
         reported: set[ast.Name] = set()
         for call in context.nodes(ast.Call):
-            binding = _unjoined_child(proof, call)
+            binding = unjoined_lifespan_child(proof, call)
             if binding is None or binding in reported or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
             reported.add(binding)
@@ -97,7 +97,7 @@ class CancelOwnedTaskWithoutJoin(Rule):
         return diagnostics
 
 
-def _unjoined_child(proof: AsyncApiProof, call: ast.Call) -> ast.Name | None:
+def unjoined_lifespan_child(proof: AsyncApiProof, call: ast.Call) -> ast.Name | None:
     receiver = method_receiver(call, frozenset({"cancel"}))
     owner = proof.provenance.scope(call)
     if receiver is None or not isinstance(owner, ast.AsyncFunctionDef) or len(owner.decorator_list) != 1:

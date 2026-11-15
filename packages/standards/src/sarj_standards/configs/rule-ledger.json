@@ -141,6 +141,7 @@
       "no-unique-violation-message-match",
       "no-unknown-pydantic-validator-field",
       "no-unnecessary-docstring",
+      "no-unobserved-task-exception",
       "no-unused-copy-result",
       "no-unused-underscored-keyword-parameter",
       "no-unused-value-marker",
@@ -718,7 +719,8 @@
       "SARJ570",
       "SARJ571",
       "SARJ572",
-      "SARJ573"
+      "SARJ573",
+      "SARJ574"
     ],
     "sql": [
       "SARJ101",

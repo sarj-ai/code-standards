@@ -59,6 +59,14 @@
       "outcome": "Keep SARJ573 at WARNING without autofix. Review unit-bearing model fields for datetime or AwareDatetime instants and timedelta durations, preserving protocol-required numeric boundaries and serialized contracts. Complete broader calibration before considering severity promotion."
     },
     {
+      "task": "rule-audit/python/no-unobserved-task-exception",
+      "family": "python",
+      "ruleId": "no-unobserved-task-exception",
+      "state": "pending",
+      "evidence": "Fifty-six labeled cases cover import aliases, loop factories, walrus, owned sets/dicts/comprehensions, closure containers in event callbacks, done callbacks, returned/handed-off/TaskGroup tasks, shadowing, reflection, Ruff RUF006 ownership, SARJ536 precedence and suppression. One private application snapshot of 2,481 Python files produced 18 findings; every finding was inspected and one false positive (a coroutine absorbing its own failures) was fixed, leaving 17 true positives. A seeded sample of 12 unreported stored tasks were all observed. History replay matched one earlier fix that joined an owned background-task set. Private sources and identifiers are not recorded.",
+      "outcome": "Ship SARJ574 at WARNING without autofix. Ask the owner to await or gather a stored task where it stops, or to log task.exception() from a done callback; leave discarded results to RUF006 and lifespan cancellation to SARJ536. Broader fleet calibration remains pending before error promotion."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-guard-blocks",
       "family": "iac",
       "ruleId": "no-terraform-guard-blocks",

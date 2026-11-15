@@ -361,5 +361,6 @@
   "SARJ570": "no-magic-arithmetic",
   "SARJ571": "prefer-outcome-variants",
   "SARJ572": "prefer-explicit-value-model-construction",
-  "SARJ573": "prefer-semantic-temporal-types"
+  "SARJ573": "prefer-semantic-temporal-types",
+  "SARJ574": "no-unobserved-task-exception"
 }
