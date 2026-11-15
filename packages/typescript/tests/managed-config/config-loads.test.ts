@@ -104,6 +104,8 @@ const FILES: Readonly<Record<string, string>> = {
     "}",
     "",
   ].join("\n"),
+  "src/promise-statics.js": "export const value = new Promise.resolve(1);\n",
+  "src/promise-statics-valid.js": "export const value = Promise.resolve(1);\n",
 };
 
 interface Diagnostic {
@@ -231,5 +233,10 @@ describe("the managed Oxlint config in a consumer", () => {
   it("reports mixed-type union conditions and allows nullable primitive conditions", () => {
     expect(codesOf("src/mixed-condition.ts")).toContain("typescript(strict-boolean-expressions)");
     expect(codesOf("src/nullable-conditions.ts")).not.toContain("typescript(strict-boolean-expressions)");
+  });
+
+  it("reports new on Promise static methods in JavaScript the type check skips", () => {
+    expect(codesOf("src/promise-statics.js")).toContain("promise(no-new-statics)");
+    expect(codesOf("src/promise-statics-valid.js")).not.toContain("promise(no-new-statics)");
   });
 });

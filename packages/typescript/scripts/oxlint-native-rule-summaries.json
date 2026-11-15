@@ -143,6 +143,7 @@
   "prefer-rest-params": "Require rest parameters instead of `arguments`",
   "prefer-spread": "Require spread operators instead of `.apply()`",
   "prefer-template": "Require template literals instead of string concatenation",
+  "promise/no-new-statics": "Disallow calling `new` on a `Promise` static method.",
   "promise/prefer-catch": "Prefer `.then().catch()` over `.then(…, …)` for error handling.",
   "radix": "Enforce the use of the radix argument when using `parseInt()`",
   "react/button-has-type": "Disallow usage of `button` elements without an explicit `type` attribute",

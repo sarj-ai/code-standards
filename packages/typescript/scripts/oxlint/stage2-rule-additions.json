@@ -73,7 +73,8 @@
     "@sarj/no-blocked-input-paste": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
     "@sarj/no-message-origin-string-matching": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
     "@sarj/require-ime-safe-enter-handler": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
-    "@sarj/react-prefer-updater-function": {"level": "warn", "note": "Bun lint parity: stale useState snapshot passed to its own setter."}
+    "@sarj/react-prefer-updater-function": {"level": "warn", "note": "Bun lint parity: stale useState snapshot passed to its own setter."},
+    "promise/no-new-statics": {"level": "error", "note": "covers JS files the type check skips; TS7009 reports the same call in type-checked files"}
   },
   "later": {
     "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"
