@@ -48,7 +48,7 @@ def test_report_safe_python_edits(tmp_path: Path, source: str, expected: str) ->
     report = analyze([str(path)], root=tmp_path, rule_selection=SELECTION)
     assert report.completion is Completion.COMPLETE
     [diagnostic] = report.diagnostics
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     [fix] = diagnostic.fixes
     assert fix.safety is FixSafety.SAFE
     changed = raw
