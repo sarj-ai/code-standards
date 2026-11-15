@@ -43,6 +43,22 @@
       "outcome": "Ship SARJ571 at WARNING without autofix. Require multiple visible outcome signals, preserve partial-failure context and wire compatibility, exclude scalar uncertainty and telemetry, and yield to source-proven SARJ510 errors. Broader natural-positive calibration remains pending before promotion."
     },
     {
+      "task": "rule-audit/python/prefer-explicit-value-model-construction",
+      "family": "python",
+      "ruleId": "prefer-explicit-value-model-construction",
+      "state": "pending",
+      "evidence": "Focused initialization-hook cases and bounded immutable source snapshots informed the warning-stage matcher. These authoring checks and private motivating examples do not establish fleet-wide precision or recall; broader per-rule calibration remains pending. Private sources and identifying provenance remain local.",
+      "outcome": "Keep SARJ572 at WARNING without autofix. Review declarative validation or explicit factories for source-proven value-model initialization hooks while preserving accepted inputs, constructor callers and serialized contracts. Complete broader calibration before considering severity promotion."
+    },
+    {
+      "task": "rule-audit/python/prefer-semantic-temporal-types",
+      "family": "python",
+      "ruleId": "prefer-semantic-temporal-types",
+      "state": "pending",
+      "evidence": "Focused cases distinguish instants from durations and cover stable native model providers plus rebound, shadowed, mutated and decorated provider near misses. Bounded immutable authoring samples and private motivating snapshots do not establish fleet-wide precision or recall; broader per-rule calibration remains pending. Private sources and identifying provenance remain local.",
+      "outcome": "Keep SARJ573 at WARNING without autofix. Review unit-bearing model fields for datetime or AwareDatetime instants and timedelta durations, preserving protocol-required numeric boundaries and serialized contracts. Complete broader calibration before considering severity promotion."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-guard-blocks",
       "family": "iac",
       "ruleId": "no-terraform-guard-blocks",
