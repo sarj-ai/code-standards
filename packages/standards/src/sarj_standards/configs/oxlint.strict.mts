@@ -1066,6 +1066,7 @@ const RULES = {
   "import/no-duplicates": "warn",
   "import/no-anonymous-default-export": "warn",
   "import/no-mutable-exports": "warn",
+  "import/no-self-import": "warn",
   "typescript/no-unnecessary-parameter-property-assignment": "error",
   "typescript/promise-function-async": "warn",
   "react/capitalized-calls": "error",
