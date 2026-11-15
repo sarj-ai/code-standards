@@ -110,6 +110,8 @@ const FILES: Readonly<Record<string, string>> = {
   ].join("\n"),
   "src/promise-statics.js": "export const value = new Promise.resolve(1);\n",
   "src/promise-statics-valid.js": "export const value = Promise.resolve(1);\n",
+  "src/live-binding.ts": "export let count = 0;\nexport function increment(): void {\n  count += 1;\n}\n",
+  "src/constant-binding.ts": "export const count = 0;\n",
 };
 
 interface Diagnostic {
@@ -252,5 +254,10 @@ describe("the managed Oxlint config in a consumer", () => {
   it("reports new on Promise static methods in JavaScript the type check skips", () => {
     expect(codesOf("src/promise-statics.js")).toContain("promise(no-new-statics)");
     expect(codesOf("src/promise-statics-valid.js")).not.toContain("promise(no-new-statics)");
+  });
+
+  it("rejects a reassignable export binding and accepts a constant one", () => {
+    expect(codesOf("src/live-binding.ts")).toContain("import(no-mutable-exports)");
+    expect(codesOf("src/constant-binding.ts")).not.toContain("import(no-mutable-exports)");
   });
 });
