@@ -69,7 +69,7 @@ class FormatterOwner:
     missing: tuple[Path, ...] = ()
 
 
-class OwnershipChangedError(ValueError):
+class OwnershipChangedError(ValueError):  # sarj-noqa: SARJ542 -- Abort writes when formatter ownership changes.
     pass
 
 

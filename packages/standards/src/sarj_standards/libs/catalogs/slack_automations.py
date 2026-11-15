@@ -490,7 +490,7 @@ def _validate_capability_references(
     return set(capability.connected_system_ids)
 
 
-class _DuplicateKeyError(ValueError):
+class _DuplicateKeyError(ValueError):  # sarj-noqa: SARJ542 -- Reject duplicate keys through object_pairs_hook.
     pass
 
 

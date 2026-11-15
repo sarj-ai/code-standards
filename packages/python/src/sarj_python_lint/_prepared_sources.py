@@ -20,7 +20,7 @@ type ResolutionKey = tuple[Path, str | None, int]
 
 
 # The sealed worker needs an observation available only to the parent.
-class NeedsSerialSourceError(Exception):
+class NeedsSerialSourceError(Exception):  # sarj-noqa: SARJ542 -- Request serial source capture from the parent.
     pass
 
 

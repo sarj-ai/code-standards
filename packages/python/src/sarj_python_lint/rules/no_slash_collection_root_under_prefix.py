@@ -33,7 +33,7 @@ class NoSlashCollectionRootUnderPrefix(Rule):
     id = "no-slash-collection-root-under-prefix"
     code = "SARJ503"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A collection-root route under a literal router prefix uses an empty path instead of a slash.",
         rationale=(
             'With `APIRouter(prefix="/items")`, a "/" route serves `/items/`, so a caller of `/items` gets a 307 '
@@ -93,7 +93,7 @@ class NoSlashCollectionRootUnderPrefix(Rule):
                 route.decorator.col_offset + 1,
                 self.code,
                 _MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for route in route_decorators(context)
             if route.path == "/" and _is_literal_prefix(route.prefix)

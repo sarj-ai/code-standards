@@ -2,7 +2,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_INVALID_WEB_RESOURCE_HINTS_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Keep native resource hints consistent with browser loading and preload request modes.",
   rationale:
     "Lazy loading delays even explicitly high-priority images until layout. Font preloads with incompatible credentials modes cannot satisfy the subsequent font request. The unsupported loading=auto value and obsolete importance attribute do not express supported native loading behavior. Oxlint 1.91 still accepts importance, so this advisory fills that verified upstream gap.",

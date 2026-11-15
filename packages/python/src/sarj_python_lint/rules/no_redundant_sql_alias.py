@@ -50,7 +50,7 @@ class NoRedundantSqlAlias(Rule):
     id = "no-redundant-sql-alias"
     code = "SARJ543"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Remove SQL aliases that repeat the original relation or column name.",
         rationale="A self-alias adds syntax without naming a distinct role or result field. It obscures useful aliases among repeated names.",
         remediation="Remove an alias whose PostgreSQL identifier equals the original table or bare column name. Keep role aliases for self joins, renamed outputs, quoted case distinctions and alias column lists.",
@@ -136,7 +136,7 @@ class NoRedundantSqlAlias(Rule):
                 node.col_offset + 1,
                 self.code,
                 "Remove SQL aliases that repeat the original table or bare-column name; preserve distinct roles, quoted case, and alias column lists.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node, redundant in candidates.items()
             if redundant and not context.suppressions.is_suppressed(node.lineno, self.code)

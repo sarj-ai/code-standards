@@ -57,7 +57,7 @@ class _JqPayload:
     tainted: frozenset[str]
 
 
-class _UnsupportedError(ValueError):
+class _UnsupportedError(ValueError):  # sarj-noqa: SARJ542 -- Unwind unsupported jq payload syntax.
     pass
 
 

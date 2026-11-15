@@ -37,7 +37,7 @@ _TOKEN: Final = re.compile(
 )
 
 
-class UntranslatableError(ValueError):
+class UntranslatableError(ValueError):  # sarj-noqa: SARJ542 -- Abort unsupported ESLint translation.
     pass
 
 

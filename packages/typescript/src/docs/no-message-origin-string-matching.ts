@@ -2,7 +2,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_MESSAGE_ORIGIN_STRING_MATCHING_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Compare incoming browser message origins against exact trusted origins.",
   rationale:
     "Prefix, suffix and substring checks do not establish an origin trust boundary. For example, https://trusted.example.attacker.invalid passes a prefix check against https://trusted.example.",

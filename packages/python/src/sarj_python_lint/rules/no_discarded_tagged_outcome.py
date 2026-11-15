@@ -82,7 +82,7 @@ class NoDiscardedTaggedOutcome(ProjectRule):
     id = "no-discarded-tagged-outcome"
     code = "SARJ548"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Handle a returned tagged outcome instead of discarding it.",
         rationale=(
             "A tagged return union makes possible outcomes visible in the type contract. Discarding the value "
@@ -96,7 +96,7 @@ class NoDiscardedTaggedOutcome(ProjectRule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Review warning for standalone synchronous calls and directly awaited async calls to stable source-visible module functions. The return must resolve to at least two direct Pydantic, dataclass or required TypedDict variants sharing a string or Boolean Literal discriminator with disjoint values. No name such as Result or Error establishes proof.",
+            "Blocking review policy for standalone synchronous calls and directly awaited async calls to stable source-visible module functions. The return must resolve to at least two direct Pydantic, dataclass or required TypedDict variants sharing a string or Boolean Literal discriminator with disjoint values. No name such as Result or Error establishes proof.",
             "Module-local and prepared-project absolute imports, quoted bare aliases and PEP 604 returns, unquoted typing.Union and Annotated, and bounded type aliases are supported. Simple same-module callable assignment aliases are followed only through unique, earlier bindings with no escapes or mutations. Ordinary PEP 695 function parameters and explicitly specialized records/aliases are supported when tags and variant identities are independent of payload parameters. Parameter-dependent variants/tags, bounded/defaulted/variadic parameters, incorrect arity, quoted typing-wrapper combinations, unknown receivers, decorated functions, re-exports, optional/scalar branches, inheritance, dynamic namespaces, rebound or escaped callable identities, generator functions and unsupported annotations abstain.",
             "Named assignments, returned, passed or conditionally consumed results are preserved. A direct assignment to the single underscore target is an explicit discard and is reviewed. An unawaited async call belongs to coroutine checks. Direct class-body execution, generated sources and opaque providers are excluded. Assignment aliases of imported functions, callbacks, factories and forward alias declarations remain outside the proof. This rule identifies discarding; it does not prove that an assignment handles every variant or infer expected failure from a record name.",
             "String or Boolean Literal tags must be direct instance fields on every variant and retain their original class-scope binding. Existing Boolean wire discriminators remain valid; the analyzer does not rename tags or impose Success/Error class names. Quoted field tags remain outside the proof; quoted module return annotations retain their source declaration anchor. Dynamic fields, optional TypedDict fields, other tag types, computed Literal values and multi-field discriminator hierarchies are not inferred. A discriminator does not prove JSON serialization for arbitrary payloads. No automatic rewrite changes call behavior or error handling.",
@@ -194,7 +194,7 @@ class NoDiscardedTaggedOutcome(ProjectRule):
                 statement.col_offset + 1,
                 self.code,
                 "This call returns a tagged outcome that is discarded; use or forward it and handle its variants explicitly.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for statement in context.nodes(ast.Expr, ast.Assign, ast.AnnAssign)
             if _direct_discard(statement)

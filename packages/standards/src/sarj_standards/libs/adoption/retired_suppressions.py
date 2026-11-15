@@ -249,7 +249,7 @@ def _rewrite_lint_suppressions(text: str, retired: dict[str, str | None]) -> str
     return f"{bom}{rendered}{trailing}"
 
 
-class _DuplicateKeyError(ValueError):
+class _DuplicateKeyError(ValueError):  # sarj-noqa: SARJ542 -- Reject duplicate keys through object_pairs_hook.
     pass
 
 

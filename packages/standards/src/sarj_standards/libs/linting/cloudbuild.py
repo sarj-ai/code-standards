@@ -30,7 +30,7 @@ _SHELL_LONG_FLAGS = frozenset(
 _SHELL_LONG_VALUES = frozenset({"--rcfile", "--init-file"})
 
 
-class CloudBuildParseError(ValueError):
+class CloudBuildParseError(ValueError):  # sarj-noqa: SARJ542 -- Preserve the Cloud Build YAML rejection protocol.
     pass
 
 

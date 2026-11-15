@@ -54,7 +54,7 @@ class NoDuplicateFieldValidatorBody(Rule):
     id = "no-duplicate-field-validator-body"
     code = "SARJ496"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pydantic field validators in one model repeat the same body.",
         rationale=(
             "Two field validators with the same mode and the same body are one validation rule written twice; "
@@ -119,7 +119,7 @@ class NoDuplicateFieldValidatorBody(Rule):
                         self.code,
                         f"Field validator `{method.name}` repeats the body of `{first}`. List both fields in one "
                         "field_validator and branch on info.field_name where they differ.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return diagnostics

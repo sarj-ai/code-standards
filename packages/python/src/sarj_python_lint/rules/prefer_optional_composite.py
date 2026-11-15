@@ -38,7 +38,7 @@ class PreferOptionalComposite(Rule):
     id = "prefer-optional-composite"
     code = "SARJ541"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Review related optional fields as one optional composite value.",
         rationale=(
             "Several nullable fields with a common record prefix can scatter one optional value across "
@@ -54,7 +54,7 @@ class PreferOptionalComposite(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This is a broad modeling review warning, not proof of an all-or-nothing invariant or an invalid runtime state. A shared underscore-delimited prefix and at least two explicitly nullable fields are the deterministic trigger; independent same-prefix settings can also match and should remain independent when that is their contract.",
+            "This is a blocking modeling review policy, not proof of an all-or-nothing invariant or an invalid runtime state. A shared underscore-delimited prefix and at least two explicitly nullable fields are the deterministic trigger; independent same-prefix settings can also match and should remain independent when that is their contract. Resolve the finding with a reviewed composite or an exact-code suppression explaining the independent or compatibility contract.",
             "Checks stable direct module-level source-declared Pydantic BaseModels, plain direct dataclasses and TypedDicts. This advisory relationship follows unshadowed runtime model imports and explicit namespace writes, without proving the runtime effects of unrelated callbacks. PEP 604, Optional, Union, Annotated, quoted annotations and bounded module type aliases are recognized; container-element nullability alone is not field nullability. Runtime ClassVar metadata and dataclass InitVar/KW_ONLY metadata are excluded; dataclasses retain Annotated metadata wrappers and PEP 695 metadata aliases as fields. A required or unresolved same-prefix sibling prevents grouping that broader prefix.",
             "Larger overlapping groups take precedence, with the longest common prefix for the same field set. Each field belongs to at most one finding. Inherited/generic models, unknown decorators or namespaces, replaced annotation providers, rebound owners, tests, generated and vendor code are excluded.",
             "The rule does not infer relationships from shared suffixes, enforce non-null child fields or automatically nest public models. SARJ510 owns proven tag-dependent variant payloads.",
@@ -139,7 +139,7 @@ def _model_diagnostics(model: ast.ClassDef, context: PythonFileContext, code: st
                 f"Review {model.name}'s nullable {prefix}_ fields ({names}) as one optional composite. "
                 "Preserve independent child nullability and valid partial states; names alone do not "
                 "prove an all-or-nothing invariant or authorize a wire/storage change.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
     return findings

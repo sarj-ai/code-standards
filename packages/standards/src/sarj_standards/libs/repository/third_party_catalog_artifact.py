@@ -238,7 +238,7 @@ def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _Cat
         _duplicate_code_projection(),
         _application_modules_projection(),
         _embedded_sql_projection(),
-        _stylesheet_projection(),
+        _stylesheet_projection(resolved),
     )
     rules = (
         *oxlint.rules,
@@ -604,7 +604,29 @@ def _application_modules_projection() -> _ToolProjection:
     return _ToolProjection((provider,), (rule,))
 
 
-def _stylesheet_projection() -> _ToolProjection:
+class _StylesheetRuleOptions(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    severity: Literal["error", "warning"] | None = None
+
+
+class _StylesheetConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    default_severity: Literal["error", "warning"] = Field(alias="defaultSeverity")
+    rules: dict[str, bool | dict[str, list[str]] | tuple[bool, _StylesheetRuleOptions]]
+
+    def level(self, rule: str) -> Literal["error", "warning"]:
+        definition = self.rules[rule]
+        if isinstance(definition, tuple) and definition[1].severity is not None:
+            return definition[1].severity
+        return self.default_severity
+
+
+def _stylesheet_projection(root: Path) -> _ToolProjection:
+    config = _StylesheetConfig.model_validate_json(
+        (root / _MOBILE_CONFIG_ROOT / "stylelint.strict.json").read_text(encoding="utf-8")
+    )
     version = manifest.typescript_peers()["stylelint"]
     provider = _Provider(
         id="stylelint",
@@ -624,7 +646,6 @@ def _stylesheet_projection() -> _ToolProjection:
         homepage="https://github.com/sarj-ai/code-standards",
         projection_scope="config-explicit",
     )
-    context = _Context(id=ContextId("source-css"), label="Selected CSS sources", level="warning")
     rules = tuple(
         _Rule(
             key=f"{'sarj-css' if rule.startswith('@sarj/') else 'stylelint'}:{rule}",
@@ -640,7 +661,15 @@ def _stylesheet_projection() -> _ToolProjection:
             family="correctness",
             autofix="available" if rule == "function-calc-no-unspaced-operator" else "none",
             has_suggestions=False,
-            profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+            profiles=tuple(
+                _Profile(
+                    name=name,
+                    contexts=(
+                        _Context(id=ContextId("source-css"), label="Selected CSS sources", level=config.level(rule)),
+                    ),
+                )
+                for name in ("application", "standard")
+            ),
         )
         for rule, summary in stylelint.RULES.items()
     )

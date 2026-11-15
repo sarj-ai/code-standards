@@ -274,7 +274,7 @@ def test_warning_is_at_the_reduction_and_can_be_suppressed() -> None:
     rule = NanHiddenByBuiltinMin()
     findings = rule.check(Path("app/export_validation.py"), _SOURCE)
     assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
-        ("SARJ539", 4, 14, Severity.WARNING)
+        ("SARJ539", 4, 14, Severity.ERROR)
     ]
     suppressed = _SOURCE.replace(
         "lowest = min(single, batched)",

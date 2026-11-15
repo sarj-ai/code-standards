@@ -43,7 +43,7 @@ class NoExceptionTextIn500Detail(Rule):
     id = "no-exception-text-in-500-detail"
     code = "SARJ505"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="HTTP 500 exception details must not carry exception text or tracebacks.",
         rationale=(
             "An unexpected exception's text can contain SQL, file paths, hostnames, provider responses or personal "
@@ -111,7 +111,7 @@ class NoExceptionTextIn500Detail(Rule):
             return []
         imports = context.imports
         return [
-            Diagnostic(context.path, node.lineno, node.col_offset + 1, self.code, _MESSAGE, severity=Severity.WARNING)
+            Diagnostic(context.path, node.lineno, node.col_offset + 1, self.code, _MESSAGE, severity=Severity.ERROR)
             for node in context.nodes(ast.Call)
             if imports.resolved_symbol(node.func, sources=_HTTP_EXCEPTION_MODULES) == "HTTPException"
             and http_status(_argument(node, 0, "status_code")) == _SERVER_ERROR

@@ -150,7 +150,7 @@ class SlackEventTextInMrkdwn(Rule):
     id = "slack-event-text-in-mrkdwn"
     documentation = RuleMeta(
         code="SARJ316",
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep proven event-controlled text out of Slack markup controls.",
         rationale="JSON quoting does not neutralize Slack markup controls in pull-request titles or branch names.",
         remediation="Use plain_text for event-controlled text, or deliberately encode reserved Slack controls before combining it with trusted markup.",

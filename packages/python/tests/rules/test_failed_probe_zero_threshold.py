@@ -114,7 +114,7 @@ def test_warning_is_at_the_fallback_and_can_be_suppressed() -> None:
     rule = FailedProbeZeroThreshold()
     findings = rule.check(Path("app/recovery.py"), _SOURCE)
     assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
-        ("SARJ538", 15, 9, Severity.WARNING)
+        ("SARJ538", 15, 9, Severity.ERROR)
     ]
     suppressed = _SOURCE.replace(
         ">= baseline:", ">= baseline:  # sarj-noqa: SARJ538 -- explicit optional zero recovery policy"

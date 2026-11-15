@@ -52,7 +52,7 @@ class NoNullComparison(Rule):
     id = "no-null-comparison"
     code = "SARJ124"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Use explicit NULL predicates instead of ordinary NULL comparisons.",
         rationale=(
             "Ordinary built-in comparisons with NULL produce unknown, so a WHERE or JOIN predicate does not "
@@ -134,7 +134,7 @@ class NoNullComparison(Rule):
             for offset, message in _signals(statement):
                 location = source_location(source, start + offset)
                 findings.append(
-                    Diagnostic(path, location.line, location.column, self.code, message, DefaultLevel.WARNING)
+                    Diagnostic(path, location.line, location.column, self.code, message, DefaultLevel.ERROR)
                 )
         return findings
 

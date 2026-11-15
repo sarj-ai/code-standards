@@ -36,7 +36,7 @@ class NoPlaintextSecretEnv(Rule):
     id = "no-plaintext-secret-env"
     code = "SARJ214"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="A secret-named container environment variable should come from a secret reference, not a plain value.",
         rationale=(
             "A plain `value` copies the secret into Terraform state, the plan output and the service revision, where "
@@ -124,7 +124,7 @@ class NoPlaintextSecretEnv(Rule):
                         self.code,
                         f"Environment variable {name} receives a plain value; reference a Secret Manager secret "
                         "with value_source or value_from instead",
-                        severity=DefaultLevel.WARNING,
+                        severity=DefaultLevel.ERROR,
                     )
                 )
         return findings

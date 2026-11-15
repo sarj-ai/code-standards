@@ -137,7 +137,7 @@ CASES = (
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = AsyncExecutorShutdown().check(Path("app/lifecycle.py"), case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING and not finding.fixes for finding in findings)
+    assert all(finding.severity is Severity.ERROR and not finding.fixes for finding in findings)
 
 
 def test_shutdown_offloaded_to_a_thread() -> None:
@@ -150,9 +150,7 @@ def test_shutdown_offloaded_to_a_thread() -> None:
 def test_closure_receiver_retains_its_proven_constructor() -> None:
     source = "from concurrent.futures import ThreadPoolExecutor\n\ndef create_app():\n    executor = ThreadPoolExecutor(max_workers=1)\n    queue = EncodeQueue(executor)\n    async def lifespan():\n        executor.shutdown(wait=True)\n    return lifespan\n"
     findings = AsyncExecutorShutdown().check(Path("app/lifecycle.py"), source)
-    assert [(finding.line, finding.code, finding.severity) for finding in findings] == [
-        (7, "SARJ540", Severity.WARNING)
-    ]
+    assert [(finding.line, finding.code, finding.severity) for finding in findings] == [(7, "SARJ540", Severity.ERROR)]
 
 
 def test_ordinary_keyword_argument_use_preserves_constructor_identity() -> None:
@@ -172,7 +170,7 @@ def test_documented_examples() -> None:
         (AsyncSubprocessCancellationCleanup, "async-wait-without-cancellation-cleanup"),
     ],
 )
-def test_new_lifecycle_warnings_do_not_block_or_enter_error_baselines(
+def test_lifecycle_errors_block_and_support_explicit_error_baselines(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     rule_type: type[Rule],
@@ -183,7 +181,10 @@ def test_new_lifecycle_warnings_do_not_block_or_enter_error_baselines(
     target.write_text(example.focus_file.source)
     baseline = tmp_path / "baseline.json"
     command = ["check", "--rule", rule_type.id]
-    assert main([*command, str(target)]) == 0
-    assert f"{rule_type.code} warning:" in capsys.readouterr().out
+    assert main([*command, str(target)]) == 1
+    output = capsys.readouterr().out
+    assert rule_type.code in output
+    assert "warning:" not in output
     assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
-    assert json.loads(baseline.read_text()) == {}
+    assert json.loads(baseline.read_text()) == {str(target): {rule_type.code: 1}}
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0

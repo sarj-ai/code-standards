@@ -93,7 +93,7 @@ class _Result:
     value: _Value
 
 
-class _UnsafeError(Exception):
+class _UnsafeError(Exception):  # sarj-noqa: SARJ542 -- Unwind unsupported inert-expression proofs.
     pass
 
 

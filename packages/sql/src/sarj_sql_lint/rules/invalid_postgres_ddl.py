@@ -62,7 +62,7 @@ class InvalidPostgresDdl(Rule):
     id = "invalid-postgres-ddl"
     code = "SARJ126"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Use supported PostgreSQL index and constraint definitions.",
         rationale=(
             "Unsupported index options and constraint validation clauses fail when PostgreSQL executes a migration. "
@@ -178,7 +178,7 @@ class InvalidPostgresDdl(Rule):
                         index.column,
                         self.code,
                         " ".join(problems),
-                        DefaultLevel.WARNING,
+                        DefaultLevel.ERROR,
                     )
                 )
         findings.extend(
@@ -189,7 +189,7 @@ class InvalidPostgresDdl(Rule):
                 self.code,
                 "NOT VALID is unsupported for UNIQUE and PRIMARY KEY constraints; preserve the key contract "
                 "and use a supported index-backed installation when needed.",
-                DefaultLevel.WARNING,
+                DefaultLevel.ERROR,
             )
             for location in _invalid_constraints(source)
         )

@@ -40,7 +40,7 @@ _MAKE_UNKNOWN = "\0make_unknown\0"
 WORKFLOW_EXPRESSION_RE = re.compile(r"\$\{\{(?:[^'}]++|'(?:[^']++|'')*+'|}(?!}))*+\}\}")
 
 
-class ProgramProjectionError(ValueError):
+class ProgramProjectionError(ValueError):  # sarj-noqa: SARJ542 -- Abort unsupported program projection.
     pass
 
 
@@ -50,7 +50,7 @@ class ExecutionBlock:
     source: str = ""
     argv: tuple[str, ...] = ()
     interpreter: str = "shell"
-    end_line: int | None = None
+    end_line: int | None = None  # sarj-noqa: SARJ541 -- Preserve independent optional span coordinates.
     end_column: int | None = None
     literal: LiteralSource | None = field(default=None, compare=False)
     context: str = field(default="", compare=False)

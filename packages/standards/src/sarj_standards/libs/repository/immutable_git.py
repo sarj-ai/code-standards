@@ -41,7 +41,7 @@ def valid_oid(value: str) -> bool:
     return len(value) == _OID_LENGTH and all(character in "0123456789abcdef" for character in value)
 
 
-class _PythonSourceEncodingError(ValueError):
+class _PythonSourceEncodingError(ValueError):  # sarj-noqa: SARJ542 -- Reject invalid immutable-source encodings.
     pass
 
 

@@ -208,12 +208,12 @@ def test_external_ownership_and_dialects(path: Path, prefix: str) -> None:
     assert NoNullComparison().check(path, prefix + "SELECT value = NULL;") == []
 
 
-def test_warning_and_exact_suppression(tmp_path: Path) -> None:
+def test_error_and_exact_suppression(tmp_path: Path) -> None:
     target = tmp_path / "events.sql"
     target.write_text("SELECT value = NULL;\n")
     result = analyze([NoNullComparison.id], [target])
     assert len(result) == 1
-    assert result[0].severity is DefaultLevel.WARNING
-    assert main(["check", "--rule", NoNullComparison.id, str(target)]) == 0
+    assert result[0].severity is DefaultLevel.ERROR
+    assert main(["check", "--rule", NoNullComparison.id, str(target)]) == 1
     target.write_text("SELECT value = NULL; -- sarj-noqa: SARJ124 -- intentional unknown boolean\n")
     assert analyze([NoNullComparison.id], [target]) == []

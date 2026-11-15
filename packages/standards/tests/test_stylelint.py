@@ -120,7 +120,20 @@ def test_installed_css_cli_reports_managed_findings_from_a_consumer(tmp_path: Pa
     assert all(diagnostic.severity is Severity.WARNING for diagnostic in report.diagnostics)
 
 
-def test_css_inventory_matches_the_shipped_warning_preset() -> None:
+def test_css_validity_findings_are_blocking_errors(tmp_path: Path) -> None:
+    project(tmp_path, {"view.css": ".a { color: #12; }"})
+
+    (report,) = external.analyze_external(
+        ("view.css",), root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"typescript"})
+    )
+
+    assert report.completion is Completion.COMPLETE, report.issues
+    (diagnostic,) = report.diagnostics
+    assert diagnostic.code == "color-no-invalid-hex"
+    assert diagnostic.severity is Severity.ERROR
+
+
+def test_css_inventory_preserves_the_advisory_default() -> None:
     config = parse_json(files("sarj_standards").joinpath("configs/stylelint.strict.json").read_text(encoding="utf-8"))
     assert isinstance(config, dict)
     rules = config["rules"]

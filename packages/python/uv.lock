@@ -261,7 +261,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.139.0"
+version = "1.140.0"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
@@ -300,7 +300,7 @@ dev = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.8.0"
+version = "0.8.1"
 source = { editable = "../contracts" }
 
 [package.metadata]
@@ -314,7 +314,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.47.0"
+version = "0.48.0"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },

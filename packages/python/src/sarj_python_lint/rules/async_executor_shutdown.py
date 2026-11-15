@@ -32,7 +32,7 @@ class AsyncExecutorShutdown(Rule):
     id = "async-executor-shutdown"
     code = "SARJ540"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Run waiting executor shutdown outside the async event-loop thread.",
         rationale="Executor.shutdown waits for workers by default; invoking it directly in an async function can block the event loop and delay unrelated service work or cancellation.",
         remediation="Await asyncio.to_thread(executor.shutdown, wait=True), or use the application's explicit nonblocking shutdown policy after arranging worker ownership and completion.",
@@ -94,7 +94,7 @@ class AsyncExecutorShutdown(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="waiting Executor.shutdown runs on the event-loop thread; await an offloaded shutdown after arranging worker ownership",
                 )
             )

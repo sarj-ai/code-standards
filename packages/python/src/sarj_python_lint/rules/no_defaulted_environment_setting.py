@@ -46,7 +46,7 @@ class NoDefaultedEnvironmentSetting(Rule):
     id = "no-defaulted-environment-setting"
     code = "SARJ497"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A settings field that names the deployment environment must not declare a default.",
         rationale=(
             "A defaulted environment setting lets a deployment that forgot the variable start as the default "
@@ -157,7 +157,7 @@ class NoDefaultedEnvironmentSetting(Rule):
                     self.code,
                     "This environment setting has a default, so a deployment missing the variable starts as that "
                     "environment. Remove the default so startup fails instead.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
                 for field in model.body
                 if isinstance(field, ast.AnnAssign) and _is_defaulted_environment(field, facts)

@@ -130,7 +130,7 @@ CASES = (
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = CancelOwnedTaskWithoutJoin().check(Path("app/lifecycle.py"), case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING and not finding.fixes for finding in findings)
+    assert all(finding.severity is Severity.ERROR and not finding.fixes for finding in findings)
 
 
 def test_ensure_future_requires_a_new_local_coroutine() -> None:

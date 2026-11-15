@@ -38,7 +38,7 @@ CREATE TABLE retry (
 """
     findings = _check(source)
     assert [(item.line, item.col) for item in findings] == [(3, 3), (4, 3)]
-    assert all(item.code == "SARJ130" and item.severity is DefaultLevel.WARNING for item in findings)
+    assert all(item.code == "SARJ130" and item.severity is DefaultLevel.ERROR for item in findings)
 
 
 @pytest.mark.parametrize(
@@ -203,9 +203,9 @@ def test_inherited_constraints_cause_conservative_abstention() -> None:
 @pytest.mark.parametrize(
     ("kind", "low", "high"),
     [
-        ("SMALLINT", -32768, 32767),
-        ("INTEGER", -2147483648, 2147483647),
-        ("BIGINT", -9223372036854775808, 9223372036854775807),
+        ("SMALLINT", -32_768, 32_767),
+        ("INTEGER", -2_147_483_648, 2_147_483_647),
+        ("BIGINT", -9_223_372_036_854_775_808, 9_223_372_036_854_775_807),
     ],
 )
 def test_native_integer_limits_already_enforce_their_full_range(kind: str, low: int, high: int) -> None:
@@ -213,7 +213,7 @@ def test_native_integer_limits_already_enforce_their_full_range(kind: str, low: 
 
 
 @pytest.mark.parametrize(
-    ("kind", "high"), [("SMALLINT", 32767), ("INTEGER", 2147483647), ("BIGINT", 9223372036854775807)]
+    ("kind", "high"), [("SMALLINT", 32_767), ("INTEGER", 2_147_483_647), ("BIGINT", 9_223_372_036_854_775_807)]
 )
 def test_check_and_native_limits_jointly_cover_the_declared_range(kind: str, high: int) -> None:
     assert _check(f"CREATE TABLE t (n {kind} CHECK (n >= 0) -- valid range 0..{high}\n);") == []

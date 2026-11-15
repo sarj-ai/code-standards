@@ -89,7 +89,7 @@ class NoCustomControlFlowException(Rule):
     id = "no-custom-control-flow-exception"
     code = "SARJ542"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Return coded typed outcomes for expected domain failures instead of exception-only contracts.",
         rationale=(
             "A marker, fixed-message or payload-bearing custom exception creates another control-flow type without declaring failure data in "
@@ -112,14 +112,14 @@ class NoCustomControlFlowException(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This review warning checks stable module-level Exception/ValueError markers and fixed-message subclasses with a source-visible direct raise. It also reviews typed payload constructors limited to assignments and super().__init__ argument formatting, when raised by a simple rejection guard in an explicitly annotated function. Constructor parameters must be typed and nonvariadic, with at least one used; calls must supply their required arguments. Base ancestry must be source-proven; an opaque external base is not inferred from its name or message.",
+            "This blocking review policy checks stable module-level Exception/ValueError markers and fixed-message subclasses with a source-visible direct raise. It also reviews typed payload constructors limited to assignments and super().__init__ argument formatting, when raised by a simple rejection guard in an explicitly annotated function. Constructor parameters must be typed and nonvariadic, with at least one used; calls must supply their required arguments. Base ancestry must be source-proven; an opaque external base is not inferred from its name or message.",
             "Payload guards can prepare one literal or simple formatted message before raising. Guards under try/except/finally, with, loops and match are excluded, as are generators, decorated or special-method functions, quoted return annotations and import-proven NoReturn/Never functions, including simple nongeneric module aliases. Constructor calls, arbitrary computations, extra methods or behavior, decorated/generic constructors and unknown argument expansion abstain. Source-visible formatting is not a purity proof and never authorizes an automatic rewrite.",
             "Direct module-level from-imports, including renamed and relative imports, are followed to stable first-party exception definitions using the existing bounded local-source resolver. An imported raise must be a simple guard in an explicitly annotated ordinary function, with source-proven Exception/ValueError ancestry and compatible constructor arguments. Import-proven typing.final/typing_extensions.final class decorators preserve this proof. The rule reports once per function and originating exception, at an unsuppressed raise. Source-definition suppressions are also respected.",
-            "Imported discovery does not follow re-exports, module-attribute raises, local imports, aliases, unknown or inherited constructors, custom allocation or inherited subclass hooks (including assigned bindings), external source, generated/test/vendor definitions, registrations or namespace mutations. Source ancestry is bounded to eight classes and imported definition modules to 32 per file. A guarded raise is evidence to review, not proof of business expectedness. Preserve genuine infrastructure failure contracts even when a warning matches. Never convert a transaction rejection to a return without reviewing rollback, cleanup, logging, retries and side-effect order. Optional absence and independent outcomes remain valid.",
+            "Imported discovery does not follow re-exports, module-attribute raises, local imports, aliases, unknown or inherited constructors, custom allocation or inherited subclass hooks (including assigned bindings), external source, generated/test/vendor definitions, registrations or namespace mutations. Source ancestry is bounded to eight classes and imported definition modules to 32 per file. A guarded raise is evidence to review, not proof of business expectedness. Preserve genuine infrastructure failure contracts even when a finding matches. Never convert a transaction rejection to a return without reviewing rollback, cleanup, logging, retries and side-effect order. Optional absence and independent outcomes remain valid.",
             "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Direct synchronous module callbacks used only as Annotated validator metadata on plain direct BaseModel fields, and stable nonescaping direct nested helpers, also preserve rejection; lexical helper ownership is bounded to 32 levels. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred. Only simple stable module assignment aliases and nongeneric annotation aliases consumed directly by model fields are followed. Explicit string annotations, custom model hooks, async/generator callbacks, escaped helpers and broader call graphs are not followed. Generic lexical resolution can miss a module marker shadowed only in a method's class namespace.",
-            "Tests, generated and vendor code are excluded. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
-            "The examples illustrate an existing project Result abstraction; do not introduce another Result library or require these class/tag names. SARJ510 owns explicit data discriminators and SARJ548 reviews discarded tagged outcomes; the native type checker owns exhaustive handling. A tag alone cannot guarantee JSON support for arbitrary T/E: qualify the concrete payloads with their codec. Keep established wire discriminators, legitimate absence and independent outcomes. This warning does not mechanically ban scalar unions or require every function to return Result.",
+            "Tests, generated and vendor code are excluded. Resolve the blocking review with a typed outcome or an exact-code suppression explaining the required exception protocol. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
+            "The examples illustrate an existing project Result abstraction; do not introduce another Result library or require these class/tag names. SARJ510 owns explicit data discriminators and SARJ548 reviews discarded tagged outcomes; the native type checker owns exhaustive handling. A tag alone cannot guarantee JSON support for arbitrary T/E: qualify the concrete payloads with their codec. Keep established wire discriminators, legitimate absence and independent outcomes. This policy does not mechanically ban scalar unions or require every function to return Result.",
         ),
         examples=(
             RuleExample(
@@ -412,7 +412,7 @@ class NoCustomControlFlowException(Rule):
                     "If this is an expected domain outcome, return a typed tagged result with a stable error code and the required context, and "
                     "format the message at the consumer; preserve exceptional failures, validation, framework contracts "
                     "and transaction/resource unwinding.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         for raised, marker in _imported_raises(context, contexts):
@@ -428,7 +428,7 @@ class NoCustomControlFlowException(Rule):
                     "If this is an expected domain outcome, return a typed tagged success/failure union with a stable error code "
                     "and the required context; update callers to handle, propagate or translate each variant and format messages "
                     "at the consumer. Preserve public adapters, cancellation and transaction/resource unwinding.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings

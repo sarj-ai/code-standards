@@ -7,7 +7,7 @@ export const NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION = {
   rationale: "Browsers do not expose credentialed cross-origin responses when Access-Control-Allow-Origin is '*'. Credentialless requests can still use a wildcard even when Access-Control-Allow-Credentials is emitted, so review the intended caller contract.",
   remediation: "Use a trusted explicit origin for credentialed callers, or omit the credentials opt-in for a credentialless wildcard endpoint.",
   category: "correctness",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "none",
   references: ["https://fetch.spec.whatwg.org/#cors-protocol-and-credentials"],
   limitations: [

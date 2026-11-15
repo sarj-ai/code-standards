@@ -18,16 +18,17 @@ _RULE = "no-environment-conditional"
 
 
 @pytest.mark.parametrize("rule_id", ["no-project-secret-access-for-service-account", "no-plaintext-secret-env"])
-def test_warning_stage_security_findings_preserve_success(
+def test_promoted_security_findings_block_the_cli(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId
 ) -> None:
     rule_type = REGISTRY[rule_id]
     example = next(case for case in rule_type.public_examples() if case.expected_count and len(case.files) == 1)
     source = tmp_path / example.focus_path
     source.write_text(example.focus_file.source, encoding="utf-8")
-    assert main(["check", "--rule", rule_id, str(source)]) == 0
+    assert main(["check", "--rule", rule_id, str(source)]) == 1
     captured = capsys.readouterr()
-    assert f"{rule_type.code} warning:" in captured.out
+    assert rule_type.code in captured.out
+    assert "warning:" not in captured.out
     assert not captured.err
 
 

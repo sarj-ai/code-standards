@@ -65,7 +65,7 @@ class NanHiddenByBuiltinMin(Rule):
     id = "nan-hidden-by-builtin-min"
     code = "SARJ539"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Validate floating candidates before a built-in min/max can hide a NaN.",
         rationale="Python's min/max compares operands in order. A later NaN can be ignored, leaving a finite result that passes a finiteness check even though an original candidate was invalid.",
         remediation="Check every floating candidate before reducing it, or use a deliberately NaN-propagating reduction and validate its result.",
@@ -129,7 +129,7 @@ class NanHiddenByBuiltinMin(Rule):
                     line=reduced.lineno,
                     col=reduced.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="a later floating NaN can be hidden by this built-in min/max before its result is checked for finiteness; validate every candidate first",
                 )
         return [findings[key] for key in sorted(findings)]

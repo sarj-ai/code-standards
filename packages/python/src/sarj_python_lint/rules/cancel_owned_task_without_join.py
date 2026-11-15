@@ -31,7 +31,7 @@ class CancelOwnedTaskWithoutJoin(Rule):
     id = "cancel-owned-task-without-join"
     code = "SARJ536"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Join a cancelled locally owned task before releasing its lifecycle.",
         rationale="Task.cancel requests cancellation without waiting for the child to finish; an async lifespan can release resources while its child still runs cancellation cleanup.",
         remediation="Await the owned task or an appropriate gather/TaskGroup settlement before releasing resources. Preserve cancellation of the owner and choose an explicit policy for unexpected child errors and repeated cancellation.",
@@ -90,7 +90,7 @@ class CancelOwnedTaskWithoutJoin(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="cancel() does not settle this lifespan-owned task; join its completion before releasing the lifecycle's resources",
                 )
             )

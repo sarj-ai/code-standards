@@ -51,7 +51,7 @@ def test_documented_examples() -> None:
 def test_discarded_closed_outcome(call: str) -> None:
     findings = _check(_BASE + call + "\n")
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert findings[0].code == "SARJ548"
 
 
