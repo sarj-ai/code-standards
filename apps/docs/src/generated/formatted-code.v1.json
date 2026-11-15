@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f0193c84f65ea0354e49ee9401b81d693f7093e10db69e89794fbcb5f4e1e0d4",
-  "cliSha256": "6d7f00c1b2a4cf5937461e51e8f8b33639088fe9c2561b63b265b43800373e52",
+  "catalogSha256": "4ca84f9d19f80320f1178fdd7db00707ec63104a6f3d967dabbf7be1f5e97784",
+  "cliSha256": "850a2fbe4dcd076457a0634e8c763e6bbd7a5cfee2e040037e7ee06a9c8b3f08",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -18034,6 +18034,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-explicit-value-model-construction": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Annotated\nfrom pydantic import BaseModel, ConfigDict, Field\n\n\nclass AudioObject(BaseModel):\n    model_config = ConfigDict(frozen=True)\n    generation: Annotated[int, Field(strict=True, gt=0)]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "declared-native-validation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The value field owns strict validation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass AudioObject:\n    generation: int\n\n    def __post_init__(self) -> None:\n        if type(self.generation) is not int or self.generation <= 0:\n            raise ValueError(\"generation must be a positive integer\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "manual-dataclass-validation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Post-initialization repeats a field contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-fstring-over-concat": {
       "examples": [
         {
@@ -19891,6 +19926,71 @@
           "outcome": "accept",
           "scenarioId": "fluent-method",
           "title": "Fluent method preserves subclass type"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-semantic-temporal-types": {
+      "examples": [
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass CacheEntry(BaseModel):\n    created_ms: int\n    ttl_seconds: float = 60\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "epoch-instant",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An epoch instant erases its temporal type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "import pydantic_settings as ps\n\n\nclass Settings(ps.BaseSettings):\n    created_ms: int\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "numeric-settings-instant",
+          "outcome": "reject",
+          "scenarioId": "settings-provider",
+          "title": "A native settings model retains an epoch integer"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "import pydantic_settings as ps\nfrom pydantic import AwareDatetime\n\n\nclass Settings(ps.BaseSettings):\n    created_at: AwareDatetime\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "typed-settings-instant",
+          "outcome": "accept",
+          "scenarioId": "settings-provider",
+          "title": "The native settings model declares an aware instant"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from datetime import timedelta\nfrom pydantic import BaseModel, AwareDatetime\n\n\nclass CacheEntry(BaseModel):\n    created_at: AwareDatetime\n    ttl: timedelta\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "typed-temporal-values",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Instants and durations retain distinct types"
         }
       ],
       "optionsSchemaSource": null

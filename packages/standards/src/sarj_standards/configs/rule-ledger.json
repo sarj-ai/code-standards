@@ -162,6 +162,7 @@
       "prefer-direct-import-module",
       "prefer-discriminated-model-union",
       "prefer-explicit-class-contract",
+      "prefer-explicit-value-model-construction",
       "prefer-fstring-over-concat",
       "prefer-grouped-settings",
       "prefer-immutable-module-constant",
@@ -194,6 +195,7 @@
       "prefer-runtime-validation",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
+      "prefer-semantic-temporal-types",
       "prefer-set-isdisjoint",
       "prefer-single-psycopg-cursor",
       "prefer-str-enum",
@@ -713,7 +715,9 @@
       "SARJ568",
       "SARJ569",
       "SARJ570",
-      "SARJ571"
+      "SARJ571",
+      "SARJ572",
+      "SARJ573"
     ],
     "sql": [
       "SARJ101",

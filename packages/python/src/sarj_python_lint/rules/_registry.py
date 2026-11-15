@@ -269,6 +269,7 @@ from sarj_python_lint.rules.prefer_coordinated_state_owner import PreferCoordina
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
+from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
 from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMappingKeys
 from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
@@ -278,6 +279,7 @@ from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecu
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
 from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
+from sarj_python_lint.rules.prefer_semantic_temporal_types import PreferSemanticTemporalTypes
 from sarj_python_lint.rules.prefer_single_psycopg_cursor import PreferSinglePsycopgCursor
 from sarj_python_lint.rules.prefer_typed_cli import PreferTypedCli
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
@@ -298,6 +300,8 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferSemanticTemporalTypes.id: PreferSemanticTemporalTypes,
+        PreferExplicitValueModelConstruction.id: PreferExplicitValueModelConstruction,
         PreferOutcomeVariants.id: PreferOutcomeVariants,
         NoMagicArithmetic.id: NoMagicArithmetic,
         PreferExplicitClassContract.id: PreferExplicitClassContract,

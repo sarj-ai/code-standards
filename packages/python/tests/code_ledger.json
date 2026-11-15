@@ -359,5 +359,7 @@
   "SARJ568": "prefer-nominal-mapping-keys",
   "SARJ569": "prefer-explicit-class-contract",
   "SARJ570": "no-magic-arithmetic",
-  "SARJ571": "prefer-outcome-variants"
+  "SARJ571": "prefer-outcome-variants",
+  "SARJ572": "prefer-explicit-value-model-construction",
+  "SARJ573": "prefer-semantic-temporal-types"
 }

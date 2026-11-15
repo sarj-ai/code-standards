@@ -9,6 +9,24 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-semantic-temporal-types"),
+        module="sarj_python_lint.rules.prefer_semantic_temporal_types",
+        class_name="PreferSemanticTemporalTypes",
+        code="SARJ573",
+        description="Use temporal types for model instants and durations with explicit units.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("prefer-explicit-value-model-construction"),
+        module="sarj_python_lint.rules.prefer_explicit_value_model_construction",
+        class_name="PreferExplicitValueModelConstruction",
+        code="SARJ572",
+        description="Prefer declared validation and explicit factories over value-model initialization hooks.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-outcome-variants"),
         module="sarj_python_lint.rules.prefer_outcome_variants",
         class_name="PreferOutcomeVariants",
