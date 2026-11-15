@@ -149,3 +149,203 @@ def test_unrelated_newtype_binding_does_not_hide_the_nominal_default(rule: Prefe
 def test_rebound_nominal_factories_do_not_prove_a_domain_type(rule: PreferTypedSettingsField, replacement: str) -> None:
     source = _PREFIX + replacement + "\nclass Settings(BaseSettings):\n    account: str = AccountId('example')\n"
     assert rule.check(Path("app/settings.py"), source) == []
+
+
+@pytest.mark.parametrize("name", ["count", "total_count", "length", "size", "attempt", "attempts", "page", "limit"])
+def test_zero_default_count_heuristic_keeps_zero_valid(rule: PreferTypedSettingsField, name: str) -> None:
+    findings = rule.check(
+        Path("app/models.py"), "from pydantic import BaseModel\nclass Result(BaseModel):\n    " + name + ": int = 0\n"
+    )
+    assert len(findings) == 1
+    assert "NonNegativeInt when zero is valid" in findings[0].message
+    assert "such as PositiveInt" not in findings[0].message
+
+
+@pytest.mark.parametrize(("operator", "expected"), [("<", "NonNegativeInt"), ("<=", "PositiveInt")])
+def test_count_validator_guard_refines_domain_guidance(
+    rule: PreferTypedSettingsField, operator: str, expected: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator\nclass Result(BaseModel):\n    count: int\n"
+        "    @field_validator('count')\n    @classmethod\n    def valid(cls, value: int) -> int:\n"
+        f"        if value {operator} 0:\n            raise ValueError('out of range')\n        return value\n"
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert f"{expected} while retaining" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "declaration", ["count: int = 1", "count: int = -1", "discount: int = 0", "counterparty: int = 0"]
+)
+def test_count_heuristic_does_not_invent_positive_or_nonnegative_contract(
+    rule: PreferTypedSettingsField, declaration: str
+) -> None:
+    source = "from pydantic import BaseModel\nclass Result(BaseModel):\n    " + declaration + "\n"
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
+
+
+def test_plain_function_numeric_annotations_are_not_runtime_validation(rule: PreferTypedSettingsField) -> None:
+    assert rule.check(Path("app/models.py"), "def process(count: int = 0) -> int:\n    return count\n") == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "body"),
+    [
+        (
+            "after",
+            "        value = abs(value)\n        if value <= 0:\n            raise ValueError('invalid')\n        return value\n",
+        ),
+        (
+            "after",
+            "        if value == -1:\n            return value\n        if value <= 0:\n            raise ValueError('invalid')\n        return value\n",
+        ),
+        ("before", "        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"),
+        ("wrap", "        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"),
+        ("plain", "        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"),
+        ("after", "        if value <= 0:\n            raise ValueError('invalid')\n        return value - 10\n"),
+    ],
+)
+def test_transformed_or_bypassed_guards_do_not_narrow_guidance(
+    rule: PreferTypedSettingsField, mode: str, body: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator\nclass Result(BaseModel):\n    count: int\n    @field_validator('count', mode='"
+        + mode
+        + "')\n    @classmethod\n    def valid(cls, value: int) -> int:\n"
+        + body
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "StrictPositiveInt: TypeAlias = Annotated[int, Field(strict=True, gt=0)]",
+        "type StrictPositiveInt = Annotated[int, Field(strict=True, gt=0)]",
+        "StrictPositiveInt: TypeAlias = Annotated[int, Field(ge=-1)]",
+    ],
+)
+def test_named_constrained_numeric_alias_preserves_its_existing_domain(
+    rule: PreferTypedSettingsField, alias: str
+) -> None:
+    source = (
+        "from typing import Annotated, TypeAlias\nfrom pydantic import BaseModel, Field\n"
+        + alias
+        + "\nclass Result(BaseModel):\n    chunk_count: StrictPositiveInt\n"
+    )
+    assert rule.check(Path("app/models.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "base", "extra"),
+    [
+        (
+            "",
+            "BaseModel",
+            "    @field_validator('count', mode='before')\n    @classmethod\n    def normalize(cls, value):\n        return abs(value)\n",
+        ),
+        (
+            "",
+            "BaseModel",
+            "    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, values):\n        values['count'] = abs(values['count'])\n        return values\n",
+        ),
+        (
+            "class Parent(BaseModel):\n    @field_validator('count', mode='before', check_fields=False)\n    @classmethod\n    def normalize(cls, value):\n        return abs(value)\n",
+            "Parent",
+            "",
+        ),
+        (
+            "",
+            "BaseModel",
+            "    def __init__(self, **data):\n        data['count'] = abs(data['count'])\n        super().__init__(**data)\n",
+        ),
+    ],
+)
+def test_other_validation_or_construction_keeps_generic_domain_advice(
+    rule: PreferTypedSettingsField, prefix: str, base: str, extra: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator, model_validator\n"
+        + prefix
+        + "class Result("
+        + base
+        + "):\n    count: int\n    @field_validator('count')\n    @classmethod\n    def require_positive(cls, value: int) -> int:\n        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"
+        + extra
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
+
+
+@pytest.mark.parametrize("metadata", ["wrapper(Field(gt=0))", "(Field(gt=0),)", "dict(bound=Field(gt=0))"])
+def test_nested_field_call_does_not_establish_an_alias_numeric_domain(
+    rule: PreferTypedSettingsField, metadata: str
+) -> None:
+    source = (
+        "from typing import Annotated, TypeAlias\nfrom pydantic import BaseModel, Field\nAlias: TypeAlias = Annotated[int, "
+        + metadata
+        + "]\nclass Result(BaseModel):\n    count: Alias\n"
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
+
+
+def test_async_validator_body_does_not_prove_a_numeric_domain(rule: PreferTypedSettingsField) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator\nclass Result(BaseModel):\n    count: int\n"
+        "    @field_validator('count')\n    @classmethod\n    async def valid(cls, value: int) -> int:\n"
+        "        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "binding", "narrowed"),
+    [
+        ("value", "info", "", False),
+        ("cls", "value", "", True),
+        ("klass", "value", "    @classmethod\n", True),
+    ],
+)
+def test_guard_value_argument_requires_native_classmethod_binding(
+    rule: PreferTypedSettingsField, first: str, second: str, binding: str, narrowed: bool
+) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator\nclass Result(BaseModel):\n    count: int\n"
+        "    @field_validator('count')\n"
+        f"{binding}    def valid({first}, {second}):\n"
+        f"        if {second} <= 0:\n            raise ValueError('invalid')\n        return {second}\n"
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    expected = "PositiveInt while retaining" if narrowed else "an explicit numeric domain such as"
+    assert expected in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        "    def __new__(cls, **data):\n        return external(cls, data)\n",
+        "    @classmethod\n    def __get_pydantic_core_schema__(cls, source, handler):\n        return handler(int)\n",
+    ],
+)
+def test_construction_and_schema_overrides_keep_generic_domain_advice(
+    rule: PreferTypedSettingsField, override: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel, field_validator\nclass Result(BaseModel):\n    count: int\n"
+        "    @field_validator('count')\n    @classmethod\n    def valid(cls, value: int) -> int:\n"
+        "        if value <= 0:\n            raise ValueError('invalid')\n        return value\n"
+        f"{override}"
+    )
+    findings = rule.check(Path("app/models.py"), source)
+    assert len(findings) == 1
+    assert "an explicit numeric domain such as" in findings[0].message
