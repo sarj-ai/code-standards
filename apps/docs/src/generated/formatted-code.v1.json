@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8c16fdd3b23a1040c14bbaff4eacd38773420337f0f171e19873bf3130b879d9",
-  "cliSha256": "593ad34e9e040f8db8eb6a16c590d8fe2da6ed7702b1bd3b3da58d552ffdd1bf",
+  "catalogSha256": "8a5d5f1b8071316380f046266bcfa63b21e5da1371f7802d85d9a202ac8b78e5",
+  "cliSha256": "0179bb7b42dacceb620800817b4cbc9c6911be3109d4f5091405642d7f95e75a",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -21608,6 +21608,87 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "One service operation still needs its contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-hidden-settings-input": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "\n"
+            },
+            {
+              "path": "app/base.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\n\nclass SecretSettings(BaseSettings):\n    model_config = SettingsConfigDict(env_prefix=\"APP_\")\n"
+            },
+            {
+              "path": "app/settings.py",
+              "source": "from app.base import SecretSettings\n\n\nclass Settings(SecretSettings):\n    client_secret: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "exposed-imported-base",
+          "outcome": "reject",
+          "scenarioId": "inherited-config",
+          "title": "An imported base leaves its subclass's secret visible"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\n\nclass Settings(BaseSettings):\n    api_token: SecretStr\n    region: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "exposed-secret-settings",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A settings secret is echoed by validation errors"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "\n"
+            },
+            {
+              "path": "app/base.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\n\nclass SecretSettings(BaseSettings):\n    model_config = SettingsConfigDict(hide_input_in_errors=True)\n"
+            },
+            {
+              "path": "app/settings.py",
+              "source": "from app.base import SecretSettings\n\n\nclass Settings(SecretSettings):\n    client_secret: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "hidden-imported-base",
+          "outcome": "accept",
+          "scenarioId": "inherited-config",
+          "title": "A subclass inherits the flag from an imported base"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\n\nclass Settings(BaseSettings):\n    model_config = SettingsConfigDict(hide_input_in_errors=True)\n    api_token: SecretStr\n    region: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "hidden-secret-settings",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The settings class hides validation inputs"
         }
       ],
       "optionsSchemaSource": null
