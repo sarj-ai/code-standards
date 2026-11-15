@@ -37,6 +37,7 @@
     "vitest/no-conditional-expect": { "level": "warn", "findings": "Platform 163, portal 3, ai 3, automations 5" },
     "radix": { "level": "error", "findings": "Platform 4" },
     "import/no-duplicates": { "level": "warn", "findings": "Platform 13, portal 2, ai 2, automations 14", "note": "check fix style against consistent-type-imports" },
+    "import/no-anonymous-default-export": { "level": "warn", "findings": "Platform 0 (167 default exports)", "note": "the React Compiler checks analyze only named functions, so an anonymous default component goes unchecked; the default allowCallExpression keeps `export default defineConfig(...)` valid, and a Workers `export default { fetch }` object needs a named constant" },
     "oxc/no-barrel-file": { "level": "warn", "files": "Next.js app sources only" },
     "typescript/no-unnecessary-parameter-property-assignment": { "level": "error" },
     "typescript/promise-function-async": { "level": "warn", "files": "non-JSX", "findings": "Platform 264 outside JSX files (60 non-test)", "note": "off in JSX files because React 19 ReactNode includes Promise, so inferred component and render-callback returns read as promises; --fix adds async only where every return is a Promise, turning synchronous throws into rejections" },
