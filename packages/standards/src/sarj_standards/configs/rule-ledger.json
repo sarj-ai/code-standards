@@ -210,6 +210,7 @@
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
       "production-derived-test-cases",
+      "psycopg-sql-format-field-mismatch",
       "pytest-fixture-returns-bare-tuple",
       "pytest-fixture-returns-closed-resource",
       "redundant-class-docstring",
@@ -723,7 +724,8 @@
       "SARJ572",
       "SARJ573",
       "SARJ574",
-      "SARJ575"
+      "SARJ575",
+      "SARJ576"
     ],
     "sql": [
       "SARJ101",

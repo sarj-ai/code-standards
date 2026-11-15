@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8a5d5f1b8071316380f046266bcfa63b21e5da1371f7802d85d9a202ac8b78e5",
-  "cliSha256": "0179bb7b42dacceb620800817b4cbc9c6911be3109d4f5091405642d7f95e75a",
+  "catalogSha256": "bb78cc486aa3ab5e0babd4123ddeb965b276e24517739baa231f3a2528e7d9b8",
+  "cliSha256": "bde7773f1e22ab97967aa6c2e016b6925825fcf9ac8e580876119a10dd9d71d3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -20961,6 +20961,71 @@
           "outcome": "reject",
           "scenarioId": "oracle-lexical-bindings",
           "title": "A fixture equality does not observe the imported production collection"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:psycopg-sql-format-field-mismatch": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/report.py",
+              "source": "from psycopg.sql import SQL\n\n\ndef report_query(where):\n    return SQL(\"SELECT COALESCE(data, '{{}}') FROM calls {where}\").format(where=where)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/report.py",
+          "id": "escaped-empty-object-literal",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Escaped braces stay SQL text"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/report.py",
+              "source": "from psycopg import sql\n\n\ndef report_query(table, where):\n    return sql.SQL(\"SELECT * FROM {table} {where}\").format(table=table, where=where)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/report.py",
+          "id": "every-keyword-supplied",
+          "outcome": "accept",
+          "scenarioId": "missing-keyword",
+          "title": "Every named field has a keyword argument"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/report.py",
+              "source": "from psycopg import sql\n\n\ndef report_query(table):\n    return sql.SQL(\"SELECT * FROM {table} {where}\").format(table=table)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/report.py",
+          "id": "missing-keyword-through-module-alias",
+          "outcome": "reject",
+          "scenarioId": "missing-keyword",
+          "title": "A named field has no keyword argument"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/report.py",
+              "source": "from psycopg.sql import SQL\n\n\ndef report_query(where):\n    return SQL(\"SELECT COALESCE(data, '{}') FROM calls {where}\").format(where=where)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/report.py",
+          "id": "sql-empty-object-literal",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An empty JSON object in SQL text is read as a positional field"
         }
       ],
       "optionsSchemaSource": null
