@@ -96,6 +96,8 @@ const FILES: Readonly<Record<string, string>> = {
   ].join("\n"),
   "src/message-origin.js":
     'window.addEventListener("message", event => event.origin.startsWith("https://trusted.example"));\n',
+  "src/promise-return.ts": "declare function load(): Promise<number>;\nexport function forward(): Promise<number> {\n  return load();\n}\n",
+  "src/promise-return.tsx": "declare function load(): Promise<number>;\nexport function forward(): Promise<number> {\n  return load();\n}\n",
   "src/mixed-condition.ts": 'export function display(value: number | string): string {\n  return value ? String(value) : "none";\n}\n',
   "src/nullable-conditions.ts": [
     "export function summary(name: string | undefined, count: number | undefined, done: boolean | undefined): string {",
@@ -228,6 +230,11 @@ describe("the managed Oxlint config in a consumer", () => {
         (code) => code.startsWith("jsx-a11y(") || code === "@sarj(no-invalid-web-resource-hints)",
       ),
     ).toEqual([]);
+  });
+
+  it("requires async on promise-returning functions outside JSX files", () => {
+    expect(codesOf("src/promise-return.ts")).toContain("typescript(promise-function-async)");
+    expect(codesOf("src/promise-return.tsx")).not.toContain("typescript(promise-function-async)");
   });
 
   it("reports mixed-type union conditions and allows nullable primitive conditions", () => {

@@ -273,6 +273,7 @@
   "typescript/prefer-regexp-exec": "Enforce `RegExp#exec` over `String#match` if no global flag is provided",
   "typescript/prefer-return-this-type": "Enforce that `this` is used when only `this` type is returned",
   "typescript/prefer-string-starts-ends-with": "Enforce using `String#startsWith` and `String#endsWith` over other equivalent methods of checking substrings",
+  "typescript/promise-function-async": "Require any function or method that returns a Promise to be marked async",
   "typescript/related-getter-setter-pairs": "Enforce that `get()` types should be assignable to their equivalent `set()` type",
   "typescript/require-array-sort-compare": "Require `Array#sort` and `Array#toSorted` calls to always provide a `compareFunction`",
   "typescript/require-await": "Disallow async functions which do not return promises and have no `await` expression",

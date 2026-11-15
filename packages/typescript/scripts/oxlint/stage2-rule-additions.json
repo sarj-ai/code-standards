@@ -39,6 +39,7 @@
     "import/no-duplicates": { "level": "warn", "findings": "Platform 13, portal 2, ai 2, automations 14", "note": "check fix style against consistent-type-imports" },
     "oxc/no-barrel-file": { "level": "warn", "files": "Next.js app sources only" },
     "typescript/no-unnecessary-parameter-property-assignment": { "level": "error" },
+    "typescript/promise-function-async": { "level": "warn", "files": "non-JSX", "findings": "Platform 264 outside JSX files (60 non-test)", "note": "off in JSX files because React 19 ReactNode includes Promise, so inferred component and render-callback returns read as promises; --fix adds async only where every return is a Promise, turning synchronous throws into rejections" },
     "typescript/strict-boolean-expressions": { "level": "warn", "findings": "Platform 44 (4 real bugs, all mixed-type unions)", "note": "Nullable strings, numbers, booleans and any stay allowed; mixed-type unions and nullable enums report. The upstream defaults report 723 Platform conditions with no bug in a 40-hit sample." },
     "react/capitalized-calls": { "level": "error", "note": "React Compiler check, as in ashStack" },
     "react/hooks": { "level": "error", "note": "React Compiler check, as in ashStack" },
