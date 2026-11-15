@@ -675,6 +675,7 @@ const RULES = {
 
   // promise (native).
   "promise/no-new-statics": "error",
+  "promise/no-return-in-finally": "warn",
   "promise/prefer-catch": "error",
 
   // oxc (native).
