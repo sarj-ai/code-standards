@@ -12,6 +12,7 @@
   "import/no-anonymous-default-export": "Require a name for default-exported functions, classes and values",
   "import/no-duplicates": "Forbid repeated import of the same module in multiple places",
   "import/no-mutable-exports": "Forbid mutable `let` and `var` exports",
+  "import/no-self-import": "Forbid a module from importing itself",
   "jest/prefer-to-be": "Suggest using `toBe()` for primitive literals",
   "jsx-a11y/alt-text": "Require meaningful alternative text for images and image controls.",
   "jsx-a11y/anchor-has-content": "Require accessible content for anchors.",

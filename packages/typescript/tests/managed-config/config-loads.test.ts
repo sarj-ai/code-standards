@@ -112,6 +112,8 @@ const FILES: Readonly<Record<string, string>> = {
   "src/promise-statics-valid.js": "export const value = Promise.resolve(1);\n",
   "src/live-binding.ts": "export let count = 0;\nexport function increment(): void {\n  count += 1;\n}\n",
   "src/constant-binding.ts": "export const count = 0;\n",
+  "src/self-import.ts": 'import * as self from "./self-import.js";\nexport const value = 1;\nexport const doubled = self.value * 2;\n',
+  "src/sibling-import.ts": 'import { value } from "./self-import.js";\nexport const tripled = value * 3;\n',
 };
 
 interface Diagnostic {
@@ -259,5 +261,10 @@ describe("the managed Oxlint config in a consumer", () => {
   it("rejects a reassignable export binding and accepts a constant one", () => {
     expect(codesOf("src/live-binding.ts")).toContain("import(no-mutable-exports)");
     expect(codesOf("src/constant-binding.ts")).not.toContain("import(no-mutable-exports)");
+  });
+
+  it("rejects a module that imports itself and accepts a sibling import", () => {
+    expect(codesOf("src/self-import.ts")).toContain("import(no-self-import)");
+    expect(codesOf("src/sibling-import.ts")).not.toContain("import(no-self-import)");
   });
 });
