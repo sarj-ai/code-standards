@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7da4549433c203a02d93ef21fb1e67beb99d6f9099de1cbfa96152b404f7880e",
-  "cliSha256": "4c457c0f359f28d8a92deb5121403d2c9654972da8b30d1e069cffa7cae0414c",
+  "catalogSha256": "0ecb99ad3265c54093af50105987dcfb0163adf94ccce5d703c5c6ea02bf134c",
+  "cliSha256": "9ca3bfa18a254519f7719529a33393457df3448d28cfc297233db18ddd95ebb3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -18110,6 +18110,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/observations.py",
+              "source": "from typing import TypeAlias\nfrom pydantic import BaseModel, ConfigDict\n\n\nclass Contract(BaseModel):\n    model_config = ConfigDict(frozen=True, strict=True, extra=\"forbid\")\n\n\nclass Present(Contract):\n    body: bytes\n\n\nclass Missing(Contract):\n    pass\n\n\nclass Unavailable(Contract):\n    pass\n\n\nRead: TypeAlias = Present | Missing | Unavailable\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/observations.py",
+          "id": "configuration-only-model-base",
+          "outcome": "reject",
+          "scenarioId": "configuration-base-discriminator",
+          "title": "A shared configuration-only base does not identify empty variants"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/models.py",
               "source": "from typing import Literal, Self\nfrom pydantic import BaseModel, model_validator\n\n\nclass Delivery(BaseModel):\n    kind: Literal[\"email\", \"pickup\"]\n    address: str | None = None\n\n    @model_validator(mode=\"after\")\n    def validate_address(self) -> Self:\n        if self.kind == \"email\" and self.address is None:\n            raise ValueError(\"Email requires an address\")\n        return self\n"
             }
@@ -18135,6 +18150,21 @@
           "outcome": "accept",
           "scenarioId": "explicit-data-discriminator",
           "title": "Explicit tags preserve positional constructor calls with init=False"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/observations.py",
+              "source": "from typing import Literal, TypeAlias\nfrom pydantic import BaseModel, ConfigDict\n\n\nclass Contract(BaseModel):\n    model_config = ConfigDict(frozen=True, strict=True, extra=\"forbid\")\n\n\nclass Present(Contract):\n    kind: Literal[\"present\"] = \"present\"\n    body: bytes\n\n\nclass Missing(Contract):\n    kind: Literal[\"missing\"] = \"missing\"\n\n\nclass Unavailable(Contract):\n    kind: Literal[\"unavailable\"] = \"unavailable\"\n\n\nRead: TypeAlias = Present | Missing | Unavailable\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/observations.py",
+          "id": "tagged-configuration-only-model-base",
+          "outcome": "accept",
+          "scenarioId": "configuration-base-discriminator",
+          "title": "Tags distinguish observations sharing a configuration-only base"
         },
         {
           "expectedCount": 0,

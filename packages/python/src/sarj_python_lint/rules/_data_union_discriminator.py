@@ -22,6 +22,8 @@ _MAX_EXPANSION = 128
 _MIN_VARIANTS = 2
 _DISCRIMINATOR_SOURCES = frozenset({"pydantic", "pydantic.types"})
 _FIELD_SOURCES = frozenset({"pydantic", "pydantic.fields"})
+_CONFIG_SOURCES = frozenset({"pydantic", "pydantic.config"})
+_PASSIVE_MODEL_CONFIG = frozenset({"frozen", "strict", "extra", "hide_input_in_errors"})
 _NON_LITERAL_BUILTINS = frozenset(
     {"str", "bytes", "int", "bool", "float", "complex", "object", "list", "dict", "tuple", "set", "frozenset", "type"}
 )
@@ -439,7 +441,7 @@ class _DataUnions:
 
     def _record(self, name: str) -> _Record | None:
         if name not in self.records:
-            self.records[name] = _record(self.classes[name], self.context, self.provenance)
+            self.records[name] = _record(self.classes[name], self.context, self.provenance, self.classes)
         return self.records[name]
 
     def _has_discriminator(self, records: list[_Record], budget: _Budget) -> bool:
@@ -599,8 +601,13 @@ def _direct_initvar_field(field: ast.AnnAssign, context: PythonFileContext, prov
     return False
 
 
-def _record(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> _Record | None:
-    required = _record_required(node, context, provenance)
+def _record(
+    node: ast.ClassDef,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    classes: dict[str, ast.ClassDef],
+) -> _Record | None:
+    required = _record_required(node, context, provenance, classes)
     if required is None:
         return None
     fields: dict[str, ast.AnnAssign] = {}
@@ -656,9 +663,16 @@ def _class_annotation_children(
     return [(node.value, False), *((member, symbol != "Literal") for member in members)]
 
 
-def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool | None:
+def _record_required(
+    node: ast.ClassDef,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    classes: dict[str, ast.ClassDef],
+) -> bool | None:
     if record_parameters(node) is None:
         return None
+    if _configuration_model_variant(node, context, provenance, classes):
+        return True
     if any(not _untouched(base, provenance) for base in node.bases):
         return None
     decorators = [
@@ -685,6 +699,71 @@ def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance:
             return None
         required = keyword.value.value
     return required
+
+
+def _configuration_model_variant(
+    node: ast.ClassDef,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    classes: dict[str, ast.ClassDef],
+) -> bool:
+    if len(node.bases) != 1 or node.keywords or node.decorator_list:
+        return False
+    return _configuration_model_base(node.bases[0], context, provenance, classes)
+
+
+def _configuration_model_base(
+    base: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    classes: dict[str, ast.ClassDef],
+) -> bool:
+    parent = classes.get(base.id) if isinstance(base, ast.Name) else None
+    if parent is None or parent.type_params or parent.decorator_list or parent.keywords or len(parent.bases) != 1:
+        return False
+    if (
+        _module_binding_escaped(parent.name, parent, provenance)
+        or not _untouched(parent.bases[0], provenance)
+        or not context.module_imports.resolves(parent.bases[0], sources=MODEL_SOURCES, symbol="BaseModel")
+    ):
+        return False
+    assignments: list[ast.expr] = []
+    for member in parent.body:
+        if isinstance(member, ast.Pass) or (
+            isinstance(member, ast.Expr)
+            and isinstance(member.value, ast.Constant)
+            and isinstance(member.value.value, str)
+        ):
+            continue
+        if not (
+            isinstance(member, ast.Assign)
+            and len(member.targets) == 1
+            and isinstance(member.targets[0], ast.Name)
+            and member.targets[0].id == "model_config"
+        ):
+            return False
+        assignments.append(member.value)
+    if len(assignments) > 1:
+        return False
+    if not assignments:
+        return True
+    config = assignments[0]
+    return (
+        isinstance(config, ast.Call)
+        and _untouched(config.func, provenance)
+        and context.module_imports.resolves(config.func, sources=_CONFIG_SOURCES, symbol="ConfigDict")
+        and not config.args
+        and all(
+            keyword.arg in _PASSIVE_MODEL_CONFIG
+            and isinstance(keyword.value, ast.Constant)
+            and (
+                keyword.value.value in {"allow", "ignore", "forbid"}
+                if keyword.arg == "extra"
+                else type(keyword.value.value) is bool
+            )
+            for keyword in config.keywords
+        )
+    )
 
 
 def _direct_dataclass(
