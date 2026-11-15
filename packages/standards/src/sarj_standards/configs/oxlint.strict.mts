@@ -1002,6 +1002,7 @@ const RULES = {
   "@sarj/prefer-zod-infer": ["error", {}],
   "@sarj/prefer-zod-parse-output-type": "warn",
   "@sarj/production-derived-test-cases": "warn",
+  "@sarj/react-prefer-updater-function": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-button-accessible-name": ["error", {}],

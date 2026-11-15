@@ -14,7 +14,7 @@ import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
 import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
-import { firstParameterBindings, parameterPath, reactHook, renderFunction } from "../utils/react-prop-bindings.js";
+import { firstParameterBindings, importsReactValue, parameterPath, reactHook, renderFunction } from "../utils/react-prop-bindings.js";
 import { stableValueBinding, typeOnlyReference } from "../utils/stable-value-binding.js";
 import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
@@ -89,9 +89,7 @@ export default defineRule({
         pending = [];
         const source = context.sourceCode;
         if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, source.text) ||
-          isTestFile({ filename: context.filename, cwd: context.cwd }) ||
-          !source.ast.body.some((statement) =>
-            statement.type === "ImportDeclaration" && statement.source.value === "react" && statement.importKind !== "type")) return false;
+          isTestFile({ filename: context.filename, cwd: context.cwd }) || !importsReactValue(source)) return false;
         tsrs = tsrsServices(context);
         return true;
       },

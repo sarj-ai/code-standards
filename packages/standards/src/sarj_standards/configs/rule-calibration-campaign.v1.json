@@ -2073,6 +2073,14 @@
       "outcome": "Keep the data-flow companion as a warning without autofix. Require an exact, bidirectionally assignable output type, one plain contract declaration, one unambiguous producing schema, and either a direct return or one immutable local result from parse or safeParse data. Defer only twins the established prefer-zod-infer predicate can prove, and abstain on mutable, multi-hop, helper-mediated, or uncertain ownership. Current decision: conditional schema-ownership advisory at WARNING without autofix; preserve independent public/domain contracts even when mutually assignable."
     },
     {
+      "task": "rule-audit/typescript/react-prefer-updater-function",
+      "family": "typescript",
+      "ruleId": "react-prefer-updater-function",
+      "state": "complete",
+      "evidence": "34 valid and 25 invalid Oxlint RuleTester cases and 3 executable examples pass; five deliberate detector mutations each fail a case. A branch-built plugin run with pinned Oxlint 1.91.0 over one private frontend export (1,851 files, 547 importing React) produced 31 findings in its first revision, 7 of them render-phase false positives; excluding calls in the declaring function leaves 24 findings, all inspected as true positives. Redacted aggregates and timing are recorded in packages/standards/benchmarks/react-prefer-updater-function-20261115.json.",
+      "outcome": "Ship at WARNING without autofix. Every confirmed finding is a latent stale-snapshot write in a synchronous handler that updates once, so no runtime defect is claimed; the updater form removes the hazard if the handler later awaits, defers or repeats the update."
+    },
+    {
       "task": "rule-audit/typescript/repeated-static-call-cases",
       "family": "typescript",
       "ruleId": "repeated-static-call-cases",

@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "rule": "oxlint:react-prefer-updater-function",
+  "decision": "new warning rule; no automatic fix",
+  "contract": "One-argument call of a setter whose single definition is the second element of an array destructure of a React useState call, resolved through import binding identity. The argument is not a function or bare identifier and evaluates a value read of the paired state outside nested functions. Calls whose nearest enclosing function declares the state run during render and are excluded. Both bindings must never be reassigned.",
+  "classification": "Latent stale-snapshot writes. Every confirmed hit sits in a synchronous event handler or returned callback that updates once, so none loses an update today; the updater form removes the hazard if the handler later awaits, defers or repeats the update. No runtime defect is claimed.",
+  "ownership": "No native Oxlint, vendored @eslint-react, React Compiler, effects or @sarj rule reports function-component setter arguments derived from their own state. react/no-access-state-in-setstate covers class this.setState only; react/set-state-in-render and react/set-state-in-effect own where a setter runs, not its argument.",
+  "validation": {
+    "ruleRegressionCasesPassed": 59,
+    "validCases": 34,
+    "invalidCases": 25,
+    "executableExamplesPassed": 3,
+    "mutationChecksCaught": 5,
+    "fixModeChangesSource": false
+  },
+  "corpus": {
+    "method": "Branch-built plugin run with the checkout's pinned Oxlint 1.91.0 over a git-archive export of one private application monorepo's development branch, rule enabled alone, no type information. The consumer evaluate path requires the consumer's own installed Oxlint, which loads the published plugin instead of this branch.",
+    "filesScanned": 1851,
+    "filesImportingReact": 547,
+    "filesUsingUseState": 287,
+    "existingUpdaterFormCalls": 83,
+    "firstRevision": {
+      "hits": 31,
+      "inspected": 31,
+      "truePositives": 24,
+      "falsePositives": 7,
+      "falsePositiveClass": "Guarded render-phase updates that store information from the previous render; the state read is the render in progress, so an updater adds no protection. Fixed by excluding calls whose nearest enclosing function declares the state, with two near-miss regression cases."
+    },
+    "finalRevision": {
+      "hits": 24,
+      "inspected": 24,
+      "truePositives": 24,
+      "falsePositives": 0,
+      "patterns": {
+        "booleanToggle": 8,
+        "objectSpreadOfState": 13,
+        "arraySpreadOrMethodOfState": 2,
+        "memberReadsWithoutSpread": 1
+      }
+    },
+    "blindSpotSearch": "A name-paired textual search for spread and negation writes found 2 unreported candidates, both outside the contract: one render-phase update and one method on a non-React editor node.",
+    "historySearch": "Shallow history of about 7,700 commits found no change that rewrote a snapshot spread into an updater. One fixed async bug wrote a constant after an await, which is outside this rule's scope."
+  },
+  "cost": {
+    "method": "Seven alternating cold runs each, both sides loading the same JS plugin; baseline enables @sarj/no-readonly-prop-state alone, candidate enables it plus this rule. Host shared with other workloads.",
+    "baselineMedianSeconds": 0.39,
+    "candidateMedianSeconds": 0.44,
+    "baselineMedianPeakMiB": 284,
+    "candidateMedianPeakMiB": 314
+  },
+  "limitations": [
+    "Setters reached through props, aliases, custom hooks returning state tuples, object-destructured state, useReducer dispatch and next values first stored in a local are not reported.",
+    "Severity stays warning: zero inspected false positives, but no demonstrated lost update."
+  ]
+}

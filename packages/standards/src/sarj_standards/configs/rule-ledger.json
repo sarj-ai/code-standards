@@ -450,6 +450,7 @@
       "prefer-zod-infer",
       "prefer-zod-parse-output-type",
       "production-derived-test-cases",
+      "react-prefer-updater-function",
       "repeated-static-call-cases",
       "require-assert-never",
       "require-button-accessible-name",
