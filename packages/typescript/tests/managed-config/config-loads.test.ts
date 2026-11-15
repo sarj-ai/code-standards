@@ -96,6 +96,14 @@ const FILES: Readonly<Record<string, string>> = {
   ].join("\n"),
   "src/message-origin.js":
     'window.addEventListener("message", event => event.origin.startsWith("https://trusted.example"));\n',
+  "src/mixed-condition.ts": 'export function display(value: number | string): string {\n  return value ? String(value) : "none";\n}\n',
+  "src/nullable-conditions.ts": [
+    "export function summary(name: string | undefined, count: number | undefined, done: boolean | undefined): string {",
+    '  if (!name || !count) return "";',
+    "  return done ? name : `${name} (${String(count)})`;",
+    "}",
+    "",
+  ].join("\n"),
 };
 
 interface Diagnostic {
@@ -218,5 +226,10 @@ describe("the managed Oxlint config in a consumer", () => {
         (code) => code.startsWith("jsx-a11y(") || code === "@sarj(no-invalid-web-resource-hints)",
       ),
     ).toEqual([]);
+  });
+
+  it("reports mixed-type union conditions and allows nullable primitive conditions", () => {
+    expect(codesOf("src/mixed-condition.ts")).toContain("typescript(strict-boolean-expressions)");
+    expect(codesOf("src/nullable-conditions.ts")).not.toContain("typescript(strict-boolean-expressions)");
   });
 });
