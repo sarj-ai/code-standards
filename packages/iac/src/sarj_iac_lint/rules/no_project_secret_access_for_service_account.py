@@ -35,7 +35,7 @@ class NoProjectSecretAccessForServiceAccount(Rule):
     id = "no-project-secret-access-for-service-account"
     code = "SARJ213"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Grant service accounts Secret Manager access per secret, not on the project.",
         rationale=(
             "A project-level Secret Manager accessor grant lets the workload read every secret in the project, "
@@ -143,7 +143,7 @@ class NoProjectSecretAccessForServiceAccount(Rule):
                         self.code,
                         f"Project IAM grants {', '.join(roles)} to a service account; grant it on each secret "
                         "with google_secret_manager_secret_iam_member",
-                        severity=DefaultLevel.WARNING,
+                        severity=DefaultLevel.ERROR,
                     )
                 )
         return findings

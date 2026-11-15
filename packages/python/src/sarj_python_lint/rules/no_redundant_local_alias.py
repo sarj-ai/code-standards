@@ -95,7 +95,7 @@ class NoRedundantLocalAlias(Rule):
     id = "no-redundant-local-alias"
     code = "SARJ531"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Remove a local alias used only for its matching keyword argument.",
         rationale="An extra local binding makes readers trace two names for one value when the keyword already communicates its role.",
         remediation="Apply the safe fix where offered; otherwise pass the original local to the matching keyword and remove the unannotated alias after review.",
@@ -256,7 +256,7 @@ class NoRedundantLocalAlias(Rule):
                     col=target.col_offset + 1,
                     code=self.code,
                     message=f"Local `{target_spelling}` only forwards `{source_spelling}` to `{target_spelling}=`; pass `{source_spelling}` directly and remove the alias.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     fixes=fixes.for_alias(assignment, use),
                 )
             )

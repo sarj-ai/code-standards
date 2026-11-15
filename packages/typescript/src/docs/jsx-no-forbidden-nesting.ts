@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const JSX_NO_FORBIDDEN_NESTING_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Keep intrinsic JSX elements out of parents whose HTML content model forbids them.",
   rationale:
     "The HTML parser repairs some nestings. A <div> closes an open <p>, a nested <a> or <button> closes the outer one, the parser drops a nested <form>, and a <tr> directly in <table> gains a <tbody>. The browser then builds a DOM from server HTML that differs from the React tree, and React reports a hydration error. Other nestings parse unchanged but stay invalid HTML. Interactive content inside <a> or <button>, <label> inside <label>, and <li> outside a list give inconsistent click, focus and screen-reader behavior.",

@@ -2,7 +2,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_BLOCKED_INPUT_PASTE_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Allow clipboard input when a text control has no replacement paste handling.",
   rationale:
     "An editable text control that only cancels paste prevents users from entering generated passwords, authentication codes and copied data. This creates avoidable accessibility and password-manager barriers.",

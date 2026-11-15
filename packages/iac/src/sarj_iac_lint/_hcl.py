@@ -30,7 +30,7 @@ _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
 
 
-class _InvalidHCLSourceError(ValueError):
+class _InvalidHCLSourceError(ValueError):  # sarj-noqa: SARJ542 -- Unwind invalid HCL to the parser boundary.
     pass
 
 

@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_DISCARDED_VALIDATION_RESULT_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Consume Zod validation outcomes and transformed outputs instead of discarding them.",
   rationale: "Ignoring safeParse loses failure information; ignoring a transformed parse result leaves callers using values without the declared defaults, coercions or normalization.",
   remediation: "Capture or return the parsed output. Branch on safeParse success and use data. Plain throwing validation without output changes remains supported.",

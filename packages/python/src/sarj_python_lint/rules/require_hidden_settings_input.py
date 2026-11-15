@@ -74,7 +74,7 @@ class RequireHiddenSettingsInput(ProjectRule):
     id = "require-hidden-settings-input"
     code = "SARJ575"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Hide validation inputs on settings classes that load secrets.",
         rationale="A pydantic-settings ValidationError echoes the loaded input. One missing required field prints the whole input mapping, including every secret already read from the environment, and SecretStr masks only the validated value, not that raw input.",
         remediation="Set hide_input_in_errors=True in the model_config of this class or of a shared settings base it inherits from.",
@@ -377,5 +377,5 @@ def _diagnostic(
         code,
         f"Set hide_input_in_errors=True in the model_config of {declaration.name} or a shared settings base; "
         f"a ValidationError otherwise prints the loaded secret input ({fields}).",
-        severity=Severity.WARNING,
+        severity=Severity.ERROR,
     )

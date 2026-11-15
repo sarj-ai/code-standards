@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 
-class SourceChangedError(ValueError):
+class SourceChangedError(ValueError):  # sarj-noqa: SARJ542 -- Abort analysis when the source snapshot changes.
     pass
 
 

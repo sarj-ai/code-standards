@@ -2,7 +2,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_PASSWORD_GET_FORM_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Keep named password controls out of native GET form submissions.",
   rationale:
     "Native GET submission serializes enabled, named password controls into the URL, exposing credentials through browser history and request logs. GET is also the default for missing or invalid method attributes.",

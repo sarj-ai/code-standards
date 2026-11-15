@@ -150,8 +150,8 @@ def test_reports_each_failing_call_at_its_start() -> None:
     findings = PsycopgSqlFormatFieldMismatch().check(Path("app/store.py"), source)
 
     assert [(finding.code, finding.severity, finding.line, finding.col) for finding in findings] == [
-        ("SARJ576", Severity.WARNING, 3, 5),
-        ("SARJ576", Severity.WARNING, 6, 1),
+        ("SARJ576", Severity.ERROR, 3, 5),
+        ("SARJ576", Severity.ERROR, 6, 1),
     ]
 
 

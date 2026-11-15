@@ -49,7 +49,7 @@ def test_explicit_outer_nullability(annotation: str, imports: str) -> None:
     fields = f"    version_id: {annotation} = None\n    version_number: {annotation} = None\n"
     findings = _check(_model(fields, imports))
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "version_" in findings[0].message
 
 

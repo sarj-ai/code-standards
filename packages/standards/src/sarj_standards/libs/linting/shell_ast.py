@@ -21,7 +21,7 @@ class ShellParseError(RuntimeError):
     pass
 
 
-class ShellSyntaxError(ValueError):
+class ShellSyntaxError(ValueError):  # sarj-noqa: SARJ542 -- Preserve native shell parser rejection.
     pass
 
 

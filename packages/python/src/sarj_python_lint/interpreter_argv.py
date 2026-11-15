@@ -121,7 +121,7 @@ _WRAPPER_VALUES = MappingProxyType(
 _MAX_WRAPPERS = 8
 
 
-class UnprovableCommandError(ValueError):
+class UnprovableCommandError(ValueError):  # sarj-noqa: SARJ542 -- Abort an unprovable argv interpretation.
     pass
 
 

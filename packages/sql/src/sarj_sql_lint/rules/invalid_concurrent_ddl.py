@@ -80,7 +80,7 @@ class InvalidConcurrentDdl(Rule):
     id = "invalid-concurrent-ddl"
     code = "SARJ125"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep concurrent PostgreSQL DDL in supported execution contexts.",
         rationale=(
             "PostgreSQL rejects concurrent index creation and removal inside a transaction block. "
@@ -204,7 +204,7 @@ class InvalidConcurrentDdl(Rule):
                         location.column,
                         self.code,
                         " ".join(reasons),
-                        severity=DefaultLevel.WARNING,
+                        severity=DefaultLevel.ERROR,
                     )
                 )
         return findings

@@ -40,7 +40,9 @@ class _Warning(BaseModel):
 
     line: int = Field(ge=1)
     column: int = Field(ge=1)
-    end_line: int | None = Field(default=None, ge=1, alias="endLine")
+    end_line: int | None = Field(  # sarj-noqa: SARJ541 -- Preserve independent upstream span coordinates.
+        default=None, ge=1, alias="endLine"
+    )
     end_column: int | None = Field(default=None, ge=1, alias="endColumn")
     rule: str | None
     severity: Literal["warning", "error"]

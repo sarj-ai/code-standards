@@ -24,7 +24,7 @@ class TomlSource:
     string_lines: Mapping[TomlValuePath, int]
 
 
-class TomlStringLocationError(ValueError):
+class TomlStringLocationError(ValueError):  # sarj-noqa: SARJ542 -- Abort edits with unproven TOML string locations.
     pass
 
 

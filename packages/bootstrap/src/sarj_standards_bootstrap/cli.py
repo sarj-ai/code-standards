@@ -25,7 +25,7 @@ _PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/4ecd0
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
-class BootstrapError(ValueError):
+class BootstrapError(ValueError):  # sarj-noqa: SARJ542 -- Preserve the bootstrap CLI failure protocol.
     pass
 
 

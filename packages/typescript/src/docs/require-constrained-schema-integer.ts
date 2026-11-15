@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Declare integer and lower-bound validation for numeric limit and version schema fields.",
   rationale: "A bare number schema accepts fractions and negative limits or versions. Encoding the domain in validation makes downstream arithmetic and pagination contracts explicit.",
   remediation: "Use an integer schema with a positive lower bound for limit and a nonnegative lower bound for version, or reuse an existing named domain schema.",

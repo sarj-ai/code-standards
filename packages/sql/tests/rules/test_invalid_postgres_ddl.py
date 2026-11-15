@@ -23,7 +23,7 @@ def test_known_builtin_methods_cannot_create_unique_indexes(method: str) -> None
     findings = InvalidPostgresDdl().check(P, source)
     assert len(findings) == 1
     assert "UNIQUE" in findings[0].message
-    assert findings[0].severity is DefaultLevel.WARNING
+    assert findings[0].severity is DefaultLevel.ERROR
 
 
 @pytest.mark.parametrize("method", ["btree", "bloom", "custom_hash", '"HASH"'])
@@ -194,7 +194,7 @@ def test_known_builtin_methods_cannot_include_columns(method: str) -> None:
     findings = InvalidPostgresDdl().check(P, source)
     assert len(findings) == 1
     assert "does not support INCLUDE" in findings[0].message
-    assert findings[0].severity is DefaultLevel.WARNING
+    assert findings[0].severity is DefaultLevel.ERROR
 
 
 @pytest.mark.parametrize("method", ["btree", "gist", "spgist", "custom_method", '"HASH"'])

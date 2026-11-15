@@ -109,7 +109,7 @@ ASYNC_CASES = (
 def test_owned_async_subprocess_cases(case: EvaluationCase) -> None:
     findings = AsyncSubprocessCancellationCleanup().check(Path("app/processes.py"), case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING and not finding.fixes for finding in findings)
+    assert all(finding.severity is Severity.ERROR and not finding.fixes for finding in findings)
 
 
 def test_async_subprocess_cancellation_handler_owns_settlement() -> None:
@@ -163,7 +163,7 @@ def test_documented_examples() -> None:
 @pytest.mark.parametrize(
     ("source", "expected_code", "expected_severity"),
     [
-        (_ASYNC_BASE, "SARJ537", Severity.WARNING),
+        (_ASYNC_BASE, "SARJ537", Severity.ERROR),
         (_LEGACY_BAD, "SARJ464", Severity.ERROR),
     ],
     ids=("async-warning-owner", "legacy-error-owner"),

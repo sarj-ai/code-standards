@@ -5,28 +5,74 @@
   ],
   "rules": {
     "@sarj/no-modern-shorthand-reset": true,
-    "color-no-invalid-hex": true,
-    "custom-property-no-missing-var-function": true,
-    "declaration-block-no-shorthand-property-overrides": true,
+    "color-no-invalid-hex": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "custom-property-no-missing-var-function": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "declaration-block-no-shorthand-property-overrides": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
     "declaration-property-value-disallowed-list": {
       "font-size": [
         "/^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0?\\.[0-9]*[1-9][0-9]*)[pP][xX]$/"
       ]
     },
-    "font-family-no-duplicate-names": true,
-    "function-calc-no-unspaced-operator": true,
-    "function-linear-gradient-no-nonstandard-direction": true,
-    "keyframe-block-no-duplicate-selectors": true,
-    "keyframe-declaration-no-important": true,
+    "font-family-no-duplicate-names": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "function-calc-no-unspaced-operator": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "function-linear-gradient-no-nonstandard-direction": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "keyframe-block-no-duplicate-selectors": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
+    "keyframe-declaration-no-important": [
+      true,
+      {
+        "severity": "error"
+      }
+    ],
     "media-query-no-invalid": [
       true,
       {
         "ignoreFunctions": [
           "/^--/",
           "theme"
-        ]
+        ],
+        "severity": "error"
       }
     ],
-    "named-grid-areas-no-invalid": true
+    "named-grid-areas-no-invalid": [
+      true,
+      {
+        "severity": "error"
+      }
+    ]
   }
 }

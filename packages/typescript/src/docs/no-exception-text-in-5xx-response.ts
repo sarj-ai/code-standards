@@ -7,7 +7,7 @@ export const NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION = {
   rationale: "Exception details can contain database, provider, filesystem or credential information that belongs in server-side diagnostics rather than a client response.",
   remediation: "Return a generic public error and retain diagnostic details in server-side logs. Keep intentional public domain errors in their reviewed client-error contract.",
   category: "security",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "none",
   references: ["https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html", "https://nextjs.org/docs/app/api-reference/functions/next-response"],
   limitations: [

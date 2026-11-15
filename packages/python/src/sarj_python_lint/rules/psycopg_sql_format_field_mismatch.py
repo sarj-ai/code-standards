@@ -29,7 +29,7 @@ class PsycopgSqlFormatFieldMismatch(Rule):
     id = "psycopg-sql-format-field-mismatch"
     code = "SARJ576"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Give psycopg SQL.format an argument for every replacement field.",
         rationale=(
             "psycopg SQL.format reads every unescaped brace in the template as a replacement field and raises on "
@@ -139,7 +139,7 @@ class PsycopgSqlFormatFieldMismatch(Rule):
                 col=call.col_offset + 1,
                 code=self.code,
                 message=_message(mismatch),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for call, mismatch in sql_format_mismatches(context)
             if not context.suppressions.is_suppressed(call.lineno, self.code)

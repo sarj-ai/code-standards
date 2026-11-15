@@ -72,7 +72,7 @@ class FailedProbeZeroThreshold(Rule):
     id = "failed-probe-zero-threshold"
     code = "SARJ538"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not let a failed subprocess count probe meet its threshold through a zero fallback.",
         rationale="A failed observation is different from an observed count of zero. Coalescing the error sentinel can make a recovery comparison succeed when its baseline is zero.",
         remediation="Check the probe result for None before comparing it, or make an intentional zero-baseline skip policy explicit.",
@@ -131,7 +131,7 @@ class FailedProbeZeroThreshold(Rule):
                     line=fallback.lineno,
                     col=fallback.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="this subprocess probe's error-derived None becomes zero and can satisfy the recovery comparison; reject None explicitly or declare the zero-baseline skip policy",
                 )
             )

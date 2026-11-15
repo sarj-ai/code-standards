@@ -117,7 +117,7 @@ class _Args:
     repo_only: list[str] = field(default_factory=list)
     commits: str | None = None
     policy_dest: str | None = None
-    private_refs_file: str | None = None
+    private_refs_file: str | None = None  # sarj-noqa: SARJ541 -- Independent options for separate CLI commands.
     quiet: bool = False
     roots: list[Path] = field(default_factory=list)
     include_text: Path | None = None

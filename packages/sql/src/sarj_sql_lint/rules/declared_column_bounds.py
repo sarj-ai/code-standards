@@ -63,12 +63,12 @@ _SECONDS: Final[dict[str, Decimal]] = {
     "h": Decimal(3600),
     "hour": Decimal(3600),
     "hours": Decimal(3600),
-    "d": Decimal(86400),
-    "day": Decimal(86400),
-    "days": Decimal(86400),
-    "w": Decimal(604800),
-    "week": Decimal(604800),
-    "weeks": Decimal(604800),
+    "d": Decimal(86_400),
+    "day": Decimal(86_400),
+    "days": Decimal(86_400),
+    "w": Decimal(604_800),
+    "week": Decimal(604_800),
+    "weeks": Decimal(604_800),
 }
 _INTEGER_BITS: Final[dict[str, int]] = {"SMALLINT": 16, "INT": 32, "BIGINT": 64}
 _INTEGERS = frozenset(_INTEGER_BITS)
@@ -92,7 +92,7 @@ class DeclaredColumnBounds(Rule):
     id = "declared-column-bounds"
     code = "SARJ130"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Encode explicitly declared numeric and interval ranges in SQL CHECK constraints.",
         rationale=(
             "A column comment declaring a range does not reject out-of-range writes. Encoding that explicit "
@@ -167,7 +167,7 @@ class DeclaredColumnBounds(Rule):
                         self.code,
                         f"Column `{column_key(column)}` declares a range in a comment without CHECK constraints proving those bounds. "
                         "Encode the declared range in SQL, preserving units and nullability, then remove the comment.",
-                        DefaultLevel.WARNING,
+                        DefaultLevel.ERROR,
                     )
                 )
         return findings

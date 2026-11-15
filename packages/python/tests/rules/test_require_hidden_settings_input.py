@@ -56,7 +56,7 @@ def test_documented_examples() -> None:
 def test_reports_secret_fields_without_hidden_inputs(field: str) -> None:
     findings = RequireHiddenSettingsInput().check(_PATH, _HEADER + f"class Settings(BaseSettings):\n    {field}\n")
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "Settings" in findings[0].message
     assert "hide_input_in_errors=True" in findings[0].message
 

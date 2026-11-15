@@ -94,7 +94,7 @@ class NoUnobservedTaskException(Rule):
     id = "no-unobserved-task-exception"
     code = "SARJ574"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Observe the outcome of every stored asyncio task.",
         rationale=(
             "A failed task that nothing awaits, gathers or inspects reports its exception only as "
@@ -153,7 +153,7 @@ class NoUnobservedTaskException(Rule):
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=_MESSAGE,
             )
             for call in context.nodes(ast.Call)

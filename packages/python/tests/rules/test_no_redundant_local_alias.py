@@ -218,7 +218,7 @@ def test_template_expression_boundaries(source: str, expected: int, fixes: int) 
 def test_contract(source: str, expected: int, filename: str) -> None:
     diagnostics = NoRedundantLocalAlias().check(Path(filename), source)
     assert len(diagnostics) == expected
-    assert all(diagnostic.code == "SARJ531" and diagnostic.severity is Severity.WARNING for diagnostic in diagnostics)
+    assert all(diagnostic.code == "SARJ531" and diagnostic.severity is Severity.ERROR for diagnostic in diagnostics)
 
 
 def test_exact_suppression() -> None:
@@ -1167,4 +1167,4 @@ def test_wildcard_namespace(source: str, expected: int) -> None:
 def test_completed_guard_prefix(source: str, expected: int) -> None:
     diagnostics = check_source([NoRedundantLocalAlias()], Path("case.py"), source)
     assert len(diagnostics) == expected
-    assert all(diagnostic.severity is Severity.WARNING and not diagnostic.fixes for diagnostic in diagnostics)
+    assert all(diagnostic.severity is Severity.ERROR and not diagnostic.fixes for diagnostic in diagnostics)

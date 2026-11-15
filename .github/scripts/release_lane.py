@@ -142,7 +142,7 @@ class Lane(StrEnum):
     MAINTENANCE = "standards-maintenance"
 
 
-class ReleaseLaneError(ValueError):
+class ReleaseLaneError(ValueError):  # sarj-noqa: SARJ542 -- Abort release validation at the CLI boundary.
     pass
 
 

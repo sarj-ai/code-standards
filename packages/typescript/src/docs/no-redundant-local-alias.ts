@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_REDUNDANT_LOCAL_ALIAS_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Pass the original local into an object field instead of creating a single-use rename.",
   rationale: "An unannotated alias used only by its matching object field adds a second name without adding a contract.",
   remediation: "Write the object property with the original binding, then remove the redundant alias. Keep annotations, captured snapshots and independently useful names.",

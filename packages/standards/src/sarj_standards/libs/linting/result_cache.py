@@ -131,7 +131,7 @@ class ResultCache:
 
 
 # An analyzer may read inputs that cannot be enumerated, so it always runs.
-class UnknownInputsError(ValueError):
+class UnknownInputsError(ValueError):  # sarj-noqa: SARJ542 -- Abort reuse when cache inputs cannot be proven.
     pass
 
 

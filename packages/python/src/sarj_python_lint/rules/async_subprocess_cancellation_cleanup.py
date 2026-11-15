@@ -40,7 +40,7 @@ class AsyncSubprocessCancellationCleanup(Rule):
     id: str = "async-subprocess-cancellation-cleanup"
     code: str = "SARJ537"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Settle locally owned asyncio subprocesses when their caller is cancelled.",
         rationale="Cancelling an asyncio process wait does not terminate its child; a locally owned subprocess can keep running with unsettled pipes and exit status.",
         remediation="Arrange cancellation cleanup that settles the owned child and preserves caller cancellation under the application's termination and pipe-handling policy.",
@@ -108,7 +108,7 @@ def _async_process_diagnostics(context: PythonFileContext, code: str) -> list[Di
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message="cancelling this unguarded wait can leave its locally owned subprocess unsettled; add cancellation cleanup that settles the child and preserves caller cancellation",
             )
         )

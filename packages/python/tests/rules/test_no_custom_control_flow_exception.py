@@ -32,7 +32,7 @@ def test_name_only_raised_markers(body: str, base: str) -> None:
     source = f"class DomainError({base}):\n    {body}\ndef read():\n    raise DomainError('unsupported')\n"
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert findings[0].line == 1
     assert "typed tagged result" in findings[0].message
 
@@ -203,7 +203,7 @@ def test_direct_builtin_exception_import_retains_review_identity(imported: str) 
     source = f"from builtins import {imported}\nclass DomainError({base}): pass\ndef read(): raise DomainError\n"
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert findings[0].fixes == ()
     documentation = NoCustomControlFlowException.documentation
     assert documentation is not None
@@ -425,7 +425,7 @@ def test_literal_message_exception_requires_a_proven_base(base: str, count: int)
     )
     findings = NoCustomControlFlowException().check(Path("app/store.py"), source)
     assert len(findings) == count
-    assert all(finding.code == "SARJ542" and finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.code == "SARJ542" and finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize(
@@ -462,7 +462,7 @@ def test_typed_payload_guard_reviews_the_failure_contract(guard: str, definition
     source = _PAYLOAD_ERROR + f"{definition} load(name: str, allowed: bool) -> str:\n    {guard}\n    return name\n"
     [finding] = NoCustomControlFlowException().check(Path("app/store.py"), source)
     assert finding.code == "SARJ542"
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert "format the message at the consumer" in finding.message
 
 
@@ -564,14 +564,14 @@ def test_payload_generator_preserves_its_iteration_protocol() -> None:
     assert NoCustomControlFlowException().check(Path("app/store.py"), source) == []
 
 
-def test_payload_guard_remains_a_warning_without_a_fix() -> None:
+def test_payload_guard_is_an_error_without_a_fix() -> None:
     source = (
         _PAYLOAD_ERROR
         + "def load(name: str, allowed: bool) -> str:\n    if not allowed:\n        raise Denied(name)\n    return name\n"
     )
     rule = NoCustomControlFlowException()
     [finding] = rule.check(Path("app/store.py"), source)
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert finding.fixes == ()
     assert rule.check(Path("app/store.py"), source) == [finding]
 
@@ -657,7 +657,7 @@ def test_imported_guard(tmp_path: Path, errors: str, definition: str) -> None:
     source = path.read_text()
     [finding] = NoCustomControlFlowException().check(path, source)
     assert finding.line == 4
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert not finding.fixes
     assert "return contract" in finding.message
     assert "consumer" in finding.message
@@ -982,7 +982,7 @@ def test_reexported_exception_is_not_assumed_to_be_a_local_class(tmp_path: Path)
     assert NoCustomControlFlowException().check(path, source) == []
 
 
-def test_different_import_aliases_share_one_function_contract_warning(tmp_path: Path) -> None:
+def test_different_import_aliases_share_one_function_contract_finding(tmp_path: Path) -> None:
     path = _imported_project(tmp_path)
     source = path.read_text()
     source = source.replace(

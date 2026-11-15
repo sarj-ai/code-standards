@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const REQUIRE_JWT_LIFETIME_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Require an expiration claim or a maximum token age when returning a verified JWT.",
   rationale: "JOSE validates exp when present but does not require it by default, so otherwise valid tokens without an expiration may remain accepted indefinitely.",
   remediation: "Set requiredClaims: ['exp'] or a finite maxTokenAge in jwtVerify options. Keep issuer and audience checks appropriate to the protocol.",

@@ -422,7 +422,7 @@ class Finding:
         return f"{self.path}:{self.line}:{self.column} {self.id} {self.message} Replace with {self.replacement}."
 
 
-class ManifestPolicyError(ValueError):
+class ManifestPolicyError(ValueError):  # sarj-noqa: SARJ542 -- Abort invalid library-policy loading.
     pass
 
 

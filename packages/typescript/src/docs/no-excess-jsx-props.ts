@@ -11,7 +11,7 @@ export const NO_EXCESS_JSX_PROPS_DOCUMENTATION = {
   rationale: "A spread can forward unrelated data even when structural typing accepts the larger object. Changing its annotation does not remove runtime fields.",
   remediation: "Forward the declared fields explicitly or review the receiving contract. A projection changes object identity and allocations; this rule never constructs one automatically.",
   category: "maintainability",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "none",
   limitations: [
     "The created JSX value must initialize a private actual const binding. Only unused values or same-function-scope fixed reads of already proven consumed scalar props are supported. Enclosing invocations must have no runtime argument or arguments-object dependency, async/generator suspension, or unproved captured values. Unused simple arguments and captured scalar data reuse the existing provenance proof; destructured/default/rest arguments remain unsupported. Exported, returned, aliased, captured, aggregated or forwarded elements, whole-props access, opaque calls, type observations and writes abstain. A caller can mutate production React props after creation even when development React freezes them; initial source provenance alone is insufficient. This restriction intentionally excludes ordinary exported and rendered elements until their consumers can be proved.",

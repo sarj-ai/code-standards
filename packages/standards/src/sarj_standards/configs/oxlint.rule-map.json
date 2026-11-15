@@ -382,15 +382,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/no-cors-wildcard-with-credentials",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-credential-in-browser-storage": {
@@ -465,15 +465,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/no-discarded-validation-result",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-duplicate-lifecycle-refresh-listeners": {
@@ -546,30 +546,30 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/no-exception-text-in-5xx-response",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-excess-jsx-props": {
     "kind": "js-alias",
     "oxlintId": "@sarj/no-excess-jsx-props",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-excessive-cognitive-complexity": {
@@ -1113,15 +1113,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/no-redundant-local-alias",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-redundant-optional-array-default": {
@@ -1449,15 +1449,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/no-return-disposed-resource",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/no-router-refresh-polling": {
@@ -2552,15 +2552,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/require-constrained-schema-integer",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/require-explicit-contract-implementation": {
@@ -2630,15 +2630,15 @@
     "kind": "js-alias",
     "oxlintId": "@sarj/require-jwt-lifetime",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "@sarj/require-pascal-case-zod-schema-name": {
@@ -4977,15 +4977,15 @@
     "kind": "native",
     "oxlintId": "arrow-body-style",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       "as-needed"
@@ -5096,8 +5096,8 @@
     "kind": "native",
     "oxlintId": "constructor-super",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "eqeqeq": {
@@ -5125,23 +5125,23 @@
     "kind": "native",
     "oxlintId": "for-direction",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "getter-return": {
     "kind": "native",
     "oxlintId": "getter-return",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     },
     "options": [
       {
@@ -5261,53 +5261,53 @@
     "kind": "native",
     "oxlintId": "no-case-declarations",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-class-assign": {
     "kind": "native",
     "oxlintId": "no-class-assign",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-compare-neg-zero": {
     "kind": "native",
     "oxlintId": "no-compare-neg-zero",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-cond-assign": {
     "kind": "native",
     "oxlintId": "no-cond-assign",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       "except-parens"
@@ -5340,8 +5340,8 @@
     "kind": "native",
     "oxlintId": "no-const-assign",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-constant-binary-expression": {
@@ -5368,15 +5368,15 @@
     "kind": "native",
     "oxlintId": "no-constant-condition",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5388,60 +5388,60 @@
     "kind": "native",
     "oxlintId": "no-constructor-return",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-control-regex": {
     "kind": "native",
     "oxlintId": "no-control-regex",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-debugger": {
     "kind": "native",
     "oxlintId": "no-debugger",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-delete-var": {
     "kind": "native",
     "oxlintId": "no-delete-var",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-dupe-args": {
@@ -5457,61 +5457,61 @@
     "kind": "native",
     "oxlintId": "no-dupe-class-members",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-dupe-else-if": {
     "kind": "native",
     "oxlintId": "no-dupe-else-if",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-dupe-keys": {
     "kind": "native",
     "oxlintId": "no-dupe-keys",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-duplicate-case": {
     "kind": "native",
     "oxlintId": "no-duplicate-case",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-empty": {
     "kind": "native",
     "oxlintId": "no-empty",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5523,30 +5523,30 @@
     "kind": "native",
     "oxlintId": "no-empty-character-class",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-empty-pattern": {
     "kind": "native",
     "oxlintId": "no-empty-pattern",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5558,15 +5558,15 @@
     "kind": "native",
     "oxlintId": "no-empty-static-block",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-eval": {
@@ -5593,15 +5593,15 @@
     "kind": "native",
     "oxlintId": "no-ex-assign",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-extra-bind": {
@@ -5623,15 +5623,15 @@
     "kind": "native",
     "oxlintId": "no-extra-boolean-cast",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {}
@@ -5641,15 +5641,15 @@
     "kind": "native",
     "oxlintId": "no-extra-label",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-fallthrough": {
@@ -5677,23 +5677,23 @@
     "kind": "native",
     "oxlintId": "no-func-assign",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-global-assign": {
     "kind": "native",
     "oxlintId": "no-global-assign",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5712,23 +5712,23 @@
     "kind": "native",
     "oxlintId": "no-import-assign",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-invalid-regexp": {
     "kind": "native",
     "oxlintId": "no-invalid-regexp",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {}
@@ -5738,15 +5738,15 @@
     "kind": "native",
     "oxlintId": "no-irregular-whitespace",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5787,45 +5787,45 @@
     "kind": "native",
     "oxlintId": "no-lonely-if",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-loss-of-precision": {
     "kind": "native",
     "oxlintId": "no-loss-of-precision",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-misleading-character-class": {
     "kind": "native",
     "oxlintId": "no-misleading-character-class",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5844,31 +5844,31 @@
     "kind": "native",
     "oxlintId": "no-new-native-nonconstructor",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-nonoctal-decimal-escape": {
     "kind": "native",
     "oxlintId": "no-nonoctal-decimal-escape",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-obj-calls": {
     "kind": "native",
     "oxlintId": "no-obj-calls",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-octal": {
@@ -5906,15 +5906,15 @@
     "kind": "native",
     "oxlintId": "no-promise-executor-return",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -5956,8 +5956,8 @@
     "kind": "native",
     "oxlintId": "no-redeclare",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     },
     "options": [
       {
@@ -5969,15 +5969,15 @@
     "kind": "native",
     "oxlintId": "no-regex-spaces",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-restricted-imports": {
@@ -6523,15 +6523,15 @@
     "kind": "native",
     "oxlintId": "no-return-assign",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       "except-parens"
@@ -6541,15 +6541,15 @@
     "kind": "native",
     "oxlintId": "no-self-assign",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -6561,38 +6561,38 @@
     "kind": "native",
     "oxlintId": "no-self-compare",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-setter-return": {
     "kind": "native",
     "oxlintId": "no-setter-return",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-shadow-restricted-names": {
     "kind": "native",
     "oxlintId": "no-shadow-restricted-names",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -6604,61 +6604,61 @@
     "kind": "native",
     "oxlintId": "no-sparse-arrays",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-template-curly-in-string": {
     "kind": "native",
     "oxlintId": "no-template-curly-in-string",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-this-before-super": {
     "kind": "native",
     "oxlintId": "no-this-before-super",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-unassigned-vars": {
     "kind": "native",
     "oxlintId": "no-unassigned-vars",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-undef": {
     "kind": "native",
     "oxlintId": "no-undef",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     },
     "options": [
       {
@@ -6686,30 +6686,30 @@
     "kind": "native",
     "oxlintId": "no-unexpected-multiline",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-unmodified-loop-condition": {
     "kind": "native",
     "oxlintId": "no-unmodified-loop-condition",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -6721,23 +6721,23 @@
     "kind": "native",
     "oxlintId": "no-unreachable",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "no-unreachable-loop": {
     "kind": "native",
     "oxlintId": "no-unreachable-loop",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -6764,8 +6764,8 @@
     "kind": "native",
     "oxlintId": "no-unsafe-negation",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     },
     "options": [
       {
@@ -6856,75 +6856,75 @@
     "kind": "native",
     "oxlintId": "no-unused-labels",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-unused-private-class-members": {
     "kind": "native",
     "oxlintId": "no-unused-private-class-members",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-useless-assignment": {
     "kind": "native",
     "oxlintId": "no-useless-assignment",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-useless-backreference": {
     "kind": "native",
     "oxlintId": "no-useless-backreference",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-useless-catch": {
     "kind": "native",
     "oxlintId": "no-useless-catch",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "no-useless-computed-key": {
@@ -6951,15 +6951,15 @@
     "kind": "native",
     "oxlintId": "no-useless-escape",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -7023,8 +7023,8 @@
     "kind": "native",
     "oxlintId": "no-with",
     "contexts": {
-      "source-js": "warn",
-      "source-jsx": "warn"
+      "source-js": "error",
+      "source-jsx": "error"
     }
   },
   "node-test/no-assert-throws-async": {
@@ -7049,36 +7049,36 @@
     "kind": "js-alias",
     "oxlintId": "node-test/no-callback-and-promise",
     "contexts": {
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn"
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error"
     }
   },
   "node-test/no-duplicate-mock-timers-enable": {
     "kind": "js-alias",
     "oxlintId": "node-test/no-duplicate-mock-timers-enable",
     "contexts": {
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn"
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error"
     }
   },
   "node-test/no-late-test-activity": {
     "kind": "js-alias",
     "oxlintId": "node-test/no-late-test-activity",
     "contexts": {
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn"
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error"
     }
   },
   "node-test/no-mock-timers-destructured-import": {
     "kind": "js-alias",
     "oxlintId": "node-test/no-mock-timers-destructured-import",
     "contexts": {
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn"
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error"
     }
   },
   "node-test/no-unneeded-async-rejects-callback": {
@@ -7915,15 +7915,15 @@
     "kind": "js-alias",
     "oxlintId": "regexp/no-contradiction-with-assertion",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "regexp/no-missing-g-flag": {
@@ -7933,15 +7933,15 @@
       "oxc/bad-match-all-arg"
     ],
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -7954,30 +7954,30 @@
     "kind": "js-alias",
     "oxlintId": "regexp/no-useless-assertions",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "require-yield": {
     "kind": "native",
     "oxlintId": "require-yield",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "security/detect-bidi-characters": {
@@ -8387,15 +8387,15 @@
     "kind": "replaced",
     "oxlintId": "logical-assignment-operators",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       "always",
@@ -12208,15 +12208,15 @@
     "kind": "native",
     "oxlintId": "use-isnan",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -12229,15 +12229,15 @@
     "kind": "native",
     "oxlintId": "valid-typeof",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -12265,7 +12265,7 @@
     "kind": "native",
     "oxlintId": "vitest/no-focused-tests",
     "contexts": {
-      "test-ts": "warn"
+      "test-ts": "error"
     },
     "options": [
       {
@@ -12300,14 +12300,14 @@
     "kind": "native",
     "oxlintId": "vitest/require-local-test-context-for-concurrent-snapshots",
     "contexts": {
-      "test-ts": "warn"
+      "test-ts": "error"
     }
   },
   "vitest/valid-expect": {
     "kind": "native",
     "oxlintId": "vitest/valid-expect",
     "contexts": {
-      "test-ts": "warn"
+      "test-ts": "error"
     },
     "options": [
       {

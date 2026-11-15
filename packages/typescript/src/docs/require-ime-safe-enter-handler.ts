@@ -1,7 +1,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Preserve IME composition before Enter submits or blurs a native text control.",
   rationale:
     "The Enter key confirms Japanese, Chinese and Korean composition as well as triggering custom actions. An unguarded native form submission or blur interrupts composing text.",
