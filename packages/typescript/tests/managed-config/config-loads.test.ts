@@ -114,6 +114,23 @@ const FILES: Readonly<Record<string, string>> = {
   "src/constant-binding.ts": "export const count = 0;\n",
   "src/self-import.ts": 'import * as self from "./self-import.js";\nexport const value = 1;\nexport const doubled = self.value * 2;\n',
   "src/sibling-import.ts": 'import { value } from "./self-import.js";\nexport const tripled = value * 3;\n',
+  "src/promise-finally.tsx": [
+    "export function settle(): Promise<number> {",
+    "  return Promise.resolve(1).finally(() => {",
+    "    return 2;",
+    "  });",
+    "}",
+    "",
+  ].join("\n"),
+  "src/promise-finally-valid.tsx": [
+    "export function settle(ready: boolean, reset: () => void): Promise<number> {",
+    "  return Promise.resolve(1).finally(() => {",
+    "    if (ready) return;",
+    "    reset();",
+    "  });",
+    "}",
+    "",
+  ].join("\n"),
 };
 
 interface Diagnostic {
@@ -266,5 +283,10 @@ describe("the managed Oxlint config in a consumer", () => {
   it("rejects a module that imports itself and accepts a sibling import", () => {
     expect(codesOf("src/self-import.ts")).toContain("import(no-self-import)");
     expect(codesOf("src/sibling-import.ts")).not.toContain("import(no-self-import)");
+  });
+
+  it("reports values returned from finally callbacks where strict-void-return is off", () => {
+    expect(codesOf("src/promise-finally.tsx")).toContain("promise(no-return-in-finally)");
+    expect(codesOf("src/promise-finally-valid.tsx")).not.toContain("promise(no-return-in-finally)");
   });
 });

@@ -79,7 +79,8 @@
     "@sarj/require-ime-safe-enter-handler": {"level": "warn", "note": "Modern Web Guidance: source-semantic gap."},
     "@sarj/react-prefer-updater-function": {"level": "warn", "note": "Bun lint parity: stale useState snapshot passed to its own setter."},
     "@sarj/jsx-no-forbidden-nesting": {"level": "warn", "findings": "Platform 0 (902 current files; 2,886 changed file versions)", "note": "HTML parser repairs React reports as hydration errors, plus content-model nesting in one visible JSX tree."},
-    "promise/no-new-statics": {"level": "error", "note": "covers JS files the type check skips; TS7009 reports the same call in type-checked files"}
+    "promise/no-new-statics": {"level": "error", "note": "covers JS files the type check skips; TS7009 reports the same call in type-checked files"},
+    "promise/no-return-in-finally": {"level": "warn", "note": "covers JS, JSX, TSX and syntax-only config files, where typescript/strict-void-return is off or has no types"}
   },
   "later": {
     "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"
