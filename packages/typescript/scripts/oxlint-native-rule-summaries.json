@@ -149,6 +149,7 @@
   "promise/no-new-statics": "Disallow calling `new` on a `Promise` static method.",
   "promise/no-return-in-finally": "Disallow return statements in `finally()` callbacks.",
   "promise/prefer-catch": "Prefer `.then().catch()` over `.then(…, …)` for error handling.",
+  "promise/valid-params": "Enforce the number of arguments `Promise` methods accept.",
   "radix": "Enforce the use of the radix argument when using `parseInt()`",
   "react/button-has-type": "Disallow usage of `button` elements without an explicit `type` attribute",
   "react/capitalized-calls": "Validates against calling capitalized functions/methods instead of using JSX",

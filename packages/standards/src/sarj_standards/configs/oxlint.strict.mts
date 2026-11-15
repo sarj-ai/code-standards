@@ -677,6 +677,7 @@ const RULES = {
   "promise/no-new-statics": "error",
   "promise/no-return-in-finally": "warn",
   "promise/prefer-catch": "error",
+  "promise/valid-params": "warn",
 
   // oxc (native).
   "oxc/approx-constant": "error",
