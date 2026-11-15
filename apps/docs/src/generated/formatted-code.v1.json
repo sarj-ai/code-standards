@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e52ff1519174b34140a91b71e2cc2002eedbda108437337699382667a8e52340",
-  "cliSha256": "f96eb5912f29454b147fff72f42a97f801359bf4b7b5499f2092ad46dd782bf1",
+  "catalogSha256": "8c16fdd3b23a1040c14bbaff4eacd38773420337f0f171e19873bf3130b879d9",
+  "cliSha256": "593ad34e9e040f8db8eb6a16c590d8fe2da6ed7702b1bd3b3da58d552ffdd1bf",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2096,6 +2096,101 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not grow an undeclared public surface"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:jsx-no-forbidden-nesting": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/note.tsx",
+              "source": "export const Note = () => (\n  <p>\n    Saved<div>Undo</div>\n  </p>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/note.tsx",
+          "id": "block-inside-paragraph",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Report a block element inside a paragraph"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/note.tsx",
+              "source": "export const Note = () => (\n  <div>\n    <p>Saved</p>\n    <div>Undo</div>\n  </div>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/note.tsx",
+          "id": "block-outside-paragraph",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use a block container around block content"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/card.tsx",
+              "source": "export const Card = () => (\n  <a href=\"/report\">\n    Report\n    <button type=\"button\">Share</button>\n  </a>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/card.tsx",
+          "id": "button-inside-link",
+          "outcome": "reject",
+          "scenarioId": "card-link",
+          "title": "Report interactive content inside a link"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/card.tsx",
+              "source": "export const Card = () => (\n  <article>\n    <a href=\"/report\">Report</a>\n    <button type=\"button\">Share</button>\n  </article>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/card.tsx",
+          "id": "card-actions-as-siblings",
+          "outcome": "accept",
+          "scenarioId": "card-link",
+          "title": "Keep card actions beside the card link"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/table.tsx",
+              "source": "export const Rows = ({ ids }: { ids: string[] }) => (\n  <table>\n    {ids.map((id) => (\n      <tr key={id}>\n        <td>{id}</td>\n      </tr>\n    ))}\n  </table>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/table.tsx",
+          "id": "rows-directly-in-table",
+          "outcome": "reject",
+          "scenarioId": "table-rows",
+          "title": "Report mapped rows directly inside a table"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/table.tsx",
+              "source": "export const Rows = ({ ids }: { ids: string[] }) => (\n  <table>\n    <tbody>\n      {ids.map((id) => (\n        <tr key={id}>\n          <td>{id}</td>\n        </tr>\n      ))}\n    </tbody>\n  </table>\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/table.tsx",
+          "id": "rows-in-table-body",
+          "outcome": "accept",
+          "scenarioId": "table-rows",
+          "title": "Wrap mapped rows in a table body"
         }
       ],
       "optionsSchemaSource": null

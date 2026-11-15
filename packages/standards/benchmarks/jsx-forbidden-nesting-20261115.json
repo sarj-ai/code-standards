@@ -1,0 +1,72 @@
+{
+  "rule": "oxlint:jsx-no-forbidden-nesting",
+  "decision": "Ship at WARNING without autofix. The private frontend corpus has no natural findings and no inspected false positives; the rule is preventive within the visible single-tree boundary.",
+  "tools": {
+    "node": "24.22.1",
+    "oxlint": "1.91.0",
+    "vitest": "5.0.5",
+    "react-dom": "19.3.1",
+    "parse5": "installed consumer dependency"
+  },
+  "existingOwners": {
+    "oxlintNative": "none; react/void-dom-elements-no-children and jsx-a11y rules do not model parent/descendant content",
+    "sarj": "none"
+  },
+  "reproduction": {
+    "method": "Render each tree with react-dom/server renderToStaticMarkup, reparse the markup with a spec-compliant HTML parser and compare serializations.",
+    "parserRepairCases": {
+      "div inside p": "different tree",
+      "a inside a": "different tree",
+      "form inside form": "different tree",
+      "tr directly inside table": "different tree"
+    },
+    "contentModelCases": {
+      "button inside a": "same tree"
+    }
+  },
+  "corpora": [
+    {
+      "visibility": "private",
+      "scope": "frontend application JSX/TSX at the current development head",
+      "files": 902,
+      "bytes": 4731245,
+      "findings": 0
+    },
+    {
+      "visibility": "private",
+      "scope": "every added or modified JSX/TSX file version in every application commit since the repository import",
+      "commits": 435,
+      "fileVersions": 2886,
+      "findings": 0
+    }
+  ],
+  "labels": {
+    "truePositives": 0,
+    "falsePositives": 0,
+    "knownFalseNegatives": 1,
+    "falseNegativeCause": "A framework link component wraps a design-system button component; both render interactive elements, but the nesting crosses component boundaries the rule deliberately treats as opaque."
+  },
+  "blindSpots": {
+    "intrinsicTagsInCurrentCorpus": 5047,
+    "componentTagsInCurrentCorpus": 10740,
+    "note": "About two thirds of opening tags are components, so most real nestings in this corpus are outside the rule's reach by design."
+  },
+  "regressionCases": {
+    "ruleTesterCases": 90,
+    "executableExamples": 7
+  },
+  "performance": {
+    "input": "902-file private corpus, single Oxlint thread, five interleaved pairs",
+    "baseline": "existing intrinsic JSX rule no-password-get-form alone",
+    "baselineSeconds": [0.36, 0.43, 0.44, 0.46, 0.70],
+    "candidateSeconds": [0.37, 0.46, 0.50, 0.54, 0.83],
+    "baselineMedianSeconds": 0.44,
+    "candidateMedianSeconds": 0.50,
+    "peakResidentMegabytes": { "baseline": 104, "candidate": 105 }
+  },
+  "limitations": [
+    "Only intrinsic nesting visible in one JSX tree is judged; component, alias, variable, prop and arbitrary-call boundaries are opaque.",
+    "No natural positives were observed, so fixture results do not establish field precision or recall.",
+    "Private source, paths and revisions are withheld; only aggregates are recorded."
+  ]
+}

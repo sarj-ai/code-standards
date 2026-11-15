@@ -268,6 +268,7 @@ const RULES = {
   "@sarj/no-blocked-input-paste": "warn",
   "@sarj/require-ime-safe-enter-handler": "warn",
   "@sarj/no-message-origin-string-matching": "warn",
+  "@sarj/jsx-no-forbidden-nesting": "warn",
   // ESLint core (native).
   "array-callback-return": ["error", {"allowImplicit": false, "checkForEach": false, "allowVoid": false}],
   "arrow-body-style": ["warn", "as-needed"],
