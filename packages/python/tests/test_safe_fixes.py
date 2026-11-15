@@ -244,10 +244,10 @@ def test_safe_alias_fix(source: str, expected_diagnostics: int, expected: str) -
         assert not fixes
 
 
-def test_fix_retains_warning_level() -> None:
+def test_error_level_retains_safe_alias_fix_policy() -> None:
     documentation = NoRedundantLocalAlias.documentation
     assert documentation is not None
-    assert documentation.default_level.value == "warning"
+    assert documentation.default_level.value == "error"
     assert documentation.autofix is AutofixPolicy.SAFE
 
 
