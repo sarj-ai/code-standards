@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4ca84f9d19f80320f1178fdd7db00707ec63104a6f3d967dabbf7be1f5e97784",
+  "catalogSha256": "69dc27d6bdcff216814db64f1eea7b747ba9b6668868d19bb249c5d15605633b",
   "cliSha256": "ac57696683fba4089cf0abe7656ec06c85194b979f9f396bf8e151bfa7af221d",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -10025,6 +10025,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Missing production entries also disappear from these cases"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:react-prefer-updater-function": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/cart.tsx",
+              "source": "import { useState } from \"react\";\nexport function Cart({ load }: { load: () => Promise<string> }) {\n  const [items, setItems] = useState<string[]>([]);\n  const add = async () => {\n    const item = await load();\n    setItems([...items, item]);\n  };\n  return (\n    <button type=\"button\" onClick={add}>\n      {items.length}\n    </button>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cart.tsx",
+          "id": "snapshot-after-await",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Append to the render snapshot after an await"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/cart.tsx",
+              "source": "import { useState } from \"react\";\nexport function Cart({ load }: { load: () => Promise<string> }) {\n  const [items, setItems] = useState<string[]>([]);\n  const add = async () => {\n    const item = await load();\n    setItems((previous) => [...previous, item]);\n  };\n  return (\n    <button type=\"button\" onClick={add}>\n      {items.length}\n    </button>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cart.tsx",
+          "id": "updater-after-await",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Append to the latest state through an updater"
         }
       ],
       "optionsSchemaSource": null

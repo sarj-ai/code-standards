@@ -149,6 +149,7 @@ import { PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION } from "./prefer-zod-enum-valid
 import { PREFER_ZOD_INFER_DOCUMENTATION } from "./prefer-zod-infer.js";
 import { PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION } from "./prefer-zod-parse-output-type.js";
 import { PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION } from "./production-derived-test-cases.js";
+import { REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION } from "./react-prefer-updater-function.js";
 import { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "./repeated-static-call-cases.js";
 import { REQUIRE_ASSERT_NEVER_DOCUMENTATION } from "./require-assert-never.js";
 import { REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION } from "./require-button-accessible-name.js";
@@ -323,6 +324,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-zod-infer": PREFER_ZOD_INFER_DOCUMENTATION,
   "prefer-zod-parse-output-type": PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
   "production-derived-test-cases": PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION,
+  "react-prefer-updater-function": REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION,
   "repeated-static-call-cases": REPEATED_STATIC_CALL_CASES_DOCUMENTATION,
   "require-assert-never": REQUIRE_ASSERT_NEVER_DOCUMENTATION,
   "require-button-accessible-name": REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,

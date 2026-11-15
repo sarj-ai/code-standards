@@ -23,6 +23,11 @@ const DIRECT_EVAL = new WeakMap<object, boolean>();
 const REACT_IMPORTS = new WeakMap<TsVariable, ReactImport | null>();
 const PARAMETER_BINDINGS = new WeakMap<object, WeakMap<Node, ParameterBindings>>();
 
+export function importsReactValue(source: SourceCode): boolean {
+  return source.ast.body.some((statement) =>
+    statement.type === "ImportDeclaration" && statement.source.value === "react" && statement.importKind !== "type");
+}
+
 export function renderFunction(node: Node): RenderFunction | null {
   let parent = parentOf(node);
   while (parent !== null) {

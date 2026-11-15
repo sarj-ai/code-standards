@@ -153,6 +153,7 @@ import preferZodEnumValidator from "./rules/prefer-zod-enum-validator.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import preferZodParseOutputType from "./rules/prefer-zod-parse-output-type.js";
 import productionDerivedTestCases from "./rules/production-derived-test-cases.js";
+import reactPreferUpdaterFunction from "./rules/react-prefer-updater-function.js";
 import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
@@ -325,6 +326,7 @@ const RULES = {
   "prefer-zod-infer": preferZodInfer,
   "prefer-zod-parse-output-type": preferZodParseOutputType,
   "production-derived-test-cases": productionDerivedTestCases,
+  "react-prefer-updater-function": reactPreferUpdaterFunction,
   "repeated-static-call-cases": repeatedStaticCallCases,
   "require-assert-never": requireAssertNever,
   "require-button-accessible-name": requireButtonAccessibleName,
