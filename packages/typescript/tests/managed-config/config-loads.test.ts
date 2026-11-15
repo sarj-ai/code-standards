@@ -131,6 +131,8 @@ const FILES: Readonly<Record<string, string>> = {
     "}",
     "",
   ].join("\n"),
+  "src/promise-params.js": "export const value = Promise.resolve(1, 2).then();\n",
+  "src/promise-params-valid.js": "export const value = Promise.resolve(1).then((result) => result);\n",
 };
 
 interface Diagnostic {
@@ -288,5 +290,10 @@ describe("the managed Oxlint config in a consumer", () => {
   it("reports values returned from finally callbacks where strict-void-return is off", () => {
     expect(codesOf("src/promise-finally.tsx")).toContain("promise(no-return-in-finally)");
     expect(codesOf("src/promise-finally-valid.tsx")).not.toContain("promise(no-return-in-finally)");
+  });
+
+  it("reports Promise method arity in JavaScript the type check skips", () => {
+    expect(codesOf("src/promise-params.js")).toContain("promise(valid-params)");
+    expect(codesOf("src/promise-params-valid.js")).not.toContain("promise(valid-params)");
   });
 });
