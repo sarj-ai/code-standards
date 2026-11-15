@@ -86,7 +86,7 @@ class NoUnscopedAsyncClientFactory(ProjectRule):
     id = "no-unscoped-async-client-factory"
     code = "SARJ577"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Inject an HTTPX client instead of hiding a never-closed one inside a returned object.",
         rationale="A factory that wraps a fresh client in its returned object and never closes it leaks one connection pool per call, and callers cannot see the client to close it.",
         remediation="Open the client in the caller's with or async with scope and inject it, or give the returned object a close or aclose method that closes the client. Keep tenant credentials, cookies and event loops in separate clients; do not replace them with a global client.",
@@ -159,7 +159,7 @@ class NoUnscopedAsyncClientFactory(ProjectRule):
                         line=call.lineno,
                         col=call.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=_MESSAGE,
                     )
                 )
