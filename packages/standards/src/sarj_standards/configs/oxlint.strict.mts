@@ -673,6 +673,7 @@ const RULES = {
   "import/export": "error",
 
   // promise (native).
+  "promise/no-new-statics": "error",
   "promise/prefer-catch": "error",
 
   // oxc (native).
