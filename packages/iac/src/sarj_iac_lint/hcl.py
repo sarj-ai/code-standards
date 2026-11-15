@@ -23,7 +23,7 @@ class CommandLiteral:
 def local_exec_commands(source: str) -> tuple[CommandLiteral, ...]:
     commands: list[CommandLiteral] = []
     lines = source.splitlines()
-    if not _balanced_structure(source):
+    if not _hcl.balanced_structure(source):
         return ()
     try:
         resources = _hcl.blocks(source)
@@ -41,20 +41,6 @@ def local_exec_commands(source: str) -> tuple[CommandLiteral, ...]:
             if attribute is not None and (command := _command_literal(attribute, lines)) is not None:
                 commands.append(command)
     return tuple(commands)
-
-
-def _balanced_structure(source: str) -> bool:
-    closers: list[str] = []
-    try:
-        structural = _hcl.tokens(source)
-    except ValueError:
-        return False
-    for token in structural:
-        if token in {"{", "[", "("}:
-            closers.append({"{": "}", "[": "]", "(": ")"}[token])
-        elif token in {"}", "]", ")"} and (not closers or closers.pop() != token):
-            return False
-    return not closers
 
 
 def _shell_interpreter(attribute: _hcl.Attribute | None) -> bool:

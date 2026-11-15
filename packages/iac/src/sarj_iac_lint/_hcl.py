@@ -355,6 +355,20 @@ def tokens(text: str) -> tuple[str, ...]:
     return tuple(text[span.start : span.end] for span in _token_spans(text))
 
 
+def balanced_structure(source: str) -> bool:
+    closers: list[str] = []
+    try:
+        structural = tokens(source)
+    except ValueError:
+        return False
+    for lexeme in structural:
+        if lexeme in {"{", "[", "("}:
+            closers.append({"{": "}", "[": "]", "(": ")"}[lexeme])
+        elif lexeme in {"}", "]", ")"} and (not closers or closers.pop() != lexeme):
+            return False
+    return not closers
+
+
 _OPENERS = frozenset("([{")
 _CLOSERS = frozenset(")]}")
 
