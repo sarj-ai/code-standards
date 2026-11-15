@@ -108,8 +108,8 @@ class PreferDiscriminatedModelUnion(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Nullable outcome records without a proven validator dependency are reviewed separately by prefer-outcome-variants (SARJ571).",
-            "Declared module-level unions of at least two source-visible direct dataclasses, Pydantic BaseModels or TypedDicts require a shared disjoint Literal field. PEP 604, typing Union, Optional, Annotated, forward references and bounded local aliases are supported; a None branch is allowed.",
-            "The explicit-tag policy is a modeling preference: nominal variants already support isinstance narrowing. Explicitly specialized PEP 695 records and direct generic union declarations support ordinary payload parameters. Parameter-dependent tag domains remain uncertain; bounded, defaulted or variadic parameters, bare generic records and specialization through another generic union alias abstain. Scalar/container unions, inline annotations, inherited variants, behavior classes, unresolved variants and dynamic or ambiguous namespaces are excluded. Imported tag aliases are not resolved; an explicit literal field paired with an unresolved imported or local class domain abstains, as do opaque explicit Literal domains. Qualified imported domains and unsupported computed aliases remain uncertain rather than proving a missing tag.",
+            "Declared module-level unions of at least two source-visible direct dataclasses, Pydantic BaseModels or TypedDicts require a shared disjoint Literal field. Undecorated variants with one local Pydantic base containing only pass, docstrings or a literal ConfigDict for frozen, strict, extra and hide_input_in_errors are also supported. PEP 604, typing Union, Optional, Annotated, forward references and bounded local aliases are supported; a None branch is allowed.",
+            "The explicit-tag policy is a modeling preference: nominal variants already support isinstance narrowing. Explicitly specialized PEP 695 records and direct generic union declarations support ordinary payload parameters. Parameter-dependent tag domains remain uncertain; bounded, defaulted or variadic parameters, bare generic records and specialization through another generic union alias abstain. Scalar/container unions, inline annotations, other inherited variants, behavior classes, unresolved variants and dynamic or ambiguous namespaces are excluded. Imported tag aliases are not resolved; an explicit literal field paired with an unresolved imported or local class domain abstains, as do opaque explicit Literal domains. Qualified imported domains and unsupported computed aliases remain uncertain rather than proving a missing tag.",
             "String, bytes, integer, Boolean and None tag values are supported. Boolean and integer Literal values retain their distinct static types; use identity checks when equality would conflate their runtime values. A bounded hierarchy of shared literal fields may distinguish nested groups; overlapping tags without a further discriminator still fail. Nested Literal domains and transparent Final, ReadOnly, Annotated and local alias wrappers are supported. TypedDict tags must be required; dataclass ClassVar tags must have a value. Direct import-proven InitVar annotations without defaults are constructor inputs rather than instance tags; quoted, wrapped, locally aliased or defaulted InitVar forms remain uncertain. Import-proven typing final decorators preserve record recognition. Explicit Pydantic callable Discriminators, bounded stable reusable metadata, single-value plain local class namespaces, literal immutable tuple projections and imported pydantic.types constructors are respected; source-proven string field names, including local bindings and concatenation, still need Literal fields. Source-proven string discriminator writes through stable aliases invalidate callable coverage; opaque mutation, helper escapes and excessive alias graphs abstain. Module bindings are independent of unrelated local parameters and their attribute writes; class annotation shadows and global rebinding remain excluded. Other runtime configuration and default correctness remain separate contracts. No automatic field addition is safe for every constructor or serializer.",
             "For nullable-field dependencies, only stable direct module-level import-proven Pydantic BaseModel subclasses with pure direct after model validators are inspected.",
             "Bounded paths may contain finite tag comparisons or literal-container membership, None identity tests, Boolean combinations, nested guards and returns of the same instance. Every rejection region must prove one tag-dependent nullable-field requirement; joint missing-field or independent-tag-axis conditions abstain.",
@@ -210,6 +210,48 @@ class PreferDiscriminatedModelUnion(Rule):
                 ),
                 focus_path=PurePosixPath("app/outcomes.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="configuration-only-model-base",
+                scenario="configuration-base-discriminator",
+                title="A shared configuration-only base does not identify empty variants",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/observations.py",
+                        "from typing import TypeAlias\nfrom pydantic import BaseModel, ConfigDict\n"
+                        "class Contract(BaseModel):\n"
+                        "    model_config = ConfigDict(frozen=True, strict=True, extra='forbid')\n"
+                        "class Present(Contract):\n    body: bytes\n"
+                        "class Missing(Contract):\n    pass\n"
+                        "class Unavailable(Contract):\n    pass\n"
+                        "Read: TypeAlias = Present | Missing | Unavailable\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/observations.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="tagged-configuration-only-model-base",
+                scenario="configuration-base-discriminator",
+                title="Tags distinguish observations sharing a configuration-only base",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/observations.py",
+                        "from typing import Literal, TypeAlias\nfrom pydantic import BaseModel, ConfigDict\n"
+                        "class Contract(BaseModel):\n"
+                        "    model_config = ConfigDict(frozen=True, strict=True, extra='forbid')\n"
+                        "class Present(Contract):\n    kind: Literal['present'] = 'present'\n    body: bytes\n"
+                        "class Missing(Contract):\n    kind: Literal['missing'] = 'missing'\n"
+                        "class Unavailable(Contract):\n    kind: Literal['unavailable'] = 'unavailable'\n"
+                        "Read: TypeAlias = Present | Missing | Unavailable\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/observations.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(

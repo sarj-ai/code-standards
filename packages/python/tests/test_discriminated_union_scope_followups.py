@@ -15,6 +15,83 @@ _RECORDS = (
 )
 _ALIAS = "type Result = Alpha | Beta\n"
 _GLOBAL_REBIND = "def adapt() -> None:\n    global dataclass\n    dataclass = lambda cls: cls\nadapt()\n"
+_CONFIGURATION_BASE = (
+    "from typing import Literal, TypeAlias\n"
+    "from pydantic import BaseModel, ConfigDict\n"
+    "class Contract(BaseModel):\n"
+    "    model_config = ConfigDict(frozen=True, strict=True, extra='forbid', hide_input_in_errors=True)\n"
+    "class Available(Contract):\n    body: bytes\n"
+    "class Missing(Contract):\n    pass\n"
+    "class Unavailable(Contract):\n    pass\n"
+    "Read: TypeAlias = Available | Missing | Unavailable\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_count"),
+    [
+        (_CONFIGURATION_BASE, 1),
+        (_CONFIGURATION_BASE.replace("Read: TypeAlias =", "type Read ="), 1),
+        (
+            _CONFIGURATION_BASE.replace("ConfigDict", "Settings").replace(
+                "BaseModel, Settings", "BaseModel, ConfigDict as Settings"
+            ),
+            1,
+        ),
+        (
+            _CONFIGURATION_BASE.replace(
+                "    model_config = ConfigDict(frozen=True, strict=True, extra='forbid', hide_input_in_errors=True)",
+                "    pass",
+            ),
+            1,
+        ),
+        (
+            _CONFIGURATION_BASE.replace(
+                "class Available(Contract):", "class Available(Contract):\n    kind: Literal['available'] = 'available'"
+            )
+            .replace("class Missing(Contract):", "class Missing(Contract):\n    kind: Literal['missing'] = 'missing'")
+            .replace(
+                "class Unavailable(Contract):",
+                "class Unavailable(Contract):\n    kind: Literal['unavailable'] = 'unavailable'",
+            ),
+            0,
+        ),
+        (
+            _CONFIGURATION_BASE.replace("    model_config =", "    kind: Literal['same'] = 'same'\n    model_config ="),
+            0,
+        ),
+        (
+            _CONFIGURATION_BASE.replace(
+                "    model_config =", "    def validate(self): return self\n    model_config ="
+            ),
+            0,
+        ),
+        (_CONFIGURATION_BASE.replace("class Contract(BaseModel):", "@decorate\nclass Contract(BaseModel):"), 0),
+        (_CONFIGURATION_BASE.replace("class Contract(BaseModel):", "class Contract[T](BaseModel):"), 0),
+        (_CONFIGURATION_BASE.replace("class Contract(BaseModel):", "class Contract(BaseModel, Other):"), 0),
+        (_CONFIGURATION_BASE.replace("class Contract(BaseModel):", "class Contract(BaseModel, frozen=True):"), 0),
+        (
+            _CONFIGURATION_BASE.replace(
+                "class Contract(BaseModel):", "class Parent(BaseModel): pass\nclass Contract(Parent):"
+            ),
+            0,
+        ),
+        (_CONFIGURATION_BASE.replace("class Missing(Contract):", "class Missing(External):"), 0),
+        (_CONFIGURATION_BASE.replace("frozen=True", "frozen=enabled"), 0),
+        (_CONFIGURATION_BASE.replace("frozen=True", "frozen=1"), 0),
+        (_CONFIGURATION_BASE.replace("extra='forbid'", "extra='invalid'"), 0),
+        (_CONFIGURATION_BASE.replace("frozen=True", "**options"), 0),
+        (_CONFIGURATION_BASE.replace("frozen=True", "alias_generator=rename"), 0),
+        (_CONFIGURATION_BASE.replace("ConfigDict(frozen=True", "dict(frozen=True"), 0),
+        (_CONFIGURATION_BASE + "Contract.model_config = {}\n", 0),
+        (_CONFIGURATION_BASE + "configure(Contract)\n", 0),
+        (_CONFIGURATION_BASE + "ConfigDict = custom_config\n", 0),
+    ],
+)
+def test_configuration_only_pydantic_base(source: str, expected_count: int) -> None:
+    findings = PreferDiscriminatedModelUnion().check(Path("app/observations.py"), source)
+    assert len(findings) == expected_count
+    assert all(finding.code == "SARJ510" for finding in findings)
 
 
 def _case(case_id: str, source: str, *, match: bool = False) -> EvaluationCase:
