@@ -20,6 +20,7 @@ import enforceFileStructure from "./rules/enforce-file-structure.js";
 import excessiveCommentary from "./rules/excessive-commentary.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
+import jsxNoForbiddenNesting from "./rules/jsx-no-forbidden-nesting.js";
 import namedChildSchemaType from "./rules/named-child-schema-type.js";
 import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
 import noBespokeApiCaseConversion from "./rules/no-bespoke-api-case-conversion.js";
@@ -193,6 +194,7 @@ const RULES = {
   "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "interface-contract-members-private": interfaceContractMembersPrivate,
+  "jsx-no-forbidden-nesting": jsxNoForbiddenNesting,
   "named-child-schema-type": namedChildSchemaType,
   "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
   "no-bespoke-api-case-conversion": noBespokeApiCaseConversion,

@@ -1511,6 +1511,14 @@
       "outcome": "Keep the existing severity. Exclude protected extension hooks and overrides, preserve generic decorated extra-member findings, and continue to abstain when inherited contract resolution is uncertain."
     },
     {
+      "task": "rule-audit/typescript/jsx-no-forbidden-nesting",
+      "family": "typescript",
+      "ruleId": "jsx-no-forbidden-nesting",
+      "state": "complete",
+      "evidence": "Paired public executable examples and 90 positive/negative/near-miss Oxlint cases pass, covering fragments, conditional, logical, array and map children, spreads, aliases, components, dangerouslySetInnerHTML, SVG, foreignObject, template and custom elements. React server markup for each parser-repair case reparses into a different tree; the content-model case reparses unchanged. A 902-file private frontend corpus and all 2,886 changed JSX/TSX file versions across 435 commits have zero findings and no inspected false positives; one known cross-component false negative is out of scope by design. Five interleaved timing pairs, peak memory and redacted limitations are recorded in packages/standards/benchmarks/jsx-forbidden-nesting-20261115.json. Canonical native hooks and exact-head CI remain required.",
+      "outcome": "Ship at WARNING without autofix within the visible intrinsic JSX tree. Components, aliases, variables, props and arbitrary calls are opaque. No natural positives were observed, so fixture results do not establish field precision or recall."
+    },
+    {
       "task": "rule-audit/typescript/no-bare-return-from-test-catch",
       "family": "typescript",
       "ruleId": "no-bare-return-from-test-catch",

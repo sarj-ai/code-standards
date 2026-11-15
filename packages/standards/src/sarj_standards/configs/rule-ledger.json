@@ -318,6 +318,7 @@
       "excessive-commentary",
       "iac-source-coupled-test",
       "interface-contract-members-private",
+      "jsx-no-forbidden-nesting",
       "named-child-schema-type",
       "no-bare-return-from-test-catch",
       "no-bespoke-api-case-conversion",

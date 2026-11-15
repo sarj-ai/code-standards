@@ -16,6 +16,7 @@ import { ENFORCE_FILE_STRUCTURE_DOCUMENTATION } from "./enforce-file-structure.j
 import { EXCESSIVE_COMMENTARY_DOCUMENTATION } from "./excessive-commentary.js";
 import { IAC_SOURCE_COUPLED_TEST_DOCUMENTATION } from "./iac-source-coupled-test.js";
 import { INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION } from "./interface-contract-members-private.js";
+import { JSX_NO_FORBIDDEN_NESTING_DOCUMENTATION } from "./jsx-no-forbidden-nesting.js";
 import { NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION } from "./named-child-schema-type.js";
 import { NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION } from "./no-bare-return-from-test-catch.js";
 import { NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION } from "./no-bespoke-api-case-conversion.js";
@@ -189,6 +190,7 @@ export const RULE_DOCUMENTATION = {
   "excessive-commentary": EXCESSIVE_COMMENTARY_DOCUMENTATION,
   "iac-source-coupled-test": IAC_SOURCE_COUPLED_TEST_DOCUMENTATION,
   "interface-contract-members-private": INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
+  "jsx-no-forbidden-nesting": JSX_NO_FORBIDDEN_NESTING_DOCUMENTATION,
   "named-child-schema-type": NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION,
   "no-bare-return-from-test-catch": NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION,
   "no-bespoke-api-case-conversion": NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION,
