@@ -226,6 +226,7 @@
       "require-explicit-contract-implementation",
       "require-explicit-psycopg-transaction",
       "require-explicit-service-contract",
+      "require-hidden-settings-input",
       "require-injectable-retry-sleep",
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
@@ -721,7 +722,8 @@
       "SARJ571",
       "SARJ572",
       "SARJ573",
-      "SARJ574"
+      "SARJ574",
+      "SARJ575"
     ],
     "sql": [
       "SARJ101",
