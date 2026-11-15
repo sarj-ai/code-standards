@@ -1,0 +1,70 @@
+{
+  "rule": "iac:no-hardcoded-deployment-location",
+  "severity": "error (existing; scope extended)",
+  "policy": "Explicit deployment input ownership requested by the repository owner; matches are configuration policy violations, not proof of runtime faults.",
+  "public_sources": [
+    {
+      "name": "google-network",
+      "digest": "sha256:58095289820426625008338ec5469949cf973ac08c9a1b63662059c3427ec2cb",
+      "revision": "91352bed3014ddbfb323d979b6413a90e7253acf",
+      "files": 255,
+      "bytes": 465780,
+      "url": "https://github.com/terraform-google-modules/terraform-google-network"
+    },
+    {
+      "name": "aws-vpc",
+      "digest": "sha256:eb13dbc792bcb23ead33237d3cbcd53c602feafd361e6c8c9eead417dca6cd2c",
+      "revision": "b3abd6df2ecf052451a361ed55b8f06f8742a795",
+      "files": 77,
+      "bytes": 453543,
+      "url": "https://github.com/terraform-aws-modules/terraform-aws-vpc"
+    }
+  ],
+  "private_corpora": {
+    "roots": 2,
+    "files": 427,
+    "bytes": 2051901,
+    "provenance": "Immutable Git-object exports and selected-file SHA-256 digests retained outside Git; no private source or identifying pins published."
+  },
+  "evaluation": {
+    "files": 759,
+    "baseline_findings": 54,
+    "candidate_findings": 178,
+    "additional_policy_matches": 124,
+    "additional_public_matches": 34,
+    "additional_private_matches": 90,
+    "baseline_diagnostics_preserved": true,
+    "duplicate_locations": 0,
+    "repeat_findings_stable": true
+  },
+  "inspection": "All 124 added attribute locations inspected, with resource and local-alias contexts checked across affected schema categories. No known inspected false positives under the explicit input-ownership policy. The 34 public additions are examples using literal resource arguments; caller module arguments remain valid.",
+  "paired_seconds": {
+    "baseline": [
+      1.108173,
+      1.085705,
+      1.127802
+    ],
+    "candidate": [
+      1.081174,
+      1.084165,
+      1.15534
+    ]
+  },
+  "paired_median_seconds": {
+    "baseline": 1.108173,
+    "candidate": 1.084165
+  },
+  "peak_rss_bytes": {
+    "baseline": 39796736,
+    "candidate": 40075264
+  },
+  "measurement": "Native run_isolated_corpora, alternating baseline/candidate order, three fresh-process rounds, batches <=250 files, same pinned environment. First round has uncontrolled OS cache state; later rounds are disk-cache-warm, not persistent-process warm. macOS maximum process RSS, shared machine; no tail-latency or memory-bound claim.",
+  "baseline_source": "3558af13a791c2af45c611af858d582c1679a4c0",
+  "limits": [
+    "Curated provider scope and network/DNS/address schema fields, not all strings or resource names.",
+    "Cross-file aliases, object traversals, unknown expressions and most mixed templates remain opaque.",
+    "Only authored .tf files; no Terraform JSON, generated code or fixtures.",
+    "Valid input boundaries: typed defaults, tfvars and caller module arguments; protocol constants and provider global placement selectors retained."
+  ],
+  "recommendation": "Retain existing ERROR for the explicit input policy; no autofix. Publish before consumer adoption; do not accept baseline debt."
+}

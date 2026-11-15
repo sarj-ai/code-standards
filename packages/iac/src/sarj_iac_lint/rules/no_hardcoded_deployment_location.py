@@ -17,7 +17,13 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks, local_collections, resolve_local_tokens, static_string
+from sarj_iac_lint.rules._literal_policy import (
+    DEPLOYMENT_SCOPE_ATTRIBUTES,
+    balanced_blocks,
+    local_collections,
+    resolve_local_tokens,
+    static_string,
+)
 
 
 if TYPE_CHECKING:
@@ -46,6 +52,34 @@ _ROOT_PLACEMENT = frozenset(
     {"region", "regions", "zone", "zones", "location", "locations", "availability_zone", "availability_zones"}
 )
 _GOOGLE_PLACEMENT = frozenset({"location_id", "node_locations", "distribution_policy_zones", "replica_zones"})
+_LOCATION_ATTRIBUTES = _ROOT_PLACEMENT | _GOOGLE_PLACEMENT | {"data_locations", "region_name", "secondary_zone"}
+_FIXED_PROJECT_REFERENCE = re.compile(
+    r'^"(?:https://(?:www|compute)\.googleapis\.com/(?:compute/)?(?:v1|beta)/)?projects/[a-z0-9][a-z0-9.:_-]*(?=/)'
+)
+_INTEGER_LITERAL = re.compile(r"[0-9]+")
+_NETWORK_INPUTS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "google_compute_network": frozenset({"name"}),
+        "google_compute_subnetwork": frozenset({"name", "network", "ip_cidr_range"}),
+        "google_compute_address": frozenset({"name", "address", "subnetwork"}),
+        "google_compute_global_address": frozenset({"name", "address", "network"}),
+        "google_compute_forwarding_rule": frozenset({"name", "network", "subnetwork", "ip_address", "target"}),
+        "google_compute_service_attachment": frozenset({"name", "target_service", "nat_subnets"}),
+        "google_dns_managed_zone": frozenset({"name", "dns_name"}),
+        "google_dns_record_set": frozenset({"name", "rrdatas"}),
+        "google_certificate_manager_dns_authorization": frozenset({"domain"}),
+        "aws_vpc": frozenset({"cidr_block", "ipv6_cidr_block"}),
+        "aws_subnet": frozenset({"cidr_block", "ipv6_cidr_block"}),
+    }
+)
+_NESTED_NETWORK_INPUTS: Mapping[tuple[str, tuple[str, ...]], frozenset[str]] = MappingProxyType(
+    {
+        ("google_compute_subnetwork", ("secondary_ip_range",)): frozenset({"ip_cidr_range"}),
+        ("google_certificate_manager_certificate", ("managed",)): frozenset({"domains"}),
+        ("google_compute_managed_ssl_certificate", ("managed",)): frozenset({"domains"}),
+        ("azurerm_virtual_network", ("subnet",)): frozenset({"address_prefix", "address_prefixes"}),
+    }
+)
 _NESTED_PLACEMENT: Mapping[tuple[str, tuple[str, ...]], frozenset[str]] = MappingProxyType(
     {
         ("google_secret_manager_secret", ("replication", "user_managed", "replicas")): frozenset({"location"}),
@@ -71,22 +105,22 @@ class NoHardcodedDeploymentLocation(Rule):
     code = "SARJ219"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.ERROR,
-        summary="Pass cloud deployment regions, zones and locations through explicit configuration inputs.",
+        summary="Pass cloud deployment identities, locations and network values through explicit configuration inputs.",
         rationale=(
-            "Literal placement coordinates inside infrastructure implementations bypass the caller's deployment "
-            "configuration. Resources in one module can silently remain in different locations when inputs change."
+            "Literal deployment identities and coordinates inside infrastructure implementations bypass the caller's "
+            "configuration. Changing inputs can leave resources bound to an old project, location, address or domain."
         ),
         remediation=(
-            "Reuse an existing typed region, zone or location input; otherwise add the smallest required input. "
+            "Reuse an existing typed input or resource reference; otherwise add the smallest required input. "
             "Define deployment policy in caller inputs, variable defaults or tfvars instead of scattering literal "
-            "coordinates and matching preconditions through resource implementations."
+            "identities, coordinates and matching preconditions through resource implementations."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "An explicit configuration-ownership policy, not a claim that literal regions are invalid Terraform. Variable defaults, tfvars and caller module arguments are valid configuration boundaries.",
-            "Checks recognized cloud provider/resource placement attributes and enumerated nested placement schema paths, including dynamic content. Cloudflare is limited to R2 bucket placement; Hetzner to geographic location fields. Labels, tags, geographic access filters, DNS zones and provider-required global selectors are not deployment coordinates.",
-            "Recognizes literal strings/lists, direct same-file local aliases, static joins, simple conversions, and conditional/coalesce/try output alternatives. Unknown function results, object traversals, cross-file aliases and inherited provider configuration remain opaque.",
+            "An explicit configuration-ownership policy, not a claim that literals are invalid Terraform. Variable defaults, tfvars and caller module arguments are valid configuration boundaries.",
+            "Checks recognized cloud scope/placement attributes and curated network, address and DNS resource fields, including enumerated nested schema paths and dynamic content. Arbitrary names, labels, tags, IAM role names, image selections, protocol constants and geographic access filters are not inferred as deployment inputs.",
+            "Recognizes literal strings/lists, direct same-file local aliases, static joins, simple conversions, and conditional/coalesce/try output alternatives. Fixed Google project prefixes in resource-reference templates and format calls are also checked. Other templates, unknown function results, object traversals, cross-file aliases and inherited provider configuration remain opaque. Provider-required global selectors remain valid placement constants.",
             "At the same attribute, this error takes precedence over repeated-deployment-literal guidance when both rules are selected.",
             "Only authored .tf inputs are checked; generated headers, fixtures and other HCL/JSON dialects are excluded. No variable name, value migration or Terraform state change is automatically inferred.",
         ),
@@ -97,11 +131,12 @@ class NoHardcodedDeploymentLocation(Rule):
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.iac(
-                        "main.tf", 'resource "google_storage_bucket" "this" {\n  location = "us-central1"\n}\n'
+                        "main.tf",
+                        'resource "google_storage_bucket" "this" {\n  project = "example-project"\n  location = "us-central1"\n}\n',
                     ),
                 ),
                 focus_path=PurePosixPath("main.tf"),
-                expected_count=1,
+                expected_count=2,
                 public=True,
             ),
             RuleExample(
@@ -137,11 +172,13 @@ class NoHardcodedDeploymentLocation(Rule):
                     attribute.line,
                     attribute.col,
                     self.code,
-                    f"Hardcoded deployment `{attribute.name}`: pass a typed location input or an input-derived value; keep defaults in caller configuration.",
+                    f"Hardcoded deployment `{attribute.name}`: pass a typed {'location ' if attribute.name in _LOCATION_ATTRIBUTES else ''}input or an input-derived value; keep defaults in caller configuration.",
                 )
                 for block in top
                 for attribute in _placement_attributes(block)
-                if _has_literal_placement(tokens(attribute.value), values)
+                if _has_literal_placement(
+                    tokens(attribute.value), values, global_selector=attribute.name in _LOCATION_ATTRIBUTES
+                )
             ]
         except ValueError:
             return []
@@ -152,16 +189,24 @@ def _placement_attributes(root: Block) -> Iterator[Attribute]:
         return
     kind = root.labels[0]
     provider = kind if root.type == "provider" else kind.split("_", 1)[0]
-    if provider not in _CLOUD_PROVIDERS and kind != "cloudflare_r2_bucket":
+    provider = "google" if provider == "google-beta" else provider
+    if provider not in _CLOUD_PROVIDERS and provider not in DEPLOYMENT_SCOPE_ATTRIBUTES:
         return
+    names = DEPLOYMENT_SCOPE_ATTRIBUTES.get(provider, frozenset[str]()) | _NETWORK_INPUTS.get(kind, frozenset[str]())
+    if provider in _CLOUD_PROVIDERS or kind == "cloudflare_r2_bucket":
+        names |= _ROOT_PLACEMENT
+    if provider == "google":
+        names |= _GOOGLE_PLACEMENT
+    if provider == "hcloud":
+        names = frozenset({"location"})
     for block, path in _nodes(root):
-        names = _NESTED_PLACEMENT.get((kind, path), frozenset()) if path else _ROOT_PLACEMENT
-        if not path and provider == "google":
-            names |= _GOOGLE_PLACEMENT
-        if not path and provider == "hcloud":
-            names = frozenset({"location"})
+        selected = names
+        if path:
+            selected = _NESTED_PLACEMENT.get((kind, path), frozenset[str]()) | _NESTED_NETWORK_INPUTS.get(
+                (kind, path), frozenset[str]()
+            )
         for attribute in block.attributes:
-            if attribute.name in names:
+            if attribute.name in selected:
                 yield attribute
 
 
@@ -179,7 +224,7 @@ def _nodes(root: Block) -> Iterator[tuple[Block, tuple[str, ...]]]:
                 pending.append((child, (*path, child.type)))
 
 
-def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str]) -> bool:
+def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str], *, global_selector: bool = True) -> bool:
     pending = [parts]
     seen: set[tuple[str, ...]] = set()
     while pending:
@@ -187,10 +232,8 @@ def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str]) ->
         if resolved is None or resolved in seen:
             continue
         seen.add(resolved)
-        if (literal := static_string(resolved, values)) is not None:
-            if literal.strip() and literal.strip().casefold() != "global":
-                return True
-            continue
+        if _is_literal_input(resolved, values, global_selector=global_selector):
+            return True
         if branches := conditional_branches(resolved):
             pending.extend(branches)
         elif resolved[:1] == ("[",) and resolved[-1:] == ("]",):
@@ -200,3 +243,15 @@ def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str]) ->
         ):
             pending.extend(args)
     return False
+
+
+def _is_literal_input(parts: tuple[str, ...], values: Mapping[str, str], *, global_selector: bool) -> bool:
+    if (literal := static_string(parts, values)) is not None:
+        return bool(literal.strip() and (not global_selector or literal.strip().casefold() != "global"))
+    if global_selector:
+        return False
+    if _INTEGER_LITERAL.fullmatch("".join(parts)):
+        return True
+    if parts[:1] == ("format",) and (args := call_arguments(parts)):
+        parts = args[0]
+    return len(parts) == 1 and _FIXED_PROJECT_REFERENCE.match(parts[0]) is not None
