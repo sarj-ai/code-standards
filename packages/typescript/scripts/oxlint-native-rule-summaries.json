@@ -9,6 +9,7 @@
   "for-direction": "Enforce `for` loop update clause moving the counter in the right direction",
   "getter-return": "Enforce `return` statements in getters",
   "import/export": "Disallow redundant re-exports.",
+  "import/no-anonymous-default-export": "Require a name for default-exported functions, classes and values",
   "import/no-duplicates": "Forbid repeated import of the same module in multiple places",
   "jest/prefer-to-be": "Suggest using `toBe()` for primitive literals",
   "jsx-a11y/alt-text": "Require meaningful alternative text for images and image controls.",

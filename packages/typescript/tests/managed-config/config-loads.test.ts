@@ -98,6 +98,8 @@ const FILES: Readonly<Record<string, string>> = {
     'window.addEventListener("message", event => event.origin.startsWith("https://trusted.example"));\n',
   "src/promise-return.ts": "declare function load(): Promise<number>;\nexport function forward(): Promise<number> {\n  return load();\n}\n",
   "src/promise-return.tsx": "declare function load(): Promise<number>;\nexport function forward(): Promise<number> {\n  return load();\n}\n",
+  "src/anonymous-default.ts": "export default (value: number): number => value * 2;\n",
+  "src/named-default.ts": "export default function double(value: number): number {\n  return value * 2;\n}\n",
   "src/mixed-condition.ts": 'export function display(value: number | string): string {\n  return value ? String(value) : "none";\n}\n',
   "src/nullable-conditions.ts": [
     "export function summary(name: string | undefined, count: number | undefined, done: boolean | undefined): string {",
@@ -235,6 +237,11 @@ describe("the managed Oxlint config in a consumer", () => {
   it("requires async on promise-returning functions outside JSX files", () => {
     expect(codesOf("src/promise-return.ts")).toContain("typescript(promise-function-async)");
     expect(codesOf("src/promise-return.tsx")).not.toContain("typescript(promise-function-async)");
+  });
+
+  it("rejects an anonymous default export and accepts a named one", () => {
+    expect(codesOf("src/anonymous-default.ts")).toContain("import(no-anonymous-default-export)");
+    expect(codesOf("src/named-default.ts")).not.toContain("import(no-anonymous-default-export)");
   });
 
   it("reports mixed-type union conditions and allows nullable primitive conditions", () => {

@@ -1064,6 +1064,7 @@ const RULES = {
   "oxc/bad-array-method-on-arguments": "error",
   "radix": "error",
   "import/no-duplicates": "warn",
+  "import/no-anonymous-default-export": "warn",
   "typescript/no-unnecessary-parameter-property-assignment": "error",
   "typescript/promise-function-async": "warn",
   "react/capitalized-calls": "error",
