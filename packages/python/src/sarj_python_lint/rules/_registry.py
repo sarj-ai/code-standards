@@ -261,6 +261,7 @@ from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefa
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
 from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
+from sarj_python_lint.rules.no_unobserved_task_exception import NoUnobservedTaskException
 from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
 from sarj_python_lint.rules.numeric_literal_separators import NumericLiteralSeparators
 from sarj_python_lint.rules.prefer_application_model_joins import PreferApplicationModelJoins
@@ -300,6 +301,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoUnobservedTaskException.id: NoUnobservedTaskException,
         PreferSemanticTemporalTypes.id: PreferSemanticTemporalTypes,
         PreferExplicitValueModelConstruction.id: PreferExplicitValueModelConstruction,
         PreferOutcomeVariants.id: PreferOutcomeVariants,

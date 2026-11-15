@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-unobserved-task-exception"),
+        module="sarj_python_lint.rules.no_unobserved_task_exception",
+        class_name="NoUnobservedTaskException",
+        code="SARJ574",
+        description="Observe the outcome of every stored asyncio task.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-semantic-temporal-types"),
         module="sarj_python_lint.rules.prefer_semantic_temporal_types",
         class_name="PreferSemanticTemporalTypes",
