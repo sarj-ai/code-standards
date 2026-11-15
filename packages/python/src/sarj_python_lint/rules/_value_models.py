@@ -48,7 +48,7 @@ def _supported_declaration(model: DeclaredClass, contracts: DeclaredContracts) -
 
 def _identity_decorator(decorator: ast.expr, model: DeclaredClass, imports: ImportIndex) -> bool:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
-    return _stable_native(target, model) and (
+    return stable_native(target, model) and (
         imports.resolves(target, sources=_DATACLASSES, symbol="dataclass")
         or imports.resolves(target, sources=_TYPING, symbol="final")
     )
@@ -65,7 +65,7 @@ def _native_value_identity(model: DeclaredClass, contracts: DeclaredContracts, *
 
 
 def _native_model_base(base: ast.expr, model: DeclaredClass, imports: ImportIndex, *, include_settings: bool) -> bool:
-    return _stable_native(base, model) and (
+    return stable_native(base, model) and (
         imports.resolves(base, sources=_MODELS, symbol="BaseModel")
         or (include_settings and imports.resolves(base, sources=_SETTINGS, symbol="BaseSettings"))
     )
@@ -75,7 +75,7 @@ def _wildcard(tree: ast.Module) -> bool:
     return any(alias.name == "*" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) for alias in node.names)
 
 
-def _stable_native(expression: ast.expr, model: DeclaredClass) -> bool:
+def stable_native(expression: ast.expr, model: DeclaredClass) -> bool:
     root = expression
     while isinstance(root, ast.Attribute):
         root = root.value

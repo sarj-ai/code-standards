@@ -150,7 +150,7 @@ class DeclaredContracts:
             return False
         if name not in owner.imports:
             return True
-        imports = self._module_semantics(owner).imports
+        imports = self.semantics_for(owner).imports
         if name in imports.shadowed_names:
             return False
         return name not in written_attribute_roots(owner.tree)
@@ -200,7 +200,7 @@ class DeclaredContracts:
             return cached
         if model.declaration in seen or len(seen) >= _MAX_DEPTH:
             return {}
-        semantics = self._module_semantics(model.unit)
+        semantics = self.semantics_for(model.unit)
         fields: dict[str, ast.AnnAssign] = {}
         if inherited and len(model.declaration.bases) == 1:
             parent = self.class_type(model.declaration.bases[0], model.unit)
@@ -217,7 +217,7 @@ class DeclaredContracts:
         self._field_cache[key] = fields
         return fields
 
-    def _module_semantics(self, unit: SourceUnit) -> AnnotationSemantics:
+    def semantics_for(self, unit: SourceUnit) -> AnnotationSemantics:
         if unit.tree is None:
             return self.context.annotation_semantics
         semantics = self._module_annotations.get(unit.path)
@@ -232,7 +232,7 @@ class DeclaredContracts:
         return semantics
 
     def imports_for(self, unit: SourceUnit) -> ImportIndex:
-        return self._module_semantics(unit).imports
+        return self.semantics_for(unit).imports
 
     def bound_names(self, statement: ast.AST) -> frozenset[str]:
         if statement not in self._scope_names:
@@ -242,7 +242,7 @@ class DeclaredContracts:
     def annotation(self, expression: ast.expr, unit: SourceUnit | None = None) -> DeclaredClass | None:
         semantics = self.context.annotation_semantics
         if unit is not None and unit is not self.unit and unit.tree is not None:
-            semantics = self._module_semantics(unit)
+            semantics = self.semantics_for(unit)
         candidates = [
             model
             for member in semantics.transparent_members(expression)

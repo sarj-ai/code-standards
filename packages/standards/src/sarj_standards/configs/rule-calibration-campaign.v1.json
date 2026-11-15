@@ -67,6 +67,14 @@
       "outcome": "Ship SARJ574 at WARNING without autofix. Ask the owner to await or gather a stored task where it stops, or to log task.exception() from a done callback; leave discarded results to RUF006 and lifespan cancellation to SARJ536. Broader fleet calibration remains pending before error promotion."
     },
     {
+      "task": "rule-audit/python/require-hidden-settings-input",
+      "family": "python",
+      "ruleId": "require-hidden-settings-input",
+      "state": "pending",
+      "evidence": "A pydantic-settings 2.16.0 reproduction printed a loaded secret in a missing-field ValidationError until hide_input_in_errors=True was set. One private immutable source snapshot produced eight non-test findings, all inspected true positives, after a path-typed credential reference was excluded by type; three further findings were in test helpers. Focused cases cover inheritance, mixins, configuration forms, explicit false overrides, aliased providers and opaque configuration. A single snapshot does not establish fleet-wide precision or recall. Private sources and identifiers remain outside public artifacts.",
+      "outcome": "Ship SARJ575 at WARNING without autofix. Report settings classes whose merged configuration leaves secret text visible in validation errors, once per exposure, and abstain on opaque configuration or unresolved bases. Complete broader calibration before considering severity promotion."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-guard-blocks",
       "family": "iac",
       "ruleId": "no-terraform-guard-blocks",

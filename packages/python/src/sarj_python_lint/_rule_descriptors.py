@@ -18,6 +18,15 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
+        rule_id=RuleId("require-hidden-settings-input"),
+        module="sarj_python_lint.rules.require_hidden_settings_input",
+        class_name="RequireHiddenSettingsInput",
+        code="SARJ575",
+        description="Hide validation inputs on settings classes that load secrets.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-semantic-temporal-types"),
         module="sarj_python_lint.rules.prefer_semantic_temporal_types",
         class_name="PreferSemanticTemporalTypes",
