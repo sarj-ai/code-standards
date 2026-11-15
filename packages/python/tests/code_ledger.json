@@ -364,5 +364,6 @@
   "SARJ573": "prefer-semantic-temporal-types",
   "SARJ574": "no-unobserved-task-exception",
   "SARJ575": "require-hidden-settings-input",
-  "SARJ576": "psycopg-sql-format-field-mismatch"
+  "SARJ576": "psycopg-sql-format-field-mismatch",
+  "SARJ577": "no-unscoped-async-client-factory"
 }

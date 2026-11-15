@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bb78cc486aa3ab5e0babd4123ddeb965b276e24517739baa231f3a2528e7d9b8",
-  "cliSha256": "bde7773f1e22ab97967aa6c2e016b6925825fcf9ac8e580876119a10dd9d71d3",
+  "catalogSha256": "0042cfce67d26a12fe89921941a0b76b3db2092402b75763332a095524315a84",
+  "cliSha256": "91ee3a653a1f186fdf233b255110de6df18d6caef18ef130ab09a46c308e96e6",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -17125,6 +17125,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The owner gathers the task when it stops"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unscoped-async-client-factory": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import httpx\n\n\nclass Dao:\n    def __init__(self, client):\n        self.client = client\n\n\nclass Service:\n    def __init__(self, dao):\n        self.dao = dao\n\n\ndef build_service(token):\n    client = httpx.AsyncClient(headers={\"Authorization\": token})\n    return Service(dao=Dao(client))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "wrapped-factory-leak",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hide a fresh client inside a returned service"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import httpx\n\n\nclass Dao:\n    def __init__(self, client):\n        self.client = client\n\n\nclass Service:\n    def __init__(self, dao):\n        self.dao = dao\n\n    async def aclose(self):\n        await self.dao.client.aclose()\n\n\ndef build_service(token):\n    client = httpx.AsyncClient(headers={\"Authorization\": token})\n    return Service(dao=Dao(client))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "wrapper-owns-closure",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Give the returned object ownership of client closure"
         }
       ],
       "optionsSchemaSource": null

@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-unscoped-async-client-factory"),
+        module="sarj_python_lint.rules.no_unscoped_async_client_factory",
+        class_name="NoUnscopedAsyncClientFactory",
+        code="SARJ577",
+        description="Inject an HTTPX client instead of hiding a never-closed one inside a returned object.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("psycopg-sql-format-field-mismatch"),
         module="sarj_python_lint.rules.psycopg_sql_format_field_mismatch",
         class_name="PsycopgSqlFormatFieldMismatch",

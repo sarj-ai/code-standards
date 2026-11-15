@@ -16,17 +16,19 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
-from sarj_python_lint.rules._resource_provenance import import_name_for_binding
+from sarj_python_lint.rules._httpx_clients import (
+    ASYNC_CLIENTS,
+    COMPREHENSIONS,
+    allocates,
+    imports_untouched,
+    runtime_expression,
+)
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_CLIENTS = frozenset({"httpx.AsyncClient", "httpx._client.AsyncClient"})
-_MODULES = frozenset({"httpx", "httpx._client"})
-_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-_MAX_ALIAS_DEPTH = 32
 _BAD = "import httpx\nclass Service:\n    def __init__(self):\n        self.client = httpx.AsyncClient()\n"
 _GOOD = "from contextlib import asynccontextmanager\nimport httpx\nclass Service:\n    def __init__(self, client: httpx.AsyncClient):\n        self.client = client\n@asynccontextmanager\nasync def service_scope(endpoint):\n    async with httpx.AsyncClient(base_url=endpoint) as client:\n        yield Service(client)\n"
 
@@ -81,7 +83,7 @@ class NoAsyncClientInConstructor(Rule):
             return []
         if context.generated or context.tree is None or context.has_wildcard_import or context.dynamic_namespace:
             return []
-        if not _imports_untouched(context):
+        if not imports_untouched(context, ASYNC_CLIENTS):
             return []
         constructors = frozenset(
             node
@@ -102,91 +104,17 @@ class NoAsyncClientInConstructor(Rule):
             )
             for call in context.nodes(ast.Call)
             if _in_constructor(context, call, constructors)
-            and _allocates(context, call, follow_factory=True, factories=factories)
+            and allocates(context, call, clients=ASYNC_CLIENTS, follow_factory=True, factories=factories)
             and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
 
-def _imports_untouched(context: PythonFileContext) -> bool:
-    safe: dict[ast.alias | ast.Name, bool] = {}
-    for binding in context.nodes(ast.alias):
-        expression = ast.Name(id=binding.asname or binding.name, ctx=ast.Load())
-        qualified = import_name_for_binding(expression, binding, context.parents.get(binding))
-        if (
-            qualified is not None
-            and qualified in _MODULES | _CLIENTS
-            and not _alias_untouched(context, binding, qualified, safe, remaining=_MAX_ALIAS_DEPTH)
-        ):
-            return False
-    return True
-
-
-def _alias_untouched(
-    context: PythonFileContext,
-    binding: ast.alias | ast.Name,
-    qualified: str,
-    safe: dict[ast.alias | ast.Name, bool],
-    *,
-    remaining: int,
-) -> bool:
-    if binding in safe:
-        return safe[binding]
-    safe[binding] = False
-    name = binding.id if isinstance(binding, ast.Name) else binding.asname or binding.name.partition(".")[0]
-    if remaining == 0 or name in context.binding_inventory.mutated:
-        return False
-    safe[binding] = all(
-        _reference_untouched(context, read, qualified, safe, remaining=remaining)
-        for read in context.nodes(ast.Name)
-        if isinstance(read.ctx, ast.Load) and read.id == name and _binding(context, name, read) is binding
-    )
-    return safe[binding]
-
-
-def _reference_untouched(
-    context: PythonFileContext,
-    expression: ast.expr,
-    qualified: str,
-    safe: dict[ast.alias | ast.Name, bool],
-    *,
-    remaining: int,
-) -> bool:
-    if not _runtime_expression(context, expression):
-        return True
-    while qualified in _MODULES:
-        parent = context.parents.get(expression)
-        if not isinstance(parent, ast.Attribute) or parent.value is not expression:
-            return False
-        expression, qualified = parent, f"{qualified}.{parent.attr}"
-    if qualified not in _CLIENTS:
-        return True
-    parent = context.parents.get(expression)
-    if (isinstance(parent, ast.Call) and parent.func is expression) or (
-        isinstance(parent, ast.Attribute) and parent.value is expression
-    ):
-        return True
-    target = _alias_target(context, parent, expression)
-    return target is not None and _alias_untouched(context, target, qualified, safe, remaining=remaining - 1)
-
-
-def _alias_target(context: PythonFileContext, statement: ast.AST | None, value: ast.expr) -> ast.Name | None:
-    if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and statement.value is value:
-        target = statement.targets[0]
-    elif isinstance(statement, ast.AnnAssign) and statement.value is value:
-        target = statement.target
-    else:
-        return None
-    if not isinstance(context.parents.get(statement), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
-        return None
-    return target if isinstance(target, ast.Name) and _binding(context, target.id, target) is target else None
-
-
 def _in_constructor(context: PythonFileContext, call: ast.Call, constructors: frozenset[ast.FunctionDef]) -> bool:
-    if not _runtime_expression(context, call):
+    if not runtime_expression(context, call):
         return False
     scope = context.binding_inventory.scope(call)
-    while isinstance(scope, (ast.ClassDef, *_COMPREHENSIONS)):
+    while isinstance(scope, (ast.ClassDef, *COMPREHENSIONS)):
         if isinstance(scope, ast.ClassDef) and (scope.bases or scope.keywords):
             return False
         if isinstance(scope, ast.GeneratorExp) and not context.resource_provenance.contains(
@@ -195,145 +123,3 @@ def _in_constructor(context: PythonFileContext, call: ast.Call, constructors: fr
             return False
         scope = context.binding_inventory.scope(scope)
     return scope in constructors
-
-
-def _runtime_expression(context: PythonFileContext, expression: ast.expr) -> bool:
-    child: ast.AST = expression
-    parent = context.parents.get(child)
-    while parent is not None:
-        if isinstance(parent, ast.TypeAlias | ast.type_param):
-            return False
-        if isinstance(parent, ast.AnnAssign | ast.arg) and parent.annotation is child:
-            return False
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and parent.returns is child:
-            return False
-        child, parent = parent, context.parents.get(parent)
-    return True
-
-
-def _allocates(
-    context: PythonFileContext,
-    call: ast.Call,
-    *,
-    follow_factory: bool,
-    factories: dict[ast.FunctionDef | ast.Lambda, bool],
-) -> bool:
-    target = _target(context, call.func)
-    if isinstance(target, str):
-        return target in _CLIENTS
-    if not follow_factory or not isinstance(target, ast.FunctionDef | ast.Lambda):
-        return False
-    if isinstance(target, ast.Lambda):
-        arguments = target.args
-        if any(
-            (
-                call.args,
-                call.keywords,
-                arguments.posonlyargs,
-                arguments.args,
-                arguments.kwonlyargs,
-                arguments.vararg,
-                arguments.kwarg,
-            )
-        ):
-            return False
-    if target not in factories:
-        factories[target] = _factory_allocates(context, target, factories)
-    return factories[target]
-
-
-def _factory_allocates(
-    context: PythonFileContext,
-    target: ast.FunctionDef | ast.Lambda,
-    factories: dict[ast.FunctionDef | ast.Lambda, bool],
-) -> bool:
-    if has_own_yield(target):
-        return False
-    if isinstance(target, ast.Lambda):
-        return isinstance(target.body, ast.Call) and _allocates(
-            context, target.body, follow_factory=False, factories=factories
-        )
-    if target.decorator_list:
-        return False
-    body = target.body
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        body = body[1:]
-    return (
-        len(body) == 1
-        and isinstance(body[0], ast.Return)
-        and isinstance(body[0].value, ast.Call)
-        and _allocates(context, body[0].value, follow_factory=False, factories=factories)
-    )
-
-
-def _target(context: PythonFileContext, expression: ast.expr) -> str | ast.FunctionDef | ast.Lambda | None:
-    for _ in range(_MAX_ALIAS_DEPTH):
-        if isinstance(expression, ast.Lambda):
-            return expression
-        root = expression
-        while isinstance(root, ast.Attribute):
-            root = root.value
-        if not isinstance(root, ast.Name) or root.id in context.binding_inventory.mutated:
-            return None
-        binding = _binding(context, root.id, expression)
-        if isinstance(binding, ast.alias):
-            return import_name_for_binding(expression, binding, context.parents.get(binding))
-        if not isinstance(expression, ast.Name):
-            return None
-        if isinstance(binding, ast.FunctionDef):
-            return _factory_binding(context, binding, expression)
-        if not isinstance(binding, ast.Name):
-            return None
-        value = context.resource_provenance.assignment_value(binding, expression)
-        if value is None:
-            return None
-        expression = value
-    return None
-
-
-def _factory_binding(context: PythonFileContext, definition: ast.FunctionDef, at: ast.expr) -> ast.FunctionDef | None:
-    parent = context.parents.get(definition)
-    if parent is context.tree:
-        return definition
-    if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and definition.lineno < at.lineno:
-        return definition
-    return None
-
-
-def _binding(context: PythonFileContext, name: str, at: ast.AST) -> ast.AST | None:
-    if (binding := context.resource_provenance.runtime_binding(name, at)) is not None:
-        return binding
-    scope = context.binding_inventory.scope(at)
-    lambda_body = False
-    while isinstance(scope, (*_COMPREHENSIONS, ast.Lambda)):
-        lambda_body |= isinstance(scope, ast.Lambda)
-        first_iterable = isinstance(scope, _COMPREHENSIONS) and context.resource_provenance.contains(
-            scope.generators[0].iter, at
-        )
-        if not first_iterable and name in context.binding_inventory.bindings.get(scope, {}):
-            return None
-        scope = context.binding_inventory.scope(scope)
-    bindings = context.runtime_bindings.lookup(scope, name)
-    if bindings is None and lambda_body:
-        return _lambda_module_binding(context, scope, name)
-    return bindings[0] if bindings is not None and len(bindings) == 1 else None
-
-
-def _lambda_module_binding(context: PythonFileContext, scope: ast.AST | None, name: str) -> ast.AST | None:
-    if name in context.binding_inventory.external_bindings:
-        return None
-    while scope is not context.tree:
-        if scope is None:
-            return None
-        if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef) and name in context.binding_inventory.bindings.get(
-            scope, {}
-        ):
-            return None
-        scope = context.binding_inventory.scope(scope)
-    bindings = context.runtime_bindings.lookup(scope, name)
-    return bindings[0] if bindings is not None and len(bindings) == 1 else None

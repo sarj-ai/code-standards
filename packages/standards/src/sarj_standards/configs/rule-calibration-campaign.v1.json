@@ -3231,6 +3231,14 @@
       "outcome": "SARJ126: Retain WARNING with conditional SAFE syntax repair for one comment-free CREATE INDEX whose index name and indexed table declare the same exact PostgreSQL schema. Remove only the index schema prefix, preserving physical lines, basename, table identity and the complete index signature. Other invalid DDL, ambiguous or different schemas, multiple statements and remaining index errors stay manual. The invalid preimage carries no runtime-equivalence claim. Broader field calibration and full campaign completion remain pending."
     },
     {
+      "task": "rule-audit/python/no-unscoped-async-client-factory",
+      "family": "python",
+      "ruleId": "no-unscoped-async-client-factory",
+      "state": "pending",
+      "evidence": "2026-11-15 authoring calibration on one immutable private application snapshot reports four production findings: three reviewed true positives and one known false positive whose caller closes the client through a returned field. The parents of three historical leak fixes each report the fixed factory, and each fix clears it. Test helpers are excluded. Focused positive and abstention controls are executable in the owning rule tests. Broader field calibration remains pending; private sources and identifying provenance remain local.",
+      "outcome": "SARJ577: Ship at WARNING without autofix. Review factories that hide a never-closed HTTPX client inside the returned object; inject a caller-owned client or give the returned object closure ownership. Caller-side closure through returned fields is not inferred, so complete broader calibration before considering severity promotion."
+    },
+    {
       "task": "rule-audit/python/no-async-client-in-constructor",
       "family": "python",
       "ruleId": "no-async-client-in-constructor",
