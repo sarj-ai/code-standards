@@ -11,6 +11,7 @@ function sampleContexts(id: string, files: string | undefined): { on: readonly s
   if (id.startsWith("vitest/")) return { on: [CONTEXTS["test-ts"]], off: [CONTEXTS["source-ts"], CONTEXTS["test-bun-ts"], CONTEXTS["test-playwright-ts"]] };
   if (files === "non-test") return { on: [CONTEXTS["source-ts"]], off: [CONTEXTS["test-ts"]] };
   if (files === "Next.js app sources only") return { on: [NEXT_APP_PAGE], off: [CONTEXTS["source-ts"]] };
+  if (files === "non-JSX") return { on: [CONTEXTS["source-ts"], CONTEXTS["test-ts"]], off: [CONTEXTS["source-tsx"], CONTEXTS["config-ts"]] };
   return { on: [CONTEXTS["source-ts"], CONTEXTS["source-tsx"]], off: [] };
 }
 

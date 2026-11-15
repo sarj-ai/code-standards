@@ -1065,6 +1065,7 @@ const RULES = {
   "radix": "error",
   "import/no-duplicates": "warn",
   "typescript/no-unnecessary-parameter-property-assignment": "error",
+  "typescript/promise-function-async": "warn",
   "react/capitalized-calls": "error",
   "react/hooks": "error",
   "react/memo-dependencies": "error",
@@ -1168,6 +1169,7 @@ const TYPE_AWARE_RULES = [
   "typescript/prefer-regexp-exec",
   "typescript/prefer-return-this-type",
   "typescript/prefer-string-starts-ends-with",
+  "typescript/promise-function-async",
   "typescript/related-getter-setter-pairs",
   "typescript/require-array-sort-compare",
   "typescript/require-await",
@@ -1232,9 +1234,17 @@ export function createConfig(options: ConfigOptions = {}): OxlintConfig {
         "prefer-spread": "off",
       },
     },
-    // This rule has no JSX exception and would undo the async-handler policy;
-    // no-misused-promises still checks non-JSX promise callback boundaries.
-    { files: JSX_FILES, rules: { "typescript/strict-void-return": "off" } },
+    {
+      files: JSX_FILES,
+      rules: {
+        // No JSX exception, and it would undo the async-handler policy;
+        // no-misused-promises still checks non-JSX promise callback boundaries.
+        "typescript/strict-void-return": "off",
+        // React 19's ReactNode includes Promise, so components and render
+        // callbacks that return an inferred ReactNode would be forced async.
+        "typescript/promise-function-async": "off",
+      },
+    },
     {
       files: TEST_FILES,
       rules: {
