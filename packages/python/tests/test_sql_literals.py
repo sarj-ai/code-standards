@@ -158,6 +158,7 @@ def _composed_source(expression: str) -> str:
         ("SQL('SELECT {}').format(SQL('a'))", "SELECT a"),
         ("SQL('SELECT {1}, {0}').format(SQL('a'), SQL('b'))", "SELECT b, a"),
         ("SQL('SELECT {field}').format(field=Identifier('a'))", 'SELECT "a"'),
+        ("SQL('SELECT {field:}').format(field=SQL('a'))", "SELECT a"),
         ("SQL('SELECT {}').format(Identifier('calls', 'id'))", 'SELECT "calls"."id"'),
         ("SQL('SELECT {}').format(Identifier('a\"b'))", 'SELECT "a""b"'),
         ("SQL('SELECT {{literal}}, {}').format(SQL('a'))", "SELECT {literal}, a"),

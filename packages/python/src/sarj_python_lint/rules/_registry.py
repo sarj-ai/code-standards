@@ -176,6 +176,7 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
+from sarj_python_lint.rules.psycopg_sql_format_field_mismatch import PsycopgSqlFormatFieldMismatch
 from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtureReturnsBareTuple
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
@@ -302,6 +303,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PsycopgSqlFormatFieldMismatch.id: PsycopgSqlFormatFieldMismatch,
         NoUnobservedTaskException.id: NoUnobservedTaskException,
         RequireHiddenSettingsInput.id: RequireHiddenSettingsInput,
         PreferSemanticTemporalTypes.id: PreferSemanticTemporalTypes,

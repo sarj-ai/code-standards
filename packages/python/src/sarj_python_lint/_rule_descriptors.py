@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("psycopg-sql-format-field-mismatch"),
+        module="sarj_python_lint.rules.psycopg_sql_format_field_mismatch",
+        class_name="PsycopgSqlFormatFieldMismatch",
+        code="SARJ576",
+        description="Give psycopg SQL.format an argument for every replacement field.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-unobserved-task-exception"),
         module="sarj_python_lint.rules.no_unobserved_task_exception",
         class_name="NoUnobservedTaskException",

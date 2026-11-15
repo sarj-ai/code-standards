@@ -75,6 +75,14 @@
       "outcome": "Ship SARJ575 at WARNING without autofix. Report settings classes whose merged configuration leaves secret text visible in validation errors, once per exposure, and abstain on opaque configuration or unresolved bases. Complete broader calibration before considering severity promotion."
     },
     {
+      "task": "rule-audit/python/psycopg-sql-format-field-mismatch",
+      "family": "python",
+      "ruleId": "psycopg-sql-format-field-mismatch",
+      "state": "pending",
+      "evidence": "Motivated by a production report query whose SQL.format template held an empty JSON object '{}' beside a named field, so psycopg 3.3.6 raised IndexError on every page; the reduced reproduction reports one finding and its escaped fix reports none. Ruff 0.17.2 F521-F525 report the same template as a plain str.format but stay silent on SQL.format. The shared template parser matched psycopg 3.3.6 on 600,000 generated templates for outcome, exception type and rendered text. Forty-two labeled cases (22 match, 20 no-match) plus location, suppression and generated-source checks cover numbering, keywords, modifiers, unmatched braces, aliases, concatenation, bindings, nesting, unpacking, ClickHouse parameters, shadowing and suppression. One private immutable application snapshot resolves 265 SQL.format templates with 0 findings, so 0 inspected false positives; 18 literal templates there stay unproven because shared import provenance abstains in comprehensions and in files using SQL as a type argument. Natural positives in that snapshot are limited to the historical fix, so field recall is not established. Private sources, paths and revisions remain local.",
+      "outcome": "Ship SARJ576 at WARNING without autofix, as the repository gate requires for new rules. Every reported call raises whenever it runs, and no inspected finding was a false positive. Write SQL-text braces as {{ and }}, or supply the missing argument. Promotion to ERROR is a separate change after a warning release; broader natural-positive calibration and the shared provenance blind spots remain pending."
+    },
+    {
       "task": "rule-audit/iac/no-terraform-guard-blocks",
       "family": "iac",
       "ruleId": "no-terraform-guard-blocks",

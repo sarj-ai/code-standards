@@ -5,17 +5,17 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 from io import StringIO
-from itertools import islice
 import re
 from string import Formatter
 import tokenize
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import psycopg_execution_calls
 
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Iterator
     from pathlib import Path
 
 
@@ -123,27 +123,118 @@ class _Rendered:
     kind: _Kind
 
 
+class SQLFormatFault(StrEnum):
+    UNBALANCED_BRACE = "unbalanced-brace"
+    MODIFIER = "modifier"
+    MIXED_NUMBERING = "mixed-numbering"
+    MISSING_POSITIONAL = "missing-positional"
+    MISSING_KEYWORD = "missing-keyword"
+
+
+@dataclass(frozen=True, slots=True)
+class SQLFormatMismatch:
+    fault: SQLFormatFault
+    field: str
+
+
+@dataclass(frozen=True, slots=True)
+class _FormatText:
+    kind: ClassVar[Literal["text"]] = "text"
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PositionalField:
+    kind: ClassVar[Literal["positional"]] = "positional"
+    index: int
+
+
+@dataclass(frozen=True, slots=True)
+class _KeywordField:
+    kind: ClassVar[Literal["keyword"]] = "keyword"
+    name: str
+
+
+type _FormatField = _PositionalField | _KeywordField
+type _FormatPart = _FormatText | _FormatField
+
+
 class _FormatBindings:
-    def __init__(self, arguments: tuple[_Rendered | None, ...], keywords: dict[str | None, _Rendered | None]) -> None:
-        self.arguments = arguments
+    def __init__(self, positional: int, keywords: Collection[str]) -> None:
+        self.positional = positional
         self.keywords = keywords
         self.automatic = 0
         self.numbering: str | None = None
 
-    def resolve(self, key: str) -> _Rendered | None:
+    def field(self, name: str, spec: str | None, conversion: str | None) -> _FormatField | SQLFormatMismatch:
+        match SQLFormatFault.MODIFIER if spec or conversion else self._resolve(name):
+            case SQLFormatFault() as fault:
+                return SQLFormatMismatch(fault, _field_source(name, spec, conversion))
+            case field:
+                return field
+
+    def _resolve(self, key: str) -> _FormatField | SQLFormatFault:
         if key and not key.isdecimal():
-            return self.keywords.get(key) if key.isidentifier() else None
+            return _KeywordField(key) if key in self.keywords else SQLFormatFault.MISSING_KEYWORD
         mode = "automatic" if not key else "manual"
         if self.numbering is not None and self.numbering != mode:
-            return None
+            return SQLFormatFault.MIXED_NUMBERING
         self.numbering = mode
-        try:
-            index = self.automatic if not key else int(key)
-        except ValueError:
-            return None
+        index = self.automatic if not key else int(key)
         if not key:
             self.automatic += 1
-        return self.arguments[index] if index < len(self.arguments) else None
+        return _PositionalField(index) if index < self.positional else SQLFormatFault.MISSING_POSITIONAL
+
+
+def _format_parts(
+    template: str, positional: int, keywords: Collection[str]
+) -> tuple[_FormatPart, ...] | SQLFormatMismatch:
+    bindings = _FormatBindings(positional, keywords)
+    fields: list[_FormatField] = []
+    try:
+        for _, name, spec, conversion in Formatter().parse(template):
+            if name is not None:
+                match bindings.field(name, spec, conversion):
+                    case SQLFormatMismatch() as mismatch:
+                        return mismatch
+                    case field:
+                        fields.append(field)
+    except ValueError:
+        return SQLFormatMismatch(SQLFormatFault.UNBALANCED_BRACE, "")
+    remaining_fields = iter(fields)
+    parts: list[_FormatPart] = []
+    cursor = 0
+    for match in _FORMAT_PART.finditer(template):
+        if match[0] in {"{{", "}}"}:
+            parts.append(_FormatText(cursor, match.start() + 1))
+        else:
+            parts.extend((_FormatText(cursor, match.start()), next(remaining_fields)))
+        cursor = match.end()
+    parts.append(_FormatText(cursor, len(template)))
+    return tuple(parts)
+
+
+def _field_source(name: str, spec: str | None, conversion: str | None) -> str:
+    conversion_suffix = f"!{conversion}" if conversion else ""
+    spec_suffix = f":{spec}" if spec else ""
+    return f"{{{name}{conversion_suffix}{spec_suffix}}}"
+
+
+def sql_format_mismatches(context: PythonFileContext) -> Iterator[tuple[ast.Call, SQLFormatMismatch]]:
+    renderer = _Renderer(context)
+    for call in context.nodes(ast.Call):
+        if not isinstance(call.func, ast.Attribute) or call.func.attr != "format":
+            continue
+        keywords = frozenset(keyword.arg for keyword in call.keywords if keyword.arg is not None)
+        if len(keywords) != len(call.keywords) or any(isinstance(argument, ast.Starred) for argument in call.args):
+            continue
+        template = renderer.sql_template(call.func.value)
+        if template is None:
+            continue
+        parts = _format_parts(template, len(call.args), keywords)
+        if isinstance(parts, SQLFormatMismatch):
+            yield call, parts
 
 
 class _Renderer:
@@ -193,6 +284,18 @@ class _Renderer:
                 return self._addition(expression, seen)
             case ast.Call():
                 return self._call(expression, seen)
+            case _:
+                return None
+
+    def sql_template(self, expression: ast.expr) -> str | None:
+        rendered = self.render(expression)
+        if rendered is not None:
+            return rendered.literal.text if rendered.kind == _Kind.SQL else None
+        match expression:
+            case ast.Call(args=[ast.Constant(value=str() as text)], keywords=[]) if (
+                self.provenance.runtime_import_name(expression.func) == "psycopg.sql.SQL"
+            ):
+                return text
             case _:
                 return None
 
@@ -321,36 +424,36 @@ class _Renderer:
         return _Rendered(literal, _Kind.IDENTIFIER) if literal is not None else None
 
     def _format(self, template: SQLLiteral, call: ast.Call, seen: frozenset[int]) -> _Rendered | None:
-        try:
-            fields = tuple(islice(Formatter().parse(template.text), _MAX_RENDER_NODES + 1))
-        except ValueError:
+        arguments: list[SQLLiteral] = []
+        for value in call.args:
+            rendered = self._composable(value, seen)
+            if rendered is None:
+                return None
+            arguments.append(rendered)
+        keywords: dict[str, SQLLiteral] = {}
+        for keyword in call.keywords:
+            rendered = self._composable(keyword.value, seen)
+            if keyword.arg is None or rendered is None:
+                return None
+            keywords[keyword.arg] = rendered
+        parts = _format_parts(template.text, len(arguments), keywords.keys())
+        if isinstance(parts, SQLFormatMismatch) or len(parts) > _MAX_RENDER_NODES:
             return None
-        if len(fields) > _MAX_RENDER_NODES:
-            return None
-        if any(spec or conversion for _, _, spec, conversion in fields):
-            return None
-        arguments = tuple(self.render(value, seen) for value in call.args)
-        keywords = {item.arg: self.render(item.value, seen) for item in call.keywords}
-        if None in keywords or any(
-            value is None or value.kind == _Kind.TEXT for value in (*arguments, *keywords.values())
-        ):
-            return None
-        bindings = _FormatBindings(arguments, keywords)
         pieces: list[SQLLiteral] = []
-        cursor = 0
-        for match in _FORMAT_PART.finditer(template.text):
-            pieces.append(_slice(template, cursor, match.start()))
-            if match[0] in {"{{", "}}"}:
-                pieces.append(_slice(template, match.start(), match.start() + 1))
-            else:
-                value = bindings.resolve(match[1])
-                if value is None:
-                    return None
-                pieces.append(value.literal)
-            cursor = match.end()
-        pieces.append(_slice(template, cursor, len(template.text)))
+        for part in parts:
+            match part:
+                case _FormatText(start, end):
+                    pieces.append(_slice(template, start, end))
+                case _PositionalField(index):
+                    pieces.append(arguments[index])
+                case _KeywordField(name):
+                    pieces.append(keywords[name])
         literal = _combine(tuple(pieces))
         return _Rendered(literal, _Kind.COMPOSED) if literal is not None else None
+
+    def _composable(self, expression: ast.expr, seen: frozenset[int]) -> SQLLiteral | None:
+        rendered = self.render(expression, seen)
+        return rendered.literal if rendered is not None and rendered.kind != _Kind.TEXT else None
 
     def _join(self, separator: SQLLiteral, expression: ast.expr, seen: frozenset[int]) -> _Rendered | None:
         if len(seen) >= _MAX_BINDING_DEPTH:
