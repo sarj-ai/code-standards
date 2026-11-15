@@ -1,0 +1,63 @@
+{
+  "rule": "typescript/strict-boolean-expressions",
+  "decision": "Ship at warning with mixed-type unions and nullable enums reported; nullable strings, numbers and booleans, plain strings and numbers, nullable objects and any stay allowed. No autofix.",
+  "priorReview": [
+    "opinionated-design-100-passes-20261019.json pass 18: the rule does not prevent boolean selector parameters, so @sarj/no-boolean-selector-parameter keeps that invariant.",
+    "type-guard-design-50-passes.json G10: filter(Boolean) stays with prefer-nullish-filter-predicate. Neither review measured or rejected the rule itself."
+  ],
+  "tools": {"node": "24.22.1", "oxlint": "1.91.0", "tsrs": "0.23.0-ts7.1.0-beta"},
+  "corpora": [
+    {"visibility": "private", "files": 1805, "workspacePackages": 5},
+    {"repository": "sarj-ai/code-standards", "revision": "87eb9d4c", "files": 750, "excluded": "generated plugin bundles and the bundled action parser"}
+  ],
+  "optionSets": [
+    {
+      "id": "upstream-defaults",
+      "options": {},
+      "privateFindings": 723,
+      "privateFiles": 294,
+      "selfFindings": 253,
+      "sample": {"size": 40, "realBugs": 0, "intentHidingCorrect": 32, "noise": 8},
+      "dominantKinds": "563 nullable strings and 83 nullable booleans where an empty string or undefined is meant to read as absent"
+    },
+    {
+      "id": "string-and-number-disallowed",
+      "options": {"allowString": false, "allowNumber": false, "allowNullableObject": true},
+      "privateFindings": 1014,
+      "privateFiles": 364,
+      "selfFindings": 287,
+      "sample": {"size": 40, "realBugs": 1, "intentHidingCorrect": 35, "noise": 4},
+      "dominantKinds": "the upstream-default findings plus 199 string and 12 number checks; the number checks are mostly length and size tests"
+    },
+    {
+      "id": "shipped",
+      "options": {"allowAny": true, "allowNullableBoolean": true, "allowNullableNumber": true, "allowNullableString": true},
+      "privateFindings": 44,
+      "privateFiles": 30,
+      "selfFindings": 19,
+      "inspected": "all",
+      "classification": {"realBugs": 4, "intentHidingCorrect": 16, "noise": 24},
+      "realBugKinds": [
+        "primitive-or-array fixed value coerced with || \"\", turning 0 and false into an empty request value",
+        "the same fallback in the fixed-value editor, rendering 0 as an empty input",
+        "boolean|number|string test value read with || \"\", so a chosen false shows as unselected",
+        "number|string chart value tested by truthiness, hiding a 0 data point in the tooltip"
+      ],
+      "noiseKinds": "ReactNode and string-or-element props tested for presence; server.address() narrowing; literal-value truthiness in rule code that emulates JavaScript semantics"
+    }
+  ],
+  "missedByShippedOptions": "One number-truthiness bug (a validator rejecting 0 that the schema allows) needs allowNumber: false, which adds 12 private findings of which 11 are length or size checks.",
+  "existingOwners": {
+    "@sarj/no-logical-or-fallback": "excludes unions with array or boolean members, so it misses three of the four fallbacks",
+    "typescript/prefer-nullish-coalescing": "reports the nullable test-value fallback; the consumer baseline already absorbs that finding",
+    "react-js/jsx-no-leaked-render": "accepts ternaries, so it misses the chart tooltip",
+    "typescript/no-unnecessary-condition": "reports constant truthiness only; it overlaps the three always-truthy object findings"
+  },
+  "performance": {
+    "method": "Five interleaved runs on the private corpus, no-unnecessary-condition alone versus with this rule, shared machine",
+    "medianSeconds": {"without": 1.26, "with": 1.48},
+    "medianPeakRssBytes": {"without": 1206042624, "with": 1260126208}
+  },
+  "rollout": "Consumer baselines absorb existing findings. Consumers that raise managed warnings to errors block new mixed-union conditions immediately.",
+  "promotion": "Error needs a separate change after a warning release; 24 of 44 inspected private findings are noise."
+}

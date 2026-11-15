@@ -278,6 +278,7 @@
   "typescript/restrict-plus-operands": "Require both operands of addition to be the same type and be `bigint`, `number`, or `string`",
   "typescript/restrict-template-expressions": "Enforce template literal expressions to be of `string` type",
   "typescript/return-await": "Enforce consistent awaiting of returned promises",
+  "typescript/strict-boolean-expressions": "Disallow certain types in boolean expressions",
   "typescript/strict-void-return": "Disallow passing a value-returning function in a position accepting a void function",
   "typescript/switch-exhaustiveness-check": "Require switch-case statements to be exhaustive",
   "typescript/triple-slash-reference": "Disallow certain triple slash directives in favor of ES6-style import declarations",

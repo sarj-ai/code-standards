@@ -524,6 +524,19 @@ const RULES = {
     }
   ],
   "typescript/return-await": ["error", "error-handling-correctness-only"],
+  "typescript/strict-boolean-expressions": [
+    "warn",
+    {
+      "allowAny": true,
+      "allowNullableBoolean": true,
+      "allowNullableEnum": false,
+      "allowNullableNumber": true,
+      "allowNullableObject": true,
+      "allowNullableString": true,
+      "allowNumber": true,
+      "allowString": true
+    }
+  ],
   "typescript/strict-void-return": "warn",
   "typescript/switch-exhaustiveness-check": "error",
   "typescript/triple-slash-reference": "error",
@@ -1158,6 +1171,7 @@ const TYPE_AWARE_RULES = [
   "typescript/restrict-plus-operands",
   "typescript/restrict-template-expressions",
   "typescript/return-await",
+  "typescript/strict-boolean-expressions",
   "typescript/strict-void-return",
   "typescript/switch-exhaustiveness-check",
   "typescript/unbound-method",
