@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from collections import Counter
 from functools import lru_cache
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from sarj_iac_lint._hcl import Block, blocks, comma_parts, literal_string, strip_outer_parentheses, tokens
+from sarj_iac_lint._hcl import (
+    Block,
+    balanced_structure,
+    blocks,
+    comma_parts,
+    literal_string,
+    strip_outer_parentheses,
+    tokens,
+)
 
 
 if TYPE_CHECKING:
@@ -14,19 +23,22 @@ _JOIN_ARGUMENT_COUNT = 2
 _MAX_LOCAL_ALIAS_DEPTH = 16
 _MAX_STATIC_EXPRESSION_DEPTH = 32
 
+DEPLOYMENT_SCOPE_ATTRIBUTES = MappingProxyType(
+    {
+        "google": frozenset({"project", "project_id", "region", "zone", "location", "org_id", "folder_id"}),
+        "aws": frozenset({"region", "availability_zone"}),
+        "azurerm": frozenset({"subscription_id", "tenant_id", "location", "resource_group_name"}),
+        "azuread": frozenset({"tenant_id"}),
+        "azapi": frozenset({"subscription_id", "tenant_id", "location"}),
+        "cloudflare": frozenset({"account_id", "zone_id"}),
+    }
+)
+
 
 @lru_cache(maxsize=32)
 def balanced_blocks(source: str) -> tuple[Block, ...]:
-    stack: list[str] = []
-    closers = {"}": "{", "]": "[", ")": "("}
-    for token in tokens(source):
-        if token in {"{", "[", "("}:
-            stack.append(token)
-        elif token in closers and (not stack or stack.pop() != closers[token]):
-            message = "unbalanced HCL delimiters"
-            raise ValueError(message)
-    if stack:
-        message = "unclosed HCL delimiters"
+    if not balanced_structure(source):
+        message = "unbalanced HCL delimiters"
         raise ValueError(message)
     return blocks(source)
 

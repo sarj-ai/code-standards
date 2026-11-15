@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import literal_string, tokens
@@ -16,7 +15,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks
+from sarj_iac_lint.rules._literal_policy import DEPLOYMENT_SCOPE_ATTRIBUTES, balanced_blocks
 from sarj_iac_lint.rules.no_restated_comment import has_generated_header
 
 
@@ -26,16 +25,6 @@ if TYPE_CHECKING:
     from sarj_iac_lint._hcl import Attribute
 
 
-_SCOPE_ATTRIBUTES = MappingProxyType(
-    {
-        "google": frozenset({"project", "project_id", "region", "zone", "location", "org_id", "folder_id"}),
-        "aws": frozenset({"region", "availability_zone"}),
-        "azurerm": frozenset({"subscription_id", "tenant_id", "location", "resource_group_name"}),
-        "azuread": frozenset({"tenant_id"}),
-        "azapi": frozenset({"subscription_id", "tenant_id", "location"}),
-        "cloudflare": frozenset({"account_id", "zone_id"}),
-    }
-)
 _DATA_DIRECTORIES = frozenset({"fixture", "fixtures", "testdata", "generated"})
 _LABEL_COUNT = 2
 _REPEATED_USE_COUNT = 2
@@ -162,7 +151,7 @@ class NoDuplicateDeploymentLiteral(Rule):
 
 
 def _deployment_value(provider: str, attribute: Attribute) -> str | None:
-    if attribute.name not in _SCOPE_ATTRIBUTES.get(provider, frozenset()):
+    if attribute.name not in DEPLOYMENT_SCOPE_ATTRIBUTES.get(provider, frozenset()):
         return None
     value = literal_string(attribute.value)
     if provider == "google" and attribute.name == "location" and value == "global":

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0ecb99ad3265c54093af50105987dcfb0163adf94ccce5d703c5c6ea02bf134c",
-  "cliSha256": "9ca3bfa18a254519f7719529a33393457df3448d28cfc297233db18ddd95ebb3",
+  "catalogSha256": "10c58b9a238c6e6cf5f4b7b1e382ed26bae52177cad955737421361d4796090d",
+  "cliSha256": "6009bad660fb19f47d78dd437f8f8313f48ecbb9944ebade51ff829feada9874",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -753,11 +753,11 @@
     "iac:no-hardcoded-deployment-location": {
       "examples": [
         {
-          "expectedCount": 1,
+          "expectedCount": 2,
           "files": [
             {
               "path": "main.tf",
-              "source": "resource \"google_storage_bucket\" \"this\" {\n  location = \"us-central1\"\n}\n"
+              "source": "resource \"google_storage_bucket\" \"this\" {\n  project  = \"example-project\"\n  location = \"us-central1\"\n}\n"
             }
           ],
           "fixedFiles": [],

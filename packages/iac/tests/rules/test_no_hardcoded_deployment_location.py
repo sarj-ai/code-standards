@@ -94,6 +94,93 @@ def test_checks_recognized_cloud_placement_arguments(header: str, attribute: str
 
 
 @pytest.mark.parametrize(
+    ("header", "attribute", "value"),
+    [
+        ('provider "google"', "project", '"example-project"'),
+        ('provider "google-beta"', "project", '"example-project"'),
+        ('provider "google"', "project", "123456789012"),
+        ('resource "google_storage_bucket" "this"', "project", '"example-project"'),
+        ('resource "azurerm_resource_group" "this"', "subscription_id", '"example-subscription"'),
+        ('resource "cloudflare_r2_bucket" "this"', "account_id", '"example-account"'),
+        ('resource "google_compute_subnetwork" "this"', "name", '"example-deployment-subnet"'),
+        ('resource "google_compute_subnetwork" "this"', "ip_cidr_range", '"10.42.0.0/24"'),
+        ('resource "google_compute_address" "this"', "address", '"10.42.0.2"'),
+        ('resource "google_dns_managed_zone" "this"', "dns_name", '"models.example.invalid."'),
+        ('resource "google_dns_record_set" "this"', "rrdatas", '["10.42.0.2"]'),
+        (
+            'resource "google_compute_forwarding_rule" "this"',
+            "target",
+            '"projects/example-project/regions/us-central1/serviceAttachments/models"',
+        ),
+        (
+            'resource "google_compute_forwarding_rule" "this"',
+            "target",
+            '"projects/example-project/regions/${var.region}/serviceAttachments/${var.name}"',
+        ),
+        (
+            'resource "google_compute_forwarding_rule" "this"',
+            "target",
+            'format("projects/example-project/regions/%s/serviceAttachments/%s", var.region, var.name)',
+        ),
+        ('resource "aws_subnet" "this"', "cidr_block", '"10.42.0.0/24"'),
+    ],
+)
+def test_deployment_identity_and_network_values_require_inputs(header: str, attribute: str, value: str) -> None:
+    rule = NoHardcodedDeploymentLocation()
+    literal = f"{header} {{\n  {attribute} = {value}\n}}\n"
+    configured = f"{header} {{\n  {attribute} = var.selected\n}}\n"
+
+    findings = rule.check(Path("main.tf"), literal)
+
+    assert len(findings) == 1
+    assert findings[0].severity is DefaultLevel.ERROR
+    assert rule.check(Path("main.tf"), configured) == []
+
+
+def test_identity_alias_does_not_hide_fixed_project() -> None:
+    source = (
+        'locals { project = join("", ["example-", "project"]) }\n'
+        'resource "google_storage_bucket" "this" { project = local.project }\n'
+    )
+
+    assert len(NoHardcodedDeploymentLocation().check(Path("main.tf"), source)) == 1
+
+
+def test_nested_network_and_certificate_inputs() -> None:
+    source = (
+        'resource "google_compute_subnetwork" "this" {\n'
+        ' secondary_ip_range { range_name = var.range_name\n ip_cidr_range = "10.43.0.0/24" }\n}\n'
+        'resource "google_certificate_manager_certificate" "this" {\n'
+        ' managed { domains = ["models.example.invalid"] }\n}\n'
+    )
+
+    assert len(NoHardcodedDeploymentLocation().check(Path("main.tf"), source)) == 2
+
+
+def test_tfvars_and_typed_defaults_remain_configuration_boundaries() -> None:
+    values = 'project_id = "example-project"\nnetwork_cidr = "10.42.0.0/24"\ndomain = "example.invalid"\n'
+    source = (
+        'variable "project_id" { type = string\n default = "example-project" }\n'
+        'resource "google_storage_bucket" "this" { project = var.project_id }\n'
+    )
+
+    assert NoHardcodedDeploymentLocation().check(Path("production.tfvars"), values) == []
+    assert NoHardcodedDeploymentLocation().check(Path("main.tf"), source) == []
+
+
+def test_input_derived_network_reference_and_protocol_constants_are_preserved() -> None:
+    source = (
+        'resource "google_compute_forwarding_rule" "this" {\n'
+        ' name = "${var.deployment_slug}-models"\n'
+        ' target = "projects/${var.project}/regions/${var.region}/serviceAttachments/${var.name}"\n'
+        ' ip_protocol = "TCP"\n load_balancing_scheme = ""\n}\n'
+        'resource "google_dns_record_set" "this" { type = "A"\n ttl = 30 }\n'
+    )
+
+    assert NoHardcodedDeploymentLocation().check(Path("main.tf"), source) == []
+
+
+@pytest.mark.parametrize(
     "source",
     [
         'resource "google_secret_manager_secret" "this" {\n replication { user_managed { replicas { location = "us-central1" } } }\n}\n',
@@ -226,7 +313,7 @@ def test_placement_error_owns_overlapping_literal_guidance(tmp_path: Path) -> No
     assert [finding.code for finding in analyze(["no-hardcoded-deployment-location"], [path])] == ["SARJ219", "SARJ219"]
 
 
-def test_placement_error_preserves_unrelated_scope_guidance(tmp_path: Path) -> None:
+def test_identity_error_owns_overlapping_scope_guidance(tmp_path: Path) -> None:
     path = tmp_path / "main.tf"
     path.write_text(
         'resource "google_storage_bucket" "a" {\n project = "example-project"\n location = "us-central1"\n}\n'
@@ -235,8 +322,8 @@ def test_placement_error_preserves_unrelated_scope_guidance(tmp_path: Path) -> N
 
     findings = analyze(["no-hardcoded-deployment-location", "no-duplicate-deployment-literal"], [path])
 
-    assert sorted(finding.code for finding in findings) == ["SARJ218", "SARJ219", "SARJ219"]
-    assert next(finding for finding in findings if finding.code == "SARJ218").message.startswith("project repeats")
+    assert [finding.code for finding in findings] == ["SARJ219"] * 4
+    assert [finding.code for finding in analyze(["no-duplicate-deployment-literal"], [path])] == ["SARJ218"] * 2
 
 
 def test_physical_crlf_location_and_unicode_are_preserved() -> None:
