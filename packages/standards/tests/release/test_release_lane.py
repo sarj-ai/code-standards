@@ -1380,7 +1380,7 @@ def guard_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.Mon
     )
     for relative in lane.VERSION_PROJECTIONS:
         path = tmp_path / relative
-        path.write_text(path.read_text().replace("9.29.1", "9.29.2"))
+        path.write_text(path.read_text().replace("9.29.1", "9.29.8"))
     (tmp_path / adapter).write_text("RETIRED_GUARDS = True\n")
     (tmp_path / tests).write_text("RETIREMENT_TESTED = True\n")
     (tmp_path / lane.DOC_EXAMPLES).write_text(
@@ -1410,7 +1410,8 @@ def test_guard_maintenance_accepts_only_the_scoped_patch(lane: PublisherLane, gu
     ("path", "before", "after", "failure"),
     [
         pytest.param("packages/standards/pyproject.toml", "6.22.2", "8.0.0", "runtime and engine", id="runtime-sdk"),
-        pytest.param("packages/standards/pyproject.toml", "9.29.2", "9.29.3", "exact 9.29.2", id="future-patch"),
+        pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.2", "exact 9.29.8", id="occupied-patch"),
+        pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.9", "exact 9.29.8", id="future-patch"),
         pytest.param("packages/python/src/unreviewed.py", "", "CHANGED = True\n", "unapproved path", id="engine"),
         pytest.param(
             "apps/docs/src/generated/formatted-code.v1.json", "retained", "changed", "legacy catalog", id="catalog"

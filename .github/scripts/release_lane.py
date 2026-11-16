@@ -261,8 +261,8 @@ def _validate_standards_8208(root: Path, commit: str) -> None:
 
 def _validate_standards_929(root: Path, commit: str) -> None:
     changed = _changed_since_anchor(root, STANDARDS_929_ANCHOR, commit)
-    if _project_version(root, commit) != "9.29.2":
-        msg = "9.29 guard backport publication requires exact 9.29.2"
+    if _project_version(root, commit) != "9.29.8":
+        msg = "9.29 guard backport publication requires exact 9.29.8"
         raise ReleaseLaneError(msg)
     unexpected = (
         changed
@@ -282,7 +282,7 @@ def _validate_standards_929(root: Path, commit: str) -> None:
         msg = "9.29 guard backport requires both adapter and tests"
         raise ReleaseLaneError(msg)
     for path in VERSION_PROJECTIONS:
-        expected = _at(root, STANDARDS_929_ANCHOR, path).replace(b"9.29.1", b"9.29.2")
+        expected = _at(root, STANDARDS_929_ANCHOR, path).replace(b"9.29.1", b"9.29.8")
         if _at(root, commit, path) != expected:
             msg = f"9.29 guard backport must retain the runtime and engine version projection in {path}"
             raise ReleaseLaneError(msg)
