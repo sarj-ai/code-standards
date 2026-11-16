@@ -2,7 +2,7 @@ name: release-ready
 
 on:
   push:
-    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208, maintenance/standards-9.29]
   pull_request:
 
 permissions:
