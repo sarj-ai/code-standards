@@ -29,7 +29,6 @@ _COPY_SIGNALS = (
     (RuleId("no-null-comparison"), "SELECT value = NULL;"),
     (RuleId("invalid-concurrent-ddl"), "DROP INDEX CONCURRENTLY item_a, item_b;"),
     (RuleId("invalid-postgres-ddl"), "CREATE UNIQUE INDEX item_key ON item USING hash (id);"),
-    (RuleId("migration-timeout-requires-justification"), "RESET lock_timeout;"),
 )
 
 
@@ -130,7 +129,7 @@ HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 MIGRATION_RULES = tuple(
     rule_cls
     for rule_cls in REGISTRY.values()
-    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130", "SARJ131"}
+    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130"}
 )
 DUMP_EXEMPT = MIGRATION_RULES
 
