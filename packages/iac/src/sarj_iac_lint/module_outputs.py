@@ -26,6 +26,7 @@ class _Output:
     declaration: UnusedModuleOutput
     value: str
     dependencies: tuple[str, ...]
+    has_preconditions: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +178,20 @@ def _add_output(module: _Module, block: _hcl.Block, *, path: str) -> None:
         attribute.value for attribute in block.attributes if attribute.name not in {*_NON_VALUES, "value"}
     )
     dependencies += tuple(expression for child in block.blocks for expression in _sinks(child))
-    module.outputs[name] = _Output(UnusedModuleOutput(path, name, block.line), value.value, dependencies)
+    module.outputs[name] = _Output(
+        UnusedModuleOutput(path, name, block.line),
+        value.value,
+        dependencies,
+        _has_output_preconditions(block),
+    )
+
+
+def _has_output_preconditions(block: _hcl.Block) -> bool:
+    if block.child("precondition") is not None:
+        return True
+    attribute = block.attribute("precondition")
+    # JSON nested blocks were canonically encoded by _json_blocks.
+    return attribute is not None and attribute.value not in {"null", "[]"}
 
 
 def _add_call(module: _Module, block: _hcl.Block, *, path: str, directory: str) -> None:
@@ -386,8 +400,8 @@ class _Flow:
             module = self.modules[instance.module]
             for expression in module.sinks:
                 self._expression(expression, instance)
-            for name in module.outputs:
-                if instance.module in roots or (instance.module, name) in self.external:
+            for name, output in module.outputs.items():
+                if instance.module in roots or (instance.module, name) in self.external or output.has_preconditions:
                     self._output(instance, name, ())
         return tuple(
             output.declaration

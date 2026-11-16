@@ -19,6 +19,71 @@ output "other" {
 """
 
 
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "main.tf",
+            """variable "accepted" {}
+output "validation" {
+  value = "not-read-by-parent"
+  precondition {
+    condition = var.accepted
+    error_message = "The module safety condition must hold."
+  }
+}
+""",
+        ),
+        (
+            "main.tf.json",
+            json.dumps(
+                {
+                    "variable": {"accepted": {}},
+                    "output": {
+                        "validation": {
+                            "value": "not-read-by-parent",
+                            "precondition": [
+                                {
+                                    "condition": "${var.accepted}",
+                                    "error_message": "The module safety condition must hold.",
+                                }
+                            ],
+                        }
+                    },
+                }
+            ),
+        ),
+    ],
+)
+def test_output_preconditions_are_real_consumers(filename: str, source: str) -> None:
+    sources = {
+        "root/main.tf": """module "producer" { source = "./producer" }
+module "guard" {
+  source = "./guard"
+  accepted = module.producer.used
+}
+""",
+        "root/producer/main.tf": """output "used" { value = true }
+output "unused" { value = false }
+""",
+        f"root/guard/{filename}": source,
+    }
+    assert _names(sources) == {("root/producer/main.tf", "unused")}
+
+
+@pytest.mark.parametrize("preconditions", [None, ()])
+def test_empty_json_preconditions_do_not_preserve_unused_outputs(
+    preconditions: tuple[()] | None,
+) -> None:
+    sources = {
+        "root/main.tf": 'module "child" { source = "./child" }',
+        "root/child/main.tf.json": json.dumps(
+            {"output": {"unused": {"value": "unused", "precondition": preconditions}}}
+        ),
+    }
+    assert _names(sources) == {("root/child/main.tf.json", "unused")}
+
+
 def _sources(expression: str, *, prelude: str = "") -> dict[str, str]:
     return {
         "root/main.tf": f"""module "child" {{
