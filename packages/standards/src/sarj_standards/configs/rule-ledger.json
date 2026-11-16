@@ -264,7 +264,6 @@
       "insert-requires-replay-policy",
       "invalid-concurrent-ddl",
       "invalid-postgres-ddl",
-      "migration-timeout-requires-justification",
       "mixed-migration-phases",
       "new-table-inline-constraints",
       "no-analytical-queries-in-transactional-db",
@@ -758,8 +757,7 @@
       "SARJ127",
       "SARJ128",
       "SARJ129",
-      "SARJ130",
-      "SARJ131"
+      "SARJ130"
     ],
     "iac": [
       "SARJ201",
@@ -1152,6 +1150,13 @@
       "note": "Removed the per-migration timeout requirement; configure execution timeouts at the migration runner or database session boundary when needed."
     },
     {
+      "id": "SARJ131",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed the requirement for inline timeout-justification comments. Existing SQL timeout settings and compatible legacy directives are preserved."
+    },
+    {
       "id": "SARJ208",
       "kind": "code",
       "status": "renamed",
@@ -1360,6 +1365,13 @@
       "status": "renamed",
       "replacement": "require-keyword-only-swap-prone-params",
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
+    },
+    {
+      "id": "migration-timeout-requires-justification",
+      "kind": "sql",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed the requirement for inline timeout-justification comments. Existing SQL timeout settings and compatible legacy directives are preserved."
     },
     {
       "id": "module-docstring-restates-path",

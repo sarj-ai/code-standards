@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_sql_lint.__main__ import analyze, main
+from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rules import REGISTRY
 
 
@@ -56,3 +57,30 @@ def test_timeout_requirement_is_retired_and_timeout_free_migration_passes(tmp_pa
     )
     assert "require-lock-timeout" not in REGISTRY
     assert analyze(list(REGISTRY), [path]) == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "SET LOCAL lock_timeout = '5s';",
+        "SET statement_timeout = '60s';",
+        "RESET lock_timeout;",
+        "RESET statement_timeout;",
+    ],
+)
+def test_timeout_settings_need_no_comment_and_are_preserved(tmp_path: Path, statement: str) -> None:
+    path = tmp_path / "migrations/001_timeout.sql"
+    path.parent.mkdir()
+    path.write_text(statement + "\n")
+    assert "migration-timeout-requires-justification" not in REGISTRY
+    assert analyze(list(REGISTRY), [path]) == []
+    assert fix_source(path, path.read_text(), rule_ids=list(REGISTRY)) == path.read_text()
+
+
+def test_existing_timeout_directives_remain_compatible(tmp_path: Path) -> None:
+    path = tmp_path / "migrations/001_timeout.sql"
+    path.parent.mkdir()
+    source = "-- timeout-justification: lock_timeout -- bounded operation\nSET LOCAL lock_timeout = '5s';\n"
+    path.write_text(source)
+    assert analyze(list(REGISTRY), [path]) == []
+    assert fix_source(path, source, rule_ids=list(REGISTRY)) == source
