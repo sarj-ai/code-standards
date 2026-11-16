@@ -344,7 +344,13 @@ def test_cli_records_only_the_validated_lane(candidate: Candidate, lane: Publish
 
 
 @pytest.mark.parametrize(
-    "branch", ["maintenance/standards-8.101", "maintenance/standards-8.129", "maintenance/standards-8.208"]
+    "branch",
+    [
+        "maintenance/standards-8.101",
+        "maintenance/standards-8.129",
+        "maintenance/standards-8.208",
+        "maintenance/standards-9.29",
+    ],
 )
 @pytest.mark.parametrize(
     "scenario",
@@ -1345,5 +1351,104 @@ def test_advice_maintenance_cannot_publish_sibling_packages(lane: PublisherLane,
             advice_candidate.root,
             source_ref="refs/heads/maintenance/standards-8.208",
             commit=advice_candidate.commit,
+            detected_targets=json.dumps(targets),
+        )
+
+
+@pytest.fixture
+def guard_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPatch) -> Candidate:
+    _git(tmp_path, "init", "--quiet")
+    adapter = "packages/standards/src/sarj_standards/libs/linting/iac_guard_contracts.py"
+    tests = "packages/standards/tests/test_iac_guard_contracts.py"
+    files = {
+        "packages/standards/pyproject.toml": '[project]\nversion = "9.29.1"\ndependencies = ["repo-standards==6.22.2"]\n',
+        "packages/standards-compat/pyproject.toml": '[project]\nversion = "9.29.1"\ndependencies = ["code-standards==9.29.1"]\n',
+        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "9.29.1"\n',
+        ".sarj-standards.toml": 'bundle = "9.29.1"\nrule_profile = "all"\n',
+        lane.CLI_REFERENCE: '{"version":"9.29.1","commands":[]}\n',
+        lane.DOC_EXAMPLES: '{"catalogSha256":"retained","cliSha256":"original","rules":[]}\n',
+        adapter: "RETIRED_GUARDS = False\n",
+        tests: "RETIREMENT_TESTED = False\n",
+    }
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    anchor = _commit(tmp_path)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the native immutable-anchor lookup with private Git objects; injection would bypass it.
+        lane, "STANDARDS_929_ANCHOR", anchor, raising=False
+    )
+    for relative in lane.VERSION_PROJECTIONS:
+        path = tmp_path / relative
+        path.write_text(path.read_text().replace("9.29.1", "9.29.2"))
+    (tmp_path / adapter).write_text("RETIRED_GUARDS = True\n")
+    (tmp_path / tests).write_text("RETIREMENT_TESTED = True\n")
+    (tmp_path / lane.DOC_EXAMPLES).write_text(
+        json.dumps(
+            {
+                "catalogSha256": "retained",
+                "cliSha256": hashlib.sha256((tmp_path / lane.CLI_REFERENCE).read_bytes()).hexdigest(),
+                "rules": [],
+            }
+        )
+    )
+    return Candidate(tmp_path, anchor, _commit(tmp_path))
+
+
+def test_guard_maintenance_accepts_only_the_scoped_patch(lane: PublisherLane, guard_candidate: Candidate) -> None:
+    assert (
+        lane.validate_lane(
+            guard_candidate.root,
+            source_ref="refs/heads/maintenance/standards-9.29",
+            commit=guard_candidate.commit,
+        )
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "before", "after", "failure"),
+    [
+        pytest.param("packages/standards/pyproject.toml", "6.22.2", "8.0.0", "runtime and engine", id="runtime-sdk"),
+        pytest.param("packages/standards/pyproject.toml", "9.29.2", "9.29.3", "exact 9.29.2", id="future-patch"),
+        pytest.param("packages/python/src/unreviewed.py", "", "CHANGED = True\n", "unapproved path", id="engine"),
+        pytest.param(
+            "apps/docs/src/generated/formatted-code.v1.json", "retained", "changed", "legacy catalog", id="catalog"
+        ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/linting/iac_guard_contracts.py",
+            "True",
+            "False",
+            "adapter and tests",
+            id="missing-adapter",
+        ),
+        pytest.param(
+            "packages/standards/tests/test_iac_guard_contracts.py",
+            "True",
+            "False",
+            "adapter and tests",
+            id="missing-tests",
+        ),
+    ],
+)
+def test_guard_maintenance_rejects_other_changes(
+    lane: PublisherLane, guard_candidate: Candidate, *, path: str, before: str, after: str, failure: str
+) -> None:
+    target = guard_candidate.root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(target.read_text().replace(before, after) if target.exists() else after)
+    commit = _commit(guard_candidate.root)
+    with pytest.raises(ValueError, match=failure):
+        lane.validate_lane(guard_candidate.root, source_ref="refs/heads/maintenance/standards-9.29", commit=commit)
+
+
+def test_guard_maintenance_cannot_publish_siblings(lane: PublisherLane, guard_candidate: Candidate) -> None:
+    targets = dict.fromkeys(lane.RELEASE_TARGETS, "false")
+    targets.update(standards="true", iac="true")
+    with pytest.raises(ValueError, match="cannot publish sibling"):
+        lane.validate_lane(
+            guard_candidate.root,
+            source_ref="refs/heads/maintenance/standards-9.29",
+            commit=guard_candidate.commit,
             detected_targets=json.dumps(targets),
         )
