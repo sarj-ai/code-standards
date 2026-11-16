@@ -449,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
         if github_output is not None:
             with github_output.open("a", encoding="utf-8") as output:
                 output.write(f"lane={lane}\n")
+                if source_ref == STANDARDS_929_REF:
+                    output.write(f"before={STANDARDS_929_ANCHOR}\n")
         sys.stdout.write(f"Validated {lane} publication at {commit}\n")
 
     try:

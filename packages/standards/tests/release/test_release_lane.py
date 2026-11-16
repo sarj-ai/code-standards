@@ -1406,6 +1406,28 @@ def test_guard_maintenance_accepts_only_the_scoped_patch(lane: PublisherLane, gu
     )
 
 
+def test_guard_maintenance_exports_the_verified_published_baseline(
+    lane: PublisherLane, guard_candidate: Candidate, tmp_path: Path
+) -> None:
+    output = tmp_path / "github-output"
+    assert (
+        lane.main(
+            [
+                "--root",
+                str(guard_candidate.root),
+                "--ref",
+                "refs/heads/maintenance/standards-9.29",
+                "--commit",
+                guard_candidate.commit,
+                "--github-output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert output.read_text() == f"lane=standards-maintenance\nbefore={guard_candidate.anchor}\n"
+
+
 @pytest.mark.parametrize(
     ("path", "before", "after", "failure"),
     [
