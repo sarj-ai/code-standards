@@ -1,0 +1,629 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-15",
+  "scope": "25 distinct audit questions about deterministic state modeling; one new bounded structural advisory, existing semantic owners retained.",
+  "standardsBaselineRevision": "cb27290be44e8386e27d6af1b5fed9d929360c35",
+  "routing": "sarj-ai/code-standards, because source semantics and binding/write relationships establish the finding; paths alone cannot.",
+  "privacy": "Private source paths, revisions, content digests, native hit details and exact local commands remain in an owner-readable overlay. Public fixtures are synthetic. This report contains redacted aggregates.",
+  "versions": {
+    "typescriptBefore": "19.22.0",
+    "typescriptAfter": "19.23.0",
+    "coreBefore": "9.57.0",
+    "coreAfter": "9.59.0",
+    "consumerBundle": "9.29.5",
+    "consumerTypescriptPlugin": "19.18.0",
+    "consumerPythonPlugin": "1.133.0",
+    "sourcePythonPlugin": "1.142.0"
+  },
+  "tools": {
+    "node": "24.22.1",
+    "npm": "12.2.1",
+    "uv": "0.13.5",
+    "python": "3.15.2",
+    "oxlint": "1.91.0",
+    "tsrs": "0.23.0-ts7.1.0-beta",
+    "reactDoctor": "0.9.22"
+  },
+  "overlapMatrix": [
+    {
+      "owner": "oxlint:prefer-discriminated-union",
+      "default": "warning",
+      "demonstratedGap": "None for the immutable connection projection. Installed and source runners both report it.",
+      "action": "Reuse; preserve false/false, unknown states, runtime enum identity, independent fields and shared contracts.",
+      "rejected": "A second finite-state projection detector or ownership-changing fix."
+    },
+    {
+      "owner": "oxlint:no-readonly-prop-state",
+      "default": "warning",
+      "demonstratedGap": "Setter-owned repeated adoption is outside readonly prop-copy analysis.",
+      "action": "Retain its lexical hook provenance and lifecycle warning.",
+      "rejected": "Replacing mount snapshots, editable drafts or subscriptions with current props."
+    },
+    {
+      "owner": "react/set-state-in-effect",
+      "default": "error",
+      "demonstratedGap": "An event/request adoption group need not be an effect-driven derivation.",
+      "action": "Reuse native owner for synchronous effect work. One raw natural hit is already baselined by the consumer.",
+      "rejected": "Another generic derived-state-effect rule."
+    },
+    {
+      "owner": "react-doctor/prefer-useReducer",
+      "default": "disabled in installed 0.9.22; warning if explicitly enabled",
+      "demonstratedGap": "The installed detector counts at least five co-written setters at a site, rather than the older online declaration-count description. It does not establish all writers, an exact maximal subgroup or a shared incoming record.",
+      "action": "Treat as broader inventory. Explicit opt-in reports six fields in the reviewed component; the accepted rule names only the two complete saved-record slots and preserves independently editable state.",
+      "rejected": "Treating setter counts as domain invariants or assuming documentation version parity."
+    },
+    {
+      "owner": "react-doctor/no-cascading-set-state",
+      "default": "retired and disabled",
+      "demonstratedGap": "None: its retired blanket predicate is not admissible evidence.",
+      "action": "Leave retired. Native synchronous updates are batched.",
+      "rejected": "Reintroducing a multiple-setter race prohibition."
+    },
+    {
+      "owner": "react-doctor/no-derived-state-effect and no-chain-state-updates",
+      "default": "upstream warning; consumer hides test-noise and warnings",
+      "demonstratedGap": "Neither owns complete direct event-driven record adoption.",
+      "action": "Pinned native probes report two derived-effect sites; no chain diagnostic for this two-effect probe. Preserve their separate responsibilities.",
+      "rejected": "Claiming all asynchronous completions, subscriptions or reset effects are redundant state."
+    },
+    {
+      "owner": "python:SARJ565",
+      "default": "warning",
+      "demonstratedGap": "No admitted extension beyond private typed same-key dictionaries.",
+      "action": "Retain; no natural dictionary hits in this frozen corpus.",
+      "rejected": "Scalar/set parity, helper-mediated ownership and intentionally mirrored indexes as defects."
+    },
+    {
+      "owner": "python:SARJ510",
+      "default": "error",
+      "demonstratedGap": "No new constructor-evidence proof equivalent to current schema/validator contracts.",
+      "action": "Preserve the existing error boundary; six structural natural union findings occur in both installed and source versions.",
+      "rejected": "Downgrading current policy or admitting partial local-producer evidence into its error path."
+    },
+    {
+      "owner": "python:SARJ571",
+      "default": "warning; absent from installed consumer bundle",
+      "demonstratedGap": "Adoption/version gap, not missing source enforcement: source reports eleven nullable outcome records.",
+      "action": "Retain warning/no fix and stronger-owner precedence. Inspect partial-progress and serialization before any consumer migration.",
+      "rejected": "A duplicate outcome rule or automatic removal of retry/resource context."
+    }
+  ],
+  "rankedDecisions": [
+    {
+      "rank": 1,
+      "hypothesis": "A: finite-state projections",
+      "disposition": "reuse",
+      "predicate": "Existing producer-proven literal/typed immutable primitive relationships.",
+      "proofBoundary": "One producer does not close a shared contract or all runtime writers.",
+      "positive": "Two strict equality projections over one finite immutable snapshot.",
+      "negative": "Independent history/current state, nullable/open domains or repeated getters.",
+      "knownMisses": [
+        "Unsupported producers and type-service degradation."
+      ],
+      "severity": "existing warning",
+      "fix": "Existing tightly bounded unused-private type-only fix; no projection/ownership fix.",
+      "implementation": "packages/typescript/src/rules/prefer-discriminated-union.ts"
+    },
+    {
+      "rank": 2,
+      "hypothesis": "B: coordinated React state",
+      "disposition": "ship-warning",
+      "predicate": "Genuine lexical useState const tuples in one owner; observed value reads; at least two complete adjacent direct setter groups in distinct transition functions; every setter reference accounted for; identical maximal run membership; at least one group reads properties of one stable transition-local record binding.",
+      "proofBoundary": "Repeated source bookkeeping only. Object immutability, getter purity, domain intent, batching, atomicity and absence of runtime races are not established.",
+      "positive": "Direct page-field adoption plus reset, or repeated adoption of a saved record.",
+      "negative": "Only shared resets, independent writers, editable drafts, escaped setters, transformed/functional updater RHSs, intervening calls or suspension.",
+      "knownMisses": [
+        "Functional pagination appenders",
+        "One-site adoption",
+        "Helper-mediated state",
+        "Controlled dialogs",
+        "General async loading/data/error workflows",
+        "A maximal group with an unsupported record-valued RHS can hide a smaller useful subgroup."
+      ],
+      "severity": "warning",
+      "fix": "none",
+      "implementation": "packages/typescript/src/rules/prefer-coordinated-react-state.ts",
+      "bounds": {
+        "sourceUtf16Units": 200000,
+        "fileAstNodes": 4096,
+        "candidateSlots": 16,
+        "setterReferences": 32,
+        "argumentAndPathDepth": 8,
+        "typeQueries": 0
+      },
+      "promotion": "Reject: an intentional mirror control remains a non-actionable warning, and natural defect precision is unmeasured."
+    },
+    {
+      "rank": 3,
+      "hypothesis": "C: dialog/payload and async workflow families",
+      "disposition": "manual-review",
+      "predicate": "No admitted standalone predicate. Counts/names/nullable fields are review queries.",
+      "proofBoundary": "Escapes, stale successful data, close/reopen animation retention, request identity, useTransition and independent error telemetry defeat a generic lifecycle inference.",
+      "positive": "A supported complete direct group may be reviewed by B.",
+      "negative": "Controlled open callbacks and independently completing requests.",
+      "knownMisses": [
+        "General temporal relationships remain manual."
+      ],
+      "severity": "no new rule",
+      "fix": "none",
+      "implementation": null
+    },
+    {
+      "rank": 4,
+      "hypothesis": "D: Python scalar/constructor extensions",
+      "disposition": "reuse-existing-and-reject-extension",
+      "predicate": "Retain current dictionary, validated discriminator and nullable-outcome owners.",
+      "proofBoundary": "Local constructors do not establish every model_copy update, alias, inherited/shared constructor, external payload or serializer.",
+      "positive": "Existing dictionary assignment/removal and validator-proven payload dependencies.",
+      "negative": "History versus pending work, reporting versus cleanup, persisted invitation plus email failure.",
+      "knownMisses": [
+        "Local constructor subsets without validator evidence",
+        "Helper-mediated coordinated stores."
+      ],
+      "severity": "existing warning/error boundaries unchanged",
+      "fix": "none",
+      "implementation": "packages/python/src/sarj_python_lint/rules/"
+    }
+  ],
+  "passes": [
+    {
+      "pass": 1,
+      "question": "Revision and effective consumer setup",
+      "evidence": "Fetched both heads before editing; read manifests, native configs and lockfiles; installed the exact consumer plugins separately.",
+      "result": "Source and installed TypeScript both report the hook; actual consumer config promotes it to error. SARJ571 is absent from consumer Python. Full-profile replay also has two missing-dependency tsconfig errors, disclosed separately.",
+      "changedDecision": "Freeze corpus pins; do not confuse source availability with installed policy."
+    },
+    {
+      "pass": 2,
+      "question": "Admission",
+      "evidence": "Disposable bounded lexical query; direct review of every resulting natural candidate and every writer/reader.",
+      "result": "One two-slot saved-record opportunity repeats adoption/reset at three sites. Separate writers for editable fields remain outside that group. Minimal direct-page reproduction has the same gap. Concrete cost is repeated transition bookkeeping, not an observed runtime defect.",
+      "changedDecision": "Admit a named structural warning with no fix; reject broad defect claims."
+    },
+    {
+      "pass": 3,
+      "question": "Routing",
+      "evidence": "AGENTS.md and plugins/sarj-skills/skills/lint-rule-generator/SKILL.md; binding and writer evidence.",
+      "result": "Filename or tree topology cannot establish the relationship. No new Git-tree policy is needed.",
+      "changedDecision": "Implement in Oxlint source-semantic owner."
+    },
+    {
+      "pass": 4,
+      "question": "Live catalog",
+      "evidence": "Rule source/docs, source-owned Python descriptors, strict preset, plugin registry, ledger, live inventory, packaged catalog, migration map and stage2 additions.",
+      "result": "SARJ510 remains error; other design owners remain warnings. New post-migration rule is recorded in stage2 additions rather than inventing an ESLint migration alias.",
+      "changedDecision": "Synchronize all source-owned and generated artifacts; preserve historical aliases."
+    },
+    {
+      "pass": 5,
+      "question": "Upstream overlap",
+      "evidence": "Primary React/React Doctor docs plus installed oxlint-plugin-react-doctor 0.9.22 source, registry and native probes.",
+      "result": "Online 0.9.3 descriptions differ from installed behavior. Five declarations alone do not report; installed reducer query is disabled by default and requires five co-writes. It emits one broader six-slot inventory warning on the natural candidate. Cascading rule remains retired.",
+      "changedDecision": "Keep the new exact group advisory distinct from broader optional inventory; no native-owner replacement."
+    },
+    {
+      "pass": 6,
+      "question": "Natural-positive replay",
+      "evidence": "run_isolated_corpora: 1,049 production frontend files; exact installed/source plugins; four repeated baseline/candidate scans.",
+      "result": "One existing projection and one new coordinated group; combined mode has two stable, nonduplicate diagnostics. All ten supplied frontend seeds replayed; none meets the new narrow complete-group predicate.",
+      "changedDecision": "Reuse projection owner and retain narrow recall; do not manufacture seed coverage."
+    },
+    {
+      "pass": 7,
+      "question": "Natural-negative replay",
+      "evidence": "Current track/history/timeout, independent reporting/cleanup, accepted/pending message sets, failover/restart, nested ending, published/draft, capacity snapshots, invitation/email source.",
+      "result": "No new coordinated React hit on the two named frontend controls. SARJ565 reports none on the frozen Python corpus. Some negative-control files also contain separate SARJ510/SARJ571 model-contract findings; they are not evidence against their independent scalar lifetimes.",
+      "changedDecision": "Retain independent axes; do not call syntactically quiet files labeled true negatives."
+    },
+    {
+      "pass": 8,
+      "question": "Hook provenance",
+      "evidence": "Owning RuleTester named/renamed/default/namespace/erased-wrapper cases, shadowing, foreign/type-only/custom hooks and overwritten members.",
+      "result": "Lexical import helper correctly accepts React identities and abstains for unsupported provenance.",
+      "changedDecision": "Reuse react-prop-bindings.ts; no name-only hook recognition."
+    },
+    {
+      "pass": 9,
+      "question": "Binding ownership",
+      "evidence": "Tuple binding tests and all setter reference inspection; const destructured incoming records tested.",
+      "result": "Aliases, escapes, controlled callback props, unread values and rebinding exclude affected slots. A type-only reference does not escape a setter.",
+      "changedDecision": "No interprocedural alias guessing; preserve smaller justified groups."
+    },
+    {
+      "pass": 10,
+      "question": "Writer completeness",
+      "evidence": "Run membership tests: extra writer, separate guards, early return, different source order, independently written third slot and maximal triple.",
+      "result": "Equal counts do not qualify. Exact complete run membership produces one diagnostic per maximal disjoint slot group in declaration order.",
+      "changedDecision": "Account for every observed setter use before reporting."
+    },
+    {
+      "pass": 11,
+      "question": "Shared snapshot proof",
+      "evidence": "Direct adoption/reset example, common-local-binding witness, different roots, module captures, optional/computed reads, transforms and functional appenders.",
+      "result": "A non-reset record witness is required; reset-only groups abstain. A stable object binding does not prove pure properties. All runtime source remains untouched.",
+      "changedDecision": "Report structural common-source reads; abstain for transformations and preserve evaluation order."
+    },
+    {
+      "pass": 12,
+      "question": "Finite-state proof",
+      "evidence": "Affected prefer-discriminated-union suite and sum-type native compiler/runtime contracts.",
+      "result": "253 existing TypeScript cases pass initially, covering false/false, independent dimensions, enum runtime identity, nullable/open domains, budget limits and shared broader contracts.",
+      "changedDecision": "No finite-state inference or duplicate rule added."
+    },
+    {
+      "pass": 13,
+      "question": "Payload dependency",
+      "evidence": "SARJ510/SARJ571 source, stronger-owner precedence tests, produced-union tests and explicit null/undefined boundaries.",
+      "result": "Presence is distinct from payload value validation. Strong validator evidence and nullable outcome advice retain separate severity/diagnostic owners.",
+      "changedDecision": "Reject weakened SARJ510 constructor inference."
+    },
+    {
+      "pass": 14,
+      "question": "Framework ownership",
+      "evidence": "Private request/form/subscription/query/transition source and read-only prop fixtures.",
+      "result": "Request pending state, compiler-sensitive subscriptions, first-render form seeds and independently editable drafts are deliberate owners.",
+      "changedDecision": "Do not infer replacement from field names or counts."
+    },
+    {
+      "pass": 15,
+      "question": "Concurrency and scheduling",
+      "evidence": "Request-counter source, synchronous start lock, nested transition functions; awaited RHS, intervening await and separately scheduled callback tests.",
+      "result": "New rule never rewrites or replaces request identity. Unsupported scheduling/suspension within the proposed group abstains; adjacent calls after a guarded awaited result may qualify structurally.",
+      "changedDecision": "No race/atomicity claim; async overlap remains a separate review."
+    },
+    {
+      "pass": 16,
+      "question": "Cleanup and task lifetime",
+      "evidence": "Private close/reopen cancellation paths, listener disposal, exception observation, task cancellation/join and ending-outlives-stop source.",
+      "result": "Those lifetimes remain distinct from repeated setter bookkeeping. No runtime cleanup or cancellation code changes.",
+      "changedDecision": "Reject lifecycle collapse; keep no-fix policy."
+    },
+    {
+      "pass": 17,
+      "question": "Wire and persistence contracts",
+      "evidence": "Saved-record readers, partial-success invite constructors, model-copy/serialization boundaries, shared contract fixtures and native narrowing contracts.",
+      "result": "Nullable failure can coexist with a persisted retry resource. Public constructors and broad schemas cannot be narrowed from one local producer. New advisory changes no schemas or emitted application code.",
+      "changedDecision": "Defer ownership/schema migrations to a separate reader/writer review."
+    },
+    {
+      "pass": 18,
+      "question": "False-positive attack",
+      "evidence": "Labeled independent five-state component, nested guards, drafts, independent third writer and intentional mirror fixture; natural historical/current controls.",
+      "result": "Reset/count-only controls abstain. An intentional mirror with identical source transitions still receives structural advice. It is explicitly a valid, non-actionable domain case, not a confirmed defect.",
+      "changedDecision": "Ship warning only; reject error promotion and any count-based generalization."
+    },
+    {
+      "pass": 19,
+      "question": "Autofix safety",
+      "evidence": "Every candidate RuleTester match requires output:null; native contract checks absent fix metadata; existing type-only producer runtime/compiler contracts.",
+      "result": "No ownership fix is offered. Initializer calls, functional updater semantics, comments, identity, exceptions and property evaluation cannot be preserved by a generic migration.",
+      "changedDecision": "Keep all ownership changes manual; existing bounded type-only owner unchanged."
+    },
+    {
+      "pass": 20,
+      "question": "Diagnostics and suppression",
+      "evidence": "Maximal triple, stable naming/source-line assertions, native positive/shadowed/suppressed/positive files and warning exit check.",
+      "result": "One diagnostic per complete group; exact-code suppression works, suppression for another owner does not hide it; warning exits 0, --deny-warnings exits 1. Actual combined-profile overlap is zero. Opted-in broader upstream inventory can also flag the component.",
+      "changedDecision": "Retain warning semantics; add no baselines or broad suppressions."
+    },
+    {
+      "pass": 21,
+      "question": "Oxlint file isolation",
+      "evidence": "Native single-process --threads 1 sequence plus helper cache source review.",
+      "result": "before() clears slot arrays and budget state. Helpers key caches by AST/binding identity, not reused SourceCode identity. Last positive still reports after shadowed and suppressed files.",
+      "changedDecision": "No file-persistent mutable candidate cache."
+    },
+    {
+      "pass": 22,
+      "question": "Bounds and degraded modes",
+      "evidence": "File source/node/slot limits, setter reference boundary/overflow, path-depth overflow, generated/declaration/test filters and untyped cases.",
+      "result": "File budget overflow emits no partial groups; unsupported setter use excludes that slot. New rule has zero type queries and no missing-types fallback. Native parser owns malformed input.",
+      "changedDecision": "Keep conservative bounded abstention; no partial proof under budget exhaustion."
+    },
+    {
+      "pass": 23,
+      "question": "Fixture and native contracts",
+      "evidence": "Oxlint RuleTester, three executable examples, native file/suppression/exit contract and affected Python harness.",
+      "result": "63 labeled RuleTester cases plus two integration/example tests pass (65 owning-module tests). Initial affected existing suites: 253 TypeScript and 375 Python tests pass. New rule makes no narrowing or runtime transformation claim.",
+      "changedDecision": "Use native contracts for service/isolation claims; no implementation-mirroring application tests."
+    },
+    {
+      "pass": 24,
+      "question": "Corpus and performance",
+      "evidence": "Immutable owner-only manifests, run_isolated_corpora with fresh 250-file batches, four alternating rounds and per-child RSS.",
+      "result": "Frontend: 1 new + 1 retained hit; Python: 0 dictionary, 6 union and 11 outcome findings, all inspected structurally. Zero duplicate locations. Rule-only median increases ~0.37s; combined medians vary within shared-host noise.",
+      "changedDecision": "Report raw counts, partial type-service coverage and cost; no fleet precision, recall or speedup claim."
+    },
+    {
+      "pass": 25,
+      "question": "Lifecycle and final challenge",
+      "evidence": "maintain rules new/verify/prepare/evaluate; index regeneration, metadata/catalog/preset/addition registration, version/sibling pins, generated docs and make verify.",
+      "result": "One accepted bounded warning, no changes to stronger existing rules. Other hypotheses have explicit reuse/reject/manual dispositions. Initial verification exposed missing generated metadata and post-migration registration; both were corrected. Final statuses are recorded below.",
+      "changedDecision": "Recommend warning publication only after normal reviewed release. No merge, publication or consumer rollout is authorized by this audit."
+    }
+  ],
+  "naturalEvaluation": {
+    "selection": "Tracked production frontend and Python source; explicit test/spec/fixture/declaration/generated/client/script exclusions are pinned privately. Files are not automatically assigned negative labels.",
+    "frontend": {
+      "files": 1049,
+      "bytes": 4424270,
+      "naturalHits": {
+        "installedProjection": 1,
+        "sourceProjection": 1,
+        "sourceReadonlyProp": 0,
+        "candidateCoordinated": 1,
+        "combined": 2,
+        "rawNativeSetStateInEffect": 1
+      },
+      "inspectedCandidateHits": 1,
+      "inspectedRetainedProjectionHits": 1,
+      "inspectedNativeHits": 1,
+      "naturalDefectPrecision": null,
+      "duplicateDiagnosticLocations": 0
+    },
+    "python": {
+      "files": 830,
+      "bytes": 7404485,
+      "sourceHits": {
+        "SARJ565": 0,
+        "SARJ510": 6,
+        "SARJ571": 11
+      },
+      "installedHits": {
+        "SARJ565": 0,
+        "SARJ510": 6,
+        "SARJ571": "not installed"
+      },
+      "inspectedHits": 17,
+      "inspection": "All diagnostic definitions/annotations were reviewed. Six unions meet the existing structural tag policy; eleven nullable records remain warning-level lifecycle/wire review opportunities. No whole-program runtime-defect label or constructor closure is claimed.",
+      "unresolvedDomainIntent": 11,
+      "duplicateDiagnosticLocations": 0
+    },
+    "typeCoverage": "New rule is syntax/scope only with zero type queries. Existing projection emits under installed/source tsrs and disappears in untyped mode. Only the relevant React/enum dependencies were installed, not the full private application graph; two full-profile tsconfig errors are disclosed. Zero other typed hits do not establish recall.",
+    "suppression": "Raw fresh workers use an external cwd without automatic consumer suppression counts. A prior direct corpus replay encountered unused-suppression summaries; these were not counted as rule hits. Effective consumer replay promotes the projection to error. Native effect hit has one existing exact consumer baseline entry; no suppression was added.",
+    "revisionDrift": "Consumer remote advanced after the audit pin. Source manifests were not repinned; the accepted natural candidate and projection source did not change in the observed advance. One original dialog seed did change and remains qualified only at the frozen pin."
+  },
+  "labeledSyntheticEvaluation": {
+    "unit": "A named RuleTester case labeled for this exact structural predicate; not an application runtime defect.",
+    "ruleContract": {
+      "TP": 16,
+      "FP": 0,
+      "FN": 0,
+      "TN": 47
+    },
+    "actionabilityAttack": {
+      "TP": 15,
+      "FP": 1,
+      "FN": 0,
+      "TN": 47,
+      "interpretation": "The one explicit intentional-mirror case is structurally detected but need not be refactored. These authored labels do not estimate natural field precision."
+    },
+    "separateContracts": {
+      "executableExamples": 3,
+      "nativeFileSuppressionExitTests": 1
+    },
+    "seededConsumerCases": "Ten supplied frontend seeds are not synthetic confusion-matrix denominators; the existing projection owner catches one. The new rule abstains on all ten; the natural new opportunity was found outside those seeds."
+  },
+  "performance": {
+    "method": "Four rounds alternate forward/reverse baseline/candidate order. Every 250-file batch starts fresh Python/Oxlint processes on identical pinned inputs, with one native thread. No filesystem caches were flushed; all runs follow earlier source reads. Wall sums exclude outer Python worker startup; each child includes native startup, plugin loading, parsing and analysis. RSS is the maximum waited-process observation per round, not simultaneous process-family memory.",
+    "files": 1049,
+    "bytes": 4424270,
+    "measurements": [
+      {
+        "mode": "baseline-off",
+        "roundWallSeconds": [
+          0.545851,
+          0.525699,
+          0.545206,
+          0.544163
+        ],
+        "medianWallSeconds": 0.544684,
+        "laterFilesystemWarmMedianSeconds": 0.544163,
+        "roundMaximumWaitedProcessMiB": [
+          86.796875,
+          85.703125,
+          86.984375,
+          86.390625
+        ],
+        "findingsEachRound": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "mode": "candidate-only",
+        "roundWallSeconds": [
+          1.019111,
+          0.904912,
+          0.928536,
+          0.891872
+        ],
+        "medianWallSeconds": 0.916724,
+        "laterFilesystemWarmMedianSeconds": 0.904912,
+        "roundMaximumWaitedProcessMiB": [
+          125.484375,
+          123.53125,
+          126.265625,
+          126.03125
+        ],
+        "findingsEachRound": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "mode": "baseline-typed",
+        "roundWallSeconds": [
+          1.394436,
+          1.235813,
+          1.252529,
+          1.327765
+        ],
+        "medianWallSeconds": 1.290147,
+        "laterFilesystemWarmMedianSeconds": 1.252529,
+        "roundMaximumWaitedProcessMiB": [
+          175.703125,
+          176.03125,
+          170.75,
+          167.328125
+        ],
+        "findingsEachRound": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "mode": "candidate-combined",
+        "roundWallSeconds": [
+          1.286448,
+          1.306743,
+          1.271284,
+          1.235991
+        ],
+        "medianWallSeconds": 1.278866,
+        "laterFilesystemWarmMedianSeconds": 1.271284,
+        "roundMaximumWaitedProcessMiB": [
+          174.15625,
+          174.96875,
+          176.453125,
+          177.328125
+        ],
+        "findingsEachRound": [
+          2,
+          2,
+          2,
+          2
+        ]
+      }
+    ],
+    "interpretation": "Rule-only median increases 0.372039s versus a zero-rule baseline that still loads the baseline plugin. Combined medians are 1.290147s before and 1.278866s after; this difference is noise, not an improvement claim. Later-round medians increase from 1.252529s to 1.271284s. Native memory grows in the rule-only comparison; no memory optimization is claimed."
+  },
+  "consumerMap": [
+    {
+      "category": "already-caught",
+      "pattern": "Immutable finite-state hook projections",
+      "owner": "prefer-discriminated-union",
+      "decision": "Reuse current warning; adopted consumer currently promotes it to error."
+    },
+    {
+      "category": "warning-review-candidate",
+      "pattern": "Saved-record fields repeatedly adopted/reset with complete local setter ownership",
+      "owner": "prefer-coordinated-react-state",
+      "decision": "Review one typed record; preserve independently edited fields."
+    },
+    {
+      "category": "manual-review",
+      "pattern": "Pagination functional append and transformed response adoption",
+      "owner": "reviewer",
+      "decision": "Do not rewrite functional updater or null exhaustion semantics."
+    },
+    {
+      "category": "manual-review",
+      "pattern": "Tool editor identity and form subscriptions",
+      "owner": "reviewer",
+      "decision": "Independent index writer, escaped/open setter and form seeding prevent complete proof."
+    },
+    {
+      "category": "manual-review",
+      "pattern": "Controlled dialogs and shared retained targets",
+      "owner": "reviewer",
+      "decision": "Callback escape, exclusivity and exit-animation retention need reader review."
+    },
+    {
+      "category": "manual-review",
+      "pattern": "Organization-scoped requests and phase/result/error workflows",
+      "owner": "reviewer",
+      "decision": "Preserve request counters, framework transition pending state, partial results and external verification."
+    },
+    {
+      "category": "manual-review",
+      "pattern": "Extraction, waveform resource lifecycle and polling/recovery",
+      "owner": "reviewer",
+      "decision": "Editable text, cancellation, external callbacks and independent transport/parse outcomes remain separate."
+    },
+    {
+      "category": "existing-owner",
+      "pattern": "Typed dictionaries and correlated Python model records",
+      "owner": "SARJ565/SARJ510/SARJ571",
+      "decision": "No dictionary hits; union and outcome hits retain existing boundaries. Partial failure and historical/current facts are not collapsed."
+    }
+  ],
+  "reproduction": {
+    "privateInputs": "Owner overlay contains exact commit/content pins, selected scope, paths, native JSON, stderr, all timing rounds and a disposable query. Verify those pins; never repin automatically.",
+    "commands": [
+      "uv run --project packages/standards --frozen code-standards --root . maintain rules verify oxlint:prefer-coordinated-react-state",
+      "uv run --project packages/standards --frozen code-standards --root . maintain rules prepare oxlint:prefer-coordinated-react-state --check",
+      "uv run --project packages/standards --frozen code-standards --root . maintain rules evaluate --rule oxlint:prefer-coordinated-react-state --scope corpus --trust-repository-code --format json packages/typescript/src/rules/prefer-coordinated-react-state.ts",
+      "TMPDIR=\"$AUDIT_PRIVATE_ROOT\" npm --prefix packages/typescript test -- prefer-coordinated-react-state prefer-discriminated-union no-readonly-prop-state sum-type-producer-contracts",
+      "uv run --project packages/python --frozen pytest -q packages/python/tests/rules/test_prefer_coordinated_state_owner.py packages/python/tests/rules/test_prefer_discriminated_model_union.py packages/python/tests/rules/test_prefer_outcome_variants.py",
+      "TMPDIR=\"$AUDIT_PRIVATE_ROOT\" make verify",
+      "uv run --project packages/standards --frozen code-standards --root . maintain rules changes --before origin/main --after HEAD"
+    ],
+    "corpusHarness": "run_isolated_corpora, batch_size=250, timeout=120s, maximum retained output 8 MiB; immutable owner-only CorpusSource overlay verified before and after every run.",
+    "publishedSources": [
+      "https://react.dev/learn/choosing-the-state-structure",
+      "https://react.dev/reference/react/useState",
+      "https://www.react.doctor/docs/rules/react-doctor/prefer-useReducer",
+      "https://www.react.doctor/docs/rules/react-doctor/no-cascading-set-state",
+      "https://www.react.doctor/docs/rules/react-doctor/no-derived-state-effect",
+      "https://www.react.doctor/docs/rules/react-doctor/no-chain-state-updates"
+    ]
+  },
+  "validation": {
+    "ruleVerify": {
+      "exitCode": 0,
+      "examples": 3,
+      "focusedTests": 65
+    },
+    "registrationTests": {
+      "exitCode": 0,
+      "tests": 166
+    },
+    "initialAffectedTypescript": {
+      "exitCode": 0,
+      "tests": 253
+    },
+    "affectedPython": {
+      "exitCode": 0,
+      "tests": 375
+    },
+    "packageTypecheck": {
+      "exitCode": 0
+    },
+    "makeVerify": {
+      "exitCode": 2,
+      "completed": {
+        "typescriptTests": 13374,
+        "bootstrapTests": 63,
+        "contractsTests": 108,
+        "pythonTests": 31401,
+        "sqlTests": 3772,
+        "iacTests": 2370
+      },
+      "blocker": "macOS lacks apt-get required by native Standards integration setup; all preceding phases passed. The documented Linux native-verify.yml exact-candidate workflow is the final qualification path. Its result is retained outside this immutable source commit."
+    },
+    "postCommitComparison": {
+      "exitCode": null,
+      "note": "Recorded in owner evidence after the source commit, to avoid a self-referential report commit."
+    },
+    "nativeMalformedInput": {
+      "exitCode": 1,
+      "meaning": "native parse failure; no partial coordinated-state diagnostic"
+    },
+    "cliEvaluation": {
+      "exitCode": 0,
+      "selectedFiles": 1,
+      "note": "Source-checkout lifecycle smoke; repository capability coverage is separately disclosed in its native JSON. Natural measurements use direct bounded native workers."
+    }
+  },
+  "releaseRecommendation": "Ship the new rule at warning with no fix after normal review and publication. Do not promote, merge, publish or roll out consumers as part of this audit. Existing stronger correctness rules and consumer suppressions remain unchanged.",
+  "releaseBaseRevision": "19848b1fbd21d94c2a271e5bb2c135e61fa4026d",
+  "reconciliation": "Rebased first onto Core 9.57.1 / Python 1.142.1 / SQL 0.48.1, preserving the upstream SQL retirement. A subsequent IaC fix on main claimed Core 9.58.0 and IaC 0.45.2; rebased again and reserved Core/compat 9.59.0 with TypeScript 19.23.0. The measured TypeScript owners and shared helpers are unchanged. Natural-corpus and performance measurements retain their original pins; final exact-head verification is recorded in the PR."
+}

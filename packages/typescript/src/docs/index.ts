@@ -115,6 +115,7 @@ import { PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION } from "./prefer-await-in-as
 import { PREFER_CODED_ERROR_RESULT_DOCUMENTATION } from "./prefer-coded-error-result.js";
 import { PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION } from "./prefer-configured-cloud-scope.js";
 import { PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION } from "./prefer-constant-time-secret-compare.js";
+import { PREFER_COORDINATED_REACT_STATE_DOCUMENTATION } from "./prefer-coordinated-react-state.js";
 import { PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION } from "./prefer-dependency-interface.js";
 import { PREFER_DISCRIMINATED_UNION_DOCUMENTATION } from "./prefer-discriminated-union.js";
 import { PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION } from "./prefer-ecmascript-private-members.js";
@@ -208,8 +209,7 @@ export const RULE_DOCUMENTATION = {
   "no-declaration-comment-wall": NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   "no-detached-global-fetch": NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION,
   "no-discarded-validation-result": NO_DISCARDED_VALIDATION_RESULT_DOCUMENTATION,
-  "no-duplicate-lifecycle-refresh-listeners":
-    NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
+  "no-duplicate-lifecycle-refresh-listeners": NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
   "no-duplicate-test-case": NO_DUPLICATE_TEST_CASE_DOCUMENTATION,
   "no-dynamic-sql": NO_DYNAMIC_SQL_DOCUMENTATION,
   "no-enum": NO_ENUM_DOCUMENTATION,
@@ -290,14 +290,14 @@ export const RULE_DOCUMENTATION = {
   "prefer-coded-error-result": PREFER_CODED_ERROR_RESULT_DOCUMENTATION,
   "prefer-configured-cloud-scope": PREFER_CONFIGURED_CLOUD_SCOPE_DOCUMENTATION,
   "prefer-constant-time-secret-compare": PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION,
+  "prefer-coordinated-react-state": PREFER_COORDINATED_REACT_STATE_DOCUMENTATION,
   "prefer-dependency-interface": PREFER_DEPENDENCY_INTERFACE_DOCUMENTATION,
   "prefer-discriminated-union": PREFER_DISCRIMINATED_UNION_DOCUMENTATION,
   "prefer-ecmascript-private-members": PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
   "prefer-immutable-module-constant": PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
   "prefer-input-group-search": PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION,
   "prefer-logical-tailwind-utilities": PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION,
-  "prefer-millisecond-control-duration-schema":
-    PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
+  "prefer-millisecond-control-duration-schema": PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
   "prefer-minimal-parameter-contract": PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION,
   "prefer-module-level-constant": PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   "prefer-module-level-refined-schema": PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION,
@@ -332,8 +332,7 @@ export const RULE_DOCUMENTATION = {
   "require-button-accessible-name": REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
   "require-camelcase-properties": REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
   "require-constrained-schema-integer": REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION,
-  "require-explicit-contract-implementation":
-    REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION,
+  "require-explicit-contract-implementation": REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION,
   "require-explicit-service-contract": REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION,
   "require-fetch-timeout": REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
   "require-ime-safe-enter-handler": REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION,
@@ -349,7 +348,7 @@ export const RULE_DOCUMENTATION = {
   "require-zod-form-validation": REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION,
   "sole-export-matches-filename": SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION,
   "source-coupled-test": SOURCE_COUPLED_TEST_DOCUMENTATION,
-  stepdown: STEPDOWN_DOCUMENTATION,
+  "stepdown": STEPDOWN_DOCUMENTATION,
   "store-insert-requires-on-conflict": STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION,
   "test-loops-over-literal-cases": TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION,
   "test-phase-label-comment": TEST_PHASE_LABEL_COMMENT_DOCUMENTATION,

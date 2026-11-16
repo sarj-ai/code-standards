@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9c87f6a415740f87483e5c8562f027afee4c9b3ddf345331be31049b8b7b23d3",
-  "cliSha256": "69cecaea864be014fc2447be9d8ac802b9e34bcddde5de0990c1090dd5cddd68",
+  "catalogSha256": "c8f2e4f546c0dba1d5e1a27b3903cd39d1c81a8ec12e58739dee55a0f9fb1a43",
+  "cliSha256": "0644b10e75bb9fb822ffe23e7c044c173f8bb9b6d44057af8450a00cd3881d62",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8350,6 +8350,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not compare authentication tokens with equality"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-coordinated-react-state": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.tsx",
+              "source": "import { useState } from \"react\";\ntype Page = { rows: string[]; cursor: string | null };\nexport function View() {\n  const [rows, setRows] = useState<string[]>([]);\n  const [cursor, setCursor] = useState<string | null>(null);\n  function adopt(page: Page) {\n    setRows(page.rows);\n    setCursor(page.cursor);\n  }\n  function reset() {\n    setRows([]);\n    setCursor(null);\n  }\n  return (\n    <button onClick={reset} onDoubleClick={() => adopt({ rows: [], cursor: null })}>\n      {rows.length}\n      {cursor}\n    </button>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.tsx",
+          "id": "complete-page-bookkeeping",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Direct adoption and reset repeat one page's bookkeeping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.tsx",
+              "source": "import { useState } from \"react\";\ntype Page = { rows: string[]; cursor: string | null };\nexport function View() {\n  const [page, setPage] = useState<Page>({ rows: [], cursor: null });\n  function adopt(next: Page) {\n    setPage(next);\n  }\n  function reset() {\n    setPage({ rows: [], cursor: null });\n  }\n  return (\n    <button onClick={reset} onDoubleClick={() => adopt({ rows: [], cursor: null })}>\n      {page.rows.length}\n    </button>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.tsx",
+          "id": "one-record-owner",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One record preserves the page fields"
         }
       ],
       "optionsSchemaSource": null

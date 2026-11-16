@@ -119,6 +119,7 @@ import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
 import preferCodedErrorResult from "./rules/prefer-coded-error-result.js";
 import preferConfiguredCloudScope from "./rules/prefer-configured-cloud-scope.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
+import preferCoordinatedReactState from "./rules/prefer-coordinated-react-state.js";
 import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferEcmascriptPrivateMembers from "./rules/prefer-ecmascript-private-members.js";
@@ -293,6 +294,7 @@ const RULES = {
   "prefer-coded-error-result": preferCodedErrorResult,
   "prefer-configured-cloud-scope": preferConfiguredCloudScope,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
+  "prefer-coordinated-react-state": preferCoordinatedReactState,
   "prefer-dependency-interface": preferDependencyInterface,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-ecmascript-private-members": preferEcmascriptPrivateMembers,
@@ -350,7 +352,7 @@ const RULES = {
   "require-zod-form-validation": requireZodFormValidation,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "source-coupled-test": sourceCoupledTest,
-  stepdown: stepdown,
+  "stepdown": stepdown,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "test-loops-over-literal-cases": testLoopsOverLiteralCases,
   "test-phase-label-comment": testPhaseLabelComment,

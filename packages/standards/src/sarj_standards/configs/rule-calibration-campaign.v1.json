@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/typescript/prefer-coordinated-react-state",
+      "family": "typescript",
+      "ruleId": "prefer-coordinated-react-state",
+      "state": "pending",
+      "evidence": "A bounded lexical Oxlint predicate finds one reviewed structural ownership opportunity across 1,049 immutable private frontend source files. Sixty-three labeled RuleTester cases, three executable examples and a native consecutive-file/suppression/exit contract distinguish complete co-writes from independent writers and escaping setters. Four alternating fresh-process rounds measure rule-only and combined cost; redacted evidence and the 25 distinct audit questions are in packages/standards/benchmarks/state-consolidation-25-pass-20261115.json.",
+      "outcome": "Ship at WARNING without autofix. Repeated local bookkeeping is proven; domain intent and runtime defects are not. An intentional mirrored-store control remains non-actionable advice, so reject error promotion. Preserve functional updaters, request identity, retained payloads and independent lifetimes. Broader field calibration remains pending."
+    },
+    {
       "task": "rule-audit/python/numeric-literal-separators",
       "family": "python",
       "ruleId": "numeric-literal-separators",

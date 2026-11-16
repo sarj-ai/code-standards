@@ -419,6 +419,7 @@
       "prefer-coded-error-result",
       "prefer-configured-cloud-scope",
       "prefer-constant-time-secret-compare",
+      "prefer-coordinated-react-state",
       "prefer-dependency-interface",
       "prefer-discriminated-union",
       "prefer-ecmascript-private-members",
