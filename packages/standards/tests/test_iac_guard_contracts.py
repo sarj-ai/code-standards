@@ -213,10 +213,13 @@ def test_initializer_and_immutable_manifest(guard_adapter: _GuardFixture) -> Non
         adapter.prepare()
 
 
-def test_initializer_rejects_candidate_postimages(guard_adapter: _GuardFixture) -> None:
+@pytest.mark.parametrize(
+    "source", [_ORIGINAL.replace("condition = var.approved", "condition = true"), _ORIGINAL.replace(_GUARD, "")]
+)
+def test_initializer_rejects_candidate_postimages(guard_adapter: _GuardFixture, source: str) -> None:
     adapter = guard_adapter.adapter
     (adapter.root / CONTRACT_PATH).unlink()
-    (adapter.root / "main.tf").write_text(_ORIGINAL.replace("condition = var.approved", "condition = true"))
+    (adapter.root / "main.tf").write_text(source)
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
         adapter.initialize(["main.tf"], original_revision=_REVISION)
     with pytest.raises(ValueError, match="exact immutable original HEAD"):
@@ -243,20 +246,37 @@ def test_contract_tamper_rejected(guard_adapter: _GuardFixture, before: str, aft
 
 
 @pytest.mark.parametrize("staged", [False, True])
-@pytest.mark.parametrize("missing", ["guard", "manifest", "option"])
+@pytest.mark.parametrize("missing", ["source", "manifest", "option"])
 def test_stale_or_missing_contract_fails_closed(guard_adapter: _GuardFixture, *, staged: bool, missing: str) -> None:
     adapter, state = guard_adapter.adapter, guard_adapter.state
     adapter.staged = staged
     state.introduced = True
     match missing:
-        case "guard":
-            (adapter.root / "main.tf").write_text(_ORIGINAL.replace(_GUARD, ""))
+        case "source":
+            (adapter.root / "main.tf").unlink()
         case "manifest":
             (adapter.root / CONTRACT_PATH).unlink()
         case _:
             state.option = False
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
         adapter.prepare()
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_retired_guard_keeps_the_original_contract(guard_adapter: _GuardFixture, *, staged: bool) -> None:
+    adapter, state = guard_adapter.adapter, guard_adapter.state
+    adapter.staged = staged
+    state.introduced = True
+    source = _ORIGINAL.replace(_GUARD, "")
+    (adapter.root / "main.tf").write_text(source)
+    state.index_source = source
+    original = (adapter.root / CONTRACT_PATH).read_bytes()
+
+    policy = adapter.prepare()
+
+    assert policy is not None
+    assert policy.entries == frozenset()
+    assert (adapter.root / CONTRACT_PATH).read_bytes() == original
 
 
 def test_staged_guard_and_option_cannot_hide_behind_worktree(guard_adapter: _GuardFixture) -> None:
@@ -433,6 +453,36 @@ def _integrate(root: Path, method: str) -> None:
     _git(root, "branch", "--delete", "--force", "adoption")
     _git(root, "reflog", "expire", "--expire=now", "--all")
     _git(root, "gc", "--prune=now")
+
+
+def test_retirement_does_not_admit_changes_to_a_surviving_guard(tmp_path: Path) -> None:
+    extra = _ORIGINAL[_ORIGINAL.index("resource ") :].replace('"protected"', '"other"')
+    _adoption_branch(tmp_path, _ORIGINAL + extra)
+    source = (_ORIGINAL + extra).replace(_GUARD, "", 1)
+    (tmp_path / "main.tf").write_text(source)
+    policy = CoreIAC(tmp_path).prepare()
+    assert policy is not None
+    assert len(policy.entries) == 1
+
+    (tmp_path / "main.tf").write_text(source.replace("condition = var.approved", "condition = true"))
+    with pytest.raises(ValueError, match=r"guard|contract"):
+        CoreIAC(tmp_path).prepare()
+
+
+@pytest.mark.parametrize("method", ["merge", "squash", "rebase"])
+def test_retired_guard_survives_pr_integration(tmp_path: Path, method: str) -> None:
+    manifest = _adoption_branch(tmp_path)
+    (tmp_path / "main.tf").write_text(_ORIGINAL.replace(_GUARD, ""))
+    _commit(tmp_path, "Retire the legacy guard")
+    _git(tmp_path, "switch", "--quiet", "main")
+    _integrate(tmp_path, method)
+
+    assert (tmp_path / CONTRACT_PATH).read_bytes() == manifest
+    policy = CoreIAC(tmp_path, staged=True).prepare()
+    assert policy is not None
+    assert policy.entries == frozenset()
+    report = Standards(tmp_path).analyze([], rules=["iac:no-terraform-guard-blocks"])
+    assert report.issues == ()
 
 
 @pytest.mark.parametrize("method", ["merge", "squash", "rebase"])

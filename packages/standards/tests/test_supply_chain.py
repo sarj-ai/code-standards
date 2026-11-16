@@ -220,7 +220,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
     assert (
-        "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208]"
+        "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208, maintenance/standards-9.29]"
         in trigger
     )
     assert (
@@ -741,7 +741,7 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
     verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.ts").read_text(encoding="utf-8")
 
     assert (
-        "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208]"
+        "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129, maintenance/standards-8.208, maintenance/standards-9.29]"
         in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert _workflow_job("docs-deploy")["if"] == (
