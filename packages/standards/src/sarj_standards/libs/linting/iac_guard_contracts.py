@@ -69,8 +69,7 @@ class CoreIAC:
         if parse_unique_json(current) != parse_unique_json(self._serialize(entries)):
             message = "guard contracts differ from immutable original source"
             raise ValueError(message)
-        self._verify_current(entries)
-        return GuardContracts(self.root, frozenset(entries))
+        return GuardContracts(self.root, self._retained_contracts(entries))
 
     def _configured_manifest(self) -> tuple[tuple[str, ...], str] | None:
         manifest = load(self.root)
@@ -213,6 +212,21 @@ class CoreIAC:
                     metadata, path = record.split("\t", maxsplit=1)
                     modes[path] = metadata.split(maxsplit=1)[0]
         return modes
+
+    def _retained_contracts(self, entries: Sequence[GuardContract]) -> frozenset[GuardContract]:
+        from sarj_iac_lint.guard_contracts import contracts_for_source  # ruff: ignore[import-outside-top-level] -- use the native guard parser after immutable provenance is verified.
+
+        paths = sorted({entry.path for entry in entries})
+        retained = frozenset(entry for path in paths for entry in contracts_for_source(path, self._read_file(path)))
+        if not retained <= frozenset(entries):
+            message = "new or changed Terraform guard contract"
+            raise ValueError(message)
+        if self.staged:
+            indexed = frozenset(entry for path in paths for entry in contracts_for_source(path, self._index_file(path)))
+            if indexed != retained:
+                message = "staged guard contracts differ from analyzed worktree"
+                raise ValueError(message)
+        return retained
 
     def _verify_current(self, entries: Sequence[GuardContract]) -> None:
         from sarj_iac_lint.guard_contracts import verify_sources  # ruff: ignore[import-outside-top-level] -- load only for selected IaC contract analysis.

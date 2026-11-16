@@ -568,7 +568,10 @@ def _package_usage(name: str, engine: str | None) -> str:
             "runtime and needs no referencing workflow, consumer npm setup or security capability. Cloud Deploy "
             "validation is a documented partial structural contract. "
             "Terraform validation and TFLint require explicit repository trust and prepared local providers; "
-            "analysis never initializes or downloads them. Compose requires an exact consumer "
+            "analysis never initializes or downloads them. Immutable legacy guard contracts allow reviewed "
+            "guard removal after equivalent enforcement is established by its existing owner. Surviving guards "
+            "must remain exact; edited or new guards, changed contract history and staged/worktree differences "
+            "still fail. Original guard-source files must remain present. Compose requires an exact consumer "
             "`[devops].compose_version`; its source check does not resolve environment inputs. Declare "
             '`compose_projects = [["base.yaml", "overlays/production.yaml"]]` in `[devops]` to validate '
             "custom filenames and overlays in invocation order. Selecting any member checks the whole "
