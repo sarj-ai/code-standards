@@ -210,11 +210,17 @@ _JAVASCRIPT_SCAN_SKIP_DIRS = frozenset(
 )
 _SAFE_ENVIRONMENT_KEYS = frozenset(
     {
+        # Native supervisors' scalar worker budgets must reach their analyzers.
+        "GOMAXPROCS",
         "HOME",
         "LANG",
         "MISE_DATA_DIR",
         "MISE_INSTALLS_DIR",
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
         "PATH",
+        "RAYON_NUM_THREADS",
+        "REACT_DOCTOR_PARALLEL",
         "SHELL",
         "SYSTEMROOT",
         "TEMP",
@@ -222,6 +228,7 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
         "TMPDIR",
         "WINDIR",
         "UV_CACHE_DIR",
+        "UV_CONCURRENT_BUILDS",
         "UV_PYTHON_INSTALL_DIR",
         "UV_TOOL_DIR",
         "XDG_DATA_HOME",

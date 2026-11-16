@@ -27,6 +27,7 @@ jobs:
       # Commit-message checks need the pull request's merge base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.base_ref == 'maintenance/standards-9.29' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -34,6 +35,15 @@ jobs:
           version: '0.13.5'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
+      - name: Validate frozen maintenance source
+        id: maintenance
+        if: github.base_ref == 'maintenance/standards-9.29' || github.ref == 'refs/heads/maintenance/standards-9.29'
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          uv run --script .github/scripts/release_lane.py --root .
+          --ref refs/heads/maintenance/standards-9.29 --commit "$SOURCE_SHA"
+          --github-output "$GITHUB_OUTPUT"
       - name: Install repository-policy Python
         run: uv python install 3.15
       - name: Install repository-policy toolchain
@@ -42,7 +52,7 @@ jobs:
         run: make check-versions-synced check-file-conventions check-no-private-refs
       - name: Release causality
         env:
-          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BEFORE: ${{ steps.maintenance.outputs.before || github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --project packages/standards --frozen code-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"
       - name: Install rule-comparison Node
