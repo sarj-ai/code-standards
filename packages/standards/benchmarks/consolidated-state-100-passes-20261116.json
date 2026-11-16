@@ -1,0 +1,983 @@
+{
+  "status": "100 focused semantic passes completed; ship warning after exact-head native gate",
+  "passDefinition": "Each pass is one distinct labeled semantic boundary under one callable binding form: 25 boundaries x 4 forms. These are 100 focused adversarial validation contexts, not 100 independent repository audits or 100 new rules.",
+  "admission": {
+    "owner": "oxlint:prefer-discriminated-union",
+    "reproduction": "A const arrow or function expression with the same broad input, exhaustive sole switch, literal variants and flat return annotation as a supported declaration produces no warning.",
+    "harm": "The flat contract permits a tagged variant without its required payload; consumers cannot narrow payload presence. This remains an advisory modeling opportunity, not a demonstrated runtime incident.",
+    "smallestFix": "Repair the existing return-path owner to recognize unique const function bindings; preserve broad parameter witnesses and every current abstention. No automatic switch migration.",
+    "rejected": "No general rule based on multiple useState calls, state variable names, co-write counts or nullable payload counts. Independent operations, request identities, prior observations and exit-animation payloads remain valid.",
+    "otherOwnersReviewed": [
+      "python:prefer-coordinated-state-owner (SARJ565)",
+      "oxlint:no-readonly-prop-state",
+      "python:prefer-discriminated-model-union (SARJ510)"
+    ]
+  },
+  "upstream": [
+    {
+      "url": "https://typescript-eslint.io/rules/switch-exhaustiveness-check/",
+      "result": "Checks missing input cases; it does not preserve correlations in the return contract of a complete switch."
+    },
+    {
+      "url": "https://react.dev/learn/choosing-the-state-structure",
+      "result": "Recommends related-state grouping and avoiding contradictions, with independent dimensions retained. This guidance alone cannot prove a deterministic hook-level finding."
+    },
+    {
+      "url": "https://docs.astral.sh/ruff/rules/",
+      "result": "Reviewed catalog for coordinated-state ownership overlap; retain existing SARJ565 owner rather than creating a parallel check."
+    }
+  ],
+  "corpora": [
+    {
+      "files": 432,
+      "visibility": "public",
+      "selection": "first 500 non-test TypeScript paths in lexical order; disclosed unbiased source sample, not hit-targeted"
+    },
+    {
+      "files": 500,
+      "visibility": "private",
+      "selection": "first 500 non-test TypeScript paths in lexical order; disclosed unbiased source sample, not hit-targeted"
+    }
+  ],
+  "schemaVersion": 1,
+  "rule": "oxlint:prefer-discriminated-union",
+  "versions": {
+    "typescript": "19.24.0",
+    "standards": "9.60.0"
+  },
+  "baseline": {
+    "truePositive": 4,
+    "falseNegative": 12,
+    "trueNegative": 84,
+    "falsePositive": 0
+  },
+  "candidate": {
+    "truePositive": 16,
+    "falseNegative": 0,
+    "trueNegative": 84,
+    "falsePositive": 0,
+    "duplicateLabels": 0,
+    "switchAutofixes": 0
+  },
+  "corpusEvaluation": {
+    "filesPerRun": 932,
+    "batchesPerRun": 4,
+    "processes": 48,
+    "baselineHits": 1,
+    "candidateHits": 1,
+    "newHits": 0,
+    "removedHits": 0,
+    "measurements": [
+      {
+        "wave": "fresh-process",
+        "engine": "baseline",
+        "medianSeconds": 0.8911,
+        "peakRssBytes": 192348160
+      },
+      {
+        "wave": "fresh-process",
+        "engine": "candidate",
+        "medianSeconds": 0.891291,
+        "peakRssBytes": 182206464
+      },
+      {
+        "wave": "warm-filesystem",
+        "engine": "baseline",
+        "medianSeconds": 0.866792,
+        "peakRssBytes": 192167936
+      },
+      {
+        "wave": "warm-filesystem",
+        "engine": "candidate",
+        "medianSeconds": 0.87089,
+        "peakRssBytes": 193298432
+      }
+    ],
+    "limitations": [
+      "Both waves start fresh linter processes; the second wave reuses filesystem caches. No OS cache flush or retained in-process rule cache is claimed.",
+      "Samples are lexical, non-test path slices; uninspected source cannot establish a whole-corpus false-negative rate.",
+      "Local archives are pinned to recorded full Git revisions and verified content digests before and after each isolated run."
+    ]
+  },
+  "integrationControls": [
+    {
+      "case": "warning",
+      "warnings": 1,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "exact suppression",
+      "warnings": 0,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "unrelated suppression",
+      "warnings": 1,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "test excluded",
+      "warnings": 0,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "generated excluded",
+      "warnings": 0,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "malformed fail open without crash",
+      "warnings": 0,
+      "errors": 1,
+      "result": "pass"
+    },
+    {
+      "case": "shared contract deduplicated",
+      "warnings": 1,
+      "errors": 0,
+      "result": "pass"
+    },
+    {
+      "case": "switch no autofix and second-pass convergence",
+      "result": "pass"
+    },
+    {
+      "case": "flat caller narrowing",
+      "compilerErrorsExpected": 1,
+      "result": "pass"
+    },
+    {
+      "case": "union caller narrowing",
+      "compilerErrorsExpected": 0,
+      "result": "pass"
+    }
+  ],
+  "implementation": "packages/typescript/src/rules/_discriminated-union-returns.ts",
+  "tests": "packages/typescript/tests/rules/prefer-discriminated-union.test.ts",
+  "sourceSha256": "1f534c29b7be14a18d2b2ff362a5c584d12dec96bed20ba1b21dbc55ebc0335a",
+  "corpusInspection": {
+    "unchangedExistingWarnings": 1,
+    "verdict": "Existing mutually exclusive state projections remain an advisory opportunity; no additional real-source alerts were introduced in the two samples. No application refactor is implied by this advisory alone.",
+    "recall": "Unknown outside the labeled controls; sample coverage does not establish whole-repository recall."
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "case": "declaration: explicit variants",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 2,
+      "case": "declaration: all four independent Boolean combinations",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 3,
+      "case": "declaration: optional unknown Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 4,
+      "case": "declaration: constant Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 5,
+      "case": "declaration: no default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 6,
+      "case": "declaration: duplicate label witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 7,
+      "case": "declaration: mixed label domain",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 8,
+      "case": "declaration: dynamic label",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 9,
+      "case": "declaration: narrow input excludes default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 10,
+      "case": "declaration: input written by a default parameter",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 11,
+      "case": "declaration: captured input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 12,
+      "case": "declaration: default parameter is not a direct broad input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 13,
+      "case": "declaration: eval can replace input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 14,
+      "case": "declaration: preceding statement invalidates sole switch proof",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 15,
+      "case": "declaration: nested branch contradicts switch input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 16,
+      "case": "declaration: conditional return has no independent witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 17,
+      "case": "declaration: break falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 18,
+      "case": "declaration: trailing empty label falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 19,
+      "case": "declaration: spread return is opaque",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 20,
+      "case": "declaration: nullable payload is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 21,
+      "case": "declaration: unobserved tag domain is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 22,
+      "case": "const arrow: explicit variants",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 23,
+      "case": "const arrow: all four independent Boolean combinations",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 24,
+      "case": "const arrow: optional unknown Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 25,
+      "case": "const arrow: constant Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 26,
+      "case": "const arrow: no default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 27,
+      "case": "const arrow: duplicate label witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 28,
+      "case": "const arrow: mixed label domain",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 29,
+      "case": "const arrow: dynamic label",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 30,
+      "case": "const arrow: narrow input excludes default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 31,
+      "case": "const arrow: input written by a default parameter",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 32,
+      "case": "const arrow: captured input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 33,
+      "case": "const arrow: default parameter is not a direct broad input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 34,
+      "case": "const arrow: eval can replace input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 35,
+      "case": "const arrow: preceding statement invalidates sole switch proof",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 36,
+      "case": "const arrow: nested branch contradicts switch input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 37,
+      "case": "const arrow: conditional return has no independent witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 38,
+      "case": "const arrow: break falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 39,
+      "case": "const arrow: trailing empty label falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 40,
+      "case": "const arrow: spread return is opaque",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 41,
+      "case": "const arrow: nullable payload is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 42,
+      "case": "const arrow: unobserved tag domain is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 43,
+      "case": "const anonymous expression: explicit variants",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 44,
+      "case": "const anonymous expression: all four independent Boolean combinations",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 45,
+      "case": "const anonymous expression: optional unknown Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 46,
+      "case": "const anonymous expression: constant Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 47,
+      "case": "const anonymous expression: no default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 48,
+      "case": "const anonymous expression: duplicate label witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 49,
+      "case": "const anonymous expression: mixed label domain",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 50,
+      "case": "const anonymous expression: dynamic label",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 51,
+      "case": "const anonymous expression: narrow input excludes default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 52,
+      "case": "const anonymous expression: input written by a default parameter",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 53,
+      "case": "const anonymous expression: captured input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 54,
+      "case": "const anonymous expression: default parameter is not a direct broad input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 55,
+      "case": "const anonymous expression: eval can replace input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 56,
+      "case": "const anonymous expression: preceding statement invalidates sole switch proof",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 57,
+      "case": "const anonymous expression: nested branch contradicts switch input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 58,
+      "case": "const anonymous expression: conditional return has no independent witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 59,
+      "case": "const anonymous expression: break falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 60,
+      "case": "const anonymous expression: trailing empty label falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 61,
+      "case": "const anonymous expression: spread return is opaque",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 62,
+      "case": "const anonymous expression: nullable payload is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 63,
+      "case": "const anonymous expression: unobserved tag domain is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 64,
+      "case": "const named expression: explicit variants",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 65,
+      "case": "const named expression: all four independent Boolean combinations",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 66,
+      "case": "const named expression: optional unknown Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 67,
+      "case": "const named expression: constant Boolean dimension",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 68,
+      "case": "const named expression: no default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 69,
+      "case": "const named expression: duplicate label witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 70,
+      "case": "const named expression: mixed label domain",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 71,
+      "case": "const named expression: dynamic label",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 72,
+      "case": "const named expression: narrow input excludes default witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 73,
+      "case": "const named expression: input written by a default parameter",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 74,
+      "case": "const named expression: captured input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 75,
+      "case": "const named expression: default parameter is not a direct broad input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 76,
+      "case": "const named expression: eval can replace input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 77,
+      "case": "const named expression: preceding statement invalidates sole switch proof",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 78,
+      "case": "const named expression: nested branch contradicts switch input",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 79,
+      "case": "const named expression: conditional return has no independent witness",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 80,
+      "case": "const named expression: break falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 81,
+      "case": "const named expression: trailing empty label falls through",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 82,
+      "case": "const named expression: spread return is opaque",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 83,
+      "case": "const named expression: nullable payload is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 84,
+      "case": "const named expression: unobserved tag domain is retained",
+      "expected": "no finding",
+      "baseline": "valid boundary retained",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 85,
+      "case": "declaration: literal payload presence",
+      "expected": "warning",
+      "baseline": "expected warning",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 86,
+      "case": "declaration: numeric input witnesses",
+      "expected": "warning",
+      "baseline": "expected warning",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 87,
+      "case": "declaration: shared local contract",
+      "expected": "warning",
+      "baseline": "expected warning",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 88,
+      "case": "declaration: restricted Boolean combinations",
+      "expected": "warning",
+      "baseline": "expected warning",
+      "candidate": "passed",
+      "disposition": "boundary retained"
+    },
+    {
+      "pass": 89,
+      "case": "const arrow: literal payload presence",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 90,
+      "case": "const arrow: numeric input witnesses",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 91,
+      "case": "const arrow: shared local contract",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 92,
+      "case": "const arrow: restricted Boolean combinations",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 93,
+      "case": "const anonymous expression: literal payload presence",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 94,
+      "case": "const anonymous expression: numeric input witnesses",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 95,
+      "case": "const anonymous expression: shared local contract",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 96,
+      "case": "const anonymous expression: restricted Boolean combinations",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 97,
+      "case": "const named expression: literal payload presence",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 98,
+      "case": "const named expression: numeric input witnesses",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 99,
+      "case": "const named expression: shared local contract",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    },
+    {
+      "pass": 100,
+      "case": "const named expression: restricted Boolean combinations",
+      "expected": "warning",
+      "baseline": "missed warning",
+      "candidate": "passed",
+      "disposition": "owner repaired"
+    }
+  ],
+  "decision": "Retain warning severity, bounded source semantics and manual migration. Reject a new overlapping rule and automatic switch conversion.",
+  "qualification": "Full exact-head Native make verify is required before merge; its run is recorded in the pull request.",
+  "refinements": [
+    {
+      "case": "A const callable annotation narrows the public input domain or hides overloads",
+      "initialCandidateWarnings": 1,
+      "revisedCandidateWarnings": 0,
+      "action": "Exclude all variable type annotations; four additional owner regression controls preserve this boundary.",
+      "proof": "Native Oxlint confirmed the initial diagnostic and its absence after revision."
+    }
+  ],
+  "focusedOwnerTests": 267,
+  "sourceBase": "67fce62f9277e5e820db357fba66e25a7a81611d"
+}

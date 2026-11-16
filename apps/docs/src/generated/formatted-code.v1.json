@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c8f2e4f546c0dba1d5e1a27b3903cd39d1c81a8ec12e58739dee55a0f9fb1a43",
-  "cliSha256": "7e4056a67f8a6c3b4382700c921178b25e0f43e9dd1391bb974ae0c4c92b25b0",
+  "catalogSha256": "da4f32d04d879d01ab3883150567a14eb42dc729e9970fb6440f40801689f75b",
+  "cliSha256": "001ced4173f8178bcc3bfe494bcf6f8846375659deff3fc86144920f8ddaccfb",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8446,6 +8446,21 @@
           "files": [
             {
               "path": "src/job.ts",
+              "source": "const job = (\n  command: string,\n): { phase: \"queued\"; ticket: string } | { phase: \"complete\" } => {\n  switch (command) {\n    case \"start\":\n      return { phase: \"queued\", ticket: \"t\" };\n    default:\n      return { phase: \"complete\" };\n  }\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "explicit-const-switch-variants",
+          "outcome": "accept",
+          "scenarioId": "const-switch-producer",
+          "title": "A const dispatcher exposes each variant payload"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/job.ts",
               "source": "function job(\n  done: boolean,\n): { phase: \"queued\"; ticket: string } | { phase: \"complete\" } {\n  return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" };\n}\n"
             }
           ],
@@ -8500,6 +8515,21 @@
           "outcome": "reject",
           "scenarioId": "boolean-state",
           "title": "A producer returns retry, terminal and saved-partial combinations"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "const job = (command: string): { phase: \"queued\" | \"complete\"; ticket?: string } => {\n  switch (command) {\n    case \"start\":\n      return { phase: \"queued\", ticket: \"t\" };\n    default:\n      return { phase: \"complete\" };\n  }\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "flat-const-switch-producer",
+          "outcome": "reject",
+          "scenarioId": "const-switch-producer",
+          "title": "A const dispatcher retains tag-specific payload evidence"
         },
         {
           "expectedCount": 1,

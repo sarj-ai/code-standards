@@ -7,6 +7,14 @@ const FAILURE_VARIANTS = FAILURE.replace('{ retriable: boolean; persisted: boole
 
 RULE_TESTER.run("prefer-discriminated-union", rule, {
   valid: [
+    { name: "a callable const annotation narrows the public input domain", code: 'type Result={phase:"queued"|"complete";ticket?:string};const state:(command:"start")=>Result=(command:string):Result=>{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};' },
+    { name: "an overloaded const alias keeps its public domain", code: 'type Result={phase:"queued"|"complete";ticket?:string};type Dispatch={(command:"start"):Result};const state:Dispatch=(command:string):Result=>{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};' },
+    { name: "an annotated function expression keeps its public domain", code: 'type Result={phase:"queued"|"complete";ticket?:string};interface Dispatch{(command:"start"):Result}const state:Dispatch=function(command:string):Result{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};' },
+    { name: "broad annotated const bindings remain conservatively unsupported", code: 'type Result={phase:"queued"|"complete";ticket?:string};const state:(command:string)=>Result=function produce(command:string):Result{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};' },
+    { name: "a mutable switch producer remains unsupported", code: 'let state=(command:string):{phase:"queued"|"complete";ticket?:string}=>{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};' },
+    { name: "a written const switch binding abstains on invalid code", code: 'const state=(command:string):{phase:"queued"|"complete";ticket?:string}=>{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}};state=other;' },
+    { name: "an inline switch callback has no admitted const owner", code: 'consume((command:string):{phase:"queued"|"complete";ticket?:string}=>{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}});' },
+    { name: "an overloaded switch declaration keeps its public contract", code: 'function state(command:"start"):{phase:"queued";ticket:string};function state(command:string):{phase:"queued"|"complete";ticket?:string}{switch(command){case "start":return{phase:"queued",ticket:"t"};default:return{phase:"complete"};}}' },
     { name: "literal tag alias chains remain unsupported", code: 'type First="ready"|"waiting";type Phase=First;function state(flag:boolean):{phase:Phase;value?:string}{return flag?{phase:"ready",value:"ready"}:{phase:"waiting"};}' },
     { name: "imported tag aliases remain opaque", code: 'import type {Phase} from "./wire";function state(flag:boolean):{phase:Phase;value?:string}{return flag?{phase:"ready",value:"ready"}:{phase:"waiting"};}' },
     { name: "an unproduced alias tag still prevents a complete domain witness", code: 'type Phase="ready"|"waiting"|"unknown";function state(flag:boolean):{phase:Phase;value?:string}{return flag?{phase:"ready",value:"ready"}:{phase:"waiting"};}' },
@@ -325,3 +333,59 @@ TYPED_RULE_TESTER.run("prefer-discriminated-union immutable projections", rule, 
     { name: "disabling types preserves existing literal-producer diagnostics", code: 'function state(flag: boolean): { ready: boolean; waiting: boolean } { return flag ? { ready: true, waiting: false } : { ready: false, waiting: true }; }', settings: { sarj: { typeAware: false } }, output: null, errors: [{ messageId: "preferProducedState" }] },
   ].map((test) => ({ filename: "src/projection.ts", ...test })),
 }));
+
+const FLAT = '{ phase: "queued" | "complete"; ticket?: string }';
+const VARIANTS = '{ phase: "queued"; ticket: string } | { phase: "complete" }';
+const BODY = 'switch (command) { case "start": return { phase: "queued", ticket: "t" }; default: return { phase: "complete" }; }';
+
+const boundaries = [
+  { name: "literal payload presence", match: true },
+  { name: "numeric input witnesses", match: true, params: "command: number", body: BODY.replace('case "start"', "case 1") },
+  { name: "shared local contract", match: true, prefix: `type Result = ${FLAT};`, contract: "Result" },
+  { name: "restricted Boolean combinations", match: true, contract: "{ left: boolean; right: boolean }", body: 'switch(command) { case "start": return {left:true,right:false}; default: return {left:false,right:true}; }', messageId: "preferProducedState" },
+  { name: "explicit variants", contract: VARIANTS },
+  { name: "all four independent Boolean combinations", contract: "{ left: boolean; right: boolean }", body: 'switch(command) { case "a": return {left:true,right:true}; case "b": return {left:true,right:false}; case "c": return {left:false,right:true}; default: return {left:false,right:false}; }' },
+  { name: "optional unknown Boolean dimension", contract: "{ left: boolean; right?: boolean }", body: 'switch(command) { case "start": return {left:true,right:false}; default: return {left:false,right:true}; }' },
+  { name: "constant Boolean dimension", contract: "{ left: boolean; right: boolean }", body: 'switch(command) { case "start": return {left:true,right:false}; default: return {left:false,right:false}; }' },
+  { name: "no default witness", body: BODY.replace('default: return { phase: "complete" };', '') },
+  { name: "duplicate label witness", body: BODY.replace('default:', 'case "start": return {phase:"complete"}; default:') },
+  { name: "mixed label domain", body: BODY.replace('case "start"', "case 1") },
+  { name: "dynamic label", prefix: 'declare const label: string;', body: BODY.replace('case "start"', "case label") },
+  { name: "narrow input excludes default witness", params: 'command: "start"' },
+  { name: "input written by a default parameter", params: 'command: string, unused = (command = "start")' },
+  { name: "captured input", params: "", prefix: 'declare const command: string;' },
+  { name: "default parameter is not a direct broad input", params: 'command: string = "start"' },
+  { name: "eval can replace input", params: 'command: string, unused = eval("command = \'start\'")' },
+  { name: "preceding statement invalidates sole switch proof", body: 'observe();' + BODY },
+  { name: "nested branch contradicts switch input", body: BODY.replace('return { phase: "queued", ticket: "t" };', 'if(command !== "start") return {phase:"queued",ticket:"t"}; else return {phase:"complete"};') },
+  { name: "conditional return has no independent witness", body: BODY.replace('return { phase: "queued", ticket: "t" };', 'return command === "start" ? {phase:"complete"} : {phase:"queued",ticket:"t"};') },
+  { name: "break falls through", body: BODY.replace('return { phase: "queued", ticket: "t" };', "break;") },
+  { name: "trailing empty label falls through", body: BODY.replace('default: return { phase: "complete" };', 'default: return {phase:"complete"}; case "trailing":') },
+  { name: "spread return is opaque", prefix: 'declare const extra: object;', body: BODY.replace('ticket: "t"', 'ticket: "t", ...extra') },
+  { name: "nullable payload is retained", contract: '{phase:"queued"|"complete";ticket?: string|null}', body: BODY.replace('ticket: "t"', 'ticket: null') },
+  { name: "unobserved tag domain is retained", contract: '{phase:"queued"|"complete"|"unknown";ticket?:string}' },
+] as const;
+
+const producers = [
+  { name: "declaration", wrap: (params: string, contract: string, body: string) => `function result(${params}): ${contract} { ${body} }` },
+  { name: "const arrow", wrap: (params: string, contract: string, body: string) => `const result = (${params}): ${contract} => { ${body} };` },
+  { name: "const anonymous expression", wrap: (params: string, contract: string, body: string) => `const result = function(${params}): ${contract} { ${body} };` },
+  { name: "const named expression", wrap: (params: string, contract: string, body: string) => `const result = function produce(${params}): ${contract} { ${body} };` },
+];
+
+const cases = producers.flatMap(producer => boundaries.map(boundary => {
+  const test: {
+    name: string; code: string; errors: { messageId: string }[]; output: null;
+  } = {
+    name: `${producer.name}: ${boundary.name}`,
+    code: `${"prefix" in boundary ? boundary.prefix : ""} ${producer.wrap("params" in boundary ? boundary.params : "command: string", "contract" in boundary ? boundary.contract : FLAT, "body" in boundary ? boundary.body : BODY)}`,
+    errors: [{ messageId: "messageId" in boundary ? boundary.messageId : "preferProducedVariants" }],
+    output: null,
+  };
+  return { test, match: "match" in boundary && boundary.match };
+}));
+
+ruleTester().run("prefer-discriminated-union switch bindings", rule, {
+  valid: cases.filter(test => !test.match).map(({ test }) => ({ name: test.name, code: test.code })),
+  invalid: cases.filter(test => test.match).map(({ test }) => test),
+});

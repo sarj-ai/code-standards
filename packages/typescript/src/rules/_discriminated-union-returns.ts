@@ -10,6 +10,7 @@ import type { ESTree, Identifier, Node, SourceCode, TsDefinition } from "../type
 import { isErasedExpression } from "../utils/ast.js";
 import { isPresent } from "../utils/is-present.js";
 import { findVariable } from "../utils/static-string.js";
+import { stableValueBinding } from "../utils/stable-value-binding.js";
 import { typeBinding } from "../utils/type-binding.js";
 import { hasIdentifierNamed } from "../utils/unused-private-binding.js";
 
@@ -330,9 +331,7 @@ function broadSwitchInput(statement: ESTree.SwitchStatement, sourceCode: SourceC
   const body = statement.parent;
   if (body.type !== "BlockStatement" || body.body.length !== 1) return undefined;
   const owner = body.parent;
-  if (owner.type !== "FunctionDeclaration" || owner.id === null) return undefined;
-  const callable = findVariable(sourceCode.getScope(owner), owner.id.name);
-  if (callable?.defs.length !== 1 || callable.defs[0]?.type !== "FunctionName" || callable.defs[0].node !== owner) return undefined;
+  if (!switchProducer(owner, sourceCode)) return undefined;
   const input = statement.discriminant;
   if (input.type !== "Identifier") return undefined;
   const binding = findVariable(sourceCode.getScope(input), input.name);
@@ -341,6 +340,21 @@ function broadSwitchInput(statement: ESTree.SwitchStatement, sourceCode: SourceC
     definition.name.type !== "Identifier" || binding.references.some(reference => reference.isWrite())) return undefined;
   const type = definition.name.typeAnnotation?.typeAnnotation.type;
   return type === "TSStringKeyword" ? "string" : type === "TSNumberKeyword" ? "number" : undefined;
+}
+
+/** Preserve declaration overload guards; expressions need one stable const owner. */
+function switchProducer(owner: Node, sourceCode: SourceCode): boolean {
+  if (owner.type === "FunctionDeclaration" && owner.id !== null) {
+    const callable = findVariable(sourceCode.getScope(owner), owner.id.name);
+    return callable?.defs.length === 1 && callable.defs[0]?.type === "FunctionName" && callable.defs[0].node === owner;
+  }
+  if (owner.type !== "ArrowFunctionExpression" && owner.type !== "FunctionExpression") return false;
+  const declaration = owner.parent;
+  if (declaration.type !== "VariableDeclarator" || declaration.init !== owner || declaration.id.type !== "Identifier" ||
+    isPresent(declaration.id.typeAnnotation) ||
+    declaration.parent.type !== "VariableDeclaration" || declaration.parent.kind !== "const") return false;
+  const callable = findVariable(sourceCode.getScope(declaration), declaration.id.name);
+  return callable?.defs.length === 1 && callable.defs[0]?.node === declaration && stableValueBinding(callable);
 }
 
 /** A finite list of literal cases leaves an admitted broad-input witness for default. */
