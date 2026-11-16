@@ -123,6 +123,17 @@ STANDARDS_8208_ANCHOR = "5e6e5623e5834ad2830c19b3c0e32096e86de7d0"
 STANDARDS_8208_ANCHOR_VERSION = "8.208.8"
 STANDARDS_929_REF = "refs/heads/maintenance/standards-9.29"
 STANDARDS_929_ANCHOR = "ea6568c2730ef341bccf7dbc60a9f2332c6fee78"
+# Platform released 9.29.5 while the backport was being qualified. Preserve that
+# published Core policy without changing the protected maintenance lineage.
+STANDARDS_929_POLICY_ANCHOR = "8e291e38e5eee0bf3bffd635b6b20d82da4e4d94"
+STANDARDS_929_POLICY_PATHS = frozenset(
+    {
+        f"{PACKAGE}/src/sarj_standards/libs/adoption/manifest.py",
+        f"{PACKAGE}/src/sarj_standards/libs/linting/external.py",
+        f"{PACKAGE}/tests/test_process_requests.py",
+        f"{PACKAGE}/tests/test_repo_standards_pins.py",
+    }
+)
 STANDARDS_929_GUARD_PATHS = frozenset(
     {
         f"{PACKAGE}/src/sarj_standards/libs/linting/iac_guard_contracts.py",
@@ -267,6 +278,7 @@ def _validate_standards_929(root: Path, commit: str) -> None:
     unexpected = (
         changed
         - STANDARDS_929_GUARD_PATHS
+        - STANDARDS_929_POLICY_PATHS
         - TOOLING_PATHS
         - set(VERSION_PROJECTIONS)
         - {
@@ -282,11 +294,15 @@ def _validate_standards_929(root: Path, commit: str) -> None:
         msg = "9.29 guard backport requires both adapter and tests"
         raise ReleaseLaneError(msg)
     for path in VERSION_PROJECTIONS:
-        expected = _at(root, STANDARDS_929_ANCHOR, path).replace(b"9.29.1", b"9.29.8")
+        expected = _at(root, STANDARDS_929_POLICY_ANCHOR, path).replace(b"9.29.5", b"9.29.8")
         if _at(root, commit, path) != expected:
             msg = f"9.29 guard backport must retain the runtime and engine version projection in {path}"
             raise ReleaseLaneError(msg)
-    _validate_docs(root, STANDARDS_929_ANCHOR, commit)
+    for path in STANDARDS_929_POLICY_PATHS:
+        if _at(root, commit, path) != _at(root, STANDARDS_929_POLICY_ANCHOR, path):
+            msg = f"9.29 guard backport must retain the published Core policy in {path}"
+            raise ReleaseLaneError(msg)
+    _validate_docs(root, STANDARDS_929_POLICY_ANCHOR, commit)
 
 
 def _validate_maintenance(root: Path, commit: str) -> None:
@@ -449,6 +465,8 @@ def main(argv: list[str] | None = None) -> int:
         if github_output is not None:
             with github_output.open("a", encoding="utf-8") as output:
                 output.write(f"lane={lane}\n")
+                if source_ref == STANDARDS_929_REF:
+                    output.write(f"before={STANDARDS_929_ANCHOR}\n")
         sys.stdout.write(f"Validated {lane} publication at {commit}\n")
 
     try:

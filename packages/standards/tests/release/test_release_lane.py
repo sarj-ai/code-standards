@@ -1361,14 +1361,18 @@ def guard_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.Mon
     adapter = "packages/standards/src/sarj_standards/libs/linting/iac_guard_contracts.py"
     tests = "packages/standards/tests/test_iac_guard_contracts.py"
     files = {
-        "packages/standards/pyproject.toml": '[project]\nversion = "9.29.1"\ndependencies = ["repo-standards==6.22.2"]\n',
-        "packages/standards-compat/pyproject.toml": '[project]\nversion = "9.29.1"\ndependencies = ["code-standards==9.29.1"]\n',
-        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "9.29.1"\n',
-        ".sarj-standards.toml": 'bundle = "9.29.1"\nrule_profile = "all"\n',
-        lane.CLI_REFERENCE: '{"version":"9.29.1","commands":[]}\n',
+        "packages/standards/pyproject.toml": '[project]\nversion = "9.29.5"\ndependencies = ["repo-standards==6.23.2"]\n',
+        "packages/standards-compat/pyproject.toml": '[project]\nversion = "9.29.5"\ndependencies = ["code-standards==9.29.5"]\n',
+        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "9.29.5"\n',
+        ".sarj-standards.toml": 'bundle = "9.29.5"\nrule_profile = "all"\n',
+        lane.CLI_REFERENCE: '{"version":"9.29.5","commands":[]}\n',
         lane.DOC_EXAMPLES: '{"catalogSha256":"retained","cliSha256":"original","rules":[]}\n',
         adapter: "RETIRED_GUARDS = False\n",
         tests: "RETIREMENT_TESTED = False\n",
+        "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "PUBLISHED_POLICY = True\n",
+        "packages/standards/src/sarj_standards/libs/linting/external.py": "PUBLISHED_POLICY = True\n",
+        "packages/standards/tests/test_process_requests.py": "PUBLISHED_POLICY = True\n",
+        "packages/standards/tests/test_repo_standards_pins.py": "PUBLISHED_POLICY = True\n",
     }
     for relative, content in files.items():
         path = tmp_path / relative
@@ -1378,9 +1382,12 @@ def guard_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.Mon
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the native immutable-anchor lookup with private Git objects; injection would bypass it.
         lane, "STANDARDS_929_ANCHOR", anchor, raising=False
     )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the independently published policy projection with private Git objects.
+        lane, "STANDARDS_929_POLICY_ANCHOR", anchor, raising=False
+    )
     for relative in lane.VERSION_PROJECTIONS:
         path = tmp_path / relative
-        path.write_text(path.read_text().replace("9.29.1", "9.29.8"))
+        path.write_text(path.read_text().replace("9.29.5", "9.29.8"))
     (tmp_path / adapter).write_text("RETIRED_GUARDS = True\n")
     (tmp_path / tests).write_text("RETIREMENT_TESTED = True\n")
     (tmp_path / lane.DOC_EXAMPLES).write_text(
@@ -1406,10 +1413,39 @@ def test_guard_maintenance_accepts_only_the_scoped_patch(lane: PublisherLane, gu
     )
 
 
+def test_guard_maintenance_exports_the_verified_published_baseline(
+    lane: PublisherLane, guard_candidate: Candidate, tmp_path: Path
+) -> None:
+    output = tmp_path / "github-output"
+    assert (
+        lane.main(
+            [
+                "--root",
+                str(guard_candidate.root),
+                "--ref",
+                "refs/heads/maintenance/standards-9.29",
+                "--commit",
+                guard_candidate.commit,
+                "--github-output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert output.read_text() == f"lane=standards-maintenance\nbefore={guard_candidate.anchor}\n"
+
+
 @pytest.mark.parametrize(
     ("path", "before", "after", "failure"),
     [
-        pytest.param("packages/standards/pyproject.toml", "6.22.2", "8.0.0", "runtime and engine", id="runtime-sdk"),
+        pytest.param("packages/standards/pyproject.toml", "6.23.2", "8.0.0", "runtime and engine", id="runtime-sdk"),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/linting/external.py",
+            "True",
+            "False",
+            "published Core policy",
+            id="published-worker-policy",
+        ),
         pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.2", "exact 9.29.8", id="occupied-patch"),
         pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.9", "exact 9.29.8", id="future-patch"),
         pytest.param("packages/python/src/unreviewed.py", "", "CHANGED = True\n", "unapproved path", id="engine"),
