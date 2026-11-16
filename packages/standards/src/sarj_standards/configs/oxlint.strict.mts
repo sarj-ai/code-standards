@@ -971,6 +971,7 @@ const RULES = {
   "@sarj/prefer-coded-error-result": "warn",
   "@sarj/prefer-configured-cloud-scope": "warn",
   "@sarj/prefer-constant-time-secret-compare": "error",
+  "@sarj/prefer-coordinated-react-state": "warn",
   "@sarj/prefer-dependency-interface": "warn",
   "@sarj/prefer-discriminated-union": "warn",
   "@sarj/prefer-ecmascript-private-members": "error",
