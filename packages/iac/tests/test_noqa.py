@@ -9,6 +9,7 @@ from sarj_iac_lint._hcl import suppression_comment_lines
 from sarj_iac_lint.rule_base import ExampleOutcome, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
+from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs
 
 
 if TYPE_CHECKING:
@@ -431,7 +432,11 @@ def test_noqa_requires_complete_directive_codes(
     assert findings == analyze(["no-managed-service-account-key"], [path])
 
 
-@pytest.mark.parametrize("rule_id", tuple(rule_id for rule_id in REGISTRY if rule_id != NoTerraformComments.id))
+# Required project diagnostics have dedicated whole-project non-suppression tests.
+@pytest.mark.parametrize(
+    "rule_id",
+    tuple(rule_id for rule_id in REGISTRY if rule_id not in {NoTerraformComments.id, NoUnusedModuleOutputs.id}),
+)
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("crlf", [False, True])
 def test_reasoned_noqa_preserves_suppressible_rule_selection(

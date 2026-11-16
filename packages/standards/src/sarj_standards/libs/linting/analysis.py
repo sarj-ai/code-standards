@@ -54,6 +54,7 @@ from .runner import GroupedPaths, group_paths
 # Native Python reaches its 512-entry module-resolution quota only on large
 # selections; workers then check the files after that quota is spent.
 _PARALLEL_PYTHON_FILES = 512
+_IAC_OUTPUTS_TOOL = "sarj-iac-lint/module-outputs"
 
 
 if TYPE_CHECKING:
@@ -175,6 +176,7 @@ def analyze(
         report
         for report in (
             iac_contracts.report,
+            _iac_outputs_report(root, staged=staged, rule_ids=_selected_ids(rule_selection, RuleEngine.IAC)),
             _native_report(
                 "sarj-python-lint",
                 "sarj_python_lint",
@@ -219,7 +221,9 @@ def analyze(
         ToolReport(
             item.name,
             item.completion,
-            diagnostics=policy.filter_diagnostics(item.diagnostics),
+            diagnostics=(
+                item.diagnostics if item.name == _IAC_OUTPUTS_TOOL else policy.filter_diagnostics(item.diagnostics)
+            ),
             issues=item.issues,
             analyzer_id=item.analyzer_id,
             invocation_id=item.invocation_id,
@@ -824,3 +828,49 @@ def _iac_contracts(root: Path, *, staged: bool) -> _PreparedIAC:
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
         issue = ExecutionIssue("sarj-iac-lint", "guard-contract-failure", f"{type(exc).__name__}: {exc}")
         return _GuardContractsFailed(issue)
+
+
+def _iac_outputs_report(root: Path, *, staged: bool, rule_ids: frozenset[str] | None) -> ToolReport | None:
+    if rule_ids is not None and "no-unused-module-outputs" not in rule_ids:
+        return None
+    try:
+        return _iac_project_report(root, staged=staged, required=rule_ids is not None)
+    except Exception as exc:  # ruff: ignore[blind-except] -- incomplete consumer evidence must fail this analysis without erasing other engines.
+        issue = ExecutionIssue(_IAC_OUTPUTS_TOOL, "module-output-consumer-failure", f"{type(exc).__name__}: {exc}")
+        return ToolReport(_IAC_OUTPUTS_TOOL, Completion.FAILED, issues=(issue,))
+
+
+def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolReport | None:
+    from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- selected complete-project semantic analysis.
+
+    from .iac_module_outputs import selected_sources  # ruff: ignore[import-outside-top-level] -- snapshot acquisition runs only when this rule is selected.
+
+    selected = selected_sources(root, staged=staged)
+    if selected is None:
+        if required:
+            message = "This rule requires the complete Git HEAD or staged index of the selected repository root"
+            raise ValueError(message)
+        return None
+    source_text = selected.sources
+    native = NoUnusedModuleOutputs.check_project(
+        root,
+        source_text,
+        external_outputs=tuple((item.module, item.output) for item in selected.contracts),
+    )
+    documents: dict[Path, SourceDocument | PythonSourceDocument | None] = {
+        root / path: SourceDocument(root / path, source) for path, source in source_text.items()
+    }
+    metadata = native_metadata({NoUnusedModuleOutputs.id: NoUnusedModuleOutputs})
+    resolved_paths = {path: path for path in documents}
+    diagnostics = tuple(
+        normalize_native(
+            item,
+            source="sarj-iac-lint",
+            root=root,
+            metadata=metadata,
+            documents=documents,
+            resolved_paths=resolved_paths,
+        )
+        for item in native
+    )
+    return ToolReport(_IAC_OUTPUTS_TOOL, Completion.COMPLETE, diagnostics=diagnostics, file_count=len(source_text))
