@@ -5,12 +5,13 @@ from enum import StrEnum
 from functools import cache
 from importlib.metadata import PackageNotFoundError, version
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import tomllib
 from typing import TYPE_CHECKING, Final, Literal
 
 from packaging.version import InvalidVersion, Version
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sarj_standards._meta import CONFIGS_DIR, TYPESCRIPT_PEERS, __version__
 from sarj_standards.libs.json_boundary import parse_json
@@ -140,6 +141,81 @@ class PreparedTarget:
     source: str
 
 
+class TerraformOutputContract(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+
+    module: str
+    output: str
+    reason: str
+    evidence: str
+
+    @field_validator("module", "output", "reason", "evidence")
+    @classmethod
+    def nonempty(cls, value: str) -> str:
+        if not value.strip():
+            message = "external output contract fields must be nonempty"
+            raise ValueError(message)
+        return value
+
+    @field_validator("module", "evidence")
+    @classmethod
+    def canonical_path(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if (
+            path.is_absolute()
+            or path.as_posix() != value
+            or ".." in path.parts
+            or any(char in value for char in "*?[]\\")
+        ):
+            message = "external output contracts require exact canonical repository-relative paths"
+            raise ValueError(message)
+        return value
+
+    @field_validator("evidence")
+    @classmethod
+    def evidence_file(cls, value: str) -> str:
+        if value == ".":
+            message = "external output evidence must name a tracked file"
+            raise ValueError(message)
+        return value
+
+    def render(self) -> str:
+        return (
+            "\n[[iac.no-unused-module-outputs.external_outputs]]\n"
+            f"module = {_toml_string(self.module)}\n"
+            f"output = {_toml_string(self.output)}\n"
+            f"reason = {_toml_string(self.reason)}\n"
+            f"evidence = {_toml_string(self.evidence)}\n"
+        )
+
+
+class _TerraformOutputOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+    external_outputs: list[TerraformOutputContract] = Field(default_factory=list)
+
+    @field_validator("external_outputs")
+    @classmethod
+    def unique_contracts(cls, values: list[TerraformOutputContract]) -> list[TerraformOutputContract]:
+        identities = [(value.module, value.output) for value in values]
+        if len(identities) != len(set(identities)):
+            message = "duplicate external output contract"
+            raise ValueError(message)
+        return values
+
+
+class _IACOutputOptions(BaseModel):
+    # Other IaC options retain their own existing parsers.
+    model_config = ConfigDict(extra="ignore", strict=True, hide_input_in_errors=True)
+    unused_module_outputs: _TerraformOutputOptions = Field(
+        default_factory=_TerraformOutputOptions, alias="no-unused-module-outputs"
+    )
+
+
+class _OutputManifest(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True, hide_input_in_errors=True)
+    iac: _IACOutputOptions = Field(default_factory=_IACOutputOptions)
+
+
 @dataclass(frozen=True)
 class Manifest:
     version: str
@@ -161,6 +237,7 @@ class Manifest:
     diagnostic_baseline: str | None = None
     terraform_guard_contracts: str | None = None
     terraform_module_summaries: bool = False
+    terraform_output_contracts: tuple[TerraformOutputContract, ...] = ()
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
@@ -220,6 +297,7 @@ class Manifest:
             )
         if self.terraform_module_summaries:
             sections.append("\n[iac.no-terraform-comments]\nmodule_summaries = true\n")
+        sections.extend(contract.render() for contract in self.terraform_output_contracts)
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
@@ -400,6 +478,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         terraform_guard_contracts=terraform_guard_contract_option(data),
         terraform_module_summaries=_terraform_module_summaries(data),
+        terraform_output_contracts=terraform_output_contracts(data),
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
@@ -1033,3 +1112,7 @@ def _terraform_module_summaries(data: Mapping[str, object]) -> bool:
         case _:
             message = "manifest [iac.no-terraform-comments] supports only boolean module_summaries"
             raise ValueError(message)
+
+
+def terraform_output_contracts(data: Mapping[str, object]) -> tuple[TerraformOutputContract, ...]:
+    return tuple(_OutputManifest.model_validate(data).iac.unused_module_outputs.external_outputs)

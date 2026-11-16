@@ -4,12 +4,17 @@ import os
 from pathlib import Path
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- bounded read-only Git context queries validate a hook index before source tools run.
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from .diagnostics import initial_import
 from .filesystem import is_link_like
 
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+
+_GIT_READ_OPTIONS = ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks")
 _SAFE_ENVIRONMENT: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
@@ -120,3 +125,59 @@ def _validate_index(root: Path, environment: dict[str, str]) -> None:
     if result.stdout:
         message = "active Git index contains unresolved merge entries"
         raise ValueError(message)
+
+
+def is_git_worktree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    worktree = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
+        (git, *_GIT_READ_OPTIONS, "rev-parse", "--is-inside-work-tree"),
+        cwd=root,
+        env=isolated_environment() if environment is None else environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return worktree.returncode == 0 and worktree.stdout.strip() == "true"
+
+
+def has_committed_tree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
+    git = shutil.which("git")
+    if git is None or not is_git_worktree(root, environment=environment):
+        return False
+    head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
+        (git, *_GIT_READ_OPTIONS, "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+        cwd=root,
+        env=isolated_environment() if environment is None else environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if head.returncode == 0:
+        return True
+    symbolic_head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
+        (git, *_GIT_READ_OPTIONS, "symbolic-ref", "--quiet", "HEAD"),
+        cwd=root,
+        env=isolated_environment() if environment is None else environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if symbolic_head.returncode != 0:
+        return True
+    referenced = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
+        (git, *_GIT_READ_OPTIONS, "show-ref", "--verify", "--quiet", symbolic_head.stdout.strip()),
+        cwd=root,
+        env=isolated_environment() if environment is None else environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    # Only an absent branch reference proves an unborn repository. A present or
+    # unreadable reference must reach Repo Standards and fail analysis closed.
+    return referenced.returncode != 1

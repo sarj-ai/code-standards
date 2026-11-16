@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from itertools import batched
+from pathlib import PurePosixPath
+import tomllib
+from typing import TYPE_CHECKING
+
+from repo_standards.repository import (
+    GitIdentity,
+    git_index_identity,
+    inspect_repository,
+    read_tracked_blob_contents,
+)
+
+from sarj_standards.libs.adoption.manifest import (
+    MANIFEST_NAME,
+    TerraformOutputContract,
+    as_table,
+    terraform_output_contracts,
+)
+from sarj_standards.libs.staged_git import has_committed_tree, is_git_worktree, staged_environment
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+_MAX_SOURCE_BYTES = 64 * 1024 * 1024
+_BLOB_BATCH = 100
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleOutputSources:
+    sources: Mapping[PurePosixPath, str]
+    contracts: tuple[TerraformOutputContract, ...]
+
+
+def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
+    # Do not infer a consumer boundary from a parent checkout or one changed file.
+    if not (root / ".git").exists():
+        return None
+    # An unborn branch has no HEAD snapshot; its initial commit is checked through the exact staged index.
+    if not staged and not has_committed_tree(root):
+        if not is_git_worktree(root):
+            message = "Complete Git source evidence requires a readable selected repository"
+            raise ValueError(message)
+        return None
+    if staged:
+        staged_environment(root)
+    identity = git_index_identity(root) if staged else None
+    inspection = inspect_repository(root, identity=identity)
+    if identity is None:
+        identity = GitIdentity(inspection.source_revision, inspection.tree_digest)
+    tracked = frozenset(item.path for item in inspection.tracked_files)
+    if len(tracked) != inspection.tracked_file_count:
+        message = "Complete tracked source evidence is required for Terraform consumers"
+        raise ValueError(message)
+    paths = sorted(PurePosixPath(path) for path in tracked if path.endswith((".tf", ".tf.json")))
+    manifest_path = PurePosixPath(MANIFEST_NAME)
+    selected = [*paths, *([manifest_path] if MANIFEST_NAME in tracked else [])]
+    contents = _selected_contents(root, identity, selected)
+    config = tomllib.loads(contents.get(manifest_path, b"").decode("utf-8"))
+    contracts = terraform_output_contracts(as_table(config))
+    for contract in contracts:
+        if contract.evidence not in tracked:
+            message = f"External output evidence is not tracked in the selected Git tree: {contract.evidence}"
+            raise ValueError(message)
+    return ModuleOutputSources({path: contents[path].decode("utf-8") for path in paths}, contracts)
+
+
+def _selected_contents(root: Path, identity: GitIdentity, paths: list[PurePosixPath]) -> dict[PurePosixPath, bytes]:
+    contents: dict[PurePosixPath, bytes] = {}
+    size = 0
+    for batch in batched(paths, _BLOB_BATCH, strict=False):
+        for blob in read_tracked_blob_contents(root, tuple(path.as_posix() for path in batch), identity=identity):
+            size += len(blob.content)
+            if size > _MAX_SOURCE_BYTES:
+                message = "Complete Terraform source snapshot exceeds the 64 MiB safety limit"
+                raise ValueError(message)
+            contents[PurePosixPath(blob.path)] = blob.content
+    if set(contents) != set(paths):
+        message = "Complete selected Terraform source evidence is required"
+        raise ValueError(message)
+    return contents

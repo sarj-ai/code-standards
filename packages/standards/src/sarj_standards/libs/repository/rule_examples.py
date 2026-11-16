@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from pathlib import PurePosixPath
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository-owned TypeScript verifier.
 import sys
@@ -74,7 +75,23 @@ def _iac(rule_id: str) -> SelectedRule:
     from sarj_iac_lint.__main__ import analyze  # ruff: ignore[import-outside-top-level] -- load only the selected engine.
     from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_iac_lint.rules only when this selected operation executes.
 
-    return _native(rule_id, RuleEngine.IAC, REGISTRY.get(rule_id), analyze)
+    selected_rule = _native(rule_id, RuleEngine.IAC, REGISTRY.get(rule_id), analyze)
+    if rule_id != "no-unused-module-outputs":
+        return selected_rule
+    from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- this rule requires the explicit complete example boundary.
+
+    def run(root: Path, _focus: Path) -> list[ExampleFinding]:
+        sources = {
+            PurePosixPath(path.relative_to(root).as_posix()): path.read_text(encoding="utf-8")
+            for path in root.rglob("*")
+            if path.is_file() and path.name.endswith((".tf", ".tf.json"))
+        }
+        return [
+            ExampleFinding(d.path, d.line, d.col, d.code, d.message)
+            for d in NoUnusedModuleOutputs.check_project(root, sources)
+        ]
+
+    return SelectedRule(selected_rule.spec, run)
 
 
 def _native(rule_id: str, engine: RuleEngine, rule: type[NativeRule] | None, analyze: NativeAnalyzer) -> SelectedRule:

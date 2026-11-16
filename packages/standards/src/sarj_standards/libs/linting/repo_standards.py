@@ -40,7 +40,12 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
 )
 from sarj_standards.libs.json_boundary import parse_unique_json
-from sarj_standards.libs.staged_git import isolated_environment, staged_environment
+from sarj_standards.libs.staged_git import (
+    has_committed_tree,
+    is_git_worktree,
+    isolated_environment,
+    staged_environment,
+)
 
 
 if TYPE_CHECKING:
@@ -66,8 +71,8 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
         return ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
     # A committed-tree check has no repository snapshot before the first commit.
     # The staged pre-commit path still analyzes the exact index for an initial commit.
-    if (staged and not _is_git_worktree(root, environment=environment)) or (
-        not staged and not _has_committed_tree(root, environment=environment)
+    if (staged and not is_git_worktree(root, environment=environment)) or (
+        not staged and not has_committed_tree(root, environment=environment)
     ):
         return None
     selected_manifest = _selected_path_exists(root, _MANIFEST, staged=staged, environment=environment)
@@ -246,62 +251,6 @@ def _position(line: int | None, column: int | None) -> Position | None:
     if line is None:
         return None
     return Position(line - 1, (column or 1) - 1, 0)
-
-
-def _is_git_worktree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
-    git = shutil.which("git")
-    if git is None:
-        return False
-    worktree = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (git, *_GIT_READ_OPTIONS, "rev-parse", "--is-inside-work-tree"),
-        cwd=root,
-        env=isolated_environment() if environment is None else environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    return worktree.returncode == 0 and worktree.stdout.strip() == "true"
-
-
-def _has_committed_tree(root: Path, *, environment: Mapping[str, str] | None = None) -> bool:
-    git = shutil.which("git")
-    if git is None or not _is_git_worktree(root, environment=environment):
-        return False
-    head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (git, *_GIT_READ_OPTIONS, "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
-        cwd=root,
-        env=isolated_environment() if environment is None else environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if head.returncode == 0:
-        return True
-    symbolic_head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (git, *_GIT_READ_OPTIONS, "symbolic-ref", "--quiet", "HEAD"),
-        cwd=root,
-        env=isolated_environment() if environment is None else environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if symbolic_head.returncode != 0:
-        return True
-    referenced = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (git, *_GIT_READ_OPTIONS, "show-ref", "--verify", "--quiet", symbolic_head.stdout.strip()),
-        cwd=root,
-        env=isolated_environment() if environment is None else environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    # Only an absent branch reference proves an unborn repository. A present or
-    # unreadable reference must reach Repo Standards and fail analysis closed.
-    return referenced.returncode != 1
 
 
 def _comparison_base(root: Path) -> str | None:

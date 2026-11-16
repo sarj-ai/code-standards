@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7846c3f250e102f8dbad6c6b8d7b1f52c12c3c64601d81289edaeb5d75d98ec3",
-  "cliSha256": "aaf98c37ed5e7542ce7494b224d327e84d8fd69abf0381a09bfa6f90fc376193",
+  "catalogSha256": "30badcbdfb67105e30c5a7f85a66e7827a35154d3b9ce4136f4c3616089c2b48",
+  "cliSha256": "918b05b3abdb7a41efb86189806810e3a1b43322dd421a8f5e425501bdcce184",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1526,6 +1526,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Move custom input policy out of variable declarations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-unused-module-outputs": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "child/outputs.tf",
+              "source": "output \"used\" { value = true }\n"
+            },
+            {
+              "path": "main.tf",
+              "source": "module \"child\" { source = \"./child\" }\noutput \"public\" { value = module.child.used }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "child/outputs.tf",
+          "id": "root-reexport",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep a child output consumed by a root contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "child/outputs.tf",
+              "source": "output \"unused\" { value = true }\n"
+            },
+            {
+              "path": "main.tf",
+              "source": "module \"child\" { source = \"./child\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "child/outputs.tf",
+          "id": "unused-child-output",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Remove an unconsumed child export"
         }
       ],
       "optionsSchemaSource": null
