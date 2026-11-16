@@ -14,10 +14,17 @@ from sarj_python_lint.rules.prefer_coordinated_state_owner import PreferCoordina
 
 
 _SOURCE = PreferCoordinatedStateOwner.public_examples()[0].focus_file.source
+_SCALAR_SOURCE = PreferCoordinatedStateOwner.public_examples()[2].focus_file.source
 
 
 def _check(source: str, path: str = "app/playback.py") -> list[Diagnostic]:
     return PreferCoordinatedStateOwner().check(Path(path), source)
+
+
+def _assert_valid_source(source: str) -> None:
+    compile(  # sarj-noqa: SARJ557 -- Check fixture scope validity; never execute its code.
+        source, "app/playback.py", "exec"
+    )
 
 
 def test_documented_examples() -> None:
@@ -38,6 +45,138 @@ def test_reports_fields_writers_readers_and_conditional_invariant() -> None:
     assert "current:13, current:14" in finding.message
     assert "If entry lifetimes must agree" in finding.message
     assert finding.fixes == ()
+
+
+def test_scalar_lifecycle_reports_reset_and_resource_consumer() -> None:
+    [finding] = _check(_SCALAR_SOURCE)
+    assert finding.severity is Severity.WARNING
+    assert finding.line == 5
+    assert "state.resource" in finding.message
+    assert "state.started" in finding.message
+    assert "finish:5" in finding.message
+    assert "answer_ready:9" in finding.message
+    assert finding.fixes == ()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("        state.started = False\n", ""),
+        ("state.resource is expected", "state.resource is None"),
+        ("state.resource is expected", "state.resource is not None"),
+        ("not session.state.started", "not session.state.unrelated"),
+        ("resource.interrupt()", "log(resource)"),
+        ("resource.interrupt()", "session.interrupt()"),
+        ("state.started = False", "state.started = True"),
+        ("state.resource = None", "other.resource = None"),
+        ("def answer_ready(session: Session)", "def answer_ready(session)"),
+        ("def answer_ready(session: Session)", "def answer_ready(session: object)"),
+        ("def answer_ready(session: Session)", "@decorate\ndef answer_ready(session: Session)"),
+        (
+            "    if resource is not None",
+            "    resource = replacement\n    if resource is not None",
+        ),
+        (
+            "    if resource is not None",
+            "    session.state.resource = replacement\n    if resource is not None",
+        ),
+    ],
+)
+def test_scalar_independent_ambiguous_and_unguarded_state_abstains(old: str, new: str) -> None:
+    source = _SCALAR_SOURCE.replace(old, new)
+    _assert_valid_source(source)
+    assert _check(source) == []
+
+
+def test_scalar_reset_separated_by_suspension_abstains() -> None:
+    source = _SCALAR_SOURCE.replace("def finish(", "async def finish(").replace(
+        "        state.started = False", "        await checkpoint()\n        state.started = False"
+    )
+    _assert_valid_source(source)
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["await checkpoint()", "[None async for item in events()]", 'setattr(session.state, "resource", None)', "return"],
+)
+def test_scalar_operation_after_suspension_mutation_or_exit_abstains(prefix: str) -> None:
+    source = _SCALAR_SOURCE.replace("def answer_ready(", "async def answer_ready(").replace(
+        "        resource.interrupt()", f"        {prefix}\n        resource.interrupt()"
+    )
+    _assert_valid_source(source)
+    assert _check(source) == []
+
+
+def test_scalar_same_root_type_does_not_merge_distinct_parameters() -> None:
+    source = _SCALAR_SOURCE.replace(
+        "def answer_ready(session: Session)", "def answer_ready(session: Session, other: Session)"
+    ).replace("not session.state.started", "not other.state.started")
+    assert _check(source) == []
+
+
+def test_scalar_generic_arguments_are_part_of_owner_identity() -> None:
+    source = "from app.types import First, Second\n" + _SCALAR_SOURCE.replace(
+        "session: Session, expected", "session: Session[First], expected"
+    ).replace("session: Session)", "session: Session[Second])")
+    assert _check(source) == []
+    assert len(_check(source.replace("Session[Second]", "Session[First]"))) == 1
+
+
+def test_scalar_quoted_generics_keep_their_original_annotation_scope() -> None:
+    source = "from app.types import First, Second\n" + _SCALAR_SOURCE.replace(
+        "session: Session", 'session: "Session[First]"'
+    )
+    assert len(_check(source)) == 1
+    different = source.replace(
+        'def answer_ready(session: "Session[First]")', 'def answer_ready(session: "Session[Second]")'
+    )
+    assert _check(different) == []
+
+
+def test_scalar_fields_are_not_inferred_from_names() -> None:
+    renamed = _SCALAR_SOURCE.replace("resource", "left").replace("started", "right")
+    assert len(_check(renamed)) == 1
+    assert _check(_SCALAR_SOURCE.split("def answer_ready", 1)[0]) == []
+
+
+def test_scalar_alias_inside_loop_remains_bound_to_its_adjacent_guard() -> None:
+    source = _SCALAR_SOURCE.replace(
+        "    resource = session.state.resource\n    if resource is not None and not session.state.started:\n        resource.interrupt()",
+        "    for item in items:\n        resource = session.state.resource\n        if resource is not None and not session.state.started:\n            resource.interrupt()",
+    )
+    assert len(_check(source)) == 1
+
+
+def test_scalar_snapshot_outside_loop_is_not_the_current_member() -> None:
+    source = _SCALAR_SOURCE.replace(
+        "    if resource is not None and not session.state.started:\n        resource.interrupt()",
+        '    for item in items:\n        setattr(session.state, "resource", None)\n        if resource is not None and not session.state.started:\n            resource.interrupt()',
+    )
+    _assert_valid_source(source)
+    assert _check(source) == []
+
+
+def test_scalar_snapshot_before_outer_if_is_not_adjacent_to_the_resource_guard() -> None:
+    source = _SCALAR_SOURCE.replace(
+        "    if resource is not None and not session.state.started:\n        resource.interrupt()",
+        '    if items:\n        setattr(session.state, "resource", None)\n        if resource is not None and not session.state.started:\n            resource.interrupt()',
+    )
+    _assert_valid_source(source)
+    assert _check(source) == []
+
+
+def test_scalar_detection_does_not_depend_on_source_whitespace() -> None:
+    source = _SCALAR_SOURCE.replace(" = None", "=None").replace(" = False", "=False")
+    assert len(_check(source)) == 1
+
+
+def test_scalar_suppression_and_existing_composed_owner() -> None:
+    source = _SCALAR_SOURCE.replace(
+        "state.resource = None", "state.resource = None  # sarj-noqa: SARJ565 -- External API retains separate fields."
+    )
+    assert _check(source) == []
+    assert _check(PreferCoordinatedStateOwner.public_examples()[3].focus_file.source) == []
 
 
 @pytest.mark.parametrize(

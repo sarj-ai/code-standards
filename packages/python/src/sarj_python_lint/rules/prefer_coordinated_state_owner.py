@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import statement_blocks
+from sarj_python_lint.rules._coordinated_scalar_state import coordinated_scalar_state_diagnostics
 from sarj_python_lint.rules._native_namespace_capability import native_namespace_capability_escapes
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -63,6 +64,27 @@ class Playback:
     def finish(self, key: str) -> None:
         self._active.pop(key, None)
 """
+_SCALAR_BAD = """from app.session import Session, Handle
+def finish(session: Session, expected: Handle) -> None:
+    state = session.state
+    if state.resource is expected:
+        state.resource = None
+        state.started = False
+def answer_ready(session: Session) -> None:
+    resource = session.state.resource
+    if resource is not None and not session.state.started:
+        resource.interrupt()
+"""
+_SCALAR_GOOD = """from app.session import Session, Handle
+def finish(session: Session, expected: Handle) -> None:
+    state = session.state
+    if state.playback is not None and state.playback.handle is expected:
+        state.playback = None
+def answer_ready(session: Session) -> None:
+    playback = session.state.playback
+    if playback is not None and not playback.started:
+        playback.handle.interrupt()
+"""
 
 
 @dataclass(frozen=True)
@@ -93,22 +115,26 @@ class PreferCoordinatedStateOwner(Rule):
     code = "SARJ565"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Review dictionaries with repeated same-key writes and removals for one typed owner.",
+        summary="Review coordinated dictionary entries and ownership-guarded scalar state for one typed owner.",
         rationale=(
             "Repeated same-key writes and removals in separate dictionaries distribute a possible entry-lifetime "
-            "invariant across writers. One typed owner can hold the coordinated values. This is structural evidence "
+            "invariant across writers. Ownership-guarded scalar resets and joint resource-consuming guards can "
+            "show the same split lifetime. One typed owner can hold coordinated values. This is structural evidence "
             "for review, not proof of a defect or a shared domain lifetime."
         ),
         remediation=(
             "Review the reported fields, writers and readers. If entries have one lifetime, use one dictionary "
-            "of typed owner records retaining each value's annotation. Preserve task identities, start/stop order, "
+            "of typed owner records, or an optional scalar owner with its required resource and flag. Preserve "
+            "each value's annotation, task identities, start/stop order, "
             "exception observation, cancellation and joining. Keep independent outcome reporting, historical "
             "observations, partial results and independently removed entries separate."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Warning only. Names and field counts never establish a finding. Each reported group requires consecutive same-key assignments and consecutive same-key removals in different function scopes. Every observed per-key mutation of every member inside the class must participate. Writers and readers outside that receiver scope are not inferred. Maximal groups are preferred, and disjoint groups can report separately without repeating fields.",
+            "Scalar mode requires direct undecorated module functions with matching resolved root annotations (including generic arguments) and member paths. One function must reset sibling members to None/False consecutively under resource identity against a distinct parameter. Another must jointly check presence and a falsey flag before directly invoking the same resource. Only unique immediately preceding aliases are followed; consumer functions with direct attribute writes abstain. Existing composed owners do not match.",
+            "Scalar correspondence is nominal structural evidence, not proof of member types, shared runtime instances or a defective design. Independent authentication/cancellation flags and externally mandated records need review. Untyped/Any/object roots, ambiguous or rebound aliases, stale snapshots, arbitrary predicates, unrelated calls, decorated/generic function scopes and unsupported annotation expressions abstain. Scalar analysis is bounded to 8192 file nodes, 4096 nodes per function and alias/annotation depth 8.",
+            "Warning only. Names and field counts never establish a finding. Dictionary groups require consecutive same-key assignments and consecutive same-key removals in different function scopes. Every observed per-key mutation of every member inside the class must participate. Writers and readers outside that receiver scope are not inferred. Maximal dictionary groups are preferred, and disjoint groups can report separately without repeating fields.",
             "Distinct private receiver fields must be initialized directly to empty dict literals or unshadowed dict() calls in a synchronous __init__, with builtin dict annotations and the same unshadowed str, int or bytes key type. Annotations may be inline or unique annotation-only class declarations. Keys resolve to the same unchanged parameter with that explicit type. Receivers resolve by binding, including captures in nested callbacks. Shadowed parameters are distinct; ambiguous rebinding abstains. Private names use lexical class mangling, including explicitly mangled aliases; mangled names over 255 characters abstain.",
             "Subscript writes may insert or overwrite; key existence is not inferred. Only direct subscript assignment/deletion and direct pop(key[, None]) statements are mutations. Subscript reads and get/items/keys/values/copy calls are inventoried. Aliases/escapes, escaped bound methods, class/state reflection including implicit super()/__class__ access, replacement, augmented mutation, other methods, unpaired writes, unknown bases/decorators, stored class attributes, nested classes, generic scopes and ambiguous namespaces abstain. A proven builtin object base and import-proven typing.final class/method decorators are allowed. Classes over 4096 nodes, 16 candidate fields or 256 distinct mutation groups, and test/generated/malformed files, are excluded.",
             "The rule does not prove atomic updates, equal key sets, reachable paths, cross-module ownership or runtime value types. Calls can raise and async callbacks can interleave. Explicit await/yield or implicit async-comprehension suspension inside an operation, or any intervening statement, prevents a group. Helper-mediated coordination and independently removed entries remain unsupported. Mirrored indexes or protocol-mandated stores can legitimately match; use a reasoned exact-code suppression after review.",
@@ -133,6 +159,26 @@ class PreferCoordinatedStateOwner(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="ownership-guarded-scalar-lifecycle",
+                scenario="scalar-lifecycle",
+                title="A resource and flag repeat ownership-dependent state across functions",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("playback.py", _SCALAR_BAD),),
+                focus_path=PurePosixPath("playback.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="optional-composed-playback",
+                scenario="scalar-lifecycle",
+                title="An optional playback owner retains its required handle and started state",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("playback.py", _SCALAR_GOOD),),
+                focus_path=PurePosixPath("playback.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -143,7 +189,10 @@ class PreferCoordinatedStateOwner(Rule):
             context.tree is None
             or context.generated
             or is_test_path(context.path)
-            or "dict" not in context.symbol_source
+            or not (
+                "dict" in context.symbol_source
+                or ("None" in context.symbol_source and "False" in context.symbol_source)
+            )
         ):
             return []
         provenance = context.static_resource_provenance
@@ -154,7 +203,7 @@ class PreferCoordinatedStateOwner(Rule):
             or native_namespace_capability_escapes(context)
         ):
             return []
-        findings: list[Diagnostic] = []
+        findings = coordinated_scalar_state_diagnostics(context, self.code)
         for owner in context.tree.body:
             if isinstance(owner, ast.ClassDef) and _plain_class(owner, provenance):
                 findings.extend(
