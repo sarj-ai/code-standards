@@ -224,6 +224,28 @@ resource "google_example" "ordered" {
     assert _names(sources) == set()
 
 
+def test_json_ordering_through_an_input_keeps_its_producer() -> None:
+    sources = _sources("module.child.used")
+    sources["root/main.tf"] += 'module "receiving" { source = "./receiving"\n ready = module.child.other }\n'
+    sources["root/receiving/main.tf.json"] = json.dumps(
+        {
+            "variable": {"ready": {}},
+            "resource": {"terraform_data": {"ordered": {"depends_on": ["var.ready"]}}},
+        }
+    )
+    assert _names(sources) == set()
+
+
+@pytest.mark.parametrize("dependency", ["module.child", [1]], ids=["scalar-instead-of-array", "non-reference-member"])
+def test_json_ordering_rejects_non_reference_array_shapes(dependency: str | list[int]) -> None:
+    sources = _sources("module.child.used")
+    sources["root/ordering.tf.json"] = json.dumps(
+        {"module": {"ordered": {"source": "example/ordered/test", "depends_on": dependency}}}
+    )
+    with pytest.raises(ValueError, match="depends_on must be an array of reference strings"):
+        _names(sources)
+
+
 def test_root_standalone_and_explicit_external_output_contracts_remain() -> None:
     sources = _sources("module.child.used")
     sources["standalone/outputs.tf"] = _CHILD
@@ -290,6 +312,63 @@ def test_terraform_json_uses_templates_without_treating_plain_strings_as_referen
         ),
     }
     assert _names(sources) == {("root/child/outputs.tf.json", "other")}
+
+
+@pytest.mark.parametrize(
+    ("expression", "used", "indexed", "unused"),
+    [
+        ("${module.child.café}", "café", False, ("other",)),
+        ('${module.child["slot"].used}', "used", True, ("other",)),
+        ('quote "module.child.other" ${module.child["slot"].used} tail', "used", True, ("other",)),
+        ('SARJ_JSON_TEMPLATE\n${module.child["slot"].used}', "used", True, ("other",)),
+        ("$${module.child.used}", "used", False, ("used", "other")),
+    ],
+    ids=["unicode", "quoted-selector", "mixed-template", "delimiter-collision", "escaped-lookalike"],
+)
+def test_json_templates_preserve_decoded_expression_semantics(
+    expression: str, used: str, indexed: bool, unused: tuple[str, ...]
+) -> None:
+    call: dict[str, str | dict[str, bool]] = {"source": "./child"}
+    if indexed:
+        call["for_each"] = {"slot": True}
+    sources = {
+        "root/main.tf.json": json.dumps({"module": {"child": call}, "output": {"public": {"value": expression}}}),
+        "root/child/outputs.tf": f'output "{used}" {{ value = true }}\noutput "other" {{ value = false }}\n',
+    }
+    assert _names(sources) == {("root/child/outputs.tf", name) for name in unused}
+
+
+def test_json_objects_preserve_static_projection_and_literal_sources() -> None:
+    sources = {
+        "root/main.tf.json": json.dumps(
+            {
+                "module": {"child": {"source": "./child${literal}"}},
+                "locals": {"bundle": {"taken": "${module.child.used}", "untaken": "${module.child.other}"}},
+                "output": {"public": {"value": "${local.bundle.taken}"}},
+            }
+        ),
+        "root/child${literal}/outputs.tf": _CHILD,
+    }
+    assert _names(sources) == {("root/child${literal}/outputs.tf", "other")}
+
+
+def test_json_literal_keys_and_block_comments_do_not_invent_consumers() -> None:
+    sources = {
+        "root/main.tf.json": json.dumps(
+            {
+                "//": "${module.child.other}",
+                "module": {"child": {"source": "./child", "//": "${module.child.other}"}},
+                "output": {
+                    "public": {
+                        "//": "${module.child.other}",
+                        "value": {"//": "${module.child.used}", "literal-${module.child.other}": True},
+                    }
+                },
+            }
+        ),
+        "root/child/outputs.tf": _CHILD,
+    }
+    assert _names(sources) == {("root/child/outputs.tf", "other")}
 
 
 @pytest.mark.parametrize(

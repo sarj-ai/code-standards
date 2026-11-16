@@ -75,6 +75,12 @@ _UNNAMED_BLOCKS = frozenset({"locals", "terraform", "moved", "removed", "import"
 _PROJECTING_FUNCTIONS = frozenset({"try", "coalesce", "merge", "sensitive", "nonsensitive"})
 _MAX_INSTANCES = 20_000
 _MAX_DEPTH = 128
+_JSON_LITERALS: Final[dict[str, frozenset[str]]] = {
+    "module": frozenset({"source", "version", "providers"}),
+    "variable": frozenset({"type", "default", "description"}),
+    "provider": frozenset({"alias", "version"}),
+    "output": frozenset({"description", "sensitive", "ephemeral"}),
+}
 
 
 def unused_module_outputs(
@@ -255,17 +261,9 @@ def _json_blocks(*, path: str, source: str) -> tuple[_hcl.Block, ...]:
     payload: _JSONValue = json.loads(source, object_pairs_hook=_unique_object)  # pyright: ignore[reportAny] -- stdlib JSON decoder boundary; keys and duplicate members are checked before use.
     result: list[_hcl.Block] = []
     for kind, body in _mapping(payload, path=path).items():
-        if kind in {"resource", "data"}:
-            declarations = [
-                ((resource_type, name), attributes)
-                for resource_type, names in _mapping(body, path=path).items()
-                for name, attributes in _mapping(names, path=path).items()
-            ]
-        elif kind in _NAMED_BLOCKS:
-            declarations = [((name,), attributes) for name, attributes in _mapping(body, path=path).items()]
-        else:
-            declarations = [((), body)]
-        for labels, attributes in declarations:
+        if kind == "//":
+            continue
+        for labels, attributes in _json_declarations(kind, body, path=path):
             values = _mapping(attributes, path=path)
             result.append(
                 _hcl.Block(
@@ -275,11 +273,77 @@ def _json_blocks(*, path: str, source: str) -> tuple[_hcl.Block, ...]:
                     1,
                     1,
                     1,
-                    tuple(_hcl.Attribute(name, json.dumps(value), 1, 1) for name, value in values.items()),
+                    tuple(
+                        _hcl.Attribute(
+                            name,
+                            _json_attribute(kind, name, value),
+                            1,
+                            1,
+                        )
+                        for name, value in values.items()
+                        if name != "//"
+                    ),
                     (),
                 )
             )
     return tuple(result)
+
+
+def _json_declarations(kind: str, body: _JSONValue, *, path: str) -> list[tuple[tuple[str, ...], _JSONValue]]:
+    if kind in {"resource", "data"}:
+        return [
+            ((resource_type, name), attributes)
+            for resource_type, names in _mapping(body, path=path).items()
+            for name, attributes in _mapping(names, path=path).items()
+        ]
+    if kind in _NAMED_BLOCKS:
+        return [((name,), attributes) for name, attributes in _mapping(body, path=path).items()]
+    return [((), body)]
+
+
+def _json_attribute(kind: str, name: str, value: _JSONValue) -> str:
+    if name == "depends_on":
+        message = "Terraform JSON depends_on must be an array of reference strings"
+        if not isinstance(value, list):
+            raise ValueError(message)
+        references = [item for item in value if isinstance(item, str)]
+        if len(references) != len(value):
+            raise ValueError(message)
+        return "[" + ", ".join(references) + "]"
+    return _json_expression(value, literal=kind == "terraform" or name in _JSON_LITERALS.get(kind, ()))
+
+
+def _json_expression(value: _JSONValue, *, literal: bool = False) -> str:
+    match value:
+        case dict():
+            return (
+                "{"
+                + ", ".join(
+                    f"{_json_expression(key, literal=True)}: {_json_expression(item, literal=literal)}"
+                    for key, item in value.items()
+                )
+                + "}"
+            )
+        case list():
+            return "[" + ", ".join(_json_expression(item, literal=literal) for item in value) + "]"
+        case _:
+            pass
+    if literal and isinstance(value, str):
+        return json.dumps(value.replace("${", "$${").replace("%{", "%%{"), ensure_ascii=False)
+    if not isinstance(value, str) or not any(marker in value for marker in ("${", "%{")):
+        return json.dumps(value, ensure_ascii=False)
+    lines = frozenset(value.splitlines())
+    delimiter = "SARJ_JSON_TEMPLATE"
+    while delimiter in lines:
+        delimiter += "_"
+    template = f"<<{delimiter}\n{value}\n{delimiter}\n"
+    expressions = _hcl.template_expressions(template)
+    if not expressions:
+        return json.dumps(value, ensure_ascii=False)
+    for expression in expressions:
+        if value == "${" + expression + "}":
+            return expression
+    return template
 
 
 def _mapping(value: _JSONValue, *, path: str) -> dict[str, _JSONValue]:
