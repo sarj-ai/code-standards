@@ -1369,6 +1369,7 @@ def guard_candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.Mon
         lane.DOC_EXAMPLES: '{"catalogSha256":"retained","cliSha256":"original","rules":[]}\n',
         adapter: "RETIRED_GUARDS = False\n",
         tests: "RETIREMENT_TESTED = False\n",
+        ".github/workflows/commit-policy.yml": "PUBLISHED_POLICY = True\n",
         "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "PUBLISHED_POLICY = True\n",
         "packages/standards/src/sarj_standards/libs/linting/external.py": "PUBLISHED_POLICY = True\n",
         "packages/standards/tests/test_process_requests.py": "PUBLISHED_POLICY = True\n",
@@ -1445,6 +1446,9 @@ def test_guard_maintenance_exports_the_verified_published_baseline(
             "False",
             "published Core policy",
             id="published-worker-policy",
+        ),
+        pytest.param(
+            ".github/workflows/commit-policy.yml", "True", "False", "published Core policy", id="published-ci-policy"
         ),
         pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.2", "exact 9.29.8", id="occupied-patch"),
         pytest.param("packages/standards/pyproject.toml", "9.29.8", "9.29.9", "exact 9.29.8", id="future-patch"),

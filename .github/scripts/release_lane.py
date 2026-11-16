@@ -128,6 +128,7 @@ STANDARDS_929_ANCHOR = "ea6568c2730ef341bccf7dbc60a9f2332c6fee78"
 STANDARDS_929_POLICY_ANCHOR = "8e291e38e5eee0bf3bffd635b6b20d82da4e4d94"
 STANDARDS_929_POLICY_PATHS = frozenset(
     {
+        ".github/workflows/commit-policy.yml",
         f"{PACKAGE}/src/sarj_standards/libs/adoption/manifest.py",
         f"{PACKAGE}/src/sarj_standards/libs/linting/external.py",
         f"{PACKAGE}/tests/test_process_requests.py",
