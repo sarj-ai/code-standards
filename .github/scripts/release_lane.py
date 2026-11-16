@@ -121,26 +121,6 @@ STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
 STANDARDS_8208_REF = "refs/heads/maintenance/standards-8.208"
 STANDARDS_8208_ANCHOR = "5e6e5623e5834ad2830c19b3c0e32096e86de7d0"
 STANDARDS_8208_ANCHOR_VERSION = "8.208.8"
-STANDARDS_929_REF = "refs/heads/maintenance/standards-9.29"
-STANDARDS_929_ANCHOR = "ea6568c2730ef341bccf7dbc60a9f2332c6fee78"
-# Platform released 9.29.5 while the backport was being qualified. Preserve that
-# published Core policy without changing the protected maintenance lineage.
-STANDARDS_929_POLICY_ANCHOR = "8e291e38e5eee0bf3bffd635b6b20d82da4e4d94"
-STANDARDS_929_POLICY_PATHS = frozenset(
-    {
-        ".github/workflows/commit-policy.yml",
-        f"{PACKAGE}/src/sarj_standards/libs/adoption/manifest.py",
-        f"{PACKAGE}/src/sarj_standards/libs/linting/external.py",
-        f"{PACKAGE}/tests/test_process_requests.py",
-        f"{PACKAGE}/tests/test_repo_standards_pins.py",
-    }
-)
-STANDARDS_929_GUARD_PATHS = frozenset(
-    {
-        f"{PACKAGE}/src/sarj_standards/libs/linting/iac_guard_contracts.py",
-        f"{PACKAGE}/tests/test_iac_guard_contracts.py",
-    }
-)
 # Advice delivery only; runtime dependencies, engines and baseline policy stay at the anchor.
 STANDARDS_8208_APPROVED_SHA256: Final[dict[str, str]] = {
     "packages/standards/src/sarj_standards/__main__.py": "71a2f98187cc2d64cbab34209b1e94103daefa9a8190e84918fa7217701e846c",
@@ -269,41 +249,6 @@ def _validate_standards_8208(root: Path, commit: str) -> None:
             msg = f"8.208 advice publication must match the reviewed advice bytes in {path}"
             raise ReleaseLaneError(msg)
     _validate_docs(root, STANDARDS_8208_ANCHOR, commit)
-
-
-def _validate_standards_929(root: Path, commit: str) -> None:
-    changed = _changed_since_anchor(root, STANDARDS_929_ANCHOR, commit)
-    if _project_version(root, commit) != "9.29.8":
-        msg = "9.29 guard backport publication requires exact 9.29.8"
-        raise ReleaseLaneError(msg)
-    unexpected = (
-        changed
-        - STANDARDS_929_GUARD_PATHS
-        - STANDARDS_929_POLICY_PATHS
-        - TOOLING_PATHS
-        - set(VERSION_PROJECTIONS)
-        - {
-            DOC_EXAMPLES,
-            f"{PACKAGE}/src/sarj_standards/libs/repository/docs.py",
-            f"{PACKAGE}/README.md",
-        }
-    )
-    if unexpected:
-        msg = f"9.29 guard backport changes an unapproved path: {', '.join(sorted(unexpected))}"
-        raise ReleaseLaneError(msg)
-    if not changed.issuperset(STANDARDS_929_GUARD_PATHS):
-        msg = "9.29 guard backport requires both adapter and tests"
-        raise ReleaseLaneError(msg)
-    for path in VERSION_PROJECTIONS:
-        expected = _at(root, STANDARDS_929_POLICY_ANCHOR, path).replace(b"9.29.5", b"9.29.8")
-        if _at(root, commit, path) != expected:
-            msg = f"9.29 guard backport must retain the runtime and engine version projection in {path}"
-            raise ReleaseLaneError(msg)
-    for path in STANDARDS_929_POLICY_PATHS:
-        if _at(root, commit, path) != _at(root, STANDARDS_929_POLICY_ANCHOR, path):
-            msg = f"9.29 guard backport must retain the published Core policy in {path}"
-            raise ReleaseLaneError(msg)
-    _validate_docs(root, STANDARDS_929_POLICY_ANCHOR, commit)
 
 
 def _validate_maintenance(root: Path, commit: str) -> None:
@@ -447,7 +392,6 @@ _MAINTENANCE_VALIDATORS: Final[dict[str, Callable[[Path, str], None]]] = {
     MAINTENANCE_REF: _validate_maintenance,
     STANDARDS_8129_REF: _validate_standards_8129,
     STANDARDS_8208_REF: _validate_standards_8208,
-    STANDARDS_929_REF: _validate_standards_929,
 }
 
 
@@ -466,8 +410,6 @@ def main(argv: list[str] | None = None) -> int:
         if github_output is not None:
             with github_output.open("a", encoding="utf-8") as output:
                 output.write(f"lane={lane}\n")
-                if source_ref == STANDARDS_929_REF:
-                    output.write(f"before={STANDARDS_929_ANCHOR}\n")
         sys.stdout.write(f"Validated {lane} publication at {commit}\n")
 
     try:
