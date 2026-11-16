@@ -121,6 +121,14 @@ STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
 STANDARDS_8208_REF = "refs/heads/maintenance/standards-8.208"
 STANDARDS_8208_ANCHOR = "5e6e5623e5834ad2830c19b3c0e32096e86de7d0"
 STANDARDS_8208_ANCHOR_VERSION = "8.208.8"
+STANDARDS_929_REF = "refs/heads/maintenance/standards-9.29"
+STANDARDS_929_ANCHOR = "ea6568c2730ef341bccf7dbc60a9f2332c6fee78"
+STANDARDS_929_GUARD_PATHS = frozenset(
+    {
+        f"{PACKAGE}/src/sarj_standards/libs/linting/iac_guard_contracts.py",
+        f"{PACKAGE}/tests/test_iac_guard_contracts.py",
+    }
+)
 # Advice delivery only; runtime dependencies, engines and baseline policy stay at the anchor.
 STANDARDS_8208_APPROVED_SHA256: Final[dict[str, str]] = {
     "packages/standards/src/sarj_standards/__main__.py": "71a2f98187cc2d64cbab34209b1e94103daefa9a8190e84918fa7217701e846c",
@@ -249,6 +257,36 @@ def _validate_standards_8208(root: Path, commit: str) -> None:
             msg = f"8.208 advice publication must match the reviewed advice bytes in {path}"
             raise ReleaseLaneError(msg)
     _validate_docs(root, STANDARDS_8208_ANCHOR, commit)
+
+
+def _validate_standards_929(root: Path, commit: str) -> None:
+    changed = _changed_since_anchor(root, STANDARDS_929_ANCHOR, commit)
+    if _project_version(root, commit) != "9.29.2":
+        msg = "9.29 guard backport publication requires exact 9.29.2"
+        raise ReleaseLaneError(msg)
+    unexpected = (
+        changed
+        - STANDARDS_929_GUARD_PATHS
+        - TOOLING_PATHS
+        - set(VERSION_PROJECTIONS)
+        - {
+            DOC_EXAMPLES,
+            f"{PACKAGE}/src/sarj_standards/libs/repository/docs.py",
+            f"{PACKAGE}/README.md",
+        }
+    )
+    if unexpected:
+        msg = f"9.29 guard backport changes an unapproved path: {', '.join(sorted(unexpected))}"
+        raise ReleaseLaneError(msg)
+    if not changed.issuperset(STANDARDS_929_GUARD_PATHS):
+        msg = "9.29 guard backport requires both adapter and tests"
+        raise ReleaseLaneError(msg)
+    for path in VERSION_PROJECTIONS:
+        expected = _at(root, STANDARDS_929_ANCHOR, path).replace(b"9.29.1", b"9.29.2")
+        if _at(root, commit, path) != expected:
+            msg = f"9.29 guard backport must retain the runtime and engine version projection in {path}"
+            raise ReleaseLaneError(msg)
+    _validate_docs(root, STANDARDS_929_ANCHOR, commit)
 
 
 def _validate_maintenance(root: Path, commit: str) -> None:
@@ -392,6 +430,7 @@ _MAINTENANCE_VALIDATORS: Final[dict[str, Callable[[Path, str], None]]] = {
     MAINTENANCE_REF: _validate_maintenance,
     STANDARDS_8129_REF: _validate_standards_8129,
     STANDARDS_8208_REF: _validate_standards_8208,
+    STANDARDS_929_REF: _validate_standards_929,
 }
 
 
