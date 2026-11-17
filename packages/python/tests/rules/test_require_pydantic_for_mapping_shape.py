@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -15,6 +16,11 @@ if TYPE_CHECKING:
     import ast
 
     from sarj_python_lint.rule_base import RuleExample
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    visits: int = 0
 
 
 def _check(source: str, path: str = "app/claims.py"):
@@ -528,13 +534,12 @@ adapter = BeforeValidator(partial(normalize, raw={}))
 def test_repeated_mapping_aliases_have_a_bounded_parse_budget(
     monkeypatch: pytest.MonkeyPatch, leaf: str, expected: int
 ) -> None:
-    visits = 0
+    callback_state = _CallbackState(visits=0)
     original = AnnotationSemantics.parse
 
     def measured(annotation: ast.expr | None) -> ast.expr | None:
-        nonlocal visits
-        visits += 1
-        assert visits < 128, "Repeated aliases must reuse their annotation facts"
+        callback_state.visits += 1
+        assert callback_state.visits < 128, "Repeated aliases must reuse their annotation facts"
         return original(annotation)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- measure real parser calls to detect exponential alias expansion.

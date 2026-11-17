@@ -436,9 +436,10 @@ class _MethodScopeFacts:
 
 def _method_scope_facts(node: ast.FunctionDef | ast.AsyncFunctionDef) -> _MethodScopeFacts:
     bindings: set[str] = set()
-    has_yield = False
 
     class Visitor(ast.NodeVisitor):
+        has_yield: bool = False
+
         @override
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             bindings.add(node.name)
@@ -493,20 +494,18 @@ def _method_scope_facts(node: ast.FunctionDef | ast.AsyncFunctionDef) -> _Method
 
         @override
         def visit_Yield(self, node: ast.Yield) -> None:
-            nonlocal has_yield
-            has_yield = True
+            self.has_yield = True
             self.generic_visit(node)
 
         @override
         def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
-            nonlocal has_yield
-            has_yield = True
+            self.has_yield = True
             self.generic_visit(node)
 
     visitor = Visitor()
     for statement in node.body:
         visitor.visit(statement)
-    return _MethodScopeFacts(bindings=frozenset(bindings), is_generator=has_yield)
+    return _MethodScopeFacts(bindings=frozenset(bindings), is_generator=visitor.has_yield)
 
 
 def _is_final_class(node: ast.ClassDef, imports: ImportIndex) -> bool:

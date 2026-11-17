@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from datetime import timedelta
 from email.message import Message
 import hashlib
@@ -20,6 +21,13 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from tests.call_contracts import SubprocessOptions
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    attempts: int = 0
+    calls: int = 0
+    now: float = 0.0
 
 
 @runtime_checkable
@@ -143,7 +151,7 @@ def test_publish_command_is_idempotent(
 def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
     verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls = 0
+    callback_state = _CallbackState(calls=0)
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test forces the remote npm package to be absent
         verifier, "_npm_version_exists", _missing
     )
@@ -162,8 +170,7 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
         commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
         environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
     ) -> None:
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects an ambiguous npm subprocess failure
         subprocess, "run", publish
@@ -173,7 +180,7 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
     )
 
     assert verifier.main(_argv()) == 0
-    assert calls == 1
+    assert callback_state.calls == 1
 
 
 def test_ambiguous_publish_and_verification_failure_reports_failure(
@@ -214,27 +221,25 @@ def test_ambiguous_publish_and_verification_failure_reports_failure(
 
 
 def test_retry_stage_respects_retry_after_then_uses_backoff(verifier: PublicationVerifier) -> None:
-    now = 0.0
+    callback_state = _CallbackState(now=0.0)
     waits: list[float] = []
-    attempts = 0
+    callback_state.attempts = 0
 
     def clock() -> float:
-        return now
+        return callback_state.now
 
     def sleep(seconds: float) -> None:
-        nonlocal now
         waits.append(seconds)
-        now += seconds
+        callback_state.now += seconds
 
     def operation() -> str:
-        nonlocal attempts
-        attempts += 1
-        if attempts == 1:
+        callback_state.attempts += 1
+        if callback_state.attempts == 1:
             headers = Message()
             headers["Retry-After"] = "7"
             url = "https://registry.example"
             raise HTTPError(url, 429, "busy", headers, None)
-        if attempts == 2:
+        if callback_state.attempts == 2:
             msg = "temporary resolver failure"
             raise OSError(msg)
         return "ready"
@@ -265,16 +270,15 @@ def test_retry_stage_fails_fast_on_nonretryable_http_status(verifier: Publicatio
 
 
 def test_retry_stage_has_a_bounded_monotonic_deadline(verifier: PublicationVerifier) -> None:
-    now = 0.0
+    callback_state = _CallbackState(now=0.0)
     waits: list[float] = []
 
     def clock() -> float:
-        return now
+        return callback_state.now
 
     def sleep(seconds: float) -> None:
-        nonlocal now
         waits.append(seconds)
-        now += seconds
+        callback_state.now += seconds
 
     def fail() -> None:
         msg = "offline"
@@ -352,22 +356,21 @@ def test_npm_verification_has_independent_stage_budgets(
 def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, metadata_ready_at: float
 ) -> None:
-    now = 0.0
+    callback_state = _CallbackState(now=0.0)
     waits: list[float] = []
     attempts = {"metadata": 0, "provenance": 0, "install": 0}
     artifact = object()
 
     def clock() -> float:
-        return now
+        return callback_state.now
 
     def sleep(seconds: float) -> None:
-        nonlocal now
         waits.append(seconds)
-        now += seconds
+        callback_state.now += seconds
 
     def delayed[T](name: str, result: T) -> T:
         attempts[name] += 1
-        if attempts[name] == 1 or (name == "metadata" and now < metadata_ready_at):
+        if attempts[name] == 1 or (name == "metadata" and callback_state.now < metadata_ready_at):
             message = f"{name} has not propagated"
             raise OSError(message)
         return result
@@ -404,7 +407,7 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
             verifier.verify_npm(
                 Path("package.tgz"), commit="commit", environment="publisher", clock=clock, sleeper=sleep
             )
-        assert now == 900
+        assert callback_state.now == 900
         assert attempts["provenance"] == attempts["install"] == 0
         return
 
@@ -419,7 +422,7 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     assert attempts["metadata"] >= 2
     assert attempts["provenance"] == attempts["install"] == 2
     assert waits[-2:] == [5.0, 5.0]
-    assert metadata_ready_at <= now < metadata_ready_at + 40
+    assert metadata_ready_at <= callback_state.now < metadata_ready_at + 40
 
 
 def test_wrong_registry_bytes_are_permanent_and_never_retried(
@@ -522,22 +525,21 @@ def pypi_dist(tmp_path: Path, verifier: PublicationVerifier, monkeypatch: pytest
 def test_pypi_retries_only_the_delayed_file_with_a_bounded_budget(
     verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, pypi_dist: Path, visible_at: float
 ) -> None:
-    now = 0.0
+    callback_state = _CallbackState(now=0.0)
     calls: dict[str, int] = {}
     waits: list[float] = []
 
     def clock() -> float:
-        return now
+        return callback_state.now
 
     def sleep(seconds: float) -> None:
-        nonlocal now
         waits.append(seconds)
-        now += seconds
+        callback_state.now += seconds
 
     def verify(artifact: Path, *, name: str, version: str, environment: str) -> None:
         assert (name, version, environment) == (artifact.name.split("_", 1)[0], "1.2.3", "publisher")
         calls[artifact.name] = calls.get(artifact.name, 0) + 1
-        if artifact.name == "zeta_1.whl" and now < visible_at:
+        if artifact.name == "zeta_1.whl" and callback_state.now < visible_at:
             url = "https://pypi.example/provenance"
             raise HTTPError(url, 404, "not visible yet", Message(), None)
 
@@ -547,11 +549,11 @@ def test_pypi_retries_only_the_delayed_file_with_a_bounded_budget(
     if visible_at > 180:
         with pytest.raises(Exception, match=r"PyPI zeta_1\.whl did not converge"):
             verifier.verify_pypi(pypi_dist, ("alpha", "zeta"), "publisher", clock=clock, sleeper=sleep)
-        assert now == 180
+        assert callback_state.now == 180
         assert "zeta_2.tar.gz" not in calls
     else:
         verifier.verify_pypi(pypi_dist, ("alpha", "zeta"), "publisher", clock=clock, sleeper=sleep)
-        assert visible_at <= now < visible_at + 30
+        assert visible_at <= callback_state.now < visible_at + 30
         assert calls["zeta_2.tar.gz"] == 1
     assert calls["alpha_1.whl"] == calls["alpha_2.tar.gz"] == 1
     assert all(0 < delay <= 30 for delay in waits)

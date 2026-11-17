@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catches bounded runner timeout, never executes here.
 from typing import TYPE_CHECKING
@@ -15,6 +16,12 @@ if TYPE_CHECKING:
 
 _MAX_CACHE_CHARACTERS = 1_048_576
 _MAX_CACHE_ENTRIES = 128
+
+
+@dataclass(slots=True)
+class _ShellParserState:
+    executable: Path | None = None
+    retained_characters: int = 0
 
 
 class ShellParseError(RuntimeError):
@@ -45,25 +52,23 @@ def _checked_executable() -> Path:
 
 
 def make_shell_parser() -> Callable[[str], Mapping[str, JsonValue]]:
-    executable: Path | None = None
+    callback_state = _ShellParserState(executable=None)
     cache: dict[str, str] = {}
-    retained_characters = 0
 
     def parse(source: str) -> Mapping[str, JsonValue]:
-        nonlocal executable, retained_characters
-        if executable is None:
-            executable = _checked_executable()
+        if callback_state.executable is None:
+            callback_state.executable = _checked_executable()
         if source in cache:
             return _shell_tree(cache[source])
-        payload = _shell_json(source, executable=executable, dialect="bash")
+        payload = _shell_json(source, executable=callback_state.executable, dialect="bash")
         tree = _shell_tree(payload)
         size = len(source) + len(payload)
         if size <= _MAX_CACHE_CHARACTERS:
-            if len(cache) >= _MAX_CACHE_ENTRIES or retained_characters + size > _MAX_CACHE_CHARACTERS:
+            if len(cache) >= _MAX_CACHE_ENTRIES or callback_state.retained_characters + size > _MAX_CACHE_CHARACTERS:
                 cache.clear()
-                retained_characters = 0
+                callback_state.retained_characters = 0
             cache[source] = payload
-            retained_characters += size
+            callback_state.retained_characters += size
         return tree
 
     return parse

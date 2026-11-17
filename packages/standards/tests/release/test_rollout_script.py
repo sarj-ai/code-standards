@@ -36,6 +36,11 @@ if TYPE_CHECKING:
     from tests.call_contracts import TemporaryDirectoryOptions
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    pull_request_calls: int = 0
+
+
 def consumer() -> rollout.Consumer:
     return rollout.Consumer("Consumer", "example/consumer", "main", ("make", "check"))
 
@@ -1996,16 +2001,15 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             runner.provisioned_path = _environment["PATH"]
             return rollout.ProvisionedTools({"PATH": runner.provisioned_path}, ("mise", "exec", "--"))
 
-        pull_request_calls = 0
+        callback_state = _CallbackState(pull_request_calls=0)
 
         def managed_pull_request(
             _consumer: rollout.Consumer,
             _version: str,
             _runner: rollout.CommandRunner,
         ) -> dict[str, JsonValue] | None:
-            nonlocal pull_request_calls
-            pull_request_calls += 1
-            if pull_request_calls == 1:
+            callback_state.pull_request_calls += 1
+            if callback_state.pull_request_calls == 1:
                 return None
             head_sha = subprocess.run(
                 ("git", "rev-parse", "HEAD"),

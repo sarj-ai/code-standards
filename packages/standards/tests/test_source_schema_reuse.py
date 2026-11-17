@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 from importlib.resources import files
 from pathlib import Path
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
 _VALID = "apiVersion: skaffold/v4beta7\nkind: Config\nmetadata: {name: example}\n"
 _INVALID = "apiVersion: skaffold/v4beta7\nkind: Config\nbuild: {artifacts: true}\n"
 _SCHEMA_NAME = "skaffold-v4beta7.json"
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    attempts: int = 0
 
 
 @pytest.fixture
@@ -154,13 +160,12 @@ def test_transient_schema_read_failure_can_recover_in_same_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     read: Callable[[Path], bytes] = Path.read_bytes
-    attempts = 0
+    callback_state = _CallbackState(attempts=0)
 
     def transient_read(path: Path) -> bytes:
-        nonlocal attempts
         if path.name == _SCHEMA_NAME:
-            attempts += 1
-            if attempts == 1:
+            callback_state.attempts += 1
+            if callback_state.attempts == 1:
                 message = "fixture schema read unavailable"
                 raise OSError(message)
         return read(path)
@@ -171,7 +176,7 @@ def test_transient_schema_read_failure_can_recover_in_same_analysis(
     reports = _reports(tmp_path, (_VALID,) * 3)
     assert reports[0].completion is Completion.FAILED
     assert all(report.completion is Completion.COMPLETE for report in reports[1:])
-    assert attempts == 2
+    assert callback_state.attempts == 2
 
 
 @pytest.mark.parametrize(

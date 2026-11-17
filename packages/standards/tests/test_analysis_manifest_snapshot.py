@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,6 +17,11 @@ _RULE = "python:no-secret-in-log"
 _SOURCE = "logger.info('request', token=token)\n"
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    loads: int = 0
+
+
 def _manifest(directory: str) -> str:
     return Manifest(api.__version__, (), ".", ".", hook_manager="none", verify_paths=(directory,)).render()
 
@@ -30,11 +36,10 @@ def test_analysis_uses_one_manifest_for_policy_and_implicit_input_scope(
         (root / "service.py").write_text(_SOURCE, encoding="utf-8")
     manifest = tmp_path / ".sarj-standards.toml"
     manifest.write_text(_manifest("selected"), encoding="utf-8")
-    loads = 0
+    callback_state = _CallbackState(loads=0)
 
     def load_and_replace(root: Path) -> Manifest | None:
-        nonlocal loads
-        loads += 1
+        callback_state.loads += 1
         adopted = load(root)
         manifest.write_text(_manifest("later"), encoding="utf-8")
         return adopted
@@ -46,13 +51,13 @@ def test_analysis_uses_one_manifest_for_policy_and_implicit_input_scope(
 
     first = standards.analyze(mode=mode, rules=[_RULE])
 
-    assert loads == 1
+    assert callback_state.loads == 1
     assert first.completion is api.Completion.COMPLETE
     assert {item.location.path for item in first.diagnostics if item.code == "SARJ012"} == {"selected/service.py"}
 
     second = standards.analyze(mode=mode, rules=[_RULE])
 
-    assert loads == 2
+    assert callback_state.loads == 2
     assert second.completion is api.Completion.COMPLETE
     assert {item.location.path for item in second.diagnostics if item.code == "SARJ012"} == {"later/service.py"}
 

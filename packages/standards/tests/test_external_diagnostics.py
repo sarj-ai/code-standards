@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import shutil
@@ -38,6 +39,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from pydantic import JsonValue
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    called: bool = False
+    calls: int = 0
+    invoked: bool = False
 
 
 @pytest.fixture
@@ -146,11 +154,10 @@ def test_deptry_refuses_unbounded_project_fanout(tmp_path: Path) -> None:
         source = project / "app.py"
         source.write_text("value = 1\n", encoding="utf-8")
         sources.append(str(source))
-    called = False
+    callback_state = _CallbackState(called=False)
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal called
-        called = True
+        callback_state.called = True
         pytest.fail(f"Deptry must not run after the project limit is exceeded: {argv!r} in {cwd}")
 
     reports = analyze_external(
@@ -161,7 +168,7 @@ def test_deptry_refuses_unbounded_project_fanout(tmp_path: Path) -> None:
         capabilities=frozenset({"deptry"}),
     )
 
-    assert not called
+    assert not callback_state.called
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues[0].kind == "project-limit"
@@ -176,13 +183,12 @@ def test_deptry_allows_the_bounded_project_limit(tmp_path: Path) -> None:
         source = project / "app.py"
         source.write_text("value = 1\n", encoding="utf-8")
         sources.append(str(source))
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal calls
         assert cwd.parent == tmp_path
         assert argv[0]
-        calls += 1
+        callback_state.calls += 1
         return ProcessOutput(0, "", "")
 
     reports = analyze_external(
@@ -193,7 +199,7 @@ def test_deptry_allows_the_bounded_project_limit(tmp_path: Path) -> None:
         capabilities=frozenset({"deptry"}),
     )
 
-    assert calls == 32
+    assert callback_state.calls == 32
     assert len(reports) == 32
     assert all(report.completion is Completion.COMPLETE for report in reports)
 
@@ -692,16 +698,15 @@ def test_mobile_config_parse_failures_return_a_failed_tool_report(tmp_path: Path
     source = tmp_path / "Screen.swift"
     source.write_text("internal struct Screen {}\n", encoding="utf-8")
     (tmp_path / ".mobsf").write_text("[unterminated", encoding="utf-8")
-    invoked = False
+    callback_state = _CallbackState(invoked=False)
 
     def runner(
         argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
         *,
         cwd: Path,
     ) -> ProcessOutput:
-        nonlocal invoked
         assert cwd == tmp_path
-        invoked = True
+        callback_state.invoked = True
         return ProcessOutput(0, "", "")
 
     reports = analyze_external(
@@ -712,7 +717,7 @@ def test_mobile_config_parse_failures_return_a_failed_tool_report(tmp_path: Path
         capabilities=frozenset({"mobile-security"}),
     )
 
-    assert not invoked
+    assert not callback_state.invoked
     assert reports[-1].name == "mobile-tools"
     assert reports[-1].completion is Completion.FAILED
     assert reports[-1].issues[0].kind == "provisioning-failure"

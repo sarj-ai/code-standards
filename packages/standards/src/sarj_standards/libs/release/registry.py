@@ -38,6 +38,11 @@ if TYPE_CHECKING:
 RegistryKind = Literal["npm", "pypi"]
 
 
+@dataclass(slots=True)
+class _CommandState:
+    exit_code: int = 0
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class RegistryRequirement:
     registry: RegistryKind
@@ -282,7 +287,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         pretty_exceptions_enable=False,
         context_settings={"help_option_names": ["-h", "--help"]},
     )
-    exit_code = 0
+    callback_state = _CommandState(exit_code=0)
 
     @app.command()
     def verify(
@@ -290,15 +295,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         attempts: Annotated[int, typer.Option("--attempts")] = 6,
         delay_seconds: Annotated[float, typer.Option("--delay-seconds", callback=_validate_delay_seconds)] = 10,
     ) -> None:
-        nonlocal exit_code
-        exit_code = _verify_publications(root, attempts=attempts, delay=timedelta(seconds=delay_seconds))
+        callback_state.exit_code = _verify_publications(root, attempts=attempts, delay=timedelta(seconds=delay_seconds))
 
     try:
         app(args=None if argv is None else list(argv), prog_name="standards-registry")
     except SystemExit as exc:
         if exc.code != 0:
             raise
-    return exit_code
+    return callback_state.exit_code
 
 
 def _validate_delay_seconds(value: float) -> float:

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,11 @@ from sarj_standards.libs.rules.contracts import (
 
 if TYPE_CHECKING:
     from sarj_standards.libs.linting.devops_programs import ExecutionBlock
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    manifest_reads: int = 0
 
 
 @pytest.mark.parametrize(
@@ -2499,14 +2505,13 @@ def test_manifest_is_read_once_per_textlint_run(monkeypatch: pytest.MonkeyPatch,
     config = tmp_path / "values.yaml"
     config.write_text("enabled: true\n")
     real_read_text = Path.read_text
-    manifest_reads = 0
+    callback_state = _CallbackState(manifest_reads=0)
 
     def recording_read_text(
         path: Path, encoding: str | None = None, errors: str | None = None, *, newline: str | None = None
     ) -> str:
-        nonlocal manifest_reads
         if path == manifest:
-            manifest_reads += 1
+            callback_state.manifest_reads += 1
         return real_read_text(path, encoding=encoding, errors=errors, newline=newline)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- global file reads are counted to verify cache behavior.
@@ -2514,7 +2519,7 @@ def test_manifest_is_read_once_per_textlint_run(monkeypatch: pytest.MonkeyPatch,
     )
 
     assert textlint.check_paths([str(config)], root=tmp_path) == []
-    assert manifest_reads == 1
+    assert callback_state.manifest_reads == 1
 
 
 @pytest.mark.parametrize(

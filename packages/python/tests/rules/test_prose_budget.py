@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,11 @@ from sarj_python_lint.rules._prose_budget import groups, sentence_units
 
 if TYPE_CHECKING:
     import ast
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 @pytest.mark.parametrize(
@@ -71,11 +77,10 @@ def test_groups_excludes_generated_and_vendored_files(path: Path) -> None:
 
 
 def test_groups_extracts_once_for_adjacent_rules(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def extract(_path: Path, _source: str, _tree: ast.Module | None = None) -> list[_prose_budget.ProseGroup]:
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
         return [_prose_budget.ProseGroup(1, 1, "Fact.", "comment")]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- this test resets the module cache it verifies.
@@ -90,4 +95,4 @@ def test_groups_extracts_once_for_adjacent_rules(monkeypatch: pytest.MonkeyPatch
     first.clear()
 
     assert len(groups(Path("app.py"), source)) == 1
-    assert calls == 1
+    assert callback_state.calls == 1

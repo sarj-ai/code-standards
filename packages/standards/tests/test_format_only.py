@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import shutil
@@ -14,6 +14,11 @@ from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Po
 from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.linting import autofix, format_only, suppression_descriptions
 from sarj_standards.libs.linting.analysis import report_from_tools
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -215,13 +220,12 @@ def test_later_batch_drift_invalidates_all_earlier_proofs(
         format_only, "_MAX_FILES", 1
     )
     compare = format_only._compare  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access] -- intercept the real native comparison to mutate inputs between batches.
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def changing_compare(root: Path, inputs: format_only._FormatterInputs, raw: bytes) -> frozenset[str]:  # pyright: ignore[reportPrivateUsage] -- mutate inputs at the real batch comparison seam.
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
         result = compare(root, inputs, raw)
-        if calls == 2:
+        if callback_state.calls == 2:
             target = root / ("package-lock.json" if mutation == "owner" else "a.ts")
             target.write_text("{}\n" if mutation == "owner" else 'export const value = "changed";\n')
             if mutation == "index":
@@ -234,7 +238,7 @@ def test_later_batch_drift_invalidates_all_earlier_proofs(
         format_only, "_compare", changing_compare
     )
     assert format_only.equivalent_paths(project, ("a.ts", "b.ts"), staged=True) == frozenset()
-    assert calls == 2
+    assert callback_state.calls == 2
 
 
 @pytest.mark.parametrize(("limit", "repetitions", "count"), [(2600, 20, 4), (32 * 1024 * 1024, 130_000, 12)])

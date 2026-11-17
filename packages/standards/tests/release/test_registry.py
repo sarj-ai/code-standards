@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from email.message import Message
 import json
@@ -26,6 +27,11 @@ if TYPE_CHECKING:
     from pathlib import Path
     from types import TracebackType
     from urllib.request import Request
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3", contracts_pin: str | None = None) -> None:
@@ -374,13 +380,12 @@ def test_publication_timeout_repeats_one_read_without_inventing_availability(
 def test_publication_timeout_exhaustion_preserves_last_error(monkeypatch: pytest.MonkeyPatch, *, wrapped: bool) -> None:
     failures = [TimeoutError("first timeout"), TimeoutError("last timeout")]
     errors = [URLError(error) for error in failures] if wrapped else failures
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def open_url(_request: Request, *, timeout: int) -> None:
-        nonlocal calls
         assert timeout == 15
-        error = errors[calls]
-        calls += 1
+        error = errors[callback_state.calls]
+        callback_state.calls += 1
         raise error
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- verifies bounded transport retries and final error identity
@@ -389,7 +394,7 @@ def test_publication_timeout_exhaustion_preserves_last_error(monkeypatch: pytest
     with pytest.raises(OSError, match="last timeout") as stopped:
         registry_module.publication_exists(RegistryRequirement("npm", "@example/plugin", "1.2.3"))
     assert stopped.value is errors[-1]
-    assert calls == 2
+    assert callback_state.calls == 2
 
 
 @pytest.mark.parametrize("failure", ["certificate", "dns", "forbidden", "server", "absent"])
@@ -401,12 +406,11 @@ def test_publication_read_does_not_retry_unproven_failures(monkeypatch: pytest.M
         "server": HTTPError("https://registry.npmjs.org/example/1.2.3", 503, "Unavailable", Message(), None),
         "absent": HTTPError("https://registry.npmjs.org/example/1.2.3", 404, "Not Found", Message(), None),
     }
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def open_url(_request: Request, *, timeout: int) -> None:
-        nonlocal calls
         assert timeout == 15
-        calls += 1
+        callback_state.calls += 1
         raise errors[failure]
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- distinguishes transport timeouts from terminal registry failures
@@ -419,4 +423,4 @@ def test_publication_read_does_not_retry_unproven_failures(monkeypatch: pytest.M
         with pytest.raises(OSError, match=re.escape(str(errors[failure]))) as stopped:
             registry_module.publication_exists(requirement)
         assert stopped.value is errors[failure]
-    assert calls == 1
+    assert callback_state.calls == 1

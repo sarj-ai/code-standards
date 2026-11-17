@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,11 @@ from sarj_python_lint.rule_base import Diagnostic, RuleExample, Severity
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    parse_calls: int = 0
 
 
 def _check(source: str, path: Path = Path("service.py")) -> list[Diagnostic]:
@@ -621,19 +627,18 @@ class RareGenerator:
     for index in range(200):
         (service.parent / f"decoy_{index}.py").write_text("value = make_value()\n")
 
-    parse_calls = 0
+    callback_state = _CallbackState(parse_calls=0)
     original_parse = ast.parse
 
     def counting_parse(source: str, filename: str = "<unknown>") -> ast.Module:
-        nonlocal parse_calls
-        parse_calls += 1
+        callback_state.parse_calls += 1
         return original_parse(source, filename=filename)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the test counts process-global parser calls.
         ast, "parse", counting_parse
     )
     assert len(_check(service.read_text(), service)) == 1
-    assert parse_calls < 10
+    assert callback_state.parse_calls < 10
 
 
 def test_a_new_analysis_observes_a_new_project_composition_call(tmp_path: Path) -> None:

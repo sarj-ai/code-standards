@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, PathDistribution, requires, version
 import io
 import json
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from tests.call_contracts import RepositoryPolicyOptions, SubprocessOptions
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
+    installed: bool = False
+    records_descriptor: int = 0
 
 
 def _policy(**changes: Unpack[RepositoryPolicyOptions]) -> repository.RepositoryPolicy:
@@ -959,12 +967,11 @@ def test_comment_corpus_does_not_delete_a_destination_replaced_after_publication
     (tmp_path / "example.py").write_text("# Initial comment.\n", encoding="utf-8")
     destination = tmp_path / "corpus.jsonl"
     original_fsync = os.fsync
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def replace_before_directory_fsync(descriptor: int) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
+        callback_state.calls += 1
+        if callback_state.calls == 2:
             destination.unlink()
             destination.write_text("owned by another process", encoding="utf-8")
             error = OSError("directory fsync failed")
@@ -1072,14 +1079,13 @@ def test_comment_corpus_closes_records_descriptor_when_fstat_fails(
 ) -> None:
     destination = tmp_path / "corpus.jsonl"
     original_fstat = os.fstat
-    calls = 0
-    records_descriptor = -1
+    callback_state = _CallbackState(calls=0)
+    callback_state.records_descriptor = -1
 
     def fail_records_fstat(descriptor: int) -> os.stat_result:
-        nonlocal calls, records_descriptor
-        calls += 1
-        if calls == 3:
-            records_descriptor = descriptor
+        callback_state.calls += 1
+        if callback_state.calls == 3:
+            callback_state.records_descriptor = descriptor
             error = OSError("records fstat failed")
             raise error
         return original_fstat(descriptor)
@@ -1092,7 +1098,7 @@ def test_comment_corpus_closes_records_descriptor_when_fstat_fails(
         comment_corpus.write_records([tmp_path], destination)
 
     with pytest.raises(OSError, match="Bad file descriptor"):
-        original_fstat(records_descriptor)
+        original_fstat(callback_state.records_descriptor)
     assert not destination.exists()
     assert list(tmp_path.glob(".corpus.jsonl.*.tmp")) == []
 
@@ -1247,19 +1253,18 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
         assert path is not None
         return f"/bin/{name}"
 
-    installed = False
+    callback_state = _CallbackState(installed=False)
 
     def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
-        nonlocal installed
         if argv[1] == "install":
-            installed = True
+            callback_state.installed = True
             original.write_text(f'#!/bin/sh\nchanged\ncall_lefthook run "{hook_type}" "$@"\n', encoding="utf-8")
             (hooks_dir / f"{hook_type}.legacy").write_text("partial legacy\n", encoding="utf-8")
             if hook_type != "pre-commit":
                 (hooks_dir / f"{hook_type}.old").write_text("partial native backup\n", encoding="utf-8")
             (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0)
-        if argv[1] == "dump" and not installed:
+        if argv[1] == "dump" and not callback_state.installed:
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({hook_type: {}}))
         if argv[1] == "dump" and failure != "dump":
             contents = "[]" if failure == "shape" else json.dumps({hook_type: {}})
@@ -1372,17 +1377,16 @@ def test_remote_post_hooks_keep_native_installation_behavior(
     hook.parent.mkdir(parents=True)
     (tmp_path / "lefthook.yml").write_text("pre-push: {}\n", encoding="utf-8")
     native_hook = f'#!/bin/sh\ncall_lefthook run "{hook_type}" "$@"\n'
-    installed = False
+    callback_state = _CallbackState(installed=False)
 
     def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
-        nonlocal installed
         if "rev-parse" in argv:
             return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
         if argv[1] == "install":
-            installed = True
+            callback_state.installed = True
             hook.write_text(native_hook, encoding="utf-8")
         configuration: dict[str, object] = {"remotes": [{"git_url": "/owned-local-remote"}]}
-        if cached or installed:
+        if cached or callback_state.installed:
             configuration[hook_type] = {}
         return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(configuration))
 
@@ -1391,7 +1395,7 @@ def test_remote_post_hooks_keep_native_installation_behavior(
     )
 
     assert hooks.install(tmp_path) == 0
-    assert installed
+    assert callback_state.installed
     assert hook.read_text(encoding="utf-8") == native_hook
     assert not (hook.parent / ".sarj-lefthook").exists()
 

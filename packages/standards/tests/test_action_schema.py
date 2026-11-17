@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,11 @@ from tests.process_fakes import FakeProcessExecutor
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 @pytest.mark.parametrize(
@@ -171,17 +177,16 @@ def test_all_selected_actions_are_returned_in_one_native_batch(tmp_path: Path) -
         path = tmp_path / name
         path.parent.mkdir(exist_ok=True)
         path.write_text("runs: {using: node24, main: index.js}\n")
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def observe(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
         return run_process(argv, cwd=cwd, timeout_seconds=30)
 
     reports = action_metadata.analyze_actions(
         root=tmp_path, paths=("action.yml", "nested/action.yaml"), runner=FakeProcessExecutor(observe)
     )
-    assert calls == 1
+    assert callback_state.calls == 1
     assert len(reports) == 2
     assert all(report.completion is Completion.COMPLETE and not report.diagnostics for report in reports)
     assert [report.file_count for report in reports] == [1, 1]
@@ -232,16 +237,15 @@ def test_failure_in_a_later_batch_cannot_return_partial_clean_coverage(tmp_path:
         path = tmp_path / name
         path.parent.mkdir()
         path.write_text("runs: {using: node24, main: index.js}\n")
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
         output = run_process(argv, cwd=cwd, timeout_seconds=30)
-        return output if calls == 1 else ProcessOutput(0, "[]", "")
+        return output if callback_state.calls == 1 else ProcessOutput(0, "[]", "")
 
     [report] = action_metadata.analyze_actions(root=tmp_path, paths=selected, runner=FakeProcessExecutor(runner))
-    assert calls == 2
+    assert callback_state.calls == 2
     assert report.completion is Completion.FAILED
     assert report.file_count == len(selected)
     assert "omitted, duplicated or reordered" in report.issues[0].message
