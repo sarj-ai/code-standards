@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-nonlocal-statement",
+      "family": "python",
+      "ruleId": "no-nonlocal-statement",
+      "state": "pending",
+      "evidence": "Native AST fixtures cover declarations with multiple names, continuations, async and nested scopes, read-only declarations, exact suppressions, comments, strings, generated/vendor sources and malformed syntax. Both Ruff presets retain native ownership of global statements without duplicate custom findings. Isolated immutable calibration reports 55 declarations across 1,304 baseline Python files and zero across 1,306 candidate files after migrating all 55 declarations. Three alternating fresh-process pairs over six identical representative files compare all existing rules with the new rule enabled: cold medians 5.019/4.837 seconds, warm medians 5.143/4.946 seconds, and peak memory 771,588,096/767,049,728 bytes. These small timings are noisy samples, not a fleet performance guarantee. Standalone rule-only evaluation has a 1.429-second median over 1,103 files. Private source and identifying corpus hashes remain local.",
+      "outcome": "Introduce SARJ578 at ERROR under the explicit user-requested Python keyword ban and exact error-first admission. The policy rejects syntax rather than inferring whether an individual closure is defective. Preserve Ruff PLW0602/3/4 as the global-statement owner. Provide no autofix because deleting nonlocal changes name-binding semantics. Broader consumer and fleet calibration remains pending."
+    },
+    {
       "task": "rule-audit/typescript/prefer-coordinated-react-state",
       "family": "typescript",
       "ruleId": "prefer-coordinated-react-state",
