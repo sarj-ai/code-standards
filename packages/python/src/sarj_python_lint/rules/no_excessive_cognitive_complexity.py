@@ -126,22 +126,20 @@ class _Complexity:
             self.visit_all(body, nesting + 1)
 
     def visit_boolean(self, node: ast.BoolOp, nesting: int) -> None:
-        previous: type[ast.boolop] | None = None
-
-        def flatten(expression: ast.expr) -> None:
-            nonlocal previous
+        def flatten(expression: ast.expr, previous: type[ast.boolop] | None) -> type[ast.boolop] | None:
             if not isinstance(expression, ast.BoolOp):
                 self.visit(expression, nesting)
-                return
+                return previous
             for index, value in enumerate(expression.values):
                 if index:
                     operator = type(expression.op)
                     if operator is not previous:
                         self.add(expression, 0, "and" if operator is ast.And else "or")
                     previous = operator
-                flatten(value)
+                previous = flatten(value, previous)
+            return previous
 
-        flatten(node)
+        flatten(node, None)
 
     def visit_comprehension(
         self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp, nesting: int

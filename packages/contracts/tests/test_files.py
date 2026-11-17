@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import stat
@@ -13,6 +14,12 @@ from sarj_rule_contracts import SourceChangedError, fix_file, iter_source_files
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from contextlib import AbstractContextManager
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    group: int = 0
+    prepared: bool = False
 
 
 def test_discovery_prunes_excluded_trees_and_preserves_file_symlinks(
@@ -211,7 +218,7 @@ def test_source_edit_during_temporary_fsync_is_preserved(tmp_path: Path, monkeyp
 def _mock_temporary_group(path: Path, monkeypatch: pytest.MonkeyPatch, *, result: str) -> list[tuple[int, int]]:
     original = path.stat()
     native_fstat = os.fstat
-    group = original.st_gid + 1
+    callback_state = _CallbackState(group=original.st_gid + 1)
     calls: list[tuple[int, int]] = []
 
     def temporary_status(descriptor: int) -> os.stat_result:
@@ -225,7 +232,7 @@ def _mock_temporary_group(path: Path, monkeypatch: pytest.MonkeyPatch, *, result
                 status.st_dev,
                 status.st_nlink,
                 status.st_uid,
-                group,
+                callback_state.group,
                 status.st_size,
                 status.st_atime,
                 status.st_mtime,
@@ -234,13 +241,12 @@ def _mock_temporary_group(path: Path, monkeypatch: pytest.MonkeyPatch, *, result
         )
 
     def preserve_group(_descriptor: int, owner: int, requested: int) -> None:
-        nonlocal group
         calls.append((owner, requested))
         if result == "refused":
             message = "group change refused"
             raise PermissionError(message)
         if result == "preserved":
-            group = requested
+            callback_state.group = requested
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- native descriptor identity distinguishes source and temporary group ownership.
         "sarj_rule_contracts.files.os.fstat", temporary_status
@@ -433,15 +439,14 @@ def test_temporary_attribute_detected_after_fsync_keeps_source_and_cleans_tempor
     path.write_text("first")
     original_inode = path.stat().st_ino
     native_fsync = os.fsync
-    prepared = False
+    callback_state = _CallbackState(prepared=False)
 
     def prepare_metadata(descriptor: int) -> None:
-        nonlocal prepared
         native_fsync(descriptor)
-        prepared = True
+        callback_state.prepared = True
 
     def prepared_attributes(descriptor: int) -> list[str]:
-        if prepared and os.fstat(descriptor).st_ino != original_inode:
+        if callback_state.prepared and os.fstat(descriptor).st_ino != original_inode:
             return ["user.notes"]
         return []
 

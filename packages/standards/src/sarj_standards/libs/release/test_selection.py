@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import sys
@@ -35,6 +36,11 @@ _RULE_INTEGRATION = frozenset(
         "test_selected_oxlint_execution.py",
     }
 )
+
+
+@dataclass(slots=True)
+class _CommandState:
+    exit_code: int = 0
 
 
 class _Document(RootModel[dict[str, JsonValue]]):
@@ -321,7 +327,7 @@ def pytest_parallel_arguments(jobs: int, *, files: int | None = None) -> tuple[s
 
 def main(argv: Sequence[str] | None = None) -> int:
     app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
-    exit_code = 0
+    callback_state = _CommandState(exit_code=0)
 
     @app.command()
     def check(
@@ -335,7 +341,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         report: Annotated[Path | None, typer.Option("--report")] = None,
         summary: Annotated[Path | None, typer.Option("--summary")] = None,
     ) -> None:
-        nonlocal exit_code
         started = time.monotonic()
         plan = select_tests(root, base=base, head=head, event=event)
         if report is not None:
@@ -345,16 +350,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             if run:
                 execute_plan(root.resolve(), plan, jobs=jobs)
         except ProcessFailureError as exc:
-            exit_code = exc.returncode
+            callback_state.exit_code = exc.returncode
         finally:
             if summary is not None:
                 with summary.open("a") as stream:
                     stream.write(
-                        f"Standards: {len(plan.tests)}/{plan.total_files} test files; {plan.reason}; {time.monotonic() - started:.1f}s; exit {exit_code}.\n"
+                        f"Standards: {len(plan.tests)}/{plan.total_files} test files; {plan.reason}; {time.monotonic() - started:.1f}s; exit {callback_state.exit_code}.\n"
                     )
 
     app(args=None if argv is None else list(argv), prog_name="standards-test-plan", standalone_mode=False)
-    return exit_code
+    return callback_state.exit_code
 
 
 if __name__ == "__main__":

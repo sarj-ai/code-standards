@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -46,6 +46,11 @@ if TYPE_CHECKING:
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -2992,7 +2997,7 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
     )
     if operation != "setup":
         assert main(["--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install"]) == 0
-    calls = 0
+    callback_state = _CallbackState(calls=0)
     hooks_dir = tmp_path / ".git" / "hooks"
     durable = hooks_dir / ".sarj-lefthook"
     uvx_directory = tmp_path / "managed-bin"
@@ -3002,10 +3007,9 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
     uvx.chmod(0o755)
 
     def install(commands: Iterable[lifecycle.Command]) -> int:
-        nonlocal calls
         planned = tuple(commands)
         assert [command.label for command in planned] == ["Pinned native DevOps tools", "Lefthook repository hooks"]
-        calls += 1
+        callback_state.calls += 1
         durable.write_text("pinned lefthook", encoding="utf-8")
         durable.chmod(0o755)
         for hook_type in ("pre-commit", "commit-msg", "pre-push"):
@@ -3037,7 +3041,7 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
     }[operation]
 
     assert main(argv) == 0
-    assert calls == 1
+    assert callback_state.calls == 1
     assert all((hooks_dir / hook_type).is_file() for hook_type in ("pre-commit", "commit-msg", "pre-push"))
     assert all(
         (hooks_dir / hook_type).read_text(encoding="utf-8").count("# sarj-standards: uvx-path") == 1

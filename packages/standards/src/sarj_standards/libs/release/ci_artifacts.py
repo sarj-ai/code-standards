@@ -42,6 +42,11 @@ _MAX_BYTES = 100_000_000
 _MAX_FILES = 10_000
 
 
+@dataclass(slots=True)
+class _CommandState:
+    exit_code: int = 0
+
+
 class _Repository(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
     repository_id: RepositoryId = Field(alias="id", gt=0)
@@ -358,7 +363,7 @@ def reuse_ci_artifact(
 
 def main(argv: Sequence[str] | None = None) -> int:
     app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
-    exit_code = 0
+    callback_state = _CommandState(exit_code=0)
 
     @app.command()
     def reuse(
@@ -369,17 +374,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         destination: Annotated[Path, typer.Option("--destination")],
         output: Annotated[Path, typer.Option("--github-output")],
     ) -> None:
-        nonlocal exit_code
         try:
             reused = reuse_ci_artifact(root.resolve(), repository, commit, destination)
             with output.open("a") as stream:
                 stream.write(f"reused={str(reused).lower()}\n")
         except (OSError, ValueError, ProcessFailureError) as exc:
             sys.stderr.write(f"error: {exc}\n")
-            exit_code = 2
+            callback_state.exit_code = 2
 
     app(args=None if argv is None else list(argv), prog_name="reuse-standards-artifact", standalone_mode=False)
-    return exit_code
+    return callback_state.exit_code
 
 
 if __name__ == "__main__":

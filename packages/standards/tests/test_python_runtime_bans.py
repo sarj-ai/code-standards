@@ -37,6 +37,14 @@ class RuffReport(RootModel[list[RuffDiagnostic]]):
         ("global counter\n", ["PLW0604"]),
         ("counter = 0\ndef increment():\n    global counter\n    counter += 1\n", ["PLW0603"]),
         ("counter = 0\ndef read():\n    global counter\n    return counter\n", ["PLW0602"]),
+        ("counter = 0\nasync def increment():\n    global counter\n    counter += 1\n", ["PLW0603"]),
+        ("global first, second\n", ["PLW0604"]),
+        ("counter = 0\nclass State:\n    global counter\n    counter = 1\n", ["PLW0603"]),
+        ("counter = 0\nclass State:\n    global counter\n    observed = counter\n", ["PLW0602"]),
+        ("if enabled:\n    global counter\n", ["PLW0604"]),
+        ("description = 'global counter; nonlocal counter'\n", []),
+        ("# global counter; nonlocal counter\n", []),
+        ("def outer():\n    counter = 0\n    def read():\n        nonlocal counter\n        return counter\n", []),
         ("from application import *\n", ["F403"]),
         ("def batch(values=[]):\n    return values\n", ["B006"]),
         ("def batch(*, values={}):\n    return values\n", ["B006"]),
@@ -71,7 +79,8 @@ class RuffReport(RootModel[list[RuffDiagnostic]]):
         ),
     ],
 )
-def test_runtime_bans_retain_native_ruff_ownership(source: str, expected: list[str]) -> None:
+@pytest.mark.parametrize("config_name", ["ruff.strict.toml", "ruff.application.toml"])
+def test_runtime_bans_retain_native_ruff_ownership(source: str, expected: list[str], config_name: str) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -79,7 +88,7 @@ def test_runtime_bans_retain_native_ruff_ownership(source: str, expected: list[s
             "ruff",
             "check",
             "--config",
-            str(_CONFIG),
+            str(_CONFIG.with_name(config_name)),
             "--output-format",
             "json",
             "--stdin-filename",

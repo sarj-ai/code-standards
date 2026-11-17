@@ -1,4 +1,5 @@
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,11 @@ from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 def _check(source: str, path: str = "<t>.py") -> list[Diagnostic]:
@@ -1932,11 +1938,10 @@ def render(kind: str) -> str:
 
 
 def test_closed_domain_dominance_scans_a_long_prefix_linearly(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def counted_fallthrough(_statement: ast.stmt) -> bool:
-        nonlocal calls
-        calls += 1
+        callback_state.calls += 1
         return True
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception measures the global control-flow helper calls.
@@ -1956,7 +1961,7 @@ def render(kind: str) -> str:
     """
 
     assert len(_check(src)) == 1
-    assert calls == 251
+    assert callback_state.calls == 251
 
 
 def test_shadowed_str_annotation_is_excluded() -> None:

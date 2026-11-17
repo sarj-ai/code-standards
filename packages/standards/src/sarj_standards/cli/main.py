@@ -51,6 +51,11 @@ if TYPE_CHECKING:
     from sarj_standards.libs.repository import rule_catalog_artifact
 
 
+@dataclass(slots=True)
+class _CommandState:
+    status: int | None = None
+
+
 class _CorpusLintReport(BaseModel):
     diagnostics: list[dict[str, JsonValue]]
 
@@ -3053,18 +3058,17 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(
         sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
     )
-    status: int | None = None
+    callback_state = _CommandState(status=None)
 
     def dispatch(args: _Args) -> int:
-        nonlocal status
-        status = _dispatch(args)
-        return status
+        callback_state.status = _dispatch(args)
+        return callback_state.status
 
     try:
         try:
             build_app(dispatch)(raw_argv, prog_name="code-standards")
         except SystemExit as exc:
-            if status is None or exc.code != 0:
+            if callback_state.status is None or exc.code != 0:
                 raise
     except KeyboardInterrupt:
         print("error: interrupted", file=sys.stderr)
@@ -3073,7 +3077,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     else:
-        return status if status is not None else 0
+        return callback_state.status if callback_state.status is not None else 0
 
 
 def _root_option_first(argv: list[str]) -> list[str]:

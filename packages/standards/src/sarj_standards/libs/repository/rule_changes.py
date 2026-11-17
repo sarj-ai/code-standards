@@ -107,6 +107,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "python:no-dynamic-builtins",
         "python:no-shared-mutable-default",
         "python:no-sys-path-mutation",
+        # User-requested Python keyword ban, qualified with native Ruff ownership,
+        # labeled syntax fixtures and an immutable corpus; existing uses migrated.
+        "python:no-nonlocal-statement",
     }
 )
 

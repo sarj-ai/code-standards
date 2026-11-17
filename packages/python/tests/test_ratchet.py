@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 import json
 import subprocess
 from typing import TYPE_CHECKING
@@ -23,6 +24,11 @@ from sarj_python_lint.ratchet import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    observed_encoding: str = ""
 
 
 @pytest.mark.parametrize("argv", [["--help"], ["-h"], ["--version"]], ids=("help", "short-help", "version"))
@@ -108,16 +114,15 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    observed_encoding = ""
+    callback_state = _CallbackState(observed_encoding="")
 
     def run(
         args: list[str], *, check: bool, capture_output: bool, encoding: str, text: bool
     ) -> subprocess.CompletedProcess[str]:
-        nonlocal observed_encoding
         assert check
         assert capture_output
         assert text
-        observed_encoding = encoding
+        callback_state.observed_encoding = encoding
         return subprocess.CompletedProcess(
             args=args,
             returncode=0,
@@ -139,7 +144,7 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
     )
 
     assert main([str(tmp_path), "--update"]) == 0
-    assert observed_encoding == "utf-8"
+    assert callback_state.observed_encoding == "utf-8"
 
 
 def test_counts_every_occurrence_on_a_line_not_just_the_first():

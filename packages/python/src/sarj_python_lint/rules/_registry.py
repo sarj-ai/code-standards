@@ -252,6 +252,7 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_magic_arithmetic import NoMagicArithmetic
+from sarj_python_lint.rules.no_nonlocal_statement import NoNonlocalStatement
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
 from sarj_python_lint.rules.no_psycopg_execution_in_loop import NoPsycopgExecutionInLoop
 from sarj_python_lint.rules.no_recording_store import NoRecordingStore
@@ -304,6 +305,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoNonlocalStatement.id: NoNonlocalStatement,
         NoUnscopedAsyncClientFactory.id: NoUnscopedAsyncClientFactory,
         PsycopgSqlFormatFieldMismatch.id: PsycopgSqlFormatFieldMismatch,
         NoUnobservedTaskException.id: NoUnobservedTaskException,

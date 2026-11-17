@@ -103,6 +103,7 @@
       "no-mutating-container-transform",
       "no-mutating-input-with-result",
       "no-nested-pydantic-field-validator",
+      "no-nonlocal-statement",
       "no-nullable-dependency-fallback",
       "no-offset-pagination",
       "no-partial-type-is",
@@ -728,7 +729,8 @@
       "SARJ574",
       "SARJ575",
       "SARJ576",
-      "SARJ577"
+      "SARJ577",
+      "SARJ578"
     ],
     "sql": [
       "SARJ101",

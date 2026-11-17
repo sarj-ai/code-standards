@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 import symtable
 from types import MappingProxyType
@@ -22,21 +23,25 @@ if TYPE_CHECKING:
     from sarj_rule_contracts import RuleId
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    inventory_builds: int = 0
+    symbol_table_builds: int = 0
+
+
 def test_binding_inventory_and_runtime_tables_are_built_once_per_file(monkeypatch: pytest.MonkeyPatch) -> None:
     context = PythonFileContext(Path("app.py"), 'import re as runtime\npattern = runtime.compile("value")\n')
-    inventory_builds = 0
-    symbol_table_builds = 0
+    callback_state = _CallbackState(inventory_builds=0)
+    callback_state.symbol_table_builds = 0
     build_inventory = BindingInventory.from_context
     build_symbol_table = symtable.symtable
 
     def counted_inventory(context: PythonFileContext) -> BindingInventory:
-        nonlocal inventory_builds
-        inventory_builds += 1
+        callback_state.inventory_builds += 1
         return build_inventory(context)
 
     def counted_symbol_table(code: str, filename: str, compile_type: str) -> symtable.SymbolTable:
-        nonlocal symbol_table_builds
-        symbol_table_builds += 1
+        callback_state.symbol_table_builds += 1
         return build_symbol_table(code, filename, compile_type)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the real lazy factory; injecting facts would bypass the construction-count contract.
@@ -49,14 +54,14 @@ def test_binding_inventory_and_runtime_tables_are_built_once_per_file(monkeypatc
     ordinary = context.resource_provenance
     static = context.static_resource_provenance
     direct = ResourceProvenance(context)
-    assert inventory_builds == 1
-    assert symbol_table_builds == 0
+    assert callback_state.inventory_builds == 1
+    assert callback_state.symbol_table_builds == 0
     assert ordinary.inventory is static.inventory is direct.inventory is context.binding_inventory
     assert ordinary.bindings is static.bindings is context.binding_inventory.bindings
     assert ordinary.reads is static.reads is context.binding_inventory.reads
     assert ordinary.runtime_bindings is static.runtime_bindings is direct.runtime_bindings
     assert ordinary.runtime_bindings is context.runtime_bindings
-    assert symbol_table_builds == 1
+    assert callback_state.symbol_table_builds == 1
 
 
 def test_binding_inventory_containers_are_immutable_and_policy_caches_stay_separate() -> None:

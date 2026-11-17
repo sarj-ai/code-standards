@@ -365,5 +365,6 @@
   "SARJ574": "no-unobserved-task-exception",
   "SARJ575": "require-hidden-settings-input",
   "SARJ576": "psycopg-sql-format-field-mismatch",
-  "SARJ577": "no-unscoped-async-client-factory"
+  "SARJ577": "no-unscoped-async-client-factory",
+  "SARJ578": "no-nonlocal-statement"
 }

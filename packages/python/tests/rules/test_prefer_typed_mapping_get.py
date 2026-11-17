@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,8 +24,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    entries: int = 0
+
+
 def _mapping_receiver_queries(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
-    entries = 0
+    callback_state = _CallbackState(entries=0)
     original = MappingShapeFacts.mapping
 
     def counted(
@@ -33,8 +39,7 @@ def _mapping_receiver_queries(monkeypatch: pytest.MonkeyPatch) -> Callable[[], i
         *,
         seen: frozenset[ast.AST] = frozenset(),
     ) -> bool:
-        nonlocal entries
-        entries += 1
+        callback_state.entries += 1
         return original(facts, node, seen=seen)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- count delegated real proof entries without replacing inference or diagnostics.
@@ -42,7 +47,7 @@ def _mapping_receiver_queries(monkeypatch: pytest.MonkeyPatch) -> Callable[[], i
     )
 
     def count() -> int:
-        return entries
+        return callback_state.entries
 
     return count
 

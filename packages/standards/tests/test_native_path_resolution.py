@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,17 +12,21 @@ if TYPE_CHECKING:
     import pytest
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
+
+
 def test_native_path_resolution_scales_with_files_and_rechecks_each_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "service.py"
     resolve = Path.resolve
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def counted(path: Path, strict: bool = False) -> Path:
-        nonlocal calls
         if path == source:
-            calls += 1
+            callback_state.calls += 1
         return resolve(path, strict=strict)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept real filesystem resolution; injecting a fake path would miss the repeated I/O this regression measures.
@@ -30,7 +35,7 @@ def test_native_path_resolution_scales_with_files_and_rechecks_each_analysis(
     observed: list[int] = []
     for copies in (4, 40):
         source.write_text("logger.info('request', token=token)\n" * copies, encoding="utf-8")
-        calls = 0
+        callback_state.calls = 0
         report = analyze(
             [str(source)], root=tmp_path, rule_selection=RuleSelection.from_values(("python:no-secret-in-log",))
         )
@@ -40,5 +45,5 @@ def test_native_path_resolution_scales_with_files_and_rechecks_each_analysis(
         assert [item.location.path for item in findings] == [source.name] * copies
         assert findings[-1].location.position is not None
         assert findings[-1].location.position.line == copies - 1
-        observed.append(calls)
+        observed.append(callback_state.calls)
     assert observed[0] == observed[1]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import sys
@@ -27,6 +28,11 @@ from sarj_standards.libs.release.test_selection import pytest_parallel_arguments
 
 _MAX_TEST_JOBS = 16
 _TEST_PACKAGES = ("contracts", "python", "sql", "iac", "standards")
+
+
+@dataclass(slots=True)
+class _CommandState:
+    exit_code: int = 0
 
 
 def run_wheel_tests(
@@ -114,7 +120,7 @@ def run_wheel_tests(
 
 def main(argv: Sequence[str] | None = None) -> int:
     app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
-    exit_code = 0
+    callback_state = _CommandState(exit_code=0)
 
     @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def check(
@@ -132,7 +138,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         changed: Annotated[bool, typer.Option("--changed")] = False,
         base: Annotated[str, typer.Option("--base")] = "origin/main",
     ) -> None:
-        nonlocal exit_code
         try:
             run_wheel_tests(
                 root,
@@ -143,17 +148,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 base=base,
             )
         except ProcessFailureError as exc:
-            exit_code = exc.returncode
+            callback_state.exit_code = exc.returncode
         except (OSError, ValueError) as exc:
             sys.stderr.write(f"error: {exc}\n")
-            exit_code = 2
+            callback_state.exit_code = 2
 
     try:
         app(args=None if argv is None else list(argv), prog_name="standards-wheel-tests")
     except SystemExit as exc:
         if exc.code != 0:
             raise
-    return exit_code
+    return callback_state.exit_code
 
 
 if __name__ == "__main__":

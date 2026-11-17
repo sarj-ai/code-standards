@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import shutil
@@ -29,6 +30,11 @@ if TYPE_CHECKING:
 
 
 _CAPABILITIES = frozenset({lifecycle.TYPESCRIPT_CAPABILITY})
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    elapsed: float = 0.0
 
 
 class _Executor:
@@ -219,16 +225,17 @@ def test_later_projects_fail_once_the_aggregate_deadline_passes(
     for name in ("alpha", "beta"):
         _typescript_project(tmp_path / name)
     (tmp_path / "package.json").write_text('{"name":"workspace"}\n', encoding="utf-8")
-    elapsed = 0.0
-    monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- controls the aggregate deadline.
+    callback_state = _CallbackState(elapsed=0.0)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- controls the aggregate deadline.
+        time, "monotonic", lambda: callback_state.elapsed
+    )
     timeouts: list[float] = []
 
     def respond(request: ProcessRequest) -> ProcessOutput:
-        nonlocal elapsed
         if _tool(request) == "oxfmt":
             return ProcessOutput(0, "", "")
         timeouts.append(request.timeout_seconds)
-        elapsed = 301.0
+        callback_state.elapsed = 301.0
         return _oxlint_output(request)
 
     reports = analyze_external(

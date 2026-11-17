@@ -26,6 +26,11 @@ SHA = "a" * 40
 REPOSITORY = RepositoryId(3)
 
 
+@dataclass(slots=True)
+class _CallbackState:
+    current_attempt: int = 0
+
+
 def _lookup(
     root: Path,
     *,
@@ -240,7 +245,7 @@ def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rer
         "conclusion": "success",
         "head_repository": {"id": 3, "full_name": "owner/repo"},
     }
-    current_attempt = 1
+    callback_state = _CallbackState(current_attempt=1)
     current_reads: list[int] = []
 
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
@@ -276,17 +281,16 @@ def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rer
             }
         else:
             assert endpoint == "repos/owner/repo/actions/runs/1"
-            current_reads.append(current_attempt)
-            document = {**run, "run_attempt": current_attempt}
+            current_reads.append(callback_state.current_attempt)
+            document = {**run, "run_attempt": callback_state.current_attempt}
         return ProcessResult(0, json.dumps(document))
 
     def download(argv: tuple[str, ...], *, cwd: Path, destination: Path) -> None:
-        nonlocal current_attempt
         assert cwd == tmp_path
         assert argv[-1] == "repos/owner/repo/actions/artifacts/2/zip"
         destination.write_bytes(archive.path.read_bytes())
         if rerun:
-            current_attempt = 2
+            callback_state.current_attempt = 2
 
     destination = tmp_path / "dist"
     if existing:

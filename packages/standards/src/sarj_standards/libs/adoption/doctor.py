@@ -1499,22 +1499,17 @@ def _yaml_scalar_text(node: ScalarNode) -> str:
 
 
 def _rewrite_package_plugin_pins(text: str, version: str) -> _PackagePluginPinRewrite:
-    changed = False
-
     def dependency_section(match: re.Match[str]) -> str:
-        nonlocal changed
-
         def plugin_pin(pin: re.Match[str]) -> str:
-            nonlocal changed
             if pin.group("version") == version:
                 return pin.group(0)
-            changed = True
             return f"{pin.group('prefix')}{version}{pin.group('suffix')}"
 
         body = _PACKAGE_PLUGIN_PIN.sub(plugin_pin, match.group("body"))
         return f"{match.group('prefix')}{body}{match.group('suffix')}"
 
-    return _PackagePluginPinRewrite(_PACKAGE_DEPENDENCY_SECTION.sub(dependency_section, text), changed)
+    rewritten = _PACKAGE_DEPENDENCY_SECTION.sub(dependency_section, text)
+    return _PackagePluginPinRewrite(rewritten, rewritten != text)
 
 
 def _check_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:

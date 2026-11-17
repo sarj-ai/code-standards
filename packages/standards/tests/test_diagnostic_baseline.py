@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -47,6 +47,11 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from tests.call_contracts import ExternalAnalyzeOptions, StandardsAnalyzeOptions
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    checks: int = 0
 
 
 def _manifest(
@@ -125,14 +130,13 @@ def test_baseline_read_remains_bounded_when_the_file_grows(tmp_path: Path, monke
     )
     oversized = json.dumps({"schemaVersion": 1, "diagnostics": [], "padding": "x" * limit})
     original_stat = Path.stat
-    checks = 0
+    callback_state = _CallbackState(checks=0)
 
     def grow_after_stat(candidate: Path, *, follow_symlinks: bool = True) -> os.stat_result:
-        nonlocal checks
         metadata = original_stat(candidate, follow_symlinks=follow_symlinks)
         if candidate == path and follow_symlinks:
-            checks += 1
-            if checks == 1:
+            callback_state.checks += 1
+            if callback_state.checks == 1:
                 path.write_text(oversized, encoding="utf-8")
         return metadata
 

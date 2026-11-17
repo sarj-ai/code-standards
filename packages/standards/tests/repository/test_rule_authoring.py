@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import importlib
 from pathlib import PurePosixPath
 import sys
@@ -23,6 +24,11 @@ from sarj_standards.libs.rules import RuleSelector
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
 
 
 def test_new_rule_is_deterministic_and_dry_by_default(tmp_path: Path) -> None:
@@ -134,12 +140,11 @@ def test_apply_rolls_back_if_a_later_atomic_write_fails(tmp_path: Path, monkeypa
         summary="Tests should receive an explicit clock.",
     )
     original = transaction.atomic_write_bytes
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def fail_second_write(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
+        callback_state.calls += 1
+        if callback_state.calls == 2:
             detail = "injected failure"
             raise OSError(detail)
         original(root, path, contents, mode=mode)
@@ -199,16 +204,15 @@ def test_scaffold_rollback_preserves_concurrent_edits(
     if target_kind == "unrelated":
         target.write_text("original package\n", encoding="utf-8")
     original = transaction.atomic_write_bytes
-    calls = 0
+    callback_state = _CallbackState(calls=0)
 
     def fail_after_concurrent_change(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
+        callback_state.calls += 1
+        if callback_state.calls == 2:
             msg = "injected scaffold failure"
             raise OSError(msg)
         original(root, path, contents, mode=mode)
-        if calls == 1:
+        if callback_state.calls == 1:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("concurrent owner\n", encoding="utf-8")
 

@@ -20,7 +20,8 @@ select = ["ALL"]
 external = ["SARJ"]
 preview = true
 # S307 owns eval calls/references, S102 exec calls, and T100 debugger calls.
-# PLW0602/3/4 reject global statements, F403/6 reject star imports, and B006
+# PLW0602/3/4 reject global statements; SARJ578 rejects nonlocal statements.
+# F403/6 reject star imports, and B006
 # rejects ordinary mutable defaults. Sarj closes bare dynamic-builtin,
 # reference-alias, annotated-default and import-path-mutation gaps.
 # Let Ruff's native UP037 own quoted annotations, including TYPE_CHECKING-only

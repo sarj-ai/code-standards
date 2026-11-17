@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,12 @@ _OWNERS = (
     ("local", "def consume():\n    value: {annotation} = opaque\n", 0),
     ("override", "class Adapter(Base):\n    @override\n    def consume(self, value: {annotation}): ...\n", 0),
 )
+
+
+@dataclass(slots=True)
+class _CallbackState:
+    calls: int = 0
+    visits: int = 0
 
 
 @pytest.fixture
@@ -314,13 +321,12 @@ def test_recursive_and_shadowed_aliases(rule: PreferPreciseObjectContract, sourc
 def test_branching_recursive_alias_does_not_repeat_its_subtree(
     rule: PreferPreciseObjectContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls = 0
+    callback_state = _CallbackState(calls=0)
     original = AnnotationSemantics.parse
 
     def measured(annotation: ast.expr | None) -> ast.expr | None:
-        nonlocal calls
-        calls += 1
-        assert calls < 128, "Recursive alias traversal exceeds a bounded parse budget"
+        callback_state.calls += 1
+        assert callback_state.calls < 128, "Recursive alias traversal exceeds a bounded parse budget"
         return original(annotation)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception counts shared parser calls; injection would bypass the traversal under test.
@@ -391,13 +397,12 @@ def test_unrelated_local_wrapper_name_does_not_change_annotation_metadata(rule: 
 def test_acyclic_alias_graph_is_visited_once_per_depth(
     rule: PreferPreciseObjectContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    visits = 0
+    callback_state = _CallbackState(visits=0)
     original = AnnotationSemantics.parse
 
     def measured(annotation: ast.expr | None) -> ast.expr | None:
-        nonlocal visits
-        visits += 1
-        assert visits < 128, "Shared alias definitions must not expand exponentially"
+        callback_state.visits += 1
+        assert callback_state.visits < 128, "Shared alias definitions must not expand exponentially"
         return original(annotation)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- count the real shared parser calls to bound alias expansion.

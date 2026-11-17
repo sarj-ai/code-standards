@@ -122,6 +122,17 @@ SOURCE_SUFFIXES = frozenset(
 )
 
 
+@dataclass(slots=True)
+class _CommandState:
+    exit_code: int = 0
+
+
+@dataclass(slots=True)
+class _ProgressState:
+    phase: str = ""
+    phase_started: float = 0.0
+
+
 class RolloutChannel(StrEnum):
     CANARY = "canary"
     EARLY = "early"
@@ -2396,23 +2407,24 @@ def apply_one(
 @contextmanager
 def timed_progress(consumer: Consumer) -> Generator[Callable[[str], None]]:
     started = time.monotonic()
-    phase_started = started
-    phase = ""
+    callback_state = _ProgressState(phase_started=started)
 
     def report(next_phase: str) -> None:
-        nonlocal phase, phase_started
         now = time.monotonic()
-        if phase:
-            progress(consumer, f"finished {phase} in {now - phase_started:.2f}s")
+        if callback_state.phase:
+            progress(consumer, f"finished {callback_state.phase} in {now - callback_state.phase_started:.2f}s")
         progress(consumer, next_phase)
-        phase, phase_started = next_phase, now
+        callback_state.phase, callback_state.phase_started = next_phase, now
 
     try:
         yield report
     finally:
         now = time.monotonic()
-        if phase:
-            progress(consumer, f"ended {phase} after {now - phase_started:.2f}s; total {now - started:.2f}s")
+        if callback_state.phase:
+            progress(
+                consumer,
+                f"ended {callback_state.phase} after {now - callback_state.phase_started:.2f}s; total {now - started:.2f}s",
+            )
 
 
 def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verification and mutation state
@@ -3008,7 +3020,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         context_settings={"help_option_names": ["-h", "--help"]},
     )
     args = RolloutArgs()
-    exit_code = 0
+    callback_state = _CommandState(exit_code=0)
 
     @app.callback()
     def configure(
@@ -3038,7 +3050,6 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         consumer: str | None = None,
         enable_repository_rules: Sequence[str] = (),
     ) -> None:
-        nonlocal exit_code
         args.command = command
         args.version = version
         args.channel = channel
@@ -3046,7 +3057,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         args.preserve_baselines = preserve_baselines
         args.consumer = consumer
         args.enable_repository_rules = tuple(enable_repository_rules)
-        exit_code = _execute_cli(args, runner or SubprocessRunner(command_timeout=args.command_timeout))
+        callback_state.exit_code = _execute_cli(args, runner or SubprocessRunner(command_timeout=args.command_timeout))
 
     @app.command("plan")
     def plan_command(
@@ -3110,8 +3121,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     def consumers_command(
         channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
     ) -> None:
-        nonlocal exit_code
-        exit_code = list_consumers(args.registry, channel)
+        callback_state.exit_code = list_consumers(args.registry, channel)
 
     @app.command("reconcile")
     def reconcile_command(
@@ -3140,7 +3150,7 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     except SystemExit as exc:
         if exc.code != 0:
             raise
-    return exit_code
+    return callback_state.exit_code
 
 
 def _execute_cli(args: RolloutArgs, runner: CommandRunner) -> int:
