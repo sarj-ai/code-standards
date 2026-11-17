@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e535b0aaf457504837e0f7a513e91a94f587fd78cdaaa8cf969c87e14bb4ec27",
-  "cliSha256": "5806beb77c224f951fddc3f5c5e57df4ded7090adcda942dd1800018d576e106",
+  "catalogSha256": "30bfe64a37fa26e1bcff58d6601ed2294621393ceb7ae97cd53ab7fd36974125",
+  "cliSha256": "ca00cf659df82605cdfa0e2ae3aff304664a9bc984e8f851ec1b1bd30da1ad2f",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -18173,36 +18173,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One typed entry retains both task identities"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "playback.py",
-              "source": "from app.session import Session, Handle\n\n\ndef finish(session: Session, expected: Handle) -> None:\n    state = session.state\n    if state.playback is not None and state.playback.handle is expected:\n        state.playback = None\n\n\ndef answer_ready(session: Session) -> None:\n    playback = session.state.playback\n    if playback is not None and not playback.started:\n        playback.handle.interrupt()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "playback.py",
-          "id": "optional-composed-playback",
-          "outcome": "accept",
-          "scenarioId": "scalar-lifecycle",
-          "title": "An optional playback owner retains its required handle and started state"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "playback.py",
-              "source": "from app.session import Session, Handle\n\n\ndef finish(session: Session, expected: Handle) -> None:\n    state = session.state\n    if state.resource is expected:\n        state.resource = None\n        state.started = False\n\n\ndef answer_ready(session: Session) -> None:\n    resource = session.state.resource\n    if resource is not None and not session.state.started:\n        resource.interrupt()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "playback.py",
-          "id": "ownership-guarded-scalar-lifecycle",
-          "outcome": "reject",
-          "scenarioId": "scalar-lifecycle",
-          "title": "A resource and flag repeat ownership-dependent state across functions"
         }
       ],
       "optionsSchemaSource": null
