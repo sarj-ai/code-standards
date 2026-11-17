@@ -41,7 +41,8 @@ if TYPE_CHECKING:
 
 _MAKEFILE_GROWTH_RULE = "repository/artifacts/makefile-growth"
 _MIGRATION_CONSOLIDATION_RULE = "repository/artifacts/migration-consolidation"
-_COMPARISON_RULES = (_MAKEFILE_GROWTH_RULE, _MIGRATION_CONSOLIDATION_RULE)
+_ADDED_MARKDOWN_RULE = "repository/documentation/added-markdown"
+_COMPARISON_RULES = (_MAKEFILE_GROWTH_RULE, _MIGRATION_CONSOLIDATION_RULE, _ADDED_MARKDOWN_RULE)
 
 
 def _makefile_severity() -> str:
@@ -595,6 +596,33 @@ def test_corrupt_symbolic_head_cannot_skip_committed_repository_analysis(tmp_pat
 
     assert report.exit_code == 2
     assert report.issues[0].source == "repo-standards"
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_markdown_warning_reaches_native_consumer_with_comparison_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, staged: bool
+) -> None:
+    _enable_comparison_policy(tmp_path, rule_id=_ADDED_MARKDOWN_RULE)
+    base = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=tmp_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    (tmp_path / "guide.md").write_text("Review this new page\n", encoding="utf-8")
+    if staged:
+        subprocess.run(("git", "add", "guide.md"), cwd=tmp_path, check=True)
+    else:
+        _commit(tmp_path)
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    report = repo_standards.analyze(tmp_path, staged=staged)
+
+    assert report is not None
+    assert len(report.diagnostics) == 1
+    diagnostic = report.diagnostics[0]
+    assert diagnostic.rule_id == _ADDED_MARKDOWN_RULE
+    assert diagnostic.severity.value == "warning"
+    assert diagnostic.tags == ("non-baselineable",)
+    basis = "staged" if staged else "explicit"
+    assert any(note.startswith(f"Git comparison: {basis}; base {base}/") for note in diagnostic.notes)
 
 
 def test_ci_base_detects_growth_from_an_earlier_pr_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

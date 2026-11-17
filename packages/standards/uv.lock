@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "9.64.1"
+version = "9.65.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -141,7 +141,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==8.1.0" },
+    { name = "repo-standards", specifier = "==8.2.1" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -739,7 +739,7 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "8.1.0"
+version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
@@ -748,9 +748,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/29/429943b0b98c30f0e11faebf7f407332b984504afac66657cb885fc4045e/repo_standards-8.1.0.tar.gz", hash = "sha256:4aa01427feb38d37391f6e78da6fe35751bc4c057661c744d31685f934ef0dce", size = 156816, upload-time = "2026-11-17T11:32:22.408Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/0b/cd6bd5fb173a986794ace6cf808cd4a87ed9893276235693e3487ad4479e/repo_standards-8.2.1.tar.gz", hash = "sha256:55d6860b067c0140f7cf67d19127ccb84451d4a21cbcd6b63de9ffe60cf46ce4", size = 158245, upload-time = "2026-11-17T16:23:50.939Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/cd/45af1c18269512b0b2ee2f91f541186c9163cb2298babd594fd22022d294/repo_standards-8.1.0-py3-none-any.whl", hash = "sha256:ef53cab68f43323dfcce8d3238c07c7491039dc0dc7cea6df80bea60e48c8464", size = 181654, upload-time = "2026-11-17T11:32:20.939Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/8d/180c87345ec5551b2b46d96cddf4f9d20f7cc11bf4a4648d7e9e16b1895e/repo_standards-8.2.1-py3-none-any.whl", hash = "sha256:1f86fe4d9e453f61acb9371303bbfd1a1e03b15ac858379043daa3a7ce3ccb32", size = 183763, upload-time = "2026-11-17T16:23:49.091Z" },
 ]
 
 [[package]]

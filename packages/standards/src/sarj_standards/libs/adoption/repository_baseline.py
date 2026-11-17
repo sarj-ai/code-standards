@@ -58,6 +58,8 @@ PATH = ".repo-standards/baseline.json"
 # rule's fingerprints again. Keep the same empty-or-no-review-policy boundary.
 # Policy 36 changes JavaScript severity and default selection. Only empty
 # policy 35 baselines can advance without accepting or discarding any debt.
+# Policy 37 adds an opt-in, nonbaselineable Markdown warning; existing
+# rule identities and scope serialization remain unchanged.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -71,6 +73,7 @@ _COMPATIBLE_TRANSITIONS = frozenset(
         (30, 31),
         (30, 32),
         (32, 33),
+        (36, 37),
     }
 )
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
@@ -82,6 +85,7 @@ _MIGRATION_COUNTS_POLICY = 33
 _PR_TEMPLATE_POLICY = 34
 _MERGE_RISK_POLICY = 35
 _TYPED_TOOLING_POLICY = 36
+_MARKDOWN_PAGE_POLICY = 37
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -170,6 +174,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     predecessor = {
+        _MARKDOWN_PAGE_POLICY: _TYPED_TOOLING_POLICY,
         _TYPED_TOOLING_POLICY: _MERGE_RISK_POLICY,
         _MERGE_RISK_POLICY: _PR_TEMPLATE_POLICY,
         _PR_TEMPLATE_POLICY: _MIGRATION_COUNTS_POLICY,

@@ -58,7 +58,13 @@ _MANIFEST = Path(".repo-standards/repository.toml")
 _ADOPTED = Path(".sarj-standards.toml")
 _BASELINE = Path(".repo-standards/baseline.json")
 _MAKEFILE_GROWTH_RULE = "repository/artifacts/makefile-growth"
-_COMPARISON_RULES = frozenset({_MAKEFILE_GROWTH_RULE, "repository/artifacts/migration-consolidation"})
+_COMPARISON_RULES = frozenset(
+    {
+        _MAKEFILE_GROWTH_RULE,
+        "repository/artifacts/migration-consolidation",
+        "repository/documentation/added-markdown",
+    }
+)
 _MAX_EVENT_BYTES = 1024 * 1024
 _GIT_READ_OPTIONS = ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks")
 

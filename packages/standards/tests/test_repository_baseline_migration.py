@@ -51,7 +51,19 @@ def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
 
 @pytest.mark.parametrize(
     ("before", "after"),
-    [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (32, 33), (33, 34), (34, 35)],
+    [
+        (18, 19),
+        (18, 20),
+        (19, 20),
+        (25, 26),
+        (25, 27),
+        (26, 27),
+        (28, 29),
+        (32, 33),
+        (33, 34),
+        (34, 35),
+        (36, 37),
+    ],
 )
 @pytest.mark.parametrize(
     "fingerprints",
@@ -70,7 +82,15 @@ def test_known_policy_migration_changes_only_the_version_bytes(
 
 @pytest.mark.parametrize(
     ("before", "after", "fingerprints", "compatible"),
-    [(35, 36, (), True), (35, 36, ("a" * 64,), False), (25, 26, ("a" * 64,), True), (35, 37, (), False)],
+    [
+        (35, 36, (), True),
+        (35, 36, ("a" * 64,), False),
+        (25, 26, ("a" * 64,), True),
+        (35, 37, (), True),
+        (35, 37, ("a" * 64,), False),
+        (36, 37, ("a" * 64,), True),
+        (36, 38, (), False),
+    ],
 )
 def test_policy_change_classification_uses_reviewed_compatibility(
     tmp_path: Path, before: int, after: int, fingerprints: tuple[str, ...], compatible: bool
@@ -103,14 +123,15 @@ def test_policy26_preserves_warning_ratchets_without_recapturing_findings(
     assert migrated == original.replace(b'"policy_version": 25', b'"policy_version": 26')
 
 
-def test_policy33_preserves_nonempty_warning_debt_and_metadata() -> None:
-    original = _baseline(32, fingerprints=("f" * 64, "a" * 64)).replace(
+@pytest.mark.parametrize(("before", "after"), [(32, 33), (36, 37)])
+def test_additive_policy_preserves_nonempty_warning_debt_and_metadata(before: int, after: int) -> None:
+    original = _baseline(before, fingerprints=("f" * 64, "a" * 64)).replace(
         b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
     )
 
-    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=33)
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=after)
 
-    assert migrated == original.replace(b'"policy_version": 32', b'"policy_version": 33')
+    assert migrated == original.replace(f'"policy_version": {before}'.encode(), f'"policy_version": {after}'.encode())
 
 
 @pytest.mark.parametrize("before", [25, 26])

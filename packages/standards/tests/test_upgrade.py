@@ -226,7 +226,7 @@ def test_preserved_update_accepts_reviewed_repository_policy_metadata(tmp_path: 
         ("policy", "another-policy"),
         ("scope_digest", "f" * 64),
         ("schema_version", 3),
-        ("policy_version", 37),
+        ("policy_version", SarjPolicy.policy_version + 1),
         ("policy_version", 34),
         ("budget", 1),
     ],
