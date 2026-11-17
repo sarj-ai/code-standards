@@ -121,7 +121,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_coordinated_state_owner",
         class_name="PreferCoordinatedStateOwner",
         code="SARJ565",
-        description="Review coordinated dictionary entries and ownership-guarded scalar state for one typed owner.",
+        description="Review dictionaries with repeated same-key writes and removals for one typed owner.",
         aliases=(),
         enabled_by_default=True,
     ),
