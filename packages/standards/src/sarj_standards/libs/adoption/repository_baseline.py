@@ -58,6 +58,9 @@ PATH = ".repo-standards/baseline.json"
 # rule's fingerprints again. Keep the same empty-or-no-review-policy boundary.
 # Policy 36 changes JavaScript severity and default selection. Only empty
 # policy 35 baselines can advance without accepting or discarding any debt.
+# Policies 37/38 add Markdown advice; 39 changes PR-template fingerprints.
+# Compose these upgrades only for empty baselines, preserving warning choices
+# and scope. Existing debt still needs its own compatibility review.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -170,6 +173,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     predecessor = {
+        39: 38,
+        38: 37,
+        37: _TYPED_TOOLING_POLICY,
         _TYPED_TOOLING_POLICY: _MERGE_RISK_POLICY,
         _MERGE_RISK_POLICY: _PR_TEMPLATE_POLICY,
         _PR_TEMPLATE_POLICY: _MIGRATION_COUNTS_POLICY,
@@ -183,7 +189,18 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         return migrate(intermediate, manifest, target_policy_version=target_policy_version)
     transition = (baseline.policy_version, target_policy_version)
     empty_compatible = (
-        transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32), (_MERGE_RISK_POLICY, _TYPED_TOOLING_POLICY)}
+        transition
+        in {
+            (27, 28),
+            (27, 29),
+            (27, 30),
+            (29, 30),
+            (31, 32),
+            (_MERGE_RISK_POLICY, _TYPED_TOOLING_POLICY),
+            (36, 37),
+            (37, 38),
+            (38, 39),
+        }
         and not baseline.fingerprints
     )
     error_only_compatible = transition in {(29, 30), (31, 32)} and not baseline.include_warnings

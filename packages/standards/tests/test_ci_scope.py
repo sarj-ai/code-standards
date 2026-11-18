@@ -539,7 +539,7 @@ def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     jobs = workflow("ci.yml").jobs
     assert jobs["changes"].name == "Detect affected checks"
     deploy = jobs["docs-deploy"]
-    assert deploy.needs == "docs-build"
+    assert deploy.needs == ["docs-build", "npm-audit"]
     assert deploy.condition == (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
     )

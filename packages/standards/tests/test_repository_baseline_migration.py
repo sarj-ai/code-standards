@@ -70,7 +70,13 @@ def test_known_policy_migration_changes_only_the_version_bytes(
 
 @pytest.mark.parametrize(
     ("before", "after", "fingerprints", "compatible"),
-    [(35, 36, (), True), (35, 36, ("a" * 64,), False), (25, 26, ("a" * 64,), True), (35, 37, (), False)],
+    [
+        (35, 36, (), True),
+        (35, 36, ("a" * 64,), False),
+        (25, 26, ("a" * 64,), True),
+        (35, 37, (), True),
+        (36, 40, (), False),
+    ],
 )
 def test_policy_change_classification_uses_reviewed_compatibility(
     tmp_path: Path, before: int, after: int, fingerprints: tuple[str, ...], compatible: bool
@@ -147,7 +153,7 @@ def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before
 
 
 @pytest.mark.parametrize("include_warnings", [None, False, True])
-@pytest.mark.parametrize(("before", "after"), [(27, 28), (35, 36)])
+@pytest.mark.parametrize(("before", "after"), [(27, 28), (35, 36), (36, 37), (37, 38), (38, 39), (36, 39), (35, 39)])
 def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_warning_choice(
     before: int,
     after: int,
@@ -165,6 +171,12 @@ def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_w
     assert migrated == original.replace(f'"policy_version": {before}'.encode(), f'"policy_version": {after}'.encode())
 
 
+@pytest.mark.parametrize("before", [36, 37, 38])
+def test_new_markdown_and_template_policies_preserve_rejection_of_existing_debt(before: int) -> None:
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(_baseline(before, fingerprints=("a" * 64,)), _MANIFEST, target_policy_version=39)
+
+
 @pytest.mark.parametrize(
     ("before", "after"),
     [
@@ -179,6 +191,7 @@ def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_w
         (26, 29),
         (25, 30),
         (26, 30),
+        (39, 40),
     ],
 )
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:
@@ -410,7 +423,7 @@ def test_policy33_composes_compatible_nonempty_debt(before: int, include_warning
     assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 33')
 
 
-@pytest.mark.parametrize("before", [27, 28, 29, 30, 31, 32, 33, 34, 35])
+@pytest.mark.parametrize("before", [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38])
 def test_setup_plans_and_applies_the_current_compatible_baseline_migration(tmp_path: Path, before: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()

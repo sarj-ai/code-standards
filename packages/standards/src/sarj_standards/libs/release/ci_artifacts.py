@@ -38,6 +38,7 @@ SourceCommit = NewType("SourceCommit", str)
 
 _ARTIFACT_NAME = "tested-standards"
 _TEST_JOB = "standards wheel and integration"
+_PACKAGE_GATE = "CI packages"
 _MAX_BYTES = 100_000_000
 _MAX_FILES = 10_000
 
@@ -157,7 +158,7 @@ def find_tested_artifact(
     if not candidates:
         return AwaitingArtifact("waiting for exact main CI")
     run = max(candidates, key=lambda candidate: candidate.run_id)
-    if run.conclusion not in {None, "success"}:
+    if run.conclusion not in {None, "success", "failure"}:
         msg = f"exact-revision CI concluded {run.conclusion}"
         raise ValueError(msg)
     identity = RunIdentity(run.run_id, run.run_attempt, run.head_repository.repository_id)
@@ -172,6 +173,9 @@ def find_tested_artifact(
         )
     if status == "skipped":
         return FreshValidationRequired("artifact job was not part of this qualification")
+    if status == "full" and run.conclusion == "failure":
+        msg = "failed CI requires successful package qualification"
+        raise ValueError(msg)
     artifact = _artifact_for_run(
         root, repository, sha, identity, runner, artifact_name=f"{_ARTIFACT_NAME}-{run.run_attempt}"
     )
@@ -194,7 +198,7 @@ def _is_exact_run(run: _Run, repository: str, sha: str) -> bool:
 
 def _standards_job_status(
     root: Path, repository: str, run: RunIdentity, runner: ProcessRunner
-) -> Literal["pending", "skipped", "success"]:
+) -> Literal["pending", "skipped", "package", "full"]:
     jobs = _Jobs.model_validate_json(
         _api(root, f"repos/{repository}/actions/runs/{run.run_id}/attempts/{run.attempt}/jobs?per_page=100", runner)
     )
@@ -204,7 +208,8 @@ def _standards_job_status(
     matches = [job for job in jobs.jobs if job.name == _TEST_JOB]
     if not matches:
         if any(
-            job.name == "CI complete" and job.status == "completed" and job.conclusion == "success" for job in jobs.jobs
+            job.name in {_PACKAGE_GATE, "CI complete"} and job.status == "completed" and job.conclusion == "success"
+            for job in jobs.jobs
         ):
             return "skipped"
         return "pending"
@@ -219,7 +224,24 @@ def _standards_job_status(
     if job.conclusion != "success":
         msg = f"Standards wheel tests concluded {job.conclusion}"
         raise ValueError(msg)
-    return "success"
+    return _aggregate_status(jobs)
+
+
+def _aggregate_status(jobs: _Jobs) -> Literal["pending", "package", "full"]:
+    preferred = [job for job in jobs.jobs if job.name == _PACKAGE_GATE]
+    selected = preferred or [job for job in jobs.jobs if job.name == "CI complete"]
+    if not selected:
+        return "pending"
+    if len(selected) != 1:
+        msg = "ambiguous CI qualification job"
+        raise ValueError(msg)
+    job = selected[0]
+    if job.status != "completed":
+        return "pending"
+    if job.conclusion != "success":
+        msg = f"CI qualification concluded {job.conclusion}"
+        raise ValueError(msg)
+    return "package" if preferred else "full"
 
 
 def _artifact_for_run(
@@ -260,13 +282,17 @@ def _api(root: Path, endpoint: str, runner: ProcessRunner) -> str:
 
 
 def _require_current_attempt(root: Path, repository: str, verified: VerifiedArtifact, runner: ProcessRunner) -> None:
+    qualification = _standards_job_status(root, repository, verified.run, runner)
+    if qualification not in {"package", "full"}:
+        msg = "exact CI qualification changed while verifying its artifact"
+        raise ValueError(msg)
     current = _Run.model_validate_json(_api(root, f"repos/{repository}/actions/runs/{verified.run.run_id}", runner))
+    identity = RunIdentity(current.run_id, current.run_attempt, current.head_repository.repository_id)
+    allowed = {None, "success", "failure"} if qualification == "package" else {None, "success"}
     if (
         not _is_exact_run(current, repository, verified.source)
-        or current.run_id != verified.run.run_id
-        or current.run_attempt != verified.run.attempt
-        or current.head_repository.repository_id != verified.run.repository_id
-        or current.conclusion not in {None, "success"}
+        or identity != verified.run
+        or current.conclusion not in allowed
     ):
         msg = "exact CI identity changed while verifying its artifact"
         raise ValueError(msg)

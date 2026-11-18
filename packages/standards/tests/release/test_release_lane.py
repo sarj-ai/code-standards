@@ -367,7 +367,7 @@ def test_exact_push_safety_gate_rejects_other_run_identities(
         "scenario = data['scenario']\n"
         "if '/workflows/' in endpoint:\n"
         "    workflow = endpoint.split('/workflows/')[1].split('/')[0]\n"
-        "    run = {'id': 123, 'head_sha': data['sha'], 'head_branch': data['branch'],\n"
+        "    run = {'id': 123, 'run_attempt': 1, 'head_sha': data['sha'], 'head_branch': data['branch'],\n"
         "           'event': 'push', 'path': '.github/workflows/' + workflow, 'conclusion': None,\n"
         "           'head_repository': {'full_name': 'sarj-ai/code-standards'}}\n"
         "    updates = {'branch': {'head_branch': 'main'}, 'sha': {'head_sha': 'b' * 40},\n"
@@ -376,9 +376,13 @@ def test_exact_push_safety_gate_rejects_other_run_identities(
         "               'event': {'event': 'workflow_dispatch'}}\n"
         "    run.update(updates.get(scenario, {}))\n"
         "    print(json.dumps({'workflow_runs': [run]}))\n"
+        "elif endpoint.endswith('/runs/123'):\n"
+        "    print(json.dumps({'id': 123, 'run_attempt': 1, 'head_sha': data['sha'],\n"
+        "        'head_branch': data['branch'], 'event': 'push', 'path': '.github/workflows/ci.yml',\n"
+        "        'conclusion': None, 'head_repository': {'full_name': 'sarj-ai/code-standards'}}))\n"
         "else:\n"
         "    name = 'other' if scenario == 'missing-terminal' else 'CI complete'\n"
-        "    print(json.dumps({'jobs': [{'name': name, 'status': 'completed', 'conclusion': 'success'}]}))\n"
+        "    print(json.dumps({'total_count': 1, 'jobs': [{'name': name, 'status': 'completed', 'conclusion': 'success'}]}))\n"
     )
     (binaries / "gh").chmod(0o755)
     (binaries / "sleep").write_text("#!/bin/sh\nexit 86\n")
