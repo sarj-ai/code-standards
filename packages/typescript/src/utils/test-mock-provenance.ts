@@ -93,6 +93,17 @@ export function runtimeTestFrameworkName(
   return kind === "test" && module === "node:test" && specifier.type === "ImportDefaultSpecifier" ? "test" : null;
 }
 
+/** The module and imported name behind a runtime named import, else null. */
+export function runtimeNamedImport(
+  source: Readonly<SourceCode>,
+  identifier: Identifier,
+): { readonly module: string; readonly name: string } | null {
+  const imported = runtimeImportBinding(findVariable(source.getScope(identifier), identifier.name));
+  return imported?.specifier.type === "ImportSpecifier"
+    ? { module: imported.module, name: importSpecifierName(imported.specifier) }
+    : null;
+}
+
 function runtimeImportBinding(
   binding: TsVariable | null,
 ): { readonly module: string; readonly specifier: ImportBindingSpecifier } | null {

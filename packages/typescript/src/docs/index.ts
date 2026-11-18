@@ -45,6 +45,7 @@ import { NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION } from "./no-excessive-
 import { NO_EXPLICIT_TYPE_PREDICATE_DOCUMENTATION } from "./no-explicit-type-predicate.js";
 import { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "./no-fat-try-blocks.js";
 import { NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION } from "./no-first-party-module-mock.js";
+import { NO_FLAKE_MASKING_DOCUMENTATION } from "./no-flake-masking.js";
 import { NO_FRONTEND_COMMENTS_DOCUMENTATION } from "./no-frontend-comments.js";
 import { NO_GENERIC_JSON_PARSER_DOCUMENTATION } from "./no-generic-json-parser.js";
 import { NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION } from "./no-generic-single-export-module.js";
@@ -110,6 +111,7 @@ import { NO_UNLOCALIZED_TOAST_DOCUMENTATION } from "./no-unlocalized-toast.js";
 import { NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION } from "./no-unnecessary-use-client.js";
 import { NO_UNSAFE_MOCK_CASTING_DOCUMENTATION } from "./no-unsafe-mock-casting.js";
 import { NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION } from "./no-unsafe-test-double-cast.js";
+import { NO_UNSIGNALED_POLL_DOCUMENTATION } from "./no-unsignaled-poll.js";
 import { NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION } from "./no-vague-suppression-description.js";
 import { NO_ZOD_NATIVE_ENUM_DOCUMENTATION } from "./no-zod-native-enum.js";
 import { NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION } from "./no-zod-parse-typed-object.js";
@@ -224,6 +226,7 @@ export const RULE_DOCUMENTATION = {
   "no-explicit-type-predicate": NO_EXPLICIT_TYPE_PREDICATE_DOCUMENTATION,
   "no-fat-try-blocks": NO_FAT_TRY_BLOCKS_DOCUMENTATION,
   "no-first-party-module-mock": NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION,
+  "no-flake-masking": NO_FLAKE_MASKING_DOCUMENTATION,
   "no-frontend-comments": NO_FRONTEND_COMMENTS_DOCUMENTATION,
   "no-generic-json-parser": NO_GENERIC_JSON_PARSER_DOCUMENTATION,
   "no-generic-single-export-module": NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION,
@@ -289,6 +292,7 @@ export const RULE_DOCUMENTATION = {
   "no-unnecessary-use-client": NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION,
   "no-unsafe-mock-casting": NO_UNSAFE_MOCK_CASTING_DOCUMENTATION,
   "no-unsafe-test-double-cast": NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION,
+  "no-unsignaled-poll": NO_UNSIGNALED_POLL_DOCUMENTATION,
   "no-vague-suppression-description": NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION,
   "no-zod-native-enum": NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
   "no-zod-parse-typed-object": NO_ZOD_PARSE_TYPED_OBJECT_DOCUMENTATION,
