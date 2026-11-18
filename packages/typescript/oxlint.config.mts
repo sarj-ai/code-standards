@@ -43,6 +43,7 @@ const SARJ_OPTIONS: Readonly<DummyRuleMap> = {
   "@sarj/directive-require-description": ["error", { ignore: [] }],
   "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
   "@sarj/no-impossible-zod-literal-bounds": ["error", { delegateRealContradictions: true }],
+  "@sarj/no-shared-mutable-zod-default": ["error", { zodMajorVersion: 4 }],
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/no-unlocalized-jsx-attributes": ["error", { enabled: false }],
   "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],

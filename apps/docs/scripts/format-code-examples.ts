@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import process from "node:process";
 import { text as readStreamText } from "node:stream/consumers";
+import { parseArgs } from "node:util";
 
 import { format as prettierFormat, type Plugin } from "prettier";
 import type { ExampleFile, Rule, RuleExample } from "../src/lib/catalog.ts";
@@ -53,7 +54,18 @@ const docsProjectionPath = resolve(
   appRoot,
   "src/generated/formatted-code.v1.json",
 );
-const mode = process.argv[2];
+const { tokens } = parseArgs({
+  options: {
+    check: { type: "boolean" },
+    write: { type: "boolean" },
+    "format-json": { type: "boolean" },
+  },
+  tokens: true,
+  strict: false,
+  allowPositionals: true,
+});
+const first = tokens.at(0);
+const mode = first?.kind === "option" && first.value === undefined ? first.rawName : undefined;
 
 if (mode !== "--check" && mode !== "--write" && mode !== "--format-json") {
   throw new Error(

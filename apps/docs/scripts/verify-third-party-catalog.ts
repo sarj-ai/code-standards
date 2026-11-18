@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { URL } from "node:url";
-import { TextEncoder } from "node:util";
+import { parseArgs, TextEncoder } from "node:util";
 import { gzipSync } from "node:zlib";
 
 import {
@@ -26,7 +26,14 @@ const artifactPath = resolve(
 );
 const assetRoot = resolve(appRoot, "dist");
 const distRoot = resolve(assetRoot, SITE_BASE_PATH.slice(1));
-const mode = process.argv[2];
+const { tokens } = parseArgs({
+  options: { source: { type: "boolean" }, dist: { type: "boolean" } },
+  tokens: true,
+  strict: false,
+  allowPositionals: true,
+});
+const first = tokens.at(0);
+const mode = first?.kind === "option" && first.value === undefined ? first.rawName : undefined;
 const engineeringDestinations = new Set([
   "/",
   "/projects/lra/ui/v1/docs.css",
