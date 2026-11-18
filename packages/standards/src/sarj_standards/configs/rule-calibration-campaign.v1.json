@@ -852,9 +852,9 @@
       "task": "rule-audit/python/no-raw-connection-in-tests",
       "family": "python",
       "ruleId": "no-raw-connection-in-tests",
-      "state": "complete",
-      "evidence": "Final fleet calibration scanned 6,635 tracked Python files across 36 local projects with zero analyzer issues. All 94 remaining findings were inspected true direct psycopg pool access outside a support boundary; earlier shared-support and setup/cleanup fixture false positives drove explicit exemptions. Focused behavior coverage passed 12 of 12 cases.",
-      "outcome": "Kept provenance-aware SARJ429 at warning level with lexical function scoping, explicit pool-type proof, shared test-support and conftest exemptions, and fixture-internal setup/cleanup handling. Fixtures that expose a raw connection and ordinary tests/helpers remain reportable; promotion requires a clean adoption window."
+      "state": "pending",
+      "evidence": "Historical scope calibration: Final fleet calibration scanned 6,635 tracked Python files across 36 local projects with zero analyzer issues. All 94 remaining findings were inspected true direct psycopg pool access outside a support boundary; earlier shared-support and setup/cleanup fixture false positives drove explicit exemptions. Focused behavior coverage passed 12 of 12 cases. The new literal execute_test_query SQL warning has focused lexical-precedence, suppression and boundary tests. Its bounded pinned-corpus review contains unresolved support-boundary judgments; detailed private source evidence stays private. Broader precision and recall for the extension remain pending.",
+      "outcome": "Retain existing ERROR diagnostics and add only WARNING advice for literal custom-probe SQL. No autofix or consumer activation. Prior warning-era outcome remains historical: Kept provenance-aware SARJ429 at warning level with lexical function scoping, explicit pool-type proof, shared test-support and conftest exemptions, and fixture-internal setup/cleanup handling. Fixtures that expose a raw connection and ordinary tests/helpers remain reportable; promotion requires a clean adoption window."
     },
     {
       "task": "rule-audit/python/no-restated-closed-domain-description",
@@ -3293,8 +3293,8 @@
       "family": "python",
       "ruleId": "no-generic-json-parser",
       "state": "pending",
-      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_generic_json_parser.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
-      "outcome": "SARJ552: Retain WARNING without autofix. Review import-proven open Pydantic parsers and consumed-field models; preserve declared arbitrary-JSON fields and reasoned schema-infrastructure exceptions. Full campaign completion is not claimed."
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_generic_json_parser.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results. The open optional TypedDict extension covers stable generic fields, consumed parser ownership, aliases, shadowing and valid typed records in focused tests and a bounded paired private corpus. Comparative detector measurements stay within the recorded budget; these do not establish general field recall.",
+      "outcome": "SARJ552: Retain WARNING without autofix. Review import-proven open Pydantic parsers and consumed-field models; preserve declared arbitrary-JSON fields and reasoned schema-infrastructure exceptions. Full campaign completion is not claimed. The extension remains WARNING and conservatively abstains on required/mixed records, inheritance, mutation and unresolved aliases."
     },
     {
       "task": "rule-audit/python/no-mutating-input-with-result",
@@ -3723,6 +3723,22 @@
       "state": "pending",
       "evidence": "Reuses the published Terraform consumer analyzer without changing its semantic source. Native controls cover complete HEAD/index snapshots, unchanged callers, multiple roots, nested/dynamic references, preconditions, root and exact external contracts, malformed evidence, required diagnostics and initial Git commits. Immutable isolated evaluation of 308 private Terraform files inventories 169 exports: 30 standalone/root contracts, 138 Terraform-reachable exports and one documented uncertain external contract. No proven-unused export remains after that precise contract is recorded. Three fresh-process rounds with three warm calls each compare the existing function and diagnostic wrapper: median cold 1.505/1.438 seconds, warm 1.394/1.466 seconds, and 51,524 KiB peak for both. Parser/wrapper timings do not include snapshot acquisition; isolated complete CLI evaluation takes 3.075 seconds. Private source, identities and consumer citations remain local.",
       "outcome": "Introduce SARJ223 at ERROR under the explicit user-requested unused-output ban and canonical exact error-first admission. Provide no deletion autofix. Preserve uncertain external users through exact documented contracts; required findings cannot be suppressed or baselined. Snapshot consistency does not establish complete external-consumer or fleet recall. Full native verification, exact-head CI and consumer adoption remain required; broader fleet calibration is pending."
+    },
+    {
+      "task": "rule-audit/python/prefer-defaultdict",
+      "family": "python",
+      "ruleId": "prefer-defaultdict",
+      "state": "pending",
+      "evidence": "Executable examples and focused boundary controls are maintained in packages/python/tests/rules/test_prefer_defaultdict.py. Bounded baseline/candidate corpus review and repeated detector measurements are retained in private evidence storage. Purpose-labeled examples and a finite source snapshot do not establish broad consumer precision or recall; independent field calibration remains pending.",
+      "outcome": "SARJ579: Introduce WARNING without autofix. Review closed fresh local list accumulators; preserve escapes, rebinding, missing-key-sensitive reads and custom factories. No consumer activation or severity promotion is included."
+    },
+    {
+      "task": "rule-audit/python/no-value-error-forwarder",
+      "family": "python",
+      "ruleId": "no-value-error-forwarder",
+      "state": "pending",
+      "evidence": "Executable examples and focused boundary controls are maintained in packages/python/tests/rules/test_no_value_error_forwarder.py. Bounded baseline/candidate corpus review and repeated detector measurements are retained in private evidence storage. Purpose-labeled examples and a finite source snapshot do not establish broad consumer precision or recall; independent field calibration remains pending.",
+      "outcome": "SARJ580: Introduce WARNING without autofix. Review locally called plain synchronous helpers that only raise builtin ValueError with an unchanged parameter or literal; preserve methods, decorators, callbacks, generic helpers and computed messages. No consumer activation or severity promotion is included."
     }
   ]
 }

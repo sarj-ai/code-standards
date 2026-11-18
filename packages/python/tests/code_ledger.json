@@ -366,5 +366,7 @@
   "SARJ575": "require-hidden-settings-input",
   "SARJ576": "psycopg-sql-format-field-mismatch",
   "SARJ577": "no-unscoped-async-client-factory",
-  "SARJ578": "no-nonlocal-statement"
+  "SARJ578": "no-nonlocal-statement",
+  "SARJ579": "prefer-defaultdict",
+  "SARJ580": "no-value-error-forwarder"
 }

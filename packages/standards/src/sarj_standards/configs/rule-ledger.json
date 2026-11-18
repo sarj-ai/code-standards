@@ -148,6 +148,7 @@
       "no-unused-underscored-keyword-parameter",
       "no-unused-value-marker",
       "no-vague-suppression-description",
+      "no-value-error-forwarder",
       "no-whole-request-response-payload-in-log",
       "no-work-verb-get-route",
       "numeric-literal-separators",
@@ -162,6 +163,7 @@
       "prefer-constant-time-secret-compare",
       "prefer-coordinated-state-owner",
       "prefer-declarative-batch-validation",
+      "prefer-defaultdict",
       "prefer-direct-import-module",
       "prefer-discriminated-model-union",
       "prefer-explicit-class-contract",
@@ -734,7 +736,9 @@
       "SARJ575",
       "SARJ576",
       "SARJ577",
-      "SARJ578"
+      "SARJ578",
+      "SARJ579",
+      "SARJ580"
     ],
     "sql": [
       "SARJ101",

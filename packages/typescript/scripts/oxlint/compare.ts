@@ -19,12 +19,14 @@
 
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { parseArgs } from "node:util";
+
+import { z } from "zod/mini";
 
 import {
   PORT_PLUGIN,
   findingKey,
   median,
-  parseArgs,
   parseJson,
   parseTimings,
   readRuleSettings,
@@ -81,6 +83,18 @@ interface CorpusRow {
   readonly onlyPortCount: number;
 }
 
+const CompareArgsSchema = z.strictObject({
+  rules: z.optional(z.string()),
+  runs: z._default(z.coerce.number().check(z.int(), z.gt(0)), 5),
+  original: z.string().check(z.minLength(1)),
+  port: z._default(z.string(), PORT_PLUGIN),
+  corpora: z.optional(z.string()),
+  settings: z.optional(z.string()),
+  env: z.optional(z.string()),
+  "no-callback-timings": z.optional(z.string()),
+  json: z.optional(z.string()),
+});
+
 const SIDES: readonly Side[] = ["original", "port"];
 
 await main();
@@ -89,12 +103,16 @@ async function main(): Promise<void> {
   const options = await readOptions(process.argv.slice(2));
   const { ruleNames, runs, corpora, env, configs, callbackTimings } = options;
   const rows: CorpusRow[] = [];
-  const totals: Record<Side, number[]> = { original: new Array<number>(runs).fill(0), port: new Array<number>(runs).fill(0) };
+  const totals: Record<Side, number[]> = {
+    original: new Array<number>(runs).fill(0),
+    port: new Array<number>(runs).fill(0),
+  };
   for (const corpus of corpora) {
     const results = lintCorpus(corpus.cwd, runs, configs, env, totals);
     const row = corpusRow(corpus.name, summarize(results.original), summarize(results.port));
     if (callbackTimings) {
-      for (const name of SIDES) Object.assign(row[name], callbackTimingsOf(configs[name], corpus.cwd, env, ruleNames));
+      for (const name of SIDES)
+        Object.assign(row[name], callbackTimingsOf(configs[name], corpus.cwd, env, ruleNames));
     }
     rows.push(row);
     printRow(row);
@@ -111,40 +129,63 @@ async function main(): Promise<void> {
     parity,
   };
   console.log(`\n${parity ? "PARITY on every corpus" : "NO PARITY"} for ${ruleNames.join(", ")}`);
-  console.log(`wall (median of ${String(runs)}, summed over ${String(corpora.length)} corpora): original ${t.originalMedianMs.toFixed(0)}ms, ` +
-    `port ${t.portMedianMs.toFixed(0)}ms (${change(t.originalMedianMs, t.portMedianMs)})`);
+  console.log(
+    `wall (median of ${String(runs)}, summed over ${String(corpora.length)} corpora): original ${t.originalMedianMs.toFixed(0)}ms, ` +
+      `port ${t.portMedianMs.toFixed(0)}ms (${change(t.originalMedianMs, t.portMedianMs)})`,
+  );
   if (callbackTimings) {
-    console.log(`rule callbacks (--debug=timings, one run): original ${t.originalCallbackMs.toFixed(1)}ms, ` +
-      `port ${t.portCallbackMs.toFixed(1)}ms (${change(t.originalCallbackMs, t.portCallbackMs)})`);
+    console.log(
+      `rule callbacks (--debug=timings, one run): original ${t.originalCallbackMs.toFixed(1)}ms, ` +
+        `port ${t.portCallbackMs.toFixed(1)}ms (${change(t.originalCallbackMs, t.portCallbackMs)})`,
+    );
   }
-  if (options.json !== undefined) await writeFile(options.json, JSON.stringify({ rules: ruleNames, runs, corpora: rows, totals: t }, null, 2));
+  if (options.json !== undefined)
+    await writeFile(
+      options.json,
+      JSON.stringify({ rules: ruleNames, runs, corpora: rows, totals: t }, null, 2),
+    );
   process.exitCode = parity ? 0 : 1;
 }
 
 /** Parse and check the command line, and write one config per side. */
 async function readOptions(argv: readonly string[]): Promise<Options> {
-  const args = parseArgs<"rules" | "runs" | "original" | "port" | "corpora" | "settings" | "env" | "no-callback-timings" | "json">(
-    argv,
-    { runs: "5", port: PORT_PLUGIN },
+  const args = CompareArgsSchema.parse(
+    parseArgs({
+      args: [...argv],
+      options: Object.fromEntries(
+        z.keyof(CompareArgsSchema).options.map((name) => [name, { type: "string" } as const]),
+      ),
+    }).values,
   );
-  if (args.original === undefined || args.original === "") throw new Error("--original is required");
   const settings = await readRuleSettings(args.settings);
-  const ruleNames = args.rules !== undefined && args.rules !== "" ? args.rules.split(",") : Object.keys(settings);
+  const ruleNames =
+    args.rules !== undefined && args.rules !== "" ? args.rules.split(",") : Object.keys(settings);
   if (ruleNames.length === 0) throw new Error("--rules or --settings is required");
   const unlisted = Object.keys(settings).filter((name) => !ruleNames.includes(name));
-  if (unlisted.length > 0) throw new Error(`--settings names rules missing from --rules: ${unlisted.join(", ")}`);
+  if (unlisted.length > 0)
+    throw new Error(`--settings names rules missing from --rules: ${unlisted.join(", ")}`);
   const rules = Object.fromEntries(ruleNames.map((name) => [name, settings[name] ?? "error"]));
   return {
     ruleNames,
-    runs: Number(args.runs),
+    runs: args.runs,
     corpora: await selectCorpora(args.corpora),
     // --env KEY=VALUE[,KEY=VALUE] passes variables to Oxlint (for example SARJ_TYPE_AWARE=0).
-    env: Object.fromEntries((args.env ?? "").split(",").filter(Boolean).map((pair) => pair.split("=", 2) as [string, string])),
+    env: Object.fromEntries(
+      (args.env ?? "")
+        .split(",")
+        .filter(Boolean)
+        .map((pair) => {
+          const separator = pair.indexOf("=");
+          if (separator < 1) throw new Error("--env requires NAME=VALUE entries");
+          return [pair.slice(0, separator), pair.slice(separator + 1)];
+        }),
+    ),
     configs: {
       original: await writeConfig(resolve(args.original), rules),
       port: await writeConfig(resolve(args.port ?? ""), rules),
     },
-    callbackTimings: args["no-callback-timings"] === undefined || args["no-callback-timings"] === "",
+    callbackTimings:
+      args["no-callback-timings"] === undefined || args["no-callback-timings"] === "",
     json: args.json === "" ? undefined : args.json,
   };
 }
@@ -175,7 +216,12 @@ function corpusRow(name: string, original: SideSummary, port: SideSummary): Corp
     name,
     original: original.row,
     port: port.row,
-    parity: onlyOriginal.length === 0 && onlyPort.length === 0 && original.row.findings === port.row.findings && clean(original) && clean(port),
+    parity:
+      onlyOriginal.length === 0 &&
+      onlyPort.length === 0 &&
+      original.row.findings === port.row.findings &&
+      clean(original) &&
+      clean(port),
     onlyOriginal: onlyOriginal.slice(0, 10),
     onlyPort: onlyPort.slice(0, 10),
     onlyOriginalCount: onlyOriginal.length,
@@ -184,13 +230,24 @@ function corpusRow(name: string, original: SideSummary, port: SideSummary): Corp
 }
 
 function printRow(row: CorpusRow): void {
-  console.log(`${row.parity ? "PARITY " : "DIFFER "} ${row.name.padEnd(22)} files ${String(row.original.files).padStart(5)}  ` +
-    `original ${formatSide(row.original)}  port ${formatSide(row.port)}` +
-    (row.parity ? "" : `  only-original ${String(row.onlyOriginalCount)} only-port ${String(row.onlyPortCount)}`));
-  for (const finding of row.onlyOriginal.slice(0, 3)) console.log(`    - ${finding.filename}@${String(finding.offset)} ${finding.rule}: ${finding.message.slice(0, 120)}`);
-  for (const finding of row.onlyPort.slice(0, 3)) console.log(`    + ${finding.filename}@${String(finding.offset)} ${finding.rule}: ${finding.message.slice(0, 120)}`);
+  console.log(
+    `${row.parity ? "PARITY " : "DIFFER "} ${row.name.padEnd(22)} files ${String(row.original.files).padStart(5)}  ` +
+      `original ${formatSide(row.original)}  port ${formatSide(row.port)}` +
+      (row.parity
+        ? ""
+        : `  only-original ${String(row.onlyOriginalCount)} only-port ${String(row.onlyPortCount)}`),
+  );
+  for (const finding of row.onlyOriginal.slice(0, 3))
+    console.log(
+      `    - ${finding.filename}@${String(finding.offset)} ${finding.rule}: ${finding.message.slice(0, 120)}`,
+    );
+  for (const finding of row.onlyPort.slice(0, 3))
+    console.log(
+      `    + ${finding.filename}@${String(finding.offset)} ${finding.rule}: ${finding.message.slice(0, 120)}`,
+    );
   for (const name of SIDES) {
-    for (const crash of row[name].crashSamples) console.log(`    ! ${name} crash ${crash.filename}: ${crash.message.slice(0, 200)}`);
+    for (const crash of row[name].crashSamples)
+      console.log(`    ! ${name} crash ${crash.filename}: ${crash.message.slice(0, 200)}`);
   }
 }
 
@@ -199,7 +256,11 @@ function summarize(sideRuns: readonly SideRun[]): SideSummary {
   const [first] = sideRuns;
   if (first === undefined) throw new Error("--runs must be at least 1");
   const keys = new Set(first.findings.map(findingKey));
-  const stable = sideRuns.every((run) => run.findings.length === first.findings.length && run.findings.every((finding) => keys.has(findingKey(finding))));
+  const stable = sideRuns.every(
+    (run) =>
+      run.findings.length === first.findings.length &&
+      run.findings.every((finding) => keys.has(findingKey(finding))),
+  );
   return {
     keys,
     list: first.findings,
@@ -225,14 +286,27 @@ function callbackTimingsOf(
   env: Readonly<Record<string, string>>,
   ruleNames: readonly string[],
 ): { callbackMs: number; jsTotalMs: number | null } {
-  const run = runOxlint({ configPath, cwd, format: "default", extraArgs: ["--debug=timings"], env });
+  const run = runOxlint({
+    configPath,
+    cwd,
+    format: "default",
+    extraArgs: ["--debug=timings"],
+    env,
+  });
   const timings = parseTimings(run.stdout + run.stderr);
-  return { callbackMs: ruleNames.reduce((total, rule) => total + (timings.rules[rule] ?? 0), 0), jsTotalMs: timings.totalMs };
+  return {
+    callbackMs: ruleNames.reduce((total, rule) => total + (timings.rules[rule] ?? 0), 0),
+    jsTotalMs: timings.totalMs,
+  };
 }
 
 function formatSide(side: SideRow): string {
-  return `${String(side.findings)}f ${String(side.crashes)}c` + (side.parseErrors > 0 ? ` ${String(side.parseErrors)}p` : "") + ` ${side.medianMs.toFixed(0)}ms` +
-    (side.callbackMs === undefined ? "" : ` cb ${side.callbackMs.toFixed(1)}ms`);
+  return (
+    `${String(side.findings)}f ${String(side.crashes)}c` +
+    (side.parseErrors > 0 ? ` ${String(side.parseErrors)}p` : "") +
+    ` ${side.medianMs.toFixed(0)}ms` +
+    (side.callbackMs === undefined ? "" : ` cb ${side.callbackMs.toFixed(1)}ms`)
+  );
 }
 
 function sum(rows: readonly CorpusRow[], name: Side, key: "callbackMs" | "findings"): number {

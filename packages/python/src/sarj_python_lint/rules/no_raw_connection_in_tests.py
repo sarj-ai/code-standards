@@ -30,7 +30,18 @@ if TYPE_CHECKING:
 
 _POOL_TYPES = frozenset({"AsyncConnectionPool", "ConnectionPool"})
 _SQL_METHODS = frozenset(
-    {"execute", "executemany", "executescript", "exec_driver_sql", "fetch", "fetchrow", "fetchval", "query", "command"}
+    {
+        "execute",
+        "executemany",
+        "executescript",
+        "exec_driver_sql",
+        "execute_test_query",
+        "fetch",
+        "fetchrow",
+        "fetchval",
+        "query",
+        "command",
+    }
 )
 _QUERY_KEYWORDS = frozenset({"query", "sql", "statement", "command", "operation"})
 _SQL_START = re.compile(
@@ -61,8 +72,10 @@ class NoRawConnectionInTests(Rule):
         autofix=AutofixPolicy.NONE,
         aliases=("no-raw-sql-in-tests",),
         limitations=(
+            "New literal execute_test_query call-site coverage is advisory WARNING pending boundary review: syntax proves SQL execution but cannot distinguish routine setup from necessary historical-state and concurrency proofs. Existing native execution and connection findings remain ERROR. Do not inherit a probe's internal exception at every caller.",
+            "An existing unsuppressed connection error takes precedence over new custom-executor advice in that function scope. This conservative advisory abstention can omit a separate injected probe in the same scope; nested functions remain independent.",
             "Raw SQL execution is checked in tests, conftest.py, shared test-support helpers and migration tests; generated code is excluded. Standalone SQL examples and store/service calls are not execution.",
-            "Import-proven Psycopg connection/pool flows, including constructor-injected members, aliases and dynamic query arguments, are followed. SQL-shaped literals in execute/query/fetch-like calls are also checked across drivers, including concatenation, f-strings and import-proven SQL/text constructors.",
+            "Import-proven Psycopg connection/pool flows, including constructor-injected members, aliases and dynamic query arguments, are followed. SQL-shaped literals in execute/query/fetch-like calls and execute_test_query probes are also checked across drivers, including concatenation, f-strings and import-proven SQL/text constructors.",
             "Opaque non-Psycopg builders and interprocedural receiver flows are not inferred. Raw connection acquisition keeps its existing fixture/support exclusions when no SQL execution is found in that scope.",
         ),
         examples=(
@@ -100,22 +113,12 @@ class NoRawConnectionInTests(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        path = context.path
         if context.generated or context.tree is None:
             return []
-        sql_calls = _test_sql_calls(context)
-        diagnostics = [
-            Diagnostic(
-                path=path,
-                line=node.lineno,
-                col=node.col_offset + 1,
-                code=self.code,
-                message="test code executes raw SQL; use the owning store/service API or an exact SARJ429 exception for deliberate database-level testing",
-            )
-            for node in sql_calls
-            if not context.suppressions.is_suppressed(node.lineno, self.code)
-        ]
-        excluded_path = any(
+        calls = _test_sql_calls(context)
+        diagnostics = _sql_diagnostics(context, calls, self.code)
+        path = context.path
+        if any(
             (
                 not is_test_path(path),
                 path.name == "conftest.py",
@@ -123,41 +126,89 @@ class NoRawConnectionInTests(Rule):
                 _is_non_collected_test_support(path),
                 _is_migration_test(path),
             )
-        )
-        if excluded_path:
+        ):
             return sorted(diagnostics, key=lambda item: (item.line, item.col))
-        tree = context.tree
-        if tree is None:
-            return []
-        sql_scopes = {_containing_scope(context, node) for node in sql_calls}
-        scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = [
-            tree,
-            *(node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))),
-        ]
-        for scope in scopes:
-            if scope in sql_scopes:
+        native_scopes = {_containing_scope(context, call) for call in calls if not _custom_executor(call)}
+        connections = _connection_diagnostics(context, native_scopes, self.code)
+        shadowed = {
+            (call.lineno, call.col_offset + 1)
+            for call in calls
+            if _custom_executor(call) and _containing_scope(context, call) in connections
+        }
+        native_errors = [finding for findings in connections.values() for finding in findings]
+        return sorted(
+            [*(item for item in diagnostics if (item.line, item.col) not in shadowed), *native_errors],
+            key=lambda item: (item.line, item.col),
+        )
+
+
+def _custom_executor(call: ast.Call) -> bool:
+    return isinstance(call.func, ast.Attribute) and call.func.attr == "execute_test_query"
+
+
+def _sql_diagnostics(context: PythonFileContext, calls: list[ast.Call], code: str) -> list[Diagnostic]:
+    return [
+        Diagnostic(
+            path=context.path,
+            line=call.lineno,
+            col=call.col_offset + 1,
+            code=code,
+            message="test code executes raw SQL; use the owning store/service API or an exact SARJ429 exception for deliberate database-level testing",
+            severity=Severity.WARNING if _custom_executor(call) else Severity.ERROR,
+        )
+        for call in calls
+        if not context.suppressions.is_suppressed(call.lineno, code)
+    ]
+
+
+def _connection_diagnostics(
+    context: PythonFileContext, native_sql_scopes: set[ast.AST], code: str
+) -> dict[ast.AST, list[Diagnostic]]:
+    tree = context.tree
+    if tree is None:
+        return {}
+    errors: dict[ast.AST, list[Diagnostic]] = {}
+    scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = [
+        tree,
+        *context.nodes(ast.FunctionDef),
+        *context.nodes(ast.AsyncFunctionDef),
+    ]
+    for scope in scopes:
+        if scope in native_sql_scopes:
+            continue
+        nodes = _scope_nodes(scope)
+        names = _proven_pool_names(scope, nodes)
+        diagnostics: list[Diagnostic] = []
+        for call in _raw_connections(scope, nodes, names):
+            if context.suppressions.is_suppressed(call.lineno, code):
                 continue
-            pool_names = _proven_pool_names(scope)
-            diagnostics.extend(
+            diagnostics.append(
                 Diagnostic(
-                    path=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
-                    code=self.code,
-                    message=(
-                        "test acquires a raw database connection; use the owning store/service or an explicit "
-                        "test-support boundary"
-                    ),
+                    path=context.path,
+                    line=call.lineno,
+                    col=call.col_offset + 1,
+                    code=code,
+                    message="test acquires a raw database connection; use the owning store/service or an explicit test-support boundary",
                 )
-                for node in _scope_nodes(scope)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "connection"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in pool_names
-                and not _is_internal_fixture_connection(scope, node)
             )
-        return sorted(diagnostics, key=lambda item: (item.line, item.col))
+        if diagnostics:
+            errors[scope] = diagnostics
+    return errors
+
+
+def _raw_connections(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, nodes: list[ast.AST], names: frozenset[str]
+) -> list[ast.Call]:
+    return [
+        node
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "connection"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in names
+        and not _is_internal_fixture_connection(scope, node, nodes)
+    ]
 
 
 def _test_sql_calls(context: PythonFileContext) -> list[ast.Call]:
@@ -229,11 +280,13 @@ def _is_migration_test(path: Path) -> bool:
     )
 
 
-def _proven_pool_names(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+def _proven_pool_names(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, nodes: list[ast.AST]
+) -> frozenset[str]:
     names: set[str] = set()
     if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
         _pool_parameter_names(scope, names)
-    for node in _scope_nodes(scope):
+    for node in nodes:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             if _tail(node.annotation) in _POOL_TYPES:
                 names.add(node.target.id)
@@ -267,14 +320,14 @@ def _tail(node: ast.expr | None) -> str:
 
 
 def _is_internal_fixture_connection(
-    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, connection_call: ast.Call
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, connection_call: ast.Call, nodes: list[ast.AST]
 ) -> bool:
     if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _is_pytest_fixture(scope):
         return False
     context_item = next(
         (
             item
-            for node in _scope_nodes(scope)
+            for node in nodes
             if isinstance(node, (ast.With, ast.AsyncWith))
             for item in node.items
             if item.context_expr is connection_call
@@ -292,7 +345,7 @@ def _is_internal_fixture_connection(
         isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom))
         and node.value is not None
         and any(isinstance(value, ast.Name) and value.id == bound_name for value in walk_ast(node.value))
-        for node in _scope_nodes(scope)
+        for node in nodes
     )
 
 

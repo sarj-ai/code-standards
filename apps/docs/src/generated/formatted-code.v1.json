@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b248cdd291730c9257a648d95efd78c34a31f13fe3d207d61ee7fefc9c8e7c10",
-  "cliSha256": "6851bd59b0e1ef9300c67f7029936e02a448c591e69dc8ec079520e5bdc2cd12",
+  "catalogSha256": "f34976efc81635d396cb17105bd3cf71f9c118912b4b08ffdacc7cd1637a88fb",
+  "cliSha256": "fac2d82750daa57629921f413165c2f0c2afa8e84270334d8aebd27b291824de",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -17707,6 +17707,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-value-error-forwarder": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/parse.py",
+              "source": "def parse(value):\n    if not value:\n        raise ValueError(\"invalid input\")\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/parse.py",
+          "id": "failure-boundary",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The failure stays at its owning boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/parse.py",
+              "source": "def fail(message):\n    raise ValueError(message)\n\n\nfail(\"invalid input\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/parse.py",
+          "id": "message-forwarder",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A helper only forwards its message"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-whole-request-response-payload-in-log": {
       "examples": [
         {
@@ -18348,6 +18383,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A named collection schema owns the batch"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-defaultdict": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/group.py",
+              "source": "from collections import defaultdict\n\n\ndef group(rows):\n    groups = defaultdict(list)\n    for key, value in rows:\n        groups[key].append(value)\n    return dict(groups)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/group.py",
+          "id": "declared-list-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The accumulator declares one list factory"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/group.py",
+              "source": "def group(rows):\n    groups = {}\n    for key, value in rows:\n        groups.setdefault(key, []).append(value)\n    return dict(groups)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/group.py",
+          "id": "list-grouping",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A loop repeats the list default"
         }
       ],
       "optionsSchemaSource": null
