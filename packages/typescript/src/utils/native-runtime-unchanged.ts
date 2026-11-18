@@ -4,7 +4,7 @@ import type { ESTree, Node, SourceCode, TsReference, TsVariable } from "../types
 import { tsReference } from "../types.js";
 import { forEachAstChild, outerExpression, parentOf } from "./ast.js";
 import { typeOnlyReference } from "./stable-value-binding.js";
-import { findVariable, staticPropertyName } from "./static-string.js";
+import { findVariable, getPropertyName, staticPropertyName } from "./static-string.js";
 
 type RuntimeIdentifier = Node & { readonly name: string };
 
@@ -20,7 +20,7 @@ const INDEXES = new WeakMap<ESTree.Program, RuntimeIndex>();
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set(["globalThis", "global", "window", "self"]);
 
 /** Whole-file visible uncertainty vetoes even earlier captures; external monkeypatches are not inferred. */
-export function nativeRuntimeUnchanged(sourceCode: Readonly<SourceCode>, name: "Error" | "RegExp" | "fetch"): boolean {
+export function nativeRuntimeUnchanged(sourceCode: Readonly<SourceCode>, name: "Error" | "RegExp" | "fetch" | "Date" | "Map" | "Set" | "Object"): boolean {
   const index = runtimeIndex(sourceCode);
   const cached = index.results.get(name);
   if (cached !== undefined) return cached;
@@ -152,6 +152,13 @@ function nativeRead(node: Node, name: string): boolean {
   const value = outerExpression(node);
   const parent = parentOf(value);
   if (parent?.type === "UnaryExpression" && parent.operator === "typeof") return true;
+  if (["Date", "Object"].includes(name) && parent?.type === "MemberExpression" && !parent.optional &&
+    getPropertyName(parent) === (name === "Date" ? "now" : "freeze")) {
+    const callable = outerExpression(parent);
+    const call = parentOf(callable);
+    return call?.type === "CallExpression" && !call.optional && call.callee === callable && call.arguments.length === (name === "Date" ? 0 : 1);
+  }
+  if (["Date", "Map", "Set"].includes(name) && parent?.type === "NewExpression" && parent.callee === value) return true;
   if (name !== "Error") return false;
   return (parent?.type === "NewExpression" && parent.callee === value) ||
     (parent?.type === "BinaryExpression" && parent.operator === "instanceof" && parent.right === value);

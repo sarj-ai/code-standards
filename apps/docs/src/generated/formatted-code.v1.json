@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "30bfe64a37fa26e1bcff58d6601ed2294621393ceb7ae97cd53ab7fd36974125",
-  "cliSha256": "ca00cf659df82605cdfa0e2ae3aff304664a9bc984e8f851ec1b1bd30da1ad2f",
+  "catalogSha256": "b248cdd291730c9257a648d95efd78c34a31f13fe3d207d61ee7fefc9c8e7c10",
+  "cliSha256": "6851bd59b0e1ef9300c67f7029936e02a448c591e69dc8ec079520e5bdc2cd12",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -3038,6 +3038,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not store raw ambient fetch as an object method"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:no-discarded-tagged-outcome": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "type Outcome = { ok: true; value: string } | { ok: false; error: string };\nfunction save(): Outcome {\n  return { ok: true, value: \"saved\" };\n}\nconst result = save();\nif (!result.ok) report(result.error);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "declared-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve the declared boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "type Outcome = { ok: true; value: string } | { ok: false; error: string };\nfunction save(): Outcome {\n  return { ok: true, value: \"saved\" };\n}\nsave();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "demonstrated-gap",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Detect the demonstrated gap"
         }
       ],
       "optionsSchemaSource": null
@@ -6907,6 +6942,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "oxlint:no-shared-mutable-zod-default": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "import { z } from \"zod/v4\";\nz.array(z.string()).default(() => []);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "declared-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve the declared boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "import { z } from \"zod/v4\";\nconst shared = [];\nz.array(z.string()).default(() => shared);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "demonstrated-gap",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Detect the demonstrated gap"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": {\n      \"description\": \"Installed Zod major version whose factory defaults preserve returned identity.\",\n      \"maximum\": 4,\n      \"minimum\": 4,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
     "oxlint:no-silent-promise-catch": {
       "examples": [
         {
@@ -9182,6 +9252,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"factories\": {\n      \"description\": \"Zod factory names to check. Defaults to the object-like composites; add `array` / `enum` to widen.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"ignoreTestFiles\": {\n      \"description\": \"Skip test files, where a fixture schema belongs next to its assertion.\",\n      \"type\": \"boolean\"\n    },\n    \"memoCallees\": {\n      \"description\": \"Wrappers that construct their callback at most once. Defaults to lazy, memo, once, and useMemo.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"minProperties\": {\n      \"description\": \"Minimum key count before an object-like schema is reported.\",\n      \"minimum\": 0,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "oxlint:prefer-monotonic-for-elapsed-time": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "const start = performance.now();\nconsume(performance.now() - start);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "declared-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve the declared boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "const start = Date.now();\nconsume(Date.now() - start);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "demonstrated-gap",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Detect the demonstrated gap"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:prefer-multi-value-zod-literal": {
       "examples": [
         {
@@ -9912,6 +10017,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Request and use the store fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-typed-cli": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "import { defineCommand, runMain } from \"citty\";\nrunMain(\n  defineCommand({\n    args: { service: { type: \"positional\", required: true } },\n    run({ args }) {\n      deploy(args.service);\n    },\n  }),\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "declared-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve the declared boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "deploy(process.argv[2]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "demonstrated-gap",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Detect the demonstrated gap"
         }
       ],
       "optionsSchemaSource": null

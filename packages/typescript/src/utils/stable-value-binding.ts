@@ -17,10 +17,26 @@ export function typeOnlyReference(reference: TsReference): boolean {
   return parent?.type === "TSTypeQuery" && parent.exprName === current;
 }
 
+const VALUE_STABILITY = new WeakMap<Node, WeakMap<TsVariable, boolean>>();
+
 export function stableValueBinding(
   variable: TsVariable,
   acceptRead?: (reference: TsReference) => boolean,
 ): boolean {
+  if (acceptRead !== undefined) return inspectValueBinding(variable, acceptRead);
+  let stability = VALUE_STABILITY.get(variable.scope.block);
+  if (stability === undefined) {
+    stability = new WeakMap();
+    VALUE_STABILITY.set(variable.scope.block, stability);
+  }
+  const known = stability.get(variable);
+  if (known !== undefined) return known;
+  const result = inspectValueBinding(variable);
+  stability.set(variable, result);
+  return result;
+}
+
+function inspectValueBinding(variable: TsVariable, acceptRead?: (reference: TsReference) => boolean): boolean {
   let initializer: Node | undefined;
   return variable.references.every((reference) => {
     if (!reference.isWrite()) return acceptRead?.(reference) ?? true;
@@ -36,19 +52,52 @@ export interface StableConstInitializer {
   readonly value: ESTree.Expression;
 }
 
+const CONST_INITIALIZERS = new WeakMap<ESTree.Program, WeakMap<TsVariable, StableConstInitializer | null>>();
+const FUNCTION_DECLARATIONS = new WeakMap<ESTree.Program, WeakMap<TsVariable, ESTree.Function | null>>();
+
+export function stableFunctionDeclaration(source: Readonly<SourceCode>, identifier: Identifier): ESTree.Function | null {
+  const variable = findVariable(source.getScope(identifier), identifier.name);
+  if (variable === null) return null;
+  let declarations = FUNCTION_DECLARATIONS.get(source.ast);
+  if (declarations === undefined) {
+    declarations = new WeakMap();
+    FUNCTION_DECLARATIONS.set(source.ast, declarations);
+  }
+  if (declarations.has(variable)) return declarations.get(variable) ?? null;
+  const definition = variable.defs[0]?.node;
+  const result = variable.defs.length === 1 && definition?.type === "FunctionDeclaration" && stableValueBinding(variable) ? definition : null;
+  declarations.set(variable, result);
+  return result;
+}
+
 /** Resolve an earlier local const initializer without treating property writes as binding writes. */
 export function stableConstInitializer(
   source: Readonly<SourceCode>,
   identifier: Identifier,
 ): StableConstInitializer | null {
   const variable = findVariable(source.getScope(identifier), identifier.name);
+  if (variable === null) return null;
+  let initializers = CONST_INITIALIZERS.get(source.ast);
+  if (initializers === undefined) {
+    initializers = new WeakMap();
+    CONST_INITIALIZERS.set(source.ast, initializers);
+  }
+  if (initializers.has(variable)) {
+    const cached = initializers.get(variable);
+    return cached !== undefined && cached !== null && cached.declaration.range[1] < identifier.range[0] ? cached : null;
+  }
   const declaration = variable?.defs[0]?.node;
-  if (variable === null || variable.defs.length !== 1 ||
+  if (variable.defs.length !== 1 ||
     declaration?.type !== "VariableDeclarator" ||
     declaration.id.type !== "Identifier" ||
     !isConstDeclaration(parentOf(declaration)) || declaration.init === null ||
-    declaration.range[1] >= identifier.range[0] || !stableValueBinding(variable)) return null;
-  return { variable, declaration, value: declaration.init };
+    !stableValueBinding(variable)) {
+    initializers.set(variable, null);
+    return null;
+  }
+  const result = { variable, declaration, value: declaration.init };
+  initializers.set(variable, result);
+  return declaration.range[1] < identifier.range[0] ? result : null;
 }
 
 export function isConstDeclaration(node: Node | null): boolean {

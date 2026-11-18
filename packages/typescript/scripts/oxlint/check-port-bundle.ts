@@ -4,6 +4,7 @@
 //   node scripts/oxlint/check-port-bundle.ts [entry]   (default src/index.ts)
 
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 
 import { build } from "esbuild";
 
@@ -14,7 +15,8 @@ const FORBIDDEN_INPUT = /node_modules\/(?:eslint|@eslint|@eslint-community|@type
 await main();
 
 async function main(): Promise<void> {
-  const entry = process.argv[2] ?? join(PACKAGE_DIR, "src/index.ts");
+  const { positionals } = parseArgs({ allowPositionals: true });
+  const entry = positionals[0] ?? join(PACKAGE_DIR, "src/index.ts");
   const result = await build({
     entryPoints: [entry],
     bundle: true,

@@ -33,6 +33,7 @@ import { NO_CREDENTIAL_IN_BROWSER_STORAGE_DOCUMENTATION } from "./no-credential-
 import { NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION } from "./no-dangerously-allow-svg.js";
 import { NO_DECLARATION_COMMENT_WALL_DOCUMENTATION } from "./no-declaration-comment-wall.js";
 import { NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION } from "./no-detached-global-fetch.js";
+import { NO_DISCARDED_TAGGED_OUTCOME_DOCUMENTATION } from "./no-discarded-tagged-outcome.js";
 import { NO_DISCARDED_VALIDATION_RESULT_DOCUMENTATION } from "./no-discarded-validation-result.js";
 import { NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION } from "./no-duplicate-lifecycle-refresh-listeners.js";
 import { NO_DUPLICATE_TEST_CASE_DOCUMENTATION } from "./no-duplicate-test-case.js";
@@ -92,6 +93,7 @@ import { NO_SELECT_STAR_DOCUMENTATION } from "./no-select-star.js";
 import { NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION } from "./no-sentinel-return-on-catch.js";
 import { NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION } from "./no-server-env-in-client-component.js";
 import { NO_SERVER_FILE_UPLOADS_DOCUMENTATION } from "./no-server-file-uploads.js";
+import { NO_SHARED_MUTABLE_ZOD_DEFAULT_DOCUMENTATION } from "./no-shared-mutable-zod-default.js";
 import { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "./no-silent-promise-catch.js";
 import { NO_SLEEP_IN_TEST_BODY_DOCUMENTATION } from "./no-sleep-in-test-body.js";
 import { NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION } from "./no-storage-in-stateless-modules.js";
@@ -127,6 +129,7 @@ import { PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION } from "./prefer-minima
 import { PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION } from "./prefer-module-level-constant.js";
 import { PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION } from "./prefer-module-level-refined-schema.js";
 import { PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION } from "./prefer-module-level-schema.js";
+import { PREFER_MONOTONIC_FOR_ELAPSED_TIME_DOCUMENTATION } from "./prefer-monotonic-for-elapsed-time.js";
 import { PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION } from "./prefer-multi-value-zod-literal.js";
 import { PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION } from "./prefer-named-callback-domain.js";
 import { PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION } from "./prefer-named-complex-return-type.js";
@@ -145,6 +148,7 @@ import { PREFER_SHADCN_PRIMITIVES_DOCUMENTATION } from "./prefer-shadcn-primitiv
 import { PREFER_SHARED_ZOD_ENUM_DOCUMENTATION } from "./prefer-shared-zod-enum.js";
 import { PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION } from "./prefer-switch-for-repeated-equality.js";
 import { PREFER_TEST_FIXTURE_REUSE_DOCUMENTATION } from "./prefer-test-fixture-reuse.js";
+import { PREFER_TYPED_CLI_DOCUMENTATION } from "./prefer-typed-cli.js";
 import { PREFER_TYPED_REFLECTION_DOCUMENTATION } from "./prefer-typed-reflection.js";
 import { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "./prefer-whole-object-assertion.js";
 import { PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION } from "./prefer-zod-enum-validator.js";
@@ -208,6 +212,7 @@ export const RULE_DOCUMENTATION = {
   "no-dangerously-allow-svg": NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION,
   "no-declaration-comment-wall": NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   "no-detached-global-fetch": NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION,
+  "no-discarded-tagged-outcome": NO_DISCARDED_TAGGED_OUTCOME_DOCUMENTATION,
   "no-discarded-validation-result": NO_DISCARDED_VALIDATION_RESULT_DOCUMENTATION,
   "no-duplicate-lifecycle-refresh-listeners": NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
   "no-duplicate-test-case": NO_DUPLICATE_TEST_CASE_DOCUMENTATION,
@@ -267,6 +272,7 @@ export const RULE_DOCUMENTATION = {
   "no-sentinel-return-on-catch": NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION,
   "no-server-env-in-client-component": NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION,
   "no-server-file-uploads": NO_SERVER_FILE_UPLOADS_DOCUMENTATION,
+  "no-shared-mutable-zod-default": NO_SHARED_MUTABLE_ZOD_DEFAULT_DOCUMENTATION,
   "no-silent-promise-catch": NO_SILENT_PROMISE_CATCH_DOCUMENTATION,
   "no-sleep-in-test-body": NO_SLEEP_IN_TEST_BODY_DOCUMENTATION,
   "no-storage-in-stateless-modules": NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION,
@@ -302,6 +308,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-module-level-constant": PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   "prefer-module-level-refined-schema": PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION,
   "prefer-module-level-schema": PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION,
+  "prefer-monotonic-for-elapsed-time": PREFER_MONOTONIC_FOR_ELAPSED_TIME_DOCUMENTATION,
   "prefer-multi-value-zod-literal": PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
   "prefer-named-callback-domain": PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION,
   "prefer-named-complex-return-type": PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION,
@@ -320,6 +327,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-shared-zod-enum": PREFER_SHARED_ZOD_ENUM_DOCUMENTATION,
   "prefer-switch-for-repeated-equality": PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION,
   "prefer-test-fixture-reuse": PREFER_TEST_FIXTURE_REUSE_DOCUMENTATION,
+  "prefer-typed-cli": PREFER_TYPED_CLI_DOCUMENTATION,
   "prefer-typed-reflection": PREFER_TYPED_REFLECTION_DOCUMENTATION,
   "prefer-whole-object-assertion": PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION,
   "prefer-zod-enum-validator": PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION,

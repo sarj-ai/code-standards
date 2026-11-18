@@ -10,6 +10,7 @@ import { readFile, readdir, writeFile, mkdir, copyFile } from "node:fs/promises"
 import { hash } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { parseArgs } from "node:util";
 
 import { build, type Plugin } from "esbuild";
 
@@ -33,7 +34,8 @@ const PLUGINS = [
 
 // Ordinary builds consume reviewed, engine-free snapshots. Upstream source
 // packages and their required ESLint peers belong only to the refresh fixture.
-if (!process.argv.includes("--refresh")) {
+const { values } = parseArgs({ options: { refresh: { type: "boolean", default: false } } });
+if (!values.refresh) {
   const manifest = JSON.parse(await readFile(join(SNAPSHOTS, "manifest.json"), "utf8")) as {
     files: Record<string, string>;
     sourceLockSha256: string;

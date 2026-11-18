@@ -37,6 +37,7 @@ import noCredentialInBrowserStorage from "./rules/no-credential-in-browser-stora
 import noDangerouslyAllowSvg from "./rules/no-dangerously-allow-svg.js";
 import noDeclarationCommentWall from "./rules/no-declaration-comment-wall.js";
 import noDetachedGlobalFetch from "./rules/no-detached-global-fetch.js";
+import noDiscardedTaggedOutcome from "./rules/no-discarded-tagged-outcome.js";
 import noDiscardedValidationResult from "./rules/no-discarded-validation-result.js";
 import noDuplicateLifecycleRefreshListeners from "./rules/no-duplicate-lifecycle-refresh-listeners.js";
 import noDuplicateTestCase from "./rules/no-duplicate-test-case.js";
@@ -96,6 +97,7 @@ import noSelectStar from "./rules/no-select-star.js";
 import noSentinelReturnOnCatch from "./rules/no-sentinel-return-on-catch.js";
 import noServerEnvInClientComponent from "./rules/no-server-env-in-client-component.js";
 import noServerFileUploads from "./rules/no-server-file-uploads.js";
+import noSharedMutableZodDefault from "./rules/no-shared-mutable-zod-default.js";
 import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
 import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
@@ -131,6 +133,7 @@ import preferMinimalParameterContract from "./rules/prefer-minimal-parameter-con
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelRefinedSchema from "./rules/prefer-module-level-refined-schema.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
+import preferMonotonicForElapsedTime from "./rules/prefer-monotonic-for-elapsed-time.js";
 import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
 import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
@@ -149,6 +152,7 @@ import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferSharedZodEnum from "./rules/prefer-shared-zod-enum.js";
 import preferSwitchForRepeatedEquality from "./rules/prefer-switch-for-repeated-equality.js";
 import preferTestFixtureReuse from "./rules/prefer-test-fixture-reuse.js";
+import preferTypedCli from "./rules/prefer-typed-cli.js";
 import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import preferZodEnumValidator from "./rules/prefer-zod-enum-validator.js";
@@ -212,6 +216,7 @@ const RULES = {
   "no-dangerously-allow-svg": noDangerouslyAllowSvg,
   "no-declaration-comment-wall": noDeclarationCommentWall,
   "no-detached-global-fetch": noDetachedGlobalFetch,
+  "no-discarded-tagged-outcome": noDiscardedTaggedOutcome,
   "no-discarded-validation-result": noDiscardedValidationResult,
   "no-duplicate-lifecycle-refresh-listeners": noDuplicateLifecycleRefreshListeners,
   "no-duplicate-test-case": noDuplicateTestCase,
@@ -271,6 +276,7 @@ const RULES = {
   "no-sentinel-return-on-catch": noSentinelReturnOnCatch,
   "no-server-env-in-client-component": noServerEnvInClientComponent,
   "no-server-file-uploads": noServerFileUploads,
+  "no-shared-mutable-zod-default": noSharedMutableZodDefault,
   "no-silent-promise-catch": noSilentPromiseCatch,
   "no-sleep-in-test-body": noSleepInTestBody,
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
@@ -306,6 +312,7 @@ const RULES = {
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-refined-schema": preferModuleLevelRefinedSchema,
   "prefer-module-level-schema": preferModuleLevelSchema,
+  "prefer-monotonic-for-elapsed-time": preferMonotonicForElapsedTime,
   "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
   "prefer-named-callback-domain": preferNamedCallbackDomain,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
@@ -324,6 +331,7 @@ const RULES = {
   "prefer-shared-zod-enum": preferSharedZodEnum,
   "prefer-switch-for-repeated-equality": preferSwitchForRepeatedEquality,
   "prefer-test-fixture-reuse": preferTestFixtureReuse,
+  "prefer-typed-cli": preferTypedCli,
   "prefer-typed-reflection": preferTypedReflection,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "prefer-zod-enum-validator": preferZodEnumValidator,
