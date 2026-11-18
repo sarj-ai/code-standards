@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@8b454f1520cf57a3db81bb3019b2aa9c6e5d77e3 # v8.1.0
+        uses: sarj-ai/repo-standards@43ec7ae7552b517eab5ac1cab86a150ed4985436 # v8.4.0
 
   changes:
     name: Detect affected checks
@@ -54,7 +54,7 @@ jobs:
       mobile: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.mobile }}
       codeql-python: ${{ steps.scope.outputs.codeql-python }}
       codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
-      docs-audit: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.docs-audit }}
+      docs-audit: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.scope.outputs.docs != 'false') && 'true' || steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.docs-audit }}
       reviewed-static: ${{ steps.reviewed.outputs.reviewed-static }}
       reviewed-docs: ${{ steps.reviewed.outputs.reviewed-docs }}
       reviewed-codeql-python: ${{ steps.reviewed.outputs.reviewed-codeql-python }}
@@ -1042,7 +1042,7 @@ jobs:
           retention-days: 1
   docs-deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: docs-build
+    needs: [docs-build, npm-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -1254,9 +1254,24 @@ jobs:
         with:
           sarif_file: scorecard.sarif
 
+  packages-complete:
+    name: CI packages
+    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility, standards, gitleaks, dependency-review, codeql, scorecard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Require every selected runtime, package and security check
+        if: needs.changes.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+
   complete:
     name: CI complete
-    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard]
+    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard, packages-complete]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

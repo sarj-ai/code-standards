@@ -528,11 +528,52 @@ def test_release_tag_preflight_rejects_malformed_manifest(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("filename", ["release.yml", "release-tags.yml"])
-@pytest.mark.parametrize("terminal", [None, "success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        None,
+        "success",
+        "failure",
+        "cancelled",
+        "skipped",
+        "package-success",
+        "package-failure",
+        "package-pending",
+        "package-duplicate",
+        "package-skipped",
+        "package-rerun",
+        "package-missing",
+    ],
+)
 def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filename: str, terminal: str | None) -> None:
     _checkout_scripts(tmp_path)
     jobs = [{"name": "Detect affected checks", "status": "completed", "conclusion": "success"}]
-    if terminal is not None:
+    if terminal is not None and terminal.startswith("package-"):
+        package = {"name": "CI packages", "status": "completed", "conclusion": "success"}
+        if terminal == "package-failure":
+            package["conclusion"] = "failure"
+        elif terminal == "package-pending":
+            package["status"] = "in_progress"
+            package["conclusion"] = ""
+        elif terminal == "package-skipped":
+            package["conclusion"] = "skipped"
+        if terminal != "package-missing":
+            jobs.append(package)
+        if terminal == "package-duplicate":
+            jobs.append(package)
+        jobs.extend(
+            (
+                {
+                    "name": "CI complete",
+                    "status": "completed",
+                    "conclusion": "success"
+                    if terminal in {"package-failure", "package-pending", "package-duplicate", "package-skipped"}
+                    else "failure",
+                },
+                {"name": "npm-audit (apps/docs)", "status": "completed", "conclusion": "failure"},
+            )
+        )
+    elif terminal is not None:
         jobs.append({"name": "CI complete", "status": "completed", "conclusion": terminal})
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -547,11 +588,13 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
         endpoint = sys.argv[4]
         if endpoint.endswith('/jobs'):
             print(os.environ['JOBS'])
-        else:
-            run = {{'head_sha': os.environ['TARGET_SHA'], 'head_branch': os.environ['TARGET_BRANCH'], 'event': 'push', 'path': '.github/workflows/' + endpoint.split('/workflows/')[1].split('/')[0], 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
+        elif '/workflows/' in endpoint:
+            run = {{'head_sha': os.environ['TARGET_SHA'], 'head_branch': os.environ['TARGET_BRANCH'], 'event': 'push', 'path': '.github/workflows/' + endpoint.split('/workflows/')[1].split('/')[0], 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'run_attempt': 1, 'conclusion': json.loads(os.environ['RUN_CONCLUSION']) if '/ci.yml/' in endpoint else 'success'}}
             wrong_sha = {{**run, 'head_sha': 'b' * 40, 'conclusion': 'success'}}
             wrong_repo = {{**run, 'head_repository': {{'full_name': 'untrusted/repo'}}, 'conclusion': 'success'}}
             print(json.dumps({{'workflow_runs': [wrong_sha, wrong_repo, run]}}))
+        else:
+            print(json.dumps({{'head_sha': os.environ['TARGET_SHA'], 'head_branch': os.environ['TARGET_BRANCH'], 'event': 'push', 'path': '.github/workflows/ci.yml', 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'run_attempt': int(os.environ['FINAL_ATTEMPT']), 'conclusion': json.loads(os.environ['RUN_CONCLUSION'])}}))
         """,
     )
     process = subprocess.run(
@@ -565,18 +608,22 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
         cwd=tmp_path,
         env={
             "PATH": f"{fake_bin}:/usr/bin:/bin",
-            "JOBS": json.dumps({"jobs": jobs}),
+            "JOBS": json.dumps({"total_count": len(jobs), "jobs": jobs}),
             "TARGET_SHA": "a" * 40,
             "TARGET_BRANCH": "main",
             "GITHUB_REPOSITORY": "example/repo",
             "CALLS": str(tmp_path / "calls.jsonl"),
+            "RUN_CONCLUSION": json.dumps(
+                "failure" if terminal is not None and terminal.startswith("package-") else None
+            ),
+            "FINAL_ATTEMPT": "2" if terminal == "package-rerun" else "1",
         },
         capture_output=True,
         text=True,
         check=False,
         timeout=10,
     )
-    assert (process.returncode == 0) is (terminal == "success"), process.stderr
+    assert (process.returncode == 0) is (terminal in {"success", "package-success"}), process.stderr
     calls = (tmp_path / "calls.jsonl").read_text().splitlines()
     expected = [
         [
@@ -593,8 +640,25 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
         ]
         for workflow in ("repo-ci.yml", "private-refs.yml", "ci.yml")
     ]
-    expected.append(["api", "--method", "GET", "repos/example/repo/actions/runs/42/jobs", "-f", "per_page=100"])
+    expected.append(
+        ["api", "--method", "GET", "repos/example/repo/actions/runs/42/attempts/1/jobs", "-f", "per_page=100"]
+    )
+    if terminal in {"success", "package-success", "package-rerun"}:
+        expected.append(["api", "--method", "GET", "repos/example/repo/actions/runs/42"])
     assert [json.loads(call) for call in calls] == expected
+
+
+def test_package_qualification_preserves_non_documentation_prerequisites() -> None:
+    full = _job("ci.yml", "complete")
+    packages = _job("ci.yml", "packages-complete")
+    full_needs = full["needs"]
+    package_needs = packages["needs"]
+    assert is_object_list(full_needs)
+    assert is_object_list(package_needs)
+    assert set(package_needs) == set(full_needs) - {"docs-build", "docs-deploy", "npm-audit", "packages-complete"}
+    assert packages["if"] == "always()"
+    assert "ci-record-analysis.sh" not in json.dumps(packages)
+    assert _job("ci.yml", "docs-deploy")["needs"] == ["docs-build", "npm-audit"]
 
 
 class _LaneCheckout(NamedTuple):

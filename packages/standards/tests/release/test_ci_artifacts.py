@@ -50,6 +50,9 @@ def _lookup(
     current_attempt: int | None = None,
     repository_id: RepositoryId = REPOSITORY,
     total_count: int = 1,
+    gate_name: str | None = "CI packages",
+    gate_status: str = "completed",
+    gate_conclusion: str = "success",
 ) -> ArtifactLookup:
     run = {
         "id": 1,
@@ -61,15 +64,16 @@ def _lookup(
         "run_attempt": run_attempt,
         "head_repository": {"id": repository_id, "full_name": repository},
     }
+    jobs = [{"name": job_name, "status": job_status, "conclusion": conclusion}]
+    if gate_name is not None:
+        jobs.append({"name": gate_name, "status": gate_status, "conclusion": gate_conclusion})
+    job_response = {"total_count": len(jobs), "jobs": jobs}
     responses = [
         {
             "total_count": total_count,
             "workflow_runs": [run],
         },
-        {
-            "total_count": 1,
-            "jobs": [{"name": job_name, "status": job_status, "conclusion": conclusion}],
-        },
+        job_response,
         {
             "total_count": 1,
             "artifacts": [
@@ -88,6 +92,7 @@ def _lookup(
                 }
             ],
         },
+        job_response,
         {**run, "run_attempt": run_attempt if current_attempt is None else current_attempt},
     ]
 
@@ -110,6 +115,35 @@ def test_successful_exact_main_job_reuses_only_its_artifact(tmp_path: Path) -> N
     assert lookup.run.attempt == 1
     assert lookup.run.repository_id == 3
     assert lookup.artifact.artifact_id == 2
+
+
+@pytest.mark.parametrize("run_conclusion", [None, "success", "failure"])
+def test_package_qualification_is_independent_of_docs_failure(tmp_path: Path, run_conclusion: str | None) -> None:
+    assert isinstance(_lookup(tmp_path, run_conclusion=run_conclusion), VerifiedArtifact)
+
+
+@pytest.mark.parametrize("run_conclusion", [None, "success"])
+def test_legacy_full_ci_qualification_remains_reusable(tmp_path: Path, run_conclusion: str | None) -> None:
+    assert isinstance(_lookup(tmp_path, gate_name="CI complete", run_conclusion=run_conclusion), VerifiedArtifact)
+
+
+def test_failed_legacy_ci_cannot_qualify_packages(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="failed CI requires"):
+        _lookup(tmp_path, gate_name="CI complete", run_conclusion="failure")
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "skipped", "cancelled"])
+def test_package_gate_failure_cannot_supply_artifacts(tmp_path: Path, conclusion: str) -> None:
+    with pytest.raises(ValueError, match="CI qualification concluded"):
+        _lookup(tmp_path, gate_conclusion=conclusion)
+
+
+def test_pending_package_gate_waits_for_qualification(tmp_path: Path) -> None:
+    assert isinstance(_lookup(tmp_path, gate_status="in_progress"), AwaitingArtifact)
+
+
+def test_missing_aggregate_cannot_qualify_completed_ci(tmp_path: Path) -> None:
+    assert isinstance(_lookup(tmp_path, gate_name=None, run_conclusion="success"), FreshValidationRequired)
 
 
 @pytest.mark.parametrize(
@@ -230,8 +264,10 @@ def test_archive_commit_must_match_requested_revision(tmp_path: Path) -> None:
         extract_verified_archive(archive.path, tmp_path / "dist", digest=archive.digest, sha=SHA)
 
 
-@pytest.mark.parametrize(("rerun", "existing"), [(False, False), (True, False), (False, True)])
-def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rerun: bool, existing: bool) -> None:
+@pytest.mark.parametrize("scenario", ["fresh", "rerun", "existing", "gate-failure"])
+def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, scenario: str) -> None:
+    rerun = scenario == "rerun"
+    existing = scenario == "existing"
     archive = _archive(tmp_path)
     initial = _lookup(tmp_path, digest=archive.digest)
     assert isinstance(initial, VerifiedArtifact)
@@ -256,8 +292,17 @@ def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rer
             document = {"total_count": 1, "workflow_runs": [run]}
         elif "/attempts/1/jobs?" in endpoint:
             document = {
-                "total_count": 1,
-                "jobs": [{"name": "standards wheel and integration", "status": "completed", "conclusion": "success"}],
+                "total_count": 2,
+                "jobs": [
+                    {
+                        "name": name,
+                        "status": "completed",
+                        "conclusion": "failure"
+                        if name == "CI packages" and scenario == "gate-failure" and current_reads
+                        else "success",
+                    }
+                    for name in ("standards wheel and integration", "CI packages")
+                ],
             }
         elif "/runs/1/artifacts?" in endpoint:
             artifact = initial.artifact
@@ -296,7 +341,11 @@ def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rer
     if existing:
         destination.mkdir()
         (destination / "unrelated.txt").write_bytes(b"preserve\n")
-    if rerun:
+    if scenario == "gate-failure":
+        with pytest.raises(ValueError, match="CI qualification concluded failure"):
+            reuse_ci_artifact(tmp_path, "owner/repo", SHA, destination, runner=runner, file_runner=download)
+        assert not destination.exists()
+    elif rerun:
         with pytest.raises(ValueError, match="CI identity changed"):
             reuse_ci_artifact(tmp_path, "owner/repo", SHA, destination, runner=runner, file_runner=download)
         assert not destination.exists()
@@ -308,7 +357,7 @@ def test_download_is_staged_until_its_attempt_is_revalidated(tmp_path: Path, rer
     else:
         assert reuse_ci_artifact(tmp_path, "owner/repo", SHA, destination, runner=runner, file_runner=download)
         assert (destination / "code_standards-1.0.0.whl").read_bytes() == b"tested wheel"
-    assert current_reads == [1, 2 if rerun else 1]
+    assert current_reads == ([1] if scenario == "gate-failure" else [1, 2 if rerun else 1])
 
 
 def test_reuse_cli_preserves_failure_exit_code(tmp_path: Path) -> None:
