@@ -6,7 +6,7 @@ export const PREFER_TYPED_CLI_DOCUMENTATION = {
   "defaultLevel": "warning",
   "summary": "Declare Node CLI arguments with a typed parsing contract.",
   "rationale": "Raw positional and option lookups scatter a command contract across individual uses. A declared parser makes positional meanings, options and defaults visible together.",
-  "remediation": "Use the existing citty library policy or an adequate schema-declaring native parser. Preserve positional meanings, option aliases, defaults and exit behavior.",
+  "remediation": "Prefer a Zod schema for application arguments, with native Node flag parsing for transport. Existing adequate typed parser boundaries remain allowed. Preserve positional meanings, option aliases, defaults and exit behavior.",
   "category": "maintainability",
   "limitations": [
     "Checks source-proven process.argv user-argument indexes and at/includes/indexOf option lookups, including node:process value imports, stable local aliases and nonnegative slice offsets. Executable/script path indexes and opaque forwarding are allowed.",
@@ -21,7 +21,7 @@ export const PREFER_TYPED_CLI_DOCUMENTATION = {
       "files": [
         {
           "path": "app.ts",
-          "source": "import { defineCommand, runMain } from 'citty'; runMain(defineCommand({ args: { service: { type: 'positional', required: true } }, run({ args }) { deploy(args.service); } }));"
+          "source": "import { z } from 'zod'; const Args = z.tuple([z.string().min(1)]); const [service] = Args.parse(process.argv.slice(2)); deploy(service);"
         }
       ],
       "focusPath": "app.ts",

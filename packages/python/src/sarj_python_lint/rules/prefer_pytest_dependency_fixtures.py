@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -23,6 +24,7 @@ from sarj_python_lint.rules._declared_contracts import (
     DeclaredContracts,
     ordinary_pytest_test,
 )
+from sarj_python_lint.rules._fixture_contracts import PORT_BASES, method_definition
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 from sarj_python_lint.rules._pytest import collected_tests
 from sarj_python_lint.rules._pytest_contract_parameters import FixtureContractParameters
@@ -33,7 +35,7 @@ from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import fixture_dec
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterator, Mapping
 
-    from sarj_python_lint.rules._project_index import SourceUnit
+    from sarj_python_lint.rules._project_index import SourceUnit, SymbolRef
     from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import FixtureDeclaration
 
 
@@ -41,6 +43,7 @@ _NATIVE_HTTP_CLIENTS = frozenset({"httpx.Client", "httpx.AsyncClient"})
 
 
 _EXAMPLE = "from typing import Protocol\nclass Port(Protocol):\n    def read(self): ...\nclass Store:\n    def read(self): return 1\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n    def read(self): return self.store.read()\n"
+_FUNCTION_EXAMPLE = _EXAMPLE + "def read_store(store: Port):\n    return store.read()\n"
 
 
 _FACTORY_SOURCE = "import pytest\nfrom typing import Protocol\n\nclass Port(Protocol):\n    def read(self) -> int: ...\n\nclass Store:\n    def read(self) -> int:\n        return 1\n\nclass Service:\n    def __init__(self, store: Port) -> None:\n        self.store = store\n\n    def read(self) -> int:\n        return self.store.read()\n\n@pytest.fixture\ndef store_factory() -> type[Store]:\n    return Store\n\ndef test_read(store_factory: type[Store]) -> None:\n    if store_factory is Store:\n        service = Service(Store())\n        assert service.read() == 1\n"
@@ -64,12 +67,45 @@ class PreferPytestDependencyFixtures(ProjectRule):
         limitations=(
             "Source-visible module-level collaborator instances must also enter tests through fixtures. Argument binding must be explicit: starred positional arguments, keyword unpacking and duplicate bindings abstain rather than guessing collaborator ownership.",
             "Safe fixes only reuse an already-requested typed factory inside an authored runtime identity guard over a closed source-owned collaborator graph. They change only its immediate constructor callee; no fixture, signature, guard, setup event or lifecycle is introduced. All other findings require review.",
-            "Checks collected pytest functions and plain test classes. A local or inline class construction must feed a proven stored-and-invoked ABC/Protocol collaborator, or a proven BaseSettings instance must be passed to a call. Names alone never identify a service. Constructor failure tests, fixtures, helpers, dynamic/unresolved sources, generated and test-support paths are excluded. No automatic fixture extraction or lifecycle change.",
+            "Checks collected pytest functions and plain test classes. A local or inline class construction must feed a proven stored-and-invoked ABC/Protocol collaborator, or a proven BaseSettings instance must be passed to a call. Names alone never identify a service. Constructor failure tests, fixtures, dynamic/unresolved sources, generated and test-support paths are excluded. No automatic fixture extraction or lifecycle change.",
+            "A source-owned function parameter is also a collaborator when its ABC/Protocol declares a method actually invoked on that exact parameter. Explicit positional/keyword binding is required; decorated, generic, variadic, reassigned, patched and unresolved functions abstain. Undecorated private module helpers are checked only when their unique binding has nonempty references that are all direct calls from eligible collected tests, outside pytest.raises. Public, unreferenced, exported, escaped, nested or indirectly called helpers and dynamic namespaces abstain. The private visibility gate does not infer collaborator types; this one-hop local ownership proof cannot detect another module importing a private test helper. Helper findings have no automatic fix.",
             "Native HTTPX Client/AsyncClient constructors also enter through fixtures, including managed clients and runtime-import aliases; source definitions are not required. Opaque constructor factories and reassigned or patched providers are excluded. No transport or teardown is synthesized.",
             "Also reports source-resolved constructors whose class matches a supplied fixture annotation or implements its ABC/Protocol. Parametrized values, shadowed constructors and unresolved types are excluded. A different configuration needs a typed factory fixture; the rule never replaces an instance automatically.",
             "Also recognizes an unrequested function-scoped provider in the test module, ancestor conftest or a literal pytest_plugins registration when a source-owned ABC implementation borrows an attribute of a typed requested fixture. Its single assigned instance must perform an operation before a later assertion directly observes the original fixture; constructor-only and direct-subject observations abstain. Only direct one-input providers are supported; factories, variants, broader lifetimes, class-local providers, unexplained overrides and nested/dynamic registration abstain. Parametrized owner data, unresolved marks and visible generation hooks abstain. Ambient marks need direct module/class declarations; imported, read/escaped, augmented or indirectly assigned pytestmark bindings abstain. Provider class matching does not prove resource or lifecycle equivalence; these findings require manual fixture/factory selection and have no automatic fix.",
         ),
         examples=(
+            RuleExample(
+                example_id="helper-function-collaborator",
+                scenario="helper-function-collaborator",
+                title="A test helper constructs the function's store dependency",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_read.py",
+                        _FUNCTION_EXAMPLE
+                        + "def _read():\n    store = Store()\n    return read_store(store)\ndef test_read():\n    assert _read() == 1\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_read.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="helper-injected-function-collaborator",
+                scenario="helper-function-collaborator",
+                title="The fixture dependency is passed through the helper",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_read.py",
+                        _FUNCTION_EXAMPLE
+                        + "def _read(store: Port):\n    return read_store(store)\ndef test_read(store: Port):\n    assert _read(store) == 1\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_read.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="duplicate-supplied-store",
                 scenario="supplied-store",
@@ -204,10 +240,18 @@ class PreferPytestDependencyFixtures(ProjectRule):
         contracts = DeclaredContracts(context)
         hits: set[ast.expr] = set()
         borrowed: dict[ast.Call, DeclaredClass] = {}
-        for function in collected_tests(context.tree.body):
-            if ordinary_pytest_test(function, context):
-                hits.update(_constructed_dependencies(function, context, contracts))
-                borrowed.update(_borrowed_fixture_constructors(function, context, contracts))
+        functions = tuple(
+            function for function in collected_tests(context.tree.body) if ordinary_pytest_test(function, context)
+        )
+        consumers: dict[SymbolRef, _FunctionConsumer | None] = {}
+        for function in functions:
+            hits.update(_constructed_dependencies(function, context, contracts, consumers))
+            borrowed.update(_borrowed_fixture_constructors(function, context, contracts))
+        for helper in _test_owned_helpers(context, functions):
+            aliases = bindings(helper)
+            for call in (node for node in direct_nodes(helper) if isinstance(node, ast.Call)):
+                if not _inside_raises(context, call, helper):
+                    hits.update(_call_dependencies(call, context, contracts, aliases, consumers))
         hits.update(_borrowed_fixture_hits(borrowed, context, contracts))
         return [
             Diagnostic(
@@ -503,7 +547,10 @@ def _function_scope_provider(function: ast.FunctionDef | ast.AsyncFunctionDef, d
 
 
 def _constructed_dependencies(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext, contracts: DeclaredContracts
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    consumers: dict[SymbolRef, _FunctionConsumer | None],
 ) -> Iterator[ast.expr]:
     aliases = bindings(function)
     fixture_types = _supplied_types(function, context, contracts)
@@ -515,7 +562,7 @@ def _constructed_dependencies(
         model = contracts.class_type(call.func) if fixture_types else None
         if model is not None and any(_compatible_fixture(model, supplied, contracts) for supplied in fixture_types):
             yield call
-        yield from _call_dependencies(call, context, contracts, aliases)
+        yield from _call_dependencies(call, context, contracts, aliases, consumers)
 
 
 def _supplied_types(
@@ -581,7 +628,11 @@ def _compatible_fixture(model: DeclaredClass, supplied: DeclaredClass, contracts
 
 
 def _call_dependencies(
-    call: ast.Call, context: PythonFileContext, contracts: DeclaredContracts, aliases: dict[str, ast.expr]
+    call: ast.Call,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    aliases: dict[str, ast.expr],
+    consumers: dict[SymbolRef, _FunctionConsumer | None],
 ) -> Iterator[ast.expr]:
     spec = constructor(context, call.func, contracts.project, minimum_collaborators=1)
     visible_aliases = {key: item for key, item in aliases.items() if item.lineno < call.lineno}
@@ -589,19 +640,200 @@ def _call_dependencies(
     values = call_arguments(call, positional)
     if values is None:
         return
+    constructed: set[ast.expr] = set()
     for name, value in values.items():
         resolved = unalias(value, visible_aliases)
-        if _constructed_dependency(resolved, contracts, collaborator=spec is not None and name in spec.collaborators):
+        model = _constructed_class(resolved, contracts)
+        if model is None:
+            continue
+        constructed.add(resolved)
+        if (spec is not None and name in spec.collaborators) or contracts.inherits(model, SETTINGS_BASES):
+            yield resolved
+    if not constructed or spec is not None:
+        return
+    for value in _function_dependency_values(call, context, contracts, consumers):
+        resolved = unalias(value, visible_aliases)
+        if resolved in constructed:
             yield resolved
 
 
-def _constructed_dependency(value: ast.expr, contracts: DeclaredContracts, *, collaborator: bool) -> bool:
+def _function_dependency_values(
+    call: ast.Call,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    consumers: dict[SymbolRef, _FunctionConsumer | None],
+) -> Iterator[ast.expr]:
+    consumer = _function_consumer(call.func, context, contracts, consumers)
+    if consumer is None:
+        return
+    arguments = _bound_function_arguments(call, consumer.declaration)
+    if arguments is None:
+        return
+    for name in consumer.collaborators & arguments.keys():
+        yield arguments[name]
+
+
+@dataclass(frozen=True)
+class _FunctionConsumer:
+    declaration: ast.FunctionDef | ast.AsyncFunctionDef
+    collaborators: frozenset[str]
+
+
+def _function_consumer(
+    expression: ast.expr,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    cache: dict[SymbolRef, _FunctionConsumer | None],
+) -> _FunctionConsumer | None:
+    root = expression.value if isinstance(expression, ast.Attribute) else expression
+    provenance = context.static_resource_provenance
+    if (
+        contracts.unit is None
+        or not isinstance(root, ast.Name)
+        or provenance.dynamic_namespace
+        or root.id in provenance.mutated
+    ):
+        return None
+    binding = provenance.binding(root.id, root)
+    if (
+        not isinstance(binding, ast.alias | ast.FunctionDef | ast.AsyncFunctionDef)
+        or provenance.scope(binding) is not context.tree
+        or (symbol := contracts.project.resolve(contracts.unit, expression)) is None
+    ):
+        return None
+    if symbol not in cache:
+        cache[symbol] = _source_function_consumer(symbol, context, contracts)
+    return cache[symbol]
+
+
+def _source_function_consumer(
+    symbol: SymbolRef, context: PythonFileContext, contracts: DeclaredContracts
+) -> _FunctionConsumer | None:
+    unit = contracts.project.source_unit(symbol.module)
+    if (
+        unit is None
+        or unit.tree is None
+        or not any(
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == symbol.name
+            for node in unit.tree.body
+        )
+    ):
+        return None
+    owner_context = context if unit.path == context.path else PythonFileContext(unit.path, unit.source, context.session)
+    owner = contracts if owner_context is context else DeclaredContracts(owner_context)
+    declarations = owner_context.binding_inventory.bindings.get(owner_context.tree, {}).get(symbol.name, ())
+    if len(declarations) != 1 or not isinstance(declaration := declarations[0], ast.FunctionDef | ast.AsyncFunctionDef):
+        return None
+    return _declared_function_consumer(declaration, owner_context, owner)
+
+
+def _declared_function_consumer(
+    declaration: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+) -> _FunctionConsumer | None:
+    arguments = declaration.args
+    if declaration.decorator_list or declaration.type_params or arguments.vararg or arguments.kwarg:
+        return None
+    if (
+        context.dynamic_namespace
+        or context.binding_inventory.wildcard
+        or declaration.name in context.binding_inventory.external_bindings
+        or declaration.name in context.binding_inventory.mutated
+    ):
+        return None
+    operations = [
+        node.func
+        for node in direct_nodes(declaration)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    ]
+    collaborators: set[str] = set()
+    for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs):
+        model = contracts.annotation(argument.annotation) if argument.annotation is not None else None
+        if (
+            model is not None
+            and contracts.inherits(model, PORT_BASES)
+            and any(
+                isinstance(operation.value, ast.Name)
+                and operation.value.id == argument.arg
+                and context.static_resource_provenance.binding(argument.arg, operation.value) is argument
+                and method_definition(model, operation.attr, contracts) is not None
+                for operation in operations
+            )
+        ):
+            collaborators.add(argument.arg)
+    return _FunctionConsumer(declaration, frozenset(collaborators)) if collaborators else None
+
+
+def _bound_function_arguments(
+    call: ast.Call,
+    declaration: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, ast.expr] | None:
+    arguments = declaration.args
+    positional = (*arguments.posonlyargs, *arguments.args)
+    keyword_names = {argument.arg for argument in (*arguments.args, *arguments.kwonlyargs)}
+    values = call_arguments(call, tuple(argument.arg for argument in positional))
+    required = {argument.arg for argument in positional[: len(positional) - len(arguments.defaults)]}
+    required.update(
+        argument.arg
+        for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True)
+        if default is None
+    )
+    return (
+        values
+        if (
+            values is not None
+            and required <= values.keys()
+            and all(keyword.arg in keyword_names for keyword in call.keywords)
+        )
+        else None
+    )
+
+
+def _test_owned_helpers(
+    context: PythonFileContext,
+    functions: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...],
+) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    inventory = context.binding_inventory
+    if context.tree is None or inventory.wildcard or context.dynamic_namespace:
+        return
+    module_bindings = inventory.bindings.get(context.tree, {})
+    if "__all__" in module_bindings:
+        return
+    for declaration in context.tree.body:
+        if (
+            not isinstance(declaration, ast.FunctionDef | ast.AsyncFunctionDef)
+            or declaration in functions
+            or declaration.decorator_list
+            or declaration.type_params
+            or not declaration.name.startswith("_")
+        ):
+            continue
+        if (
+            module_bindings.get(declaration.name) != (declaration,)
+            or declaration.name in inventory.external_bindings
+            or declaration.name in inventory.mutated
+            or declaration.args.vararg
+            or declaration.args.kwarg
+        ):
+            continue
+        reads = context.static_resource_provenance.binding_reads(declaration.name, declaration)
+        if reads and all(
+            isinstance(call := context.parents.get(node), ast.Call)
+            and call.func is node
+            and (owner := inventory.scope(node)) in functions
+            and not _inside_raises(context, call, owner)
+            for node in reads
+        ):
+            yield declaration
+
+
+def _constructed_class(value: ast.expr, contracts: DeclaredContracts) -> DeclaredClass | None:
     if isinstance(value, ast.Name) and isinstance(
         contracts.context.static_resource_provenance.binding(value.id, value), ast.arg
     ):
-        return False
-    model = contracts.value(value)
-    return model is not None and (collaborator or contracts.inherits(model, SETTINGS_BASES))
+        return None
+    return contracts.value(value)
 
 
 def _inside_raises(context: PythonFileContext, node: ast.AST, function: ast.AST) -> bool:

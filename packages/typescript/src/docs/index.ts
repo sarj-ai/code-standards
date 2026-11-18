@@ -154,6 +154,7 @@ import { PREFER_TYPED_CLI_DOCUMENTATION } from "./prefer-typed-cli.js";
 import { PREFER_TYPED_REFLECTION_DOCUMENTATION } from "./prefer-typed-reflection.js";
 import { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "./prefer-whole-object-assertion.js";
 import { PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION } from "./prefer-zod-enum-validator.js";
+import { PREFER_ZOD_FIELD_BOUNDS_DOCUMENTATION } from "./prefer-zod-field-bounds.js";
 import { PREFER_ZOD_INFER_DOCUMENTATION } from "./prefer-zod-infer.js";
 import { PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION } from "./prefer-zod-parse-output-type.js";
 import { PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION } from "./production-derived-test-cases.js";
@@ -335,6 +336,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-typed-reflection": PREFER_TYPED_REFLECTION_DOCUMENTATION,
   "prefer-whole-object-assertion": PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION,
   "prefer-zod-enum-validator": PREFER_ZOD_ENUM_VALIDATOR_DOCUMENTATION,
+  "prefer-zod-field-bounds": PREFER_ZOD_FIELD_BOUNDS_DOCUMENTATION,
   "prefer-zod-infer": PREFER_ZOD_INFER_DOCUMENTATION,
   "prefer-zod-parse-output-type": PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
   "production-derived-test-cases": PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION,

@@ -158,6 +158,7 @@ import preferTypedCli from "./rules/prefer-typed-cli.js";
 import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import preferZodEnumValidator from "./rules/prefer-zod-enum-validator.js";
+import preferZodFieldBounds from "./rules/prefer-zod-field-bounds.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import preferZodParseOutputType from "./rules/prefer-zod-parse-output-type.js";
 import productionDerivedTestCases from "./rules/production-derived-test-cases.js";
@@ -339,6 +340,7 @@ const RULES = {
   "prefer-typed-reflection": preferTypedReflection,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "prefer-zod-enum-validator": preferZodEnumValidator,
+  "prefer-zod-field-bounds": preferZodFieldBounds,
   "prefer-zod-infer": preferZodInfer,
   "prefer-zod-parse-output-type": preferZodParseOutputType,
   "production-derived-test-cases": productionDerivedTestCases,

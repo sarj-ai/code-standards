@@ -135,14 +135,14 @@ export const LIBRARY_POLICY = [
   {
     "id": "LIB110",
     "module": "commander",
-    "note": "Standards standardizes command-line interfaces on citty.",
-    "replacement": "citty"
+    "note": "Declare and validate application arguments with Zod; use native Node flag parsing for transport.",
+    "replacement": "Zod schemas with native flag parsing"
   },
   {
     "id": "LIB110",
     "module": "yargs",
-    "note": "Standards standardizes command-line interfaces on citty.",
-    "replacement": "citty"
+    "note": "Declare and validate application arguments with Zod; use native Node flag parsing for transport.",
+    "replacement": "Zod schemas with native flag parsing"
   },
   {
     "id": "LIB111",

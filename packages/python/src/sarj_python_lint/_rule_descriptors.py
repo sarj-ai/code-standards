@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-pydantic-field-bounds"),
+        module="sarj_python_lint.rules.prefer_pydantic_field_bounds",
+        class_name="PreferPydanticFieldBounds",
+        code="SARJ582",
+        description="Declare simple integer field bounds instead of an after-model validator.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-value-error-forwarder"),
         module="sarj_python_lint.rules.no_value_error_forwarder",
         class_name="NoValueErrorForwarder",
@@ -364,7 +373,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_typed_mapping_get",
         class_name="PreferTypedMappingGet",
         code="SARJ535",
-        description="Read named fields from typed records instead of schema-free mappings.",
+        description="Read named fields through declared contracts instead of ad hoc mapping parsing.",
         aliases=(),
         enabled_by_default=True,
     ),

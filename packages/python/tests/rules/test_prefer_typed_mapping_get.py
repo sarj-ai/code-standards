@@ -10,7 +10,8 @@ from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze, check_source
 from sarj_python_lint.rule_base import Rule, Severity
-from sarj_python_lint.rules._local_source import LOCAL_SOURCE_CACHE_LIMIT
+from sarj_python_lint.rules._first_party import FirstPartyFacts
+from sarj_python_lint.rules._local_source import LOCAL_SOURCE_CACHE_LIMIT, unshadowed_import_namespace
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import (
@@ -255,6 +256,238 @@ def test_mapping_contracts(label: str, source: str, count: int) -> None:
     assert all(finding.severity is Severity.WARNING for finding in findings)
 
 
+_SDK_METADATA_CASES = (
+    (
+        "annotated",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "quoted-annotation",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: "ChatMessage"):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "class-import-alias",
+        'from livekit.agents.llm import ChatMessage as Message\ndef read(message: Message):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "module-import-alias",
+        'import livekit.agents.llm as llm\ndef read(message: llm.ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "canonical-submodule",
+        'from livekit.agents.llm.chat_context import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "assert-narrowed",
+        'from livekit.agents.llm import ChatMessage\ndef read(message):\n    assert isinstance(message, ChatMessage)\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "loop-assert-narrowed",
+        'from livekit.agents.llm import ChatMessage\ndef read(context):\n    for message in context.items:\n        assert isinstance(message, ChatMessage)\n        if message.extra.get("flag"):\n            return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "default-false",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag", False):\n        return 1\n    return 0\n',
+        1,
+    ),
+    (
+        "unknown-class",
+        'from custom import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "shadowed-class",
+        'from livekit.agents.llm import ChatMessage\nclass ChatMessage:\n    extra: dict[str, bool]\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "shadowed-isinstance",
+        'from livekit.agents.llm import ChatMessage\ndef read(message, isinstance):\n    assert isinstance(message, ChatMessage)\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "class-patched",
+        'from livekit.agents.llm import ChatMessage\nChatMessage.extra = typed_metadata\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "receiver-reassigned",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    message = replacement\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "dynamic-key",
+        "from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage, key: str):\n    if message.extra.get(key):\n        return 1\n    return 0\n",
+        0,
+    ),
+    (
+        "transport-return",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    return message.extra.get("trace_id")\n',
+        0,
+    ),
+    (
+        "transport-log",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    logger.info(message.extra.get("trace_id"))\n',
+        0,
+    ),
+    (
+        "normalization",
+        'from livekit.agents.llm import ChatMessage\nfrom pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    flag: bool\n    @model_validator(mode="before")\n    @classmethod\n    def normalize(cls, message: ChatMessage):\n        if message.extra.get("flag"):\n            return {"flag": True}\n        return {"flag": False}\n',
+        0,
+    ),
+    (
+        "suppressed",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):  # sarj-noqa: SARJ535 -- SDK owns this raw transport flag.\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "generated",
+        '# Generated by tool. Do not edit.\nfrom livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "assert-not-dominating",
+        'from livekit.agents.llm import ChatMessage\ndef read(message, other):\n    if other:\n        assert isinstance(message, ChatMessage)\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "assert-other-object",
+        'from livekit.agents.llm import ChatMessage\ndef read(message, other):\n    assert isinstance(other, ChatMessage)\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "precise-subclass",
+        'from livekit.agents.llm import ChatMessage\nfrom typing import TypedDict\nclass Flags(TypedDict):\n    flag: bool\nclass Message(ChatMessage):\n    extra: Flags\ndef read(message: Message):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "unregistered-attribute",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.custom_data.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "class-escaped",
+        'from livekit.agents.llm import ChatMessage\nregister(ChatMessage)\ndef read(message: ChatMessage):\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "receiver-escaped",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    mutate(message)\n    if message.extra.get("flag"):\n        return 1\n    return 0\n',
+        0,
+    ),
+    (
+        "parsed-model",
+        "from livekit.agents.llm import ChatMessage\nfrom pydantic import BaseModel\nclass Flags(BaseModel):\n    flag: bool = False\ndef read(message: ChatMessage):\n    if Flags.model_validate(message.extra).flag:\n        return 1\n    return 0\n",
+        0,
+    ),
+    (
+        "duplicate-flag-reads",
+        'from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get("flag") and message.extra.get("other_flag"):\n        return 1\n    return 0\n',
+        1,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("case_id", "source", "count"), _SDK_METADATA_CASES, ids=[row[0] for row in _SDK_METADATA_CASES]
+)
+def test_sdk_metadata_contracts(case_id: str, source: str, count: int) -> None:
+    findings = PreferTypedMappingGet().check(Path("app/messages.py"), source)
+    assert len(findings) == count, case_id
+    assert len({(finding.line, finding.col) for finding in findings}) == len(findings)
+    assert all(finding.severity is Severity.WARNING for finding in findings)
+
+
+@pytest.mark.parametrize("layout", ["package", "namespace", "ambiguous"], ids=["package", "namespace", "ambiguous"])
+def test_sdk_metadata_local_modules_keep_their_own_contract(tmp_path: Path, layout: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='local-sdk-contract'\nversion='0.0.0'\n")
+    sources = ["livekit/agents/llm.py"]
+    if layout == "package":
+        sources.extend(["livekit/__init__.py", "livekit/agents/__init__.py"])
+    elif layout == "ambiguous":
+        sources.append("src/livekit/agents/llm.py")
+    for name in sources:
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("class ChatMessage:\n    extra: dict[str, bool]\n")
+    source = _SDK_METADATA_CASES[0][1]
+    focus = tmp_path / "messages.py"
+    focus.write_text(source)
+    assert PreferTypedMappingGet().check(focus, source) == []
+
+
+def test_sdk_metadata_relative_source_path_retains_local_module_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='local-sdk-contract'\nversion='0.0.0'\n")
+    local = tmp_path / "livekit" / "agents" / "llm.py"
+    local.parent.mkdir(parents=True)
+    local.write_text("class ChatMessage:\n    extra: dict[str, bool]\n")
+    monkeypatch.chdir(tmp_path)
+    source = _SDK_METADATA_CASES[0][1]
+    Path("messages.py").write_text(source, encoding="utf-8")
+    assert PreferTypedMappingGet().check(Path("messages.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("extra", "conversion"),
+    [
+        ("from builtins import int as convert\n", "convert"),
+        ("import builtins\n", "builtins.int"),
+        ("from builtins import int\n", "int"),
+    ],
+    ids=["alias", "qualified", "imported-name"],
+)
+def test_http_scalar_prefilter_preserves_existing_builtin_import_abstention(extra: str, conversion: str) -> None:
+    source = (
+        "from fastapi import Request\n"
+        + extra
+        + "def read(request: Request):\n    return "
+        + conversion
+        + "(request.headers.get('attempt', '1'))\n"
+    )
+    assert PreferTypedMappingGet().check(Path("app/router.py"), source) == []
+
+
+def test_sdk_metadata_conditions_report_once_per_observed_message() -> None:
+    source = "from livekit.agents.llm import ChatMessage\ndef read(first: ChatMessage, second: ChatMessage):\n    if first.extra.get('enabled') and first.extra.get('active'):\n        return 1\n    if second.extra.get('enabled'):\n        return 2\n    return 0\n"
+    assert len(PreferTypedMappingGet().check(Path("app/messages.py"), source)) == 2
+
+
+def test_sdk_metadata_fields_keep_mapping_shape_precedence_distinct() -> None:
+    source = _SDK_METADATA_CASES[0][1]
+    rules: list[Rule] = [PreferTypedMappingGet(), RequirePydanticForMappingShape()]
+    assert [finding.code for finding in check_source(rules, Path("app/messages.py"), source)] == ["SARJ535"]
+
+
+def test_sdk_metadata_malformed_source_and_calls_abstain() -> None:
+    assert PreferTypedMappingGet().check(Path("app/messages.py"), "def read(:\n") == []
+    source = "from livekit.agents.llm import ChatMessage\ndef read(message: ChatMessage):\n    if message.extra.get():\n        return 1\n    return 0\n"
+    assert PreferTypedMappingGet().check(Path("app/messages.py"), source) == []
+
+
+@pytest.mark.parametrize("namespace", ["", "../outside", "dotted.name"], ids=["empty", "traversal", "qualified"])
+def test_native_namespace_ownership_rejects_non_top_level_inputs(tmp_path: Path, namespace: str) -> None:
+    assert not unshadowed_import_namespace(tmp_path / "module.py", namespace, facts=FirstPartyFacts())
+
+
+def test_native_namespace_ownership_abstains_without_a_project_root(tmp_path: Path) -> None:
+    assert not unshadowed_import_namespace(tmp_path / "module.py", "livekit", facts=FirstPartyFacts())
+
+
+def test_native_namespace_ownership_rejects_dangling_module_symlinks(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='namespace-contract'\nversion='0.0.0'\n")
+    (tmp_path / "livekit.py").symlink_to(tmp_path / "missing.py")
+    assert not unshadowed_import_namespace(tmp_path / "module.py", "livekit", facts=FirstPartyFacts())
+
+
 def test_shape_diagnostic_precedence_and_selection() -> None:
     source = "def f(raw: dict[str, object]): return isinstance(raw.get('name'), str)"
     rules: list[Rule] = [PreferTypedMappingGet(), RequirePydanticForMappingShape()]
@@ -480,3 +713,129 @@ def test_imported_contracts_preserve_other_rules_source_budget(tmp_path: Path, j
         *((reader, 2, "SARJ535") for reader in readers),
         (last, 6, "SARJ535"),
     ]
+
+
+_HTTP_HEADER_CASES = (
+    (
+        "fastapi-int",
+        'from fastapi import Request\ndef f(request: Request): return int(request.headers.get("count", "0"))\n',
+        1,
+    ),
+    (
+        "starlette-float",
+        'from starlette.requests import Request as Incoming\ndef f(r: Incoming): return float(r.headers.get("ratio", "0"))\n',
+        1,
+    ),
+    (
+        "header-alias",
+        'from fastapi import Request\ndef f(r: Request):\n    headers = r.headers\n    return int(headers.get("count", "0"))\n',
+        1,
+    ),
+    (
+        "request-alias",
+        'from fastapi import Request\ndef f(r: Request):\n    req = r\n    return int(req.headers.get("count", "0"))\n',
+        1,
+    ),
+    (
+        "legacy-fallback",
+        'from fastapi import Request\ndef f(r: Request):\n    return int(r.headers.get("attempt") or str(int(r.headers.get("retry", "0")) + 1))\n',
+        1,
+    ),
+    (
+        "two-fields",
+        'from fastapi import Request\ndef f(r: Request):\n    a = int(r.headers.get("a", "0"))\n    b = float(r.headers.get("b", "0"))\n    return a, b\n',
+        2,
+    ),
+    (
+        "quoted-request",
+        'from fastapi import Request\ndef f(r: "Request"): return int(r.headers.get("count", "0"))\n',
+        1,
+    ),
+    (
+        "boolean-coercion",
+        'from fastapi import Request\ndef f(r: Request): return bool(r.headers.get("active", "false"))\n',
+        1,
+    ),
+    ("plain-text", 'from fastapi import Request\ndef f(r: Request): return r.headers.get("accept")\n', 0),
+    ("signature", 'from fastapi import Request\ndef f(r: Request): return verify(r.headers.get("signature"))\n', 0),
+    ("text-display", 'from fastapi import Request\ndef f(r: Request): return str(r.headers.get("trace", ""))\n', 0),
+    ("typed-mapping", 'def f(headers: dict[str, str]): return int(headers.get("count", "0"))\n', 0),
+    (
+        "unresolved-request",
+        'from application import Request\ndef f(r: Request): return int(r.headers.get("count", "0"))\n',
+        0,
+    ),
+    ("unannotated", 'def f(r): return int(r.headers.get("count", "0"))\n', 0),
+    (
+        "shadowed-request",
+        'from fastapi import Request\ndef f[Request](r: Request): return int(r.headers.get("count", "0"))\n',
+        0,
+    ),
+    (
+        "shadowed-int",
+        'from fastapi import Request\ndef f(r: Request, int): return int(r.headers.get("count", "0"))\n',
+        0,
+    ),
+    (
+        "dynamic-field",
+        'from fastapi import Request\ndef f(r: Request, key: str): return int(r.headers.get(key, "0"))\n',
+        0,
+    ),
+    (
+        "opaque-parse-call",
+        'from fastapi import Request\ndef f(r: Request): return int(parse(r.headers.get("count", "0")))\n',
+        0,
+    ),
+    (
+        "reassigned-request",
+        'from fastapi import Request\ndef f(r: Request):\n    r = trusted\n    return int(r.headers.get("count", "0"))\n',
+        0,
+    ),
+    (
+        "mutated-headers",
+        'from fastapi import Request\ndef f(r: Request):\n    r.headers = trusted\n    return int(r.headers.get("count", "0"))\n',
+        0,
+    ),
+    ("malformed", "def f(:\n", 0),
+    (
+        "suppressed",
+        'from fastapi import Request\ndef f(r: Request):\n    return int(r.headers.get("count", "0"))  # sarj-noqa: SARJ535 -- owned transport adapter\n',
+        0,
+    ),
+)
+
+
+@pytest.mark.parametrize(("case_id", "source", "count"), _HTTP_HEADER_CASES, ids=[row[0] for row in _HTTP_HEADER_CASES])
+def test_http_header_contracts(case_id: str, source: str, count: int) -> None:
+    findings = PreferTypedMappingGet().check(Path("app/router.py"), source)
+    assert len(findings) == count, case_id
+    assert len({(finding.line, finding.col) for finding in findings}) == len(findings)
+    assert all(finding.severity is Severity.WARNING for finding in findings)
+
+
+@pytest.mark.parametrize(
+    ("local_module", "imported", "count"),
+    [
+        (None, "fastapi", 1),
+        ("fastapi.py", "fastapi", 0),
+        ("fastapi/__init__.py", "fastapi", 0),
+        ("starlette/requests.py", "starlette.requests", 0),
+    ],
+)
+def test_header_framework_namespace_ownership(
+    tmp_path: Path, local_module: str | None, imported: str, count: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='header-owner'\nversion='0.0.0'\n")
+    if local_module is not None:
+        module = tmp_path / local_module
+        module.parent.mkdir(parents=True, exist_ok=True)
+        module.write_text("class Request:\n    headers: dict[str, str]\n")
+        if imported == "starlette.requests":
+            (module.parent / "__init__.py").write_text("")
+    source = (
+        f"from {imported} import Request\n"
+        "def read(request: Request):\n    return int(request.headers.get('count', '0'))\n"
+    )
+    focus = tmp_path / "app.py"
+    focus.write_text(source)
+    assert len(PreferTypedMappingGet().check(focus, source)) == count

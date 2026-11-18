@@ -42,6 +42,10 @@ _AUTHORED_EXAMPLES = tuple(
     for example in documentation.examples
 )
 
+_PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
+    ("prefer-match-type-dispatch", "reuse-or-construct-normalization"): Severity.WARNING,
+}
+
 _RENAMED_RULES = {
     "defect-xfail-requires-explicit-strict": (
         "SARJ046",
@@ -208,6 +212,15 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
         assert spec.summary == REGISTRY[rule_id].description
         assert {example.outcome for example in spec.public_examples} == {"match", "no-match"}
 
+    for (rule_id, example_id), expected_severity in _PUBLIC_MATCH_SEVERITIES.items():
+        spec = documented[rule_id]
+        assert spec is not None
+        assert spec.default_level is Severity.ERROR
+        examples = [example for example in spec.public_examples if example.example_id == example_id]
+        assert len(examples) == 1, f"{rule_id}:{example_id}: severity oracle must name one public example"
+        assert examples[0].outcome is ExampleOutcome.MATCH
+        assert expected_severity is Severity.WARNING
+
 
 @pytest.mark.parametrize(
     ("rule_id", "example"),
@@ -275,12 +288,18 @@ def test_example_source_quoted_as_data_is_not_executed(rule_id: RuleId, tmp_path
 def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, rule_id: RuleId) -> None:
     examples = [example for example in REGISTRY[rule_id].public_examples() if example.outcome is ExampleOutcome.MATCH]
     assert examples, f"{rule_id}: no published rejecting example to test severity"
+    assert any((rule_id, example.example_id) not in _PUBLIC_MATCH_SEVERITIES for example in examples), (
+        f"{rule_id}: no blocking public match example"
+    )
     for example in examples:
         findings = _analyze_example(rule_id, example, tmp_path.parent / "error-examples" / rule_id / example.example_id)
         assert len(findings) == example.expected_count, f"{rule_id}:{example.example_id}"
-        assert all(diagnostic.severity is Severity.ERROR for diagnostic in findings), (
-            f"{rule_id}:{example.example_id} is cataloged as error but emits a warning"
+        expected_severity = _PUBLIC_MATCH_SEVERITIES.get((rule_id, example.example_id), Severity.ERROR)
+        assert all(diagnostic.severity is expected_severity for diagnostic in findings), (
+            f"{rule_id}:{example.example_id}: expected {expected_severity.value} diagnostics"
         )
+        if expected_severity is Severity.WARNING:
+            assert all(diagnostic.fixes == () for diagnostic in findings)
 
 
 def test_rule_examples_are_private_by_default_path_aware_and_multi_file() -> None:

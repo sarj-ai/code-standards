@@ -653,7 +653,7 @@ class OpaqueContractFacts:
             value = statement.value
         else:
             return None
-        return value if value is not None and _statement_dominates(statement, at, self.context) else None
+        return value if value is not None and statement_dominates(statement, at, self.context) else None
 
     def _raw_annotation(self, parameter: ast.arg | None) -> bool:
         return (
@@ -1231,7 +1231,7 @@ def _statement_suites(parent: ast.AST) -> Iterator[list[ast.stmt]]:
             return
 
 
-def _statement_dominates(statement: ast.stmt, at: ast.AST, context: PythonFileContext) -> bool:
+def statement_dominates(statement: ast.stmt, at: ast.AST, context: PythonFileContext) -> bool:
     owner = context.parents.get(statement)
     if owner is None or statement.lineno >= source_position(at)[0]:
         return False

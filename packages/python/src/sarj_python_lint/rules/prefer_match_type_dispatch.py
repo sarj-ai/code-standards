@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
+from sarj_python_lint.rules._binding_inventory import binding_names
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredClass, DeclaredContracts
 from sarj_python_lint.rules._imports import ImportIndex
 
@@ -110,6 +111,8 @@ class PreferMatchTypeDispatch(ProjectRule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
+            "A single ordinary-class reuse-or-construction normalization is a warning when both branches first assign the same simple target, reusing the subject or constructing the checked class. Preserve all following branch work. This branch has no automatic fix and does not change established dispatch errors.",
+            "Normalization requires an undecorated, stable module-local class with proven ordinary ancestry and nonescaping class references. Dynamic or mutated classes, unknown imports, constructor argument effects, pre-assignment work and later reassignment of the subject, target or class remain excluded; constructor arguments are simple names or constants.",
             "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
@@ -338,6 +341,36 @@ class PreferMatchTypeDispatch(ProjectRule):
                 public=True,
             ),
             RuleExample(
+                example_id="reuse-or-construct-normalization",
+                scenario="ordinary-class-normalization",
+                title="Reuse or construct one ordinary class",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/normalization.py",
+                        "class Resource:\n    pass\ndef obtain(candidate):\n    if isinstance(candidate, Resource):\n        resource = candidate\n    else:\n        resource = Resource()\n        install(resource)\n    return resource\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/normalization.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="normalization-class-pattern",
+                scenario="ordinary-class-normalization",
+                title="Class patterns retain every branch assignment and installation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/normalization.py",
+                        "class Resource:\n    pass\ndef obtain(candidate):\n    match candidate:\n        case Resource():\n            resource = candidate\n        case _:\n            resource = Resource()\n            install(resource)\n    return resource\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/normalization.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="safe-autofix-subset",
                 title="A proven subset has a convergent automatic fix",
                 outcome=ExampleOutcome.MATCH,
@@ -429,11 +462,140 @@ class PreferMatchTypeDispatch(ProjectRule):
             )
         )
         findings.extend(_review_dispatch_findings(context, local_classes, unsafe_bindings, findings))
+        findings.extend(_reuse_or_construct_findings(context, all_nodes, local_classes, findings))
         if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         findings = list({(finding.line, finding.col): finding for finding in findings}.values())
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
+
+
+def _reuse_or_construct_findings(
+    context: PythonFileContext,
+    all_nodes: tuple[ast.AST, ...],
+    local_classes: frozenset[str],
+    existing: list[Diagnostic],
+) -> list[Diagnostic]:
+    occupied = {finding.line for finding in existing}
+    stable: dict[str, bool] = {}
+    findings: list[Diagnostic] = []
+    for node in all_nodes:
+        if not isinstance(node, ast.If) or node.lineno in occupied:
+            continue
+        reference = _normalization_reference(node, context, local_classes)
+        if reference is None:
+            continue
+        if reference.id not in stable:
+            stable[reference.id] = _normalization_class_is_stable(context, reference, local_classes)
+        if not stable[reference.id]:
+            continue
+        findings.append(
+            Diagnostic(
+                context.path,
+                node.lineno,
+                node.col_offset + 1,
+                "SARJ080",
+                "Use match/case with a zero-argument class pattern for this reuse-or-construction type dispatch; "
+                "preserve the assignments and all following work in each branch. This recommendation has no automatic rewrite.",
+                severity=Severity.WARNING,
+            )
+        )
+    return findings
+
+
+def _normalization_reference(
+    node: ast.If, context: PythonFileContext, local_classes: frozenset[str]
+) -> ast.Name | None:
+    if not node.body or not node.orelse:
+        return None
+    match node.test, node.body[0], node.orelse[0]:
+        case (
+            ast.Call(
+                func=ast.Name(id="isinstance"), args=[ast.Name(id=subject), ast.Name(id=kind) as reference], keywords=[]
+            ),
+            ast.Assign(targets=[ast.Name(id=target)], value=ast.Name(id=reused)),
+            ast.Assign(
+                targets=[ast.Name(id=other_target)], value=ast.Call(func=ast.Name(id=constructor)) as construction
+            ),
+        ) if subject == reused and target == other_target and kind == constructor and kind in local_classes:
+            pass
+        case _:
+            return None
+    if target in context.binding_inventory.external_bindings or not isinstance(
+        context.binding_inventory.scope(node.body[0]), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef
+    ):
+        return None
+    parent = context.parents.get(node)
+    if isinstance(parent, ast.If) and parent.orelse == [node]:
+        return None
+    if not _normalization_arguments_are_inert(construction):
+        return None
+    rebound = any(
+        set(binding_names(child)) & {subject, target, kind}
+        for statement in [*node.body[1:], *node.orelse[1:]]
+        for child in ast.walk(statement)
+    )
+    return None if rebound else reference
+
+
+def _normalization_arguments_are_inert(construction: ast.Call) -> bool:
+    return all(isinstance(value, ast.Name | ast.Constant) for value in construction.args) and all(
+        keyword.arg is not None and isinstance(keyword.value, ast.Name | ast.Constant)
+        for keyword in construction.keywords
+    )
+
+
+def _normalization_class_is_stable(
+    context: PythonFileContext, reference: ast.Name, local_classes: frozenset[str]
+) -> bool:
+    inventory = context.binding_inventory
+    if context.dynamic_namespace or reference.id in inventory.mutated | inventory.external_bindings:
+        return False
+    bindings = context.runtime_bindings.lookup(inventory.scope(reference), reference.id)
+    if bindings is None or len(bindings) != 1 or not isinstance(bindings[0], ast.ClassDef):
+        return False
+    return all(
+        _normalization_class_read_allowed(read, context, local_classes)
+        for read in inventory.reads.get(reference.id, ())
+    )
+
+
+def _normalization_class_read_allowed(
+    read: ast.Name, context: PythonFileContext, local_classes: frozenset[str]
+) -> bool:
+    parent = context.parents.get(read)
+    match parent:
+        case ast.Call(func=callee, args=arguments, keywords=keywords):
+            if callee is read:
+                return True
+            return (
+                isinstance(callee, ast.Name)
+                and callee.id == "isinstance"
+                and len(arguments) == _ISINSTANCE_ARGS
+                and arguments[1] is read
+                and not keywords
+            )
+        case ast.ClassDef(name=name, bases=bases) if read in bases and name in local_classes:
+            return True
+        case ast.MatchClass(cls=kind, patterns=[], kwd_attrs=[]) if kind is read:
+            return True
+        case _:
+            return _normalization_annotation_read(read, context)
+
+
+def _normalization_annotation_read(read: ast.Name, context: PythonFileContext) -> bool:
+    node: ast.AST = read
+    while (parent := context.parents.get(node)) is not None:
+        match parent:
+            case ast.arg() | ast.AnnAssign():
+                return parent.annotation is node
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                return parent.returns is node
+            case ast.Subscript() | ast.BinOp() | ast.Tuple() | ast.List():
+                node = parent
+            case _:
+                return False
+    return False
 
 
 def _or_dispatch_findings(

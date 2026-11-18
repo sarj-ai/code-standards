@@ -16,7 +16,8 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._local_source import LocalSourceFacts
+from sarj_python_lint.rules._local_source import LocalSourceFacts, unshadowed_import_namespace
+from sarj_python_lint.rules._sdk_metadata_fields import sdk_metadata_reads
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingShapeFacts
 
 
@@ -35,10 +36,16 @@ _UNTYPED = frozenset(
     }
 )
 _JSON_PARSERS = frozenset({"json.load", "json.loads"})
+_HTTP_REQUESTS = frozenset({"fastapi.Request", "starlette.requests.Request", "starlette.requests.HTTPConnection"})
+_HEADER_COERCIONS = frozenset({"int", "float", "bool"})
 _MAX_DEPTH = 32
 _MAX_RETURN_PROOFS = 512
 _BAD = "def service_name(state: dict[str, object]):\n    return state.get('name')\n"
 _GOOD = "from typing import TypedDict\nclass State(TypedDict):\n    name: str\ndef service_name(state: State) -> str | None:\n    return state.get('name')\n"
+_BAD_HTTP_HEADER = "from fastapi import Request\ndef attempt(request: Request) -> int:\n    return int(request.headers.get('x-delivery-attempt', '1'))\n"
+_GOOD_HTTP_HEADER = "from typing import Annotated\nfrom fastapi import Header\ndef attempt(value: Annotated[int, Header(alias='x-delivery-attempt')] = 1) -> int:\n    return value\n"
+_BAD_SDK_METADATA = "from livekit.agents.llm import ChatMessage\ndef enabled(message: ChatMessage) -> bool:\n    if message.extra.get('enabled'):\n        return True\n    return False\n"
+_GOOD_SDK_METADATA = "from typing import Annotated\nfrom livekit.agents.llm import ChatMessage\nfrom pydantic import BaseModel, BeforeValidator\nclass Flags(BaseModel):\n    enabled: Annotated[bool, BeforeValidator(bool)] = False\ndef enabled(message: ChatMessage) -> bool:\n    return Flags.model_validate(message.extra).enabled\n"
 
 
 @final
@@ -47,7 +54,7 @@ class PreferTypedMappingGet(Rule):
     code = "SARJ535"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Read named fields from typed records instead of schema-free mappings.",
+        summary="Read named fields through declared contracts instead of ad hoc mapping parsing.",
         rationale="A get call on an Any/object-valued mapping or unchecked decoded JSON does not declare the field's type or distinguish a misspelled field from missing data. A default can conceal that gap.",
         remediation="Validate external data into a named Pydantic model before reading its attributes. For trusted internal records, declare a TypedDict or another precise record. Preserve legitimate get calls on typed mappings, optional TypedDict fields and validated normalization callbacks.",
         category=RuleCategory.MAINTAINABILITY,
@@ -58,8 +65,50 @@ class PreferTypedMappingGet(Rule):
             "Registered Pydantic raw normalization callbacks retain their validation boundary. Generated/vendor sources and wildcard or dynamic namespaces are excluded. No automatic rewrite because validation, defaults, missing keys and error handling can change behavior.",
             "Existing mapping-shape and external-boundary diagnostics take precedence at the same read when selected together; selecting this rule alone still reports it.",
             "Chained reads with the same starting position produce one actionable warning for their raw receiver.",
+            "Import-proven FastAPI/Starlette Request header reads with literal field names also report when directly consumed by builtin int, float or bool coercion. Stable request/header aliases and nested scalar fallback expressions retain provenance. Ordinary textual, signature and telemetry reads, dynamic header names, custom conversion calls and unresolved or shadowed requests abstain. Source-owned fastapi/starlette modules or packages and unavailable project ownership also abstain. A nested fallback produces one diagnostic at its outermost eligible coercion; no automatic rewrite changes parsing grammar, precedence, defaults or error timing.",
+            "LiveKit ChatMessage.extra is a documented dict[str, Any] carrier. Literal-key get reads used in boolean conditions also report for an import-proven direct annotation or a dominating builtin isinstance assertion. Exact import aliases are supported; unknown types, local SDK module shadows, escaping or mutated bindings, plain transport reads and registered normalization callbacks abstain. One warning covers each stable message binding. This narrow SDK contract does not provide general attribute type inference or execute SDK imports; preserve truthiness and defaults when declaring metadata fields.",
         ),
         examples=(
+            RuleExample(
+                example_id="sdk-metadata-condition",
+                scenario="sdk-metadata-contract",
+                title="Name the interpreted SDK metadata fields",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/messages.py", _BAD_SDK_METADATA),),
+                focus_path=PurePosixPath("app/messages.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="sdk-metadata-model",
+                scenario="sdk-metadata-contract",
+                title="Parse a metadata flag while preserving truthiness",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("app/messages.py", _GOOD_SDK_METADATA),),
+                focus_path=PurePosixPath("app/messages.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="http-header-coercion",
+                scenario="http-header-contract",
+                title="Name the parsed HTTP header contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/router.py", _BAD_HTTP_HEADER),),
+                focus_path=PurePosixPath("app/router.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="http-header-contract",
+                scenario="http-header-contract",
+                title="FastAPI owns the typed header admission",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("app/router.py", _GOOD_HTTP_HEADER),),
+                focus_path=PurePosixPath("app/router.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="opaque-get",
                 title="The field has no declared type",
@@ -177,7 +226,115 @@ class PreferTypedMappingGet(Rule):
             and _untyped_receiver(call.func.value, facts, contracts)
             and not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
+        findings.extend(
+            Diagnostic(
+                context.path,
+                call.lineno,
+                call.col_offset + 1,
+                self.code,
+                "Parse these HTTP header fields through a named Pydantic model or FastAPI Header contract; preserve fallback precedence, defaults and scalar parsing behavior.",
+                severity=Severity.WARNING,
+            )
+            for call in _header_coercions(facts)
+            if not context.suppressions.is_suppressed(call.lineno, self.code)
+        )
+        findings.extend(
+            Diagnostic(
+                context.path,
+                call.lineno,
+                call.col_offset + 1,
+                self.code,
+                "Parse this SDK metadata flag through a named Pydantic model or precise record; preserve truthiness and defaults.",
+                severity=Severity.WARNING,
+            )
+            for call in sdk_metadata_reads(facts)
+        )
         return list({(finding.line, finding.col): finding for finding in findings}.values())
+
+
+def _header_coercions(facts: MappingShapeFacts) -> list[ast.Call]:
+    candidates = [
+        call
+        for call in facts.context.nodes(ast.Call)
+        if isinstance(call.func, ast.Name)
+        and call.func.id in _HEADER_COERCIONS
+        and len(call.args) == 1
+        and not call.keywords
+        and any(facts.builtin(call.func, name, call) for name in _HEADER_COERCIONS)
+        and not facts.raw_boundary(call)
+        and _coerced_header(call.args[0], facts)
+    ]
+    eligible = set(candidates)
+    return [call for call in candidates if not _inside_coercion(call, eligible, facts)]
+
+
+def _inside_coercion(call: ast.Call, candidates: set[ast.Call], facts: MappingShapeFacts) -> bool:
+    parent = facts.context.parents.get(call)
+    while parent is not None and not isinstance(parent, ast.stmt | ast.Lambda):
+        if parent in candidates:
+            return True
+        parent = facts.context.parents.get(parent)
+    return False
+
+
+def _coerced_header(node: ast.expr, facts: MappingShapeFacts, depth: int = 0) -> bool:
+    if depth >= _MAX_DEPTH:
+        return False
+    match node:
+        case ast.Call(func=ast.Attribute(value=receiver, attr="get"), args=[ast.Constant(value=str()), *_]):
+            return _header_receiver(receiver, facts)
+        case ast.BoolOp(values=values):
+            return any(_coerced_header(value, facts, depth + 1) for value in values)
+        case ast.BinOp(left=left, right=right):
+            return _coerced_header(left, facts, depth + 1) or _coerced_header(right, facts, depth + 1)
+        case ast.UnaryOp(operand=operand):
+            return _coerced_header(operand, facts, depth + 1)
+        case ast.Call(func=func, args=[argument], keywords=[]) if any(
+            facts.builtin(func, name, node) for name in (*_HEADER_COERCIONS, "str")
+        ):
+            return _coerced_header(argument, facts, depth + 1)
+        case _:
+            return False
+
+
+def _header_receiver(node: ast.expr, facts: MappingShapeFacts, seen: frozenset[ast.AST] = frozenset()) -> bool:
+    if len(seen) >= _MAX_DEPTH:
+        return False
+    match node:
+        case ast.Attribute(value=request, attr="headers"):
+            return _request_receiver(request, facts, seen)
+        case ast.Name() if node.id not in facts.provenance.mutated | facts.provenance.external_bindings:
+            binding = facts.provenance.binding(node.id, node)
+            if not isinstance(binding, ast.Name) or binding in seen:
+                return False
+            value = facts.provenance.assignment_value(binding, node)
+            return value is not None and _header_receiver(value, facts, seen | {binding})
+        case _:
+            return False
+
+
+def _request_receiver(node: ast.expr, facts: MappingShapeFacts, seen: frozenset[ast.AST]) -> bool:
+    if (
+        len(seen) >= _MAX_DEPTH
+        or not isinstance(node, ast.Name)
+        or node.id in facts.provenance.mutated | facts.provenance.external_bindings
+    ):
+        return False
+    binding = facts.provenance.binding(node.id, node)
+    if binding is None or binding in seen:
+        return False
+    if isinstance(binding, ast.arg) and binding.annotation is not None:
+        resolved = facts.resolve_annotation(binding.annotation)
+        qualified = facts.qualified(resolved.expression, resolved.at) if resolved is not None else None
+        return (
+            qualified is not None
+            and qualified in _HTTP_REQUESTS
+            and unshadowed_import_namespace(
+                facts.context.path, qualified.partition(".")[0], facts=facts.context.session.first_party
+            )
+        )
+    value = facts.provenance.assignment_value(binding, node) if isinstance(binding, ast.Name) else None
+    return value is not None and _request_receiver(value, facts, seen | {binding})
 
 
 @dataclass(frozen=True, slots=True)

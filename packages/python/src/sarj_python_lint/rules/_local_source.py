@@ -85,6 +85,27 @@ class LocalSourceFacts:
         return LocalSourceKeys(frozenset(self._resolutions), frozenset(self._modules))
 
 
+def unshadowed_import_namespace(current: Path, namespace: str, *, facts: FirstPartyFacts) -> bool:
+    if not namespace.isidentifier() or (root := facts.project_root(current)) is None:
+        return False
+    try:
+        absolute = current if current.is_absolute() else current.resolve()
+    except OSError:
+        return False
+    for base in _import_bases(absolute, root, 0):
+        if not _safe_path(base, root):
+            return False
+        for candidate in (base / namespace, base / f"{namespace}.py"):
+            try:
+                candidate.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return False
+            return False
+    return True
+
+
 def _resolve_module(current: Path, module: str | None, level: int, *, facts: FirstPartyFacts) -> Path | None:
     if ".." in current.parts or level > _MAX_ANCESTORS:
         return None

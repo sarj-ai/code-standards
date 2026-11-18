@@ -13,6 +13,11 @@ export const RETIRED_RULES: Readonly<Record<string, RetiredRule>> = {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",
   },
+  "no-ambiguous-react-key": {
+    removedIn: "19.27.0",
+    reason:
+      "Delete unpublished references; the candidate failed performance qualification and has no replacement.",
+  },
   "no-implicit-attribute-access": {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",

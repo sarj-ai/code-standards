@@ -11,13 +11,12 @@ import { docsUrl } from "../utils/docs-url.js";
 import { importSpecifierName } from "../utils/import-specifier-name.js";
 import { isGeneratedFile } from "../utils/paths.js";
 import { findVariable, getPropertyName } from "../utils/static-string.js";
-import { isZodModule } from "../utils/zod.js";
+import { isZodModule, SCHEMA_INTEGER_FIELD_MINIMUMS } from "../utils/zod.js";
 
 type IdentifierNode = Extract<Node, { type: "Identifier" }>;
 
 const NAME = "require-constrained-schema-integer";
 
-const FIELD_MINIMUMS: ReadonlyMap<string, number> = new Map([["limit", 1], ["version", 0]]);
 const NUMBER_FACTORIES: ReadonlySet<string> = new Set(["number", "int", "int32", "uint32"]);
 const OBJECT_FACTORIES: ReadonlySet<string> = new Set(["object", "strictObject", "looseObject"]);
 const LOWER_BOUNDS: ReadonlySet<string> = new Set(["min", "gte", "gt"]);
@@ -128,7 +127,7 @@ export default defineRule({
         for (const property of shape.properties) {
           if (property.type !== "Property" || property.computed || property.kind !== "init" || property.method) continue;
           const field = getPropertyName(property);
-          const minimum = field === null ? undefined : FIELD_MINIMUMS.get(field);
+          const minimum = field === null ? undefined : SCHEMA_INTEGER_FIELD_MINIMUMS.get(field);
           if (minimum === undefined || field === null || constrained(property.value, minimum) !== false) continue;
           context.report({ node: property, messageId: "constrainInteger", data: { field, minimum } });
         }
