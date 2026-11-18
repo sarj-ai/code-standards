@@ -13,6 +13,16 @@ State `Routing: <repository>, because <evidence>`: Git-tree facts belong in
 repo-standards; source/config semantics and integration in code-standards.
 Parse semantic relationships; names cannot prove intent.
 
+For saved findings, track the durable prevention outcome separately from any
+application repair. Cite the owning rule, examples, severity and applicable group;
+record publication and consumer state separately from calibration. Distinguish
+full coverage from blind spots. When automation cannot distinguish
+valid cases reliably, update the existing review command/skill with the reusable
+decision and allowed boundary, explicitly marked judgment-only. A product-only fix does not satisfy a requested
+standards change. Record unsupported or ambiguous proposals explicitly instead
+of manufacturing a detector or claiming regression tests prevent other authors
+from repeating the pattern.
+
 Use `maintain rules new`/`prepare` for new rules; `verify` checks examples/tests
 without changing severity. Keep metadata, registration, versions and artifacts
 atomic. Run `make verify` with pinned native tools and a private non-Git temp root.

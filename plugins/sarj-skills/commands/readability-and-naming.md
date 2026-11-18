@@ -6,6 +6,13 @@ Require demonstrated ambiguity or comprehension cost. Replace stale prose/hidden
 invariants with executable parity where useful; preserve snapshots, public
 annotations and evaluation count.
 
+Name generic parameters for their distinct roles when short names hide the
+relationship between inputs and results; conventional `T` remains useful for one
+clear role. Preserve the supported Python syntax and generic type relationship.
+Prefer pattern matching when it clarifies dispatch; a single `isinstance` guard
+can be clearer and may carry necessary narrowing. Neither preference justifies
+an automatic rewrite from syntax alone.
+
 Simplifications must preserve SQL NULL/anti-existence, HCL nested replacement/null
 clearing and decoded YAML command boundaries.
 

@@ -8,6 +8,19 @@ duplicate parsing. Correlate proven variants without erasing drafts, partial
 updates, unknown variants or extension keys. Omission/null/value can differ;
 brands, casts, frozen fields and `TypedDict` provide no runtime validation.
 
+At an unvalidated structured-input boundary, prefer a named Pydantic schema in
+Python or Zod schema in TypeScript over repeated field reads and handwritten
+coercion. Native CLI tokenization can feed that schema. Preserve contractual lazy
+fallbacks and coercions; qualify any intentional change to accepted inputs,
+unknown fields or error timing. Do not reparse trusted models or replace ordinary
+dictionary lookups merely because they use `get`.
+
+Keep composite identities as typed tuples or records in memory. Across a storage,
+wire or UI-key boundary, use an unambiguous protocol such as JSON arrays; delimiter
+joining needs proven escaping or an enforced delimiter-free domain. Trace every
+producer and consumer, including React keys, and check delimiter-containing,
+empty and Unicode components for collisions and round-trip loss.
+
 Establish stable configuration invariants when publishing constructed or updated
 values as valid for their role and schema version. Trace every admission, write
 and mutation path; publish the checked, normalized result. Readers can reuse

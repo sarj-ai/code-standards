@@ -19,6 +19,16 @@
 - Compare fixture visibility/configuration/fidelity/isolation/cleanup. Reuse must
   not precompute action/oracle; cleanup covers partial setup/teardown failure;
   async resources retain their loop.
+- Inject collaborators through existing fixtures; use a typed factory fixture
+  when instances need test-owned connections or configuration. Keep cheap domain
+  values local when no shared lifecycle is needed. Move SQL setup into its owned
+  store/fixture boundary without changing transaction visibility, row counts,
+  recovery assertions or duration budgets; SQL itself may be the test subject.
+- Prefer one readable parameter table for related cases. A Cartesian product
+  must retain every intended binding, order, case ID, mark and fixture interaction;
+  stacking decorators remains valid when it better expresses independent axes.
+  Initialize known fields through constructors when that preserves defaults,
+  identity and fresh mutable values; do not hoist mutable test data into globals.
 - Remove inactive fixtures only after complete owned runs across supported
   profiles with `pytest-unused-fixtures==0.3.1 --unused-fixtures -v`. Check
   autouse, indirect/dynamic requests, dependencies and plugin registration.
