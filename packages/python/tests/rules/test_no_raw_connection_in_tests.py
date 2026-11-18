@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
 
 
@@ -145,6 +146,8 @@ def test_proven_connection_catches_dynamic_queries(statement: str) -> None:
         "client.fetch('SELECT id FROM jobs')",
         "client.exec_driver_sql('DELETE FROM jobs')",
         "client.command('TRUNCATE TABLE jobs')",
+        "Probe(client).execute_test_query('INSERT INTO jobs DEFAULT VALUES')",
+        "client.execute_test_query(query='SELECT id FROM jobs')",
         "client.execute(query='SELECT 1')",
         "client.execute('SELECT ' + 'id FROM jobs')",
         "client.execute(f'SELECT id FROM jobs WHERE id = {job_id}')",
@@ -164,11 +167,54 @@ def test_sql_shaped_execution_is_independent_of_driver(statement: str) -> None:
         "example = \"conn.execute('SELECT id FROM jobs')\"\n",
         "assert compiler.render() == 'SELECT id FROM jobs'\n",
         "client.execute(query)\n",
+        "client.execute_test_query(query)\n",
+        "client.execute_test_query('send notification')\n",
         "# conn.execute('SELECT id FROM jobs')\n",
     ],
 )
 def test_near_misses_do_not_infer_database_execution(source: str) -> None:
     assert _check(source) == []
+
+
+def test_probe_sql_keeps_production_and_exact_exception_boundaries() -> None:
+    source = "async def seed(probe):\n    await probe.execute_test_query('INSERT INTO jobs DEFAULT VALUES')\n"
+    assert _check(source, "app/store.py") == []
+    assert (
+        _check(
+            source.replace(
+                "DEFAULT VALUES')", "DEFAULT VALUES')  # sarj-noqa: SARJ429 -- deliberate transaction fault probe"
+            )
+        )
+        == []
+    )
+    assert len(_check(source, "tests/fixtures/probe.py")) == 1
+
+
+@pytest.mark.parametrize(("method", "level"), [("execute", Severity.ERROR), ("execute_test_query", Severity.WARNING)])
+def test_custom_executor_starts_as_advice_without_lowering_native_errors(method: str, level: Severity) -> None:
+    findings = _check(f"await probe.{method}('SELECT 1')\n")
+    assert len(findings) == 1
+    assert findings[0].severity is level
+
+
+@pytest.mark.parametrize("suppressed", ["neither", "connection", "probe"])
+def test_new_advice_preserves_existing_connection_errors_and_exact_exceptions(suppressed: str) -> None:
+    source = "from psycopg_pool import AsyncConnectionPool\nasync def test_rows(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await probe.execute_test_query('SELECT 1')\n"
+    marker = "  # sarj-noqa: SARJ429 -- deliberate database regression boundary"
+    if suppressed == "connection":
+        source = source.replace("as conn:", f"as conn:{marker}")
+    elif suppressed == "probe":
+        source = source.replace("('SELECT 1')", f"('SELECT 1'){marker}")
+    findings = _check(source)
+    assert len(findings) == 1
+    assert (findings[0].line, findings[0].severity) == (
+        (4, Severity.WARNING) if suppressed == "connection" else (3, Severity.ERROR)
+    )
+
+
+def test_nested_probe_advice_is_independent_of_an_outer_connection_error() -> None:
+    source = "from psycopg_pool import AsyncConnectionPool\nasync def test_rows(pool: AsyncConnectionPool):\n    async with pool.connection():\n        pass\n    async def seed():\n        await probe.execute_test_query('SELECT 1')\n"
+    assert [(item.line, item.severity) for item in _check(source)] == [(3, Severity.ERROR), (6, Severity.WARNING)]
 
 
 def test_sql_execution_supersedes_connection_acquisition() -> None:

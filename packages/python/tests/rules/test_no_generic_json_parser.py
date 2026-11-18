@@ -55,3 +55,71 @@ def test_recursive_alias_and_malformed_source_are_bounded(rule: Rule) -> None:
     source = "from pydantic import TypeAdapter\ntype First = Second\ntype Second = First\nparser = TypeAdapter(First)\n"
     assert rule.check(Path("app/parser.py"), source) == []
     assert rule.check(Path("app/parser.py"), "class Parser(:") == []
+
+
+_OPTIONAL_RECORD = (
+    "from typing import TypedDict\nfrom pydantic import RootModel, TypeAdapter, JsonValue\n"
+    "class Fields(TypedDict, total=False):\n    id: JsonValue\n    status: JsonValue\n"
+)
+
+
+@pytest.mark.parametrize(
+    "parser",
+    [
+        "RootModel[Fields].model_validate(value)",
+        "RootModel[Fields].model_validate_json(value)",
+        "RootModel[Fields](value)",
+        "TypeAdapter(Fields)",
+        "TypeAdapter(type=Fields)",
+    ],
+)
+def test_optional_open_record_at_actual_parser_use(rule: Rule, parser: str) -> None:
+    findings = rule.check(Path("app/parser.py"), _OPTIONAL_RECORD + f"parsed = {parser}\n")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ552"
+    assert findings[0].line == 6
+
+
+def test_open_record_root_base_is_one_parser_definition(rule: Rule) -> None:
+    source = _OPTIONAL_RECORD + "class Parser(RootModel[Fields]):\n    pass\n"
+    assert len(rule.check(Path("app/parser.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _OPTIONAL_RECORD,
+        _OPTIONAL_RECORD + "def read(value: Fields) -> Fields:\n    return value\n",
+        _OPTIONAL_RECORD.replace("total=False", "total=True") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("TypedDict, total=False", "TypedDict") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("id: JsonValue", "id: str") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("id: JsonValue", "id: list[JsonValue]") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("total=False", "total=False, closed=True") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("class Fields", "@configure\nclass Fields") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("class Fields(TypedDict", "class Fields(Parent") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD.replace("    id: JsonValue\n    status: JsonValue", "    pass") + "TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD + "def parse(Fields):\n    return TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD + "def parse[Fields]():\n    return TypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD + "def parse[RootModel]():\n    return RootModel[Fields].model_validate(value)\n",
+        _OPTIONAL_RECORD + "Fields = custom\nTypeAdapter(Fields)\n",
+        _OPTIONAL_RECORD + "RootModel = custom\nRootModel[Fields].model_validate(value)\n",
+        _OPTIONAL_RECORD + "parser: RootModel[Fields]\n",
+        "from pydantic import RootModel\ndef parse[object]():\n    return RootModel[dict[str, object]].model_validate(value)\n",
+        _OPTIONAL_RECORD
+        + "RootModel[Fields].model_validate(value)  # sarj-noqa: SARJ552 -- schema-agnostic transport\n",
+    ],
+)
+def test_record_shape_configuration_shadowing_and_annotation_boundaries(rule: Rule, source: str) -> None:
+    assert rule.check(Path("app/parser.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pydantic import RootModel, JsonValue\nRootModel[dict[str, JsonValue]].model_validate(value)\n",
+        "from pydantic import RootModel, JsonValue\nparsed = HTTPValidationError.from_dict(RootModel[dict[str, JsonValue]].model_validate_json(content).root)\n",
+        "from pydantic import RootModel, JsonValue\nassert event.model_dump(mode='json') == RootModel[dict[str, JsonValue]].model_validate_json(raw).root\n",
+    ],
+)
+def test_inline_transport_and_raw_wire_oracles_remain_outside_the_extension(rule: Rule, source: str) -> None:
+    assert rule.check(Path("tests/test_wire.py"), source) == []

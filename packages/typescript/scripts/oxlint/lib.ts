@@ -55,9 +55,6 @@ interface Timings {
   readonly totalMs: number | null;
 }
 
-/** Options parsed from `--key value` or `--key=value` pairs. */
-type Args<Key extends string> = Partial<Record<Key, string>>;
-
 interface OxlintOptions {
   readonly configPath: string;
   readonly cwd: string;
@@ -85,7 +82,16 @@ const CORPORA: readonly Corpus[] = [
     name: `platform/${folder}`,
     cwd: join(SARJ_REPOS, "platform", folder),
   })),
-  ...["banking", "automations", "ai", "wiki", "wiki-internal", "design", "portal", "code-standards"].map((repo) => ({
+  ...[
+    "banking",
+    "automations",
+    "ai",
+    "wiki",
+    "wiki-internal",
+    "design",
+    "portal",
+    "code-standards",
+  ].map((repo) => ({
     name: repo,
     cwd: join(SARJ_REPOS, repo),
   })),
@@ -108,7 +114,9 @@ const IGNORE_PATTERNS = [
 ] as const;
 
 const CATEGORIES_OFF = Object.fromEntries(
-  ["correctness", "suspicious", "pedantic", "perf", "style", "restriction", "nursery"].map((category) => [category, "off"]),
+  ["correctness", "suspicious", "pedantic", "perf", "style", "restriction", "nursery"].map(
+    (category) => [category, "off"],
+  ),
 );
 
 // Oxlint reports a JS plugin exception and a file it cannot parse both as
@@ -126,7 +134,9 @@ export async function writeConfig(pluginPath: string, rules: RuleSettings): Prom
     plugins: [],
     categories: CATEGORIES_OFF,
     jsPlugins: [{ name: "@sarj", specifier: pluginPath }],
-    rules: Object.fromEntries(Object.entries(rules).map(([name, setting]) => [`@sarj/${name}`, setting])),
+    rules: Object.fromEntries(
+      Object.entries(rules).map(([name, setting]) => [`@sarj/${name}`, setting]),
+    ),
     options: { typeAware: false },
   };
   const path = join(dir, "oxlint.json");
@@ -135,18 +145,40 @@ export async function writeConfig(pluginPath: string, rules: RuleSettings): Prom
 }
 
 /** Run Oxlint once. Returns wall time and raw output. */
-export function runOxlint({ configPath, cwd, format = "json", extraArgs = [], env = {} }: OxlintOptions): OxlintRun {
+export function runOxlint({
+  configPath,
+  cwd,
+  format = "json",
+  extraArgs = [],
+  env = {},
+}: OxlintOptions): OxlintRun {
   // Config ignorePatterns resolve against the temp config's folder, so they
   // never match corpus files; pass them relative to the corpus instead.
   const ignores = IGNORE_PATTERNS.map((pattern) => `--ignore-pattern=${pattern}`);
-  const args = ["-c", configPath, "--disable-nested-config", ...ignores, "-f", format, ...extraArgs, "."];
+  const args = [
+    "-c",
+    configPath,
+    "--disable-nested-config",
+    ...ignores,
+    "-f",
+    format,
+    ...extraArgs,
+    ".",
+  ];
   const start = process.hrtime.bigint();
-  const result = spawnSync(OXLINT_BIN, args, { cwd, env: cleanEnv(env), encoding: "utf8", maxBuffer: 1 << 30 });
+  const result = spawnSync(OXLINT_BIN, args, {
+    cwd,
+    env: cleanEnv(env),
+    encoding: "utf8",
+    maxBuffer: 1 << 30,
+  });
   const ms = Number(process.hrtime.bigint() - start) / 1e6;
   if (result.error !== undefined) throw result.error;
   // Exit 1 means findings; anything else is a failure of the run itself.
   if (result.status !== 0 && result.status !== 1) {
-    throw new Error(`oxlint exited ${String(result.status)} in ${cwd}\n${result.stderr}\n${result.stdout.slice(0, 2000)}`);
+    throw new Error(
+      `oxlint exited ${String(result.status)} in ${cwd}\n${result.stderr}\n${result.stdout.slice(0, 2000)}`,
+    );
   }
   return { ms, stdout: result.stdout, stderr: result.stderr };
 }
@@ -154,7 +186,11 @@ export function runOxlint({ configPath, cwd, format = "json", extraArgs = [], en
 // Oxlint changes its output when it detects an AI agent (CLAUDECODE and
 // friends hide --debug=timings), so run it with a minimal environment.
 function cleanEnv(extra: Readonly<Record<string, string>>): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { HOME: process.env["HOME"], PATH: process.env["PATH"], ...extra };
+  const env: Record<string, string | undefined> = {
+    HOME: process.env["HOME"],
+    PATH: process.env["PATH"],
+    ...extra,
+  };
   const temporary = process.env["TMPDIR"];
   if (temporary !== undefined && temporary !== "") env["TMPDIR"] = temporary;
   return env;
@@ -175,7 +211,10 @@ export function parseJson(stdout: string): ParsedOutput {
         message: diagnostic.message,
       });
     } else {
-      const problem = { filename: diagnostic.filename, message: diagnostic.message.split("\n").slice(0, 3).join(" | ") };
+      const problem = {
+        filename: diagnostic.filename,
+        message: diagnostic.message.split("\n").slice(0, 3).join(" | "),
+      };
       (diagnostic.message.startsWith(PLUGIN_CRASH) ? crashes : parseErrors).push(problem);
     }
   }
@@ -200,25 +239,18 @@ export function parseTimings(text: string): Timings {
 export function median(values: readonly number[]): number {
   const sorted = values.toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] ?? Number.NaN : ((sorted[mid - 1] ?? Number.NaN) + (sorted[mid] ?? Number.NaN)) / 2;
-}
-
-export function parseArgs<Key extends string>(argv: readonly string[], defaults: Args<Key>): Args<Key> {
-  const options: Record<string, string | undefined> = { ...defaults };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === undefined || !arg.startsWith("--")) throw new Error(`unexpected argument ${String(arg)}`);
-    const [key = "", inline] = arg.slice(2).split("=", 2);
-    const value = inline ?? argv[++i];
-    options[key] = value;
-  }
-  return options as Args<Key>;
+  return sorted.length % 2 === 1
+    ? (sorted[mid] ?? Number.NaN)
+    : ((sorted[mid - 1] ?? Number.NaN) + (sorted[mid] ?? Number.NaN)) / 2;
 }
 
 /** The checked-out corpora, selected by a comma-separated list of names or name prefixes. */
 export async function selectCorpora(filter: string | undefined): Promise<readonly Corpus[]> {
   const wanted = filter === undefined || filter === "" ? null : filter.split(",");
-  const selected = CORPORA.filter((corpus) => wanted?.some((name) => corpus.name === name || corpus.name.startsWith(`${name}/`)) ?? true);
+  const selected = CORPORA.filter(
+    (corpus) =>
+      wanted?.some((name) => corpus.name === name || corpus.name.startsWith(`${name}/`)) ?? true,
+  );
   const present = await Promise.all(selected.map(async (corpus) => exists(corpus.cwd)));
   return selected.filter((_, index) => present[index] === true);
 }
@@ -238,6 +270,10 @@ async function exists(path: string): Promise<boolean> {
  */
 export async function readRuleSettings(value: string | undefined): Promise<RuleSettings> {
   if (value === undefined || value === "") return {};
-  const raw = JSON.parse(value.trimStart().startsWith("{") ? value : await readFile(value, "utf8")) as RuleSettings;
-  return Object.fromEntries(Object.entries(raw).map(([name, setting]) => [name.replace(/^@sarj\//, ""), setting]));
+  const raw = JSON.parse(
+    value.trimStart().startsWith("{") ? value : await readFile(value, "utf8"),
+  ) as RuleSettings;
+  return Object.fromEntries(
+    Object.entries(raw).map(([name, setting]) => [name.replace(/^@sarj\//, ""), setting]),
+  );
 }
