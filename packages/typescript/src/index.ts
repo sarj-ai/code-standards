@@ -49,6 +49,7 @@ import noExcessiveCognitiveComplexity from "./rules/no-excessive-cognitive-compl
 import noExplicitTypePredicate from "./rules/no-explicit-type-predicate.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noFirstPartyModuleMock from "./rules/no-first-party-module-mock.js";
+import noFlakeMasking from "./rules/no-flake-masking.js";
 import noFrontendComments from "./rules/no-frontend-comments.js";
 import noGenericJsonParser from "./rules/no-generic-json-parser.js";
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
@@ -114,6 +115,7 @@ import noUnlocalizedToast from "./rules/no-unlocalized-toast.js";
 import noUnnecessaryUseClient from "./rules/no-unnecessary-use-client.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import noUnsafeTestDoubleCast from "./rules/no-unsafe-test-double-cast.js";
+import noUnsignaledPoll from "./rules/no-unsignaled-poll.js";
 import noVagueSuppressionDescription from "./rules/no-vague-suppression-description.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import noZodParseTypedObject from "./rules/no-zod-parse-typed-object.js";
@@ -228,6 +230,7 @@ const RULES = {
   "no-explicit-type-predicate": noExplicitTypePredicate,
   "no-fat-try-blocks": noFatTryBlocks,
   "no-first-party-module-mock": noFirstPartyModuleMock,
+  "no-flake-masking": noFlakeMasking,
   "no-frontend-comments": noFrontendComments,
   "no-generic-json-parser": noGenericJsonParser,
   "no-generic-single-export-module": noGenericSingleExportModule,
@@ -293,6 +296,7 @@ const RULES = {
   "no-unnecessary-use-client": noUnnecessaryUseClient,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "no-unsafe-test-double-cast": noUnsafeTestDoubleCast,
+  "no-unsignaled-poll": noUnsignaledPoll,
   "no-vague-suppression-description": noVagueSuppressionDescription,
   "no-zod-native-enum": noZodNativeEnum,
   "no-zod-parse-typed-object": noZodParseTypedObject,

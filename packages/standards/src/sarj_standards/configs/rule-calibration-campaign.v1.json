@@ -3,6 +3,18 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/typescript/no-flake-masking",
+      "family": "typescript",
+      "ruleId": "no-flake-masking",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/typescript/no-unsignaled-poll",
+      "family": "typescript",
+      "ruleId": "no-unsignaled-poll",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/typescript/no-discarded-tagged-outcome",
       "family": "typescript",
       "ruleId": "no-discarded-tagged-outcome",
