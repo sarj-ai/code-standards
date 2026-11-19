@@ -3,7 +3,7 @@
   "catalogSha256": "3198f9b94e5e87418c4cbfc9fd9fde61ce0326bafa58b79950674e21abe4c44d",
   "cliSha256": "555a780a2fbc27ebe2d276178790bca56765910b48f42be017e4e2906fe197ee",
   "formatterVersions": {
-    "prettier": "3.9.10",
+    "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
     "prettierPluginToml": "4.1.0",
     "ruff": "0.17.2",
