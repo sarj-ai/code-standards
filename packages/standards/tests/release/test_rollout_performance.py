@@ -355,7 +355,9 @@ def test_progress_reports_phase_and_total_time_even_when_a_phase_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failed: bool
 ) -> None:
     values = iter((10.0, 10.0, 12.5, 16.0))
-    monkeypatch.setattr(time, "monotonic", lambda: next(values))  # sarj-noqa: SARJ445 -- deterministic phase clock
+    original_clock = time.monotonic
+    monkeypatch.setattr(rollout, "monotonic", lambda: next(values))  # sarj-noqa: SARJ445 -- deterministic phase clock
+    assert time.monotonic is original_clock
     target = rollout.Consumer("Example", "example/consumer", "main", ("true",))
 
     def fail() -> None:

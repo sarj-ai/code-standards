@@ -18,7 +18,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, n
 import sys
 import tempfile
 import threading
-import time
+from time import monotonic
 import tokenize
 import tomllib
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
@@ -629,7 +629,7 @@ def _typescript_reports(
             ToolReport("oxlint", Completion.FAILED, issues=(ExecutionIssue("oxlint", "project-limit", message),))
         )
         commands = ()
-    deadline = time.monotonic() + _ANALYSIS_DEADLINE.total_seconds()
+    deadline = monotonic() + _ANALYSIS_DEADLINE.total_seconds()
     environment = {**_analysis_environment(), "NODE_OPTIONS": _node_options()}
     for command in commands:
         with _SUPPRESSIONS_LOCK:
@@ -675,7 +675,7 @@ def _invoke_oxlint(
         return _oxlint_failure(ExecutionIssue("oxlint", "trust-required", message), invocation, file_count)
     if local_tools and (issue := _missing_local_binary_issue("oxlint", command.cwd, root)) is not None:
         return _oxlint_failure(issue, invocation, file_count)
-    started = time.monotonic()
+    started = monotonic()
     if started >= deadline:
         message = f"Oxlint aggregate analysis exceeded {_ANALYSIS_DEADLINE.total_seconds():g} seconds"
         return _oxlint_failure(ExecutionIssue("oxlint", "aggregate-timeout", message), invocation, file_count)
@@ -699,7 +699,7 @@ def _invoke_oxlint(
         report,
         analyzer_id=AnalyzerId("oxlint"),
         invocation_id=invocation,
-        duration_ms=round((time.monotonic() - started) * 1_000),
+        duration_ms=round((monotonic() - started) * 1_000),
         file_count=report.file_count or file_count,
     )
 
@@ -1132,7 +1132,7 @@ def _invoke_text_tool(
     empty_payload: str = "",
     report_stream: Literal["stdout", "stderr"] = "stdout",
 ) -> ToolReport:
-    started = time.monotonic()
+    started = monotonic()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes process failures and diagnostics.
         request = process_request(argv, cwd=cwd)
         if report_stream == "stderr":
@@ -1157,7 +1157,7 @@ def _invoke_text_tool(
             diagnostics=diagnostics,
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
@@ -1168,7 +1168,7 @@ def _invoke_text_tool(
             issues=(issue,),
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
         )
 
@@ -1181,7 +1181,7 @@ def _invoke_detekt(
     runner: ProcessExecutor,
     file_count: int,
 ) -> ToolReport:
-    started = time.monotonic()
+    started = monotonic()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary owns report lifecycle and protocol checks.
         with tempfile.TemporaryDirectory(prefix="code-standards-detekt-") as temporary_directory:
             report_path = Path(temporary_directory) / "report.sarif"
@@ -1205,7 +1205,7 @@ def _invoke_detekt(
             diagnostics=diagnostics,
             analyzer_id=AnalyzerId("detekt"),
             invocation_id=InvocationId("detekt"),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
@@ -1216,7 +1216,7 @@ def _invoke_detekt(
             issues=(issue,),
             analyzer_id=AnalyzerId("detekt"),
             invocation_id=InvocationId("detekt"),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
         )
 
@@ -1766,7 +1766,7 @@ def _invoke_deptry_projects(
         return (ToolReport("deptry", Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId("deptry")),)
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
-        started = time.monotonic()
+        started = monotonic()
         project_id = project.relative_to(root).as_posix() or None
         invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
         try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary preserves complete per-project telemetry.
@@ -1779,7 +1779,7 @@ def _invoke_deptry_projects(
                         issues=(issue,),
                         analyzer_id=AnalyzerId("deptry"),
                         invocation_id=invocation_id,
-                        duration_ms=round((time.monotonic() - started) * 1_000),
+                        duration_ms=round((monotonic() - started) * 1_000),
                         file_count=len(scoped_files),
                     )
                 )
@@ -1797,7 +1797,7 @@ def _invoke_deptry_projects(
                         issues=(issue,),
                         analyzer_id=AnalyzerId("deptry"),
                         invocation_id=invocation_id,
-                        duration_ms=round((time.monotonic() - started) * 1_000),
+                        duration_ms=round((monotonic() - started) * 1_000),
                         file_count=len(scoped_files),
                     )
                 )
@@ -1809,7 +1809,7 @@ def _invoke_deptry_projects(
                     diagnostics=diagnostics,
                     analyzer_id=AnalyzerId("deptry"),
                     invocation_id=invocation_id,
-                    duration_ms=round((time.monotonic() - started) * 1_000),
+                    duration_ms=round((monotonic() - started) * 1_000),
                     file_count=len(scoped_files),
                 )
             )
@@ -1822,7 +1822,7 @@ def _invoke_deptry_projects(
                     issues=(issue,),
                     analyzer_id=AnalyzerId("deptry"),
                     invocation_id=invocation_id,
-                    duration_ms=round((time.monotonic() - started) * 1_000),
+                    duration_ms=round((monotonic() - started) * 1_000),
                     file_count=len(scoped_files),
                 )
             )
@@ -2324,7 +2324,7 @@ def _physical_memory_bytes() -> int | None:
 
 def _run_process(request: ProcessRequest) -> ProcessOutput:
     raise_if_cancelled(request.cancellation)
-    if request.deadline is not None and time.monotonic() >= request.deadline:
+    if request.deadline is not None and monotonic() >= request.deadline:
         raise subprocess.TimeoutExpired(request.argv, 0)
     executable = _analyzer_executable(request.argv[0])
     if executable is None:
@@ -2434,7 +2434,7 @@ def _wait_for_process(
     exceeded: threading.Event,
     request: ProcessRequest,
 ) -> int:
-    started = time.monotonic()
+    started = monotonic()
     deadline = started + request.timeout_seconds
     if request.deadline is not None:
         deadline = min(deadline, request.deadline)
@@ -2445,10 +2445,10 @@ def _wait_for_process(
             if exceeded.is_set():
                 break
             try:
-                return process.wait(timeout=max(0.0, deadline - time.monotonic()))
+                return process.wait(timeout=max(0.0, deadline - monotonic()))
             except subprocess.TimeoutExpired as error:
                 raise subprocess.TimeoutExpired(request.argv, max(0.0, deadline - started)) from error
-        if time.monotonic() >= deadline:
+        if monotonic() >= deadline:
             raise subprocess.TimeoutExpired(request.argv, max(0.0, deadline - started))
         _output_limit_reached = exceeded.wait(0.01)
     message = f"analyzer output exceeded the {request.max_stdout_bytes} byte stdout or {request.max_stderr_bytes} byte stderr limit"
@@ -2543,7 +2543,7 @@ def _invoke(
     version: str | None = None,
     input_bytes: bytes | None = None,
 ) -> ToolReport:
-    started = time.monotonic()
+    started = monotonic()
     try:
         report = _invoke_unchecked(
             name,
@@ -2565,7 +2565,7 @@ def _invoke(
             rule_executions=report.rule_executions,
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
             version=version if report.completion is Completion.COMPLETE else None,
         )
@@ -2578,7 +2578,7 @@ def _invoke(
             issues=(issue,),
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
-            duration_ms=round((time.monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * 1_000),
             file_count=file_count,
         )
 

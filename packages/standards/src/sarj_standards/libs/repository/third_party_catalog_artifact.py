@@ -768,9 +768,13 @@ def _enabled_detekt_rules(path: Path) -> tuple[str, ...]:
             current_rule = match.group(1)
         elif current_set is not None and current_rule is None and re.match(r"^  active:\s*true\s*$", line):
             set_active = True
-        elif current_set is not None and current_rule is not None and re.match(r"^    active:\s*true\s*$", line):
-            if set_active:
-                selected.add(f"{current_set}:{current_rule}")
+        elif (
+            current_set is not None
+            and current_rule is not None
+            and re.match(r"^    active:\s*true\s*$", line)
+            and set_active
+        ):
+            selected.add(f"{current_set}:{current_rule}")
     return tuple(sorted(selected))
 
 

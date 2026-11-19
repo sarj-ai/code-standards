@@ -74,7 +74,7 @@ if (mode !== "--check" && mode !== "--write" && mode !== "--format-json") {
 }
 
 const cache = new Map<string, string>();
-const ruffVersion = "0.17.2";
+const ruffVersion = "0.17.5";
 
 assert.equal(
   execFileSync(
