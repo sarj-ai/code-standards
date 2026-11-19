@@ -3886,7 +3886,7 @@ def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_project
         assert "runs-on: macos-15" in workflow
     else:
         assert "runs-on: ubuntu-latest" in workflow
-        assert "actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad" in workflow
+        assert "actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880" in workflow
         assert "distribution: temurin" in workflow
         assert "java-version: '21'" in workflow
 
