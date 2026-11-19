@@ -10,15 +10,17 @@
 #
 # Edits keep the surrounding source: a directive on its own line removes the
 # line, a trailing one removes the comment and the space before it, and a partly
-# unused directive loses only the unused rule names. Oxlint reports an unused
+# unused directive loses only the unused rule names. Older Oxlint reports an unused
 # ``/* x-disable */ ... /* x-enable */`` pair at the enable comment, so both
 # comments go. Anything else raises instead of guessing.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
+from itertools import islice
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -29,8 +31,10 @@ import sys
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Final
 
+from pydantic import ConfigDict, RootModel
 import typer
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption import lifecycle, manifest, transaction
 from sarj_standards.libs.staged_git import isolated_environment
 
@@ -55,6 +59,10 @@ _KEYWORD_RE: Final = re.compile(
 _BLOCK_COMMENT_RE: Final = re.compile(rb"/\*.*?\*/", re.DOTALL)
 SUPPORTS_DIRECTIVE_REWRITES: Final = os.name == "posix"
 _POSIX_ONLY: Final = "canonical directive rewrites require POSIX ownership and private-file permission checks"
+
+
+class _CommentSpans(RootModel[tuple[tuple[int, int], ...]]):
+    model_config = ConfigDict(strict=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,11 +376,95 @@ def _audit(
         if original is None:
             msg = f"Oxlint reported an unused directive outside the plan: {relative}"
             raise ValueError(msg)
-        after = remove_unused_directives(original.contents, reports)
+        paired = _closing_reports(command.cwd, root / relative, original.contents, reports, run=run)
+        after = remove_unused_directives(original.contents, paired)
         _text(after)
         if after != original.contents:
             rewrites[relative] = SourcePostimage(original.contents, after, original.mode)
     return rewrites
+
+
+def _closing_reports(
+    project: Path,
+    path: Path,
+    source: bytes,
+    reports: list[UnusedDirective],
+    *,
+    run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
+) -> list[UnusedDirective]:
+    # Oxlint 1.93 anchors unused block disables at the opening comment. Preserve
+    # the paired edit, using parser-confirmed comments rather than source regexes.
+    openings = [item for report in reports if (item := _reported(source, report)).directive.kind == "disable"]
+    if not openings:
+        return reports
+    directives = _comment_directives(project, path, source, run=run)
+    result = list(reports)
+    for opening in openings:
+        directive = opening.directive
+        following = _matching_enable(directives, directive)
+        if following is None:
+            continue
+        start = following.start
+        if opening.rule is not None:
+            start = source.index(
+                opening.rule.encode("utf-8"), start + len(following.head.encode("utf-8")), following.end
+            )
+        detail = f" for {opening.rule}" if opening.rule is not None else ""
+        message = f"Unused {directive.tool}-enable directive (no matching {directive.tool}-disable directives were found{detail})."
+        end = start + len(opening.rule.encode("utf-8")) if opening.rule is not None else following.end
+        result.append(UnusedDirective(message, start, end))
+    return result
+
+
+def _matching_enable(directives: Sequence[_Directive], opening: _Directive) -> _Directive | None:
+    index = bisect_left(directives, opening.start, key=lambda item: item.start)
+    if index == len(directives) or directives[index] != opening:
+        msg = "Oxlint and the source parser disagree on the unused directive comment"
+        raise ValueError(msg)
+    following = next(
+        (
+            item
+            for item in islice(directives, index + 1, None)
+            if item.tool == opening.tool and item.kind in {"disable", "enable"}
+        ),
+        None,
+    )
+    if following is not None and (following.kind != "enable" or set(following.rules) != set(opening.rules)):
+        msg = "unused block directive requires an immediately matching enable comment"
+        raise ValueError(msg)
+    return following
+
+
+def _comment_directives(
+    project: Path,
+    path: Path,
+    source: bytes,
+    *,
+    run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
+) -> list[_Directive]:
+    completed = run(
+        lifecycle.Command(
+            "Oxlint directive comment spans",
+            ("node", str(CONFIGS_DIR / "oxlint-comment-spans.mjs"), "--file", str(path)),
+            project,
+        )
+    )
+    if completed.returncode != 0:
+        msg = "cannot prove parser comment spans for directive cleanup"
+        raise ValueError(msg)
+    spans = _CommentSpans.model_validate_json(completed.stdout).root
+    directives: list[_Directive] = []
+    previous = 0
+    for start, end in spans:
+        if not previous <= start < end <= len(source) or source[start : start + 2] not in {b"/*", b"//"}:
+            msg = "invalid parser comment span for directive cleanup"
+            raise ValueError(msg)
+        previous = end
+        block = source.startswith(b"/*", start)
+        body = source[start + 2 : end - 2 if block else end].decode("utf-8")
+        if _KEYWORD_RE.fullmatch(body):
+            directives.append(_parse_directive(start, end, block=block, body=body))
+    return directives
 
 
 def _formatted(

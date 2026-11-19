@@ -225,7 +225,7 @@ def test_react_doctor_config_selects_native_and_security_policy() -> None:
     }
     assert config["serverAuthFunctionNames"] == ["forRequest"]
     peers = manifest.typescript_peers()
-    assert peers["oxlint-plugin-react-doctor"] == "0.9.22"
+    assert peers["oxlint-plugin-react-doctor"] == "0.9.23"
     assert "react-doctor" not in peers
     assert "eslint-plugin-react-hooks" not in peers
 

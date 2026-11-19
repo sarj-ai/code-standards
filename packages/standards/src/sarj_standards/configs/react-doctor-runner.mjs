@@ -24,8 +24,8 @@ const pluginPath = require.resolve("oxlint-plugin-react-doctor");
 const installedPlugin = JSON.parse(
   readFileSync(join(dirname(pluginPath), "../package.json"), "utf8"),
 );
-if (installedPlugin.version !== "0.9.22")
-  throw new Error(`Expected oxlint-plugin-react-doctor 0.9.22, found ${installedPlugin.version}`);
+if (installedPlugin.version !== "0.9.23")
+  throw new Error(`Expected oxlint-plugin-react-doctor 0.9.23, found ${installedPlugin.version}`);
 const plugin = await import(pathToFileURL(pluginPath));
 const core = await import(pathToFileURL(require.resolve("oxlint-plugin-react-doctor/core")));
 const { parseSync, visitorKeys } = createRequire(pluginPath)("oxc-parser");
@@ -34,8 +34,8 @@ const sources = new Map();
 const originalSources = new Map();
 const oxlintRoot = dirname(require.resolve("oxlint/package.json"));
 const installedOxlint = JSON.parse(readFileSync(join(oxlintRoot, "package.json"), "utf8"));
-if (installedOxlint.version !== "1.91.0")
-  throw new Error(`Expected Oxlint 1.91.0, found ${installedOxlint.version}`);
+if (installedOxlint.version !== "1.93.0")
+  throw new Error(`Expected Oxlint 1.93.0, found ${installedOxlint.version}`);
 const diagnostics = [];
 const isExcluded = (absolute) =>
   (request.excludedDirectories ?? []).some((directory) => contains(directory, absolute));

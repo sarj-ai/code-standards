@@ -170,7 +170,7 @@ def _assert_react_doctor_inventory(providers: list[dict[str, JsonValue]], rules:
         "label": "React Doctor",
         "package": "oxlint-plugin-react-doctor",
         "projectionScope": "complete",
-        "version": "0.9.22",
+        "version": "0.9.23",
     }
     react_doctor_rules = [value for value in rules if value["provider"] == "react-doctor"]
     assert react_doctor_rules

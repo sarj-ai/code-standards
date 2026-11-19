@@ -153,10 +153,12 @@ def test_plan_removes_every_unused_directive_oxlint_reports(tmp_path: Path) -> N
     assert {item.rule_id for item in report.diagnostics} == set()
 
 
-def test_plan_keeps_a_partly_unused_block_pair_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("decoy", ["", 'export const decoy = "😀 /* eslint-enable no-console, no-debugger */";\n'])
+def test_plan_keeps_a_partly_unused_block_pair_closed(tmp_path: Path, decoy: str) -> None:
     source = (
         "/* eslint-disable no-console, no-debugger -- pair */\n"
         "console.info(1);\n"
+        f"{decoy}"
         "/* eslint-enable no-console, no-debugger -- pair */\n"
         "debugger;\n"
     )
@@ -166,7 +168,7 @@ def test_plan_keeps_a_partly_unused_block_pair_closed(tmp_path: Path) -> None:
     oxlint_directives.apply(root, expected)
 
     assert (root / "src/a.ts").read_text(encoding="utf-8") == (
-        "/* eslint-disable no-console -- pair */\nconsole.info(1);\n/* eslint-enable no-console -- pair */\ndebugger;\n"
+        f"/* eslint-disable no-console -- pair */\nconsole.info(1);\n{decoy}/* eslint-enable no-console -- pair */\ndebugger;\n"
     )
     rules = {item.rule_id for item in analyze(root, oxlint.OxlintRequest(), "src").diagnostics}
     # The debugger after the pair is reported again, so no disable is left open.
@@ -182,6 +184,22 @@ def test_plan_refuses_sources_oxlint_cannot_finish(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Oxlint failed before producing a directive-only plan"):
         oxlint_directives.plan(root, ("src/a.ts",), run=run_native)
+
+
+def test_plan_refuses_interleaved_block_pairs_without_editing(tmp_path: Path) -> None:
+    source = (
+        "/* eslint-disable no-debugger -- unused */\n"
+        "/* eslint-disable no-console -- logging */\n"
+        "console.info(1);\n"
+        "/* eslint-enable no-console -- logging */\n"
+        "/* eslint-enable no-debugger -- unused */\n"
+    )
+    root = project(tmp_path / "repo", {"src/a.ts": source}, git=True)
+
+    with pytest.raises(ValueError, match="immediately matching enable"):
+        oxlint_directives.plan(root, ("src/a.ts",), run=run_native)
+
+    assert (root / "src/a.ts").read_text(encoding="utf-8") == source
 
 
 def test_plan_lets_the_formatter_read_untracked_inputs_the_caller_owns(tmp_path: Path) -> None:
