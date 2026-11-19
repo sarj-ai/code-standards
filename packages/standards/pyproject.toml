@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "9.71.5"
+version = "9.71.6"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -33,9 +33,9 @@ dependencies = [
   "ruff==0.17.2",
   "sqlfluff==4.2.2",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
-  "sarj-iac-lint==0.46.0",
-  "sarj-python-lint==1.146.3",
-  "sarj-sql-lint==0.48.2",
+  "sarj-iac-lint==0.46.1",
+  "sarj-python-lint==1.146.4",
+  "sarj-sql-lint==0.48.3",
   "typer==0.27.3",
 ]
 
@@ -51,7 +51,7 @@ Repository = "https://github.com/sarj-ai/code-standards"
 Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
