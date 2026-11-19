@@ -19,6 +19,11 @@ kind = "runtime"
 reason = "Preserves HTML script byte locations for the packaged Node lint adapter."
 
 [[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/oxlint-comment-spans.mjs"
+kind = "runtime"
+reason = "Runs the local parser for directive cleanup from the Python wheel without a consumer TypeScript build."
+
+[[javascript.artifacts]]
 path = "packages/standards/src/sarj_standards/configs/project-configuration.mjs"
 kind = "runtime"
 reason = "Reads React project configuration without executing repository code in the packaged Node adapter."

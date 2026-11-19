@@ -15,6 +15,7 @@ const config: OxlintConfig = {
         "src/sarj_standards/configs/react-doctor-*.mjs",
         "src/sarj_standards/configs/project-*.mjs",
         "src/sarj_standards/configs/html-script-source.mjs",
+        "src/sarj_standards/configs/oxlint-comment-spans.mjs",
         "src/sarj_standards/configs/staged-request.mjs",
       ],
       rules: SARJ_RULES,

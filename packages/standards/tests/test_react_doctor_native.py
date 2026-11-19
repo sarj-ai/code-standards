@@ -50,8 +50,8 @@ def installation(tmp_path_factory: pytest.TempPathFactory) -> Path:
             {
                 "private": True,
                 "dependencies": {
-                    "oxlint": "1.91.0",
-                    "oxlint-plugin-react-doctor": "0.9.22",
+                    "oxlint": "1.93.0",
+                    "oxlint-plugin-react-doctor": "0.9.23",
                     "parse5": "8.0.0",
                 },
             }
@@ -178,7 +178,7 @@ def test_native_parse_failure_is_not_clean(installation: Path, project: Path) ->
 
 
 def test_security_selection_preserves_upstream_file_size_bound(installation: Path, project: Path) -> None:
-    (project / "src/oversized.ts").write_text("// synthetic bounded-file fixture\n" * 70000)
+    (project / "src/oversized.ts").write_text("// synthetic bounded-file fixture\n" * 70_000)
     output = scan(installation, project, full=False, paths=("firestore.rules",))
     assert output.returncode == 0, output.stderr
     findings = external.parse_react_doctor(output.stdout, root=project)
@@ -354,7 +354,7 @@ def test_large_stdin_request_and_bounded_native_batches(installation: Path, proj
     # deliberately invalid so losing a batch cannot report a clean scan.
     for index in range(220):
         (project / "src" / f"{'a' * 120}{index}.tsx").write_text("export const Clean = () => <div/>;\n")
-    output = scan(installation, project, paths=("src/view.tsx",) * 10000)
+    output = scan(installation, project, paths=("src/view.tsx",) * 10_000)
     assert output.returncode == 0, output.stderr
     assert "no-array-index-as-key" in {item.rule for item in Report.model_validate_json(output.stdout).diagnostics}
 
