@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "9.70.0"
+version = "9.70.2"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -893,7 +893,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.145.0"
+version = "1.145.1"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },
@@ -910,7 +910,7 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.17.2" },
     { name = "sarj-rule-contracts", editable = "../contracts" },
     { name = "sarj-sql-lint", editable = "../sql" },
-    { name = "sqlglot", specifier = "==30.24.0" },
+    { name = "sqlglot", specifier = "==30.31.0" },
     { name = "typer", specifier = "==0.27.3" },
 ]
 
@@ -938,7 +938,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.48.1"
+version = "0.48.2"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },
@@ -949,7 +949,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "sarj-rule-contracts", editable = "../contracts" },
-    { name = "sqlglot", specifier = "==30.24.0" },
+    { name = "sqlglot", specifier = "==30.31.0" },
     { name = "typer", specifier = "==0.27.3" },
 ]
 
@@ -1006,11 +1006,11 @@ wheels = [
 
 [[package]]
 name = "sqlglot"
-version = "30.24.0"
+version = "30.31.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/7c/9fd907983ff041692399bf855d344e1fcc9a02c8d92a5fee6dbdf139d19e/sqlglot-30.24.0.tar.gz", hash = "sha256:6451aabd1c9994d0f73355c962a5eaf9258381b3f2554e53db916cd9a605552a", size = 6131857, upload-time = "2026-10-20T17:14:03.987Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/de/aa6cc05536bec18c7ad7d3def4d724d1d7086cbc9e96dc1e39fdaf83965d/sqlglot-30.31.0.tar.gz", hash = "sha256:448404736cb0ed1335774e34399a3a99d28274778fb718877556fb7d475d8808", size = 6198638, upload-time = "2026-11-10T18:02:51.359Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/5f/d78f74306cc026c5f40f8808a47356dfd37461eb15eb759a20e5e9efe7d7/sqlglot-30.24.0-py3-none-any.whl", hash = "sha256:9488828cc018453b7a3ba01e65d2749c9a731314c14583695163ca1f358203fe", size = 792162, upload-time = "2026-10-20T17:14:02.053Z" },
+    { url = "https://files.pythonhosted.org/packages/92/68/e351109f7732f193133c67fbf104178f79b534a925db8f69c074fd190c2c/sqlglot-30.31.0-py3-none-any.whl", hash = "sha256:51a876a43edecf8ee6fd4c872cf6713d899c4234256bba0be96a8c7c8d8781e8", size = 811981, upload-time = "2026-11-10T18:02:49.108Z" },
 ]
 
 [[package]]
