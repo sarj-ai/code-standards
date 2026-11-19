@@ -14,7 +14,7 @@ import pytest
 from sarj_standards.libs.adoption import lifecycle
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
 from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Severity, TrustMode, baseline
-from sarj_standards.libs.linting import autofix, oxlint, oxlint_directives
+from sarj_standards.libs.linting import autofix, external, oxlint, oxlint_directives
 from sarj_standards.libs.linting.external import UpstreamRules, analyze_external
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessOutput, ToolResolution
@@ -226,9 +226,11 @@ def test_later_projects_fail_once_the_aggregate_deadline_passes(
         _typescript_project(tmp_path / name)
     (tmp_path / "package.json").write_text('{"name":"workspace"}\n', encoding="utf-8")
     callback_state = _CallbackState(elapsed=0.0)
+    original_clock = time.monotonic
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- controls the aggregate deadline.
-        time, "monotonic", lambda: callback_state.elapsed
+        external, "monotonic", lambda: callback_state.elapsed
     )
+    assert time.monotonic is original_clock
     timeouts: list[float] = []
 
     def respond(request: ProcessRequest) -> ProcessOutput:

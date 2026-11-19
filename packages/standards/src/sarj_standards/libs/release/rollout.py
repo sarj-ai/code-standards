@@ -19,6 +19,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- centralized a
 import sys
 import tempfile
 import time
+from time import monotonic
 import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NamedTuple, NewType, Protocol, TypeGuard, assert_never
@@ -1160,7 +1161,7 @@ def status(version: str, consumers: Sequence[Consumer], runner: CommandRunner, *
 
 
 def consumer_outcome(consumer: Consumer, operation: Callable[[Consumer], Outcome]) -> Outcome:
-    started = time.monotonic()
+    started = monotonic()
     try:
         outcome = operation(consumer)
     except ConsumerBaseMovedError as exc:
@@ -1169,7 +1170,7 @@ def consumer_outcome(consumer: Consumer, operation: Callable[[Consumer], Outcome
         outcome = Outcome(consumer, RolloutFailed(process_failure_detail(exc)))
     except (OSError, RolloutError) as exc:
         outcome = Outcome(consumer, RolloutFailed(str(exc)))
-    return replace(outcome, elapsed_seconds=round(time.monotonic() - started, 3))
+    return replace(outcome, elapsed_seconds=round(monotonic() - started, 3))
 
 
 def map_consumers(
@@ -2406,11 +2407,11 @@ def apply_one(
 
 @contextmanager
 def timed_progress(consumer: Consumer) -> Generator[Callable[[str], None]]:
-    started = time.monotonic()
+    started = monotonic()
     callback_state = _ProgressState(phase_started=started)
 
     def report(next_phase: str) -> None:
-        now = time.monotonic()
+        now = monotonic()
         if callback_state.phase:
             progress(consumer, f"finished {callback_state.phase} in {now - callback_state.phase_started:.2f}s")
         progress(consumer, next_phase)
@@ -2419,7 +2420,7 @@ def timed_progress(consumer: Consumer) -> Generator[Callable[[str], None]]:
     try:
         yield report
     finally:
-        now = time.monotonic()
+        now = monotonic()
         if callback_state.phase:
             progress(
                 consumer,
@@ -3848,7 +3849,7 @@ def _verify_rollout_patch(
     verification_failure_detail = ""
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
         progress(consumer, f"verification attempt {attempt + 1}/{MAX_VERIFICATION_ATTEMPTS}")
-        started = time.monotonic()
+        started = monotonic()
         verification: subprocess.CompletedProcess[str] | None = None
         try:
             with consumer_verification_runner(consumer, runner, base_sha) as verification_runner:
@@ -3870,7 +3871,7 @@ def _verify_rollout_patch(
             raise ConsumerBaseMovedError(msg) from exc
         progress(
             consumer,
-            f"verification attempt {attempt + 1} finished in {time.monotonic() - started:.2f}s (exit {verification.returncode})",
+            f"verification attempt {attempt + 1} finished in {monotonic() - started:.2f}s (exit {verification.returncode})",
         )
         assert_baseline_unchanged(baseline_path, expected_baseline)
         assert_baselines_unchanged(consumer_baselines)
@@ -3957,11 +3958,11 @@ def run_consumer_verification(
     baseline_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     def run(index: int, command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
-        started = time.monotonic()
+        started = monotonic()
         try:
             result = runner.run((*tool_prefix, *command), cwd=repo, env=environment, check=False)
         finally:
-            progress(consumer, f"verification command {index} finished in {time.monotonic() - started:.2f}s")
+            progress(consumer, f"verification command {index} finished in {monotonic() - started:.2f}s")
         report_consumer_timings(consumer, result.stdout)
         return result
 
