@@ -203,6 +203,7 @@
       "prefer-self-type-annotation",
       "prefer-semantic-temporal-types",
       "prefer-set-isdisjoint",
+      "prefer-single-parametrize-contract",
       "prefer-single-psycopg-cursor",
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
@@ -452,6 +453,7 @@
       "prefer-non-nullable-collection",
       "prefer-nullish-filter-predicate",
       "prefer-schema-for-api-payload",
+      "prefer-schema-for-http-headers",
       "prefer-semantic-colors",
       "prefer-server-actions",
       "prefer-server-data-preparation",
@@ -743,7 +745,8 @@
       "SARJ578",
       "SARJ579",
       "SARJ580",
-      "SARJ582"
+      "SARJ582",
+      "SARJ583"
     ],
     "sql": [
       "SARJ101",

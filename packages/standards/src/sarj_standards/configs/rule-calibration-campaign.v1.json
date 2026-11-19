@@ -3767,6 +3767,22 @@
       "state": "pending",
       "evidence": "Native Zod cases cover pure literal integer bounds, imports, malformed input, suppression boundaries and precedence with the existing integer-contract owner. Labeled calibration has 15 positives and 45 negatives; all new diagnostics were inspected, with no observed duplicates. Bounded active-path and full-policy paired measurements retain slower rounds and shared-VM uncertainty; no population precision claim follows.",
       "outcome": "Introduce WARNING without autofix. Prefer field bounds only when object refinement performs one pure check on one integer field; retain cross-field, float, transformation and opaque cases. Review error-path and ordering changes. No promotion or consumer activation is included."
+    },
+    {
+      "task": "rule-audit/python/prefer-single-parametrize-contract",
+      "family": "python",
+      "ruleId": "prefer-single-parametrize-contract",
+      "state": "pending",
+      "evidence": "Static Cartesian examples and independently reviewed malformed, shadowed, marked and dynamic boundaries preserve case cardinality and collection order. Full-registry performance qualification and broader field calibration remain pending. Private motivating sources and identifying provenance remain local.",
+      "outcome": "Keep SARJ583 at WARNING without autofix. Prefer one compact product contract without reducing cases or expanding repetitive literal tables. Do not revive the retired literal-table detector."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-schema-for-http-headers",
+      "family": "typescript",
+      "ruleId": "prefer-schema-for-http-headers",
+      "state": "pending",
+      "evidence": "Native HTTP provenance, shadowing, coercion grammar and unsupported receiver boundaries have focused executable cases. The immutable frontend corpus produced no natural header finding. Full-policy cost qualification and broader field calibration remain pending; no population precision or stronger-validation claim follows.",
+      "outcome": "Keep the new boundary advice at WARNING without autofix. Preserve accepted number syntax, defaults, missing values, custom parsers and transport-specific contracts while considering a named Zod schema."
     }
   ]
 }

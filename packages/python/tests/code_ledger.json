@@ -370,5 +370,6 @@
   "SARJ579": "prefer-defaultdict",
   "SARJ580": "no-value-error-forwarder",
   "SARJ581": "prefer-pytest-case-table",
-  "SARJ582": "prefer-pydantic-field-bounds"
+  "SARJ582": "prefer-pydantic-field-bounds",
+  "SARJ583": "prefer-single-parametrize-contract"
 }

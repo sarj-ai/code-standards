@@ -20,7 +20,7 @@ const INDEXES = new WeakMap<ESTree.Program, RuntimeIndex>();
 const GLOBAL_OBJECTS: ReadonlySet<string> = new Set(["globalThis", "global", "window", "self"]);
 
 /** Whole-file visible uncertainty vetoes even earlier captures; external monkeypatches are not inferred. */
-export function nativeRuntimeUnchanged(sourceCode: Readonly<SourceCode>, name: "Error" | "RegExp" | "fetch" | "Date" | "Map" | "Set" | "Object"): boolean {
+export function nativeRuntimeUnchanged(sourceCode: Readonly<SourceCode>, name: "Error" | "RegExp" | "fetch" | "Date" | "Map" | "Set" | "Object" | "Request" | "Response" | "Headers" | "Number" | "Boolean" | "parseInt" | "parseFloat"): boolean {
   const index = runtimeIndex(sourceCode);
   const cached = index.results.get(name);
   if (cached !== undefined) return cached;
@@ -152,6 +152,8 @@ function nativeRead(node: Node, name: string): boolean {
   const value = outerExpression(node);
   const parent = parentOf(value);
   if (parent?.type === "UnaryExpression" && parent.operator === "typeof") return true;
+  if (["Request", "Response", "Headers"].includes(name) && parent?.type === "NewExpression" && parent.callee === value) return true;
+  if (["Number", "Boolean", "parseInt", "parseFloat"].includes(name) && parent?.type === "CallExpression" && parent.callee === value) return true;
   if (["Date", "Object"].includes(name) && parent?.type === "MemberExpression" && !parent.optional &&
     getPropertyName(parent) === (name === "Date" ? "now" : "freeze")) {
     const callable = outerExpression(parent);

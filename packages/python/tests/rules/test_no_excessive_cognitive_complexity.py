@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path
 import runpy
+import subprocess
+import sys
 import textwrap
 from types import SimpleNamespace
 
@@ -65,6 +67,31 @@ def test_reports_only_above_threshold_with_score_and_contributors() -> None:
     assert "L2 +1" in diagnostic.message
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "for item in items:\n    step()\n",
+        "async for item in items:\n    step()\n",
+        "while ready:\n    step()\n",
+        "try:\n    step()\nexcept Error:\n    pass\n",
+        "try:\n    step()\nexcept* Error:\n    pass\n",
+        "match item:\n    case _:\n        step()\n",
+        "value = first and second\n",
+        "value = first if ready else second\n",
+        "value = [item for item in items]\n",
+        "value = {item for item in items}\n",
+        "value = {item: item for item in items}\n",
+        "value = (item for item in items)\n",
+    ],
+)
+def test_nonconditional_scoring_constructs_still_reach_the_error_boundary(body: str) -> None:
+    source = "async def sample():\n" + textwrap.indent(body * 21, "    ")
+    diagnostics = NoExcessiveCognitiveComplexity().check(Path("src/decision.py"), source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
+    assert "Cognitive complexity 21 exceeds 20" in diagnostics[0].message
+
+
 def test_nested_functions_and_methods_are_reported_once_each() -> None:
     source = "def outer():\n" + textwrap.indent(_guards(21), "    ")
     source += "class Example:\n" + textwrap.indent(_guards(21), "    ")
@@ -75,6 +102,126 @@ def test_nested_functions_and_methods_are_reported_once_each() -> None:
 @pytest.mark.parametrize("path", ["src/generated/sample.py", "vendor/sample.py"])
 def test_generated_code_is_excluded(path: str) -> None:
     assert NoExcessiveCognitiveComplexity().check(Path(path), _guards(21)) == []
+
+
+@pytest.mark.parametrize(("depth", "expected"), [(4, []), (5, [Severity.WARNING])])
+@pytest.mark.parametrize("header", ["with resource():", "async with resource():"])
+def test_resource_suite_depth_is_a_warning_without_changing_the_cognitive_metric(
+    depth: int, expected: list[Severity], header: str
+) -> None:
+    source = "\n".join(
+        [
+            "async def release():",
+            *("    " * level + header for level in range(1, depth + 1)),
+            "    " * (depth + 1) + "await finish()",
+            "",
+        ]
+    )
+    function = ast.parse(source).body[0]
+    assert isinstance(function, ast.AsyncFunctionDef)
+    assert sum(point.amount for point in function_complexity(function)) == 0
+    diagnostics = NoExcessiveCognitiveComplexity().check(Path("src/cleanup.py"), source)
+    assert [diagnostic.severity for diagnostic in diagnostics] == expected
+    if expected:
+        assert "Structural suite depth 5 exceeds 4" in diagnostics[0].message
+        assert "finalizer order" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    ("depth", "opening", "indent", "matched", "pending", "blocking"),
+    [
+        (4, "", 0, False, 0, 0),
+        (5, "", 0, False, 1, 0),
+        (6, "", 0, False, 0, 1),
+        (5, "with envelope():\n", 4, False, 0, 1),
+        (5, "if enabled:\n", 4, False, 0, 1),
+        (5, "match marker:\n    case _:\n", 8, False, 1, 0),
+        (4, "if enabled:\n    pass\nelif other:\n", 4, True, 1, 0),
+        (4, "if enabled:\n    pass\nelse:\n    if other:\n", 8, True, 0, 1),
+        (5, "class Owner:\n", 4, False, 1, 0),
+        (5, "if enabled:\n    class Owner:\n", 8, False, 0, 1),
+    ],
+)
+def test_structural_review_complements_the_native_ruff_threshold(
+    depth: int, opening: str, indent: int, *, matched: bool, pending: int, blocking: int
+) -> None:
+    body = "\n".join(
+        [*("    " * level + "with resource():" for level in range(depth)), "    " * depth + "finish()", ""]
+    )
+    if matched:
+        body = "match marker:\n    case _:\n" + textwrap.indent(body, "        ")
+    source = opening + textwrap.indent("def release():\n" + textwrap.indent(body, "    "), " " * indent)
+    diagnostics = NoExcessiveCognitiveComplexity().check(Path("app/cleanup.py"), source)
+    assert len(diagnostics) == pending
+    config = Path(__file__).resolve().parents[3] / "standards/src/sarj_standards/configs/ruff.strict.toml"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(config),
+            "--select",
+            "PLR1702",
+            "--output-format",
+            "concise",
+            "--stdin-filename",
+            "app/cleanup.py",
+            "-",
+        ],
+        input=source,
+        capture_output=True,
+        text=True,
+        check=False,
+        shell=False,
+        timeout=10,
+    )
+    assert result.returncode == blocking, result.stderr
+    assert result.stdout.count("too-many-nested-blocks") == blocking
+
+
+def test_sibling_cleanup_branches_do_not_accumulate_depth() -> None:
+    branch = "try:\n    with resource():\n        work()\nexcept Error:\n    recover()\nfinally:\n    cleanup()\n"
+    source = "def release():\n" + textwrap.indent(branch * 6, "    ")
+    assert NoExcessiveCognitiveComplexity().check(Path("src/cleanup.py"), source) == []
+
+
+def test_cleanup_inside_nested_functions_resets_structural_scope() -> None:
+    body = "\n".join(
+        [
+            *("    " * level + f"def stage_{level}():" for level in range(7)),
+            "    " * 7 + "with resource():",
+            "    " * 8 + "finish()",
+            "",
+        ]
+    )
+    assert NoExcessiveCognitiveComplexity().check(Path("src/cleanup.py"), body) == []
+
+
+def test_existing_cognitive_error_takes_precedence_over_deep_suite_warning() -> None:
+    body = "if ready:\n    work()\n" * 21
+    for _ in range(6):
+        body = "with resource():\n" + textwrap.indent(body, "    ")
+    diagnostics = NoExcessiveCognitiveComplexity().check(
+        Path("src/cleanup.py"), "def release():\n" + textwrap.indent(body, "    ")
+    )
+    assert [diagnostic.severity for diagnostic in diagnostics] == [Severity.ERROR]
+
+
+def test_structural_warning_respects_function_suppression(tmp_path: Path) -> None:
+    source = "\n".join(
+        [
+            "def release():  # sarj-noqa: SARJ444 -- reviewed cleanup ownership",
+            *("    " * level + "with resource():" for level in range(1, 6)),
+            "    " * 6 + "finish()",
+            "",
+        ]
+    )
+    path = tmp_path / "cleanup.py"
+    path.write_text(source)
+    assert len(NoExcessiveCognitiveComplexity().check(path, source)) == 1
+    assert analyze([NoExcessiveCognitiveComplexity.id], [path]) == []
 
 
 def test_authored_tests_are_checked_and_parse_failures_do_not_crash() -> None:

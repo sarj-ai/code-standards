@@ -92,12 +92,13 @@ class PreferInjectedService(ProjectRule):
             return []
         contracts: DeclaredContracts | None = None
         diagnostics: list[Diagnostic] = []
+        changed_fields: dict[ast.ClassDef, frozenset[str]] = {}
         for call in context.nodes(ast.Call):
             method = _enclosing_method(call, context)
             owner = context.parents.get(method) if method is not None else None
             if method is None or not isinstance(owner, ast.ClassDef):
                 continue
-            if not _stable_arguments(call, method, owner, context):
+            if not _stable_arguments(call, method, owner, context, changed_fields):
                 continue
             if contracts is None:
                 contracts = DeclaredContracts(context)
@@ -159,7 +160,11 @@ def _self_field(expression: ast.AST) -> str | None:
 
 
 def _stable_arguments(
-    call: ast.Call, method: ast.FunctionDef | ast.AsyncFunctionDef, owner: ast.ClassDef, context: PythonFileContext
+    call: ast.Call,
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    owner: ast.ClassDef,
+    context: PythonFileContext,
+    changed_fields: dict[ast.ClassDef, frozenset[str]],
 ) -> bool:
     values = [*call.args, *(keyword.value for keyword in call.keywords)]
     if not values or any(keyword.arg is None for keyword in call.keywords):
@@ -171,11 +176,10 @@ def _stable_arguments(
     parameters = set(arguments[1:])
     stored = self_stored_parameters(constructor, context.imports)
     fields = frozenset(field for names in stored.fields_by_parameter.values() for field in names)
-    changed: set[str] = set()
-    for item in class_methods(owner):
-        if item is constructor:
-            continue
-        changed.update(_written_fields(item))
+    changed = changed_fields.get(owner)
+    if changed is None:
+        changed = _nonconstructor_written_fields(owner, constructor)
+        changed_fields[owner] = changed
     provenance = context.static_resource_provenance
     receiver = (method.args.posonlyargs + method.args.args)[0]
     return all(
@@ -186,6 +190,14 @@ def _stable_arguments(
             and provenance.binding("self", value) is receiver
         )
         for value in values
+    )
+
+
+def _nonconstructor_written_fields(
+    owner: ast.ClassDef, constructor: ast.FunctionDef | ast.AsyncFunctionDef
+) -> frozenset[str]:
+    return frozenset(
+        field for method in class_methods(owner) if method is not constructor for field in _written_fields(method)
     )
 
 

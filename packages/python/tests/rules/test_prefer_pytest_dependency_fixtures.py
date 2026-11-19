@@ -1,3 +1,4 @@
+from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,64 @@ def rule() -> ProjectRule:
 
 def test_documented_examples() -> None:
     verify_native_rule(PreferPytestDependencyFixtures, analyze)
+
+
+@pytest.mark.parametrize(
+    ("construction", "annotation", "expected"),
+    [
+        ("Probe(connection)", "type[Probe]", 1),
+        ("probe_factory(connection)", "type[Probe]", 0),
+        ("Probe(connection)", "object", 0),
+    ],
+)
+def test_requested_factory_retains_the_exact_borrowed_connection(
+    construction: str, annotation: str, expected: int, rule: ProjectRule
+) -> None:
+    source = (
+        "class Probe:\n    def __init__(self, connection): self.connection = connection\n"
+        "    def read(self): return self.connection.read()\n"
+        f"def test_read(probe_factory: {annotation}, connection):\n    probe = {construction}\n    assert probe.read()\n"
+    )
+    findings = rule.check(Path("tests/test_probe.py"), source)
+    assert len(findings) == expected
+    assert fix_source(Path("tests/test_probe.py"), source, rule_ids=[rule.id]) == source
+
+
+def test_factory_constructor_failure_remains_the_subject_under_test(rule: ProjectRule) -> None:
+    source = "import pytest\nclass Probe: pass\ndef test_invalid(probe_factory: type[Probe]):\n    with pytest.raises(TypeError):\n        Probe(invalid=True)\n"
+    assert rule.check(Path("tests/test_probe.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "signature", "expected"),
+    [
+        ("pytestmark = pytest.mark.parametrize('factory', [Probe])\n", "factory: type[Probe]", 0),
+        ("pytestmark = [pytest.mark.parametrize('factory', [Probe])]\n", "factory: type[Probe]", 0),
+        ("from tests.marks import pytestmark\n", "factory: type[Probe]", 0),
+        (
+            "pytestmark = []\npytestmark.append(pytest.mark.parametrize('factory', [Probe]))\n",
+            "factory: type[Probe]",
+            0,
+        ),
+        ("def pytest_generate_tests(metafunc): pass\n", "factory: type[Probe]", 0),
+        ("", "factory: type[Probe] = Probe", 0),
+        ("pytestmark = pytest.mark.parametrize('other', [1])\n", "factory: type[Probe], other", 1),
+        ("pytestmark = pytest.mark.anyio\n", "factory: type[Probe]", 1),
+    ],
+)
+def test_factory_annotation_respects_native_pytest_injection(
+    prefix: str, signature: str, expected: int, rule: ProjectRule
+) -> None:
+    source = (
+        "import pytest\nclass Probe: pass\n"
+        f"{prefix}def test_constructs({signature}):\n    subject = Probe()\n    assert isinstance(subject, factory)\n"
+    )
+    assert len(rule.check(Path("tests/test_probe.py"), source)) == expected
+
+
+def test_class_parametrized_factory_remains_case_data(rule: ProjectRule) -> None:
+    source = "import pytest\nclass Probe: pass\nclass TestProbe:\n    pytestmark = pytest.mark.parametrize('factory', [Probe])\n    def test_constructs(self, factory: type[Probe]):\n        subject = Probe()\n        assert isinstance(subject, factory)\n"
+    assert rule.check(Path("tests/test_probe.py"), source) == []
 
 
 @pytest.mark.parametrize(("allocation", "body"), _ALLOCATIONS, ids=[case[0] for case in _ALLOCATIONS])
@@ -122,14 +181,18 @@ def test_unresolved_argument_binding_keeps_dependency_ownership(rule: ProjectRul
 
 
 @pytest.mark.parametrize(
-    "binding",
-    [
-        "STORE = Store()",
-        "STORE: Port = Store()",
-        "def make_store() -> Store: return Store()\nSTORE = make_store()",
-    ],
+    ("argument", "binding"),
+    list(
+        product(
+            ["STORE", "store=STORE"],
+            [
+                "STORE = Store()",
+                "STORE: Port = Store()",
+                "def make_store() -> Store: return Store()\nSTORE = make_store()",
+            ],
+        )
+    ),
 )
-@pytest.mark.parametrize("argument", ["STORE", "store=STORE"])
 def test_shared_module_collaborators_are_requested_as_fixtures(rule: ProjectRule, binding: str, argument: str) -> None:
     source = _SERVICE + binding + f"\ndef test_read():\n    service = Service({argument})\n"
     assert len(rule.check(Path("tests/test_service.py"), source)) == 1

@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-single-parametrize-contract"),
+        module="sarj_python_lint.rules.prefer_single_parametrize_contract",
+        class_name="PreferSingleParametrizeContract",
+        code="SARJ583",
+        description="Prefer one explicit pytest parameter contract; preserve Cartesian products compactly.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-pydantic-field-bounds"),
         module="sarj_python_lint.rules.prefer_pydantic_field_bounds",
         class_name="PreferPydanticFieldBounds",
@@ -895,7 +904,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.excessive_commentary",
         class_name="ExcessiveCommentary",
         code="SARJ434",
-        description="Delete comment paragraphs that exactly repeat the following ordered action names.",
+        description="Remove proven duplicate narration; review implementation paragraphs above 320 characters.",
         aliases=(),
         enabled_by_default=True,
     ),
@@ -976,7 +985,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_excessive_cognitive_complexity",
         class_name="NoExcessiveCognitiveComplexity",
         code="SARJ444",
-        description="Error on cognitive complexity above 20; scores up to 20 pass.",
+        description="Error on cognitive complexity above 20; warn on structural suite depth above 4.",
         aliases=(),
         enabled_by_default=True,
     ),

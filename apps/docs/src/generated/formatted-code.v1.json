@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4dcaee34eebcee058dc50d0f55080f1716af74b8c0d468c576fb8c8318ab7844",
-  "cliSha256": "7e8fefe3defd13b17d50120571ec113593b4091853a4f04829ed7fc6bf351a8b",
+  "catalogSha256": "39160f7de6aa983b95b3d992c54172f08f8b149cc8063e83b1f91be9152e6ab6",
+  "cliSha256": "a5beac9c08986ed3e9339476f0e2d9ff31c1588460c9285d99d21342efbe9cf4",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -8645,6 +8645,36 @@
           "title": "Direct adoption and reset repeat one page's bookkeeping"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/editor.tsx",
+              "source": "import { useState } from \"react\";\nexport function Editor({ text }: { text: string }) {\n  const [saved, setSaved] = useState(text);\n  const [draft, setDraft] = useState(saved);\n  const [complete, setComplete] = useState(false);\n  function edit(next) {\n    setDraft(next);\n    setComplete(false);\n  }\n  function committed(next) {\n    setSaved(next);\n    setComplete(true);\n  }\n  return (\n    <output>\n      {saved}\n      {draft}\n      {complete}\n    </output>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/editor.tsx",
+          "id": "copied-editor-snapshot",
+          "outcome": "reject",
+          "scenarioId": "copied-editor",
+          "title": "A copied draft and retained value share explicit status transitions"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/editor.tsx",
+              "source": "import { useState } from \"react\";\nexport function Editor({ text }) {\n  const [editor, setEditor] = useState({ saved: text, draft: text, complete: false });\n  function edit(next) {\n    setEditor((current) => ({ ...current, draft: next, complete: false }));\n  }\n  function committed(next) {\n    setEditor((current) => ({ ...current, saved: next, complete: true }));\n  }\n  return (\n    <output>\n      {editor.saved}\n      {editor.draft}\n      {editor.complete}\n    </output>\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/editor.tsx",
+          "id": "one-editor-snapshot",
+          "outcome": "accept",
+          "scenarioId": "copied-editor",
+          "title": "One editor state owns draft, retained text and status"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -9894,6 +9924,47 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validate before property access"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-schema-for-http-headers": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/headers.ts",
+              "source": "import { z } from \"zod\";\nconst Attempt = z.string().default(\"1\").transform(Number);\nfunction attempt(request: Request) {\n  return Attempt.parse(request.headers.get(\"x-attempt\") ?? undefined);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/headers.ts",
+          "id": "named-zod-header",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "http-header-contract",
+          "title": "A named Zod schema owns scalar parsing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/headers.ts",
+              "source": "function attempt(request: Request) {\n  return Number(request.headers.get(\"x-attempt\") ?? \"1\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/headers.ts",
+          "id": "scalar-http-header",
+          "outcome": "reject",
+          "scenarioId": "http-header-contract",
+          "title": "A scalar cast leaves the header contract implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -12118,6 +12189,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The original activation paragraph explains why all failures are returned"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "# Retain the previous snapshot until validation and publication succeed.\nsnapshot = refresh_snapshot()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "concise-ordering-constraint",
+          "outcome": "accept",
+          "scenarioId": "paragraph-budget",
+          "title": "Keep the concise reason beside the code"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "# Keep the previous snapshot available until its replacement has completed validation, because\n# another reader may still hold the shared version token while this operation builds its next\n# snapshot. Publish all replacement fields together and clear temporary resources only after\n# publication succeeds. If validation fails, preserve the previous snapshot for the next reader.\nsnapshot = refresh_snapshot()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "oversized-implementation-paragraph",
+          "outcome": "reject",
+          "scenarioId": "paragraph-budget",
+          "title": "Review a long explanation without deleting its ordering constraint"
         }
       ],
       "optionsSchemaSource": null
@@ -14316,6 +14417,36 @@
           "outcome": "reject",
           "scenarioId": "closed-literal-true-guards",
           "title": "Remove statically redundant nesting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/cleanup.py",
+              "source": "def release():\n    with first(), second(), third(), fourth(), fifth(), sixth():\n        finish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cleanup.py",
+          "id": "combined-resource-suite",
+          "outcome": "accept",
+          "scenarioId": "structural-cleanup",
+          "title": "A combined resource scope stays shallow"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/cleanup.py",
+              "source": "def release():\n    with first():\n        with second():\n            with third():\n                with fourth():\n                    with fifth():\n                        finish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cleanup.py",
+          "id": "deep-cleanup-suites",
+          "outcome": "reject",
+          "scenarioId": "structural-cleanup",
+          "title": "Review deeply nested cleanup suites"
         },
         {
           "expectedCount": 0,
@@ -18845,6 +18976,36 @@
     "python:prefer-explicit-value-model-construction": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/context.py",
+              "source": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Context:\n    cues: list[str] = field(default_factory=list, repr=False)\n\n\ndef context(enabled: bool):\n    value = Context()\n    if enabled:\n        value.cues = [\"One moment.\"]\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/context.py",
+          "id": "collection-after-construction",
+          "outcome": "reject",
+          "scenarioId": "collection-initialization",
+          "title": "Review a fresh field's second initialization phase"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/context.py",
+              "source": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Context:\n    cues: list[str] = field(default_factory=list, repr=False)\n\n\ndef context(enabled: bool):\n    return Context(cues=[\"One moment.\"] if enabled else [])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/context.py",
+          "id": "collection-in-constructor",
+          "outcome": "accept",
+          "scenarioId": "collection-initialization",
+          "title": "The constructor receives each instance's initial collection"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -20323,6 +20484,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "tests/test_probe.py",
+              "source": "import pytest\n\n\nclass Probe:\n    def __init__(self, connection):\n        self.connection = connection\n\n\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\n\n\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = Probe(connection)\n    assert probe.connection is connection\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_probe.py",
+          "id": "bypassed-probe-factory",
+          "outcome": "reject",
+          "scenarioId": "requested-constructor-factory",
+          "title": "Direct construction bypasses the requested typed factory"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "tests/test_service.py",
               "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef test_read():\n    store = Store()\n    service = Service(store)\n    assert service.read() == 1\n"
             }
@@ -20428,6 +20604,21 @@
           "outcome": "accept",
           "scenarioId": "borrowed-fixture-resource",
           "title": "Request the collaborator through pytest"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_probe.py",
+              "source": "import pytest\n\n\nclass Probe:\n    def __init__(self, connection):\n        self.connection = connection\n\n\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\n\n\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = probe_factory(connection)\n    assert probe.connection is connection\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_probe.py",
+          "id": "requested-probe-factory",
+          "outcome": "accept",
+          "scenarioId": "requested-constructor-factory",
+          "title": "The fixture factory receives the same borrowed connection"
         },
         {
           "expectedCount": 0,
@@ -20933,6 +21124,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Set overlap is expressed without allocating an intersection"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-single-parametrize-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_value.py",
+              "source": "import pytest\nfrom itertools import product\n\n\n@pytest.mark.parametrize((\"kind\", \"mode\"), list(product([1, 2], [\"a\", \"b\"])))\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in (\"a\", \"b\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_value.py",
+          "id": "accepts-alternative",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Accept the preferred alternative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_value.py",
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"mode\", [\"a\", \"b\"])\n@pytest.mark.parametrize(\"kind\", [1, 2])\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in (\"a\", \"b\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_value.py",
+          "id": "rejects-antipattern",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Reject the anti-pattern"
         }
       ],
       "optionsSchemaSource": null
