@@ -21,11 +21,14 @@ from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._resource_provenance import import_name_for_binding
 from sarj_python_lint.rules._store_writes import (
     StoreOwners,
+    collection_method,
     compatible_collection_pair,
     depends_on_target,
     discarded_call,
     known_single_iteration,
     method_parameters,
+    methods,
+    own_nodes,
     read_pair,
 )
 
@@ -43,6 +46,7 @@ _WRITE_PAIRS: Final[Mapping[str, str]] = MappingProxyType(
     {name: name + "_many" for name in ("upsert", "create", "insert", "update", "delete")}
 )
 _READ_BULK_NAMES = ("get_many", "get_by_ids")
+_BULK_NAMES = frozenset((*_WRITE_PAIRS.values(), *_READ_BULK_NAMES))
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +54,7 @@ class _BulkCandidate:
     call: ast.Call
     bulk_name: str
     fan_out: bool = False
+    singleton_batch: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,9 +81,42 @@ class PreferBulkUpsert(ProjectRule):
             "Receivers must resolve to typed parameters or constructor-injected attributes. Signatures require one required input and matching scalar/collection input types. Writes retain matching scalar/collection output types. Read output may be T or T | None/Optional[T] versus list/Sequence[T] or dict/Mapping[K, T], with K matching the input key type. Missing-row placeholders, duplicate keys, cardinality and request order require review.",
             "Annotated first-party imports use the project index; unresolved, inherited, overloaded, decorated, rebound, reassigned and dynamic contracts are excluded, as are explicit metaclasses and class keywords. Unknown backend APIs and dictionary/cache joins do not prove a batch opportunity.",
             "Other result-dependent loops, filtered/nested comprehensions, async streams, loop else clauses, extra effects and per-row exception or transaction blocks are excluded. Batch atomicity and tenant/auth or snapshot behavior require review; this remains a warning without an autofix.",
+            "An explicit one-item list/tuple passed to a declared CRUD/read bulk collection parameter is also checked in synchronous for loops, including result-dependent/effectful bodies and one directly awaited same-class private helper. Inputs must retain their loop-target or helper-parameter binding. Helpers are not followed recursively; deferred scopes, comprehensions, yielding/decorated/replaced helpers, terminal loops, unknown contracts and multiple context parameters are excluded. Intentional per-row transactions require an exact suppression at the bulk call.",
             "Maintained tests are checked; generated/vendor sources are excluded. A bulk method is not invented when none is declared.",
         ),
         examples=(
+            RuleExample(
+                example_id="singleton-bulk-input",
+                scenario="singleton-bulk-input",
+                title="A bulk method called with one item still repeats the backend operation",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        _CONTRACT
+                        + "async def save(store: UserStore, users):\n    for user in users:\n        saved = await store.upsert_many([user])\n        record(saved)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="collected-bulk-input",
+                scenario="singleton-bulk-input",
+                title="Collect inputs before the bulk call",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        _CONTRACT
+                        + "async def save(store: UserStore, users):\n    saved = await store.upsert_many(users)\n    record(saved)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="serial-upserts",
                 title="Collect writes for an available bulk command",
@@ -222,13 +260,17 @@ class PreferBulkUpsert(ProjectRule):
         if owners.provenance.dynamic_namespace:
             return []
         findings: list[Diagnostic] = []
-        for node in context.nodes(ast.For, ast.ListComp, ast.DictComp, ast.Await):
-            candidate = _bulk_candidate(node, owners)
-            if candidate is None:
+        reported: set[ast.Call] = set()
+        for match in _bulk_candidates(owners):
+            call, bulk_name = match.call, match.bulk_name
+            if call in reported or context.suppressions.is_suppressed(call.lineno, self.code):
                 continue
-            call, bulk_name = candidate.call, candidate.bulk_name
-            if context.suppressions.is_suppressed(call.lineno, self.code):
-                continue
+            reported.add(call)
+            detail = (
+                f"Repeated `{bulk_name}` receives one item per loop iteration"
+                if match.singleton_batch
+                else f"This {'fan-out' if match.fan_out else 'serial'} {call.func.attr if isinstance(call.func, ast.Attribute) else 'singleton call'} has a declared compatible `{bulk_name}`"
+            )
             findings.append(
                 Diagnostic(
                     path=context.path,
@@ -236,10 +278,168 @@ class PreferBulkUpsert(ProjectRule):
                     col=call.col_offset + 1,
                     code=self.code,
                     severity=Severity.WARNING,
-                    message=f"This {'fan-out' if candidate.fan_out else 'serial'} {call.func.attr if isinstance(call.func, ast.Attribute) else 'singleton call'} has a declared compatible `{bulk_name}`; review bounded batching while preserving missing rows, cardinality, order, duplicate-key, atomicity, concurrency, failure, cancellation, backpressure, tenant, and transaction semantics.",
+                    message=f"{detail}; review bounded batching while preserving missing rows, cardinality, order, duplicate-key, atomicity, concurrency, failure, cancellation, backpressure, tenant, and transaction semantics.",
                 )
             )
         return findings
+
+
+def _bulk_candidates(owners: StoreOwners) -> list[_BulkCandidate]:
+    candidates: list[_BulkCandidate] = []
+    for node in owners.context.nodes(ast.For, ast.ListComp, ast.DictComp, ast.Await):
+        if candidate := _bulk_candidate(node, owners):
+            candidates.append(candidate)
+        if isinstance(node, ast.For):
+            candidates.extend(_singleton_bulk_calls(node, owners))
+    return candidates
+
+
+def _singleton_bulk_calls(loop: ast.For, owners: StoreOwners) -> list[_BulkCandidate]:
+    if (
+        loop.orelse
+        or known_single_iteration(loop.iter)
+        or any(isinstance(node, ast.Break | ast.Return | ast.Raise) for node in own_nodes(loop))
+    ):
+        return []
+    inputs = {
+        node.id: node
+        for node in ast.walk(loop.target)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
+    candidates: list[_BulkCandidate] = []
+    for call in _eager_calls(loop):
+        if candidate := _singleton_bulk_call(call, inputs, owners):
+            candidates.append(candidate)
+        candidates.extend(_helper_bulk_calls(call, inputs, owners))
+    return candidates
+
+
+def _helper_bulk_calls(
+    call: ast.Call, inputs: Mapping[str, ast.Name | ast.arg], owners: StoreOwners
+) -> list[_BulkCandidate]:
+    helper = _private_helper(call, owners)
+    if helper is None or (arguments := _method_arguments(call, helper)) is None:
+        return []
+    parameters = {parameter.arg: parameter for parameter in method_parameters(helper) or ()}
+    dependent = {
+        name: parameters[name] for name, argument in arguments.items() if _reads_inputs(argument, inputs, owners)
+    }
+    if not dependent:
+        return []
+    return [
+        candidate
+        for inner in _eager_calls(helper)
+        if (candidate := _singleton_bulk_call(inner, dependent, owners)) is not None
+    ]
+
+
+def _eager_calls(root: ast.AST) -> list[ast.Call]:
+    pending = list(ast.iter_child_nodes(root))
+    calls: list[ast.Call] = []
+    while pending:
+        node = pending.pop()
+        if isinstance(
+            node,
+            ast.FunctionDef
+            | ast.AsyncFunctionDef
+            | ast.ClassDef
+            | ast.Lambda
+            | ast.GeneratorExp
+            | ast.ListComp
+            | ast.SetComp
+            | ast.DictComp,
+        ):
+            continue
+        if isinstance(node, ast.Call):
+            calls.append(node)
+        pending.extend(ast.iter_child_nodes(node))
+    return calls
+
+
+def _reads_inputs(expression: ast.expr, inputs: Mapping[str, ast.Name | ast.arg], owners: StoreOwners) -> bool:
+    return any(
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id in inputs
+        and owners.provenance.binding(node.id, node) is inputs[node.id]
+        for node in own_nodes(expression)
+    )
+
+
+def _singleton_bulk_call(
+    call: ast.Call, inputs: Mapping[str, ast.Name | ast.arg], owners: StoreOwners
+) -> _BulkCandidate | None:
+    if not isinstance(call.func, ast.Attribute) or call.func.attr not in _BULK_NAMES:
+        return None
+    owner = owners.receiver(call.func.value, call)
+    method = collection_method(*owner, call.func.attr) if owner is not None else None
+    if method is None or has_own_yield(method):
+        return None
+    if isinstance(method, ast.AsyncFunctionDef) != isinstance(owners.context.parents.get(call), ast.Await):
+        return None
+    arguments = _method_arguments(call, method)
+    argument = next(iter(arguments.values())) if arguments else None
+    if not isinstance(argument, ast.List | ast.Tuple) or len(argument.elts) != 1:
+        return None
+    item = argument.elts[0]
+    if isinstance(item, ast.Starred) or not _reads_inputs(item, inputs, owners):
+        return None
+    return _BulkCandidate(call, call.func.attr, singleton_batch=True)
+
+
+def _private_helper(call: ast.Call, owners: StoreOwners) -> Function | None:
+    function = call.func
+    if (
+        not isinstance(function, ast.Attribute)
+        or not isinstance(function.value, ast.Name)
+        or function.value.id != "self"
+    ):
+        return None
+    if not function.attr.startswith("_") or function.attr.startswith("__"):
+        return None
+    binding = owners.provenance.binding("self", function.value)
+    arguments = owners.context.parents.get(binding) if binding is not None else None
+    method = owners.context.parents.get(arguments) if arguments is not None else None
+    owner = owners.context.parents.get(method) if method is not None else None
+    if (
+        not isinstance(binding, ast.arg)
+        or not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
+        or not isinstance(owner, ast.ClassDef)
+    ):
+        return None
+    if (
+        [*method.args.posonlyargs, *method.args.args][:1] != [binding]
+        or owner.keywords
+        or owner.decorator_list
+        or owner.name in owners.provenance.mutated
+    ):
+        return None
+    helper = methods(owner).get(function.attr)
+    if (
+        helper is None
+        or helper.decorator_list
+        or has_own_yield(helper)
+        or owners.instance_member_replaced(owner, function.attr)
+    ):
+        return None
+    if isinstance(helper, ast.AsyncFunctionDef) != isinstance(owners.context.parents.get(call), ast.Await):
+        return None
+    return helper
+
+
+def _method_arguments(call: ast.Call, helper: Function) -> dict[str, ast.expr] | None:
+    parameters = method_parameters(helper)
+    positional = [*helper.args.posonlyargs, *helper.args.args][1:]
+    if parameters is None or len(call.args) > len(positional) or any(isinstance(arg, ast.Starred) for arg in call.args):
+        return None
+    values = {parameter.arg: value for parameter, value in zip(positional, call.args, strict=False)}
+    names = {parameter.arg for parameter in parameters}
+    positional_only = {parameter.arg for parameter in helper.args.posonlyargs}
+    for keyword in call.keywords:
+        if keyword.arg is None or keyword.arg not in names or keyword.arg in values or keyword.arg in positional_only:
+            return None
+        values[keyword.arg] = keyword.value
+    return values if values.keys() == names else None
 
 
 def _bulk_candidate(
