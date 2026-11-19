@@ -12,7 +12,31 @@ packages=(nginx=1.24.0-2ubuntu7.19 kamailio=5.7.4-1build7 prometheus=2.45.3+ds-2
 
 # Use the Ubuntu test runner's signed package metadata and native architecture.
 # apt-get trusts existing archive sizes; validate cached bytes against its metadata.
-apt-get --print-uris download "${packages[@]}" >package-uris
+if ! apt-get --print-uris download "${packages[@]}" >package-uris; then
+  # The rolling archive drops superseded versions; keep these exact test bytes
+  # available through Ubuntu's signed snapshot from their publication window.
+  mkdir -p "$staging/apt/empty-parts" "$staging/apt/lists/partial" "$staging/apt/cache"
+  cat >"$staging/apt/ubuntu.sources" <<'SOURCES'
+Types: deb
+URIs: https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/
+Suites: noble noble-updates noble-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+SOURCES
+  cat >"$staging/apt/apt.conf" <<CONFIG
+Dir::Etc::sourcelist "$staging/apt/ubuntu.sources";
+Dir::Etc::sourceparts "$staging/apt/empty-parts";
+Dir::Etc::parts "$staging/apt/empty-parts";
+Dir::State::lists "$staging/apt/lists";
+Dir::Cache "$staging/apt/cache";
+Acquire::Languages "none";
+CONFIG
+  export APT_CONFIG="$staging/apt/apt.conf"
+  timeout --kill-after=15s 180s apt-get \
+    -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \
+    -o APT::Update::Error-Mode=any update
+  apt-get --print-uris download "${packages[@]}" >package-uris
+fi
 archives=()
 while read -r _uri archive _size checksum extra; do
   if [[ -n "$extra" || "$archive" == */* || "$archive" == -* || "$archive" != *.deb ]]; then
