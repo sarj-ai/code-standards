@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "acb368eb7db75b1bb07aa4a2cb7666a1a3b6685c99a0ae0256ac7548deb7d12a",
-  "cliSha256": "e5f34541a7d43e69ee751b8077c2602813f6f441b07a25ed53a3ac721b2a01f2",
+  "catalogSha256": "4dcaee34eebcee058dc50d0f55080f1716af74b8c0d468c576fb8c8318ab7844",
+  "cliSha256": "7e8fefe3defd13b17d50120571ec113593b4091853a4f04829ed7fc6bf351a8b",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -18250,6 +18250,21 @@
           "title": "Return bulk results after reviewing cardinality and failures"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users):\n    saved = await store.upsert_many(users)\n    record(saved)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "collected-bulk-input",
+          "outcome": "accept",
+          "scenarioId": "singleton-bulk-input",
+          "title": "Collect inputs before the bulk call"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -18293,6 +18308,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Collect writes for an available bulk command"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users):\n    for user in users:\n        saved = await store.upsert_many([user])\n        record(saved)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "singleton-bulk-input",
+          "outcome": "reject",
+          "scenarioId": "singleton-bulk-input",
+          "title": "A bulk method called with one item still repeats the backend operation"
         },
         {
           "expectedCount": 1,
