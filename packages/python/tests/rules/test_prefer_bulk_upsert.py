@@ -22,9 +22,186 @@ class UserStore:
         ...
 """
 
+BULK_ONLY_CONTRACT = """
+from collections.abc import Sequence
+from abc import ABC, abstractmethod
+
+class UserStore(ABC):
+    @abstractmethod
+    async def upsert_many(self, users: Sequence[UserInput]) -> list[User]:
+        ...
+"""
+
 
 def _check(body: str, contract: str = CONTRACT) -> list[Diagnostic]:
     return PreferBulkUpsert().check(Path("app/service.py"), dedent(contract) + "\n" + dedent(body))
+
+
+def test_flags_one_item_bulk_calls_with_results_and_other_effects() -> None:
+    findings = _check(
+        """
+        async def save(store: UserStore, users):
+            saved = {}
+            for user in users:
+                if user.cached:
+                    continue
+                rows = await store.upsert_many([UserInput(name=user.name)])
+                saved[user.name] = rows[0]
+            return saved
+        """,
+        BULK_ONLY_CONTRACT,
+    )
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+    assert "one item" in findings[0].message
+
+
+def test_follows_one_declared_private_helper_for_singleton_bulk_inputs() -> None:
+    findings = _check(
+        """
+        class Service:
+            def __init__(self, store: UserStore):
+                self.store = store
+            async def save(self, users):
+                saved = {}
+                for user in users:
+                    saved[user.name] = await self._publish(user, audit=True)
+                return saved
+            async def _publish(self, request, *, audit):
+                try:
+                    rows = await self.store.upsert_many([UserInput(name=request.name)])
+                    return rows[0]
+                finally:
+                    record(audit)
+        """,
+        BULK_ONLY_CONTRACT,
+    )
+    assert len(findings) == 1
+    assert "one item" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "await store.upsert_many(users)",
+        "for user in users:\n        await store.upsert_many(users)",
+        "for user in users:\n        await store.upsert_many([fixed])",
+        "for user in users:\n        await store.upsert_many([user, other])",
+        "for user in users:\n        deferred = (store.upsert_many([user]) for _ in values)",
+        "for user in users:\n        def deferred():\n            return store.upsert_many([user])",
+        "for user in users:\n        deferred = lambda: store.upsert_many([user])",
+        "for user in users:\n        user = fixed\n        await store.upsert_many([user])",
+        "for user in users:\n        return await store.upsert_many([user])",
+        "for user in users:\n        await store.upsert_many([user])\n        break",
+        "for user in [only]:\n        await store.upsert_many([user])",
+        "for user in users:\n        store.upsert_many([user])",
+        "for user in users:\n        store = other\n        await store.upsert_many([user])",
+        "for user in users:\n        record(user)\n    else:\n        await store.upsert_many([user])",
+    ],
+)
+def test_singleton_bulk_requires_repeated_eager_loop_dependent_calls(body: str) -> None:
+    assert _check(f"async def save(store: UserStore, users):\n    {body}\n", BULK_ONLY_CONTRACT) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("Sequence[UserInput]", "UserInput"),
+        ("users: Sequence[UserInput]", "users"),
+        ("@abstractmethod", "@custom"),
+        ("class UserStore(ABC):", "class UserStore(ABC, metaclass=Custom):"),
+        ("async def upsert_many", "def upsert_many"),
+    ],
+    ids=["scalar-input", "untyped-input", "custom-decorator", "dynamic-metaclass", "await-mode"],
+)
+def test_singleton_bulk_requires_a_declared_collection_contract(change: tuple[str, str]) -> None:
+    assert (
+        _check(
+            "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert_many([user])",
+            BULK_ONLY_CONTRACT.replace(*change),
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("parameter", "argument", "count"),
+    [
+        ("*, users: Sequence[UserInput]", "users=[user]", 1),
+        ("*, users: Sequence[UserInput]", "[user]", 0),
+        ("users: Sequence[UserInput], /", "[user]", 1),
+        ("users: Sequence[UserInput], /", "users=[user]", 0),
+    ],
+    ids=["keyword-only", "invalid-positional", "positional-only", "invalid-keyword"],
+)
+def test_singleton_bulk_binds_the_collection_parameter(parameter: str, argument: str, count: int) -> None:
+    assert (
+        len(
+            _check(
+                f"async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert_many({argument})",
+                BULK_ONLY_CONTRACT.replace("users: Sequence[UserInput]", parameter),
+            )
+        )
+        == count
+    )
+
+
+@pytest.mark.parametrize(
+    ("caller", "helper"),
+    [
+        ("self = other\n        for user in users:\n            await self._publish(user)", ""),
+        ("self._publish = other\n        for user in users:\n            await self._publish(user)", ""),
+        ("setattr(self, '_publish', other)\n        for user in users:\n            await self._publish(user)", ""),
+        (
+            "alias = self\n        alias._publish = other\n        for user in users:\n            await self._publish(user)",
+            "",
+        ),
+        ("for user in users:\n            await self._publish(fixed)", ""),
+        ("for user in users:\n            self._publish(user)", ""),
+        ("for user in users:\n            await self._publish(user)", "request = fixed"),
+        ("for user in users:\n            await self._publish(user)", "self = other"),
+    ],
+    ids=[
+        "rebound-caller",
+        "replaced-helper",
+        "setattr-helper",
+        "alias-helper",
+        "constant-input",
+        "unawaited-helper",
+        "rebound-input",
+        "rebound-helper-self",
+    ],
+)
+def test_private_helper_requires_original_bindings(caller: str, helper: str) -> None:
+    source = (
+        "class Service:\n"
+        "    def __init__(self, store: UserStore):\n        self.store = store\n"
+        "    async def save(self, users):\n        " + caller + "\n"
+        "    async def _publish(self, request):\n        " + helper + "\n"
+        "        return await self.store.upsert_many([request])\n"
+    )
+    assert _check(source, BULK_ONLY_CONTRACT) == []
+
+
+def test_singleton_bulk_helper_deduplicates_and_honors_exact_suppression() -> None:
+    source = """
+    class Service:
+        def __init__(self, store: UserStore):
+            self.store = store
+        async def save(self, users):
+            for first in users:
+                await self._publish(first)
+            for second in users:
+                await self._publish(second)
+        async def _publish(self, request):
+            return await self.store.upsert_many([request])
+    """
+    assert len(_check(source, BULK_ONLY_CONTRACT)) == 1
+    suppressed = source.replace(
+        "return await self.store.upsert_many([request])",
+        "return await self.store.upsert_many([request])  # sarj-noqa: SARJ516 -- Each row requires its own transaction.",
+    )
+    assert _check(suppressed, BULK_ONLY_CONTRACT) == []
 
 
 @pytest.mark.parametrize("argument", ["user", "UserInput(name=user.name)"])

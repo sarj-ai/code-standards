@@ -348,6 +348,24 @@ def collection_item(annotation: ast.expr | None, imports: ImportIndex) -> ast.ex
     return None
 
 
+def collection_method(owner: ast.ClassDef, imports: ImportIndex, name: str) -> Function | None:
+    if owner.keywords or (method := methods(owner).get(name)) is None:
+        return None
+    if any(
+        decorator_name(decorator, method, owner, imports) not in _NEUTRAL_DECORATORS
+        for decorator in method.decorator_list
+    ):
+        return None
+    parameters = method_parameters(method)
+    return (
+        method
+        if parameters is not None
+        and len(parameters) == 1
+        and collection_item(parameters[0].annotation, imports) is not None
+        else None
+    )
+
+
 def same_type(left: ast.expr | None, right: ast.expr | None) -> bool:
     left, right = AnnotationSemantics.parse(left), AnnotationSemantics.parse(right)
     return (
@@ -469,11 +487,13 @@ class _ReceiverAliases:
                     pass
         return frozenset(origins)
 
-    def replaced(self, origin: _ReceiverOrigin, nodes: Iterable[ast.AST]) -> bool:
+    def replaced(
+        self, origin: _ReceiverOrigin, nodes: Iterable[ast.AST], *, members: frozenset[str] = _STORE_MEMBERS
+    ) -> bool:
         return any(
             (origins := self.origins(target)) is None or origin in origins
             for node in nodes
-            if (target := _replaced_receiver(node, self.context.imports)) is not None
+            if (target := _replaced_receiver(node, self.context.imports, members)) is not None
         )
 
     def _preceding_bindings(self, expression: ast.Name) -> tuple[ast.AST, ...]:
@@ -581,6 +601,21 @@ class StoreOwners:
     def _receiver_method_replaced(self, binding: ast.arg) -> bool:
         return self.aliases.replaced(_ReceiverOrigin(binding), self.context.nodes(ast.Attribute, ast.Call))
 
+    def instance_member_replaced(self, owner: ast.ClassDef, member: str) -> bool:
+        for method in owner.body:
+            if not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            positional = [*method.args.posonlyargs, *method.args.args]
+            if (
+                positional
+                and positional[0].arg == "self"
+                and self.aliases.replaced(
+                    _ReceiverOrigin(positional[0]), own_nodes(method), members=frozenset({member, "__class__"})
+                )
+            ):
+                return True
+        return False
+
     def _injected_annotation(self, attribute: str, at: ast.AST) -> ast.expr | None:
         parent = self.context.parents.get(at)
         while parent is not None and not isinstance(parent, ast.ClassDef):
@@ -677,8 +712,8 @@ def _constructor_injected_value(constructor: Function, assignment: ast.AST) -> a
     return None
 
 
-def _replaced_receiver(node: ast.AST, imports: ImportIndex) -> ast.expr | None:
-    if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del) and node.attr in _STORE_MEMBERS:
+def _replaced_receiver(node: ast.AST, imports: ImportIndex, members: frozenset[str]) -> ast.expr | None:
+    if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del) and node.attr in members:
         return node.value
     if not isinstance(node, ast.Call) or node.keywords:
         return None
@@ -689,7 +724,7 @@ def _replaced_receiver(node: ast.AST, imports: ImportIndex) -> ast.expr | None:
     if required is None or len(node.args) != required:
         return None
     member = node.args[1]
-    return node.args[0] if isinstance(member, ast.Constant) and member.value in _STORE_MEMBERS else None
+    return node.args[0] if isinstance(member, ast.Constant) and member.value in members else None
 
 
 def _injected_parameter(constructor: Function, value: ast.Name, provenance: ResourceProvenance) -> ast.expr | None:
