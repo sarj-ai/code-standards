@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards-bootstrap"
-version = "2.1.13"
+version = "2.1.14"
 description = "Manifest-driven launcher for an exact Sarj Standards bundle."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -38,7 +38,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
