@@ -2449,7 +2449,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         lines.extend(
             (
                 "      - name: Harden the runner",
-                "        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3",
+                "        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4",
                 "        with:",
                 "          egress-policy: audit",
             )
@@ -2465,7 +2465,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     if ecosystems.kotlin:
         lines.extend(
             (
-                "      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0",
+                "      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0",
                 "        with:",
                 "          distribution: temurin",
                 "          java-version: '21'",
@@ -2803,7 +2803,7 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     harden = (
         """\
       - name: Harden the runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 """
