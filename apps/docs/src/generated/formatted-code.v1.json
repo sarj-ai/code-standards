@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3198f9b94e5e87418c4cbfc9fd9fde61ce0326bafa58b79950674e21abe4c44d",
-  "cliSha256": "555a780a2fbc27ebe2d276178790bca56765910b48f42be017e4e2906fe197ee",
+  "catalogSha256": "acb368eb7db75b1bb07aa4a2cb7666a1a3b6685c99a0ae0256ac7548deb7d12a",
+  "cliSha256": "57c2d95de718b31c5f85e1e854ff6bc7d086ef65d52d4ebc91154b90d31a63a7",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -10188,7 +10188,7 @@
           "files": [
             {
               "path": "app.ts",
-              "source": "import { defineCommand, runMain } from \"citty\";\nrunMain(\n  defineCommand({\n    args: { service: { type: \"positional\", required: true } },\n    run({ args }) {\n      deploy(args.service);\n    },\n  }),\n);\n"
+              "source": "import { z } from \"zod\";\nconst Args = z.tuple([z.string().min(1)]);\nconst [service] = Args.parse(process.argv.slice(2));\ndeploy(service);\n"
             }
           ],
           "fixedFiles": [],
@@ -10407,6 +10407,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Define validation and the type from one enum"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-zod-field-bounds": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/count.ts",
+              "source": "import { z } from \"zod\";\nconst CountSchema = z.object({ value: z.number().int().min(1) });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/count.ts",
+          "id": "native-field-range",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep the integer domain on its field"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/count.ts",
+              "source": "import { z } from \"zod\";\nconst CountSchema = z\n  .object({ value: z.number().int() })\n  .refine((row) => row.value >= 1);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/count.ts",
+          "id": "object-integer-range",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A pure field range hidden in an object validator"
         }
       ],
       "optionsSchemaSource": null
@@ -19278,6 +19313,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/normalization.py",
+              "source": "class Resource:\n    pass\n\n\ndef obtain(candidate):\n    match candidate:\n        case Resource():\n            resource = candidate\n        case _:\n            resource = Resource()\n            install(resource)\n    return resource\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/normalization.py",
+          "id": "normalization-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "ordinary-class-normalization",
+          "title": "Class patterns retain every branch assignment and installation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/types.py",
               "source": "def is_text(value):\n    match value:\n        case str() | bytes():\n            return True\n    return False\n"
             }
@@ -19303,6 +19353,21 @@
           "outcome": "reject",
           "scenarioId": "or-type-dispatch",
           "title": "Repeated boolean checks share one type subject"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/normalization.py",
+              "source": "class Resource:\n    pass\n\n\ndef obtain(candidate):\n    if isinstance(candidate, Resource):\n        resource = candidate\n    else:\n        resource = Resource()\n        install(resource)\n    return resource\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/normalization.py",
+          "id": "reuse-or-construct-normalization",
+          "outcome": "reject",
+          "scenarioId": "ordinary-class-normalization",
+          "title": "Reuse or construct one ordinary class"
         },
         {
           "expectedCount": 0,
@@ -20075,6 +20140,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-pydantic-field-bounds": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/model.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Count(BaseModel):\n    value: int = Field(ge=1)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/model.py",
+          "id": "declared-field-bound",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The field schema declares its range"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/model.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Count(BaseModel):\n    value: int\n\n    @model_validator(mode=\"after\")\n    def positive(self):\n        if self.value < 1:\n            raise ValueError(\"must be positive\")\n        return self\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/model.py",
+          "id": "model-wide-integer-bound",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A field range is hidden in a model-wide guard"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-pydantic-json-value": {
       "examples": [
         {
@@ -20218,6 +20318,36 @@
           "outcome": "reject",
           "scenarioId": "supplied-store",
           "title": "A second store bypasses the supplied fixture"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_read.py",
+              "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef read_store(store: Port):\n    return store.read()\n\n\ndef _read():\n    store = Store()\n    return read_store(store)\n\n\ndef test_read():\n    assert _read() == 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_read.py",
+          "id": "helper-function-collaborator",
+          "outcome": "reject",
+          "scenarioId": "helper-function-collaborator",
+          "title": "A test helper constructs the function's store dependency"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_read.py",
+              "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef read_store(store: Port):\n    return store.read()\n\n\ndef _read(store: Port):\n    return read_store(store)\n\n\ndef test_read(store: Port):\n    assert _read(store) == 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_read.py",
+          "id": "helper-injected-function-collaborator",
+          "outcome": "accept",
+          "scenarioId": "helper-function-collaborator",
+          "title": "The fixture dependency is passed through the helper"
         },
         {
           "expectedCount": 0,
@@ -21073,6 +21203,36 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/router.py",
+              "source": "from fastapi import Request\n\n\ndef attempt(request: Request) -> int:\n    return int(request.headers.get(\"x-delivery-attempt\", \"1\"))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "http-header-coercion",
+          "outcome": "reject",
+          "scenarioId": "http-header-contract",
+          "title": "Name the parsed HTTP header contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/router.py",
+              "source": "from typing import Annotated\nfrom fastapi import Header\n\n\ndef attempt(value: Annotated[int, Header(alias=\"x-delivery-attempt\")] = 1) -> int:\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/router.py",
+          "id": "http-header-contract",
+          "outcome": "accept",
+          "scenarioId": "http-header-contract",
+          "title": "FastAPI owns the typed header admission"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/__init__.py",
               "source": "# package\n"
             },
@@ -21129,6 +21289,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "The field has no declared type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/messages.py",
+              "source": "from livekit.agents.llm import ChatMessage\n\n\ndef enabled(message: ChatMessage) -> bool:\n    if message.extra.get(\"enabled\"):\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "sdk-metadata-condition",
+          "outcome": "reject",
+          "scenarioId": "sdk-metadata-contract",
+          "title": "Name the interpreted SDK metadata fields"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/messages.py",
+              "source": "from typing import Annotated\nfrom livekit.agents.llm import ChatMessage\nfrom pydantic import BaseModel, BeforeValidator\n\n\nclass Flags(BaseModel):\n    enabled: Annotated[bool, BeforeValidator(bool)] = False\n\n\ndef enabled(message: ChatMessage) -> bool:\n    return Flags.model_validate(message.extra).enabled\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "sdk-metadata-model",
+          "outcome": "accept",
+          "scenarioId": "sdk-metadata-contract",
+          "title": "Parse a metadata flag while preserving truthiness"
         },
         {
           "expectedCount": 0,

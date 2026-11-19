@@ -308,8 +308,8 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "typescript",
         "preferred-stack",
         "commander,yargs",
-        "citty",
-        "Standards standardizes command-line interfaces on citty.",
+        "Zod schemas with native flag parsing",
+        "Declare and validate application arguments with Zod; use native Node flag parsing for transport.",
     ),
     _mapping(
         "LIB111",

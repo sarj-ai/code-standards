@@ -1908,3 +1908,167 @@ def test_imported_single_model_dispatch_cli(
     output = capsys.readouterr()
     assert not output.err
     assert output.out.count("SARJ080") == expected
+
+
+_REUSE_CONSTRUCTION_CASES = tuple(
+    EvaluationCase(case_id, Language.PYTHON, source, expected)
+    for case_id, source, expected in (
+        (
+            "simple",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "install-after-construction",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n        install(ready)\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "work-after-reuse",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n        observe(ready)\n    else:\n        ready = Handler()\n        install(ready)\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "non-capitalized-class",
+            "class handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, handler):\n        ready = candidate\n    else:\n        ready = handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "typed-normalizer",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate: object, token=None) -> Handler:\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "match-args-not-read",
+            "class Handler:\n    __match_args__ = 7\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "different-target",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        other = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "different-constructed-class",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\nclass Other: pass\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Other()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "before-reuse-effect",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        observe(candidate)\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "before-construction-effect",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        prepare()\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "later-output-reassignment",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n        ready = object()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "nested-constructor-call-argument",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler(make_token())\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "class-attribute-mutation",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\nHandler.status = True\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "class-setattr-mutation",
+            'class Handler:\n    def __init__(self, token=None):\n        self.token = token\nsetattr(Handler, "status", True)\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n',
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "class-escaped",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\nregister_type(Handler)\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "class-dict-exposed",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\nattributes = Handler.__dict__\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "elif-in-established-ladder",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate):\n    if isinstance(candidate, bytes):\n        return candidate\n    elif isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "pydantic-existing-error",
+            "from pydantic import BaseModel\nclass Handler(BaseModel): pass\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "enum-existing-error",
+            "from enum import Enum\nclass Handler(Enum): ITEM = 1\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "already-match",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate):\n    match candidate:\n        case Handler():\n            ready = candidate\n        case _:\n            ready = Handler()\n            install(ready)\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "exact-suppression",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):  # sarj-noqa: SARJ080 -- preserve this normalization boundary.\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "unrelated-suppression",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    if isinstance(candidate, Handler):  # sarj-noqa: SARJ453 -- unrelated rule.\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.MATCH,
+        ),
+        (
+            "global-output-target",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\ndef normalize(candidate, token=None):\n    global ready\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n    return ready\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+        (
+            "classbody-normalization",
+            "class Handler:\n    def __init__(self, token=None):\n        self.token = token\nclass Settings:\n    if isinstance(candidate, Handler):\n        ready = candidate\n    else:\n        ready = Handler()\n",
+            ExpectedOutcome.NO_MATCH,
+        ),
+    )
+)
+_REUSE_CONSTRUCTION_ERROR_CASES = frozenset(
+    {"elif-in-established-ladder", "pydantic-existing-error", "enum-existing-error"}
+)
+
+
+@pytest.mark.parametrize(
+    "case", _REUSE_CONSTRUCTION_CASES, ids=tuple(case.case_id for case in _REUSE_CONSTRUCTION_CASES)
+)
+def test_reuse_or_construction_normalization_cases(case: EvaluationCase) -> None:
+    findings = check_source([PreferMatchTypeDispatch()], Path("app/normalization.py"), case.source)
+    expected_count = 1 if case.expected is ExpectedOutcome.MATCH else 0
+    assert len(findings) == expected_count
+    expected_severity = Severity.ERROR if case.case_id in _REUSE_CONSTRUCTION_ERROR_CASES else Severity.WARNING
+    assert all(finding.severity is expected_severity and finding.fixes == () for finding in findings)
+
+
+@pytest.mark.parametrize(("minimum", "warning_count"), [("3.9", 0), ("3.10", 1), ("3.14", 1)])
+def test_normalization_warning_respects_python_target_and_keeps_cli_success(
+    tmp_path: Path, capsys: CaptureFixture[str], minimum: str, warning_count: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "normalization-fixture"\nversion = "0.0.0"\nrequires-python = ">={minimum}"\n'
+    )
+    path = tmp_path / "normalization.py"
+    source = next(case.source for case in _REUSE_CONSTRUCTION_CASES if case.case_id == "install-after-construction")
+    path.write_text(source)
+
+    assert main(["check", "--rule", "prefer-match-type-dispatch", str(path)]) == 0
+    output = capsys.readouterr()
+    assert not output.err
+    assert output.out.count("SARJ080") == warning_count
+    assert output.out.count("warning:") == warning_count
+
+
+def test_normalization_native_entry_rejects_invalid_source() -> None:
+    with pytest.raises(ValueError, match="could not be parsed"):
+        check_source([PreferMatchTypeDispatch()], Path("app/normalization.py"), "def normalize(candidate):\n    if\n")

@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
 
@@ -655,3 +656,171 @@ def test_native_http_clients_are_supplied_by_fixtures(rule: ProjectRule, source:
 )
 def test_native_http_client_ownership_boundaries(rule: ProjectRule, source: str) -> None:
     assert rule.check(Path("tests/test_client.py"), source) == []
+
+
+_FUNCTION_DEPENDENCY = (
+    _SERVICE + "def read_store(store: Port, *, offset: int = 0) -> int:\n    return store.read() + offset\n"
+)
+_OWNED_HELPER = "def _helper():\n    store = Store()\n    return read_store(store)\n"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "assert read_store(Store()) == 1",
+        "assert read_store(store=Store(), offset=1) == 2",
+        "store = Store()\nassert read_store(store) == 1",
+        "store = Store()\nalias = store\nassert read_store(alias) == 1",
+    ],
+    ids=["inline", "keyword", "local", "stable-alias"],
+)
+def test_function_invoked_contract_is_a_fixture_dependency(rule: ProjectRule, body: str) -> None:
+    source = _FUNCTION_DEPENDENCY + "def test_read():\n" + "".join("    " + line + "\n" for line in body.splitlines())
+    diagnostics = rule.check(Path("tests/test_function.py"), source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity.value == "warning"
+
+
+def test_multiple_collected_callers_report_the_helper_construction_once(rule: ProjectRule) -> None:
+    source = (
+        _FUNCTION_DEPENDENCY
+        + _OWNED_HELPER
+        + "def test_first():\n    assert _helper() == 1\ndef test_second():\n    assert _helper() == 1\n"
+    )
+    diagnostics = rule.check(Path("tests/test_function.py"), source)
+    assert len(diagnostics) == 1
+    assert source.splitlines()[diagnostics[0].line - 1].strip() == "store = Store()"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def test_read(store: Port):\n    assert read_store(store) == 1\n",
+        "def test_read():\n    store = Store()\n    assert store.read() == 1\n",
+        "def _helper():\n    return Store()\ndef test_read():\n    assert _helper().read() == 1\n",
+        _OWNED_HELPER,
+        "def helper():\n    store = Store()\n    return read_store(store)\ndef test_read():\n    assert helper() == 1\n",
+        _OWNED_HELPER + "callback = _helper\ndef test_read():\n    assert _helper() == 1\n",
+        _OWNED_HELPER + "def other():\n    return _helper()\ndef test_read():\n    assert _helper() == 1\n",
+        _OWNED_HELPER + "_helper = replacement\ndef test_read():\n    assert _helper() == 1\n",
+        "@custom\n" + _OWNED_HELPER + "def test_read():\n    assert _helper() == 1\n",
+        _OWNED_HELPER + "__all__ = ['_helper']\ndef test_read():\n    assert _helper() == 1\n",
+        _OWNED_HELPER + "def test_read():\n    with pytest.raises(ValueError):\n        _helper()\n",
+        "def test_read():\n    with pytest.raises(ValueError):\n        read_store(Store())\n",
+        "@pytest.fixture\ndef fixture():\n    return read_store(Store())\n",
+        "def test_read():\n    assert unknown(Store()) == 1\n",
+        "def test_read(args):\n    read_store(*args, Store())\n",
+        "def test_read(options):\n    read_store(store=Store(), **options)\n",
+        "def test_read(other):\n    read_store(other, store=Store())\n",
+        "def test_read():\n    read_store(Store(), unknown=1)\n",
+        "def test_read(read_store):\n    read_store(Store())\n",
+        "def test_read():\n    def read_store(store):\n        return 1\n    read_store(Store())\n",
+        "def test_read():\n    from elsewhere import read_store\n    read_store(Store())\n",
+        "def test_read(Store):\n    read_store(Store())\n",
+        "def test_read():\n    read_store(Store())  # sarj-noqa: SARJ526 -- construction is intentional\n",
+        _OWNED_HELPER + "namespace = globals()\ndef test_read():\n    assert _helper() == 1\n",
+    ],
+    ids=[
+        "fixture-input",
+        "subject",
+        "_helper-subject",
+        "unreferenced",
+        "public-helper",
+        "callback",
+        "non-test-owner",
+        "rebound",
+        "decorated-_helper",
+        "exported",
+        "raises-caller",
+        "raises-direct",
+        "fixture-owner",
+        "unknown-consumer",
+        "starred",
+        "unpacked",
+        "duplicate-binding",
+        "unknown-keyword",
+        "consumer-shadow",
+        "nested-consumer-shadow",
+        "local-import-shadow",
+        "constructor-shadow",
+        "suppressed",
+        "dynamic-namespace",
+    ],
+)
+def test_function_and_helper_ownership_boundaries(rule: ProjectRule, source: str) -> None:
+    assert rule.check(Path("tests/test_function.py"), _FUNCTION_DEPENDENCY + source) == []
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "def read_store(store):\n    return store.read()\n",
+        "def read_store(store: Store):\n    return store.read()\n",
+        "def read_store(store: Port):\n    return store\n",
+        "def read_store(store: Port):\n    store = replacement\n    return store.read()\n",
+        "def read_store(store: Port):\n    return store.unknown()\n",
+        "@custom\ndef read_store(store: Port):\n    return store.read()\n",
+        "def read_store[T](store: Port):\n    return store.read()\n",
+        "def read_store(store: Port, **options):\n    return store.read()\n",
+        "def read_store(store: Port):\n    return store.read()\nread_store = replacement\n",
+    ],
+    ids=[
+        "untyped",
+        "concrete-subject",
+        "not-invoked",
+        "rebound-parameter",
+        "unknown-method",
+        "decorated",
+        "generic",
+        "variadic",
+        "rebound-function",
+    ],
+)
+def test_only_resolved_declared_parameter_invocations_own_collaborators(rule: ProjectRule, consumer: str) -> None:
+    assert (
+        rule.check(Path("tests/test_function.py"), _SERVICE + consumer + "def test_read():\n    read_store(Store())\n")
+        == []
+    )
+
+
+def test_imported_async_function_and_type_checking_contract(rule: ProjectRule, tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.0.0'\n")
+    source = "from app.service import read_store as consume\nfrom app.ports import Store\nasync def _helper():\n    store = Store()\n    await arrange(store)\n    return await consume(store=store)\nasync def test_read():\n    assert await _helper() == 1\n"
+    sources = {
+        tmp_path / "app/__init__.py": "",
+        tmp_path
+        / "app/ports.py": "from abc import ABC, abstractmethod\nclass Port(ABC):\n    @abstractmethod\n    async def read(self) -> int: ...\nclass Store(Port):\n    async def read(self) -> int: return 1\n",
+        tmp_path
+        / "app/service.py": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from app.ports import Port\nasync def read_store(*, store: Port) -> int:\n    return await store.read()\n",
+        tmp_path / "tests/test_function.py": source,
+    }
+    for path, text in sources.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    diagnostics = rule.check(tmp_path / "tests/test_function.py", source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 4
+
+
+@pytest.mark.parametrize(
+    ("path", "prefix"),
+    [
+        ("app/service.py", ""),
+        ("tests/fakes/service.py", ""),
+        ("tests/mocks/service.py", ""),
+        ("tests/test_service.py", "# @generated\n"),
+    ],
+)
+def test_function_dependency_keeps_source_boundaries(rule: ProjectRule, path: str, prefix: str) -> None:
+    source = prefix + _FUNCTION_DEPENDENCY + "def test_read():\n    read_store(Store())\n"
+    assert rule.check(Path(path), source) == []
+
+
+def test_function_dependency_selection_and_manual_remediation(tmp_path: Path) -> None:
+    source = _FUNCTION_DEPENDENCY + _OWNED_HELPER + "def test_read():\n    assert _helper() == 1\n"
+    target = tmp_path / "test_function.py"
+    target.write_text(source)
+    assert [diagnostic.code for diagnostic in analyze([PreferPytestDependencyFixtures.id], [target])] == ["SARJ526"]
+    assert analyze([], [target]) == []
+    assert fix_source(target, source, rule_ids=[PreferPytestDependencyFixtures.id]) == source

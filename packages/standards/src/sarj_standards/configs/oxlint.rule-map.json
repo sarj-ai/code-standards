@@ -1336,14 +1336,14 @@
           {
             "id": "LIB110",
             "module": "commander",
-            "note": "Standards standardizes command-line interfaces on citty.",
-            "replacement": "citty"
+            "note": "Declare and validate application arguments with Zod; use native Node flag parsing for transport.",
+            "replacement": "Zod schemas with native flag parsing"
           },
           {
             "id": "LIB110",
             "module": "yargs",
-            "note": "Standards standardizes command-line interfaces on citty.",
-            "replacement": "citty"
+            "note": "Declare and validate application arguments with Zod; use native Node flag parsing for transport.",
+            "replacement": "Zod schemas with native flag parsing"
           },
           {
             "id": "LIB111",
@@ -6086,11 +6086,11 @@
             "name": "sinon"
           },
           {
-            "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.",
+            "message": "LIB110: Declare and validate application arguments with Zod; use native Node flag parsing for transport. Replace with Zod schemas with native flag parsing.",
             "name": "commander"
           },
           {
-            "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.",
+            "message": "LIB110: Declare and validate application arguments with Zod; use native Node flag parsing for transport. Replace with Zod schemas with native flag parsing.",
             "name": "yargs"
           },
           {
@@ -6313,13 +6313,13 @@
             "group": [
               "commander/*"
             ],
-            "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."
+            "message": "LIB110: Declare and validate application arguments with Zod; use native Node flag parsing for transport. Replace with Zod schemas with native flag parsing."
           },
           {
             "group": [
               "yargs/*"
             ],
-            "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."
+            "message": "LIB110: Declare and validate application arguments with Zod; use native Node flag parsing for transport. Replace with Zod schemas with native flag parsing."
           },
           {
             "group": [

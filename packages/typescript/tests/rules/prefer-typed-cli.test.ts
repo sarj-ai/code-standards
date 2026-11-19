@@ -8,6 +8,7 @@ import { ruleTester } from "./_tester.js";
 
 ruleTester().run("prefer-typed-cli", rule, {
   valid: [
+  "import { z } from 'zod'; const Args = z.tuple([z.string().min(1)]); const [service] = Args.parse(process.argv.slice(2)); deploy(service);",
   "const result = JSON.parse(process.argv[2], (_key, value) => value);",
   "const result = Schema.parse(process.argv[2], options);",
 

@@ -1,5 +1,5 @@
 /**
- * @fileoverview zod — the single source of truth for "does this name read as a Zod schema?".
+ * @fileoverview zod — shared Zod schema recognition and explicit field policy facts.
  *
  */
 
@@ -11,6 +11,12 @@ export const ZOD_SUFFIX_RE = /Schema$/;
 
 /** Broad legacy recognition. `require-pascal-case-zod-schema-name` owns canonical declaration names. */
 export const ZOD_SCHEMA_NAME_RE = /Schema$|^Z[A-Z]/;
+
+/** Explicit numeric field policy shared with its owning rule to avoid duplicate diagnostics. */
+export const SCHEMA_INTEGER_FIELD_MINIMUMS: ReadonlyMap<string, number> = new Map([
+  ["limit", 1],
+  ["version", 0],
+]);
 
 export function isZodModule(source: string): boolean {
   return source === "zod" || source.startsWith("zod/");

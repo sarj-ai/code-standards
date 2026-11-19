@@ -42,7 +42,7 @@ _PASSIVE_CONFIG = frozenset({"frozen", "strict", "validate_default"})
 _MODEL_APIS = frozenset({"model_construct", "model_validate", "model_validate_json", "model_validate_strings"})
 _MAX_ANNOTATION_DEPTH = 64
 _MAX_ANNOTATION_NODES = 1024
-_MAX_LITERAL_TEXT = 65536
+_MAX_LITERAL_TEXT = 65_536
 _UNKNOWN_LITERAL: Final = object()
 _PAIR_ARITY = 2
 

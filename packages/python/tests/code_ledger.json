@@ -368,5 +368,7 @@
   "SARJ577": "no-unscoped-async-client-factory",
   "SARJ578": "no-nonlocal-statement",
   "SARJ579": "prefer-defaultdict",
-  "SARJ580": "no-value-error-forwarder"
+  "SARJ580": "no-value-error-forwarder",
+  "SARJ581": "prefer-pytest-case-table",
+  "SARJ582": "prefer-pydantic-field-bounds"
 }
