@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4dcaee34eebcee058dc50d0f55080f1716af74b8c0d468c576fb8c8318ab7844",
-  "cliSha256": "7e8fefe3defd13b17d50120571ec113593b4091853a4f04829ed7fc6bf351a8b",
+  "catalogSha256": "866bb3b462871a02e823d58c2674a402e8a22ed21d293805e22e8cc15907fed5",
+  "cliSha256": "a5beac9c08986ed3e9339476f0e2d9ff31c1588460c9285d99d21342efbe9cf4",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -20323,6 +20323,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "tests/test_probe.py",
+              "source": "import pytest\n\n\nclass Probe:\n    def __init__(self, connection):\n        self.connection = connection\n\n\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\n\n\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = Probe(connection)\n    assert probe.connection is connection\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_probe.py",
+          "id": "bypassed-probe-factory",
+          "outcome": "reject",
+          "scenarioId": "requested-constructor-factory",
+          "title": "Direct construction bypasses the requested typed factory"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "tests/test_service.py",
               "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef test_read():\n    store = Store()\n    service = Service(store)\n    assert service.read() == 1\n"
             }
@@ -20428,6 +20443,21 @@
           "outcome": "accept",
           "scenarioId": "borrowed-fixture-resource",
           "title": "Request the collaborator through pytest"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_probe.py",
+              "source": "import pytest\n\n\nclass Probe:\n    def __init__(self, connection):\n        self.connection = connection\n\n\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\n\n\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = probe_factory(connection)\n    assert probe.connection is connection\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_probe.py",
+          "id": "requested-probe-factory",
+          "outcome": "accept",
+          "scenarioId": "requested-constructor-factory",
+          "title": "The fixture factory receives the same borrowed connection"
         },
         {
           "expectedCount": 0,
@@ -20933,6 +20963,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Set overlap is expressed without allocating an intersection"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-single-parametrize-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_value.py",
+              "source": "import pytest\nfrom itertools import product\n\n\n@pytest.mark.parametrize((\"kind\", \"mode\"), list(product([1, 2], [\"a\", \"b\"])))\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in (\"a\", \"b\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_value.py",
+          "id": "accepts-alternative",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Accept the preferred alternative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_value.py",
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"mode\", [\"a\", \"b\"])\n@pytest.mark.parametrize(\"kind\", [1, 2])\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in (\"a\", \"b\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_value.py",
+          "id": "rejects-antipattern",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Reject the anti-pattern"
         }
       ],
       "optionsSchemaSource": null

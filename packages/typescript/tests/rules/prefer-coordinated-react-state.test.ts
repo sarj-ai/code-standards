@@ -29,6 +29,10 @@ const ERROR = { messageId: "preferCoordinatedReactState" };
 
 ruleTester({ lang: "tsx" }).run("prefer-coordinated-react-state", rule, untyped({
   valid: [
+    {
+      name: "copied initial data and shared status do not prove one lifetime",
+      code: "import { useState } from 'react'; export function Editor({text}: {text: string}) { const [saved, setSaved] = useState(text); const [draft, setDraft] = useState(saved); const [complete, setComplete] = useState(false); function edit(next: string) { setDraft(next); setComplete(false); } function committed(next: string) { setSaved(next); setComplete(true); } return <output>{saved}{draft}{complete}</output>; }",
+    },
     { name: "one record already owns the page", code: PREFIX + "export function View() { const [page, setPage] = useState({rows: [], cursor: null}); function adopt(next) {setPage(next);} function reset() {setPage({rows: [], cursor: null});} return <output>{page.cursor}</output>; }" },
     { name: "five independent fields only share resets", code: PREFIX + "export function View() { const [a,A]=useState(0);const [b,B]=useState(0);const [c,C]=useState(0);const [d,D]=useState(0);const [e,E]=useState(0);function reset(){A(0);B(0);C(0);D(0);E(0);}function clear(){A(0);B(0);C(0);D(0);E(0);}return <output>{a}{b}{c}{d}{e}</output>;}" },
     { name: "one transition site is insufficient", code: SOURCE.replace("    setRows([]);\n    setCursor(null);", "") },
