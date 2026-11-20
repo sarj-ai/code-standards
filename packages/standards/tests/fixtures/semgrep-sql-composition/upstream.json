@@ -1,0 +1,5 @@
+{
+  "engine": "semgrep==1.182.0",
+  "source": "https://github.com/semgrep/semgrep-rules/blob/40b8c63f75dc7c22c8a77482d73bfb864b146f7e/python/sqlalchemy/security/sqlalchemy-execute-raw-query.yaml",
+  "sha256": "ad1a0cdc4622c4031d8a43796d66a4ed89778a1ebd9d8140d42ef81e857bda3d"
+}
