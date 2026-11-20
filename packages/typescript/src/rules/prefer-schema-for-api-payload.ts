@@ -23,7 +23,7 @@ type Identifier = Extract<Node, { type: "Identifier" }>;
 type IsKnownLocalText = (candidate: Node | null | undefined) => boolean;
 
 /** Peel TypeScript wrappers and optional chains, which do not affect the underlying value. */
-export const unwrap = (node: Node | null | undefined): Node | null => {
+const unwrap = (node: Node | null | undefined): Node | null => {
   let current = node ?? null;
   while (current !== null && (isErasedExpression(current) || current.type === "ChainExpression")) current = current.expression;
   return current;
@@ -79,7 +79,7 @@ const isJsonStringifyCall = (node: Node | null, context: Context): boolean =>
   getPropertyName(node.callee) === "stringify" &&
   isUnshadowedGlobal(node.callee.object, context);
 
-export const isUnshadowedGlobal = (identifier: Identifier, context: Context): boolean =>
+const isUnshadowedGlobal = (identifier: Identifier, context: Context): boolean =>
   (findVariable(context.sourceCode.getScope(identifier), identifier.name)?.defs.length ?? 0) === 0;
 
 const RESPONSE_GLOBALS: ReadonlySet<string> = new Set(["Request", "Response"]);
@@ -87,7 +87,7 @@ const RESPONSE_GLOBALS: ReadonlySet<string> = new Set(["Request", "Response"]);
 const isResponseGlobal = (node: Node, context: Context): boolean =>
   node.type === "Identifier" && RESPONSE_GLOBALS.has(node.name) && isUnshadowedGlobal(node, context);
 
-export const isResponseSource = (node: Node, context: Context, seen = new Set<Node>()): boolean => {
+const isResponseSource = (node: Node, context: Context, seen = new Set<Node>()): boolean => {
   let current = unwrap(node);
   if (current?.type === "AwaitExpression") current = unwrap(current.argument);
   if (current === null || seen.has(current)) return false;

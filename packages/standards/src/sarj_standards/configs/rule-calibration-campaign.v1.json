@@ -3773,16 +3773,8 @@
       "family": "python",
       "ruleId": "prefer-single-parametrize-contract",
       "state": "pending",
-      "evidence": "Static Cartesian examples and independently reviewed malformed, shadowed, marked and dynamic boundaries preserve case cardinality and collection order. Full-registry performance qualification and broader field calibration remain pending. Private motivating sources and identifying provenance remain local.",
+      "evidence": "Native pytest collection comparisons reproduce ID changes for composite, duplicate, mixed-type and cross-axis colliding values. The matcher now accepts only bounded distinct static scalar IDs with an unambiguous joined product and uses shared collected-test facts. Focused controls preserve ordinary defaults, disabled tests and visible collection hooks. Full-registry performance qualification and broader field calibration remain pending. Private motivating sources and identifying provenance remain local.",
       "outcome": "Keep SARJ583 at WARNING without autofix. Prefer one compact product contract without reducing cases or expanding repetitive literal tables. Do not revive the retired literal-table detector."
-    },
-    {
-      "task": "rule-audit/typescript/prefer-schema-for-http-headers",
-      "family": "typescript",
-      "ruleId": "prefer-schema-for-http-headers",
-      "state": "pending",
-      "evidence": "Native HTTP provenance, shadowing, coercion grammar and unsupported receiver boundaries have focused executable cases. The immutable frontend corpus produced no natural header finding. Full-policy cost qualification and broader field calibration remain pending; no population precision or stronger-validation claim follows.",
-      "outcome": "Keep the new boundary advice at WARNING without autofix. Preserve accepted number syntax, defaults, missing values, custom parsers and transport-specific contracts while considering a named Zod schema."
     }
   ]
 }

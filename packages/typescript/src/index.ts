@@ -147,7 +147,6 @@ import preferNominalIdTypes from "./rules/prefer-nominal-id-types.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferNullishFilterPredicate from "./rules/prefer-nullish-filter-predicate.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
-import preferSchemaForHttpHeaders from "./rules/prefer-schema-for-http-headers.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
 import preferServerDataPreparation from "./rules/prefer-server-data-preparation.js";
@@ -330,7 +329,6 @@ const RULES = {
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-nullish-filter-predicate": preferNullishFilterPredicate,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
-  "prefer-schema-for-http-headers": preferSchemaForHttpHeaders,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
   "prefer-server-data-preparation": preferServerDataPreparation,

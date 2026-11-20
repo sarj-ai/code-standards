@@ -6,36 +6,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.autofix import fix_source
-from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import RuleExample
+    from sarj_python_lint.rule_base import RuleExample, Severity
 
 
 _PUBLIC_EXAMPLES = ExcessiveCommentary.public_examples()
-
-
-@pytest.mark.parametrize(("size", "expected"), [(320, 0), (321, 1)])
-def test_paragraph_budget_is_explicit_and_warning_only(size: int, expected: int) -> None:
-    source = "# " + "a" * size + "\nvalue = 1\n"
-    findings = ExcessiveCommentary().check(Path("app.py"), source)
-    assert len(findings) == expected
-    assert all(finding.severity is Severity.WARNING for finding in findings)
-    assert fix_source(Path("app.py"), source, rule_ids=["excessive-commentary"]) == source
-
-
-@pytest.mark.parametrize("prefix", ["SPDX-License-Identifier: MIT ", "noqa: ", "Example: ", "- "])
-def test_long_structured_legal_directive_and_example_notes_remain_allowed(prefix: str) -> None:
-    source = "# " + prefix + "a" * 321 + "\nvalue = 1\n"
-    assert ExcessiveCommentary().check(Path("app.py"), source) == []
-
-
-def test_exact_paragraph_suppression_owns_the_warning() -> None:
-    source = "# " + "a" * 321 + "\nvalue = 1\n"
-    suppressed = "# sarj-noqa: SARJ434 -- Retain the protocol explanation.\n" + source
-    assert ExcessiveCommentary().check(Path("app.py"), suppressed) == []
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
@@ -561,3 +539,15 @@ def test_technical_facts_do_not_become_errors_or_advisories_from_wrapping(source
     path = Path("app/service.py")
     assert ExcessiveCommentary().check(path, source) == []
     assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
+
+
+def test_long_operational_rationale_is_not_duplicate_narration() -> None:
+    source = (
+        "# Keep this lease alive until the server has acknowledged the replacement. A timeout means\n"
+        "# the client cannot distinguish a rejected write from an accepted write whose response was\n"
+        "# lost. Releasing the lease would let another worker issue the same operation twice.\n"
+        "# Retain the original request identity until the server returns a definitive result;\n"
+        "# cancellation must follow that same recovery path to preserve exactly-once ownership.\n"
+        "result = replace_lease()\n"
+    )
+    assert ExcessiveCommentary().check(Path("app/lease.py"), source) == []

@@ -143,7 +143,6 @@ import { PREFER_NOMINAL_ID_TYPES_DOCUMENTATION } from "./prefer-nominal-id-types
 import { PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION } from "./prefer-non-nullable-collection.js";
 import { PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION } from "./prefer-nullish-filter-predicate.js";
 import { PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION } from "./prefer-schema-for-api-payload.js";
-import { PREFER_SCHEMA_FOR_HTTP_HEADERS_DOCUMENTATION } from "./prefer-schema-for-http-headers.js";
 import { PREFER_SEMANTIC_COLORS_DOCUMENTATION } from "./prefer-semantic-colors.js";
 import { PREFER_SERVER_ACTIONS_DOCUMENTATION } from "./prefer-server-actions.js";
 import { PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION } from "./prefer-server-data-preparation.js";
@@ -326,7 +325,6 @@ export const RULE_DOCUMENTATION = {
   "prefer-non-nullable-collection": PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION,
   "prefer-nullish-filter-predicate": PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
   "prefer-schema-for-api-payload": PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION,
-  "prefer-schema-for-http-headers": PREFER_SCHEMA_FOR_HTTP_HEADERS_DOCUMENTATION,
   "prefer-semantic-colors": PREFER_SEMANTIC_COLORS_DOCUMENTATION,
   "prefer-server-actions": PREFER_SERVER_ACTIONS_DOCUMENTATION,
   "prefer-server-data-preparation": PREFER_SERVER_DATA_PREPARATION_DOCUMENTATION,

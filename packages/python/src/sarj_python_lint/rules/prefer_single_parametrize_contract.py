@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from itertools import product
 from math import prod
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
@@ -16,9 +17,11 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._declared_contracts import DeclaredContracts
 from sarj_python_lint.rules._local_source import unshadowed_import_namespace
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import collected_tests
+from sarj_python_lint.rules._pytest_contract_parameters import FixtureContractParameters
 
 
 if TYPE_CHECKING:
@@ -30,6 +33,7 @@ _DECORATOR_ARGUMENTS = 2
 _MAX_AXES = 8
 _MAX_CASES = 256
 _MAX_VALUES = 32
+_MAX_ID_LENGTH = 256
 _BAD = "import pytest\n@pytest.mark.parametrize('mode', ['a', 'b'])\n@pytest.mark.parametrize('kind', [1, 2])\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in ('a', 'b')\n"
 _GOOD = "import pytest\nfrom itertools import product\n@pytest.mark.parametrize(('kind', 'mode'), list(product([1, 2], ['a', 'b'])))\ndef test_value(kind, mode):\n    assert kind in (1, 2) and mode in ('a', 'b')\n"
 
@@ -46,8 +50,8 @@ class PreferSingleParametrizeContract(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Warns once on a collected test with two through eight import-proven pytest.mark.parametrize decorators, two positional arguments each, one unique literal argument name per axis and nonempty literal list/tuple values. Products above 256 cases or axes above 32 values abstain. This explicit style preference does not claim a test defect or propose fewer cases.",
-            "Single decorators, pytest.param, IDs, marks, indirect/scope options, dynamic values, additional decorators, visible generation hooks, shadowed or patched pytest imports, generated files and unsupported/malformed forms abstain. Repository-specific collection plugins still require review; source-local analysis cannot certify their absence. No automatic fix changes collection or mark semantics.",
+            "Warns once on a collected test with two through eight import-proven pytest.mark.parametrize decorators, two positional arguments each, one unique literal argument name per axis and nonempty literal list/tuple axes of scalar values. Default scalar IDs must be distinct within each axis and across the Cartesian product; ID components above 256 characters abstain. Products above 256 cases or axes above 32 values abstain. This explicit style preference does not claim a test defect or propose fewer cases.",
+            "Single decorators, bytes, composite/unsupported values, duplicate or colliding default IDs, pytest.param, explicit IDs, marks, indirect/scope options, dynamic values, additional decorators, visible generation hooks, shadowed or patched pytest imports, generated files and unsupported/malformed forms abstain. Repository-specific collection plugins still require review; source-local analysis cannot certify their absence. No automatic fix changes collection or mark semantics.",
             "Existing upstream pytest-style rules own argument-name/value formatting. This rule only addresses a complete static stack, keeps Cartesian coverage and deliberately allows compact products; it does not revive the retired literal-table detector.",
         ),
         examples=(
@@ -91,10 +95,16 @@ class PreferSingleParametrizeContract(Rule):
             or context.resource_provenance.mock_namespace_patching
         ):
             return []
-        if any(node.name == "pytest_generate_tests" for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)):
+        if any(
+            node.name in {"pytest_generate_tests", "pytest_make_parametrize_id"}
+            for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
             return []
         if not unshadowed_import_namespace(context.path, "pytest", facts=context.session.first_party):
             return []
+        collected = {
+            function for function, _ in FixtureContractParameters(context, DeclaredContracts(context), ()).parameters
+        }
         return [
             Diagnostic(
                 context.path,
@@ -106,7 +116,8 @@ class PreferSingleParametrizeContract(Rule):
                 severity=Severity.WARNING,
             )
             for function in functions
-            if _pytest_stack(function, context)
+            if function in collected
+            and _pytest_stack(function, context)
             and not context.suppressions.is_suppressed(function.decorator_list[0].lineno, self.code)
         ]
 
@@ -114,20 +125,31 @@ class PreferSingleParametrizeContract(Rule):
 def _static_stack(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     if not _MIN_AXES <= len(function.decorator_list) <= _MAX_AXES:
         return False
-    counts: list[int] = []
+    axes: list[tuple[str, ...]] = []
     names: set[str] = set()
     for decorator in function.decorator_list:
         if not isinstance(decorator, ast.Call) or len(decorator.args) != _DECORATOR_ARGUMENTS or decorator.keywords:
             return False
         axis_names = _names(decorator.args[0])
-        values = decorator.args[1]
-        if len(axis_names) != 1 or names.intersection(axis_names) or not isinstance(values, ast.List | ast.Tuple):
+        if len(axis_names) != 1 or names.intersection(axis_names):
             return False
-        if not 1 <= len(values.elts) <= _MAX_VALUES or not all(_literal(value) for value in values.elts):
+        axis = _axis_ids(decorator.args[1])
+        if axis is None:
             return False
         names.update(axis_names)
-        counts.append(len(values.elts))
-    return prod(counts) <= _MAX_CASES
+        axes.append(axis)
+    count = prod(len(axis) for axis in axes)
+    return count <= _MAX_CASES and len({"-".join(row) for row in product(*reversed(axes))}) == count
+
+
+def _axis_ids(values: ast.expr) -> tuple[str, ...] | None:
+    if not isinstance(values, ast.List | ast.Tuple) or not 1 <= len(values.elts) <= _MAX_VALUES:
+        return None
+    parts = [_id_part(value) for value in values.elts]
+    if any(part is None for part in parts):
+        return None
+    axis = tuple(part for part in parts if part is not None)
+    return axis if len(set(axis)) == len(axis) else None
 
 
 def _pytest_stack(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
@@ -152,9 +174,18 @@ def _names(value: ast.expr) -> tuple[str, ...]:
     return names if all(name.isidentifier() for name in names) and len(set(names)) == len(names) else ()
 
 
-def _literal(value: ast.expr, depth: int = 0) -> bool:
-    if depth >= _MAX_AXES:
-        return False
-    if isinstance(value, ast.Constant):
-        return isinstance(value.value, str | int | float | bool | bytes | type(None))
-    return isinstance(value, ast.Tuple | ast.List) and all(_literal(item, depth + 1) for item in value.elts)
+def _id_part(node: ast.expr) -> str | None:
+    match node:
+        case ast.Constant(value=value):
+            pass
+        case ast.UnaryOp(
+            op=ast.UAdd() | ast.USub() as operator,
+            operand=ast.Constant(value=int() | float() as number),
+        ) if not isinstance(number, bool):
+            value = -number if isinstance(operator, ast.USub) else number
+        case _:
+            return None
+    if not isinstance(value, str | int | float | bool | type(None)):
+        return None
+    part = str(value)
+    return part if len(part) <= _MAX_ID_LENGTH else None

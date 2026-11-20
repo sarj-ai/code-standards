@@ -999,7 +999,6 @@ const RULES = {
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
-  "@sarj/prefer-schema-for-http-headers": "warn",
   "@sarj/prefer-semantic-colors": ["error", {"requireSemanticTokens": true}],
   "@sarj/prefer-server-actions": ["error", {}],
   "@sarj/prefer-server-data-preparation": "warn",

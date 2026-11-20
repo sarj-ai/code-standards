@@ -339,8 +339,6 @@ def _nonempty_literal_fragments(iterable: ast.expr) -> bool:
 
 
 def _complexity_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
-    if diagnostic.severity is not Severity.ERROR:
-        return []
     for function in source.context.nodes(ast.FunctionDef):
         arguments = function.args
         if not _at(function, diagnostic) or len(function.body) != 1:

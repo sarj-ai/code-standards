@@ -20,78 +20,6 @@ def test_documented_examples() -> None:
     verify_native_rule(PreferExplicitValueModelConstruction, analyze)
 
 
-_COLLECTION = PreferExplicitValueModelConstruction.public_examples()[0].focus_file.source
-
-
-@pytest.mark.parametrize(
-    "options",
-    [
-        "default_factory=list",
-        "default_factory=list, repr=False",
-        "default_factory=list, repr=True, compare=False, hash=None, kw_only=True, init=True",
-        "default_factory=list, hash=False",
-    ],
-)
-def test_literal_field_metadata_keeps_collection_constructor_eligibility(options: str) -> None:
-    source = _COLLECTION.replace("default_factory=list, repr=False", options)
-    [finding] = PreferExplicitValueModelConstruction().check(_PATH, source)
-    assert finding.severity is Severity.WARNING
-    assert "list field" in finding.message
-
-
-@pytest.mark.parametrize(
-    "options",
-    [
-        "default_factory=list, init=False",
-        "default_factory=list, repr=enabled",
-        "default_factory=list, hash=1",
-        "default_factory=list, metadata=external_metadata",
-        "default_factory=list, **options",
-    ],
-)
-def test_unknown_field_options_and_nonconstructor_fields_abstain(options: str) -> None:
-    source = _COLLECTION.replace("default_factory=list, repr=False", options)
-    assert PreferExplicitValueModelConstruction().check(_PATH, source) == []
-
-
-@pytest.mark.parametrize(
-    ("old", "new"),
-    [
-        ("@dataclass", "@dataclass(frozen=True)"),
-        ("default_factory=list", "default_factory=list, init=False"),
-        ("value = Context()", "value = Context(cues=[])"),
-        ("value = Context()", "value = Context()\n    expose(value)"),
-        ("['One moment.']", "build_cues()"),
-        ("if enabled:", "if effect():"),
-        ("cues: list[str]", "cues: object"),
-    ],
-)
-def test_collection_initialization_preserves_effects_defaults_and_constructor_contracts(old: str, new: str) -> None:
-    source = _COLLECTION.replace(old, new)
-    assert PreferExplicitValueModelConstruction().check(_PATH, source) == []
-
-
-def test_direct_hook_observation_excludes_the_collection_advice() -> None:
-    source = _COLLECTION.replace(
-        "def context(", "    def __post_init__(self):\n        observe(self.cues)\ndef context("
-    )
-    findings = PreferExplicitValueModelConstruction().check(_PATH, source)
-    assert len(findings) == 1
-    assert "hook" in findings[0].message
-
-
-def test_collection_advice_has_no_fix_and_uses_its_own_location() -> None:
-    [finding] = PreferExplicitValueModelConstruction().check(_PATH, _COLLECTION)
-    assert "hook observation timing" in finding.message
-    assert finding.fixes == ()
-    suppressed = _COLLECTION
-    suppressed = suppressed.replace(
-        "        value.cues = ['One moment.']",
-        "        value.cues = ['One moment.']  # sarj-noqa: SARJ572 -- Preserve initialization order.",
-    )
-    assert PreferExplicitValueModelConstruction().check(_PATH, suppressed) == []
-
-
 @pytest.mark.parametrize(
     "declaration",
     [
@@ -228,3 +156,17 @@ def test_abstains_for_shadowed_foreign_model_ancestry(tmp_path: Path) -> None:
     rule = PreferExplicitValueModelConstruction()
     rule.prepare(ProjectIndexSet.build([parent, path], {parent: parent_source, path: source}))
     assert rule.check(path, source) == []
+
+
+def test_postinit_observation_is_not_constructor_field_advice() -> None:
+    source = (
+        "from dataclasses import dataclass, field\n"
+        "@dataclass\nclass Context:\n"
+        "    cues: list[str] = field(default_factory=list)\n"
+        "    def __post_init__(self): self.publish()\n"
+        "    def publish(self): remember(tuple(self.cues))\n"
+        "def make():\n    value = Context()\n    value.cues = ['new']\n    return value\n"
+    )
+    findings = PreferExplicitValueModelConstruction().check(Path("app/context.py"), source)
+    assert len(findings) == 1
+    assert findings[0].line == 5

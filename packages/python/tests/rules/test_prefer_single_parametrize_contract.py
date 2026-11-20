@@ -62,3 +62,55 @@ def test_one_warning_covers_the_complete_stack_and_honors_suppression() -> None:
     lines[findings[0].line - 1] += "  # sarj-noqa: SARJ583 -- Separate collection contract."
     suppressed = "\n".join(lines) + "\n"
     assert PreferSingleParametrizeContract().check(Path("tests/test_value.py"), suppressed) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("[1, 2]", "[[1], [2]]"),
+        ("[1, 2]", "[1, 1]"),
+        ("[1, 2]", "[1, '1']"),
+        ("[1, 2]", "[None, 'None']"),
+        ("[1, 2]", "[b'a', b'b']"),
+        ("[1, 2]", r"[b'\\n', '\n']"),
+        ("[1, 2]", r"[b'\\xe9', 'é']"),
+    ],
+    ids=[
+        "composite-placeholder",
+        "duplicate-scalar",
+        "mixed-ID-collision",
+        "none-ID-collision",
+        "bytes",
+        "bytes-newline-ID-collision",
+        "bytes-unicode-ID-collision",
+    ],
+)
+def test_native_axis_id_changes_are_not_recommended(old: str, new: str) -> None:
+    assert PreferSingleParametrizeContract().check(Path("tests/test_value.py"), _BEFORE.replace(old, new)) == []
+
+
+def test_colliding_joined_ids_are_not_recommended() -> None:
+    source = _BEFORE.replace("[1, 2]", "['a-b', 'a']").replace("['a', 'b']", "['c', 'b-c']")
+    assert PreferSingleParametrizeContract().check(Path("tests/test_value.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "__test__ = False\n" + _BEFORE,
+        _BEFORE + "test_value.__test__ = False\n",
+        _BEFORE + "def pytest_make_parametrize_id(config, value, argname): return 'custom'\n",
+        _BEFORE.replace("import pytest\n", "import pytest\nclass TestValue:\n    __test__ = False\n")
+        .replace("@pytest", "    @pytest")
+        .replace("def test_value(kind, mode):", "    def test_value(self, kind, mode):")
+        .replace("    assert kind", "        assert kind"),
+    ],
+    ids=["disabled-module", "disabled-function", "visible-ID-hook", "disabled-class"],
+)
+def test_native_uncollected_owners_and_id_hooks_abstain(source: str) -> None:
+    assert PreferSingleParametrizeContract().check(Path("tests/test_value.py"), source) == []
+
+
+def test_signed_scalar_axes_keep_one_explicit_contract() -> None:
+    source = _BEFORE.replace("[1, 2]", "[-1, +2]")
+    assert len(PreferSingleParametrizeContract().check(Path("tests/test_value.py"), source)) == 1

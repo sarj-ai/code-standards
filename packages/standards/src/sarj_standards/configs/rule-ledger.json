@@ -453,7 +453,6 @@
       "prefer-non-nullable-collection",
       "prefer-nullish-filter-predicate",
       "prefer-schema-for-api-payload",
-      "prefer-schema-for-http-headers",
       "prefer-semantic-colors",
       "prefer-server-actions",
       "prefer-server-data-preparation",
@@ -889,6 +888,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete the entry; keep `@typescript-eslint/consistent-type-assertions` enabled."
+    },
+    {
+      "id": "@sarj/prefer-schema-for-http-headers",
+      "kind": "oxlint",
+      "status": "removed",
+      "replacement": null,
+      "note": "Unreleased header-coercion advisory withdrawn after qualification found already schema-validated values and no reliable general validation invariant. Remove unpublished selections. Existing named Zod schemas remain valid; no replacement or blanket coercion ban is claimed."
     },
     {
       "id": "@sarj/prefer-setup-file-mocks",

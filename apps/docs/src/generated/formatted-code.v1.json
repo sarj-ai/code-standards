@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "39160f7de6aa983b95b3d992c54172f08f8b149cc8063e83b1f91be9152e6ab6",
+  "catalogSha256": "866bb3b462871a02e823d58c2674a402e8a22ed21d293805e22e8cc15907fed5",
   "cliSha256": "a5beac9c08986ed3e9339476f0e2d9ff31c1588460c9285d99d21342efbe9cf4",
   "formatterVersions": {
     "prettier": "3.10.1",
@@ -8645,36 +8645,6 @@
           "title": "Direct adoption and reset repeat one page's bookkeeping"
         },
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/editor.tsx",
-              "source": "import { useState } from \"react\";\nexport function Editor({ text }: { text: string }) {\n  const [saved, setSaved] = useState(text);\n  const [draft, setDraft] = useState(saved);\n  const [complete, setComplete] = useState(false);\n  function edit(next) {\n    setDraft(next);\n    setComplete(false);\n  }\n  function committed(next) {\n    setSaved(next);\n    setComplete(true);\n  }\n  return (\n    <output>\n      {saved}\n      {draft}\n      {complete}\n    </output>\n  );\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/editor.tsx",
-          "id": "copied-editor-snapshot",
-          "outcome": "reject",
-          "scenarioId": "copied-editor",
-          "title": "A copied draft and retained value share explicit status transitions"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/editor.tsx",
-              "source": "import { useState } from \"react\";\nexport function Editor({ text }) {\n  const [editor, setEditor] = useState({ saved: text, draft: text, complete: false });\n  function edit(next) {\n    setEditor((current) => ({ ...current, draft: next, complete: false }));\n  }\n  function committed(next) {\n    setEditor((current) => ({ ...current, saved: next, complete: true }));\n  }\n  return (\n    <output>\n      {editor.saved}\n      {editor.draft}\n      {editor.complete}\n    </output>\n  );\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/editor.tsx",
-          "id": "one-editor-snapshot",
-          "outcome": "accept",
-          "scenarioId": "copied-editor",
-          "title": "One editor state owns draft, retained text and status"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
@@ -9924,47 +9894,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validate before property access"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "oxlint:prefer-schema-for-http-headers": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/headers.ts",
-              "source": "import { z } from \"zod\";\nconst Attempt = z.string().default(\"1\").transform(Number);\nfunction attempt(request: Request) {\n  return Attempt.parse(request.headers.get(\"x-attempt\") ?? undefined);\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/headers.ts",
-          "id": "named-zod-header",
-          "installedDependencies": [
-            {
-              "module": "zod",
-              "version": "4.6.7"
-            }
-          ],
-          "outcome": "accept",
-          "scenarioId": "http-header-contract",
-          "title": "A named Zod schema owns scalar parsing"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/headers.ts",
-              "source": "function attempt(request: Request) {\n  return Number(request.headers.get(\"x-attempt\") ?? \"1\");\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/headers.ts",
-          "id": "scalar-http-header",
-          "outcome": "reject",
-          "scenarioId": "http-header-contract",
-          "title": "A scalar cast leaves the header contract implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -12189,36 +12118,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The original activation paragraph explains why all failures are returned"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "# Retain the previous snapshot until validation and publication succeed.\nsnapshot = refresh_snapshot()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "concise-ordering-constraint",
-          "outcome": "accept",
-          "scenarioId": "paragraph-budget",
-          "title": "Keep the concise reason beside the code"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "# Keep the previous snapshot available until its replacement has completed validation, because\n# another reader may still hold the shared version token while this operation builds its next\n# snapshot. Publish all replacement fields together and clear temporary resources only after\n# publication succeeds. If validation fails, preserve the previous snapshot for the next reader.\nsnapshot = refresh_snapshot()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "oversized-implementation-paragraph",
-          "outcome": "reject",
-          "scenarioId": "paragraph-budget",
-          "title": "Review a long explanation without deleting its ordering constraint"
         }
       ],
       "optionsSchemaSource": null
@@ -14417,36 +14316,6 @@
           "outcome": "reject",
           "scenarioId": "closed-literal-true-guards",
           "title": "Remove statically redundant nesting"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/cleanup.py",
-              "source": "def release():\n    with first(), second(), third(), fourth(), fifth(), sixth():\n        finish()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/cleanup.py",
-          "id": "combined-resource-suite",
-          "outcome": "accept",
-          "scenarioId": "structural-cleanup",
-          "title": "A combined resource scope stays shallow"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/cleanup.py",
-              "source": "def release():\n    with first():\n        with second():\n            with third():\n                with fourth():\n                    with fifth():\n                        finish()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/cleanup.py",
-          "id": "deep-cleanup-suites",
-          "outcome": "reject",
-          "scenarioId": "structural-cleanup",
-          "title": "Review deeply nested cleanup suites"
         },
         {
           "expectedCount": 0,
@@ -18975,36 +18844,6 @@
     },
     "python:prefer-explicit-value-model-construction": {
       "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/context.py",
-              "source": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Context:\n    cues: list[str] = field(default_factory=list, repr=False)\n\n\ndef context(enabled: bool):\n    value = Context()\n    if enabled:\n        value.cues = [\"One moment.\"]\n    return value\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/context.py",
-          "id": "collection-after-construction",
-          "outcome": "reject",
-          "scenarioId": "collection-initialization",
-          "title": "Review a fresh field's second initialization phase"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/context.py",
-              "source": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Context:\n    cues: list[str] = field(default_factory=list, repr=False)\n\n\ndef context(enabled: bool):\n    return Context(cues=[\"One moment.\"] if enabled else [])\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/context.py",
-          "id": "collection-in-constructor",
-          "outcome": "accept",
-          "scenarioId": "collection-initialization",
-          "title": "The constructor receives each instance's initial collection"
-        },
         {
           "expectedCount": 0,
           "files": [

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import ast
-from bisect import bisect_left, bisect_right
 from collections import deque
-from itertools import chain
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
@@ -28,24 +26,7 @@ if TYPE_CHECKING:
 
 
 _ERROR_COMPLEXITY = 20
-_MAX_STRUCTURAL_DEPTH = 4
-_NATIVE_STRUCTURAL_DEPTH = 5
 _MAX_CONTRIBUTORS = 3
-_SCORING_NODES = (
-    ast.If,
-    ast.For,
-    ast.AsyncFor,
-    ast.While,
-    ast.ExceptHandler,
-    ast.Match,
-    ast.BoolOp,
-    ast.IfExp,
-    ast.ListComp,
-    ast.SetComp,
-    ast.DictComp,
-    ast.GeneratorExp,
-)
-_NEUTRAL_NODES = (ast.With, ast.AsyncWith, ast.Try, ast.TryStar)
 type Function = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 
 
@@ -61,105 +42,6 @@ def function_complexity(function: Function) -> list[ComplexityPoint]:
     visitor.visit_all(body, 0)
     visitor.run()
     return visitor.points
-
-
-def _indexed_lines(
-    context: PythonFileContext, kinds: tuple[type[ast.stmt | ast.expr | ast.ExceptHandler], ...]
-) -> list[int]:
-    return sorted(node.lineno for kind in kinds for node in context.node_index.query((kind,)) if isinstance(node, kind))
-
-
-def _structural_review_depth(
-    function: Function,
-    neutral_lines: list[int],
-    points: list[ComplexityPoint],
-    context: PythonFileContext,
-) -> int | None:
-    if isinstance(function, ast.Lambda):
-        return None
-    start = bisect_left(neutral_lines, function.lineno)
-    end = bisect_right(neutral_lines, function.end_lineno or function.lineno)
-    neutral_count = end - start
-    if neutral_count <= _MAX_STRUCTURAL_DEPTH and not any(
-        point.amount > _MAX_STRUCTURAL_DEPTH - neutral_count for point in points
-    ):
-        return None
-    depth = _structural_depth(function)
-    if depth is None or depth <= _MAX_STRUCTURAL_DEPTH:
-        return None
-    enclosing_depth = _enclosing_native_depth(function, context)
-    if enclosing_depth is None:
-        return None
-    if enclosing_depth and _structural_depth(function, enclosing_depth) is None:
-        return None
-    return depth
-
-
-def _structural_depth(function: ast.FunctionDef | ast.AsyncFunctionDef, enclosing_depth: int = 0) -> int | None:
-    pending = deque((statement, 0, enclosing_depth) for statement in function.body)
-    maximum = 0
-    while pending:
-        statement, depth, native_depth = pending.popleft()
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            return None
-        bodies = _statement_suites(statement)
-        if not bodies:
-            continue
-        native_increment = 0 if isinstance(statement, ast.Match) else 1
-        if native_depth + native_increment > _NATIVE_STRUCTURAL_DEPTH:
-            return None
-        for child in chain.from_iterable(bodies):
-            alternate = (
-                isinstance(statement, ast.If) and isinstance(child, ast.If) and child.col_offset == statement.col_offset
-            )
-            if alternate:
-                pending.append((child, depth, native_depth))
-            else:
-                pending.append((child, depth + 1, native_depth + native_increment))
-        maximum = max(maximum, depth + 1)
-    return maximum
-
-
-def _enclosing_native_depth(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> int | None:
-    depth = 0
-    parent = context.parents.get(function)
-    while parent is not None:
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            return None
-        outer = context.parents.get(parent)
-        if (
-            isinstance(parent, ast.If)
-            and isinstance(outer, ast.If)
-            and outer.orelse == [parent]
-            and parent.col_offset == outer.col_offset
-        ):
-            parent = outer
-            continue
-        if isinstance(
-            parent, ast.If | ast.For | ast.AsyncFor | ast.While | ast.With | ast.AsyncWith | ast.Try | ast.TryStar
-        ):
-            depth += 1
-        parent = outer
-    return depth
-
-
-def _statement_suites(statement: ast.stmt) -> tuple[list[ast.stmt], ...]:
-    match statement:
-        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
-            return statement.body, statement.orelse
-        case ast.With() | ast.AsyncWith():
-            return (statement.body,)
-        case ast.Try() | ast.TryStar():
-            return (
-                statement.body,
-                statement.orelse,
-                statement.finalbody,
-                *(handler.body for handler in statement.handlers),
-            )
-        case ast.Match():
-            return tuple(branch.body for branch in statement.cases)
-        case _:
-            return ()
 
 
 @final
@@ -279,8 +161,7 @@ class NoExcessiveCognitiveComplexity(Rule):
     id: str = "no-excessive-cognitive-complexity"
     code: str = "SARJ444"
     documentation = RuleDocumentation(
-        default_level=Severity.ERROR,
-        summary=f"Error on cognitive complexity above {_ERROR_COMPLEXITY}; warn on structural suite depth above {_MAX_STRUCTURAL_DEPTH}.",
+        summary=f"Error on cognitive complexity above {_ERROR_COMPLEXITY}; scores up to 20 pass.",
         rationale="Nested control flow increases the context a reader must retain while following a function.",
         remediation="Examples are fictional and written for this documentation; domain types are omitted. The library example replaces nested eligibility checks with early returns while preserving evaluation order. Refactor one function at a time, starting with its largest contributors. First simplify control flow and reduce nesting within the function. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse; do not split code solely to lower the score. Use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
         category=RuleCategory.MAINTAINABILITY,
@@ -291,41 +172,9 @@ class NoExcessiveCognitiveComplexity(Rule):
             "Sarj metric, not exact Sonar compatibility: functions and lambdas are independent; calls, recursion, function annotations, parameter defaults, and decorators are not scored.",
             "Conditions, loops, exception handlers, match statements, and conditional expressions add one plus nesting. Elif and else add one; their bodies add nesting. Each run of like boolean operators adds one.",
             "Comprehension loops and filters add one plus nesting. Match cases are free; case guards count as nested conditions. Try, finally, with, return, break, continue, and await add no points themselves.",
-            "A separate pending warning reviews statement-suite depth above four while the managed Ruff PLR1702 threshold remains five. Ruff owns deeper native-counted suites; its error takes precedence. Match counts toward this review depth and is absent from Ruff's native count. Sibling handlers, else/finally branches and elif alternatives share a level; a combined with statement is one suite. Functions containing nested classes/callables and nested callables abstain from this warning because Ruff counts their surrounding suites differently. Control suites enclosing a definition also count toward Ruff's native depth; class and match wrappers do not. The cognitive score and existing error threshold are unchanged.",
-            "The structural warning has no automatic fix. Preserve cleanup ownership, exception propagation, suspension and finalizer order. Extract a cohesive lifecycle phase only when the resulting interface is clearer; do not flatten required cleanup or split code only to satisfy a metric. An existing cognitive error takes precedence over this warning for the same function.",
             "Generated code is excluded; authored tests and all function lengths are checked. The threshold is a shared policy constant, not a correctness boundary.",
         ),
         examples=(
-            RuleExample(
-                example_id="deep-cleanup-suites",
-                scenario="structural-cleanup",
-                title="Review deeply nested cleanup suites",
-                outcome=ExampleOutcome.MATCH,
-                files=(
-                    ExampleFile.python(
-                        "app/cleanup.py",
-                        "def release():\n    with first():\n        with second():\n            with third():\n                with fourth():\n                    with fifth():\n                        finish()\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("app/cleanup.py"),
-                expected_count=1,
-                public=True,
-            ),
-            RuleExample(
-                example_id="combined-resource-suite",
-                scenario="structural-cleanup",
-                title="A combined resource scope stays shallow",
-                outcome=ExampleOutcome.NO_MATCH,
-                files=(
-                    ExampleFile.python(
-                        "app/cleanup.py",
-                        "def release():\n    with first(), second(), third(), fourth(), fifth(), sixth():\n        finish()\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("app/cleanup.py"),
-                expected_count=0,
-                public=True,
-            ),
             RuleExample(
                 example_id="closed-literal-true-guards",
                 title="Remove statically redundant nesting",
@@ -429,32 +278,11 @@ class NoExcessiveCognitiveComplexity(Rule):
         path = context.path
         if context.generated or context.tree is None:
             return []
-        functions = context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
-        if not functions:
-            return []
         diagnostics: list[Diagnostic] = []
-        scoring_lines = _indexed_lines(context, _SCORING_NODES)
-        neutral_lines = _indexed_lines(context, _NEUTRAL_NODES)
-        for function in functions:
-            first = bisect_left(scoring_lines, function.lineno)
-            points = (
-                function_complexity(function)
-                if first < len(scoring_lines) and scoring_lines[first] <= (function.end_lineno or function.lineno)
-                else []
-            )
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda):
+            points = function_complexity(function)
             score = sum(point.amount for point in points)
             if score <= _ERROR_COMPLEXITY:
-                if (depth := _structural_review_depth(function, neutral_lines, points, context)) is not None:
-                    diagnostics.append(
-                        Diagnostic(
-                            path=path,
-                            line=function.lineno,
-                            col=function.col_offset + 1,
-                            code=self.code,
-                            message=f"Structural suite depth {depth} exceeds {_MAX_STRUCTURAL_DEPTH}. Review a cohesive lifecycle phase while preserving cleanup ownership, exception propagation and finalizer order; do not flatten required cleanup. No automatic rewrite is offered.",
-                            severity=Severity.WARNING,
-                        )
-                    )
                 continue
             largest = sorted(points, key=lambda point: (-point.amount, point.line))[:_MAX_CONTRIBUTORS]
             detail = "; ".join(f"L{point.line} +{point.amount} {point.construct}" for point in largest)

@@ -39,9 +39,7 @@ _AUTHORED_EXAMPLES = tuple(
 )
 
 _PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
-    ("excessive-commentary", "oversized-implementation-paragraph"): Severity.WARNING,
     ("prefer-match-type-dispatch", "reuse-or-construct-normalization"): Severity.WARNING,
-    ("no-excessive-cognitive-complexity", "deep-cleanup-suites"): Severity.WARNING,
 }
 
 _RENAMED_RULES = {

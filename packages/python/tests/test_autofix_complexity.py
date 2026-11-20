@@ -10,7 +10,6 @@ import pytest
 
 from sarj_python_lint.__main__ import check_source
 from sarj_python_lint.autofix import fix_source
-from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules import REGISTRY
 
 
@@ -259,24 +258,9 @@ def test_external_callback_observes_guard_bytecode_and_requires_manual_review(tm
     assert values == ["6\n", "0\n"]
 
 
-def test_nested_five_guard_helpers_remain_unchanged() -> None:
+def test_native_complexity_threshold_retains_unreported_five_guard_helpers() -> None:
     source = _source(5, "1")
     assert check_source([REGISTRY[_RULE_ID]()], _PATH, source) == []
-    assert fix_source(_PATH, source, rule_ids=[_RULE_ID]) == source
-
-
-def test_structural_warning_preserves_cleanup_without_an_automatic_fix() -> None:
-    source = "\n".join(
-        [
-            "def release():",
-            *("    " * depth + "with resource():" for depth in range(1, 6)),
-            "    " * 6 + "return 1",
-            "",
-        ]
-    )
-    diagnostics = check_source([REGISTRY[_RULE_ID]()], _PATH, source)
-    assert [diagnostic.severity for diagnostic in diagnostics] == [Severity.WARNING]
-    assert "Structural suite depth 5 exceeds 4" in diagnostics[0].message
     assert fix_source(_PATH, source, rule_ids=[_RULE_ID]) == source
 
 

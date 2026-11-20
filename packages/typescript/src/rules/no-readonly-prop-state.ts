@@ -14,13 +14,7 @@ import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
 import { nativeTypes, type NativeTypes } from "../utils/checked-native-source.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
-import {
-  firstParameterBindings,
-  importsReactValue,
-  parameterPath,
-  reactHook,
-  renderFunction,
-} from "../utils/react-prop-bindings.js";
+import { firstParameterBindings, importsReactValue, parameterPath, reactHook, renderFunction } from "../utils/react-prop-bindings.js";
 import { stableValueBinding, typeOnlyReference } from "../utils/stable-value-binding.js";
 import { type TsrsServices, tsrsServices } from "../utils/tsrs-services.js";
 
@@ -29,45 +23,26 @@ const MAX_TYPE_DEPTH = 16;
 
 /** A one-argument `const [state, setState?] = useState(...)` whose setter is never read. */
 function isReadonlyUseState(source: SourceCode, node: ESTree.CallExpression): boolean {
-  if (node.optional || node.arguments.length !== 1 || !reactHook(source, node.callee, "useState"))
-    return false;
+  if (node.optional || node.arguments.length !== 1 || !reactHook(source, node.callee, "useState")) return false;
   const declaration = parentOf(outerExpression(node));
-  return (
-    declaration?.type === "VariableDeclarator" &&
-    (parentOf(declaration) as ESTree.VariableDeclaration).kind === "const" &&
-    hasReadonlyStateBinding(source, declaration)
-  );
+  return declaration?.type === "VariableDeclarator" && (parentOf(declaration) as ESTree.VariableDeclaration).kind === "const" &&
+    hasReadonlyStateBinding(source, declaration);
 }
 
-function hasReadonlyStateBinding(
-  source: SourceCode,
-  declaration: ESTree.VariableDeclarator,
-): boolean {
+function hasReadonlyStateBinding(source: SourceCode, declaration: ESTree.VariableDeclarator): boolean {
   if (declaration.id.type !== "ArrayPattern" || declaration.id.elements.length > 2) return false;
   const [value, setter] = declaration.id.elements;
-  if (value?.type !== "Identifier" || (setter != null && setter.type !== "Identifier"))
-    return false;
+  if (value?.type !== "Identifier" || (setter != null && setter.type !== "Identifier")) return false;
   const variables = source.getDeclaredVariables(declaration) as TsVariable[];
   const state = variables.find((variable) => variable.identifiers.includes(value));
-  if (
-    state === undefined ||
-    !stableValueBinding(state) ||
-    !state.references.some((reference) => reference.isRead() && !typeOnlyReference(reference))
-  )
-    return false;
-  return (
-    setter == null ||
-    isUnusedUpdater(variables.find((variable) => variable.identifiers.includes(setter)))
-  );
+  if (state === undefined || !stableValueBinding(state) ||
+    !state.references.some((reference) => reference.isRead() && !typeOnlyReference(reference))) return false;
+  return setter == null || isUnusedUpdater(variables.find((variable) => variable.identifiers.includes(setter)));
 }
 
 function isUnusedUpdater(updater: TsVariable | undefined): boolean {
-  return (
-    updater !== undefined &&
-    stableValueBinding(updater) &&
-    !updater.eslintUsed &&
-    !updater.references.some((reference) => !typeOnlyReference(reference) && reference.isRead())
-  );
+  return updater !== undefined && stableValueBinding(updater) && !updater.eslintUsed &&
+    !updater.references.some((reference) => !typeOnlyReference(reference) && reference.isRead());
 }
 
 function initializerValue(input: Node): Node | null {
@@ -77,29 +52,18 @@ function initializerValue(input: Node): Node | null {
   const body = node.body as ESTree.FunctionBody | ESTree.Expression;
   if (body.type !== "BlockStatement") return body;
   const [statement] = body.body;
-  return body.body.length === 1 && statement?.type === "ReturnStatement"
-    ? statement.argument
-    : null;
+  return body.body.length === 1 && statement?.type === "ReturnStatement" ? statement.argument : null;
 }
 
-export function isPrimitiveType(native: NativeTypes, type: Type, depth = 0): boolean {
+function isPrimitiveType(native: NativeTypes, type: Type, depth = 0): boolean {
   if (depth >= MAX_TYPE_DEPTH) return false;
   const flags = native.sync.TypeFlags;
   if (type.isIntersectionType()) {
-    return (
-      type.getCallSignatures().length === 0 &&
-      type.getConstructSignatures().length === 0 &&
-      type.getTypes().some((member) => isPrimitiveType(native, member, depth + 1))
-    );
+    return type.getCallSignatures().length === 0 && type.getConstructSignatures().length === 0 &&
+      type.getTypes().some((member) => isPrimitiveType(native, member, depth + 1));
   }
-  const primitive =
-    flags.StringLike |
-    flags.NumberLike |
-    flags.BigIntLike |
-    flags.BooleanLike |
-    flags.ESSymbolLike |
-    flags.Null |
-    flags.Undefined;
+  const primitive = flags.StringLike | flags.NumberLike | flags.BigIntLike | flags.BooleanLike | flags.ESSymbolLike |
+    flags.Null | flags.Undefined;
   return type.isUnionType()
     ? type.getTypes().every((member) => isPrimitiveType(native, member, depth + 1))
     : (type.flags & primitive) !== 0;
@@ -108,10 +72,7 @@ export function isPrimitiveType(native: NativeTypes, type: Type, depth = 0): boo
 export default defineRule({
   meta: {
     type: "suggestion",
-    docs: {
-      description: "Review props copied into state without a usable updater.",
-      url: docsUrl(NAME),
-    },
+    docs: { description: "Review props copied into state without a usable updater.", url: docsUrl(NAME) },
     schema: [],
     messages: {
       readonlyPropState:
@@ -127,12 +88,8 @@ export default defineRule({
         tsrs = null;
         pending = [];
         const source = context.sourceCode;
-        if (
-          isGeneratedFile({ filename: context.filename, cwd: context.cwd }, source.text) ||
-          isTestFile({ filename: context.filename, cwd: context.cwd }) ||
-          !importsReactValue(source)
-        )
-          return false;
+        if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, source.text) ||
+          isTestFile({ filename: context.filename, cwd: context.cwd }) || !importsReactValue(source)) return false;
         tsrs = tsrsServices(context);
         return true;
       },
@@ -141,14 +98,9 @@ export default defineRule({
         if (!isReadonlyUseState(source, node)) return;
         const component = renderFunction(node);
         const argument = node.arguments[0];
-        if (component === null || argument === undefined || argument.type === "SpreadElement")
-          return;
+        if (component === null || argument === undefined || argument.type === "SpreadElement") return;
         const initial = initializerValue(argument);
-        if (
-          initial === null ||
-          !parameterPath(source, initial, firstParameterBindings(source, component))
-        )
-          return;
+        if (initial === null || !parameterPath(source, initial, firstParameterBindings(source, component))) return;
         const lazy = unwrapExpression(argument);
         if (lazy.type === "ArrowFunctionExpression" || lazy.type === "FunctionExpression") {
           context.report({ node, messageId: "readonlyPropState" });
@@ -160,10 +112,7 @@ export default defineRule({
         if (pending.length === 0 || tsrs === null) return;
         const primitive = tsrs.run((file) => {
           const native = nativeTypes(file);
-          const types = native.file.typesOf(pending.map(({ initial }) => initial)) as (
-            | Type
-            | undefined
-          )[];
+          const types = native.file.typesOf(pending.map(({ initial }) => initial)) as (Type | undefined)[];
           return types.map((type) => type !== undefined && isPrimitiveType(native, type));
         });
         if (primitive === null) return;

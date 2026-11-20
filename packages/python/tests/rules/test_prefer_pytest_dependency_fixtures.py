@@ -887,3 +887,25 @@ def test_function_dependency_selection_and_manual_remediation(tmp_path: Path) ->
     assert [diagnostic.code for diagnostic in analyze([PreferPytestDependencyFixtures.id], [target])] == ["SARJ526"]
     assert analyze([], [target]) == []
     assert fix_source(target, source, rule_ids=[PreferPytestDependencyFixtures.id]) == source
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        (
+            "pytestmark = pytest.mark.parametrize('expected', [Store(1), Store(2)])\n"
+            "def test_value(expected: Store):\n    actual = Store(expected.value)\n    assert actual.value == expected.value\n"
+        ),
+        (
+            "class TestValue:\n"
+            "    pytestmark = pytest.mark.parametrize('expected', [Store(1), Store(2)])\n"
+            "    def test_value(self, expected: Store):\n        actual = Store(expected.value)\n        assert actual.value == expected.value\n"
+        ),
+        "def test_value(expected: Store = Store(1)):\n    actual = Store(expected.value)\n    assert actual.value == expected.value\n",
+        "def test_value(*, expected: Store = Store(1)):\n    actual = Store(expected.value)\n    assert actual.value == expected.value\n",
+    ],
+    ids=["module-data", "class-data", "positional-default", "keyword-default"],
+)
+def test_native_case_data_and_defaults_are_not_injected_instances(contract: str) -> None:
+    source = "import pytest\nclass Store:\n    def __init__(self, value): self.value = value\n" + contract
+    assert PreferPytestDependencyFixtures().check(Path("tests/test_values.py"), source) == []
