@@ -1,0 +1,12 @@
+import abc
+from typing import ClassVar, LiteralString
+from psycopg.sql import SQL
+QUERY = SQL("SELECT {fields} FROM records WHERE id = ANY(%s)")
+class Interface(abc.ABC):
+    pass
+class Rows(abc.ABC):
+    pass
+class Repository(Interface, Rows):
+    FIELDS: ClassVar[LiteralString] = "id, name"
+    def fetch(self, cursor, ids):
+        cursor.execute(QUERY.format(fields=SQL("{fields}").format(fields=SQL(self.FIELDS))), (ids,))
