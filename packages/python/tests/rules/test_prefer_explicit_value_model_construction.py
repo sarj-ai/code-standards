@@ -156,3 +156,17 @@ def test_abstains_for_shadowed_foreign_model_ancestry(tmp_path: Path) -> None:
     rule = PreferExplicitValueModelConstruction()
     rule.prepare(ProjectIndexSet.build([parent, path], {parent: parent_source, path: source}))
     assert rule.check(path, source) == []
+
+
+def test_postinit_observation_is_not_constructor_field_advice() -> None:
+    source = (
+        "from dataclasses import dataclass, field\n"
+        "@dataclass\nclass Context:\n"
+        "    cues: list[str] = field(default_factory=list)\n"
+        "    def __post_init__(self): self.publish()\n"
+        "    def publish(self): remember(tuple(self.cues))\n"
+        "def make():\n    value = Context()\n    value.cues = ['new']\n    return value\n"
+    )
+    findings = PreferExplicitValueModelConstruction().check(Path("app/context.py"), source)
+    assert len(findings) == 1
+    assert findings[0].line == 5

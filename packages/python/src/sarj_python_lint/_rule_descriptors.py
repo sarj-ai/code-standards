@@ -18,6 +18,15 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
+        rule_id=RuleId("prefer-single-parametrize-contract"),
+        module="sarj_python_lint.rules.prefer_single_parametrize_contract",
+        class_name="PreferSingleParametrizeContract",
+        code="SARJ583",
+        description="Prefer one explicit pytest parameter contract; preserve Cartesian products compactly.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-pydantic-field-bounds"),
         module="sarj_python_lint.rules.prefer_pydantic_field_bounds",
         class_name="PreferPydanticFieldBounds",

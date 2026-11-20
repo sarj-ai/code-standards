@@ -163,3 +163,16 @@ def test_library_examples_preserve_eligibility(
         },
     )
     assert namespace["result"] is expected
+
+
+def test_context_manager_depth_alone_does_not_duplicate_native_style_checks() -> None:
+    source = (
+        "def release():\n"
+        "    with first():\n"
+        "        with second():\n"
+        "            with third():\n"
+        "                with fourth():\n"
+        "                    with fifth():\n"
+        "                        finish()\n"
+    )
+    assert NoExcessiveCognitiveComplexity().check(Path("app/release.py"), source) == []

@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "19.27.1",
+  "version": "19.28.0",
   "packageManager": "npm@12.2.1",
   "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -70,7 +70,7 @@
   },
   "scripts": {
     "build": "tsup && node scripts/oxlint/build-upstream.ts",
-    "lint": "(test -f dist/index.js || tsup) && export OXLINT_TSGOLINT_PATH=\"$PWD/node_modules/.bin/tsrs-lint\" && oxlint && cd ../standards && oxlint && cd ../../.github/scripts && oxlint",
+    "lint": "(test -f dist/index.js || tsup) && export SARJ_TYPE_AWARE=1 OXLINT_TSGOLINT_PATH=\"$PWD/node_modules/.bin/tsrs-lint\" && oxlint && cd ../standards && oxlint && cd ../../.github/scripts && oxlint",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
     "typecheck": "tsrs --noEmit && tsrs --project tsconfig.tools.json",

@@ -49,6 +49,11 @@ export const RETIRED_RULES: Readonly<Record<string, RetiredRule>> = {
     removedIn: "3.0.0",
     reason: "Delete the entry; keep `@typescript-eslint/consistent-type-assertions` enabled.",
   },
+  "prefer-schema-for-http-headers": {
+    removedIn: "19.28.0",
+    reason:
+      "Delete unpublished selections; header carrier identity does not prove missing validation and the advisory rejected valid Zod schemas.",
+  },
   "prefer-setup-file-mocks": {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",

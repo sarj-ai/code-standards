@@ -71,9 +71,40 @@ class PreferPytestDependencyFixtures(ProjectRule):
             "A source-owned function parameter is also a collaborator when its ABC/Protocol declares a method actually invoked on that exact parameter. Explicit positional/keyword binding is required; decorated, generic, variadic, reassigned, patched and unresolved functions abstain. Undecorated private module helpers are checked only when their unique binding has nonempty references that are all direct calls from eligible collected tests, outside pytest.raises. Public, unreferenced, exported, escaped, nested or indirectly called helpers and dynamic namespaces abstain. The private visibility gate does not infer collaborator types; this one-hop local ownership proof cannot detect another module importing a private test helper. Helper findings have no automatic fix.",
             "Native HTTPX Client/AsyncClient constructors also enter through fixtures, including managed clients and runtime-import aliases; source definitions are not required. Opaque constructor factories and reassigned or patched providers are excluded. No transport or teardown is synthesized.",
             "Also reports source-resolved constructors whose class matches a supplied fixture annotation or implements its ABC/Protocol. Parametrized values, shadowed constructors and unresolved types are excluded. A different configuration needs a typed factory fixture; the rule never replaces an instance automatically.",
+            "Native pytest collected-parameter facts distinguish requested instances and factories from default arguments, module/class parameter data and visible generation hooks. A requested factory annotated with the unshadowed builtin type[SourceOwnedClass] also establishes that exact collaborator contract. Direct construction bypasses that requested factory and produces a manual warning; calling the supplied factory, construction inside pytest.raises, parametrized factories, shadowed type and unresolved class annotations abstain. No fix changes constructor arguments, borrowed connections, resource acquisition or lifetime.",
             "Also recognizes an unrequested function-scoped provider in the test module, ancestor conftest or a literal pytest_plugins registration when a source-owned ABC implementation borrows an attribute of a typed requested fixture. Its single assigned instance must perform an operation before a later assertion directly observes the original fixture; constructor-only and direct-subject observations abstain. Only direct one-input providers are supported; factories, variants, broader lifetimes, class-local providers, unexplained overrides and nested/dynamic registration abstain. Parametrized owner data, unresolved marks and visible generation hooks abstain. Ambient marks need direct module/class declarations; imported, read/escaped, augmented or indirectly assigned pytestmark bindings abstain. Provider class matching does not prove resource or lifecycle equivalence; these findings require manual fixture/factory selection and have no automatic fix.",
         ),
         examples=(
+            RuleExample(
+                example_id="bypassed-probe-factory",
+                scenario="requested-constructor-factory",
+                title="Direct construction bypasses the requested typed factory",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_probe.py",
+                        "import pytest\nclass Probe:\n    def __init__(self, connection): self.connection = connection\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = Probe(connection)\n    assert probe.connection is connection\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_probe.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="requested-probe-factory",
+                scenario="requested-constructor-factory",
+                title="The fixture factory receives the same borrowed connection",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_probe.py",
+                        "import pytest\nclass Probe:\n    def __init__(self, connection): self.connection = connection\n@pytest.fixture\ndef probe_factory() -> type[Probe]:\n    return Probe\ndef test_connection(probe_factory: type[Probe], connection):\n    probe = probe_factory(connection)\n    assert probe.connection is connection\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_probe.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="helper-function-collaborator",
                 scenario="helper-function-collaborator",
@@ -243,16 +274,17 @@ class PreferPytestDependencyFixtures(ProjectRule):
         functions = tuple(
             function for function in collected_tests(context.tree.body) if ordinary_pytest_test(function, context)
         )
+        fixture_parameters = _requested_fixture_parameters(functions, context, contracts)
         consumers: dict[SymbolRef, _FunctionConsumer | None] = {}
         for function in functions:
-            hits.update(_constructed_dependencies(function, context, contracts, consumers))
+            hits.update(_constructed_dependencies(function, context, contracts, consumers, fixture_parameters))
             borrowed.update(_borrowed_fixture_constructors(function, context, contracts))
         for helper in _test_owned_helpers(context, functions):
             aliases = bindings(helper)
             for call in (node for node in direct_nodes(helper) if isinstance(node, ast.Call)):
                 if not _inside_raises(context, call, helper):
                     hits.update(_call_dependencies(call, context, contracts, aliases, consumers))
-        hits.update(_borrowed_fixture_hits(borrowed, context, contracts))
+        hits.update(_borrowed_fixture_hits(borrowed, context, contracts, fixture_parameters))
         return [
             Diagnostic(
                 context.path,
@@ -268,7 +300,10 @@ class PreferPytestDependencyFixtures(ProjectRule):
 
 
 def _borrowed_fixture_hits(
-    borrowed: Mapping[ast.Call, DeclaredClass], context: PythonFileContext, contracts: DeclaredContracts
+    borrowed: Mapping[ast.Call, DeclaredClass],
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    requested: frozenset[ast.arg],
 ) -> Iterator[ast.Call]:
     if not borrowed:
         return
@@ -276,11 +311,6 @@ def _borrowed_fixture_hits(
     eligible = {call for call, model in borrowed.items() if model.declaration in available}
     if not eligible or not _stable_ambient_marks(context):
         return
-    requested = frozenset(
-        argument
-        for _, arguments in FixtureContractParameters(context, contracts, ()).parameters
-        for argument in arguments
-    )
     yield from (
         call for call in eligible if _borrowed_fixture_owner(call, context, contracts, requested, set()) is not None
     )
@@ -551,9 +581,10 @@ def _constructed_dependencies(
     context: PythonFileContext,
     contracts: DeclaredContracts,
     consumers: dict[SymbolRef, _FunctionConsumer | None],
+    fixture_parameters: frozenset[ast.arg],
 ) -> Iterator[ast.expr]:
     aliases = bindings(function)
-    fixture_types = _supplied_types(function, context, contracts)
+    fixture_types = _supplied_types(function, context, contracts, fixture_parameters)
     for call in (node for node in direct_nodes(function) if isinstance(node, ast.Call)):
         if _inside_raises(context, call, function):
             continue
@@ -566,7 +597,10 @@ def _constructed_dependencies(
 
 
 def _supplied_types(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext, contracts: DeclaredContracts
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    fixture_parameters: frozenset[ast.arg],
 ) -> tuple[DeclaredClass, ...]:
     parametrized = _parametrized_names(function, context)
     if parametrized is None:
@@ -574,12 +608,39 @@ def _supplied_types(
     arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
     models: list[DeclaredClass] = []
     for argument in arguments:
-        if argument.arg in parametrized or argument.annotation is None:
+        if argument not in fixture_parameters or argument.arg in parametrized or argument.annotation is None:
             continue
-        model = contracts.annotation(argument.annotation)
+        annotation = argument.annotation
+        if (
+            isinstance(annotation, ast.Subscript)
+            and isinstance(annotation.value, ast.Name)
+            and annotation.value.id == "type"
+            and context.static_resource_provenance.builtin_namespace_untouched
+            and context.static_resource_provenance.binding("type", annotation) is None
+        ):
+            annotation = annotation.slice
+        model = contracts.annotation(annotation)
         if model is not None:
             models.append(model)
     return tuple(models)
+
+
+def _requested_fixture_parameters(
+    functions: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...],
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+) -> frozenset[ast.arg]:
+    if not any(
+        argument.annotation is not None
+        for function in functions
+        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    ) or not _stable_ambient_marks(context):
+        return frozenset()
+    return frozenset(
+        argument
+        for _, parameters in FixtureContractParameters(context, contracts, ()).parameters
+        for argument in parameters
+    )
 
 
 def _parametrized_names(

@@ -539,3 +539,15 @@ def test_technical_facts_do_not_become_errors_or_advisories_from_wrapping(source
     path = Path("app/service.py")
     assert ExcessiveCommentary().check(path, source) == []
     assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
+
+
+def test_long_operational_rationale_is_not_duplicate_narration() -> None:
+    source = (
+        "# Keep this lease alive until the server has acknowledged the replacement. A timeout means\n"
+        "# the client cannot distinguish a rejected write from an accepted write whose response was\n"
+        "# lost. Releasing the lease would let another worker issue the same operation twice.\n"
+        "# Retain the original request identity until the server returns a definitive result;\n"
+        "# cancellation must follow that same recovery path to preserve exactly-once ownership.\n"
+        "result = replace_lease()\n"
+    )
+    assert ExcessiveCommentary().check(Path("app/lease.py"), source) == []
