@@ -198,6 +198,7 @@
       "prefer-pytest-fixture-injection",
       "prefer-regex-fullmatch",
       "prefer-required-constructor-parameters",
+      "prefer-required-prerequisite",
       "prefer-runtime-validation",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
@@ -743,7 +744,8 @@
       "SARJ578",
       "SARJ579",
       "SARJ580",
-      "SARJ582"
+      "SARJ582",
+      "SARJ584"
     ],
     "sql": [
       "SARJ101",

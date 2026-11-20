@@ -285,6 +285,7 @@ from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecu
 from sarj_python_lint.rules.prefer_pydantic_field_bounds import PreferPydanticFieldBounds
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
+from sarj_python_lint.rules.prefer_required_prerequisite import PreferRequiredPrerequisite
 from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
 from sarj_python_lint.rules.prefer_semantic_temporal_types import PreferSemanticTemporalTypes
 from sarj_python_lint.rules.prefer_single_psycopg_cursor import PreferSinglePsycopgCursor
@@ -308,6 +309,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferRequiredPrerequisite.id: PreferRequiredPrerequisite,
         PreferPydanticFieldBounds.id: PreferPydanticFieldBounds,
         NoValueErrorForwarder.id: NoValueErrorForwarder,
         PreferDefaultdict.id: PreferDefaultdict,

@@ -3767,6 +3767,14 @@
       "state": "pending",
       "evidence": "Native Zod cases cover pure literal integer bounds, imports, malformed input, suppression boundaries and precedence with the existing integer-contract owner. Labeled calibration has 15 positives and 45 negatives; all new diagnostics were inspected, with no observed duplicates. Bounded active-path and full-policy paired measurements retain slower rounds and shared-VM uncertainty; no population precision claim follows.",
       "outcome": "Introduce WARNING without autofix. Prefer field bounds only when object refinement performs one pure check on one integer field; retain cross-field, float, transformation and opaque cases. Review error-path and ordering changes. No promotion or consumer activation is included."
+    },
+    {
+      "task": "rule-audit/python/prefer-required-prerequisite",
+      "family": "python",
+      "ruleId": "prefer-required-prerequisite",
+      "state": "pending",
+      "evidence": "Executable examples and focused guard, binding, callback, suppression and omission boundaries are maintained with the rule. A pinned type-checker proof rejects None at the required execution helper while accepting a valid skip wrapper. Bounded isolated corpus and repeated baseline/candidate timing evidence are retained privately. Unmarked conversion boundaries and lazy protocols remain disclosed review false positives; broad consumer precision and recall are not established.",
+      "outcome": "SARJ584: WARNING without autofix. Review nullable object parameters directly rejected with ValueError on an execution path. Preserve valid omission, falsy-object constraints, runtime validation and public compatibility; use a required execution contract or existing typed alternatives when justified. No error promotion or consumer activation is included."
     }
   ]
 }
