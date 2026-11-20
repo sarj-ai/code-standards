@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._declared_contracts import DeclaredClass, DeclaredContracts, written_attribute_roots
 
 
@@ -72,7 +73,7 @@ def _native_model_base(base: ast.expr, model: DeclaredClass, imports: ImportInde
 
 
 def _wildcard(tree: ast.Module) -> bool:
-    return any(alias.name == "*" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) for alias in node.names)
+    return any(alias.name == "*" for node in nodes(tree, ast.ImportFrom) for alias in node.names)
 
 
 def stable_native(expression: ast.expr, model: DeclaredClass) -> bool:
