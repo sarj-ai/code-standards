@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-required-prerequisite"),
+        module="sarj_python_lint.rules.prefer_required_prerequisite",
+        class_name="PreferRequiredPrerequisite",
+        code="SARJ584",
+        description="Review nullable object parameters rejected as execution prerequisites.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-single-parametrize-contract"),
         module="sarj_python_lint.rules.prefer_single_parametrize_contract",
         class_name="PreferSingleParametrizeContract",

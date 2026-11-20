@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "866bb3b462871a02e823d58c2674a402e8a22ed21d293805e22e8cc15907fed5",
-  "cliSha256": "a5beac9c08986ed3e9339476f0e2d9ff31c1588460c9285d99d21342efbe9cf4",
+  "catalogSha256": "4bfb47d5e3e4816cc8ae03179e457b631fadc37779d679708bc73f02f5179090",
+  "cliSha256": "22971ff43688cb91b1801618f72f73a119c15be67a12e6d656daf3d9704af5e6",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -20724,6 +20724,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Caller explicitly chooses an absent configuration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-required-prerequisite": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "async def execute(service: Service | None = None, *, skip: bool = False):\n    if skip:\n        return\n    if not service:\n        msg = \"service required for execution\"\n        raise ValueError(msg)\n    await service.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "conditional-prerequisite",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review the execution contract while preserving a valid skip path"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "async def execute(service: Service):\n    await service.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "non-null-execution",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An execution helper declares its required object"
         }
       ],
       "optionsSchemaSource": null

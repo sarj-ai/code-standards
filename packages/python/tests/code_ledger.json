@@ -371,5 +371,6 @@
   "SARJ580": "no-value-error-forwarder",
   "SARJ581": "prefer-pytest-case-table",
   "SARJ582": "prefer-pydantic-field-bounds",
-  "SARJ583": "prefer-single-parametrize-contract"
+  "SARJ583": "prefer-single-parametrize-contract",
+  "SARJ584": "prefer-required-prerequisite"
 }
