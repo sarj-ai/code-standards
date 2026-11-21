@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fdc034ff04af93f4070b2f394f26ecf206a2043cef07cddd21606b3dd170f6b6",
-  "cliSha256": "fef0090282e63bdfe2e0a73b0ae9e1c9e9fabb5917b90a482bde0095a9cdf807",
+  "catalogSha256": "1fb63da07f8faf54daa390f31dedd84ee70fafb220abf8357038cad90f9b6227",
+  "cliSha256": "3fdefd86d4607ab403bba42e56888bba5586812d40d9512bf48e767e91610aba",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -24082,6 +24082,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One statement retains the drop order and guards"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_replica_identity.sql",
+              "source": "ALTER TABLE public.item\nDROP COLUMN IF EXISTS derived_value,\nREPLICA IDENTITY FULL;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_replica_identity.sql",
+          "id": "combined-replica-identity",
+          "outcome": "accept",
+          "scenarioId": "replica-identity",
+          "title": "One statement drops the column before changing replica identity"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_replica_identity.sql",
+              "source": "ALTER TABLE public.item\nDROP COLUMN IF EXISTS derived_value;\n\nALTER TABLE public.item REPLICA IDENTITY FULL;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "supabase/migrations/001_replica_identity.sql",
+              "source": "ALTER TABLE public.item\nDROP COLUMN IF EXISTS derived_value,\nREPLICA IDENTITY FULL;\n"
+            }
+          ],
+          "focusPath": "supabase/migrations/001_replica_identity.sql",
+          "id": "drop-before-replica-identity",
+          "outcome": "reject",
+          "scenarioId": "replica-identity",
+          "title": "Drop a generated column before enabling full replica identity"
         }
       ],
       "optionsSchemaSource": null

@@ -7,6 +7,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_sql_lint.__main__ import analyze, main
+from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rule_base import DefaultLevel
 from sarj_sql_lint.rules.combine_alter_table import CombineAlterTable
 
@@ -79,7 +80,42 @@ def test_requested_migration_compresses_nine_alter_statements_into_two() -> None
     ],
 )
 def test_recognized_independent_actions_combine(first: str, second: str) -> None:
-    assert len(_check(f"ALTER TABLE item {first};\nALTER TABLE item {second};")) == 1
+    source = f"ALTER TABLE item {first};\nALTER TABLE item {second};"
+    assert len(_check(source)) == 1
+    fixed = fix_source(P, source, rule_ids=[CombineAlterTable.id])
+    assert fixed == f"ALTER TABLE item {first},\n    {second};"
+    assert _check(fixed) == []
+    assert fix_source(P, fixed, rule_ids=[CombineAlterTable.id]) == fixed
+
+
+@pytest.mark.parametrize("mode", ["FULL", "DEFAULT", "NOTHING"])
+def test_drop_then_replica_identity_is_reported_and_fixed(mode: str) -> None:
+    source = (
+        f"ALTER TABLE public.call DROP COLUMN IF EXISTS is_retry;\nALTER TABLE public.call REPLICA IDENTITY {mode};\n"
+    )
+    assert [finding.line for finding in _check(source)] == [2]
+    fixed = fix_source(P, source, rule_ids=[CombineAlterTable.id])
+    assert fixed == f"ALTER TABLE public.call DROP COLUMN IF EXISTS is_retry,\n    REPLICA IDENTITY {mode};\n"
+    assert _check(fixed) == []
+    assert fix_source(P, fixed, rule_ids=[CombineAlterTable.id]) == fixed
+
+
+def test_replica_identity_terminates_a_multi_statement_drop_group() -> None:
+    source = (
+        "ALTER TABLE item DROP CONSTRAINT IF EXISTS legacy_fkey;\n"
+        "ALTER TABLE item DROP COLUMN IF EXISTS legacy;\n"
+        "ALTER TABLE item DROP COLUMN IF EXISTS retired, REPLICA IDENTITY FULL;\n"
+        "ALTER TABLE item DROP COLUMN later;\n"
+    )
+    assert [finding.line for finding in _check(source)] == [2, 3]
+    fixed = fix_source(P, source, rule_ids=[CombineAlterTable.id])
+    assert fixed == (
+        "ALTER TABLE item DROP CONSTRAINT IF EXISTS legacy_fkey,\n"
+        "    DROP COLUMN IF EXISTS legacy,\n"
+        "    DROP COLUMN IF EXISTS retired, REPLICA IDENTITY FULL;\n"
+        "ALTER TABLE item DROP COLUMN later;\n"
+    )
+    assert fix_source(P, fixed, rule_ids=[CombineAlterTable.id]) == fixed
 
 
 @pytest.mark.parametrize(
@@ -104,7 +140,9 @@ def test_identical_relation_modifiers_are_preserved(header: str) -> None:
     ],
 )
 def test_distinct_relation_identity_or_modifiers_do_not_combine(first: str, second: str) -> None:
-    assert _check(f"ALTER TABLE {first} DROP COLUMN a; ALTER TABLE {second} DROP COLUMN b;") == []
+    source = f"ALTER TABLE {first} DROP COLUMN a; ALTER TABLE {second} DROP COLUMN b;"
+    assert _check(source) == []
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
 
 
 @pytest.mark.parametrize(
@@ -119,6 +157,7 @@ def test_postgres_identifier_identity_and_quoted_delimiters(first: str, second: 
 @pytest.mark.parametrize(
     "between",
     [
+        ";",
         "UPDATE item SET a = NULL;",
         "INSERT INTO item DEFAULT VALUES;",
         "DELETE FROM item;",
@@ -139,7 +178,9 @@ def test_postgres_identifier_identity_and_quoted_delimiters(first: str, second: 
     ],
 )
 def test_any_intervening_statement_ends_combination_proof(between: str) -> None:
-    assert _check(f"ALTER TABLE item DROP COLUMN a;\n{between}\nALTER TABLE item DROP COLUMN b;") == []
+    source = f"ALTER TABLE item DROP COLUMN a;\n{between}\nALTER TABLE item DROP COLUMN b;"
+    assert _check(source) == []
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
 
 
 @pytest.mark.parametrize(
@@ -149,11 +190,15 @@ def test_any_intervening_statement_ends_combination_proof(between: str) -> None:
 def test_migration_sections_are_independent(boundary: str) -> None:
     source = f"ALTER TABLE item DROP COLUMN a;\n{boundary}\nALTER TABLE item DROP COLUMN b;"
     assert _check(source) == []
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
 
 
 def test_ordinary_comments_and_whitespace_do_not_break_a_group() -> None:
     source = "ALTER TABLE item DROP COLUMN a;\n-- retire remaining legacy fields\n/* rationale */\nALTER TABLE item DROP COLUMN b;"
     assert len(_check(source)) == 1
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == (
+        "ALTER TABLE item DROP COLUMN a,\n-- retire remaining legacy fields\n/* rationale */\n    DROP COLUMN b;"
+    )
 
 
 @pytest.mark.parametrize(
@@ -176,10 +221,19 @@ def test_ordinary_comments_and_whitespace_do_not_break_a_group() -> None:
         ("ADD CONSTRAINT a CHECK (id > 0) NOT VALID", "ADD CONSTRAINT b CHECK (id < 100) NOT VALID"),
         ("VALIDATE CONSTRAINT a", "VALIDATE CONSTRAINT b"),
         ("RENAME COLUMN a TO b", "RENAME COLUMN c TO d"),
+        ("DROP COLUMN a", "REPLICA IDENTITY USING INDEX item_pkey"),
+        ("REPLICA IDENTITY FULL", "DROP COLUMN a"),
+        ("REPLICA IDENTITY DEFAULT", "REPLICA IDENTITY FULL"),
+        ("ADD COLUMN a TEXT", "REPLICA IDENTITY FULL"),
+        ("DROP COLUMN a", 'REPLICA IDENTITY "FULL"'),
+        ("DROP COLUMN a", "REPLICA IDENTITY FULL nonsense"),
+        ("DROP COLUMN a", "REPLICA IDENTITY FULL, DROP COLUMN b"),
     ],
 )
 def test_unproven_action_compatibility_remains_separate(first: str, second: str) -> None:
-    assert _check(f"ALTER TABLE item {first}; ALTER TABLE item {second};") == []
+    source = f"ALTER TABLE item {first}; ALTER TABLE item {second};"
+    assert _check(source) == []
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
 
 
 @pytest.mark.parametrize(
@@ -197,6 +251,7 @@ def test_unproven_action_compatibility_remains_separate(first: str, second: str)
 )
 def test_malformed_and_duplicate_actions_do_not_manufacture_proof(source: str) -> None:
     assert _check(source) == []
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
 
 
 def test_comments_strings_and_dollar_bodies_are_not_top_level_actions() -> None:
@@ -237,6 +292,58 @@ def test_same_line_location_points_at_repeated_statement() -> None:
 )
 def test_unsupported_and_generator_owned_sources_are_excluded(path: Path, prefix: str) -> None:
     assert _check(prefix + _ORIGINAL, path) == []
+    assert fix_source(path, prefix + _ORIGINAL, rule_ids=[CombineAlterTable.id]) == prefix + _ORIGINAL
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+def test_autofix_preserves_transaction_boundaries_and_physical_line_endings(ending: str) -> None:
+    source = ending.join(
+        [
+            "-- migrate:up transaction:false",
+            "BEGIN;",
+            "SET LOCAL lock_timeout = '5s';",
+            "SET LOCAL statement_timeout = '60s';",
+            "ALTER TABLE public.call DROP COLUMN IF EXISTS is_retry;",
+            "ALTER TABLE public.call REPLICA IDENTITY FULL;",
+            "COMMIT;",
+            "-- migrate:down transaction:false",
+            "BEGIN;",
+            "ALTER TABLE public.call REPLICA IDENTITY DEFAULT;",
+            "COMMIT;",
+            "",
+        ]
+    )
+    expected = source.replace(f"is_retry;{ending}ALTER TABLE public.call REPLICA", f"is_retry,{ending}    REPLICA")
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == expected
+
+
+def test_autofix_preserves_comments_inside_repeated_headers_for_manual_review() -> None:
+    source = "ALTER TABLE item DROP a;\nALTER /* lock contract */ TABLE item DROP b;"
+    assert len(_check(source)) == 1
+    assert fix_source(P, source, rule_ids=[CombineAlterTable.id]) == source
+
+
+def test_autofix_respects_selection_and_suppression() -> None:
+    source = "ALTER TABLE item DROP a;\nALTER TABLE item DROP b;"
+    assert fix_source(P, source, rule_ids=[]) == source
+    suppressed = f"{source} -- sarj-noqa: SARJ123 -- deployment tooling requires this statement boundary\n"
+    assert fix_source(P, suppressed, rule_ids=[CombineAlterTable.id]) == suppressed
+
+
+def test_autofix_converges_with_other_selected_sql_fixes() -> None:
+    source = "ALTER TABLE item ADD COLUMN a TEXT;\nALTER TABLE item ADD COLUMN b TEXT;\n"
+    fixed = fix_source(P, source)
+    assert fixed == "ALTER TABLE item ADD COLUMN IF NOT EXISTS a TEXT,\n    ADD COLUMN IF NOT EXISTS b TEXT;\n"
+    assert fix_source(P, fixed) == fixed
+
+
+def test_cli_autofixes_replica_identity_pair(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    target = tmp_path / "supabase/migrations/001.sql"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"ALTER TABLE item DROP a;\r\nALTER TABLE item REPLICA IDENTITY FULL;\r\n")
+    assert main(["check", "--rule", CombineAlterTable.id, "--fix", str(target)]) == 0
+    assert target.read_bytes() == b"ALTER TABLE item DROP a,\r\n    REPLICA IDENTITY FULL;\r\n"
+    assert not capsys.readouterr().out
 
 
 def test_error_cli_and_exact_code_suppression(tmp_path: Path) -> None:
