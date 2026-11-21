@@ -16,6 +16,7 @@ from sarj_rule_contracts.examples import ExampleFinding, verify_examples, verify
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
 
 from sarj_standards.libs.adoption import transaction
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import textlint
 from sarj_standards.libs.linting.text_rule_base import Rule
 from sarj_standards.libs.repository import rule_authoring, rule_catalog_artifact, rule_registration
@@ -42,12 +43,48 @@ def test_new_rule_is_deterministic_and_dry_by_default(tmp_path: Path) -> None:
     assert plan.code == "SARJ400"
     assert not any(path.exists() for path, _ in plan.files)
     assert plan.render(tmp_path) == plan.render(tmp_path)
-    assert len(plan.edits) == 2
+    assert len(plan.edits) == 3
     assert "this plan includes registration and warning metadata" in plan.render(tmp_path)
     assert "maintain rules evaluate --rule python:prefer-explicit-clock --scope corpus" in plan.render(tmp_path)
     compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
         plan.files[0][1], str(plan.files[0][0]), "exec"
     )
+
+
+def test_python_scaffold_reserves_both_code_ledgers(tmp_path: Path) -> None:
+    history = tmp_path / "packages/python/tests/code_ledger.json"
+    history.parent.mkdir(parents=True)
+    history.write_text('{"SARJ001": ["original", "renamed"]}\n')
+    plan = rule_authoring.plan_new(
+        tmp_path, RuleSelector.parse("python:explicit-clock"), category="testing", summary="Require a clock."
+    )
+    rule_authoring.apply(plan, tmp_path)
+    assert parse_json(history.read_text()) == {"SARJ001": ["original", "renamed"], "SARJ400": "explicit-clock"}
+    assert '"SARJ400"' in (tmp_path / rule_registration.LEDGER).read_text()
+
+
+def test_python_allocator_keeps_legacy_reserved_codes_burned(tmp_path: Path) -> None:
+    history = tmp_path / "packages/python/tests/code_ledger.json"
+    history.parent.mkdir(parents=True)
+    history.write_text('{"SARJ450": null}\n')
+    plan = rule_authoring.plan_new(
+        tmp_path, RuleSelector.parse("python:explicit-clock"), category="testing", summary="Require a clock."
+    )
+    assert plan.code == "SARJ451"
+
+
+def test_concurrent_python_code_ledger_change_rolls_back_scaffold(tmp_path: Path) -> None:
+    history = tmp_path / "packages/python/tests/code_ledger.json"
+    history.parent.mkdir(parents=True)
+    history.write_text("{}\n")
+    plan = rule_authoring.plan_new(
+        tmp_path, RuleSelector.parse("python:explicit-clock"), category="testing", summary="Require a clock."
+    )
+    history.write_text('{"SARJ400": "concurrent-owner"}\n')
+    with pytest.raises(OSError, match="changed concurrently"):
+        rule_authoring.apply(plan, tmp_path)
+    assert parse_json(history.read_text()) == {"SARJ400": "concurrent-owner"}
+    assert not any(path.exists() for path, _ in plan.files)
 
 
 def test_apply_creates_authored_files_and_registers_atomically(tmp_path: Path) -> None:

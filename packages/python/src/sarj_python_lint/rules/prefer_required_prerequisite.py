@@ -9,7 +9,7 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
+from sarj_python_lint.rules._sdk_prerequisite import sdk_prerequisite_diagnostics
 
 
 if TYPE_CHECKING:
@@ -76,15 +77,16 @@ _OVERLOAD_TYPES = frozenset(f"{module}.overload" for module in _TYPING)
 
 
 @final
-class PreferRequiredPrerequisite(Rule):
+class PreferRequiredPrerequisite(ProjectRule):
     id = "prefer-required-prerequisite"
     code = "SARJ584"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Review nullable object parameters rejected as execution prerequisites.",
+        summary="Require complete SDK dependencies and review nullable execution prerequisites.",
         rationale=(
             "A nullable object parameter admits calls that can fail later with ValueError when an execution path "
-            "needs the object. Reviewing that relationship can move prerequisites into a callable or variant "
+            "needs the object. A stored nullable SDK client or partial finite-provider registry similarly admits "
+            "missing dependencies that an operation rejects. Reviewing that relationship can move prerequisites into a callable or variant "
             "contract that typed callers can check. A successful omission path can still be intentional."
         ),
         remediation=(
@@ -97,6 +99,17 @@ class PreferRequiredPrerequisite(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            (
+                "A proven SDK dependency rejected by a method is an error: a simple constructor stores an optional "
+                "import-proven OpenAI/httpx/httpx2 client or copies a finite Enum/Literal-keyed client mapping, and an "
+                "operation immediately raises on an absent client before calling it. Require named clients or a "
+                "complete typed variant at construction. This does not prove that all entries of an arbitrary dict exist."
+            ),
+            (
+                "The SDK branch abstains for constructor validation, registry mutation or escape, decorators, opaque "
+                "SDK types, open-ended keys, and conditional or complex guards. Required non-null client annotations "
+                "remain valid. Preserve meaningful absence/fallback and external input validation."
+            ),
             (
                 "This warning requests architectural review; a match is not proof of an invalid signature or trusted "
                 "internal callers. Undecorated boundary conversions, public compatibility and lazy/idempotent protocols "
@@ -111,7 +124,7 @@ class PreferRequiredPrerequisite(Rule):
                 "rejects non-None falsy objects; never delete those constraints merely by narrowing an annotation."
             ),
             (
-                "Known primitive, raw object and container annotations, pure direct narrowing adapters, methods, "
+                "The module-level warning excludes known primitive, raw object and container annotations, pure direct narrowing adapters, methods, "
                 "constructors, decorators, overload groups, generic/variadic functions, observed local non-call "
                 "references, non-None defaults, rebound parameters, complex predicates and rejection bodies abstain. "
                 "No absence of observed escapes proves that all callers are typed or internal."
@@ -157,6 +170,44 @@ class PreferRequiredPrerequisite(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="nullable-sdk",
+                scenario="sdk-dependency",
+                title="A nullable SDK field defers a required construction choice",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/send.py",
+                        "from openai import AsyncOpenAI\n"
+                        "class Sender:\n    def __init__(self, endpoint: AsyncOpenAI | None):\n"
+                        "        self._endpoint = endpoint\n"
+                        "    async def send(self):\n        if self._endpoint is None:\n"
+                        "            raise RuntimeError('endpoint required')\n"
+                        "        return await self._endpoint.get('/ready', cast_to=str)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/send.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="required-sdk",
+                scenario="sdk-dependency",
+                title="The SDK client is required at construction",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/send.py",
+                        "from openai import AsyncOpenAI\n"
+                        "class Sender:\n    def __init__(self, endpoint: AsyncOpenAI):\n"
+                        "        self._endpoint = endpoint\n"
+                        "    async def send(self):\n        return await self._endpoint.get('/ready', cast_to=str)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/send.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="narrowing-boundary",
                 title="A boundary narrows a nullable input and returns the checked object",
                 outcome=ExampleOutcome.NO_MATCH,
@@ -184,16 +235,17 @@ class PreferRequiredPrerequisite(Rule):
         provenance = facts.provenance
         if provenance.wildcard or provenance.dynamic_namespace or not provenance.builtin_namespace_untouched:
             return []
-        if "ValueError" in provenance.bindings.get(context.tree, {}) or "ValueError" in provenance.external_bindings:
-            return []
         functions = [node for node in context.tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)]
         overloaded = _overloaded_names(functions, facts)
-        return [
+        findings = [
             finding
             for function in functions
+            if "ValueError" not in provenance.bindings.get(context.tree, {})
+            and "ValueError" not in provenance.external_bindings
             if function.name not in overloaded
             for finding in _function_diagnostics(function, facts, self.code)
         ]
+        return [*findings, *sdk_prerequisite_diagnostics(facts, self.code)]
 
 
 def _excluded_source(context: PythonFileContext) -> bool:
@@ -202,7 +254,7 @@ def _excluded_source(context: PythonFileContext) -> bool:
         or context.path.suffix == ".pyi"
         or is_test_path(context.path)
         or is_test_support_path(context.path)
-        or "ValueError" not in context.symbol_source
+        or "raise" not in context.symbol_source
     )
 
 

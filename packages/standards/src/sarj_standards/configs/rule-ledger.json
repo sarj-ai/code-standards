@@ -166,6 +166,7 @@
       "prefer-defaultdict",
       "prefer-direct-import-module",
       "prefer-discriminated-model-union",
+      "prefer-exception-propagation",
       "prefer-explicit-class-contract",
       "prefer-explicit-value-model-construction",
       "prefer-fstring-over-concat",
@@ -748,7 +749,8 @@
       "SARJ580",
       "SARJ582",
       "SARJ583",
-      "SARJ584"
+      "SARJ584",
+      "SARJ585"
     ],
     "sql": [
       "SARJ101",

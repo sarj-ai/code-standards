@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0f01f06f50f0f8c9a6ef7c1d7b03f4b20dd69fb6ed938e42882ce8dea52444bf",
-  "cliSha256": "2f6311b13c7ddeccdda744d7be0000ad38b50cfbab4bcf507035b2327d63adce",
+  "catalogSha256": "fdc034ff04af93f4070b2f394f26ecf206a2043cef07cddd21606b3dd170f6b6",
+  "cliSha256": "fef0090282e63bdfe2e0a73b0ae9e1c9e9fabb5917b90a482bde0095a9cdf807",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -18928,6 +18928,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-exception-propagation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/send.py",
+              "source": "try:\n    send()\nexcept Exception as error:\n    raise RuntimeError(str(error)) from error\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "message-only-wrapper",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The wrapper only copies the original message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/send.py",
+              "source": "send()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "propagate",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Let the original exception reach its owner"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-explicit-class-contract": {
       "examples": [
         {
@@ -20880,6 +20915,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "An execution helper declares its required object"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/send.py",
+              "source": "from openai import AsyncOpenAI\n\n\nclass Sender:\n    def __init__(self, endpoint: AsyncOpenAI | None):\n        self._endpoint = endpoint\n\n    async def send(self):\n        if self._endpoint is None:\n            raise RuntimeError(\"endpoint required\")\n        return await self._endpoint.get(\"/ready\", cast_to=str)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "nullable-sdk",
+          "outcome": "reject",
+          "scenarioId": "sdk-dependency",
+          "title": "A nullable SDK field defers a required construction choice"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/send.py",
+              "source": "from openai import AsyncOpenAI\n\n\nclass Sender:\n    def __init__(self, endpoint: AsyncOpenAI):\n        self._endpoint = endpoint\n\n    async def send(self):\n        return await self._endpoint.get(\"/ready\", cast_to=str)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "required-sdk",
+          "outcome": "accept",
+          "scenarioId": "sdk-dependency",
+          "title": "The SDK client is required at construction"
         }
       ],
       "optionsSchemaSource": null

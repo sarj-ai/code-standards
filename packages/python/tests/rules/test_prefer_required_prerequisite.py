@@ -19,6 +19,198 @@ _SIMPLE = (
     "    if service is None:\n        raise ValueError('service required')\n"
     "    service.run()\n"
 )
+_SDK_REGISTRY = (
+    "from collections.abc import Mapping\n"
+    "from enum import StrEnum\n"
+    "from openai import AsyncOpenAI\n"
+    "class Provider(StrEnum):\n    FIRST = 'first'\n    SECOND = 'second'\n"
+    "class Sender:\n"
+    "    def __init__(self, *, endpoints: Mapping[Provider, AsyncOpenAI]):\n"
+    "        self._endpoints = dict(endpoints)\n"
+    "    async def send(self, provider: Provider):\n"
+    "        selected = self._endpoints.get(provider)\n"
+    "        if selected is None:\n"
+    "            message = 'endpoint required'\n"
+    "            raise RuntimeError(message)\n"
+    "        return await selected.audio.speech.create(model='model', input='hello', voice='voice')\n"
+)
+_SDK_FIELD = (
+    "from openai import AsyncOpenAI\n"
+    "class Sender:\n"
+    "    def __init__(self, *, endpoint: AsyncOpenAI | None):\n"
+    "        self._endpoint = endpoint\n"
+    "    async def send(self):\n"
+    "        if self._endpoint is None:\n"
+    "            raise RuntimeError('endpoint required')\n"
+    "        return await self._endpoint.audio.speech.create(model='model', input='hello', voice='voice')\n"
+)
+
+
+@pytest.mark.parametrize("source", [_SDK_REGISTRY, _SDK_FIELD], ids=["partial-registry", "nullable-field"])
+def test_required_sdk_dependency_is_encoded_at_construction(tmp_path: Path, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    path = tmp_path / "sender.py"
+    path.write_text(source)
+    findings = analyze(["prefer-required-prerequisite"], [path])
+    assert [(finding.code, finding.severity) for finding in findings] == [("SARJ584", Severity.ERROR)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _SDK_REGISTRY.replace("Mapping[Provider, AsyncOpenAI]", "dict[Provider, AsyncOpenAI]"),
+        _SDK_REGISTRY.replace(
+            "from enum import StrEnum", "from typing import Literal\nfrom enum import StrEnum"
+        ).replace("Mapping[Provider, AsyncOpenAI]", "Mapping[Literal['first', 'second'], AsyncOpenAI]"),
+        _SDK_REGISTRY.replace(
+            "raise RuntimeError(message)", "raise TaskFailureError(message, retriable=False, expected=True)"
+        ),
+        _SDK_FIELD.replace("from openai import AsyncOpenAI", "from openai import AsyncOpenAI as API").replace(
+            "endpoint: AsyncOpenAI | None", "endpoint: API | None"
+        ),
+        _SDK_FIELD.replace(
+            "from openai import AsyncOpenAI", "from openai import AsyncOpenAI\nfrom typing import Optional"
+        ).replace("endpoint: AsyncOpenAI | None", "endpoint: Optional[AsyncOpenAI]"),
+        _SDK_FIELD.replace("from openai import AsyncOpenAI", "from httpx2 import AsyncClient as AsyncOpenAI"),
+        _SDK_FIELD.replace(
+            "raise RuntimeError('endpoint required')", "raise RuntimeError('endpoint required') from None"
+        ),
+        _SDK_REGISTRY.replace("raise RuntimeError(message)", "raise TaskFailureError(message) from cause"),
+    ],
+    ids=["dict", "literal-provider", "task-failure", "sdk-alias", "optional", "httpx2", "no-cause", "explicit-cause"],
+)
+def test_sdk_contract_variants(tmp_path: Path, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    path = tmp_path / "variant.py"
+    path.write_text(source)
+    findings = analyze(["prefer-required-prerequisite"], [path])
+    assert [(finding.code, finding.severity) for finding in findings] == [("SARJ584", Severity.ERROR)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _SDK_FIELD.replace("AsyncOpenAI | None", "AsyncOpenAI"),
+        _SDK_FIELD.replace("raise RuntimeError('endpoint required')", "return None"),
+        _SDK_FIELD.replace("raise RuntimeError('endpoint required')", "return await fallback()"),
+        _SDK_FIELD.replace("self._endpoint is None", "not self._endpoint"),
+        _SDK_FIELD.replace("    async def send", "    @validate_input\n    async def send"),
+        _SDK_FIELD.replace(
+            "        self._endpoint = endpoint",
+            "        if endpoint is None:\n            raise ValueError('required')\n        self._endpoint = endpoint",
+        ),
+        _SDK_FIELD.replace("from openai import AsyncOpenAI", "class AsyncOpenAI: pass"),
+        _SDK_FIELD.replace("from openai import AsyncOpenAI", "from other_library import AsyncOpenAI"),
+        _SDK_FIELD.replace("AsyncOpenAI | None", "AsyncOpenAI | str | None"),
+        _SDK_FIELD.replace(
+            "    async def send",
+            "    def configure(self, endpoint):\n        self._endpoint = endpoint\n    async def send",
+        ),
+        _SDK_REGISTRY.replace("Mapping[Provider, AsyncOpenAI]", "Mapping[str, AsyncOpenAI]"),
+        _SDK_REGISTRY.replace("from enum import StrEnum", "class StrEnum: pass"),
+        _SDK_REGISTRY.replace(
+            "selected = self._endpoints.get(provider)", "selected = self._endpoints.get(provider, default_endpoint)"
+        ),
+        _SDK_REGISTRY.replace(
+            "selected = self._endpoints.get(provider)",
+            "self._endpoints.update(load_more())\n        selected = self._endpoints.get(provider)",
+        ),
+        _SDK_REGISTRY.replace(
+            "selected = self._endpoints.get(provider)",
+            "register(self._endpoints)\n        selected = self._endpoints.get(provider)",
+        ),
+        _SDK_REGISTRY.replace(
+            "selected = self._endpoints.get(provider)",
+            "selected = self._endpoints.get(provider)\n        selected = fallback()",
+        ),
+        _SDK_REGISTRY.replace(
+            "raise RuntimeError(message)", "record_failure()\n            raise RuntimeError(message)"
+        ),
+        _SDK_REGISTRY.replace("selected is None", "selected is None and needs_audio"),
+        _SDK_REGISTRY.replace(
+            "return await selected.audio.speech.create(model='model', input='hello', voice='voice')", "return selected"
+        ),
+    ],
+    ids=[
+        "required",
+        "absence-return",
+        "fallback",
+        "truthiness",
+        "decorated",
+        "validated-constructor",
+        "shadowed-sdk",
+        "unrelated-sdk",
+        "mixed-union",
+        "reconfigured",
+        "open-keys",
+        "false-enum",
+        "lookup-default",
+        "mutated",
+        "escaped",
+        "rebound",
+        "logging",
+        "complex-predicate",
+        "narrowing",
+    ],
+)
+def test_sdk_boundary_near_misses(tmp_path: Path, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    path = tmp_path / "boundary.py"
+    path.write_text(source)
+    assert not analyze(["prefer-required-prerequisite"], [path])
+
+
+def test_sdk_dependency_error_suppression(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    path = tmp_path / "suppressed.py"
+    path.write_text(
+        _SDK_FIELD.replace(
+            "endpoint: AsyncOpenAI | None):",
+            "endpoint: AsyncOpenAI | None):  # sarj-noqa: SARJ584 -- intentional compatibility boundary",
+        )
+    )
+    assert not analyze(["prefer-required-prerequisite"], [path])
+
+
+def test_imported_finite_provider_registry(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    providers = tmp_path / "providers.py"
+    providers.write_text(
+        "from enum import StrEnum\nclass Provider(StrEnum):\n    FIRST = 'first'\n    SECOND = 'second'\n"
+    )
+    path = tmp_path / "sender.py"
+    source = _SDK_REGISTRY.replace("from enum import StrEnum\n", "").replace(
+        "class Provider(StrEnum):\n    FIRST = 'first'\n    SECOND = 'second'\n", "from providers import Provider\n"
+    )
+    path.write_text(source)
+    findings = analyze(["prefer-required-prerequisite"], [path, providers])
+    assert [(finding.path, finding.code, finding.severity) for finding in findings] == [
+        (path, "SARJ584", Severity.ERROR)
+    ]
+
+
+def test_blocking_sdk_contract_owns_default_advice(tmp_path: Path) -> None:
+    path = tmp_path / "sender.py"
+    source = _SDK_FIELD.replace("endpoint: AsyncOpenAI | None", "endpoint: AsyncOpenAI | None = None")
+    path.write_text(source)
+    selectors = ["prefer-required-prerequisite", "prefer-required-constructor-parameters"]
+    assert [finding.code for finding in analyze(selectors, [path])] == ["SARJ584"]
+    path.write_text(
+        source.replace(
+            "endpoint: AsyncOpenAI | None = None):",
+            "endpoint: AsyncOpenAI | None = None):  # sarj-noqa: SARJ584 -- compatibility boundary",
+        )
+    )
+    assert [finding.code for finding in analyze(selectors, [path])] == ["SARJ468"]
+
+
+def test_sdk_dependency_is_a_blocking_cli_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "sender.py"
+    path.write_text(_SDK_FIELD)
+    assert main(["check", "--rule", "prefer-required-prerequisite", str(path)]) == 1
+    assert "SARJ584 SDK dependency" in capsys.readouterr().out
+
+
 _LINKED_SHAPE = (
     "async def say_for_scenario(session: Session, call_settings: Settings,\n"
     "                           scenario_config: Config | None, call_config: GlobalSettings,\n"
