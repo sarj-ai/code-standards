@@ -35,7 +35,7 @@ class NumericLiteralSeparators(Rule):
     id = "numeric-literal-separators"
     code = "SARJ567"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Group long decimal numeric literals with thousands separators.",
         rationale="Long ungrouped decimal quantities are harder to read and easy to miscount.",
         remediation="Use three-digit groups such as 10_000_000; retain a named constant when the value has domain meaning.",
@@ -92,7 +92,7 @@ class NumericLiteralSeparators(Rule):
                     node.col_offset + 1,
                     self.code,
                     f"Group this decimal literal as {replacement}.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     fixes=_literal_fixes(node, replacement, digest, context),
                 )
             )

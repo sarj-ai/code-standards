@@ -317,11 +317,11 @@ def test_verify_keep_going_finishes_test_siblings_before_suppressing_tail(verifi
 
 
 def test_verify_reuses_an_inherited_outer_lease(verification: _Verification) -> None:
-    result = verification.run(inherited_lease=12345)
+    result = verification.run(inherited_lease=12_345)
     assert result.returncode == 0, result.stderr
     events = verification.events()
     assert not any(event.kind == "admit" for event in events)
-    assert {event.lease for event in events} == {12345}
+    assert {event.lease for event in events} == {12_345}
 
 
 @pytest.mark.parametrize("target", ["verify", "test"])

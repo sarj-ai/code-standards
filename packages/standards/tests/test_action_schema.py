@@ -197,7 +197,7 @@ def test_large_selections_use_bounded_native_batches_without_losing_order(tmp_pa
     source = "name: 🛠\r\nruns: {using: node24, main: index.js}\r\n"
     count = 257 if bound == "files" else 5
     if bound == "bytes":
-        source += ("# " + "p" * 32765 + "\n") * 56
+        source += ("# " + "p" * 32_765 + "\n") * 56
     selected = tuple(f"action-{index}/action.yml" for index in range(count))
     for name in selected:
         path = tmp_path / name

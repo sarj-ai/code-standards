@@ -614,7 +614,7 @@ class _StylesheetConfig(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
 
     default_severity: Literal["error", "warning"] = Field(alias="defaultSeverity")
-    rules: dict[str, bool | dict[str, list[str]] | tuple[bool, _StylesheetRuleOptions]]
+    rules: dict[str, bool | dict[str, list[str]] | tuple[bool | dict[str, list[str]], _StylesheetRuleOptions]]
 
     def level(self, rule: str) -> Literal["error", "warning"]:
         definition = self.rules[rule]

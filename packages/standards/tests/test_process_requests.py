@@ -249,7 +249,7 @@ def test_request_timeout_and_output_limits_survive_decoration(tmp_path: Path, *,
 
 @pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])
-@pytest.mark.parametrize("limit", [0, 128, 65536], ids=("zero", "small", "read-boundary"))
+@pytest.mark.parametrize("limit", [0, 128, 65_536], ids=("zero", "small", "read-boundary"))
 def test_held_open_output_overflow_fails_before_timeout(
     tmp_path: Path, stream: str, limit: int, *, decorated: bool
 ) -> None:
@@ -272,7 +272,7 @@ def test_held_open_output_overflow_fails_before_timeout(
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])
-@pytest.mark.parametrize("limit", [0, 128, 65536], ids=("zero", "small", "read-boundary"))
+@pytest.mark.parametrize("limit", [0, 128, 65_536], ids=("zero", "small", "read-boundary"))
 def test_output_exactly_at_limit_is_captured_completely(tmp_path: Path, stream: str, limit: int) -> None:
     request = ProcessRequest(
         (sys.executable, "-c", f"import sys; sys.{stream}.write('x' * {limit})"),
