@@ -44,7 +44,8 @@ class NoUnusedModuleOutputs(Rule):
         limitations=(
             "Code Standards enforces this rule on the complete selected Git HEAD or staged index, including unchanged files and every local root.",
             "The per-file API cannot prove non-use and retains standalone outputs; whole-project callers must supply complete sources to check_project.",
-            "Root and standalone exports, dynamic projections, unread outputs with preconditions and exact documented external contracts are preserved.",
+            "Only modules explicitly declared closed-world in iac.no-unused-module-outputs.internal_modules can have unused exports. This reviewed contract asserts that all consumers are in the selected repository; a local module call alone cannot establish that boundary.",
+            "Root/public/unknown exports, dynamic projections, unread outputs with preconditions and exact documented external contracts are preserved. Retained unknown exports are not thereby proved live.",
             "Unresolved local modules, malformed HCL/JSON, missing source or stale external contracts fail analysis instead of proving non-use.",
             "This required error cannot be baselined or suppressed with sarj-noqa; no automatic deletion is provided.",
         ),
@@ -54,6 +55,10 @@ class NoUnusedModuleOutputs(Rule):
                 title="Remove an unconsumed child export",
                 outcome=ExampleOutcome.MATCH,
                 files=(
+                    ExampleFile.iac(
+                        ".sarj-standards.toml",
+                        '[iac.no-unused-module-outputs]\ninternal_modules = ["child"]\n',
+                    ),
                     ExampleFile.iac("main.tf", 'module "child" { source = "./child" }\n'),
                     ExampleFile.iac("child/outputs.tf", 'output "unused" { value = true }\n'),
                 ),
@@ -66,6 +71,10 @@ class NoUnusedModuleOutputs(Rule):
                 title="Keep a child output consumed by a root contract",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
+                    ExampleFile.iac(
+                        ".sarj-standards.toml",
+                        '[iac.no-unused-module-outputs]\ninternal_modules = ["child"]\n',
+                    ),
                     ExampleFile.iac(
                         "main.tf",
                         'module "child" { source = "./child" }\noutput "public" { value = module.child.used }\n',
@@ -92,6 +101,7 @@ class NoUnusedModuleOutputs(Rule):
         sources: Mapping[PurePosixPath, str],
         *,
         external_outputs: Collection[tuple[str, str]] = (),
+        internal_modules: Collection[str] = (),
     ) -> list[Diagnostic]:
         return [
             Diagnostic(
@@ -109,6 +119,8 @@ class NoUnusedModuleOutputs(Rule):
                 severity=DefaultLevel.ERROR,
             )
             for output in unused_module_outputs(
-                {path.as_posix(): source for path, source in sources.items()}, external_outputs=external_outputs
+                {path.as_posix(): source for path, source in sources.items()},
+                external_outputs=external_outputs,
+                internal_modules=internal_modules,
             )
         ]

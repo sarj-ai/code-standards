@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -99,7 +100,14 @@ resource "google_logging_metric" "consumer" {{
 
 
 def _names(sources: dict[str, str], *, external: tuple[tuple[str, str], ...] = ()) -> set[tuple[str, str]]:
-    return {(item.path, item.name) for item in unused_module_outputs(sources, external_outputs=external)}
+    return {
+        (item.path, item.name)
+        for item in unused_module_outputs(
+            sources,
+            external_outputs=external,
+            internal_modules=tuple(sorted({PurePosixPath(path).parent.as_posix() for path in sources})),
+        )
+    }
 
 
 @pytest.mark.parametrize(

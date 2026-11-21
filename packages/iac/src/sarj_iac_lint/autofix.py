@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 _COMMENT = re.compile(r"\s*(?:#|//)\s?(.*)")
 _ASSERTION_ATTRIBUTES = frozenset({"condition", "error_message"})
+GUARD_REMOVAL_RULES = frozenset({"no-redundant-variable-validation", "no-terraform-data-condition"})
 _FIXABLE = frozenset(
     {
         "no-comment-cruft",
@@ -42,6 +43,7 @@ _FIXABLE = frozenset(
         "no-terraform-data-condition",
         "no-nested-conditional",
         "expression-complexity",
+        "conditional-resource-presence",
     }
 )
 _PRESERVED_COMMENT = re.compile(
@@ -51,6 +53,17 @@ _PRESERVED_COMMENT = re.compile(
 
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
+    current = source
+    for _ in range(4):
+        fixed = _fix_once(path, current, rule_ids=rule_ids)
+        if fixed == current:
+            return current
+        current = fixed
+    message = "IaC safe fixes did not converge; source was not changed"
+    raise ValueError(message)
+
+
+def _fix_once(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
     selected = tuple(REGISTRY) if rule_ids is None else tuple(rule_ids)
     if unknown := set(selected) - REGISTRY.keys():
         message = f"unknown IaC rules: {', '.join(sorted(unknown))}"
@@ -73,7 +86,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         match rule_id:
             case "no-terraform-comments":
                 comment_edits.extend(_empty_comment_edits(source, lines, diagnostics))
-            case "no-nested-conditional" | "expression-complexity":
+            case "no-nested-conditional" | "expression-complexity" | "conditional-resource-presence":
                 edits.extend(literal_conditional_edits(source, diagnostics))
             case "no-redundant-variable-validation":
                 edits.extend(_validation_edits(source, lines, diagnostics))

@@ -291,6 +291,7 @@
       "require-fk-index"
     ],
     "iac": [
+      "canonical-terraform-declarations",
       "conditional-resource-presence",
       "expression-complexity",
       "no-boolean-enable-variable",
@@ -802,7 +803,8 @@
       "SARJ220",
       "SARJ221",
       "SARJ222",
-      "SARJ223"
+      "SARJ223",
+      "SARJ224"
     ],
     "text": [
       "SARJ300",

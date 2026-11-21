@@ -18,6 +18,7 @@ from sarj_standards.libs.adoption.manifest import (
     MANIFEST_NAME,
     TerraformOutputContract,
     as_table,
+    terraform_internal_modules,
     terraform_output_contracts,
 )
 from sarj_standards.libs.staged_git import has_committed_tree, is_git_worktree, staged_environment
@@ -35,6 +36,7 @@ _BLOB_BATCH = 100
 class ModuleOutputSources:
     sources: Mapping[PurePosixPath, str]
     contracts: tuple[TerraformOutputContract, ...]
+    internal_modules: tuple[str, ...] = ()
 
 
 def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
@@ -67,7 +69,11 @@ def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
         if contract.evidence not in tracked:
             message = f"External output evidence is not tracked in the selected Git tree: {contract.evidence}"
             raise ValueError(message)
-    return ModuleOutputSources({path: contents[path].decode("utf-8") for path in paths}, contracts)
+    return ModuleOutputSources(
+        {path: contents[path].decode("utf-8") for path in paths},
+        contracts,
+        terraform_internal_modules(as_table(config)),
+    )
 
 
 def _selected_contents(root: Path, identity: GitIdentity, paths: list[PurePosixPath]) -> dict[PurePosixPath, bytes]:

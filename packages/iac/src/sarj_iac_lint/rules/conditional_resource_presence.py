@@ -17,12 +17,15 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks, local_collections, resolve_local_tokens
+from sarj_iac_lint.rules._literal_policy import local_collections, resolve_local_tokens
+from sarj_iac_lint.terraform import TerraformSession, is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
+
+    from sarj_iac_lint._hcl import Attribute, Block
 
 
 _FIXTURE_DIRS = frozenset({"fixture", "fixtures", "testdata", "generated"})
@@ -47,15 +50,37 @@ class ConditionalResourcePresence(Rule):
             "restore/cutover ordering when simplifying an existing deployment."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "This is a review advisory, not proof that optional infrastructure is wrong. No resource deletion or state-address rewrite is automatic.",
             "Inspect count and for_each on resource, module and ephemeral blocks, including direct same-file local aliases and collection conversions. Plain multiplicity, ordinary value selections, data lookups and member-specific comprehension filters are not targeted.",
-            "Cross-file aliases, object traversals and arbitrary function results remain opaque. Cycles and ambiguous declarations are not guessed.",
+            "The shared analysis session resolves same-module cross-file local aliases. Object traversals and arbitrary function results remain opaque; cycles and ambiguous declarations are not guessed.",
             "The specific deployment-identity policy takes precedence; this warning takes precedence over a generic nested-selection warning at the same attribute when both rules are selected.",
-            "Only authored .tf inputs are checked; generated headers, fixtures and other HCL/JSON dialects are excluded. Review justification does not require adding a Terraform comment.",
+            "Covers authored .tf and .tf.json; generated headers, fixtures and other HCL dialects are excluded. Review justification does not require adding a Terraform comment.",
+            "Safe fixes cover native HCL single-line count expressions whose conditions are Boolean literals and whose branches are homogeneous bounded scalar literals. The selected result must be a nonnegative integer. The count attribute, labels, indices and every other parsed attribute remain unchanged. Symbolic/default/date decisions, for_each, JSON, comments, unknown functions and mixed branch types are refused.",
         ),
         examples=(
+            RuleExample(
+                example_id="literal-count",
+                scenario="literal-count",
+                title="Fold a literal gate while retaining indexed instances",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.iac("main.tf", 'resource "example_service" "this" {\n  count = true ? 1 : 0\n}\n'),),
+                fixed_files=(ExampleFile.iac("main.tf", 'resource "example_service" "this" {\n  count = 1\n}\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="stable-count-addresses",
+                scenario="literal-count",
+                title="The count attribute preserves instance addresses",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.iac("main.tf", 'resource "example_service" "this" {\n  count = 1\n}\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="temporary-provisioning-switch",
                 title="A migration switch retains two provisioning paths",
@@ -82,36 +107,49 @@ class ConditionalResourcePresence(Rule):
     )
     description = documentation.summary
 
+    def __init__(self, *, session: TerraformSession | None = None) -> None:
+        self.session = session
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            path.suffix.lower() != ".tf"
-            or "?" not in source
-            or any(part.lower() in _FIXTURE_DIRS for part in path.parts)
-        ):
+        if not is_terraform(path) or "?" not in source or any(part.lower() in _FIXTURE_DIRS for part in path.parts):
             return []
         if _GENERATED.search(" ".join(header_comment_lines(source, leading_only=True))):
             return []
         try:
-            top = balanced_blocks(source)
-            values = local_collections(top)
+            top = terraform_blocks(path, source)
+            values = local_collections(self.session.blocks(path) if self.session is not None else top)
             return [
                 Diagnostic(
                     path,
                     attribute.line,
                     attribute.col,
                     self.code,
-                    "Conditional resource presence: prefer a stable declaration or justify optional provisioning and its lifetime in the PR or input description.",
+                    _gate_message(block.type, block.labels, attribute.name, tokens(attribute.value), values),
                     severity=DefaultLevel.WARNING,
                 )
-                for block in top
-                if block.type in {"resource", "module", "ephemeral"}
-                for attribute in block.attributes
-                if attribute.name in {"count", "for_each"}
+                for block, attribute in _presence_attributes(top)
                 if _gates_presence(tokens(attribute.value), values, collection=attribute.name == "for_each")
             ]
         except ValueError:
             return []
+
+
+def _gate_message(
+    kind: str, labels: tuple[str, ...], attribute: str, parts: tuple[str, ...], values: Mapping[str, str]
+) -> str:
+    resolved = resolve_local_tokens(parts, values)
+    identity = ".".join((kind, *labels, attribute))
+    if resolved is not None and resolved[:2] in {("true", "?"), ("false", "?")}:
+        return (
+            f"{identity} has a Boolean-literal gate, independent of deployment inputs. Simplify the expression only after preserving branch types, count indices or for_each keys, references and outputs. "
+            "Keep the count/for_each attribute; deleting it changes instance addresses and requires a reviewed state migration."
+        )
+    return (
+        f"Conditional resource presence at {identity}: review the input's Retire by/Remove when or Permanent description and every supported configuration. "
+        "A name, default, repeated tfvars value or expired date does not establish cutover or rollback readiness. "
+        "Preserve count indices/for_each keys, references, outputs and deployment differences; any address change requires reviewed migration evidence."
+    )
 
 
 def _normalize(
@@ -170,3 +208,11 @@ def _empty(parts: tuple[str, ...], values: Mapping[str, str], *, collection: boo
         return Decimal(literal if literal is not None else "".join(parts)) == 0
     except InvalidOperation:
         return False
+
+
+def _presence_attributes(blocks: tuple[Block, ...]) -> Iterator[tuple[Block, Attribute]]:
+    for block in blocks:
+        if block.type in {"resource", "module", "ephemeral"}:
+            for attribute in block.attributes:
+                if attribute.name in {"count", "for_each"}:
+                    yield block, attribute

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_iac_lint.rules.canonical_terraform_declarations import CanonicalTerraformDeclarations
 from sarj_iac_lint.rules.conditional_resource_presence import ConditionalResourcePresence
 from sarj_iac_lint.rules.expression_complexity import ExpressionComplexity
 from sarj_iac_lint.rules.no_boolean_enable_variable import NoBooleanEnableVariable
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        CanonicalTerraformDeclarations.id: CanonicalTerraformDeclarations,
         NoUnusedModuleOutputs.id: NoUnusedModuleOutputs,
         NoTerraformGuardBlocks.id: NoTerraformGuardBlocks,
         ConditionalResourcePresence.id: ConditionalResourcePresence,

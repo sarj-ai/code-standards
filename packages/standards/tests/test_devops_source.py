@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.diagnostics import Completion, Severity
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_source import (
     analyze_sources,
@@ -214,7 +214,9 @@ def test_tflint_scope_is_relative_to_project(tmp_path: Path) -> None:
             ],
         }
     )
-    assert parse_tflint(payload, tmp_path, cwd=tmp_path / "iac")[0].location.path == "iac/main.tf"
+    finding = parse_tflint(payload, tmp_path, cwd=tmp_path / "iac")[0]
+    assert finding.location.path == "iac/main.tf"
+    assert finding.severity is Severity.ERROR
     with pytest.raises(ValueError, match="execution errors"):
         parse_tflint('{"errors":[{"message":"plugin failure"}],"issues":[]}', tmp_path)
 

@@ -61,6 +61,8 @@ PATH = ".repo-standards/baseline.json"
 # Policies 37/38 add Markdown advice; 39 changes PR-template fingerprints.
 # Compose these upgrades only for empty baselines, preserving warning choices
 # and scope. Existing debt still needs its own compatibility review.
+# Policy 40 adds warning-first Terraform topology rules without changing existing
+# identities. Only empty baselines advance; new findings remain unaccepted.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -173,6 +175,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     predecessor = {
+        40: 39,
         39: 38,
         38: 37,
         37: _TYPED_TOOLING_POLICY,
@@ -200,6 +203,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
             (36, 37),
             (37, 38),
             (38, 39),
+            (39, 40),
         }
         and not baseline.fingerprints
     )

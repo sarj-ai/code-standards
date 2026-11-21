@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4bfb47d5e3e4816cc8ae03179e457b631fadc37779d679708bc73f02f5179090",
-  "cliSha256": "dfc42a4ebcaa96bd4383b09c0961de596322d2da92eb5981ea643f2663cd8b7b",
+  "catalogSha256": "7b20cc3a570872ed937cd7b28c61fa7ef264da8ed1aa16b2279fa89f6d685afb",
+  "cliSha256": "2f6311b13c7ddeccdda744d7be0000ad38b50cfbab4bcf507035b2327d63adce",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -11,8 +11,121 @@
     "terraform": "1.17.0"
   },
   "rules": {
+    "iac:canonical-terraform-declarations": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" { type = string }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "canonical-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A module owns its input file"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "outputs.tf.json",
+              "source": "{ \"output\": { \"endpoint\": { \"value\": \"${var.endpoint}\" } } }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "outputs.tf.json",
+          "id": "canonical-json-output",
+          "outcome": "accept",
+          "scenarioId": "json",
+          "title": "A module owns its JSON output file"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.tf",
+              "source": "variable \"region\" { type = string }\nresource \"terraform_data\" \"this\" { input = var.region }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"project\" { type = string }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "service.tf",
+              "source": "resource \"terraform_data\" \"this\" { input = var.region }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"project\" { type = string }\n\nvariable \"region\" { type = string }\n"
+            }
+          ],
+          "focusPath": "service.tf",
+          "id": "misplaced-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep the interface visible in its owning module"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.tf.json",
+              "source": "{ \"output\": { \"endpoint\": { \"value\": \"${var.endpoint}\" } } }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.tf.json",
+          "id": "misplaced-json-output",
+          "outcome": "reject",
+          "scenarioId": "json",
+          "title": "JSON declarations belong to the same owning module"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:conditional-resource-presence": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_service\" \"this\" {\n  count = true ? 1 : 0\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_service\" \"this\" {\n  count = 1\n}\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "literal-count",
+          "outcome": "reject",
+          "scenarioId": "literal-count",
+          "title": "Fold a literal gate while retaining indexed instances"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"example_service\" \"this\" {\n  count = 1\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "stable-count-addresses",
+          "outcome": "accept",
+          "scenarioId": "literal-count",
+          "title": "The count attribute preserves instance addresses"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -1536,6 +1649,10 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": ".sarj-standards.toml",
+              "source": "[iac.no-unused-module-outputs]\ninternal_modules = [\"child\"]\n"
+            },
+            {
               "path": "child/outputs.tf",
               "source": "output \"used\" { value = true }\n"
             },
@@ -1554,6 +1671,10 @@
         {
           "expectedCount": 1,
           "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[iac.no-unused-module-outputs]\ninternal_modules = [\"child\"]\n"
+            },
             {
               "path": "child/outputs.tf",
               "source": "output \"unused\" { value = true }\n"

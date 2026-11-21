@@ -6,10 +6,12 @@ from pathlib import PurePosixPath
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository-owned TypeScript verifier.
 import sys
+import tomllib
 from typing import TYPE_CHECKING
 
 from sarj_rule_contracts.examples import ExampleAnalyzer, ExampleFinding, ExampleFixer, verify_examples
 
+from sarj_standards.libs.adoption.manifest import terraform_internal_modules
 from sarj_standards.libs.repository import rule_catalog_artifact
 from sarj_standards.libs.rules import Language, RuleEngine, RuleSelector, RuleSpec
 
@@ -76,11 +78,15 @@ def _iac(rule_id: str) -> SelectedRule:
     from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_iac_lint.rules only when this selected operation executes.
 
     selected_rule = _native(rule_id, RuleEngine.IAC, REGISTRY.get(rule_id), analyze)
+    if rule_id == "canonical-terraform-declarations":
+        return SelectedRule(selected_rule.spec, selected_rule.analyze, _declaration_fix)
     if rule_id != "no-unused-module-outputs":
         return selected_rule
     from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- this rule requires the explicit complete example boundary.
 
     def run(root: Path, _focus: Path) -> list[ExampleFinding]:
+        manifest = root / ".sarj-standards.toml"
+        options = tomllib.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
         sources = {
             PurePosixPath(path.relative_to(root).as_posix()): path.read_text(encoding="utf-8")
             for path in root.rglob("*")
@@ -88,10 +94,23 @@ def _iac(rule_id: str) -> SelectedRule:
         }
         return [
             ExampleFinding(d.path, d.line, d.col, d.code, d.message)
-            for d in NoUnusedModuleOutputs.check_project(root, sources)
+            for d in NoUnusedModuleOutputs.check_project(
+                root, sources, internal_modules=terraform_internal_modules(options)
+            )
         ]
 
     return SelectedRule(selected_rule.spec, run)
+
+
+def _declaration_fix(root: Path, path: Path, source: str) -> str:
+    from sarj_iac_lint.declaration_fixes import consolidate_declarations  # ruff: ignore[import-outside-top-level] -- only project declaration examples need the module planner.
+
+    sources = {
+        item: item.read_text(encoding="utf-8")
+        for item in root.rglob("*")
+        if item.is_file() and item.name.endswith((".tf", ".tf.json"))
+    }
+    return consolidate_declarations(sources, selected=tuple(sources)).get(path, source)
 
 
 def _native(rule_id: str, engine: RuleEngine, rule: type[NativeRule] | None, analyze: NativeAnalyzer) -> SelectedRule:

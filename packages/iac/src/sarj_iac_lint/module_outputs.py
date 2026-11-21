@@ -2,16 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
-import json
 from pathlib import PurePosixPath
 import posixpath
 import re
 from typing import Final
 
 from . import _hcl
-
-
-type _JSONValue = str | int | float | bool | list[_JSONValue] | dict[str, _JSONValue] | None
+from .terraform import terraform_blocks
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,18 +72,13 @@ _UNNAMED_BLOCKS = frozenset({"locals", "terraform", "moved", "removed", "import"
 _PROJECTING_FUNCTIONS = frozenset({"try", "coalesce", "merge", "sensitive", "nonsensitive"})
 _MAX_INSTANCES = 20_000
 _MAX_DEPTH = 128
-_JSON_LITERALS: Final[dict[str, frozenset[str]]] = {
-    "module": frozenset({"source", "version", "providers"}),
-    "variable": frozenset({"type", "default", "description"}),
-    "provider": frozenset({"alias", "version"}),
-    "output": frozenset({"description", "sensitive", "ephemeral"}),
-}
 
 
 def unused_module_outputs(
     sources: Mapping[str, str],
     *,
     external_outputs: Collection[tuple[str, str]] = (),
+    internal_modules: Collection[str] = (),
 ) -> tuple[UnusedModuleOutput, ...]:
     modules: dict[str, _Module] = {}
     for path, source in sorted(sources.items()):
@@ -97,18 +89,14 @@ def unused_module_outputs(
             raise ValueError(message)
         directory = str(PurePosixPath(path).parent)
         module = modules.setdefault(directory, _Module())
-        if path.endswith(".tf.json"):
-            blocks = _json_blocks(path=path, source=source)
-        else:
-            parsed = _hcl.document_result(source)
-            if isinstance(parsed, _hcl.RejectedDocument) or not _hcl.balanced_structure(source):
-                reason = parsed.reason if isinstance(parsed, _hcl.RejectedDocument) else "unbalanced source"
-                message = f"Cannot establish Terraform consumers in {path}: {reason}"
-                raise ValueError(message)
-            blocks = parsed.root.blocks
+        try:
+            blocks = terraform_blocks(PurePosixPath(path), source)
+        except ValueError as exc:
+            message = f"Cannot establish Terraform consumers in {path}: {exc}"
+            raise ValueError(message) from exc
         for block in blocks:
             _collect(module, block, path=path, directory=directory)
-    return _Flow(modules, frozenset(external_outputs)).unused()
+    return _Flow(modules, frozenset(external_outputs), frozenset(internal_modules)).unused()
 
 
 def _collect(module: _Module, block: _hcl.Block, *, path: str, directory: str) -> None:
@@ -247,112 +235,6 @@ def _ordering_values(source: str) -> tuple[str, ...]:
     )
 
 
-def _unique_object(pairs: list[tuple[str, _JSONValue]]) -> dict[str, _JSONValue]:
-    result: dict[str, _JSONValue] = {}
-    for key, value in pairs:
-        if key in result:
-            message = f"Duplicate Terraform JSON member: {key}"
-            raise ValueError(message)
-        result[key] = value
-    return result
-
-
-def _json_blocks(*, path: str, source: str) -> tuple[_hcl.Block, ...]:
-    payload: _JSONValue = json.loads(source, object_pairs_hook=_unique_object)  # pyright: ignore[reportAny] -- stdlib JSON decoder boundary; keys and duplicate members are checked before use.
-    result: list[_hcl.Block] = []
-    for kind, body in _mapping(payload, path=path).items():
-        if kind == "//":
-            continue
-        for labels, attributes in _json_declarations(kind, body, path=path):
-            values = _mapping(attributes, path=path)
-            result.append(
-                _hcl.Block(
-                    kind,
-                    labels,
-                    0,
-                    1,
-                    1,
-                    1,
-                    tuple(
-                        _hcl.Attribute(
-                            name,
-                            _json_attribute(kind, name, value),
-                            1,
-                            1,
-                        )
-                        for name, value in values.items()
-                        if name != "//"
-                    ),
-                    (),
-                )
-            )
-    return tuple(result)
-
-
-def _json_declarations(kind: str, body: _JSONValue, *, path: str) -> list[tuple[tuple[str, ...], _JSONValue]]:
-    if kind in {"resource", "data"}:
-        return [
-            ((resource_type, name), attributes)
-            for resource_type, names in _mapping(body, path=path).items()
-            for name, attributes in _mapping(names, path=path).items()
-        ]
-    if kind in _NAMED_BLOCKS:
-        return [((name,), attributes) for name, attributes in _mapping(body, path=path).items()]
-    return [((), body)]
-
-
-def _json_attribute(kind: str, name: str, value: _JSONValue) -> str:
-    if name == "depends_on":
-        message = "Terraform JSON depends_on must be an array of reference strings"
-        if not isinstance(value, list):
-            raise ValueError(message)
-        references = [item for item in value if isinstance(item, str)]
-        if len(references) != len(value):
-            raise ValueError(message)
-        return "[" + ", ".join(references) + "]"
-    return _json_expression(value, literal=kind == "terraform" or name in _JSON_LITERALS.get(kind, ()))
-
-
-def _json_expression(value: _JSONValue, *, literal: bool = False) -> str:
-    match value:
-        case dict():
-            return (
-                "{"
-                + ", ".join(
-                    f"{_json_expression(key, literal=True)}: {_json_expression(item, literal=literal)}"
-                    for key, item in value.items()
-                )
-                + "}"
-            )
-        case list():
-            return "[" + ", ".join(_json_expression(item, literal=literal) for item in value) + "]"
-        case _:
-            pass
-    if literal and isinstance(value, str):
-        return json.dumps(value.replace("${", "$${").replace("%{", "%%{"), ensure_ascii=False)
-    if not isinstance(value, str) or not any(marker in value for marker in ("${", "%{")):
-        return json.dumps(value, ensure_ascii=False)
-    lines = frozenset(value.splitlines())
-    delimiter = "SARJ_JSON_TEMPLATE"
-    while delimiter in lines:
-        delimiter += "_"
-    template = f"<<{delimiter}\n{value}\n{delimiter}\n"
-    expressions = _hcl.template_expressions(template)
-    if not expressions:
-        return json.dumps(value, ensure_ascii=False)
-    for expression in expressions:
-        if value == "${" + expression + "}":
-            return expression
-    return template
-
-
-def _mapping(value: _JSONValue, *, path: str) -> dict[str, _JSONValue]:
-    if not isinstance(value, dict):
-        message = f"Invalid Terraform JSON object in {path}"
-        raise TypeError(message)
-    return value
-
-
 def _references(parts: tuple[str, ...]) -> tuple[_Reference, ...]:
     result: list[_Reference] = []
     for start, lexeme in enumerate(parts):
@@ -445,15 +327,21 @@ def _member_value_end(parts: tuple[str, ...], *, start: int) -> int:
 
 
 class _Flow:
-    def __init__(self, modules: Mapping[str, _Module], external: frozenset[tuple[str, str]]) -> None:
+    def __init__(
+        self, modules: Mapping[str, _Module], external: frozenset[tuple[str, str]], internal: frozenset[str]
+    ) -> None:
         self.modules = modules
         self.external = external
+        self.internal = internal
         self.instances: list[_Instance] = []
         self.used: set[tuple[str, str]] = set()
         self.visited: set[tuple[tuple[str, ...], str, str, tuple[str | None, ...]]] = set()
         self.active: set[tuple[tuple[str, ...], str, str]] = set()
 
     def unused(self) -> tuple[UnusedModuleOutput, ...]:
+        if missing := self.internal - self.modules.keys():
+            message = f"Closed-world Terraform module contracts name absent modules: {', '.join(sorted(missing))}"
+            raise ValueError(message)
         roots = self._roots()
         for path in sorted(roots):
             self._instantiate(path, (path,), None, {}, ())
@@ -465,13 +353,18 @@ class _Flow:
             for expression in module.sinks:
                 self._expression(expression, instance)
             for name, output in module.outputs.items():
-                if instance.module in roots or (instance.module, name) in self.external or output.has_preconditions:
+                if (
+                    instance.module in roots
+                    or instance.module not in self.internal
+                    or (instance.module, name) in self.external
+                    or output.has_preconditions
+                ):
                     self._output(instance, name, ())
         return tuple(
             output.declaration
             for path, module in sorted(self.modules.items())
             for name, output in sorted(module.outputs.items())
-            if (path, name) not in self.used
+            if path in self.internal and (path, name) not in self.used
         )
 
     def _roots(self) -> set[str]:

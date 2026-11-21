@@ -15,6 +15,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -45,8 +46,8 @@ class NoTerraformGuardBlocks(Rule):
             "a bespoke verifier, source-text test, repeated API audit, or deployment wrapper merely to satisfy "
             "this rule. Keep investigation and rollout readbacks one-off unless they close a demonstrated "
             "recurring enforcement gap. Preserve existing deployment safety invariants. "
-            "Use reviewed immutable guard contracts when "
-            "removing a guard would change deployment behavior. For other guards, move an invariant only after "
+            "Honor existing reviewed guard contracts while equivalent protection is unproven; do not create "
+            "a source snapshot or contract merely to silence this prohibition. Move an invariant only after "
             "proving equivalent enforcement phase and behavior. "
             "Preserve Terraform types, provider validation, deletion protection and lifecycle settings. Review the "
             "behavior before removing a guard; no automatic deletion is provided."
@@ -55,10 +56,11 @@ class NoTerraformGuardBlocks(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Reviewed immutable existing-guard contracts may preserve exact path, owner, kind, condition and error identities through Core. Unlisted or changed guards retain ERROR; contracts are not baseline debt.",
+            "Retained contracted variable validations still emit unsuppressible, non-baselineable migration warnings. A prohibited block is detectable even when no safe replacement for its substantive invariant has been established.",
             "Reports variable validation, resource/data/ephemeral lifecycle preconditions and postconditions, output preconditions, and top-level check blocks in .tf files.",
             "Ordinary conditional expressions, count, for_each, provider condition blocks, prevent_destroy and deletion protection are allowed.",
             "Comments, strings, heredoc payloads, provider blocks with similar names and Terraform test assertions are not guard blocks.",
-            "Terraform JSON and other HCL dialects are outside this detector. The shared parser can recover guard prefixes in malformed HCL; native Terraform validation remains necessary.",
+            "Covers .tf and .tf.json variable validation blocks, including cross-variable conditions. Other HCL dialects are excluded. Native Terraform validation remains a separate required control.",
             "A check block receives one diagnostic even when it contains multiple assertions or nested data sources.",
         ),
         examples=(
@@ -181,7 +183,7 @@ class NoTerraformGuardBlocks(Rule):
         documentation = self.documentation
         if documentation is None or documentation.default_level is DefaultLevel.OFF:
             return []
-        return [
+        findings = [
             Diagnostic(
                 path,
                 block.line,
@@ -194,6 +196,9 @@ class NoTerraformGuardBlocks(Rule):
             )
             for block in self.prohibited_guards(path, source)
         ]
+        if self.contracts is not None:
+            findings.extend(_retained_validations(path, source, self.contracts, self.code))
+        return findings
 
     def prohibited_guards(self, path: Path, source: str) -> tuple[Block, ...]:
         if self.contracts is None:
@@ -210,15 +215,17 @@ class NoTerraformGuardBlocks(Rule):
 
 
 def guard_blocks(path: Path, source: str) -> tuple[Block, ...]:
-    if path.suffix.lower() != ".tf":
+    if not is_terraform(path):
         return ()
     try:
-        parsed = document_result(source)
+        if path.name.endswith(".tf.json"):
+            owners = terraform_blocks(path, source)
+        else:
+            parsed = document_result(source)
+            owners = parsed.root.blocks if isinstance(parsed, ParsedDocument) else ()
     except ValueError:
         return ()
-    if not isinstance(parsed, ParsedDocument):
-        return ()
-    return tuple(guard for owner in parsed.root.blocks for guard in owned_guards(owner))
+    return tuple(guard for owner in owners for guard in owned_guards(owner))
 
 
 def owned_guards(owner: Block) -> Iterator[Block]:
@@ -236,3 +243,27 @@ def owned_guards(owner: Block) -> Iterator[Block]:
 
 def _unlabelled_children(owner: Block, *kinds: str) -> Iterator[Block]:
     return (child for child in owner.blocks if child.type in kinds and not child.labels)
+
+
+def _retained_validations(path: Path, source: str, contracts: GuardContracts, code: str) -> list[Diagnostic]:
+    if path.name.endswith(".tf.json"):
+        return []
+    parsed = document_result(source)
+    if not isinstance(parsed, ParsedDocument):
+        return []
+    return [
+        Diagnostic(
+            path,
+            block.line,
+            block.col,
+            code,
+            f"Prohibited variable validation for {owner.labels[0]!r} is retained by an existing reviewed guard contract. Migration is constrained: establish equivalent protection at the invariant's authoritative owner, including enforcement phase and rollback behavior, before reviewed removal. The contract is not proof of redundancy and does not authorize automatic deletion.",
+            severity=DefaultLevel.WARNING,
+            suppressible=False,
+            baselineable=False,
+        )
+        for owner in parsed.root.blocks
+        if owner.type == "variable"
+        for block in owned_guards(owner)
+        if contracts.accepts(path, owner, block)
+    ]

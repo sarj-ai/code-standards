@@ -37,7 +37,13 @@ def _git(root: Path, *arguments: str) -> None:
 
 
 def _manifest() -> Manifest:
-    return Manifest(version=adopted_version(), configs=(), python_dest=".", typescript_dest=".")
+    return Manifest(
+        version=adopted_version(),
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        terraform_internal_modules=("infra/child",),
+    )
 
 
 def _repository(tmp_path: Path) -> Path:

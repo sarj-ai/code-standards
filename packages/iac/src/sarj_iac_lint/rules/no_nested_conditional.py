@@ -16,8 +16,8 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
+from sarj_iac_lint.terraform import is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -115,7 +115,7 @@ class NoNestedConditional(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if (
-            path.suffix.lower() != ".tf"
+            not is_terraform(path)
             or source.count("?") < _MIN_CONDITIONALS
             or any(part.lower() in _FIXTURE_DIRS for part in path.parts)
         ):
@@ -123,7 +123,7 @@ class NoNestedConditional(Rule):
         if _GENERATED.search(" ".join(header_comment_lines(source, leading_only=True))):
             return []
         try:
-            blocks = balanced_blocks(source)
+            blocks = terraform_blocks(path, source)
         except ValueError:
             return []
         attributes = [attribute for attribute in _attributes(blocks) if _nested_selection(attribute.value)]

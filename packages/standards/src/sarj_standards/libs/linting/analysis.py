@@ -204,6 +204,7 @@ def analyze(
                 rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
                 guard_contracts=iac_contracts.contracts,
                 module_summaries=module_summaries,
+                policy=policy,
             ),
             _text_report(
                 routed,
@@ -312,6 +313,7 @@ def _native_report(
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    policy: Policy | None = None,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
@@ -329,6 +331,7 @@ def _native_report(
             python_jobs=python_jobs,
             guard_contracts=guard_contracts,
             module_summaries=module_summaries,
+            policy=policy,
         )
 
     try:
@@ -363,6 +366,7 @@ def _run_native(
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    policy: Policy | None = None,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -395,8 +399,18 @@ def _run_native(
     elif package == "sarj_iac_lint":
         from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- selected IaC engine only.
 
+        def rule_allowed(path: Path, rule_id: str, code: str) -> bool:
+            return policy is None or policy.allows_rule(
+                Diagnostic(code, "", Severity.INFO, name, Location(policy.relative(path)), rule_id)
+            )
+
         native_result = analyze_iac(
-            selected_rules, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+            selected_rules,
+            paths,
+            sources=sources,
+            guard_contracts=guard_contracts,
+            module_summaries=module_summaries,
+            rule_filter=rule_allowed,
         )
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
@@ -856,6 +870,7 @@ def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolRepo
         root,
         source_text,
         external_outputs=tuple((item.module, item.output) for item in selected.contracts),
+        internal_modules=selected.internal_modules,
     )
     documents: dict[Path, SourceDocument | PythonSourceDocument | None] = {
         root / path: SourceDocument(root / path, source) for path, source in source_text.items()

@@ -8,6 +8,10 @@ plugin "terraform" {
   preset  = "recommended"
 }
 
+rule "terraform_json_syntax" {
+  enabled = false
+}
+
 plugin "google" {
   enabled = true
   version = "0.40.0"

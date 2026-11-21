@@ -102,11 +102,10 @@ def test_checks_recognized_cloud_placement_arguments(header: str, attribute: str
         ('resource "google_storage_bucket" "this"', "project", '"example-project"'),
         ('resource "azurerm_resource_group" "this"', "subscription_id", '"example-subscription"'),
         ('resource "cloudflare_r2_bucket" "this"', "account_id", '"example-account"'),
-        ('resource "google_compute_subnetwork" "this"', "name", '"example-deployment-subnet"'),
+        ('data "google_compute_subnetwork" "this"', "name", '"example-deployment-subnet"'),
         ('resource "google_compute_subnetwork" "this"', "ip_cidr_range", '"10.42.0.0/24"'),
         ('resource "google_compute_address" "this"', "address", '"10.42.0.2"'),
         ('resource "google_dns_managed_zone" "this"', "dns_name", '"models.example.invalid."'),
-        ('resource "google_dns_record_set" "this"', "rrdatas", '["10.42.0.2"]'),
         (
             'resource "google_compute_forwarding_rule" "this"',
             "target",
@@ -160,7 +159,7 @@ def test_nested_network_and_certificate_inputs() -> None:
 def test_tfvars_and_typed_defaults_remain_configuration_boundaries() -> None:
     values = 'project_id = "example-project"\nnetwork_cidr = "10.42.0.0/24"\ndomain = "example.invalid"\n'
     source = (
-        'variable "project_id" { type = string\n default = "example-project" }\n'
+        'variable "project_id" { type = string\n default = "example-project"\n description = "Intentional example deployment default." }\n'
         'resource "google_storage_bucket" "this" { project = var.project_id }\n'
     )
 

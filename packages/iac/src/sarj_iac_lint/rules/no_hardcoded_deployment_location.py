@@ -5,7 +5,15 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import call_arguments, comma_parts, conditional_branches, header_comment_lines, tokens
+from sarj_iac_lint._hcl import (
+    call_arguments,
+    comma_parts,
+    conditional_branches,
+    header_comment_lines,
+    literal_string,
+    template_expressions,
+    tokens,
+)
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -19,11 +27,11 @@ from sarj_iac_lint.rule_base import (
 )
 from sarj_iac_lint.rules._literal_policy import (
     DEPLOYMENT_SCOPE_ATTRIBUTES,
-    balanced_blocks,
     local_collections,
     resolve_local_tokens,
     static_string,
 )
+from sarj_iac_lint.terraform import TerraformSession, is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -68,13 +76,25 @@ _NETWORK_INPUTS: Mapping[str, frozenset[str]] = MappingProxyType(
         "google_dns_managed_zone": frozenset({"name", "dns_name"}),
         "google_dns_record_set": frozenset({"name", "rrdatas"}),
         "google_certificate_manager_dns_authorization": frozenset({"domain"}),
+        "google_cloud_run_domain_mapping": frozenset({"name"}),
+        "google_cloud_run_v2_service": frozenset({"custom_audiences"}),
+        "aws_route53_zone": frozenset({"name"}),
+        "aws_route53_record": frozenset({"name", "records"}),
+        "aws_eip": frozenset({"address", "public_ipv4_pool"}),
         "aws_vpc": frozenset({"cidr_block", "ipv6_cidr_block"}),
         "aws_subnet": frozenset({"cidr_block", "ipv6_cidr_block"}),
     }
 )
+_DNS_NAME_RESOURCES = frozenset(
+    {"google_dns_record_set", "google_cloud_run_domain_mapping", "aws_route53_record", "aws_route53_zone"}
+)
+_DNS_RECORD_RESOURCES = frozenset({"google_dns_record_set", "aws_route53_record"})
+_ENDPOINT_RECORD_TYPES = frozenset({"A", "AAAA", "CNAME", "NS", "PTR", "MX", "SRV"})
 _NESTED_NETWORK_INPUTS: Mapping[tuple[str, tuple[str, ...]], frozenset[str]] = MappingProxyType(
     {
         ("google_compute_subnetwork", ("secondary_ip_range",)): frozenset({"ip_cidr_range"}),
+        ("google_compute_instance", ("network_interface", "access_config")): frozenset({"nat_ip"}),
+        ("google_compute_url_map", ("default_url_redirect",)): frozenset({"host_redirect"}),
         ("google_certificate_manager_certificate", ("managed",)): frozenset({"domains"}),
         ("google_compute_managed_ssl_certificate", ("managed",)): frozenset({"domains"}),
         ("azurerm_virtual_network", ("subnet",)): frozenset({"address_prefix", "address_prefixes"}),
@@ -95,6 +115,7 @@ _NESTED_PLACEMENT: Mapping[tuple[str, tuple[str, ...]], frozenset[str]] = Mappin
 )
 _UNARY_CONVERSIONS = frozenset({"upper", "lower", "trimspace", "toset", "tolist", "tomap"})
 _ALTERNATIVES = frozenset({"coalesce", "try"})
+_CIDR_FUNCTIONS = frozenset({"cidrhost", "cidrsubnet", "cidrsubnets"})
 _FIXTURE_DIRS = frozenset({"fixture", "fixtures", "testdata", "generated"})
 _GENERATED = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
 
@@ -120,9 +141,12 @@ class NoHardcodedDeploymentLocation(Rule):
         limitations=(
             "An explicit configuration-ownership policy, not a claim that literals are invalid Terraform. Variable defaults, tfvars and caller module arguments are valid configuration boundaries.",
             "Checks recognized cloud scope/placement attributes and curated network, address and DNS resource fields, including enumerated nested schema paths and dynamic content. Arbitrary names, labels, tags, IAM role names, image selections, protocol constants and geographic access filters are not inferred as deployment inputs.",
-            "Recognizes literal strings/lists, direct same-file local aliases, static joins, simple conversions, and conditional/coalesce/try output alternatives. Fixed Google project prefixes in resource-reference templates and format calls are also checked. Other templates, unknown function results, object traversals, cross-file aliases and inherited provider configuration remain opaque. Provider-required global selectors remain valid placement constants.",
+            "Recognizes literal strings/lists, same-module local aliases, static joins, simple conversions, and conditional/coalesce/try output alternatives. Fixed project prefixes and contextual endpoint template fragments are checked. Unknown function results, object traversals and inherited provider configuration remain opaque.",
             "At the same attribute, this error takes precedence over repeated-deployment-literal guidance when both rules are selected.",
-            "Only authored .tf inputs are checked; generated headers, fixtures and other HCL/JSON dialects are excluded. No variable name, value migration or Terraform state change is automatically inferred.",
+            "Covers authored .tf and .tf.json, contextual interpolated endpoint templates and same-module cross-file aliases through the shared analysis session. Bare per-file API calls have only same-file facts. Unknown functions and provider schema paths remain explicit blind spots.",
+            "A module with an explicit backend/cloud block is a deployment composition root and may own concrete choices. Child module arguments and tfvars are also configuration boundaries. Reusable defaults consumed by placement fields need a nonempty literal description; descriptions are review evidence, not proof of a correct default.",
+            "Generated headers, vendor/example/fixture paths and other HCL dialects are excluded. Provider global selectors remain constants. No variable default, state change, replacement binding or new input is inferred automatically.",
+            "Module-owned resource names may be meaningful implementation constants; data lookup names and DNS names remain deployment identities. DNS record payloads are checked only for known endpoint-bearing record types; TXT/schema payloads and unknown record types are not inferred as endpoints.",
         ),
         examples=(
             RuleExample(
@@ -157,15 +181,25 @@ class NoHardcodedDeploymentLocation(Rule):
     )
     description = documentation.summary
 
+    def __init__(self, *, session: TerraformSession | None = None) -> None:
+        self.session = session
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix.lower() != ".tf" or any(part.lower() in _FIXTURE_DIRS for part in path.parts):
+        if not is_terraform(path) or any(part.lower() in _FIXTURE_DIRS | {"vendor", "examples"} for part in path.parts):
             return []
         if _GENERATED.search(" ".join(header_comment_lines(source, leading_only=True))):
             return []
         try:
-            top = balanced_blocks(source)
-            values = local_collections(top)
+            top = terraform_blocks(path, source)
+            module = self.session.blocks(path) if self.session is not None else top
+            values = local_collections(module)
+            composition = any(
+                block.type == "terraform" and any(child.type in {"backend", "cloud"} for child in block.blocks)
+                for block in module
+            )
+            if composition:
+                return []
             return [
                 Diagnostic(
                     path,
@@ -174,12 +208,11 @@ class NoHardcodedDeploymentLocation(Rule):
                     self.code,
                     f"Hardcoded deployment `{attribute.name}`: pass a typed {'location ' if attribute.name in _LOCATION_ATTRIBUTES else ''}input or an input-derived value; keep defaults in caller configuration.",
                 )
-                for block in top
-                for attribute in _placement_attributes(block)
+                for attribute in _module_placement_attributes(top)
                 if _has_literal_placement(
                     tokens(attribute.value), values, global_selector=attribute.name in _LOCATION_ATTRIBUTES
                 )
-            ]
+            ] + _undocumented_defaults(path, top, module, values, self.code, composition=composition)
         except ValueError:
             return []
 
@@ -206,8 +239,18 @@ def _placement_attributes(root: Block) -> Iterator[Attribute]:
                 (kind, path), frozenset[str]()
             )
         for attribute in block.attributes:
-            if attribute.name in selected:
+            if attribute.name in selected and _deployment_field(root, attribute.name):
                 yield attribute
+
+
+def _deployment_field(root: Block, name: str) -> bool:
+    kind = root.labels[0]
+    if name == "name" and root.type in {"resource", "ephemeral"} and kind not in _DNS_NAME_RESOURCES:
+        return False
+    if kind in _DNS_RECORD_RESOURCES and name in {"rrdatas", "records"}:
+        record_type = root.attribute("type")
+        return record_type is not None and literal_string(record_type.value) in _ENDPOINT_RECORD_TYPES
+    return True
 
 
 def _nodes(root: Block) -> Iterator[tuple[Block, tuple[str, ...]]]:
@@ -238,6 +281,8 @@ def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str], *,
             pending.extend(branches)
         elif resolved[:1] == ("[",) and resolved[-1:] == ("]",):
             pending.extend(comma_parts(resolved[1:-1]))
+        elif resolved and resolved[0] in _CIDR_FUNCTIONS and (args := call_arguments(resolved)):
+            pending.append(args[0])
         elif (args := call_arguments(resolved)) is not None and (
             resolved[0] in _ALTERNATIVES or (resolved[0] in _UNARY_CONVERSIONS and len(args) == 1)
         ):
@@ -247,7 +292,14 @@ def _has_literal_placement(parts: tuple[str, ...], values: Mapping[str, str], *,
 
 def _is_literal_input(parts: tuple[str, ...], values: Mapping[str, str], *, global_selector: bool) -> bool:
     if (literal := static_string(parts, values)) is not None:
+        if literal.rstrip(".").casefold() in _PROTOCOL_HOSTS:
+            return False
+        if literal in _PROTOCOL_URLS:
+            return False
         return bool(literal.strip() and (not global_selector or literal.strip().casefold() != "global"))
+    template = _deployment_template(parts)
+    if template:
+        return True
     if global_selector:
         return False
     if _INTEGER_LITERAL.fullmatch("".join(parts)):
@@ -255,3 +307,100 @@ def _is_literal_input(parts: tuple[str, ...], values: Mapping[str, str], *, glob
     if parts[:1] == ("format",) and (args := call_arguments(parts)):
         parts = args[0]
     return len(parts) == 1 and _FIXED_PROJECT_REFERENCE.match(parts[0]) is not None
+
+
+_FIXED_COORDINATE = re.compile(
+    r"(?<![\w-])(?:[a-z][a-z0-9-]*\.)+[a-z]{2,}(?![\w-])"
+    r"|(?<![\d.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![\d.])"
+    r"|(?<![\w-])(?:us|eu|europe|asia|me|africa|australia|northamerica|southamerica)-(?:[a-z]+-)?[a-z]+-?[0-9](?![\w])"
+)
+_PROTOCOL_HOSTS = frozenset(
+    {
+        "localhost",
+        "metadata.google.internal",
+        "www.googleapis.com",
+        "storage.googleapis.com",
+        "oauth2.googleapis.com",
+        "sts.googleapis.com",
+        "accounts.google.com",
+    }
+)
+_PROTOCOL_URLS = frozenset(
+    {
+        "https://accounts.google.com",
+        "https://oauth2.googleapis.com/token",
+        "https://sts.googleapis.com/v1/token",
+        "https://www.googleapis.com/auth/cloud-platform",
+    }
+)
+
+
+def _deployment_template(parts: tuple[str, ...]) -> bool:
+    if parts[:1] == ("format",) and (args := call_arguments(parts)):
+        parts = args[0]
+    if len(parts) != 1:
+        return False
+    value = parts[0]
+    expressions = template_expressions(value)
+    if not expressions and literal_string(value) is None:
+        return False
+    for expression in sorted(expressions, key=len, reverse=True):
+        value = value.replace("${" + expression + "}", " ").replace("%{" + expression + "}", " ")
+    return any(match.group(0) not in _PROTOCOL_HOSTS for match in _FIXED_COORDINATE.finditer(value))
+
+
+def _undocumented_defaults(
+    path: Path,
+    top: tuple[Block, ...],
+    module: tuple[Block, ...],
+    values: Mapping[str, str],
+    code: str,
+    *,
+    composition: bool,
+) -> list[Diagnostic]:
+    if composition or not any(block.type == "variable" and block.attribute("default") is not None for block in top):
+        return []
+    used_inputs = _deployment_inputs(module, values)
+    findings: list[Diagnostic] = []
+    for variable in top:
+        if variable.type != "variable" or len(variable.labels) != 1:
+            continue
+        if variable.labels[0] not in used_inputs:
+            continue
+        default = variable.attribute("default")
+        if default is None or not _has_literal_placement(tokens(default.value), values):
+            continue
+        description = variable.attribute("description")
+        if description is not None and literal_string(description.value):
+            continue
+        findings.append(
+            Diagnostic(
+                path,
+                default.line,
+                default.col,
+                code,
+                f"Deployment default for {variable.labels[0]!r} in a reusable module needs an intentional literal description; prefer an existing caller input or discovery reference.",
+            )
+        )
+    return findings
+
+
+def _module_placement_attributes(module: tuple[Block, ...]) -> Iterator[Attribute]:
+    for owner in module:
+        yield from _placement_attributes(owner)
+
+
+def _deployment_inputs(module: tuple[Block, ...], values: Mapping[str, str]) -> set[str]:
+    inputs: set[str] = set()
+    for attribute in _module_placement_attributes(module):
+        parts = resolve_local_tokens(tokens(attribute.value), values)
+        if parts is None:
+            continue
+        expressions = (" ".join(parts), *template_expressions(attribute.value))
+        for expression in expressions:
+            inputs.update(
+                part.removeprefix("var.")
+                for part in tokens(expression)
+                if part.startswith("var.") and part.count(".") == 1
+            )
+    return inputs

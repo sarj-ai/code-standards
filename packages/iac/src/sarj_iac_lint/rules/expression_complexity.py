@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import document, template_expressions, tokens
+from sarj_iac_lint._hcl import template_expressions, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -15,6 +15,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import is_terraform, terraform_document
 
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ class ExpressionComplexity(Rule):
         default_level=DefaultLevel.ERROR,
         summary="Limit Terraform statement and variable-validation expression complexity.",
         rationale="Large predicates hide independent deployment requirements and make an infrastructure change difficult to review.",
-        remediation="Delete redundant checks or name independently meaningful expressions. Preserve lazy evaluation, null guards and dependencies; keep genuine domain validation.",
+        remediation="Delete redundant checks or name independently meaningful expressions. Preserve lazy evaluation, null guards and dependencies; preserve substantive domain safeguards until equivalent protection is established under the guard-block policy.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
@@ -107,10 +108,10 @@ class ExpressionComplexity(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix.lower() != ".tf":
+        if not is_terraform(path):
             return []
         findings: list[Diagnostic] = []
-        for attribute, validation in _attributes(document(source)):
+        for attribute, validation in _attributes(terraform_document(path, source)):
             budget = _VALIDATION_BUDGET if validation else _STATEMENT_BUDGET
             score = _score(attribute.value)
             if score > budget:
