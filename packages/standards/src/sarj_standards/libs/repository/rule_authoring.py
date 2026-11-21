@@ -176,6 +176,9 @@ def _next_code(root: Path, engine: RuleEngine, live: frozenset[str]) -> str | No
 
 
 def _source_texts(root: Path) -> Iterable[str]:
+    python_history = root / rule_registration.PYTHON_CODE_LEDGER
+    if python_history.is_file():
+        yield from as_table(parse_json(python_history.read_text(encoding="utf-8")))
     ledger = root / rule_registration.LEDGER
     if ledger.is_file():
         data = as_table(parse_json(ledger.read_text(encoding="utf-8")))

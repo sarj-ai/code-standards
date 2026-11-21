@@ -12,6 +12,7 @@ from sarj_standards.libs.rules import RuleEngine, RuleSelector
 
 
 LEDGER = Path("packages/standards/src/sarj_standards/configs/rule-ledger.json")
+PYTHON_CODE_LEDGER = Path("packages/python/tests/code_ledger.json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +68,10 @@ def plan(
         else f"sarj_{selector.engine.value}_lint.rules"
     )
     source = _native(source, module, slug.replace("-", "_"), name)
-    return FileEdit(registry, before, source), _reserve(root, selector, code, reserved)
+    edits = [FileEdit(registry, before, source), _reserve(root, selector, code, reserved)]
+    if selector.engine is RuleEngine.PYTHON and code is not None:
+        edits.append(_reserve_python_code(root, selector, code))
+    return tuple(edits)
 
 
 # Add one rule to a generated TypeScript index; `generate-index.ts` later restores its order.
@@ -151,6 +155,17 @@ def _strings(
             raise TypeError(msg)
         result.append(value)
     return result
+
+
+def _reserve_python_code(root: Path, selector: RuleSelector, code: str) -> FileEdit:
+    path = root / PYTHON_CODE_LEDGER
+    before = path.read_bytes() if path.is_file() else None
+    data = dict(as_table(parse_json(before.decode()))) if before is not None else {}
+    if code in data:
+        msg = f"rule code is already reserved: {code}"
+        raise ValueError(msg)
+    data[code] = str(selector.rule_id)
+    return FileEdit(path, before, json.dumps(data, indent=2) + "\n")
 
 
 def _registry_dictionary(tree: ast.Module) -> ast.Dict:

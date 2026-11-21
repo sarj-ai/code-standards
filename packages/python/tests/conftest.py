@@ -12,9 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rule_base import Diagnostic, Rule
 
-    _Check = Callable[[Rule, Path, str], list[Diagnostic]]
+    _Check = Callable[[Rule, PythonFileContext], list[Diagnostic]]
 
 _FIRED: set[str] = set()
 _CLEAN: set[str] = set()
@@ -55,8 +56,8 @@ def _temporary_root(value: pytest.Config | _TemporaryConfig) -> Path | None:
 
 
 def _recording(rule_id: RuleId, examples_path: str, original: _Check) -> _Check:
-    def wrapper(self: Rule, path: Path, source: str) -> list[Diagnostic]:
-        result = original(self, path, source)
+    def wrapper(self: Rule, context: PythonFileContext) -> list[Diagnostic]:
+        result = original(self, context)
         if _CURRENT_TEST_MODULE[0] == examples_path:
             target = _FIRED if result else _CLEAN
             target.add(rule_id)
@@ -84,7 +85,7 @@ def pytest_configure(config: pytest.Config) -> None:
     root = config.rootpath.parents[1]
     for rule_id, cls in REGISTRY.items():
         examples = (root / cls.examples_path()).as_posix()
-        cls.check = _recording(RuleId(rule_id), examples, cls.check)  # pyright: ignore[reportAttributeAccessIssue] — deliberate session-scoped instrumentation of a method
+        cls.check_context = _recording(RuleId(rule_id), examples, cls.check_context)  # pyright: ignore[reportAttributeAccessIssue] — deliberate session-scoped instrumentation of the native dispatch method
 
 
 def _is_narrowed(config: pytest.Config) -> bool:
