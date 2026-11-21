@@ -36,7 +36,7 @@ dependencies = [
   "sarj-iac-lint==0.46.1",
   "sarj-python-lint==1.149.1",
   "sarj-sql-lint==0.48.3",
-  "typer==0.27.3",
+  "typer==0.29.1",
 ]
 
 [project.scripts]
