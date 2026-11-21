@@ -78,6 +78,34 @@ def worker_coverage_project(coverage_project: Path) -> Path:
     return coverage_project
 
 
+@pytest.mark.parametrize(
+    ("observations", "expected_exit", "missing"),
+    [((True, False), 0, None), ((True,), 1, "stay quiet"), ((False,), 1, "report")],
+    ids=["both-directions", "report-only", "quiet-only"],
+)
+def test_public_analyzer_dispatch_keeps_both_direction_gate(
+    worker_coverage_project: Path, observations: tuple[bool, ...], expected_exit: int, missing: str | None
+) -> None:
+    examples = worker_coverage_project / "tests/rules/test_no_loguru_printf_format.py"
+    examples.parent.mkdir()
+    examples.write_text(
+        "from sarj_python_lint.__main__ import analyze\n"
+        f"OBSERVATIONS = {observations!r}\n"
+        "def test_rule_probe(tmp_path):\n"
+        "    path = tmp_path / 'source.py'\n"
+        "    for fires in OBSERVATIONS:\n"
+        "        template = '%s' if fires else '{}'\n"
+        "        path.write_text('from loguru import logger\\nlogger.info(' + repr(template) + ', 1)\\n')\n"
+        "        assert bool(analyze(['no-loguru-printf-format'], [path])) == fires\n"
+    )
+    result = _pytest(worker_coverage_project)
+    assert result.returncode == expected_exit, result.stdout + result.stderr
+    if missing is not None:
+        assert f"never makes it {missing}" in result.stdout
+    else:
+        assert "rules whose tests do not exercise them" not in result.stdout
+
+
 def _write_worker_probe(project: Path, observations: dict[str, tuple[bool, ...]]) -> None:
     examples = project / "tests/rules/test_no_loguru_printf_format.py"
     examples.parent.mkdir()
