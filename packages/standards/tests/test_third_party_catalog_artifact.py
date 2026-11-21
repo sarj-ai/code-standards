@@ -130,6 +130,13 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
 
     _assert_react_doctor_inventory(providers, rules)
 
+    typography = next(rule for rule in rules if rule["key"] == "stylelint:declaration-property-value-disallowed-list")
+    assert {
+        _text(_object(context)["level"])
+        for profile in _array(typography["profiles"])
+        for context in _array(_object(profile)["contexts"])
+    } == {"error"}
+
     for rule in rules:
         assert set(rule) == {
             "autofix",

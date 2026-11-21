@@ -61,7 +61,7 @@ def _report(fixture: _HashFixture, *, receipt_size: int = 0) -> ToolReport:
     return report
 
 
-@pytest.mark.parametrize("size", [0, 262145, 2 * 1024 * 1024], ids=("empty", "multi-chunk", "two-mib"))
+@pytest.mark.parametrize("size", [0, 262_145, 2 * 1024 * 1024], ids=("empty", "multi-chunk", "two-mib"))
 def test_prepared_hash_accepts_complete_content_and_repeated_calls(tmp_path: Path, size: int) -> None:
     fixture = _fixture(tmp_path, bytes(range(256)) * (size // 256) + b"x" * (size % 256))
     first = _report(fixture)

@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
-from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.__main__ import analyze, main
 from sarj_python_lint._fixes import apply_fixes
 from sarj_python_lint.autofix import fix_source
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.numeric_literal_separators import NumericLiteralSeparators
 
 
@@ -72,6 +73,24 @@ def test_each_numeric_token_has_one_fix() -> None:
     assert apply_fixes(source, tuple(fix for finding in findings for fix in finding.fixes)) == (
         "rates = [16_000, 48_000]\n"
     )
+
+
+def test_decimal_grouping_blocks_cli_and_preserves_exact_baselines(tmp_path: Path) -> None:
+    path = tmp_path / "audio.py"
+    path.write_text("RATE = 16000\n")
+    baseline = tmp_path / "baseline.json"
+    arguments = ["check", "--rule", "numeric-literal-separators", str(path)]
+
+    assert [finding.severity for finding in analyze(["numeric-literal-separators"], [path])] == [Severity.ERROR]
+    assert main(arguments) == 1
+    assert main([*arguments, "--update-baseline", str(baseline)]) == 0
+    assert main([*arguments, "--baseline", str(baseline)]) == 0
+
+    path.write_text("RATE = 16000\nLIMIT = 10000\n")
+    assert main([*arguments, "--baseline", str(baseline)]) == 1
+
+    path.write_text("RATE = 16000  # sarj-noqa: SARJ567 -- Preserve this external reference spelling.\n")
+    assert main(arguments) == 0
 
 
 def test_unicode_line_separator_inside_data_preserves_numeric_value() -> None:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import sarj_standards.cli.main as cli
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external, runner, stylelint
@@ -117,7 +118,23 @@ def test_installed_css_cli_reports_managed_findings_from_a_consumer(tmp_path: Pa
         "declaration-property-value-disallowed-list",
         "@sarj/no-modern-shorthand-reset",
     }
-    assert all(diagnostic.severity is Severity.WARNING for diagnostic in report.diagnostics)
+    assert {diagnostic.code: diagnostic.severity for diagnostic in report.diagnostics} == {
+        "declaration-property-value-disallowed-list": Severity.ERROR,
+        "@sarj/no-modern-shorthand-reset": Severity.WARNING,
+    }
+
+
+@pytest.mark.parametrize("staged", [False, True], ids=("analyze", "staged-check"))
+def test_pixel_typography_blocks_native_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, staged: bool
+) -> None:
+    project(tmp_path, {"view.css": ".a { font-size: 16px; }"}, git=staged)
+    command = ["check", "--staged"] if staged else ["analyze", "--external", "view.css"]
+
+    assert cli.main(["--root", str(tmp_path), *command, "--trust-repository-code"]) == 1
+
+    output = capsys.readouterr()
+    assert "declaration-property-value-disallowed-list" in output.out
 
 
 def test_css_validity_findings_are_blocking_errors(tmp_path: Path) -> None:

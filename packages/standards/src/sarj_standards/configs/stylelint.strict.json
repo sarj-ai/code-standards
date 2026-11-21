@@ -23,11 +23,16 @@
         "severity": "error"
       }
     ],
-    "declaration-property-value-disallowed-list": {
-      "font-size": [
-        "/^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0?\\.[0-9]*[1-9][0-9]*)[pP][xX]$/"
-      ]
-    },
+    "declaration-property-value-disallowed-list": [
+      {
+        "font-size": [
+          "/^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0?\\.[0-9]*[1-9][0-9]*)[pP][xX]$/"
+        ]
+      },
+      {
+        "severity": "error"
+      }
+    ],
     "font-family-no-duplicate-names": [
       true,
       {

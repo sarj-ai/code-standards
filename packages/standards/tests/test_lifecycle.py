@@ -729,7 +729,7 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(
 
 def test_directive_worker_transports_large_selection_without_argv_growth(tmp_path: Path) -> None:
     paths = (
-        *(f"source/{index:05}-" + "x" * 240 + ".ts" for index in range(17273)),
+        *(f"source/{index:05}-" + "x" * 240 + ".ts" for index in range(17_273)),
         "source/space and 'quote'.ts",
         "source/new\nline.ts",
         "--option-looking.ts",
