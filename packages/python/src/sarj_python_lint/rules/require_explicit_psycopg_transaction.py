@@ -96,6 +96,8 @@ class RequireExplicitPsycopgTransaction(Rule):
         findings: dict[int, ast.Call] = {}
         for function, attributes in _functions(tree.body, imports):
             bindings = attributes | _parameters(function, imports)
+            if not bindings:
+                continue
             parameter_names = {
                 arg.arg for arg in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
             }
@@ -191,6 +193,8 @@ def _class_bindings(owner: ast.ClassDef, imports: ImportIndex) -> dict[str, _Bin
     if constructor is None:
         return {}
     parameters = _parameters(constructor, imports)
+    if not parameters:
+        return {}
     attributes: dict[str, _Binding] = {}
     for assignment in constructor.body:
         if not isinstance(assignment, ast.Assign):
