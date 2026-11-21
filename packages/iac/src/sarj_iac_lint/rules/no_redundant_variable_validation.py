@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
 from sarj_iac_lint._hcl import (
-    document,
     header_comment_lines,
     strip_outer_parentheses,
     tokens,
@@ -22,6 +21,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import is_terraform, terraform_document
 
 
 if TYPE_CHECKING:
@@ -83,19 +83,21 @@ class NoRedundantVariableValidation(Rule):
             "domain cannot reject another valid input and obscures actual domain requirements."
         ),
         remediation=(
-            "Delete the redundant validation block. Keep validation for narrower domain requirements such as ranges, "
-            "formats, enums, otherwise permitted nulls, and relationships between fields."
+            "Delete only proven redundant validation. The guard-block policy also prohibits substantive validation, "
+            "but ranges, formats, enums, null restrictions and cross-field safeguards require equivalent protection "
+            "at their authoritative owner before a reviewed removal."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes remove only complete standalone validation blocks containing exactly the proven redundant condition and a literal error message, without comments or additional content.",
+            "Core and IaC CLI fixes refuse guard removal in modules with override files or protected immutable guard contracts. Overrides can replace type/nullability; a file-local tautology is not module-wide proof.",
             "Only exact, syntax-parsed tautologies over the validation block's own variable are reported.",
             (
                 "Provider constraints, compound expressions containing a real domain predicate, dynamic types, "
                 "heterogeneous tuples, and validations of another variable are intentionally not inferred."
             ),
-            "Generated files, fixtures, testdata, and non-.tf inputs are excluded.",
+            "Detection covers .tf and .tf.json. Generated paths, fixtures and testdata are excluded. Safe block removal is limited to native .tf syntax.",
         ),
         examples=(
             RuleExample(
@@ -188,10 +190,10 @@ class NoRedundantVariableValidation(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix.lower() != ".tf" or _fixture_path(path) or _generated_header(source):
+        if not is_terraform(path) or _fixture_path(path) or _generated_header(source):
             return []
         try:
-            root = document(source)
+            root = terraform_document(path, source)
         except ValueError:
             return []
         findings: list[Diagnostic] = []

@@ -204,6 +204,8 @@ def analyze(
                 rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
                 guard_contracts=iac_contracts.contracts,
                 module_summaries=module_summaries,
+                policy=policy,
+                staged=staged,
             ),
             _text_report(
                 routed,
@@ -312,6 +314,8 @@ def _native_report(
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    policy: Policy | None = None,
+    staged: bool = False,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
@@ -329,6 +333,8 @@ def _native_report(
             python_jobs=python_jobs,
             guard_contracts=guard_contracts,
             module_summaries=module_summaries,
+            policy=policy,
+            staged=staged,
         )
 
     try:
@@ -363,6 +369,8 @@ def _run_native(
     python_jobs: int = 1,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    policy: Policy | None = None,
+    staged: bool = False,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -395,9 +403,24 @@ def _run_native(
     elif package == "sarj_iac_lint":
         from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- selected IaC engine only.
 
+        def rule_allowed(path: Path, rule_id: str, code: str) -> bool:
+            return policy is None or policy.allows_rule(
+                Diagnostic(code, "", Severity.INFO, name, Location(policy.relative(path)), rule_id)
+            )
+
+        inputs = _staged_iac_inputs(root, paths, sources) if staged else {}
         native_result = analyze_iac(
-            selected_rules, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+            selected_rules,
+            paths,
+            sources=sources,
+            guard_contracts=guard_contracts,
+            module_summaries=module_summaries,
+            rule_filter=rule_allowed,
         )
+        if inputs:
+            from .iac_module_outputs import staged_module_index  # ruff: ignore[import-outside-top-level] -- qualify the captured complete module against the exact index before returning findings.
+
+            staged_module_index(root, inputs)
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
     raise_if_cancelled(None)
@@ -424,6 +447,19 @@ def _run_native(
         duration_ms=round((time.monotonic() - started) * 1_000),
         file_count=len(files),
     )
+
+
+def _staged_iac_inputs(root: Path, paths: Sequence[Path], sources: SourceCatalog) -> dict[Path, bytes]:
+    from sarj_iac_lint.terraform import is_terraform  # ruff: ignore[import-outside-top-level] -- only selected Terraform modules require sibling source evidence.
+
+    from sarj_standards.libs.adoption.transaction import validate_targets  # ruff: ignore[import-outside-top-level] -- prevent linked or escaping sibling paths from becoming source evidence.
+
+    directories = {path.parent for path in paths if is_terraform(path)}
+    members = tuple(
+        path for directory in directories for path in directory.iterdir() if path.is_file() and is_terraform(path)
+    )
+    validate_targets(root, members)
+    return {path: sources.capture(path).raw for path in members}
 
 
 def _load_native(package: str) -> _LoadedNative:
@@ -856,6 +892,7 @@ def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolRepo
         root,
         source_text,
         external_outputs=tuple((item.module, item.output) for item in selected.contracts),
+        internal_modules=selected.internal_modules,
     )
     documents: dict[Path, SourceDocument | PythonSourceDocument | None] = {
         root / path: SourceDocument(root / path, source) for path, source in source_text.items()

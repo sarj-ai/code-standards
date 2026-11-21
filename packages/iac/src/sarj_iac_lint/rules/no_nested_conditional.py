@@ -16,8 +16,8 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
+from sarj_iac_lint.terraform import is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class NoNestedConditional(Rule):
         limitations=(
             "Safe fixes select an existing literal leaf only from a closed Boolean-literal conditional tree with homogeneous Boolean, bounded decimal-number or plain quoted-string leaves on one standalone attribute line in top-level locals. All branches are validated; comments, escapes, templates, nulls, references, calls, mixed types and ambiguous source ranges remain manual.",
             "Only direct conditional branches are inspected; independent choices inside calls, collections and templates remain out of scope.",
-            "Assertions, generated files, fixtures, testdata and non-.tf inputs are excluded.",
+            "Covers .tf and .tf.json. Assertions, generated files, fixtures, testdata and other HCL dialects are excluded.",
             "An existing deployment-identity diagnostic takes precedence at the same attribute.",
             "This is a review advisory; no automatic extraction or deletion is safe for every expression.",
         ),
@@ -115,7 +115,7 @@ class NoNestedConditional(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if (
-            path.suffix.lower() != ".tf"
+            not is_terraform(path)
             or source.count("?") < _MIN_CONDITIONALS
             or any(part.lower() in _FIXTURE_DIRS for part in path.parts)
         ):
@@ -123,7 +123,7 @@ class NoNestedConditional(Rule):
         if _GENERATED.search(" ".join(header_comment_lines(source, leading_only=True))):
             return []
         try:
-            blocks = balanced_blocks(source)
+            blocks = terraform_blocks(path, source)
         except ValueError:
             return []
         attributes = [attribute for attribute in _attributes(blocks) if _nested_selection(attribute.value)]

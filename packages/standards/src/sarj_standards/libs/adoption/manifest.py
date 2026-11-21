@@ -59,10 +59,10 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
-REPO_STANDARDS_VERSION: Final = "8.4.0"
+REPO_STANDARDS_VERSION: Final = "8.6.0"
 # Actions can receive delivery fixes independently of the consumer topology policy.
-REPO_STANDARDS_ACTION_VERSION: Final = "8.4.0"
-REPO_STANDARDS_REVISION: Final = "43ec7ae7552b517eab5ac1cab86a150ed4985436"
+REPO_STANDARDS_ACTION_VERSION: Final = "8.6.0"
+REPO_STANDARDS_REVISION: Final = "f96de5270ed10b577d3821a174eb46d6cdac2441"
 
 
 def adopted_version() -> str:
@@ -192,6 +192,20 @@ class TerraformOutputContract(BaseModel):
 class _TerraformOutputOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
     external_outputs: list[TerraformOutputContract] = Field(default_factory=list)
+    internal_modules: list[str] = Field(default_factory=list)
+
+    @field_validator("internal_modules")
+    @classmethod
+    def closed_world_modules(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            message = "duplicate closed-world Terraform module contract"
+            raise ValueError(message)
+        for value in values:
+            TerraformOutputContract.canonical_path(value)
+            if not value.strip():
+                message = "closed-world Terraform module paths must be nonempty"
+                raise ValueError(message)
+        return values
 
     @field_validator("external_outputs")
     @classmethod
@@ -238,6 +252,7 @@ class Manifest:
     terraform_guard_contracts: str | None = None
     terraform_module_summaries: bool = False
     terraform_output_contracts: tuple[TerraformOutputContract, ...] = ()
+    terraform_internal_modules: tuple[str, ...] = ()
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
@@ -291,13 +306,7 @@ class Manifest:
             sections.append(f"\n[text]\n{_array_field('exclude', self.text_excluded_paths)}")
         if self.doctor_excluded_paths:
             sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
-        if self.terraform_guard_contracts is not None:
-            sections.append(
-                "\n[iac.no-terraform-guard-blocks]\ncontracts = " + _toml_string(self.terraform_guard_contracts) + "\n"
-            )
-        if self.terraform_module_summaries:
-            sections.append("\n[iac.no-terraform-comments]\nmodule_summaries = true\n")
-        sections.extend(contract.render() for contract in self.terraform_output_contracts)
+        sections.extend(self._iac_sections())
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
@@ -315,6 +324,21 @@ class Manifest:
             for target in self.prepared_targets
         )
         return "".join(sections)
+
+    def _iac_sections(self) -> list[str]:
+        sections: list[str] = []
+        if self.terraform_guard_contracts is not None:
+            sections.append(
+                "\n[iac.no-terraform-guard-blocks]\ncontracts = " + _toml_string(self.terraform_guard_contracts) + "\n"
+            )
+        if self.terraform_module_summaries:
+            sections.append("\n[iac.no-terraform-comments]\nmodule_summaries = true\n")
+        if self.terraform_internal_modules:
+            sections.append(
+                "\n[iac.no-unused-module-outputs]\n" + _array_field("internal_modules", self.terraform_internal_modules)
+            )
+        sections.extend(contract.render() for contract in self.terraform_output_contracts)
+        return sections
 
     def _compose_section(self) -> str:
         fields: list[str] = []
@@ -479,6 +503,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         terraform_guard_contracts=terraform_guard_contract_option(data),
         terraform_module_summaries=_terraform_module_summaries(data),
         terraform_output_contracts=terraform_output_contracts(data),
+        terraform_internal_modules=terraform_internal_modules(data),
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
@@ -1116,3 +1141,7 @@ def _terraform_module_summaries(data: Mapping[str, object]) -> bool:
 
 def terraform_output_contracts(data: Mapping[str, object]) -> tuple[TerraformOutputContract, ...]:
     return tuple(_OutputManifest.model_validate(data).iac.unused_module_outputs.external_outputs)
+
+
+def terraform_internal_modules(data: Mapping[str, object]) -> tuple[str, ...]:
+    return tuple(_OutputManifest.model_validate(data).iac.unused_module_outputs.internal_modules)

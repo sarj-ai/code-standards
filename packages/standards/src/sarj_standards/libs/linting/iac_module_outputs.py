@@ -18,6 +18,7 @@ from sarj_standards.libs.adoption.manifest import (
     MANIFEST_NAME,
     TerraformOutputContract,
     as_table,
+    terraform_internal_modules,
     terraform_output_contracts,
 )
 from sarj_standards.libs.staged_git import has_committed_tree, is_git_worktree, staged_environment
@@ -35,6 +36,7 @@ _BLOB_BATCH = 100
 class ModuleOutputSources:
     sources: Mapping[PurePosixPath, str]
     contracts: tuple[TerraformOutputContract, ...]
+    internal_modules: tuple[str, ...] = ()
 
 
 def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
@@ -67,7 +69,11 @@ def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
         if contract.evidence not in tracked:
             message = f"External output evidence is not tracked in the selected Git tree: {contract.evidence}"
             raise ValueError(message)
-    return ModuleOutputSources({path: contents[path].decode("utf-8") for path in paths}, contracts)
+    return ModuleOutputSources(
+        {path: contents[path].decode("utf-8") for path in paths},
+        contracts,
+        terraform_internal_modules(as_table(config)),
+    )
 
 
 def _selected_contents(root: Path, identity: GitIdentity, paths: list[PurePosixPath]) -> dict[PurePosixPath, bytes]:
@@ -84,3 +90,31 @@ def _selected_contents(root: Path, identity: GitIdentity, paths: list[PurePosixP
         message = "Complete selected Terraform source evidence is required"
         raise ValueError(message)
     return contents
+
+
+def staged_module_index(root: Path, inputs: Mapping[Path, bytes]) -> GitIdentity:
+    from sarj_iac_lint.terraform import is_terraform  # ruff: ignore[import-outside-top-level] -- Terraform owns supported source representations.
+
+    index = git_index_identity(root)
+    snapshot = selected_sources(root, staged=True)
+    if snapshot is None or git_index_identity(root) != index:
+        message = "Cannot establish a stable staged Terraform module"
+        raise ValueError(message)
+    directories = {path.parent for path in inputs}
+    current = {
+        path for directory in directories for path in directory.iterdir() if path.is_file() and is_terraform(path)
+    }
+    if current != set(inputs):
+        message = "Terraform module membership changed during analysis; rerun the command"
+        raise ValueError(message)
+    staged_sources = {
+        root / path: source.removeprefix("\ufeff")
+        for path, source in snapshot.sources.items()
+        if is_terraform(path) and (root / path).parent in directories
+    }
+    if set(staged_sources) != set(inputs) or any(
+        raw.decode("utf-8-sig") != staged_sources[path] for path, raw in inputs.items()
+    ):
+        message = "Terraform module context differs from the staged index; stage the intended module sources before checking or fixing"
+        raise ValueError(message)
+    return index

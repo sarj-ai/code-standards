@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 import re
 from typing import TYPE_CHECKING
@@ -59,21 +60,43 @@ def literal_conditional_edits(source: str, diagnostics: Sequence[Diagnostic]) ->
         root = document(source)
     except ValueError:
         return []
-    allowed = {(finding.line, finding.col) for finding in diagnostics}
+    allowed = {(finding.line, finding.col): finding.code for finding in diagnostics}
     lines = physical_lines(source, keepends=True)
     edits: list[TextEdit] = []
     for block_index, block in enumerate(root.blocks):
-        if block.type != "locals" or block.labels or block.depth != 0:
+        if block.depth != 0:
             continue
         for attribute_index, attribute in enumerate(block.attributes):
-            if (attribute.line, attribute.col) not in allowed:
+            code = allowed.get((attribute.line, attribute.col))
+            if not _supported_target(block, attribute, code):
                 continue
             edit = _attribute_edit(lines, attribute)
+            if code == "SARJ221" and edit is not None and not _count_value(edit.replacement):
+                continue
             if edit is not None and _matches_target_delta(
                 source, root, edit, block_index=block_index, attribute_index=attribute_index
             ):
                 edits.append(edit)
     return edits
+
+
+def _supported_target(block: Block, attribute: Attribute, code: str | None) -> bool:
+    if code == "SARJ221":
+        labels = 1 if block.type == "module" else 2
+        return (
+            block.type in {"resource", "module", "ephemeral"}
+            and len(block.labels) == labels
+            and attribute.name == "count"
+        )
+    return code in {"SARJ215", "SARJ217"} and block.type == "locals" and not block.labels
+
+
+def _count_value(value: str) -> bool:
+    try:
+        number = Decimal(value)
+    except InvalidOperation:
+        return False
+    return number.is_finite() and number >= 0 and number == number.to_integral_value()
 
 
 def _attribute_edit(lines: list[str], attribute: Attribute) -> TextEdit | None:

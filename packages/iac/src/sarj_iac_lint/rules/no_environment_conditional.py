@@ -18,6 +18,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import is_terraform, terraform_document
 
 
 if TYPE_CHECKING:
@@ -181,7 +182,7 @@ class NoEnvironmentConditional(Rule):
                 "environment-labelled comparison literal or literal-list member such as `platform-prod`; comparisons "
                 "to ordinary business values and map indexing by those names are intentionally ignored."
             ),
-            "Only .tf and terragrunt.hcl are read; Packer, Nomad, and other HCL dialects are outside this rule.",
+            "Only .tf, .tf.json and terragrunt.hcl are read; Packer, Nomad, and other HCL dialects are outside this rule.",
             "Environment-keyed map indexing and lookup are data selection rather than branching and are allowed.",
             (
                 "A diagnostic is reported at the attribute's line. In a multi-line value the comparison itself "
@@ -397,7 +398,7 @@ class NoEnvironmentConditional(Rule):
         fixture_input = any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
         if (
             name.endswith(_TEST_SUFFIXES)
-            or (path.suffix != ".tf" and path.name != "terragrunt.hcl")
+            or (not is_terraform(path) and path.name != "terragrunt.hcl")
             or fixture_input
             or _generated_header(source)
         ):
@@ -411,7 +412,9 @@ class NoEnvironmentConditional(Rule):
                 message=_message(owner, attr, use),
                 severity=use.severity,
             )
-            for owner, attr in _attributes((document(source),))
+            for owner, attr in _attributes(
+                (terraform_document(path, source) if is_terraform(path) else document(source),)
+            )
             if _CONTAINS in attr.value or any(operator in attr.value for operator in _COMPARISONS)
             if (use := _environment_use(attr.value)) is not None
         ]

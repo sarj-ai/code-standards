@@ -15,17 +15,20 @@ from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file, iter_source_fil
 import typer
 
 from sarj_iac_lint import __version__
-from sarj_iac_lint._hcl import blocks, suppression_comment_lines
-from sarj_iac_lint.autofix import fix_source
+from sarj_iac_lint._hcl import analysis_session, suppression_comment_lines
+from sarj_iac_lint.autofix import GUARD_REMOVAL_RULES, fix_source
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import DefaultLevel, Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
+from sarj_iac_lint.rules.conditional_resource_presence import ConditionalResourcePresence
+from sarj_iac_lint.rules.no_hardcoded_deployment_location import NoHardcodedDeploymentLocation
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks, guard_blocks
+from sarj_iac_lint.terraform import TerraformSession, is_terraform, is_terraform_override, terraform_blocks
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from sarj_rule_contracts import SourceCatalog
 
@@ -50,9 +53,7 @@ SKIP_DIR_NAMES = frozenset(
 )
 
 # YAML files are included for banner checks while HCL rules self-filter by extension.
-# `.json` is collected so that a root whose inputs are JSON-only still reaches a
-# rule: no rule parses JSON, and the ones that care report that they are blind
-# rather than passing a tree they never read.
+# `.json` includes Terraform JSON configuration; rules ignore unrelated JSON.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml", ".json"})
 
 _MAX_FILE_BYTES = 500_000
@@ -91,29 +92,61 @@ def _check(
     sources: SourceCatalog | None = None,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    rule_filter: Callable[[Path, str, str], bool] | None = None,
 ) -> list[Diagnostic]:
     unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
-    rules: list[Rule] = []
-    for name in rule_names:
-        if name == NoTerraformGuardBlocks.id:
-            rules.append(NoTerraformGuardBlocks(guard_contracts))
-        elif name == NoTerraformComments.id:
-            rules.append(NoTerraformComments(module_summaries=module_summaries))
-        else:
-            rules.append(REGISTRY[RuleId(name)]())
-    diags: list[Diagnostic] = []
-    for p in _expand_paths(paths):
-        source = (
-            p.read_text(encoding="utf-8", errors="replace")
-            if sources is None
-            else sources.capture(p).decode("utf-8", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
-        )
-        diags.extend(_source_diagnostics(rules, p, source))
+    expanded = _expand_paths(paths)
+    texts = _module_sources(expanded, sources=sources)
+    with analysis_session(texts.values()):
+        session = TerraformSession({path: text for path, text in texts.items() if is_terraform(path)})
+        rules: list[Rule] = []
+        for name in rule_names:
+            if name == NoTerraformGuardBlocks.id:
+                rules.append(NoTerraformGuardBlocks(guard_contracts))
+            elif name == NoTerraformComments.id:
+                rules.append(NoTerraformComments(module_summaries=module_summaries))
+            elif name == NoHardcodedDeploymentLocation.id:
+                rules.append(NoHardcodedDeploymentLocation(session=session))
+            elif name == ConditionalResourcePresence.id:
+                rules.append(ConditionalResourcePresence(session=session))
+            else:
+                rules.append(REGISTRY[RuleId(name)]())
+        diags: list[Diagnostic] = []
+        for p in expanded:
+            diags.extend(_source_diagnostics(_path_rules(rules, p, rule_filter=rule_filter), p, texts[p]))
     return diags
+
+
+def _path_rules(
+    rules: Sequence[Rule],
+    path: Path,
+    *,
+    rule_filter: Callable[[Path, str, str], bool] | None,
+) -> Sequence[Rule]:
+    if rule_filter is None:
+        return rules
+    return [rule for rule in rules if rule_filter(path, rule.id, rule.code)]
+
+
+def _module_sources(paths: Sequence[Path], *, sources: SourceCatalog | None) -> dict[Path, str]:
+    selected = set(paths)
+    for directory in {path.parent for path in paths if is_terraform(path)}:
+        selected.update(path for path in directory.iterdir() if path.is_file() and is_terraform(path))
+    texts: dict[Path, str] = {}
+    for path in sorted(selected):
+        if path.stat().st_size > _MAX_FILE_BYTES:
+            message = f"Terraform module input exceeds the {_MAX_FILE_BYTES:,}-byte analysis limit: {path}"
+            raise ValueError(message)
+        texts[path] = (
+            path.read_text(encoding="utf-8-sig")
+            if sources is None
+            else sources.capture(path).decode("utf-8-sig", newlines=NewlinePolicy.UNIVERSAL).text
+        )
+    return texts
 
 
 def _source_diagnostics(rules: Sequence[Rule], path: Path, source: str) -> list[Diagnostic]:
@@ -179,7 +212,9 @@ def _guard_ban_precedence(
     if not banned_guards:
         return diagnostics
     covered_resources = {
-        (owner.line, owner.col) for owner in blocks(source) if _all_lifecycle_guards_banned(owner, banned_guards)
+        (owner.line, owner.col)
+        for owner in terraform_blocks(path, source)
+        if _all_lifecycle_guards_banned(owner, banned_guards)
     }
     return [
         diagnostic
@@ -200,7 +235,14 @@ def _all_lifecycle_guards_banned(owner: Block, guards: Sequence[Block]) -> bool:
 def _covered_by_guard_ban(diagnostic: Diagnostic, guards: Sequence[Block]) -> bool:
     if diagnostic.code not in {"SARJ209", "SARJ217"}:
         return False
-    return any(block.line <= diagnostic.line <= block.end_line for block in guards)
+    point = diagnostic.line, diagnostic.col
+    pending = list(guards)
+    while pending:
+        block = pending.pop()
+        if point == (block.line, block.col) or any(point == (item.line, item.col) for item in block.attributes):
+            return True
+        pending.extend(block.blocks)
+    return False
 
 
 def analyze(
@@ -210,8 +252,16 @@ def analyze(
     sources: SourceCatalog | None = None,
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
+    rule_filter: Callable[[Path, str, str], bool] | None = None,
 ) -> list[Diagnostic]:
-    return _check(rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries)
+    return _check(
+        rule_ids,
+        paths,
+        sources=sources,
+        guard_contracts=guard_contracts,
+        module_summaries=module_summaries,
+        rule_filter=rule_filter,
+    )
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:
@@ -298,7 +348,47 @@ def _apply_fixes(rule: list[str], files: list[Path]) -> None:
         message = f"unknown rule(s): {', '.join(sorted(unknown))}"
         raise ValueError(message)
     for path in _expand_paths(files):
-        fix_file(path, partial(fix_source, path, rule_ids=rule))
+        fix_file(path, partial(_contextual_fix, path, rule_ids=rule))
+
+
+def _contextual_fix(path: Path, source: str, *, rule_ids: Sequence[str]) -> str:
+    if not is_terraform(path):
+        return fix_source(path, source, rule_ids=rule_ids)
+    names = _terraform_members(path.parent)
+    texts = _module_sources([path], sources=None)
+    protected = _guard_removal_protected(path, names)
+    selected = tuple(name for name in rule_ids if not (protected and name in GUARD_REMOVAL_RULES))
+    fixed = fix_source(path, source, rule_ids=selected)
+    if fixed != source:
+        from sarj_iac_lint.declaration_fixes import observes_source  # ruff: ignore[import-outside-top-level] -- only source-changing operations need the complete-module observation proof.
+
+        if observes_source({member: terraform_blocks(member, text) for member, text in texts.items()}):
+            message = "Terraform fixes require review of source-reading functions; no source was changed"
+            raise ValueError(message)
+    current = _terraform_members(path.parent)
+    if (
+        names != current
+        or protected != _guard_removal_protected(path, current)
+        or texts != _module_sources([path], sources=None)
+    ):
+        message = "Terraform module or safeguard metadata changed during guard fix planning; rerun the command"
+        raise ValueError(message)
+    return fixed
+
+
+def _guard_removal_protected(path: Path, names: tuple[str, ...]) -> bool:
+    if any(is_terraform_override(Path(name)) for name in names):
+        return True
+    for parent in path.absolute().parents:
+        if (parent / ".sarj-terraform-guards.json").exists():
+            return True
+        if (parent / ".git").exists():
+            break
+    return False
+
+
+def _terraform_members(directory: Path) -> tuple[str, ...]:
+    return tuple(sorted(item.name for item in directory.iterdir() if item.is_file() and is_terraform(item)))
 
 
 def _run_check(

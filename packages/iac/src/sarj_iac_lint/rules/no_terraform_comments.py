@@ -16,6 +16,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -38,13 +39,16 @@ class NoTerraformComments(Rule):
         default_level=DefaultLevel.ERROR,
         summary="Express Terraform intent through names and descriptions, with optional concise module summaries.",
         rationale="Names and descriptions carry executable intent. An optional short entrypoint summary exposes module purpose without a separate catalog.",
-        remediation="Use clear names and native descriptions. Opt into module_summaries for one short main.tf header; keep other context in the owning declaration or change review.",
+        remediation="Use clear names and native descriptions. Opt into module_summaries for one short main.tf header. Retain required legal notices, provenance and functional directives through reviewed exact-file manifest exclusions with an owner/reason; never delete a control to clear a style finding.",
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Inline means a trailing comment or a real HCL comment inside an executable expression. This established organization rule is stricter: it also bans standalone rationale, apart from the configured module summary. The separate cruft/restatement rules retain their narrower rationale-preserving contracts when this broader policy is not selected.",
+            "Required legal notices, generated provenance and functional tool directives require a narrowly scoped existing manifest exclusion with an explicit owner/reason; never remove a directive to clear this rule. Comment-based self-suppression remains prohibited.",
+            "Terraform JSON has no trailing-comment syntax. Real HCL comments inside JSON expression templates are reported at the owning attribute; literal defaults, block-body // properties, URLs and embedded shell/YAML remain data. Malformed JSON fails analysis.",
             "Core consumers may opt into [iac.no-terraform-comments] module_summaries = true. This permits one plain # summary of at most 80 characters on the first line of main.tf, followed by a blank line. Suppression and generated-file markers are excluded. Terraform validation still owns syntax; no Terraform values or outputs are added.",
             "At error level, takes precedence over the narrower comment-cruft and restated-comment rules when selected together for .tf source. Warning-stage adoption preserves existing errors.",
-            "Applies to .tf source, including real comments in template interpolations; literal strings, heredoc script text and non-.tf inputs are not comments.",
+            "Applies to .tf and .tf.json source, including real comments in template interpolations; literal strings, heredoc script text and other HCL dialects are not executable comment tokens.",
             "One finding is emitted per comment token, including block comments and tool directives. This rule cannot suppress itself with another comment.",
             "This is an explicit team style policy, not a claim that explanatory comments are a correctness defect. Conditional safe fixes replace empty ordinary line comments and empty block comments on one physical line with spaces, preserving executable tokens and LF/CRLF boundaries. Nonempty comments, directives, template comments, multiline block comments, generated and malformed sources remain manual.",
         ),
@@ -125,6 +129,8 @@ class NoTerraformComments(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if path.name.endswith(".tf.json"):
+            return _json_comments(path, source, self.code)
         if path.suffix.lower() != ".tf":
             return []
         summary = (1, 1) if self.module_summaries and _module_summary(path, source) else None
@@ -141,6 +147,24 @@ class NoTerraformComments(Rule):
             for line, col in comment_locations(source)
             if (line, col) != summary
         ]
+
+
+def _json_comments(path: Path, source: str, code: str) -> list[Diagnostic]:
+    # Whole expressions retain ordinary object "//" keys that a block projection ignores.
+    return [
+        Diagnostic(
+            path,
+            attribute.line,
+            attribute.col,
+            code,
+            f"Terraform expression contains {len(locations)} prohibited HCL comment token(s); preserve literal JSON data and functional metadata when reviewing removal.",
+            suppressible=False,
+            severity=DefaultLevel.ERROR,
+        )
+        for block in terraform_blocks(path, source)
+        for attribute in block.attributes
+        if (locations := comment_locations(attribute.value))
+    ]
 
 
 def _module_summary(path: Path, source: str) -> bool:

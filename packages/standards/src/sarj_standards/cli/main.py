@@ -2496,6 +2496,7 @@ def _apply_safe_fixes(
             machine_output=args.output_format != "text",
             default_scope=not files and not scoped,
             format_only_paths=format_only_paths,
+            staged=args.staged,
         )
     except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
         print(f"error: cannot apply safe fixes: {exc}", file=sys.stderr)

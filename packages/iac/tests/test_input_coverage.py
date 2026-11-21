@@ -103,12 +103,21 @@ def test_accepted_input_read_failure_is_an_operator_error(
     assert str(source) in capsys.readouterr().err
 
 
-def test_directory_discovery_preserves_size_and_path_exclusions(tmp_path: Path) -> None:
+def test_directory_discovery_preserves_path_exclusions(tmp_path: Path) -> None:
     included = tmp_path / "main.tf"
     included.write_bytes(_SOURCE)
-    (tmp_path / "oversized.tf").write_bytes(_SOURCE + b" " * 500_000)
     excluded = tmp_path / ".terraform" / "main.tf"
     excluded.parent.mkdir()
     excluded.write_bytes(_SOURCE)
 
     assert [(finding.path, finding.code) for finding in analyze([_RULE], [tmp_path])] == [(included, "SARJ204")]
+
+
+@pytest.mark.parametrize("requested", ["file", "directory"])
+def test_oversized_sibling_prevents_incomplete_module_qualification(tmp_path: Path, requested: str) -> None:
+    included = tmp_path / "main.tf"
+    included.write_bytes(_SOURCE)
+    (tmp_path / "oversized.tf").write_bytes(_SOURCE + b" " * 500_000)
+
+    with pytest.raises(ValueError, match="500,000-byte analysis limit"):
+        analyze([_RULE], [included if requested == "file" else tmp_path])

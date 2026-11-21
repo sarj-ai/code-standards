@@ -1,0 +1,115 @@
+---
+import ReferencePage from '../components/ReferencePage.astro';
+import { siteHref } from '../lib/site';
+---
+
+<ReferencePage title="Terraform policy" description="Module boundaries, deployment choices and safe Terraform remediation.">
+  <h1>Terraform policy</h1>
+  <p>
+    Prefer clear names, small typed interfaces, cohesive modules and canonical <code>terraform fmt</code>.
+    Source semantics belong in Code Standards; tracked filenames, placement and component contracts
+    belong in Repo Standards. Browse the <a href={siteHref('/rules/iac/')}>executable IaC rules</a> for
+    exact scope, severity, examples and refusal conditions.
+  </p>
+  <h2>Comments and safeguards</h2>
+  <p>
+    SARJ216 bans actual HCL comments, including trailing and expression-embedded comments. Its
+    existing policy also covers standalone rationale; those differ from the requested inline ban.
+    Strings, URLs, heredoc payloads and embedded shell or YAML are data. Terraform JSON's block-body
+    <code>"//"</code> property is not an HCL comment. SARJ202 and SARJ207 retain the narrower banner,
+    commented-code and restatement controls. Use names, concise descriptions and module documentation
+    for explanation. Required legal notices, generated provenance and functional tool directives need
+    a narrow reviewed file exception with an owner and reason; never remove a directive to silence a rule.
+  </p>
+  <p>
+    SARJ222 prohibits every variable validation block as organization policy, even when its condition
+    is useful. This removes a convenient Terraform-native input safeguard: detection does not prove
+    deletion safe. Identify the invariant, authoritative owner and equivalent enforcement before a
+    reviewed migration. Existing immutable safeguard contracts remain enforced and emit a migration
+    warning for retained variable validations; uncontracted or changed guards block. Do not create
+    source snapshots as a workaround. SARJ209 removes only assertions proved redundant under the
+    exact type and nullability semantics, and refuses protected contracts and override modules. Terraform validation,
+    provider checks and lifecycle safeguards are distinct controls; this is not a request to delete them.
+  </p>
+  <h2>Deployment choices and module interfaces</h2>
+  <p>
+    SARJ219 inspects structured deployment contexts and templates, with complete sibling-module facts.
+    Reuse an existing resource or discovery attribute before adding an input. Explicit composition
+    roots and tfvars may supply concrete deployment choices; backend restrictions, provider constants,
+    protocol constants, module sources, examples and schema data have separate valid boundaries.
+    A reusable module's configurable default must be intentional and documented. A constant local
+    does not make a deployment assumption reusable. No literal-to-binding autofix has established
+    equivalence for all supported inputs.
+  </p>
+  <p>
+    TFLint 0.65.0's Terraform ruleset 0.15.0 finds unused inputs across files. Sarj runs each module
+    directory, including JSON-only modules, as a root and normalizes its upstream warning to an error.
+    A tfvars assignment is not use. Removing the declaration can still break callers or published
+    contracts, so broad TFLint deletion fixes are disabled. SARJ223 reports unused child outputs only
+    for explicitly reviewed <code>iac.no-unused-module-outputs.internal_modules</code> boundaries,
+    retaining existing external-output contracts. Indexes, splats and whole-module consumers count;
+    root, public, remote-state, script and unavailable external usage remain unknown unless trustworthy
+    contract evidence closes the boundary. Unknown does not mean unused or proved live.
+  </p>
+  <h2>A finite anti-pattern inventory</h2>
+  <p>
+    Maintained upstream controls cover deprecated interpolation, index and two-argument lookup syntax,
+    empty-list equality, duplicate map keys, unpinned module sources, missing provider/version
+    declarations, untyped variables and unused declarations. Sarj adds environment dispatch and dead
+    inputs (SARJ204–205), redundant assertions and condition resources (SARJ209–210), nested and complex
+    conditionals (SARJ215, SARJ217), repeated deployment literals (SARJ218), and conditional presence
+    review (SARJ221). This finite inventory cannot establish every design flaw. The presence of
+    <code>count</code>, <code>for_each</code>, <code>depends_on</code>, <code>lifecycle</code>,
+    <code>dynamic</code>, <code>try</code> or <code>can</code> alone is not a violation.
+  </p>
+  <h2>Layout and retirement</h2>
+  <p>
+    Keep each module's declarations in its own <code>variables.tf</code> and <code>outputs.tf</code>
+    (or JSON counterparts), without empty files or trivial modules. Terraform does not recursively
+    load declaration-kind subfolders. SARJ224 checks blocks; Repo Standards checks detached folders
+    and advises review of meaningful filename clusters. Names do not prove cohesion or justify
+    extraction. Preserve flat composition, tfvars loading, provider mappings, backends and entrypoints.
+    New layout rules start as warnings; blocking requires a separate reviewed lifecycle promotion.
+  </p>
+  <p>
+    SARJ220 reuses <code>Retire by:</code>, <code>Remove when:</code> and <code>Permanent:</code>
+    description metadata. Dates, defaults and observed environment values cannot prove rollout
+    readiness. Review supported configurations, rollback and count/index/key addresses before retiring
+    a flag. SARJ221's recommendations retain that distinction.
+  </p>
+  <h2>Automatic changes and review boundaries</h2>
+  <p>
+    Supported Core <code>check --fix</code>, <code>fix</code> and staged checks use the real fix pathway.
+    Safe profiles cover existing lexical cruft fixes, empty ordinary comments, precisely redundant
+    unprotected assertions, closed homogeneous literal selections, and literal numeric count folding
+    that retains count and instance addresses. Nonempty rationale, legal notices and directives require
+    review. Symbolic gates, input/output deletion, hardcoded binding replacement, JSON declaration
+    movement and module extraction have no established safe automatic transformation.
+    Core's native HCL formatter uses pinned Terraform on stdin within the same source transaction.
+    It refuses formatter output that changes nonempty comment tokens, including legal notices and
+    functional directives between block labels. Source-reading functions require review before a
+    source-changing fix: even formatting can change a configuration that hashes its own source.
+    Terraform JSON remains deliberately outside <code>terraform fmt</code>'s supported syntax.
+  </p>
+  <p>
+    SARJ224 can consolidate native HCL declarations into existing selected files in the same module.
+    It refuses comments, guards, overrides, duplicate interfaces, source-reading functions, missing
+    destinations and incomplete staged context. The planner compares complete module structures;
+    Core checks source bytes, module membership and the index, applies a rollback transaction and
+    requires review before staging. Provider-free fixture plans verify combined fixes preserve planned
+    values and instance addresses; a second pass must be clean. Address-changing refactors require
+    reviewed migration and plan evidence, beyond a generated moved block or syntax comparison.
+  </p>
+  <p>
+    Both <code>.tf</code> and <code>.tf.json</code> are supported deliberately. Tfvars are input values,
+    not declaration sources. Generated, vendor, examples and fixture scope is rule-specific and stated
+    in each contract. Malformed, oversized or unsupported module sources fail qualification rather
+    than proving a clean result. See HashiCorp's
+    <a href="https://developer.hashicorp.com/terraform/language/syntax/configuration">syntax</a>,
+    <a href="https://developer.hashicorp.com/terraform/language/syntax/json">JSON syntax</a>,
+    <a href="https://developer.hashicorp.com/terraform/language/modules/develop/composition">module composition</a>,
+    <a href="https://developer.hashicorp.com/terraform/language/modules/develop/structure">module structure</a>,
+    <a href="https://developer.hashicorp.com/terraform/language/modules/develop/refactoring">refactoring</a>
+    and <a href="https://developer.hashicorp.com/terraform/language/tests">testing</a> documentation.
+  </p>
+</ReferencePage>

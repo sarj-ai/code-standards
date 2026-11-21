@@ -40,18 +40,20 @@ class NoTerraformDataCondition(Rule):
             "deployment boundary that owns the invariant."
         ),
         remediation=(
-            "Delete the terraform_data guard. Put an input invariant on its variable, a provider invariant on the "
-            "owning resource, and environment or rollout policy in tests and deployment review."
+            "Identify the invariant and its authoritative owner. Establish equivalent admission and rollback "
+            "protection before reviewed removal; do not relocate it into another prohibited variable validation, "
+            "check or lifecycle guard. Preserve resource addresses and substantive safeguards."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes remove only standalone literal-true conditions with literal messages and no comments or extra content, preserving the resource address and all other lifecycle behavior. Real assertions require ownership review.",
+            "Core and IaC CLI fixes refuse guard removal in override modules or projects with protected immutable guard contracts.",
             "Only lifecycle precondition and postcondition blocks directly inside terraform_data resources are checked.",
             "Resources with a direct file, local-exec, or remote-exec provisioner are excluded; their conditions may protect provisioning operations.",
             (
-                "Ordinary terraform_data replacement triggers, variable validation, check blocks, and lifecycle "
-                "conditions on provider resources remain allowed."
+                "Ordinary terraform_data replacement triggers are outside this rule. Other guard forms are "
+                "governed separately by SARJ222 and its existing safeguard contracts."
             ),
             "Only .tf files are read; Terraform test files and other HCL dialects are outside this rule.",
         ),
@@ -147,8 +149,8 @@ class NoTerraformDataCondition(Rule):
             col=block.col,
             code=self.code,
             message=(
-                f"terraform_data.{name} uses a lifecycle condition as a plan guard — delete the fake resource and "
-                "enforce the invariant at its owning input, resource, test, or deployment boundary"
+                f"terraform_data.{name} uses a lifecycle condition as a plan guard; establish equivalent "
+                "protection at its authoritative owner before reviewed removal, preserving safeguards and resource addresses"
             ),
         )
 

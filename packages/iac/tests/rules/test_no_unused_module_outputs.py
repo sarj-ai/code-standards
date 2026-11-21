@@ -24,7 +24,7 @@ def test_documented_examples() -> None:
         }
         return [
             ExampleFinding(d.path, d.line, d.col, d.code, d.message)
-            for d in NoUnusedModuleOutputs.check_project(root, sources)
+            for d in NoUnusedModuleOutputs.check_project(root, sources, internal_modules=("child",))
         ]
 
     assert verify_examples(spec.examples, analyze, expected_code="SARJ223") == 2
@@ -42,6 +42,7 @@ def test_required_diagnostic_cannot_be_suppressed_or_baselined(tmp_path: Path, *
             PurePosixPath("main.tf"): 'module "child" { source = "./child" }\n',
             PurePosixPath("child/outputs.tf"): source,
         },
+        internal_modules=("child",),
     )
     assert len(findings) == 1
     finding = findings[0]

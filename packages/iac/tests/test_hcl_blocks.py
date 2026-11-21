@@ -10,6 +10,7 @@ from sarj_iac_lint.__main__ import analyze
 from sarj_iac_lint._hcl import (
     ParsedDocument,
     RejectedDocument,
+    analysis_session,
     blocks,
     document,
     document_result,
@@ -321,6 +322,18 @@ def test_document_result_retains_one_bounded_cache_and_legacy_tree_identity() ->
     assert info.currsize <= 32
 
 
+def test_analysis_session_reuses_complete_source_facts_beyond_bounded_cache() -> None:
+    source = 'variable "session_region" { type = string }\n'
+    with analysis_session((source,)):
+        first = document_result(source)
+        for index in range(40):
+            document_result(f'variable "session_other_{index}" {{ type = string }}\n')
+        assert document_result(source) is first
+    for index in range(40):
+        document_result(f'variable "outside_session_{index}" {{ type = string }}\n')
+    assert document_result(source) is not first
+
+
 def test_empty_and_unbalanced_sources_degrade_without_raising():
     assert blocks("") == ()
     assert blocks("# just a comment\n") == ()
@@ -545,7 +558,11 @@ def test_shared_template_spans_preserve_native_resource_ownership(
     assert len(findings) == expected, name
     assert findings == rule.check(path, source)
     assert len({(item.code, item.line, item.col) for item in findings}) == len(findings)
-    analyze(sorted(REGISTRY), [path])
+    if isinstance(document_result(source), RejectedDocument):
+        with pytest.raises(ValueError, match="Cannot analyze Terraform source"):
+            analyze(sorted(REGISTRY), [path])
+    else:
+        analyze(sorted(REGISTRY), [path])
 
 
 def test_multiline_template_remains_one_token_with_exact_source() -> None:

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import shutil
 import subprocess
 
 import pytest
 
+from sarj_iac_lint.__main__ import main
 from sarj_iac_lint.autofix import fix_source
+from sarj_iac_lint.declaration_fixes import consolidate_declarations
+from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rules.no_nested_conditional import NoNestedConditional
 from sarj_iac_lint.rules.no_redundant_variable_validation import NoRedundantVariableValidation
 
@@ -24,6 +28,51 @@ _CLOSED_CASES = [
     ("(false) ? 12 : (true) ? -1.25e-2 : 0", "-1.25e-2"),
     ('true ? "snow ☃ ? :" : false ? "百分%" : "$literal"', '"snow ☃ ? :"'),
 ]
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"), [("true ? 1 : 0", "1"), ("false ? 1 : 0", "0"), ("true ? (false ? 2 : 3) : 0", "3")]
+)
+@pytest.mark.parametrize("kind", ["resource", "module", "ephemeral"])
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+def test_literal_count_fixes_retain_the_attribute_addresses_and_other_content(
+    expression: str, expected: str, kind: str, ending: str
+) -> None:
+    labels = '"child"' if kind == "module" else '"terraform_data" "this"'
+    source = f"{kind} {labels} {{\n  count = {expression}\n}}\n".replace("\n", ending)
+    fixed = fix_source(Path("main.tf"), source, rule_ids=["conditional-resource-presence"])
+    assert fixed == source.replace(expression, expected)
+    assert fix_source(Path("main.tf"), fixed, rule_ids=["conditional-resource-presence"]) == fixed
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "var.enabled ? 1 : 0",
+        'true ? 1 : "0"',
+        "true ? 1.5 : 0",
+        'true ? 1 : tonumber("0")',
+        "true ? -1 : 0",
+        "true ? null : 0",
+    ],
+)
+def test_count_fix_refuses_unproved_types_inputs_and_invalid_selected_counts(expression: str) -> None:
+    source = f'resource "terraform_data" "this" {{\n  count = {expression}\n}}\n'
+    assert fix_source(Path("main.tf"), source, rule_ids=["conditional-resource-presence"]) == source
+
+
+def test_count_and_empty_comment_fixes_converge_together() -> None:
+    source = 'resource "terraform_data" "this" {\n  count = true ? 1 : 0 #\n}\n'
+    rules = ["conditional-resource-presence", "no-terraform-comments"]
+    fixed = fix_source(Path("main.tf"), source, rule_ids=rules)
+    assert "count = 1" in fixed
+    assert "?" not in fixed
+    assert fix_source(Path("main.tf"), fixed, rule_ids=rules) == fixed
+
+
+def test_for_each_and_dated_default_flags_remain_reviewed() -> None:
+    source = 'variable "enabled" {\n  type = bool\n  default = true\n  description = "Retire by: 2000-01-01\\nRemove when: Reviewed cutover."\n}\nmodule "child" {\n  source = "./child"\n  count = var.enabled ? 1 : 0\n}\nresource "terraform_data" "this" {\n  for_each = true ? { kept = 1 } : {}\n}\n'
+    assert fix_source(Path("main.tf"), source, rule_ids=["conditional-resource-presence"]) == source
 
 
 @pytest.mark.parametrize(("expression", "expected"), _CLOSED_CASES)
@@ -137,6 +186,82 @@ def terraform_executable() -> str:
     version = subprocess.run((executable, "version"), check=True, capture_output=True, text=True)
     assert version.stdout.splitlines()[0] == "Terraform v1.17.0"
     return executable
+
+
+def test_combined_project_fixes_preserve_provider_free_plans_and_instance_addresses(
+    tmp_path: Path, terraform_executable: str
+) -> None:
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "main.tf").write_text('resource "terraform_data" "child" { input = "retained" }\n')
+    implementation = tmp_path / "service.tf"
+    implementation.write_text(
+        'variable "name" {\n  type = string\n  default = "retained"\n}\n'
+        'resource "terraform_data" "kept" {\n  count = true ? 1 : 0 #\n  input = var.name\n}\n'
+        'module "child" {\n  source = "./child"\n  count = false ? 0 : 1\n}\n'
+        'output "names" { value = terraform_data.kept[*].output }\n'
+    )
+    (tmp_path / "variables.tf").write_text('variable "other" {\n  type = string\n  default = "owned"\n}\n')
+    (tmp_path / "outputs.tf").write_text('output "other" { value = var.other }\n')
+    _terraform_command(terraform_executable, tmp_path, "init", "-backend=false", "-input=false", "-no-color")
+    before = _planned_values(terraform_executable, tmp_path)
+
+    assert (
+        main(
+            [
+                "check",
+                "--rule",
+                "conditional-resource-presence",
+                "--rule",
+                "no-terraform-comments",
+                "--fix",
+                str(implementation),
+            ]
+        )
+        == 0
+    )
+    sources = {path: path.read_text() for path in tmp_path.glob("*.tf")}
+    for path, source in consolidate_declarations(sources, selected=tuple(sources)).items():
+        path.write_text(source)
+    _terraform_command(terraform_executable, tmp_path, "fmt", "-recursive")
+
+    assert _planned_values(terraform_executable, tmp_path) == before
+    assert "count = 1" in implementation.read_text()
+    assert 'variable "name"' in (tmp_path / "variables.tf").read_text()
+    assert 'output "names"' in (tmp_path / "outputs.tf").read_text()
+    fixed = {path: path.read_bytes() for path in sources}
+    assert (
+        main(
+            [
+                "check",
+                "--rule",
+                "conditional-resource-presence",
+                "--rule",
+                "no-terraform-comments",
+                "--fix",
+                str(implementation),
+            ]
+        )
+        == 0
+    )
+    assert consolidate_declarations({path: path.read_text() for path in sources}, selected=tuple(sources)) == {}
+    _terraform_command(terraform_executable, tmp_path, "fmt", "-check", "-recursive")
+    assert {path: path.read_bytes() for path in sources} == fixed
+
+
+def _terraform_command(executable: str, root: Path, *arguments: str) -> str:
+    return subprocess.run(
+        (executable, *arguments), cwd=root, check=True, capture_output=True, text=True, timeout=30
+    ).stdout
+
+
+def _planned_values(executable: str, root: Path) -> str:
+    _terraform_command(executable, root, "plan", "-refresh=false", "-lock=false", "-input=false", "-out=proof.tfplan")
+    plan = parse_json(_terraform_command(executable, root, "show", "-json", "proof.tfplan"))
+    assert is_object_mapping(plan)
+    return json.dumps(
+        {"planned_values": plan["planned_values"], "resource_changes": plan["resource_changes"]}, sort_keys=True
+    )
 
 
 @pytest.mark.parametrize(("expression", "expected"), _CLOSED_CASES)

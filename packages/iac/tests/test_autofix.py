@@ -14,6 +14,23 @@ if TYPE_CHECKING:
     from sarj_rule_contracts import RuleId
 
 
+@pytest.mark.parametrize("override", ["override.tf", "nullable_override.tf.json"])
+def test_cli_preserves_validation_when_module_overrides_can_change_its_type_contract(
+    tmp_path: Path, override: str
+) -> None:
+    source = 'variable "value" {\n  type = string\n  nullable = false\n  validation {\n    condition = var.value != null\n    error_message = "Required."\n  }\n}\n'
+    path = tmp_path / "variables.tf"
+    path.write_text(source)
+    (tmp_path / override).write_text(
+        '{"variable":{"value":{"nullable":true}}}'
+        if override.endswith(".json")
+        else 'variable "value" { nullable = true }\n'
+    )
+
+    assert main(["check", "--rule", "no-redundant-variable-validation", "--fix", str(path)]) == 1
+    assert path.read_text() == source
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
@@ -112,7 +129,7 @@ def test_cli_fix_preserves_crlf_and_permissions(tmp_path: Path, capsys: pytest.C
             'locals {\n # Set instance type # sarj-noqa: SARJ207\n instance_type = "small"\n}\n',
             0,
         ),
-        ("no-comment-cruft", "# ==== Network ====\nlocals { a = 1\n", 1),
+        ("no-comment-cruft", "# ==== Network ====\nlocals { a = 1\n", 2),
         ("no-restated-comment", "# ==== Network ====\nlocals { a = 1 }\n", 0),
     ],
 )

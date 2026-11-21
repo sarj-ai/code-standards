@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from io import StringIO
@@ -13,7 +15,7 @@ from sarj_iac_lint.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Generator, Iterable, Mapping
 
 
 def physical_lines(source: str, *, keepends: bool = False) -> list[str]:
@@ -51,6 +53,25 @@ class _LexicalDocument:
     physical_newlines: tuple[int, ...]
     template_comments: tuple[_Span, ...]
     expressions: tuple[_Span, ...]
+
+
+@dataclass(slots=True)
+class _AnalysisCache:
+    sources: frozenset[str]
+    lexical: dict[str, _LexicalDocument] = field(default_factory=dict)
+    parsed: dict[str, ParsedDocument | RejectedDocument] = field(default_factory=dict)
+
+
+_ANALYSIS_CACHE: ContextVar[_AnalysisCache | None] = ContextVar("hcl_analysis_cache", default=None)
+
+
+@contextmanager
+def analysis_session(sources: Iterable[str]) -> Generator[None]:
+    token = _ANALYSIS_CACHE.set(_AnalysisCache(frozenset(sources)))
+    try:
+        yield
+    finally:
+        _ANALYSIS_CACHE.reset(token)
 
 
 @dataclass(slots=True)
@@ -208,7 +229,13 @@ class _HCLScanner:
 
 @lru_cache(maxsize=32)
 def _lexical_document(source: str) -> _LexicalDocument:
-    return _HCLScanner(source).scan()
+    cache = _ANALYSIS_CACHE.get()
+    if cache is not None and source in cache.lexical:
+        return cache.lexical[source]
+    result = _HCLScanner(source).scan()
+    if cache is not None and source in cache.sources:
+        cache.lexical[source] = result
+    return result
 
 
 def comment_locations(source: str, *, include_templates: bool = True) -> tuple[tuple[int, int], ...]:
@@ -222,6 +249,15 @@ def comment_locations(source: str, *, include_templates: bool = True) -> tuple[t
         start = lexical.physical_newlines[line - 1] + 1 if line else 0
         locations.append((line + 1, span.start - start + 1))
     return tuple(locations)
+
+
+def comment_texts(source: str) -> tuple[str, ...]:
+    lexical = _lexical_document(source)
+    if not lexical.complete:
+        message = "Cannot establish comments in incomplete HCL"
+        raise ValueError(message)
+    spans = sorted((*lexical.comments, *lexical.template_comments), key=lambda span: span.start)
+    return tuple(source[span.start : span.end] for span in spans)
 
 
 def template_expressions(source: str) -> tuple[str, ...]:
@@ -564,11 +600,17 @@ class _ValueParseResult(NamedTuple):
 
 @lru_cache(maxsize=32)
 def document_result(source: str) -> ParsedDocument | RejectedDocument:
+    cache = _ANALYSIS_CACHE.get()
+    if cache is not None and source in cache.parsed:
+        return cache.parsed[source]
     root_end = max(len(physical_lines(source)), 1)
     try:
-        return ParsedDocument(_parsed_document(source, root_end))
+        result: ParsedDocument | RejectedDocument = ParsedDocument(_parsed_document(source, root_end))
     except _InvalidHCLSourceError as exc:
-        return RejectedDocument(str(exc), Block("", (), 0, 1, 1, root_end, (), ()))
+        result = RejectedDocument(str(exc), Block("", (), 0, 1, 1, root_end, (), ()))
+    if cache is not None and source in cache.sources:
+        cache.parsed[source] = result
+    return result
 
 
 def document(source: str) -> Block:

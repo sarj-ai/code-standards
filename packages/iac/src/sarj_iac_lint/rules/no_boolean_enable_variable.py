@@ -18,6 +18,7 @@ from sarj_iac_lint.rule_base import (
     RuleExample,
 )
 from sarj_iac_lint.rules._literal_policy import balanced_blocks
+from sarj_iac_lint.terraform import is_terraform, terraform_blocks
 
 
 if TYPE_CHECKING:
@@ -62,7 +63,7 @@ class NoBooleanEnableVariable(Rule):
             "An explicit Retire by: or Permanent: description line also opts any other top-level variable into this policy, including migration modes.",
             "Lifecycle records must be unique description lines in a literal quoted string or heredoc. Comments and nested descriptions cannot satisfy them; dynamic descriptions cannot be verified.",
             "Retirement dates are inclusive UTC calendar dates; the finding returns the following day even if the gate is already enabled. There is no hard maximum duration or automatic extension tracking.",
-            "Unannotated provider attributes, object members, non-Boolean inputs, inferred types and JSON syntax are excluded. Generators must put the lifecycle description in their generated declarations.",
+            "Covers .tf and .tf.json declarations. Unannotated provider attributes, object members, non-Boolean inputs and inferred types are excluded. Generators must put the lifecycle description in their generated declarations.",
             "CI must run after the date passes to detect expiry. The rule does not change Terraform planning or apply behavior.",
             "Result caches must include the current UTC date or leave this rule uncached; unchanged source can acquire an expiry finding.",
             "No automatic deletion or branch selection is safe: changing count/for_each can destroy resources.",
@@ -159,10 +160,10 @@ class NoBooleanEnableVariable(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix.lower() != ".tf":
+        if not is_terraform(path):
             return []
         try:
-            declarations = balanced_blocks(source)
+            declarations = terraform_blocks(path, source) if path.name.endswith(".tf.json") else balanced_blocks(source)
         except ValueError:
             return []
         today = self._today if self._today is not None else datetime.now(UTC).date()
@@ -235,7 +236,7 @@ def _lifecycle_issue(records: tuple[re.Match[str], ...], description: str, today
     except ValueError:
         return "retirement date is not a valid calendar date"
     if today > deadline:
-        return f"temporary input expired after {deadline.isoformat()} UTC; complete cutover and remove the gate and old path"
+        return f"temporary input expired after {deadline.isoformat()} UTC; review the recorded cutover condition, supported configurations and rollback readiness before removing the gate or old path"
     if len(removal) != 1 or not removal[0][1].strip():
         return "temporary input needs exactly one nonempty Remove when: condition and removal action"
     return None

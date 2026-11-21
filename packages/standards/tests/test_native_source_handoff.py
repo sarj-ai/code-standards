@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import shutil
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -101,9 +104,15 @@ def _observe_completion(
                 sources: SourceCatalog | None = None,
                 guard_contracts: GuardContracts | None = None,
                 module_summaries: bool = False,
+                rule_filter: Callable[[Path, str, str], bool] | None = None,
             ) -> list[IacDiagnostic]:
                 result = original_iac(
-                    rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+                    rule_ids,
+                    paths,
+                    sources=sources,
+                    guard_contracts=guard_contracts,
+                    module_summaries=module_summaries,
+                    rule_filter=rule_filter,
                 )
                 completed(sources)
                 return result
@@ -290,7 +299,7 @@ def test_normalization_keeps_exact_capture_keys_when_paths_resolve_to_the_same_f
     ],
 )
 @pytest.mark.parametrize("valid_utf8", [False, True])
-def test_replacement_decoding_keeps_findings_without_inventing_physical_positions(
+def test_decoding_preserves_physical_positions_or_rejects_invalid_terraform(
     tmp_path: Path,
     *,
     engine: str,
@@ -309,6 +318,14 @@ def test_replacement_decoding_keeps_findings_without_inventing_physical_position
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(raw)
     rule = selector.partition(":")[2]
+    if engine == "iac" and not valid_utf8:
+        with pytest.raises(UnicodeDecodeError):
+            iac_engine.analyze([rule], [path])
+        rejected = Standards(tmp_path).analyze([relative], rules=[selector])
+        assert rejected.completion is Completion.FAILED
+        assert any("UnicodeDecodeError" in issue.message for issue in rejected.issues)
+        assert not rejected.diagnostics
+        return
     legacy = sql_engine.analyze([rule], [path]) if engine == "sql" else iac_engine.analyze([rule], [path])
     assert len(legacy) == 1
 
@@ -543,3 +560,67 @@ def test_standalone_text_reads_each_occurrence_while_shared_capture_reuses_one_r
 
     assert [finding.code for finding in findings] == ["SARJ306"] * (2 if shared else 1)
     assert reads == ([original] if shared else [original, replacement])
+
+
+@pytest.mark.parametrize(
+    ("extension", "mutation"),
+    [
+        pytest.param("tf", "changed", id="hcl-changed-sibling"),
+        pytest.param("tf.json", "changed", id="json-changed-sibling"),
+        pytest.param("tf", "missing", id="hcl-missing-sibling"),
+        pytest.param("tf.json", "missing", id="json-missing-sibling"),
+        pytest.param("tf", "extra", id="hcl-untracked-sibling"),
+        pytest.param("tf.json", "extra", id="json-untracked-sibling"),
+        pytest.param("tf", "unrelated", id="hcl-unrelated-work-preserved"),
+        pytest.param("tf.json", "unrelated", id="json-unrelated-work-preserved"),
+    ],
+)
+def test_staged_iac_cannot_qualify_a_different_module_context(tmp_path: Path, extension: str, mutation: str) -> None:
+    executable = shutil.which("git")
+    assert executable is not None
+    subprocess.run(
+        [executable, "init", "--quiet", "--template=", str(tmp_path)], check=True, capture_output=True, timeout=10
+    )
+    module = tmp_path / "infra"
+    module.mkdir()
+    main = module / f"main.{extension}"
+    sibling = module / f"locals.{extension}"
+    if extension == "tf":
+        main.write_text('resource "google_storage_bucket" "app" { location = local.region }\n')
+        sibling.write_text('locals { region = "us-central1" }\n')
+    else:
+        main.write_text(json.dumps({"resource": {"google_storage_bucket": {"app": {"location": "${local.region}"}}}}))
+        sibling.write_text(json.dumps({"locals": {"region": "us-central1"}}))
+    subprocess.run([executable, "-C", str(tmp_path), "add", "."], check=True, capture_output=True, timeout=10)
+    standards = Standards(tmp_path)
+    paths = [main.relative_to(tmp_path).as_posix()]
+    rules = ["iac:no-hardcoded-deployment-location"]
+    original = standards.analyze(paths, rules=rules, staged=True)
+    assert original.completion is Completion.COMPLETE
+    assert not original.issues
+    assert [item.code for item in original.diagnostics] == ["SARJ219"]
+
+    match mutation:
+        case "changed":
+            sibling.write_text(
+                "locals { region = var.region }\n"
+                if extension == "tf"
+                else json.dumps({"locals": {"region": "${var.region}"}})
+            )
+        case "missing":
+            sibling.unlink()
+        case "extra":
+            (module / "extra.tf").write_text('locals { extra = "untracked" }\n')
+        case _:
+            (tmp_path / "unrelated").mkdir()
+            (tmp_path / "unrelated/main.tf").write_text('locals { region = "untracked" }\n')
+
+    result = standards.analyze(paths, rules=rules, staged=True)
+
+    if mutation == "unrelated":
+        assert result.completion is Completion.COMPLETE
+        assert not result.issues
+        assert [item.code for item in result.diagnostics] == ["SARJ219"]
+    else:
+        assert result.completion is Completion.FAILED
+        assert any("module context differs from the staged index" in issue.message for issue in result.issues)

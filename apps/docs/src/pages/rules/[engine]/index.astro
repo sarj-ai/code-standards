@@ -27,5 +27,6 @@ const rules = rulesForEngine(engine);
     <h1 class="engineering-visually-hidden">{engineLabel(engine)} rules</h1>
     <Breadcrumbs ancestors={[{ label: 'Rules', href: siteHref('/rules/') }]} current={engineLabel(engine)} />
   </header>
+  {engine === 'iac' && <p><a href={siteHref('/terraform/')}>Terraform policy and safe remediation boundaries</a></p>}
   <RuleTable rules={rules} />
 </ReferencePage>

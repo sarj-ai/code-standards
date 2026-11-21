@@ -147,11 +147,11 @@ def test_exact_code_suppression_remains_local(tmp_path: Path) -> None:
     assert analyze(["conditional-resource-presence"], [path]) == []
 
 
-def test_documented_examples_and_manual_only_fix_policy() -> None:
+def test_documented_count_fix_retains_symbolic_gates_for_review() -> None:
     spec = ConditionalResourcePresence.native_spec()
     assert spec is not None
     assert spec.default_level is DefaultLevel.WARNING
-    assert spec.autofix is AutofixPolicy.NONE
+    assert spec.autofix is AutofixPolicy.SAFE
     verify_native_rule(ConditionalResourcePresence, analyze)
     source = 'resource "example_service" "this" { count = var.enabled ? 1 : 0 }\n'
     assert fix_source(Path("main.tf"), source, rule_ids=["conditional-resource-presence"]) == source
