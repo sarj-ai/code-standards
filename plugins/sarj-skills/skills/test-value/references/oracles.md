@@ -1,7 +1,10 @@
 # Test judgment
 
 - Oracles must independently reject a plausible wrong result; deliberate registry
-  exhaustiveness is an exception. Scalar `pytest.approx` can broadcast NumPy
+  exhaustiveness is an exception. Prefer an observable result to a copied
+  production calculation, private call sequence or source-text match. Keep exact
+  bytes, calls or structure when they are the compatibility or safety contract.
+  Scalar `pytest.approx` can broadcast NumPy
   arrays; assert promised shape separately.
 - Start negative cases valid with one fault unless interaction/precedence matters.
   Keep tables sparse after paths rejoin.

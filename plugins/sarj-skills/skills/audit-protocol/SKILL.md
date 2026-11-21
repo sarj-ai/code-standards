@@ -8,8 +8,8 @@ Audits are read-only unless implementation is requested. Load the selected
 
 Identify owning repositories, stack and boundaries; search named source paths
 with bounded output. Exclude unrelated task outputs, caches, duplicate worktrees
-and generated/vendor/fixture data. Run native checks before judging
-uncovered behavior; inspect framework guards.
+and generated/vendor/fixture data. Use valid native-check evidence before judging
+uncovered behavior; run missing checks and inspect framework guards.
 Require completed exit statuses; interrupted checks are inconclusive.
 Keep reports ignored and private; redact secrets/identifiers.
 Follow [validation admission](../../commands/strengthen-ci-cd-and-tooling.md)

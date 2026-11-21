@@ -6,6 +6,13 @@ Require demonstrated ambiguity or comprehension cost. Replace stale prose/hidden
 invariants with executable parity where useful; preserve snapshots, public
 annotations and evaluation count.
 
+Prefer names and direct control flow over comments that narrate the code. Keep
+comments for non-obvious intent, constraints, compatibility and hazards; keep
+public API documentation and tool directives. Put rationale beside its owner or
+in the existing canonical guide. Keep task notes and verification transcripts
+outside Git; add a page only for a durable reader need the existing docs cannot meet.
+Judge useful information and upkeep, not comment length or page counts.
+
 Simplifications must preserve SQL NULL/anti-existence, HCL nested replacement/null
 clearing and decoded YAML command boundaries.
 

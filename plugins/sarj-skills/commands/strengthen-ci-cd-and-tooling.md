@@ -14,8 +14,14 @@ Trace required gates through delivery, deployment order, health/rollback and
 configuration drift. Optimize demonstrated bottlenecks using pinned
 baseline/candidate revisions and equivalent inputs, harness, caches and
 concurrency. Separate queue/execution time; measure readiness, useful errors,
-repeated work or output cost. Preserve final qualification gates; modernization
-needs observable benefit.
+repeated work or output cost. Modernization needs observable benefit.
+
+Fix the required gate list from repository guidance, hooks and branch policy
+before verification. Start with applicable focused checks, then complete those
+gates. Reuse passing evidence while its source, tools and inputs remain valid;
+review passes and votes consume that evidence without rerunning it. Rerun for
+changed inputs, failures or a concrete unresolved risk. Change a redundant gate
+through its owning policy before omitting it; keep optional diagnostics separate.
 
 Before polling PR checks, confirm mergeability and that expected workflows
 started for the current head. Merge conflicts can suppress `pull_request`
