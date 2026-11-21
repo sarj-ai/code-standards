@@ -285,6 +285,7 @@
       "no-null-comparison",
       "no-offset-pagination",
       "no-pg-enum",
+      "no-redundant-nullability",
       "prefer-constrained-status",
       "prefer-jsonb",
       "prefer-text-over-varchar",
@@ -781,7 +782,8 @@
       "SARJ127",
       "SARJ128",
       "SARJ129",
-      "SARJ130"
+      "SARJ130",
+      "SARJ132"
     ],
     "iac": [
       "SARJ201",

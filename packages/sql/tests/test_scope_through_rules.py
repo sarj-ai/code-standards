@@ -129,7 +129,7 @@ HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 MIGRATION_RULES = tuple(
     rule_cls
     for rule_cls in REGISTRY.values()
-    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130"}
+    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130", "SARJ132"}
 )
 DUMP_EXEMPT = MIGRATION_RULES
 

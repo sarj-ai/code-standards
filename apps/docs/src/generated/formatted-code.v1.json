@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3e385dccd9f4b84d1dabbd84828214c73b6716e1efe0d22a607afc42696d9e4e",
-  "cliSha256": "b15d29ebdf206d6836cd7f2a1a9f5f14a6b196603ffe68710a6c95dcffd33490",
+  "catalogSha256": "9a9b0b93820d593f37f017fa27374d268e4a820395776e30634b789d1093d219",
+  "cliSha256": "2d7c1b3045f5ec41ec0098668a7d06678c4877aba68031b053cfff3e2eb48996",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -25446,6 +25446,46 @@
           "outcome": "accept",
           "scenarioId": "semantic-boundary",
           "title": "A transaction adds an application-owned text value column"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-redundant-nullability": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_item.sql",
+              "source": "CREATE TABLE item (id INTEGER PRIMARY KEY, note TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_item.sql",
+          "id": "implicit-nullability",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep only constraints that change nullability"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_item.sql",
+              "source": "CREATE TABLE item (note TEXT NULL);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001_item.sql",
+              "source": "CREATE TABLE item (note TEXT);\n"
+            }
+          ],
+          "focusPath": "migrations/001_item.sql",
+          "id": "redundant-null",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Nullable columns need no NULL clause"
         }
       ],
       "optionsSchemaSource": null

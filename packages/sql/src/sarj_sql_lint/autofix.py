@@ -37,6 +37,7 @@ from sarj_sql_lint.rules.no_comment_cruft import (
     is_supported_disabled_statement,
     split_disabled_statements,
 )
+from sarj_sql_lint.rules.no_redundant_nullability import nullability_edits
 
 
 if TYPE_CHECKING:
@@ -79,6 +80,9 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
 def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list[TextEdit]:
     edits: list[TextEdit] = []
     for rule_id in selected:
+        if rule_id == "no-redundant-nullability":
+            edits.extend(nullability_edits(path, source))
+            continue
         if rule_id not in {
             "idempotent-ddl",
             "no-migration-comment-cruft",

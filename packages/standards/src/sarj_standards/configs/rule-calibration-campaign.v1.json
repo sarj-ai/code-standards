@@ -3799,6 +3799,14 @@
       "state": "pending",
       "evidence": "Executable cases distinguish unchanged caught messages copied into generic builtin errors from privacy, retry metadata, domain errors, cleanup, logging, additional context, malformed input and exact suppressions. Bounded isolated labeled and actual before/after source calibration plus repeated measurements are retained privately. This finite sample does not establish fleet-wide precision or recall; field calibration remains pending.",
       "outcome": "SARJ585: Introduce WARNING without autofix for message-only generic catch/raise wrappers. Preserve intentional exception contracts and explicit cause suppression. Ruff TRY201/TRY203 remain the owners of bare rethrows. No consumer activation or severity promotion is included."
+    },
+    {
+      "task": "rule-audit/sql/no-redundant-nullability",
+      "family": "sql",
+      "ruleId": "no-redundant-nullability",
+      "state": "pending",
+      "evidence": "Executable examples and regressions cover parsed PostgreSQL declarations, named and conflicting constraints, serial/identity/generated columns, malformed and opaque SQL, exact suppressions, physical line endings and convergence with existing DDL fixes. Immutable isolated calibration of 346 migrations found four inspected true positives, no inspected false positives, no removed existing findings and two safely rewritten files with preserved comments and convergent fixes. Three alternating full-registry pairs measured baseline/candidate cold medians of 1.947/2.044 seconds, warm medians of 1.726/1.814 seconds and process peaks of 52,068/51,556 KiB. Private sources, paths and identifying revisions remain local. This bounded sample does not establish fleet precision or recall; broader field calibration remains pending.",
+      "outcome": "SARJ132: Introduce WARNING with safe autofix only for unnamed plain NULL declarations on the column's physical line. Redundant unnamed NOT NULL beside an inline PRIMARY KEY remains manual because catalog constraints and dependencies may be intentional. Preserve unsupported, named, conflicting and generated contracts. No severity promotion or consumer activation is included."
     }
   ]
 }
