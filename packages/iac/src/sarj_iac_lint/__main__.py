@@ -352,14 +352,25 @@ def _apply_fixes(rule: list[str], files: list[Path]) -> None:
 
 
 def _contextual_fix(path: Path, source: str, *, rule_ids: Sequence[str]) -> str:
-    if not is_terraform(path) or not set(rule_ids) & GUARD_REMOVAL_RULES:
+    if not is_terraform(path):
         return fix_source(path, source, rule_ids=rule_ids)
     names = _terraform_members(path.parent)
+    texts = _module_sources([path], sources=None)
     protected = _guard_removal_protected(path, names)
     selected = tuple(name for name in rule_ids if not (protected and name in GUARD_REMOVAL_RULES))
     fixed = fix_source(path, source, rule_ids=selected)
+    if fixed != source:
+        from sarj_iac_lint.declaration_fixes import observes_source  # ruff: ignore[import-outside-top-level] -- only source-changing operations need the complete-module observation proof.
+
+        if observes_source({member: terraform_blocks(member, text) for member, text in texts.items()}):
+            message = "Terraform fixes require review of source-reading functions; no source was changed"
+            raise ValueError(message)
     current = _terraform_members(path.parent)
-    if names != current or protected != _guard_removal_protected(path, current):
+    if (
+        names != current
+        or protected != _guard_removal_protected(path, current)
+        or texts != _module_sources([path], sources=None)
+    ):
         message = "Terraform module or safeguard metadata changed during guard fix planning; rerun the command"
         raise ValueError(message)
     return fixed

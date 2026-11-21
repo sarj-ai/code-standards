@@ -24,6 +24,7 @@ def setup(root: Path) -> int:
     # exercise their tools regardless of the repository's consumer opt-outs.
     fixture_files = (
         root / "packages/standards/tests/fixtures/compose-project/compose.yaml",
+        root / "packages/standards/tests/fixtures/prepared-native/main.tf",
         root / "packages/standards/tests/fixtures/prepared-native/variables.tfvars",
         root / "packages/standards/tests/fixtures/prepared-native/compose.yaml",
     )

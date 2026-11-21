@@ -85,6 +85,11 @@ import { siteHref } from '../lib/site';
     that retains count and instance addresses. Nonempty rationale, legal notices and directives require
     review. Symbolic gates, input/output deletion, hardcoded binding replacement, JSON declaration
     movement and module extraction have no established safe automatic transformation.
+    Core's native HCL formatter uses pinned Terraform on stdin within the same source transaction.
+    It refuses formatter output that changes nonempty comment tokens, including legal notices and
+    functional directives between block labels. Source-reading functions require review before a
+    source-changing fix: even formatting can change a configuration that hashes its own source.
+    Terraform JSON remains deliberately outside <code>terraform fmt</code>'s supported syntax.
   </p>
   <p>
     SARJ224 can consolidate native HCL declarations into existing selected files in the same module.

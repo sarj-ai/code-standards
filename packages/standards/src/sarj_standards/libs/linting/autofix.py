@@ -91,7 +91,8 @@ def run(
 ) -> FixResult:
     from sarj_standards.libs.adoption import lifecycle  # ruff: ignore[import-outside-top-level] -- third-party execution is needed only for explicit fix operations.
 
-    policy = Policy.from_manifest(root, manifest.load(root))
+    adopted = manifest.load(root)
+    policy = Policy.from_manifest(root, adopted)
     selection = _selection(root, paths, policy=policy, default_scope=default_scope)
     selected = selection.formatter
     format_only_paths |= _historical_paths(root, selected)
@@ -103,6 +104,7 @@ def run(
         tuple(path for path in selection.native if policy.relative(path) not in format_only_paths),
         policy=policy,
         staged=staged,
+        terraform=adopted is None or "terraform" in adopted.enabled_capabilities,
     )
     commands = [
         _with_local_oxlint(command, root)
@@ -199,12 +201,12 @@ def selected_paths(root: Path, paths: Sequence[str], *, policy: Policy) -> tuple
 
 
 def fix_paths(
-    root: Path, paths: Sequence[str], *, policy: Policy | None = None, staged: bool = False
+    root: Path, paths: Sequence[str], *, policy: Policy | None = None, staged: bool = False, terraform: bool = False
 ) -> tuple[Path, ...]:
     repository = root.resolve()
     effective = policy if policy is not None else Policy.from_manifest(repository, manifest.load(repository))
     grouped = runner.group_paths([str(repository / path) for path in paths], policy=effective)
-    plan = _plan(repository, effective, grouped, staged=staged)
+    plan = _plan(repository, effective, grouped, staged=staged, terraform=terraform)
     changes = plan.changes
     written: dict[Path, bytes] = {}
     _assert_inputs(repository, plan, written=written)
@@ -231,15 +233,18 @@ def fix_paths(
     return tuple(change.path for change in changes)
 
 
-def _plan(root: Path, policy: Policy, grouped: runner.GroupedPaths, *, staged: bool) -> _FixPlan:
+def _plan(root: Path, policy: Policy, grouped: runner.GroupedPaths, *, staged: bool, terraform: bool) -> _FixPlan:
     from sarj_iac_lint.terraform import is_terraform_override  # ruff: ignore[import-outside-top-level] -- reuse Terraform's override-loading boundary.
 
     guarded = _guarded_repository(root, staged=staged) if grouped.iac else False
-    module = _declaration_inputs(root, grouped.iac, policy=policy, staged=staged)
+    module = _declaration_inputs(root, grouped.iac, policy=policy, staged=staged, terraform=terraform)
     overridden = frozenset(path.parent for path in module.inputs if is_terraform_override(path))
     changes = _native_changes(root, policy, grouped, guarded=guarded, overridden=overridden)
     if module.inputs:
+        _preserve_observed_sources(changes, module.inputs)
         _project_changes(changes, module.inputs, policy=policy)
+        if terraform:
+            _format_terraform(changes, module.inputs, policy=policy)
     return _FixPlan(
         tuple(change for change in changes.values() if change.original != change.replacement),
         module.inputs,
@@ -266,6 +271,24 @@ def _native_changes(
     return changes
 
 
+def _preserve_observed_sources(changes: Mapping[Path, _Change], inputs: Mapping[Path, bytes]) -> None:
+    from sarj_iac_lint.declaration_fixes import observes_source  # ruff: ignore[import-outside-top-level] -- reuse the source-observation proof shared with declaration movement.
+    from sarj_iac_lint.terraform import terraform_blocks  # ruff: ignore[import-outside-top-level] -- use the established complete-module parser.
+
+    directories = {
+        path.parent for path, change in changes.items() if path in inputs and change.original != change.replacement
+    }
+    for directory in directories:
+        parsed = {
+            path: terraform_blocks(path, raw.decode(_encoding(path, raw)))
+            for path, raw in inputs.items()
+            if path.parent == directory
+        }
+        if observes_source(parsed):
+            message = f"Terraform fixes require review of source-reading functions in {directory}; no files changed"
+            raise ValueError(message)
+
+
 def _project_changes(changes: dict[Path, _Change], inputs: Mapping[Path, bytes], *, policy: Policy) -> None:
     from sarj_iac_lint.declaration_fixes import consolidate_declarations  # ruff: ignore[import-outside-top-level] -- only selected Terraform project fixes need module facts.
 
@@ -279,6 +302,26 @@ def _project_changes(changes: dict[Path, _Change], inputs: Mapping[Path, bytes],
         sources[path] = change.replacement.decode(_encoding(path, change.original))
     selected = tuple(path for path in changes if path in sources and _allows_declaration_fix(policy, path))
     for path, source in consolidate_declarations(sources, selected=selected).items():
+        original = changes[path].original
+        changes[path] = _Change(path, original, source.encode(_encoding(path, original)))
+
+
+def _format_terraform(changes: dict[Path, _Change], inputs: Mapping[Path, bytes], *, policy: Policy) -> None:
+    from .terraform_format import format_sources  # ruff: ignore[import-outside-top-level] -- native Terraform is needed only for the actual CLI formatter operation.
+
+    sources = {path: raw.decode(_encoding(path, raw)) for path, raw in inputs.items()}
+    for path, change in changes.items():
+        if path in sources:
+            sources[path] = change.replacement.decode(_encoding(path, change.original))
+    selected = tuple(
+        path
+        for path in changes
+        if path in sources
+        and policy.allows_rule(
+            Diagnostic("fmt", "", Severity.INFO, "terraform", Location(policy.relative(path)), "fmt")
+        )
+    )
+    for path, source in format_sources(policy.root, sources, selected=selected).items():
         original = changes[path].original
         changes[path] = _Change(path, original, source.encode(_encoding(path, original)))
 
@@ -301,18 +344,19 @@ def _guarded_repository(root: Path, *, staged: bool) -> bool:
     return CoreIAC(root, staged=staged).prepare() is not None
 
 
-def _declaration_inputs(root: Path, paths: Sequence[str], *, policy: Policy, staged: bool) -> _ModuleInputs:
+def _declaration_inputs(
+    root: Path, paths: Sequence[str], *, policy: Policy, staged: bool, terraform: bool
+) -> _ModuleInputs:
     selected = [
         Path(path) for path in paths if Path(path).name.endswith((".tf", ".tf.json")) and policy.allows_path(Path(path))
     ]
-    misplaced = {path.parent for path in selected if _requires_module_proof(path, policy=policy)}
+    misplaced = {path.parent for path in selected if terraform or _requires_module_proof(path, policy=policy)}
     if not misplaced:
         return _ModuleInputs({}, {})
     directories = {directory: _terraform_names(directory) for directory in misplaced}
-    inputs = {
-        directory / name: (directory / name).read_bytes() for directory, names in directories.items() for name in names
-    }
-    transaction.validate_targets(root, tuple(inputs))
+    members = tuple(directory / name for directory, names in directories.items() for name in names)
+    transaction.validate_targets(root, members)
+    inputs = {path: path.read_bytes() for path in members}
     from .iac_module_outputs import staged_module_index  # ruff: ignore[import-outside-top-level] -- reuse the complete staged module proof shared with analysis.
 
     index = staged_module_index(root, inputs) if staged else None
@@ -320,7 +364,7 @@ def _declaration_inputs(root: Path, paths: Sequence[str], *, policy: Policy, sta
 
 
 def _requires_module_proof(path: Path, *, policy: Policy) -> bool:
-    from sarj_iac_lint.autofix import GUARD_REMOVAL_RULES, fix_source  # ruff: ignore[import-outside-top-level] -- guard-removal preconditions need the complete selected module.
+    from sarj_iac_lint.autofix import fix_source  # ruff: ignore[import-outside-top-level] -- safe Terraform changes require complete source-observation evidence.
     from sarj_iac_lint.rules.canonical_terraform_declarations import CanonicalTerraformDeclarations  # ruff: ignore[import-outside-top-level] -- selected source-semantic project owner.
 
     if path.suffix != ".tf":
@@ -329,8 +373,7 @@ def _requires_module_proof(path: Path, *, policy: Policy) -> bool:
     if _allows_declaration_fix(policy, path) and CanonicalTerraformDeclarations().check(path, source):
         return True
     rules = _selected_rules(policy, _native("sarj_iac_lint", "sarj-iac-lint", ()), path, guarded=False)
-    guards = tuple(rule for rule in rules if rule in GUARD_REMOVAL_RULES)
-    return bool(guards) and fix_source(path, source, rule_ids=guards) != source
+    return bool(rules) and fix_source(path, source, rule_ids=rules) != source
 
 
 def _allows_declaration_fix(policy: Policy, path: Path) -> bool:

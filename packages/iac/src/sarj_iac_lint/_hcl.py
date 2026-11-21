@@ -251,6 +251,15 @@ def comment_locations(source: str, *, include_templates: bool = True) -> tuple[t
     return tuple(locations)
 
 
+def comment_texts(source: str) -> tuple[str, ...]:
+    lexical = _lexical_document(source)
+    if not lexical.complete:
+        message = "Cannot establish comments in incomplete HCL"
+        raise ValueError(message)
+    spans = sorted((*lexical.comments, *lexical.template_comments), key=lambda span: span.start)
+    return tuple(source[span.start : span.end] for span in spans)
+
+
 def template_expressions(source: str) -> tuple[str, ...]:
     return tuple(source[span.start : span.end] for span in _lexical_document(source).expressions)
 

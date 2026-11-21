@@ -439,3 +439,18 @@ def test_guard_precedence_preserves_unrelated_json_attributes(
     assert [item.code for item in combined] == ["SARJ222", "SARJ217"]
     [outside] = [item for item in standalone if item.message.startswith("Terraform statement")]
     assert combined[1] == outside
+
+
+@pytest.mark.parametrize(
+    ("source", "comments"),
+    [
+        pytest.param('variable /* legal */ "name" { type = string }', ("/* legal */",), id="label-comment"),
+        pytest.param('locals { url = "https://host/#data" }', (), id="url-data"),
+        pytest.param('locals { value = "${1 /* metadata */ + 2}" }', ("/* metadata */",), id="template-comment"),
+        pytest.param("locals { value = <<EOT\n# shell data\nEOT\n}", (), id="heredoc-data"),
+    ],
+)
+def test_shared_comment_inventory_is_lexical(source: str, comments: tuple[str, ...]) -> None:
+    from sarj_iac_lint.terraform import comment_texts  # ruff: ignore[import-outside-top-level] -- exercise the public lexical metadata proof directly.
+
+    assert comment_texts(source) == comments

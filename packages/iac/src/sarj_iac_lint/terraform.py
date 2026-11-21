@@ -49,6 +49,10 @@ class _JSONNumber:
     raw: str
 
 
+def comment_texts(source: str) -> tuple[str, ...]:
+    return _hcl.comment_texts(source)
+
+
 def is_terraform(path: PurePath) -> bool:
     return path.name.endswith((".tf", ".tf.json"))
 

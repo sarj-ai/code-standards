@@ -55,7 +55,7 @@ def _module_changes(sources: Mapping[Path, str], selected: frozenset[Path]) -> d
     if any(is_terraform_override(path) for path in sources):
         return {}
     parsed = {path: terraform_blocks(path, source) for path, source in sources.items()}
-    if not _unique_interfaces(parsed) or _observes_source(parsed):
+    if not _unique_interfaces(parsed) or observes_source(parsed):
         return {}
     moves = {path: _source_moves(path, sources, selected, parsed[path]) for path in sorted(selected & sources.keys())}
     updated = _apply_moves(sources, moves)
@@ -123,7 +123,7 @@ def _append_blocks(content: str, bodies: list[str]) -> str:
     return content
 
 
-def _observes_source(parsed: Mapping[Path, tuple[Block, ...]]) -> bool:
+def observes_source(parsed: Mapping[Path, tuple[Block, ...]]) -> bool:
     pending = [block for blocks in parsed.values() for block in blocks]
     while pending:
         block = pending.pop()
