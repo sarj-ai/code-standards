@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Final
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_jsonc
 
 
 if TYPE_CHECKING:
@@ -24,8 +24,6 @@ REFERENCE_RULE: Final = (
     "needs `composite: true` and must emit"
 )
 _TSCONFIG_NAME: Final = re.compile(r"tsconfig(?:\.[\w.-]+)?\.json")
-_STRING_OR_COMMENT: Final = re.compile(r'(?P<string>"(?:\\[\s\S]|[^"\\\n])*")|//[^\n]*|/\*[\s\S]*?\*/')
-_TRAILING_COMMA: Final = re.compile(r",(\s*[}\]])")
 
 
 def read(paths: Iterable[Path]) -> dict[Path, dict[str, JsonValue]]:
@@ -108,8 +106,7 @@ def _jsonc(path: Path) -> JsonValue | None:
         text = path.read_text(encoding="utf-8")
     except OSError, UnicodeDecodeError:
         return None
-    stripped = _STRING_OR_COMMENT.sub(lambda match: match.group("string") or "", text)
     try:
-        return parse_json(_TRAILING_COMMA.sub(r"\1", stripped))
-    except ValueError:
+        return parse_jsonc(text)
+    except ValueError, RecursionError:
         return None

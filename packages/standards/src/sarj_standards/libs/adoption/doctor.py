@@ -22,7 +22,7 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_json, parse_jsonc
 from sarj_standards.libs.repository import hooks as repository_hooks, ledger
 from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml, sequence_items
@@ -252,6 +252,7 @@ _GIT_SAFE_ENV: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
 _GIT_DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
+_MAX_PYRIGHT_CONFIGS: Final = 32
 
 
 def _git_environment() -> dict[str, str]:
@@ -1784,15 +1785,55 @@ def _check_python_wiring(root: Path, python_root: Path | None, adopted: manifest
             'add `extend = ".ruff-strict.toml"` under `[tool.ruff]`',
         )
     if "pyright" in adopted.configs:
-        configs = (python_root / "pyrightconfig.json", python_root / "pyrightconfig.jsonc")
-        active = next((path for path in configs if path.is_file()), configs[0])
-        yield from _check_text_wiring(
-            root,
-            active,
-            ".basedpyright-strict.json",
+        active = python_root / "pyrightconfig.json"
+        wired = _pyright_reaches_managed(root, active, python_root / ".basedpyright-strict.json")
+        yield Finding(
+            Level.OK if wired else Level.DRIFT,
+            str(active.relative_to(root)),
+            "inherits the managed .basedpyright-strict.json"
+            if wired
+            else "cannot establish managed inheritance from the automatically discovered pyrightconfig.json",
             "doctor.pyright.wiring",
-            "set `extends` to `.basedpyright-strict.json`",
+            None if wired else "restore pyrightconfig.json with a local `extends` chain to `.basedpyright-strict.json`",
         )
+
+
+def _pyright_reaches_managed(root: Path, active: Path, managed: Path) -> bool:
+    try:
+        return _pyright_chain(root.resolve(), active, managed.resolve())
+    except OSError, UnicodeError, ValueError, RecursionError:
+        return False
+
+
+def _pyright_chain(boundary: Path, current: Path, target: Path) -> bool:
+    visited: set[Path] = set()
+    for _ in range(_MAX_PYRIGHT_CONFIGS):
+        identity = current.resolve()
+        if identity == target:
+            return current.is_file()
+        if current in visited or not identity.is_relative_to(boundary):
+            return False
+        visited.add(current)
+        parent = _pyright_parent(current)
+        if parent is None:
+            return False
+        # Normalize relative paths without changing a symlinked owner's directory.
+        current = Path(os.path.normpath(current.parent / parent.replace("\\", "/")))
+    return False
+
+
+def _pyright_parent(path: Path) -> str | None:
+    source = path.read_text(encoding="utf-8")
+    if path.suffix == ".toml":
+        tool = manifest.table_field(tomllib.loads(source), "tool")
+        if "basedpyright" in tool and "pyright" in tool:
+            return None
+        document = tool.get("basedpyright", tool.get("pyright"))
+    else:
+        document = parse_jsonc(source)
+    if is_object_mapping(document) and isinstance(parent := document.get("extends"), str):
+        return parent
+    return None
 
 
 def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path | None]) -> Iterator[Finding]:
