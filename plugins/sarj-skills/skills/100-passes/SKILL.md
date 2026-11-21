@@ -25,7 +25,10 @@ Then three value reviews:
 2. Existing controls/cheaper alternatives.
 3. Benefit after migration/upkeep.
 
-Record resolutions in PR descriptions. Improve/close your nonmaterial PRs; repeat
-affected reviews/checks after changes. Preserve scope/authorization; merge only
-when authorized. Show PR links, benefit, validation, limitations and closures;
-claim only completed reviews and verified results.
+Keep review notes in the private ledger. PR descriptions need the concrete
+problem, resulting behavior, relevant evidence and material caveats; include a
+review resolution only when it explains the final change. Reuse valid check
+receipts across passes; repeat affected reviews/checks when their inputs change.
+Improve/close nonmaterial PRs. Preserve scope/authorization; merge only when
+authorized. Show PR links, benefit, validation, limitations and closures; claim
+only completed reviews and verified results.
