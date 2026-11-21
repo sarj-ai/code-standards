@@ -30,7 +30,7 @@ Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [dependency-groups]
 dev = [
-  "pydantic==2.14.1",
+  "pydantic==2.14.3",
   "pytest>=9.1.1",
   "ruff>=0.17.2",
   "basedpyright>=1.40.2",
