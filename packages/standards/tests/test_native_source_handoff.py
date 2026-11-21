@@ -299,7 +299,7 @@ def test_normalization_keeps_exact_capture_keys_when_paths_resolve_to_the_same_f
     ],
 )
 @pytest.mark.parametrize("valid_utf8", [False, True])
-def test_replacement_decoding_keeps_findings_without_inventing_physical_positions(
+def test_decoding_preserves_physical_positions_or_rejects_invalid_terraform(
     tmp_path: Path,
     *,
     engine: str,
@@ -318,6 +318,14 @@ def test_replacement_decoding_keeps_findings_without_inventing_physical_position
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(raw)
     rule = selector.partition(":")[2]
+    if engine == "iac" and not valid_utf8:
+        with pytest.raises(UnicodeDecodeError):
+            iac_engine.analyze([rule], [path])
+        rejected = Standards(tmp_path).analyze([relative], rules=[selector])
+        assert rejected.completion is Completion.FAILED
+        assert any("UnicodeDecodeError" in issue.message for issue in rejected.issues)
+        assert not rejected.diagnostics
+        return
     legacy = sql_engine.analyze([rule], [path]) if engine == "sql" else iac_engine.analyze([rule], [path])
     assert len(legacy) == 1
 

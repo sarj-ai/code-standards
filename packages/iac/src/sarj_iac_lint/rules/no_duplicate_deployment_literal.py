@@ -38,7 +38,7 @@ class NoDuplicateDeploymentLiteral(Rule):
         default_level=DefaultLevel.WARNING,
         summary="Share repeated cloud deployment values through variables, locals or resource references.",
         rationale="Repeating deployment identities and locations scatters configuration across resource declarations and makes coordinated changes harder to review.",
-        remediation="Use an existing resource/data reference, a shared local for a fixed deployment value, or a module input for a caller-configured value. Keep independently configurable scopes independent.",
+        remediation="Prefer an existing resource/data reference or caller input. A shared local is appropriate only for an intentionally fixed composition-root value; moving an environment-specific literal into a local does not satisfy SARJ219. Keep independently configurable scopes independent.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -143,7 +143,7 @@ class NoDuplicateDeploymentLiteral(Rule):
                         repeated.line,
                         repeated.col,
                         self.code,
-                        f"{name} repeats one literal {len(attributes)} times; share a variable/local or resource/data reference when these uses represent the same deployment value.",
+                        f"{name} repeats one literal {len(attributes)} times; reuse an existing binding when these uses represent the same deployment value; a constant local does not repair an inappropriate reusable-module deployment assumption.",
                         severity=DefaultLevel.WARNING,
                     )
                 )

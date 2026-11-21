@@ -30,6 +30,21 @@ _VALIDATION_BUDGET = 6
 _OPERATORS = frozenset({"==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "+", "-", "*", "/", "%"})
 
 
+_STRUCTURAL_ATTRIBUTES = frozenset(
+    {
+        ("variable", "type"),
+        ("variable", "validation"),
+        ("resource", "lifecycle"),
+        ("data", "lifecycle"),
+        ("ephemeral", "lifecycle"),
+        ("lifecycle", "precondition"),
+        ("lifecycle", "postcondition"),
+        ("output", "precondition"),
+        ("check", "assert"),
+    }
+)
+
+
 @final
 class ExpressionComplexity(Rule):
     id = "expression-complexity"
@@ -131,7 +146,7 @@ class ExpressionComplexity(Rule):
 
 def _attributes(block: Block, parent: str = "") -> Iterator[tuple[Attribute, bool]]:
     for attribute in block.attributes:
-        if not (block.type == "variable" and attribute.name == "type"):
+        if (block.type, attribute.name) not in _STRUCTURAL_ATTRIBUTES:
             yield attribute, block.type == "validation" and parent == "variable" and attribute.name == "condition"
     for child in block.blocks:
         yield from _attributes(child, block.type)

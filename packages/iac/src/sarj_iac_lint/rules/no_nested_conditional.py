@@ -50,7 +50,7 @@ class NoNestedConditional(Rule):
         limitations=(
             "Safe fixes select an existing literal leaf only from a closed Boolean-literal conditional tree with homogeneous Boolean, bounded decimal-number or plain quoted-string leaves on one standalone attribute line in top-level locals. All branches are validated; comments, escapes, templates, nulls, references, calls, mixed types and ambiguous source ranges remain manual.",
             "Only direct conditional branches are inspected; independent choices inside calls, collections and templates remain out of scope.",
-            "Assertions, generated files, fixtures, testdata and non-.tf inputs are excluded.",
+            "Covers .tf and .tf.json. Assertions, generated files, fixtures, testdata and other HCL dialects are excluded.",
             "An existing deployment-identity diagnostic takes precedence at the same attribute.",
             "This is a review advisory; no automatic extraction or deletion is safe for every expression.",
         ),

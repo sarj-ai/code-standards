@@ -404,3 +404,38 @@ def test_canonical_interface_files_are_not_required_when_empty(path: str) -> Non
     source = "{}" if path.endswith(".json") else ""
 
     assert CanonicalTerraformDeclarations().check(Path(path), source) == []
+
+
+@pytest.mark.parametrize(
+    ("indent", "complex_guard"),
+    [
+        pytest.param(None, False, id="compact-simple-guard"),
+        pytest.param(None, True, id="compact-complex-guard"),
+        pytest.param(2, False, id="indented-simple-guard"),
+        pytest.param(2, True, id="indented-complex-guard"),
+    ],
+)
+def test_guard_precedence_preserves_unrelated_json_attributes(
+    tmp_path: Path, indent: int | None, *, complex_guard: bool
+) -> None:
+    condition = " && ".join(['var.x != ""'] * 9) if complex_guard else 'var.x != ""'
+    payload = {
+        "variable": {
+            "a": {"type": "number"},
+            "x": {
+                "type": "string",
+                "validation": [{"condition": "${" + condition + "}", "error_message": "Required."}],
+            },
+        },
+        "locals": {"large": "${" + " + ".join(["var.a"] * 15) + "}"},
+    }
+    path = tmp_path / "main.tf.json"
+    path.write_text(json.dumps(payload, indent=indent))
+
+    standalone = analyze(["expression-complexity"], [path])
+    combined = analyze(["no-terraform-guard-blocks", "expression-complexity"], [path])
+
+    assert len(standalone) == (2 if complex_guard else 1)
+    assert [item.code for item in combined] == ["SARJ222", "SARJ217"]
+    [outside] = [item for item in standalone if item.message.startswith("Terraform statement")]
+    assert combined[1] == outside

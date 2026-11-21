@@ -11,7 +11,7 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import NewlinePolicy, RuleId, SourceCatalog, fix_file, iter_source_files
+from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file, iter_source_files
 import typer
 
 from sarj_iac_lint import __version__
@@ -29,6 +29,8 @@ from sarj_iac_lint.terraform import TerraformSession, is_terraform, is_terraform
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
+
+    from sarj_rule_contracts import SourceCatalog
 
     from sarj_iac_lint._hcl import Block
     from sarj_iac_lint.guard_contracts import GuardContracts
@@ -142,7 +144,7 @@ def _module_sources(paths: Sequence[Path], *, sources: SourceCatalog | None) -> 
         texts[path] = (
             path.read_text(encoding="utf-8-sig")
             if sources is None
-            else sources.capture(path).decode("utf-8-sig", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
+            else sources.capture(path).decode("utf-8-sig", newlines=NewlinePolicy.UNIVERSAL).text
         )
     return texts
 
@@ -233,7 +235,14 @@ def _all_lifecycle_guards_banned(owner: Block, guards: Sequence[Block]) -> bool:
 def _covered_by_guard_ban(diagnostic: Diagnostic, guards: Sequence[Block]) -> bool:
     if diagnostic.code not in {"SARJ209", "SARJ217"}:
         return False
-    return any(block.line <= diagnostic.line <= block.end_line for block in guards)
+    point = diagnostic.line, diagnostic.col
+    pending = list(guards)
+    while pending:
+        block = pending.pop()
+        if point == (block.line, block.col) or any(point == (item.line, item.col) for item in block.attributes):
+            return True
+        pending.extend(block.blocks)
+    return False
 
 
 def analyze(
@@ -248,7 +257,7 @@ def analyze(
     return _check(
         rule_ids,
         paths,
-        sources=SourceCatalog() if sources is None else sources,
+        sources=sources,
         guard_contracts=guard_contracts,
         module_summaries=module_summaries,
         rule_filter=rule_filter,
@@ -383,7 +392,7 @@ def _run_check(
     try:
         if fix:
             _apply_fixes(rule, files)
-        diags = _check(rule, files)
+        diags = analyze(rule, files)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
