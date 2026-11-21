@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_standards.libs.json_boundary import parse_json_documents, parse_unique_json
+from sarj_standards.libs.json_boundary import parse_json_documents, parse_jsonc, parse_unique_json
 
 
 if TYPE_CHECKING:
@@ -18,6 +18,34 @@ _JSON_DOCUMENT_CASES: Final[tuple[tuple[str, list[JsonValue]], ...]] = (
     ("1 2 -3.5", [1, 2, -3.5]),
     ('" \\t\\r\\n"[]', [" \t\r\n", []]),
 )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '{"value":tr/* comment */ue}',
+        '{"value":1/* comment */2}',
+        '{"value":3/* comment */.14}',
+        '{"value":"/*\n*/"}',
+        '{"value":"/*\r*/"}',
+        '{"value":"//\n"}',
+        "[,]",
+        '{"value":,}',
+        "[1,,]",
+        "[NaN]",
+        "[Infinity]",
+        "/* unfinished",
+    ],
+)
+def test_jsonc_does_not_repair_invalid_tokens_or_missing_values(source: str) -> None:
+    with pytest.raises(ValueError, match=r"Expecting|non-finite|Unterminated|Invalid control"):
+        parse_jsonc(source)
+
+
+def test_jsonc_preserves_strings_comments_trailing_commas_and_last_duplicate_key() -> None:
+    source = '\ufeff// header\r{"url":"https://example.com/a/*b*/,}","quote":"\\",]","value":0,/* note */"value":[1,],}'
+
+    assert parse_jsonc(source) == {"url": "https://example.com/a/*b*/,}", "quote": '",]', "value": [1]}
 
 
 @pytest.mark.parametrize("number", ["1e999", "-1e999", "NaN", "Infinity", "-Infinity"])

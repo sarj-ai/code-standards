@@ -75,6 +75,150 @@ def test_doctor_accepts_deprecated_api_protection_at_error(tmp_path: Path, name:
     assert not list(check_pyright_deprecated(tmp_path))
 
 
+@pytest.fixture
+def python_adoption(tmp_path: Path) -> Path:
+    root = tmp_path / "project"
+    root.mkdir()
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("pyright",),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+    )
+    (root / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (root / ".basedpyright-strict.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize(
+    ("files", "wired"),
+    [
+        ({"pyrightconfig.json": '{"extends":".basedpyright-strict.json"}'}, True),
+        ({"pyrightconfig.json": json.dumps({"extends": r".\.basedpyright-strict.json"})}, True),
+        ({"pyrightconfig.json": '{"extends":"./.basedpyright-strict.json","reportUnknownMemberType":false,}'}, True),
+        ({"pyrightconfig.json": '// .basedpyright-strict.json\n{"typeCheckingMode":"off"}'}, False),
+        ({"pyrightconfig.json": '{"exclude":[".basedpyright-strict.json"]}'}, False),
+        ({"pyrightconfig.json": '{"extends":[".basedpyright-strict.json"]}'}, False),
+        ({"pyrightconfig.json": '{"extends":".basedpyright-strict.json","strictListInference":tr/*c*/ue}'}, False),
+        ({"pyrightconfig.json": '{"extends":".basedpyright-strict.json","other":"/*\n*/"}'}, False),
+        ({"pyrightconfig.jsonc": '{"extends":".basedpyright-strict.json"}'}, False),
+        ({"pyrightconfig.json": "{}", "pyrightconfig.jsonc": '{"extends":".basedpyright-strict.json"}'}, False),
+        ({"pyrightconfig.json": '{"extends":"missing.json"}'}, False),
+        ({"pyrightconfig.json": '{"extends":".basedpyright-strict.json","extends":"missing.json"}'}, False),
+        ({"pyrightconfig.json": '{"extends":"missing.json","extends":".basedpyright-strict.json"}'}, True),
+        (
+            {
+                "pyrightconfig.json": '{"extends":"configs/python.json"}',
+                "configs/python.json": '{"extends":"../.basedpyright-strict.json"}',
+            },
+            True,
+        ),
+        (
+            {
+                "pyrightconfig.json": '{"extends":"configs/.basedpyright-strict.json"}',
+                "configs/.basedpyright-strict.json": "{}",
+            },
+            False,
+        ),
+        (
+            {
+                "pyrightconfig.json": '{"extends":"../outside.json"}',
+                "../outside.json": '{"extends":"project/.basedpyright-strict.json"}',
+            },
+            False,
+        ),
+        (
+            {
+                "pyrightconfig.json": '{"extends":"parent.json"}',
+                "parent.json": '{"extends":"pyrightconfig.json"}',
+            },
+            False,
+        ),
+        *(
+            (
+                {
+                    "pyrightconfig.json": '{"extends":"base.toml"}',
+                    "base.toml": f'[tool.{tool}]\nextends=".basedpyright-strict.json"\n',
+                },
+                True,
+            )
+            for tool in ("pyright", "basedpyright")
+        ),
+        (
+            {
+                "pyrightconfig.json": '{"extends":"base.toml"}',
+                "base.toml": '[tool.pyright]\nextends=".basedpyright-strict.json"\n[tool.basedpyright]\n',
+            },
+            False,
+        ),
+    ],
+)
+def test_python_wiring_requires_discovered_config_and_real_managed_inheritance(
+    python_adoption: Path, files: dict[str, str], *, wired: bool
+) -> None:
+    root = python_adoption
+    for name, source in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+
+    findings = [item for item in doctor.diagnose_adoption_health(root) if item.id == "doctor.pyright.wiring"]
+
+    assert [(item.level, item.where) for item in findings] == [
+        (Level.OK if wired else Level.DRIFT, "pyrightconfig.json")
+    ]
+
+
+def test_python_wiring_keeps_a_symlinked_parent_relative_to_its_lexical_directory(python_adoption: Path) -> None:
+    root = python_adoption
+    (root / "configs").mkdir()
+    physical = root / "storage" / "nested"
+    physical.mkdir(parents=True)
+    (root / "pyrightconfig.json").write_text('{"extends":"configs/alias.json"}', encoding="utf-8")
+    parent = physical / "base.json"
+    parent.write_text('{"extends":"../.basedpyright-strict.json"}', encoding="utf-8")
+    try:
+        (root / "configs" / "alias.json").symlink_to(parent)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+
+    findings = [item for item in doctor.diagnose_adoption_health(root) if item.id == "doctor.pyright.wiring"]
+
+    assert [item.level for item in findings] == [Level.OK]
+
+
+def test_python_wiring_allows_a_finite_chain_through_aliases_of_one_physical_file(python_adoption: Path) -> None:
+    root = python_adoption
+    (root / "configs" / "deep").mkdir(parents=True)
+    (root / "pyrightconfig.json").write_text('{"extends":"configs/deep/alias.json"}', encoding="utf-8")
+    (root / "alias.json").write_text('{"extends":".basedpyright-strict.json"}', encoding="utf-8")
+    shared = root / "shared.json"
+    shared.write_text('{"extends":"../alias.json"}', encoding="utf-8")
+    try:
+        for parent in (root / "configs" / "deep", root / "configs"):
+            (parent / "alias.json").symlink_to(shared)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+
+    findings = [item for item in doctor.diagnose_adoption_health(root) if item.id == "doctor.pyright.wiring"]
+
+    assert [item.level for item in findings] == [Level.OK]
+
+
+@pytest.mark.parametrize(("parents", "wired"), [(30, True), (31, False)])
+def test_python_wiring_bounds_its_inheritance_walk(python_adoption: Path, parents: int, *, wired: bool) -> None:
+    root = python_adoption
+    (root / "pyrightconfig.json").write_text('{"extends":"base0.json"}', encoding="utf-8")
+    for index in range(parents):
+        parent = f"base{index + 1}.json" if index + 1 < parents else ".basedpyright-strict.json"
+        (root / f"base{index}.json").write_text(json.dumps({"extends": parent}), encoding="utf-8")
+
+    findings = [item for item in doctor.diagnose_adoption_health(root) if item.id == "doctor.pyright.wiring"]
+
+    assert [item.level for item in findings] == [Level.OK if wired else Level.DRIFT]
+
+
 def test_doctor_rejects_non_string_manifest_destinations_without_a_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
