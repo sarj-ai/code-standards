@@ -225,6 +225,17 @@ def test_malformed_json_cannot_qualify(payload: str, tmp_path: Path) -> None:
         analyze(["no-terraform-guard-blocks"], [path])
 
 
+@pytest.mark.parametrize("extension", ["tf", "tf.json"])
+def test_invalid_utf8_cannot_qualify_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], extension: str
+) -> None:
+    path = tmp_path / f"main.{extension}"
+    path.write_bytes(b'{"locals":{"text":"\xff"}}' if extension == "tf.json" else b'locals { text = "\xff" }\n')
+
+    assert main(["check", "--rule", "no-terraform-guard-blocks", str(path)]) == 2
+    assert "decode" in capsys.readouterr().err
+
+
 def test_malformed_sibling_cannot_qualify_a_partial_module(tmp_path: Path) -> None:
     path = tmp_path / "main.tf"
     path.write_text('resource "google_storage_bucket" "app" { location = var.region }\n')

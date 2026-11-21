@@ -101,9 +101,15 @@ def _observe_completion(
                 sources: SourceCatalog | None = None,
                 guard_contracts: GuardContracts | None = None,
                 module_summaries: bool = False,
+                rule_filter: Callable[[Path, str, str], bool] | None = None,
             ) -> list[IacDiagnostic]:
                 result = original_iac(
-                    rule_ids, paths, sources=sources, guard_contracts=guard_contracts, module_summaries=module_summaries
+                    rule_ids,
+                    paths,
+                    sources=sources,
+                    guard_contracts=guard_contracts,
+                    module_summaries=module_summaries,
+                    rule_filter=rule_filter,
                 )
                 completed(sources)
                 return result
