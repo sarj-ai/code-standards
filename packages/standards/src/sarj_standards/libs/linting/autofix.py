@@ -313,7 +313,9 @@ def _declaration_inputs(root: Path, paths: Sequence[str], *, policy: Policy, sta
         directory / name: (directory / name).read_bytes() for directory, names in directories.items() for name in names
     }
     transaction.validate_targets(root, tuple(inputs))
-    index = _staged_module_index(root, inputs) if staged else None
+    from .iac_module_outputs import staged_module_index  # ruff: ignore[import-outside-top-level] -- reuse the complete staged module proof shared with analysis.
+
+    index = staged_module_index(root, inputs) if staged else None
     return _ModuleInputs(inputs, directories, index)
 
 
@@ -329,33 +331,6 @@ def _requires_module_proof(path: Path, *, policy: Policy) -> bool:
     rules = _selected_rules(policy, _native("sarj_iac_lint", "sarj-iac-lint", ()), path, guarded=False)
     guards = tuple(rule for rule in rules if rule in GUARD_REMOVAL_RULES)
     return bool(guards) and fix_source(path, source, rule_ids=guards) != source
-
-
-def _staged_module_index(root: Path, inputs: Mapping[Path, bytes]) -> GitIdentity:
-    from repo_standards.repository import git_index_identity  # ruff: ignore[import-outside-top-level] -- preserve the exact staged source proof through the mutation boundary.
-    from sarj_iac_lint.terraform import is_terraform  # ruff: ignore[import-outside-top-level] -- Terraform owns supported source representations.
-
-    from .iac_module_outputs import selected_sources  # ruff: ignore[import-outside-top-level] -- reuse the existing complete Git-tree source boundary.
-
-    index = git_index_identity(root)
-    snapshot = selected_sources(root, staged=True)
-    if snapshot is None or git_index_identity(root) != index:
-        message = "Cannot establish a stable staged Terraform module for fixes"
-        raise ValueError(message)
-    directories = {path.parent for path in inputs}
-    staged_sources = {
-        root / path: source.removeprefix("\ufeff")
-        for path, source in snapshot.sources.items()
-        if is_terraform(path) and (root / path).parent in directories
-    }
-    if set(staged_sources) != set(inputs) or any(
-        raw.decode("utf-8-sig") != staged_sources[path] for path, raw in inputs.items()
-    ):
-        message = (
-            "Terraform module context differs from the staged index; stage the intended module sources before fixing"
-        )
-        raise ValueError(message)
-    return index
 
 
 def _allows_declaration_fix(policy: Policy, path: Path) -> bool:

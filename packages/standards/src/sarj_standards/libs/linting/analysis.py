@@ -205,6 +205,7 @@ def analyze(
                 guard_contracts=iac_contracts.contracts,
                 module_summaries=module_summaries,
                 policy=policy,
+                staged=staged,
             ),
             _text_report(
                 routed,
@@ -314,6 +315,7 @@ def _native_report(
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
     policy: Policy | None = None,
+    staged: bool = False,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
@@ -332,6 +334,7 @@ def _native_report(
             guard_contracts=guard_contracts,
             module_summaries=module_summaries,
             policy=policy,
+            staged=staged,
         )
 
     try:
@@ -367,6 +370,7 @@ def _run_native(
     guard_contracts: GuardContracts | None = None,
     module_summaries: bool = False,
     policy: Policy | None = None,
+    staged: bool = False,
 ) -> ToolReport:
     started = time.monotonic()
     analyzer, registry = _load_native(package)
@@ -404,6 +408,7 @@ def _run_native(
                 Diagnostic(code, "", Severity.INFO, name, Location(policy.relative(path)), rule_id)
             )
 
+        inputs = _staged_iac_inputs(root, paths, sources) if staged else {}
         native_result = analyze_iac(
             selected_rules,
             paths,
@@ -412,6 +417,10 @@ def _run_native(
             module_summaries=module_summaries,
             rule_filter=rule_allowed,
         )
+        if inputs:
+            from .iac_module_outputs import staged_module_index  # ruff: ignore[import-outside-top-level] -- qualify the captured complete module against the exact index before returning findings.
+
+            staged_module_index(root, inputs)
     else:
         native_result = analyzer(selected_rules, paths, sources=sources)
     raise_if_cancelled(None)
@@ -438,6 +447,19 @@ def _run_native(
         duration_ms=round((time.monotonic() - started) * 1_000),
         file_count=len(files),
     )
+
+
+def _staged_iac_inputs(root: Path, paths: Sequence[Path], sources: SourceCatalog) -> dict[Path, bytes]:
+    from sarj_iac_lint.terraform import is_terraform  # ruff: ignore[import-outside-top-level] -- only selected Terraform modules require sibling source evidence.
+
+    from sarj_standards.libs.adoption.transaction import validate_targets  # ruff: ignore[import-outside-top-level] -- prevent linked or escaping sibling paths from becoming source evidence.
+
+    directories = {path.parent for path in paths if is_terraform(path)}
+    members = tuple(
+        path for directory in directories for path in directory.iterdir() if path.is_file() and is_terraform(path)
+    )
+    validate_targets(root, members)
+    return {path: sources.capture(path).raw for path in members}
 
 
 def _load_native(package: str) -> _LoadedNative:

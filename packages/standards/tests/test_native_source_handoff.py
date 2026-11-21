@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import shutil
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -549,3 +552,67 @@ def test_standalone_text_reads_each_occurrence_while_shared_capture_reuses_one_r
 
     assert [finding.code for finding in findings] == ["SARJ306"] * (2 if shared else 1)
     assert reads == ([original] if shared else [original, replacement])
+
+
+@pytest.mark.parametrize(
+    ("extension", "mutation"),
+    [
+        pytest.param("tf", "changed", id="hcl-changed-sibling"),
+        pytest.param("tf.json", "changed", id="json-changed-sibling"),
+        pytest.param("tf", "missing", id="hcl-missing-sibling"),
+        pytest.param("tf.json", "missing", id="json-missing-sibling"),
+        pytest.param("tf", "extra", id="hcl-untracked-sibling"),
+        pytest.param("tf.json", "extra", id="json-untracked-sibling"),
+        pytest.param("tf", "unrelated", id="hcl-unrelated-work-preserved"),
+        pytest.param("tf.json", "unrelated", id="json-unrelated-work-preserved"),
+    ],
+)
+def test_staged_iac_cannot_qualify_a_different_module_context(tmp_path: Path, extension: str, mutation: str) -> None:
+    executable = shutil.which("git")
+    assert executable is not None
+    subprocess.run(
+        [executable, "init", "--quiet", "--template=", str(tmp_path)], check=True, capture_output=True, timeout=10
+    )
+    module = tmp_path / "infra"
+    module.mkdir()
+    main = module / f"main.{extension}"
+    sibling = module / f"locals.{extension}"
+    if extension == "tf":
+        main.write_text('resource "google_storage_bucket" "app" { location = local.region }\n')
+        sibling.write_text('locals { region = "us-central1" }\n')
+    else:
+        main.write_text(json.dumps({"resource": {"google_storage_bucket": {"app": {"location": "${local.region}"}}}}))
+        sibling.write_text(json.dumps({"locals": {"region": "us-central1"}}))
+    subprocess.run([executable, "-C", str(tmp_path), "add", "."], check=True, capture_output=True, timeout=10)
+    standards = Standards(tmp_path)
+    paths = [main.relative_to(tmp_path).as_posix()]
+    rules = ["iac:no-hardcoded-deployment-location"]
+    original = standards.analyze(paths, rules=rules, staged=True)
+    assert original.completion is Completion.COMPLETE
+    assert not original.issues
+    assert [item.code for item in original.diagnostics] == ["SARJ219"]
+
+    match mutation:
+        case "changed":
+            sibling.write_text(
+                "locals { region = var.region }\n"
+                if extension == "tf"
+                else json.dumps({"locals": {"region": "${var.region}"}})
+            )
+        case "missing":
+            sibling.unlink()
+        case "extra":
+            (module / "extra.tf").write_text('locals { extra = "untracked" }\n')
+        case _:
+            (tmp_path / "unrelated").mkdir()
+            (tmp_path / "unrelated/main.tf").write_text('locals { region = "untracked" }\n')
+
+    result = standards.analyze(paths, rules=rules, staged=True)
+
+    if mutation == "unrelated":
+        assert result.completion is Completion.COMPLETE
+        assert not result.issues
+        assert [item.code for item in result.diagnostics] == ["SARJ219"]
+    else:
+        assert result.completion is Completion.FAILED
+        assert any("module context differs from the staged index" in issue.message for issue in result.issues)
