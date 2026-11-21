@@ -16,6 +16,14 @@ Follow [validation admission](../../commands/strengthen-ci-cd-and-tooling.md)
 before adding verification helpers, preflight/readiness layers or CI jobs, including
 inside application packages. For IaC, also follow its delivery/prose boundaries.
 
+Keep only hunks needed for the requested behavior and required integration.
+Delete speculative guards, prechecks, duplicate validation already guaranteed by
+an existing boundary, and unrelated cleanup or verification scaffolding. Trace
+the guarantee and callers first; keep authorization, protocol, data integrity
+and supported failure contracts. Remove helpers and tests that serve only deleted
+scaffolding; retain behavioral regression coverage. Do not add manifests,
+attestations, quotas or pattern bans to judge whether code is necessary.
+
 Report severity, location, evidence, impact, smallest fix, confidence and owning
 tool/rule or `judgment-only`; report clean scopes too.
 
