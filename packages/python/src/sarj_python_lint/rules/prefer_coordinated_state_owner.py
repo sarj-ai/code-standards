@@ -528,12 +528,13 @@ def _operation(
                 target, kind = call, "remove"
         case _:
             pass
-    if isinstance(target, ast.Subscript):
-        container, key = target.value, target.slice
-    elif isinstance(target, ast.Call) and isinstance(target.func, ast.Attribute):
-        container, key = target.func.value, target.args[0]
-    else:
-        return None
+    match target:
+        case ast.Subscript():
+            container, key = target.value, target.slice
+        case ast.Call() if isinstance(target.func, ast.Attribute):
+            container, key = target.func.value, target.args[0]
+        case _:
+            return None
     name = _field(container, receivers, provenance)
     if name is None or name not in fields or not isinstance(key, ast.Name):
         return None
@@ -598,12 +599,15 @@ def _statement(node: ast.AST, context: PythonFileContext) -> ast.stmt | None:
 
 def _reader(node: ast.AST, context: PythonFileContext) -> ast.expr | None:
     parent = context.parents.get(node)
-    if isinstance(parent, ast.Subscript) and parent.value is node and isinstance(parent.ctx, ast.Load):
-        return parent
-    if isinstance(parent, ast.Attribute) and parent.attr in _READ_METHODS:
-        call = context.parents.get(parent)
-        if isinstance(call, ast.Call) and call.func is parent:
-            return call
+    match parent:
+        case ast.Subscript() if parent.value is node and isinstance(parent.ctx, ast.Load):
+            return parent
+        case ast.Attribute() if parent.attr in _READ_METHODS:
+            call = context.parents.get(parent)
+            if isinstance(call, ast.Call) and call.func is parent:
+                return call
+        case _:
+            pass
     return None
 
 

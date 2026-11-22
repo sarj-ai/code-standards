@@ -113,7 +113,7 @@ class PreferMatchTypeDispatch(ProjectRule):
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
             "Guarded dispatch over proven stdlib AST classes is an error; other proven classes retain a manual warning. Keep the type check first, preserve guard order and retain the fallback. Guards with assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
-            "Call-bearing guards, a guarded type repeated in a later arm, and a terminating prefix whose final arm falls through are warnings only for proven non-builtin classes on a function-local subject that no global or nonlocal declaration can rebind; an unguarded repeated type remains excluded as dead dispatch.",
+            "Call-bearing guards, a guarded type repeated in a later arm, and a terminating prefix whose final arm falls through are warnings only for proven non-builtin classes on a function-local subject that no global or nonlocal declaration can rebind; an unguarded repeated type remains excluded as dead dispatch. A `subject is None` arm joins this dispatch as `case None` when at least two class arms remain; equality with None does not.",
             "A single ordinary-class reuse-or-construction normalization is a warning when both branches first assign the same simple target, reusing the subject or constructing the checked class. Preserve all following branch work. This branch has no automatic fix and does not change established dispatch errors.",
             "Normalization requires an undecorated, stable module-local class with proven ordinary ancestry and nonescaping class references. Dynamic or mutated classes, unknown imports, constructor argument effects, pre-assignment work and later reassignment of the subject, target or class remain excluded; constructor arguments are simple names or constants.",
             "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
@@ -514,6 +514,8 @@ def _guarded_dispatch_findings(
     findings: list[Diagnostic] = []
     for candidates in _review_sequences(context, used):
         branches = list(candidates)
+        if not used.isdisjoint(_chain_lines(branches)):
+            continue
         severity = _guarded_dispatch_severity(context, branches, local_classes, unsafe_bindings)
         if severity is None:
             continue
@@ -525,12 +527,21 @@ def _guarded_dispatch_findings(
                 first.lineno,
                 first.col_offset + 1,
                 "SARJ080",
-                "Use match/case class patterns with guards for this type dispatch; preserve guard order "
-                "and fallbacks. This recommendation has no automatic rewrite.",
+                "Use match/case class patterns (keeping any guards as case guards) for this type dispatch; "
+                "preserve guard order and fallbacks. This recommendation has no automatic rewrite.",
                 severity=severity,
             )
         )
     return findings
+
+
+def _chain_lines(branches: list[ast.If]) -> set[int]:
+    lines = {branch.lineno for branch in branches}
+    current = branches[-1]
+    while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+        current = current.orelse[0]
+        lines.add(current.lineno)
+    return lines
 
 
 def _guarded_dispatch_severity(
@@ -541,7 +552,7 @@ def _guarded_dispatch_severity(
 ) -> DiagnosticSeverity | None:
     parsed = [_guarded_type_branch(node.test, context.imports, local_classes, unsafe_bindings) for node in branches]
     guarded = [branch for branch in parsed if branch is not None]
-    if len(guarded) != len(parsed) or len(guarded) < _MIN_BRANCHES:
+    if len(guarded) != len(parsed) or sum("None" not in branch.dispatch.types for branch in guarded) < _MIN_BRANCHES:
         return None
     dispatches = [branch.dispatch for branch in guarded]
     established = (
@@ -559,7 +570,7 @@ def _stable_local_dispatch(context: PythonFileContext, first: ast.If, branches: 
     if len(subjects) != 1 or context.dynamic_namespace:
         return False
     subject = subjects.pop()
-    if all(branch.dispatch.types <= _BUILTIN_TYPES for branch in branches):
+    if all(branch.dispatch.types <= _BUILTIN_TYPES | {"None"} for branch in branches):
         return False
     unguarded: set[str] = set()
     for branch in branches:
@@ -601,7 +612,11 @@ def _guarded_type_branch(
             test, guard = first, guards[0]
         case _:
             parts = []
-    dispatch = _type_branch(test, imports, local_classes, unsafe_bindings)
+    match test:
+        case ast.Compare(left=ast.Name(id=subject), ops=[ast.Is()], comparators=[ast.Constant(value=None)]):
+            dispatch = _TypeBranch(subject, frozenset({"None"}))
+        case _:
+            dispatch = _type_branch(test, imports, local_classes, unsafe_bindings)
     if dispatch is None:
         return None
     return _GuardedBranch(dispatch, guard, any(isinstance(part, ast.Call) for part in parts))

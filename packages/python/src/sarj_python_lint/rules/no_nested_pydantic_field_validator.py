@@ -250,8 +250,11 @@ def _function_binds(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, n
 
 
 def _scope_statement_binds(node: ast.AST, name: str) -> bool:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-        return node.name == name if not isinstance(node, ast.Lambda) else False
-    if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-        return node.id == name
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+            return node.name == name if not isinstance(node, ast.Lambda) else False
+        case ast.Name() if isinstance(node.ctx, (ast.Store, ast.Del)):
+            return node.id == name
+        case _:
+            pass
     return any(_scope_statement_binds(child, name) for child in ast.iter_child_nodes(node))

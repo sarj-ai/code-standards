@@ -2220,3 +2220,37 @@ def test_call_guard_match_preserves_results_and_guard_calls(source: str) -> None
         node, converted_log
     )
     assert original_log.names == converted_log.names
+
+
+def test_none_arm_joins_stable_local_type_dispatch() -> None:
+    source = "import ast\ndef inspect(node, ready):\n    if node is None:\n        return 0\n    if isinstance(node, ast.Name) and ready(node):\n        return 1\n    if isinstance(node, ast.Attribute):\n        return 2\n    return 3\n"
+    [finding] = _check(source)
+    assert (finding.line, finding.severity) == (3, Severity.WARNING)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import ast\ndef inspect(node, ready):\n    if node is None:\n        return 0\n    if isinstance(node, ast.Name) and ready(node):\n        return 1\n    return 3\n",
+        "def inspect(value, ready):\n    if value is None:\n        return 0\n    if isinstance(value, str) and ready(value):\n        return 1\n    if isinstance(value, bytes):\n        return 2\n    return 3\n",
+    ],
+    ids=["single-class-arm", "builtin-only"],
+)
+def test_none_arm_requires_identity_and_class_dispatch(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_none_prefix_keeps_single_existing_ladder_finding() -> None:
+    source = "import ast\ndef inspect(node):\n    if node is None:\n        return 0\n    elif isinstance(node, ast.Name):\n        return 1\n    elif isinstance(node, ast.Attribute):\n        return 2\n    return 3\n"
+    [finding] = _check(source)
+    assert (finding.line, finding.severity) == (5, Severity.ERROR)
+
+
+def test_equality_none_is_not_a_none_pattern_arm() -> None:
+    source = "import ast\ndef inspect(node, ready):\n    if node == None:\n        return 0\n    if isinstance(node, ast.Name) and ready(node):\n        return 1\n    if isinstance(node, ast.Attribute):\n        return 2\n    return 3\n"
+    assert [finding.line for finding in _check(source)] == [5]
+
+
+def test_guarded_run_ending_in_reported_elif_ladder_has_one_finding() -> None:
+    source = "import ast\ndef f(x, p):\n    if isinstance(x, ast.Name) and p(x):\n        return 1\n    if isinstance(x, ast.Call):\n        a = 1\n    elif isinstance(x, ast.Attribute):\n        a = 2\n    return a\n"
+    assert len(_check(source)) == 1

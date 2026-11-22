@@ -202,12 +202,15 @@ def _input_witnesses(annotation: ast.expr | None, imports: ImportIndex) -> froze
         visited += 1
         if visited > _MAX_INPUT_NODES:
             return None
-        if isinstance(member, ast.Constant) and member.value is None:
-            witnesses.add("none")
-            continue
-        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
-            pending.extend((member.left, member.right))
-            continue
+        match member:
+            case ast.Constant() if member.value is None:
+                witnesses.add("none")
+                continue
+            case ast.BinOp() if isinstance(member.op, ast.BitOr):
+                pending.extend((member.left, member.right))
+                continue
+            case _:
+                pass
         kind = builtin_guard_symbol(member, imports, _BUILTINS)
         if kind == "object":
             witnesses.update(_ALL_WITNESSES)

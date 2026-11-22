@@ -146,14 +146,17 @@ def _pytest_plugin_test_targets(tree: ast.Module) -> list[_PluginTarget]:
 
 
 def _literal_strings(node: ast.expr | None) -> tuple[str, ...]:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return (node.value,)
-    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-        return tuple(
-            element.value
-            for element in node.elts
-            if isinstance(element, ast.Constant) and isinstance(element.value, str)
-        )
+    match node:
+        case ast.Constant() if isinstance(node.value, str):
+            return (node.value,)
+        case ast.List() | ast.Set() | ast.Tuple():
+            return tuple(
+                element.value
+                for element in node.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            )
+        case _:
+            pass
     return ()
 
 

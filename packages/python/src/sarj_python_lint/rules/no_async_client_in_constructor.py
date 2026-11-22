@@ -115,11 +115,12 @@ def _in_constructor(context: PythonFileContext, call: ast.Call, constructors: fr
         return False
     scope = context.binding_inventory.scope(call)
     while isinstance(scope, (ast.ClassDef, *COMPREHENSIONS)):
-        if isinstance(scope, ast.ClassDef) and (scope.bases or scope.keywords):
-            return False
-        if isinstance(scope, ast.GeneratorExp) and not context.resource_provenance.contains(
-            scope.generators[0].iter, call
-        ):
-            return False
+        match scope:
+            case ast.ClassDef() if scope.bases or scope.keywords:
+                return False
+            case ast.GeneratorExp() if not context.resource_provenance.contains(scope.generators[0].iter, call):
+                return False
+            case _:
+                pass
         scope = context.binding_inventory.scope(scope)
     return scope in constructors

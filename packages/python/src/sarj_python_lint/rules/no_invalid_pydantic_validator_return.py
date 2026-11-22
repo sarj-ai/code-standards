@@ -262,18 +262,18 @@ def _returned_literal(validator: ast.FunctionDef) -> _Returned | None:
     if len(body) != 1 or not isinstance(body[0], ast.Return):
         return None
     value = body[0].value
-    if isinstance(value, ast.Constant) and (
-        value.value is None or isinstance(value.value, (str, bytes, int, float, complex, bool))
-    ):
-        return _Returned(value, value.value)
-    if (
-        isinstance(value, ast.UnaryOp)
-        and isinstance(value.op, (ast.USub, ast.UAdd))
-        and isinstance(value.operand, ast.Constant)
-        and isinstance(value.operand.value, (int, float, complex))
-    ):
-        number = value.operand.value
-        return _Returned(value, -number if isinstance(value.op, ast.USub) else +number)
+    match value:
+        case ast.Constant() if value.value is None or isinstance(value.value, (str, bytes, int, float, complex, bool)):
+            return _Returned(value, value.value)
+        case ast.UnaryOp() if (
+            isinstance(value.op, (ast.USub, ast.UAdd))
+            and isinstance(value.operand, ast.Constant)
+            and isinstance(value.operand.value, (int, float, complex))
+        ):
+            number = value.operand.value
+            return _Returned(value, -number if isinstance(value.op, ast.USub) else +number)
+        case _:
+            pass
     return None
 
 

@@ -174,21 +174,23 @@ class NoRepeatedStringLiteral(Rule):
             return scope
 
         def collect_literal(node: ast.AST, scope: int) -> None:
-            if isinstance(node, ast.JoinedStr):
-                excluded.update(id(value) for value in node.values)
-            elif isinstance(node, ast.MatchValue):
-                excluded.update(id(child) for child in walk(node) if isinstance(child, ast.Constant))
-            elif isinstance(node, ast.Call):
-                _exclude_scaffolding_strings(node, excluded)
-            elif (
-                isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and len(node.value) >= _MIN_LENGTH
-                and id(node) not in excluded
-                and _is_candidate(node.value)
-            ):
-                occurrences[node.value].append(node)
-                scope_of[id(node)] = scope
+            match node:
+                case ast.JoinedStr():
+                    excluded.update(id(value) for value in node.values)
+                case ast.MatchValue():
+                    excluded.update(id(child) for child in walk(node) if isinstance(child, ast.Constant))
+                case ast.Call():
+                    _exclude_scaffolding_strings(node, excluded)
+                case ast.Constant() if (
+                    isinstance(node.value, str)
+                    and len(node.value) >= _MIN_LENGTH
+                    and id(node) not in excluded
+                    and _is_candidate(node.value)
+                ):
+                    occurrences[node.value].append(node)
+                    scope_of[id(node)] = scope
+                case _:
+                    pass
 
         def visit(node: ast.AST, scope: int) -> None:
             pending = [(node, scope)]

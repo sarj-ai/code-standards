@@ -315,21 +315,20 @@ def _passive_configuration(node: ast.ClassDef, context: PythonFileContext) -> bo
 def _configuration_options(
     value: ast.expr | None, context: PythonFileContext
 ) -> list[tuple[str | None, ast.expr]] | None:
-    if isinstance(value, ast.Dict):
-        options: list[tuple[str | None, ast.expr]] = [
-            (key.value, item)
-            for key, item in zip(value.keys, value.values, strict=True)
-            if isinstance(key, ast.Constant) and isinstance(key.value, str)
-        ]
-        return options if len(options) == len(value.keys) else None
-    if (
-        isinstance(value, ast.Call)
-        and not value.args
-        and context.imports.resolves(
+    match value:
+        case ast.Dict():
+            options: list[tuple[str | None, ast.expr]] = [
+                (key.value, item)
+                for key, item in zip(value.keys, value.values, strict=True)
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            ]
+            return options if len(options) == len(value.keys) else None
+        case ast.Call() if not value.args and context.imports.resolves(
             value.func, sources=frozenset({"pydantic", "pydantic.config"}), symbol="ConfigDict"
-        )
-    ):
-        return [(keyword.arg, keyword.value) for keyword in value.keywords]
+        ):
+            return [(keyword.arg, keyword.value) for keyword in value.keywords]
+        case _:
+            pass
     return None
 
 

@@ -359,11 +359,14 @@ def _uses_mutated_member(annotation: ast.expr, semantics: AnnotationSemantics, m
         if parsed is None:
             continue
         for node in walk(parsed):
-            if isinstance(node, ast.Attribute) and semantics.imports.resolved_qualified_name(node) in mutated_members:
-                return True
-            if isinstance(node, ast.Name) and node.id in semantics.aliases and node.id not in seen:
-                seen.add(node.id)
-                pending.append(semantics.aliases[node.id])
+            match node:
+                case ast.Attribute() if semantics.imports.resolved_qualified_name(node) in mutated_members:
+                    return True
+                case ast.Name() if node.id in semantics.aliases and node.id not in seen:
+                    seen.add(node.id)
+                    pending.append(semantics.aliases[node.id])
+                case _:
+                    pass
     return False
 
 

@@ -260,18 +260,21 @@ def _scalar_value(node: ast.expr, bindings: dict[str, _ScalarValue]) -> _ScalarV
 
 
 def _scalar_condition(node: ast.expr, bindings: dict[str, _ScalarValue]) -> bool | None:
-    if isinstance(node, ast.BoolOp):
-        values = [_scalar_condition(value, bindings) for value in node.values]
-        if None in values:
-            return None
-        return all(values) if isinstance(node.op, ast.And) else any(values)
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        value = _scalar_condition(node.operand, bindings)
-        return None if value is None else not value
-    if isinstance(node, ast.Compare):
-        values = [_scalar_value(value, bindings) for value in (node.left, *node.comparators)]
-        results = list(map(_scalar_relation, values[:-1], values[1:], node.ops, strict=True))
-        return None if None in results else all(results)
+    match node:
+        case ast.BoolOp():
+            values = [_scalar_condition(value, bindings) for value in node.values]
+            if None in values:
+                return None
+            return all(values) if isinstance(node.op, ast.And) else any(values)
+        case ast.UnaryOp() if isinstance(node.op, ast.Not):
+            value = _scalar_condition(node.operand, bindings)
+            return None if value is None else not value
+        case ast.Compare():
+            values = [_scalar_value(value, bindings) for value in (node.left, *node.comparators)]
+            results = list(map(_scalar_relation, values[:-1], values[1:], node.ops, strict=True))
+            return None if None in results else all(results)
+        case _:
+            pass
     value = _scalar_value(node, bindings)
     return None if value is _UNKNOWN else bool(value)
 
@@ -377,14 +380,17 @@ def _ruff_owned_string(node: ast.expr) -> bool:
 
 
 def _constant_truth(node: ast.expr) -> bool | None:
-    if isinstance(node, ast.Constant):
-        return bool(node.value)
-    if isinstance(node, ast.UnaryOp):
-        if isinstance(node.op, (ast.USub, ast.UAdd)):
-            return _constant_truth(node.operand)
-        if isinstance(node.op, ast.Not):
-            operand_truth = _constant_truth(node.operand)
-            return None if operand_truth is None else not operand_truth
+    match node:
+        case ast.Constant():
+            return bool(node.value)
+        case ast.UnaryOp():
+            if isinstance(node.op, (ast.USub, ast.UAdd)):
+                return _constant_truth(node.operand)
+            if isinstance(node.op, ast.Not):
+                operand_truth = _constant_truth(node.operand)
+                return None if operand_truth is None else not operand_truth
+        case _:
+            pass
     return None
 
 

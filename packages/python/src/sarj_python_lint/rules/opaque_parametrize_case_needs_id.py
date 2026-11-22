@@ -201,15 +201,18 @@ def _explicit_decorator_ids(node: ast.Call, case_count: int) -> tuple[bool, ...]
 
 
 def _parametrize_width(argnames: ast.expr) -> int | None:
-    if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
-        names = [stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())]
-        return len(names) or None
-    if isinstance(argnames, (ast.List, ast.Tuple)):
-        if not argnames.elts or not all(
-            isinstance(elt, ast.Constant) and isinstance(elt.value, str) for elt in argnames.elts
-        ):
-            return None
-        return len(argnames.elts)
+    match argnames:
+        case ast.Constant() if isinstance(argnames.value, str):
+            names = [stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())]
+            return len(names) or None
+        case ast.List() | ast.Tuple():
+            if not argnames.elts or not all(
+                isinstance(elt, ast.Constant) and isinstance(elt.value, str) for elt in argnames.elts
+            ):
+                return None
+            return len(argnames.elts)
+        case _:
+            pass
     return None
 
 
@@ -271,12 +274,15 @@ def _is_none(node: ast.expr) -> bool:
 def _module_import_index(tree: ast.Module) -> ImportIndex:
     body: list[ast.stmt] = []
     for statement in tree.body:
-        if isinstance(statement, ast.ImportFrom) and statement.module == "pytest":
-            _expand_pytest_mark_import(statement, body)
-            continue
-        if isinstance(statement, (ast.Import, ast.ImportFrom)):
-            body.append(statement)
-            continue
+        match statement:
+            case ast.ImportFrom() if statement.module == "pytest":
+                _expand_pytest_mark_import(statement, body)
+                continue
+            case ast.Import() | ast.ImportFrom():
+                body.append(statement)
+                continue
+            case _:
+                pass
         body.extend(
             ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=ast.Constant(None))
             for name in _statement_bound_names(statement)

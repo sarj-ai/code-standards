@@ -147,8 +147,11 @@ def _is_folded_pattern(node: ast.MatchOr) -> bool:
 
 
 def _status(node: ast.expr) -> int | None:
-    if isinstance(node, ast.Constant) and type(node.value) is int:
-        return node.value
-    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in _STATUS_OWNERS:
-        return _STATUS_NAMES.get(node.attr)
+    match node:
+        case ast.Constant() if type(node.value) is int:
+            return node.value
+        case ast.Attribute() if isinstance(node.value, ast.Name) and node.value.id in _STATUS_OWNERS:
+            return _STATUS_NAMES.get(node.attr)
+        case _:
+            pass
     return None

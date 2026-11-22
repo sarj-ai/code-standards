@@ -410,17 +410,17 @@ def _invalidate_reassigned_bindings(statement: ast.stmt, visible: dict[str, _Sha
     for name in _same_scope_bindings(statement):
         visible.pop(name, None)
     for node in walk_ast(statement):
-        if (
-            isinstance(node, ast.Attribute)
-            and node.attr == "row_factory"
-            and isinstance(node.value, ast.Name)
-            and isinstance(node.ctx, ast.Store)
-        ):
-            visible.pop(node.value.id, None)
-        elif isinstance(node, ast.Call):
-            target = _setattr_row_factory_target(node)
-            if target is not None:
-                visible.pop(target, None)
+        match node:
+            case ast.Attribute() if (
+                node.attr == "row_factory" and isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Store)
+            ):
+                visible.pop(node.value.id, None)
+            case ast.Call():
+                target = _setattr_row_factory_target(node)
+                if target is not None:
+                    visible.pop(target, None)
+            case _:
+                pass
 
 
 class _BindingVisitor(ast.NodeVisitor):
@@ -668,18 +668,21 @@ def _cursor_shape(cursor: _Cursor, fetch: ast.Call, imports: ImportIndex, shadow
 
 def _assigns_cursor_factory(node: ast.AST, cursor: str) -> bool:
     for child in walk_ast(node):
-        if isinstance(child, ast.Call) and _setattr_row_factory_target(child) == cursor:
-            return True
-        if isinstance(child, ast.Assign | ast.AnnAssign | ast.AugAssign):
-            targets: Sequence[ast.expr] = child.targets if isinstance(child, ast.Assign) else (child.target,)
-            if any(
-                isinstance(target, ast.Attribute)
-                and isinstance(target.value, ast.Name)
-                and target.value.id == cursor
-                and target.attr == "row_factory"
-                for target in targets
-            ):
+        match child:
+            case ast.Call() if _setattr_row_factory_target(child) == cursor:
                 return True
+            case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
+                targets: Sequence[ast.expr] = child.targets if isinstance(child, ast.Assign) else (child.target,)
+                if any(
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == cursor
+                    and target.attr == "row_factory"
+                    for target in targets
+                ):
+                    return True
+            case _:
+                pass
     return False
 
 
@@ -823,10 +826,13 @@ def _flow_context(statement: ast.With | ast.AsyncWith, cursor: str, flow: _Flow)
 
 def _value_origins(value: ast.expr | None, state: dict[str, _OriginSet], cursor: str) -> _OriginSet:
     unwrapped = _strip_await(value)
-    if isinstance(unwrapped, ast.Call) and _fetch_cursor(unwrapped) == cursor:
-        return frozenset({unwrapped})
-    if isinstance(unwrapped, ast.Name):
-        return state.get(unwrapped.id, frozenset({None}))
+    match unwrapped:
+        case ast.Call() if _fetch_cursor(unwrapped) == cursor:
+            return frozenset({unwrapped})
+        case ast.Name():
+            return state.get(unwrapped.id, frozenset({None}))
+        case _:
+            pass
     return frozenset({None})
 
 
@@ -873,10 +879,13 @@ def _statement_mutation_roots(statement: ast.stmt) -> frozenset[str]:
 
 
 def _expression_mutation_root(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
-        return _root_name(node)
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
-        return _root_name(node.func.value)
+    match node:
+        case ast.Attribute() | ast.Subscript() if isinstance(node.ctx, ast.Store | ast.Del):
+            return _root_name(node)
+        case ast.Call() if isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
+            return _root_name(node.func.value)
+        case _:
+            pass
     return None
 
 
@@ -897,15 +906,17 @@ def _fetch_cursor(call: ast.Call) -> str | None:
     if not isinstance(call.func, ast.Attribute) or call.func.attr not in _FETCH_METHODS:
         return None
     receiver = call.func.value
-    if isinstance(receiver, ast.Name):
-        return receiver.id
-    if (
-        isinstance(receiver, ast.Call)
-        and isinstance(receiver.func, ast.Attribute)
-        and receiver.func.attr == "execute"
-        and isinstance(receiver.func.value, ast.Name)
-    ):
-        return receiver.func.value.id
+    match receiver:
+        case ast.Name():
+            return receiver.id
+        case ast.Call() if (
+            isinstance(receiver.func, ast.Attribute)
+            and receiver.func.attr == "execute"
+            and isinstance(receiver.func.value, ast.Name)
+        ):
+            return receiver.func.value.id
+        case _:
+            pass
     return None
 
 

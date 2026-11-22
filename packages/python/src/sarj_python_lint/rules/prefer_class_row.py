@@ -261,21 +261,24 @@ def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Bo
     scoped_nodes = tuple(_nodes_in(function.body))
     cursors: list[_BoundCursor] = []
     for node in scoped_nodes:
-        if isinstance(node, (ast.With, ast.AsyncWith)):
-            _collect_context_cursors(node, cursors)
-        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            variable = node.targets[0].id
-            cursor = _cursor(node.value, variable, _active_nodes(scoped_nodes, variable, node.lineno))
-            if cursor is not None:
-                cursors.append(cursor)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            cursor = _cursor(
-                node.value,
-                node.target.id,
-                _active_nodes(scoped_nodes, node.target.id, node.lineno),
-            )
-            if cursor is not None:
-                cursors.append(cursor)
+        match node:
+            case ast.With() | ast.AsyncWith():
+                _collect_context_cursors(node, cursors)
+            case ast.Assign() if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                variable = node.targets[0].id
+                cursor = _cursor(node.value, variable, _active_nodes(scoped_nodes, variable, node.lineno))
+                if cursor is not None:
+                    cursors.append(cursor)
+            case ast.AnnAssign() if isinstance(node.target, ast.Name) and node.value is not None:
+                cursor = _cursor(
+                    node.value,
+                    node.target.id,
+                    _active_nodes(scoped_nodes, node.target.id, node.lineno),
+                )
+                if cursor is not None:
+                    cursors.append(cursor)
+            case _:
+                pass
     return cursors
 
 
@@ -375,14 +378,17 @@ def _models_from_direct_fetch(scoped_nodes: list[ast.AST], cursor: str) -> set[s
 def _fetched_values(scoped_nodes: list[ast.AST], cursor: str) -> list[_FetchedValue]:
     fetched: list[_FetchedValue] = []
     for node in scoped_nodes:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            method = _fetch_method(node.value, cursor)
-            if method is not None:
-                fetched.append(_FetchedValue(node.targets[0].id, node.lineno, method != "fetchone"))
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            method = _fetch_method(node.value, cursor)
-            if method is not None:
-                fetched.append(_FetchedValue(node.target.id, node.lineno, method != "fetchone"))
+        match node:
+            case ast.Assign() if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                method = _fetch_method(node.value, cursor)
+                if method is not None:
+                    fetched.append(_FetchedValue(node.targets[0].id, node.lineno, method != "fetchone"))
+            case ast.AnnAssign() if isinstance(node.target, ast.Name) and node.value is not None:
+                method = _fetch_method(node.value, cursor)
+                if method is not None:
+                    fetched.append(_FetchedValue(node.target.id, node.lineno, method != "fetchone"))
+            case _:
+                pass
     return fetched
 
 

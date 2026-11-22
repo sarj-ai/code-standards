@@ -173,18 +173,19 @@ def _is_frozen_direct_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
 
 
 def _model_config_frozen(node: ast.expr, imports: ImportIndex) -> bool | None:
-    if isinstance(node, ast.Call) and imports.resolves(
-        node.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict"
-    ):
-        values = [
-            value
-            for keyword in node.keywords
-            if keyword.arg == "frozen"
-            if (value := _literal_bool(keyword.value)) is not None
-        ]
-        return values[0] if len(values) == 1 else None
-    if isinstance(node, ast.Dict) and all(key is not None for key in node.keys):
-        return _dictionary_frozen_value(node)
+    match node:
+        case ast.Call() if imports.resolves(node.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict"):
+            values = [
+                value
+                for keyword in node.keywords
+                if keyword.arg == "frozen"
+                if (value := _literal_bool(keyword.value)) is not None
+            ]
+            return values[0] if len(values) == 1 else None
+        case ast.Dict() if all(key is not None for key in node.keys):
+            return _dictionary_frozen_value(node)
+        case _:
+            pass
     return None
 
 
@@ -264,15 +265,13 @@ def _declared_field_writes(
 
 
 def _matching_attributes(node: ast.expr, receiver: str, fields: frozenset[str]) -> list[ast.Attribute]:
-    if (
-        isinstance(node, ast.Attribute)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == receiver
-        and node.attr in fields
-    ):
-        return [node]
-    if isinstance(node, (ast.Tuple, ast.List)):
-        return [match for element in node.elts for match in _matching_attributes(element, receiver, fields)]
+    match node:
+        case ast.Attribute() if isinstance(node.value, ast.Name) and node.value.id == receiver and node.attr in fields:
+            return [node]
+        case ast.Tuple() | ast.List():
+            return [match for element in node.elts for match in _matching_attributes(element, receiver, fields)]
+        case _:
+            pass
     return []
 
 

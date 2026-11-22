@@ -346,13 +346,16 @@ class _OutcomeCalls:
         head = node.value if isinstance(node, ast.Subscript) else node
         if _root_name(head) in reference.parameters:
             return None
-        if isinstance(node, ast.Name) and node.id in semantics.aliases:
-            key = (owner.path, node.id)
-            if key in seen or not _alias_identity(owner, node.id, semantics.aliases[node.id], anchor):
+        match node:
+            case ast.Name() if node.id in semantics.aliases:
+                key = (owner.path, node.id)
+                if key in seen or not _alias_identity(owner, node.id, semantics.aliases[node.id], anchor):
+                    return None
+                return self._members(_Reference(owner, semantics.aliases[node.id]), seen | {key}, depth + 1)
+            case ast.Name() | ast.Attribute() if _reference_binding(owner, node, anchor) is None:
                 return None
-            return self._members(_Reference(owner, semantics.aliases[node.id]), seen | {key}, depth + 1)
-        if isinstance(node, ast.Name | ast.Attribute) and _reference_binding(owner, node, anchor) is None:
-            return None
+            case _:
+                pass
         children = _union_children(node, owner)
         if children is not None:
             return self._expanded_members(_Reference(owner, node, anchor, reference.parameters), children, seen, depth)

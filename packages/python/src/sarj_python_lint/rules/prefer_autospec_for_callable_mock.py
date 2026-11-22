@@ -315,13 +315,16 @@ def _ambiguous_namespace(context: PythonFileContext) -> bool:
     if _ambiguous_constructor_bindings(context):
         return True
     for node in context.nodes(ast.ImportFrom, ast.Call, ast.Attribute):
-        if isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
-            return True
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id in _REFLECTION:
+        match node:
+            case ast.ImportFrom() if any(alias.name == "*" for alias in node.names):
                 return True
-            if context.imports.resolved_qualified_name(node.func) in _REFLECTION_TARGETS:
-                return True
+            case ast.Call():
+                if isinstance(node.func, ast.Name) and node.func.id in _REFLECTION:
+                    return True
+                if context.imports.resolved_qualified_name(node.func) in _REFLECTION_TARGETS:
+                    return True
+            case _:
+                pass
         if (
             isinstance(node, ast.Attribute)
             and isinstance(node.ctx, (ast.Store, ast.Del))
