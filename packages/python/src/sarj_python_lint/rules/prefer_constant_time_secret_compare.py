@@ -373,12 +373,13 @@ def _is_external_lookup(node: ast.expr) -> bool:
 
 
 def _external_lookup_is_password(node: ast.expr) -> bool:
-    if isinstance(node, ast.Subscript):
-        key = node.slice
-    elif isinstance(node, ast.Call) and node.args:
-        key = node.args[0]
-    else:
-        return False
+    match node:
+        case ast.Subscript():
+            key = node.slice
+        case ast.Call() if node.args:
+            key = node.args[0]
+        case _:
+            return False
     return isinstance(key, ast.Constant) and isinstance(key.value, str) and _node_name_is_password(key.value)
 
 

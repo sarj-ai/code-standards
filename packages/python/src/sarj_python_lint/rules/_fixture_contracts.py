@@ -160,6 +160,17 @@ def _hook_parents(model: DeclaredClass, contracts: DeclaredContracts) -> tuple[D
     return tuple(parents)
 
 
+def direct_method_definition(model: DeclaredClass, name: str) -> DeclaredMethod | None:
+    if model.declaration.type_params or _method_replaced(model.declaration, name):
+        return None
+    definitions = [
+        member
+        for member in model.declaration.body
+        if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef) and member.name == name
+    ]
+    return DeclaredMethod(definitions[0], model) if len(definitions) == 1 else None
+
+
 def method_definition(
     model: DeclaredClass,
     name: str,

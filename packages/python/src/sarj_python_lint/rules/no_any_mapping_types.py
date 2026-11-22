@@ -525,10 +525,13 @@ def _mapping_provider_reference(node: ast.AST, providers: set[str], namespaces: 
 
 def _provider_type_reference(node: ast.expr, references: _TypeReferenceContext) -> bool:
     parent = references.parents.get(node)
-    if isinstance(parent, ast.Call) and parent.func is node:
-        return True
-    if isinstance(parent, ast.ClassDef) and node in parent.bases:
-        return True
+    match parent:
+        case ast.Call() if parent.func is node:
+            return True
+        case ast.ClassDef() if node in parent.bases:
+            return True
+        case _:
+            pass
     root = node
     while isinstance(parent, (ast.Subscript, ast.Tuple, ast.List, ast.BinOp)):
         root, parent = parent, references.parents.get(parent)
@@ -632,12 +635,15 @@ def _shadowed_names(
     below = node
     parent = parents.get(below)
     while parent is not None:
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if below in parent.body:
-                crossed_function_body = True
+        match parent:
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                if below in parent.body:
+                    crossed_function_body = True
+                    shadowed.update(_scope_names(parent, scope_cache))
+            case ast.ClassDef() if below in parent.body and (not crossed_function_body):
                 shadowed.update(_scope_names(parent, scope_cache))
-        elif isinstance(parent, ast.ClassDef) and below in parent.body and not crossed_function_body:
-            shadowed.update(_scope_names(parent, scope_cache))
+            case _:
+                pass
         below = parent
         parent = parents.get(below)
     return shadowed

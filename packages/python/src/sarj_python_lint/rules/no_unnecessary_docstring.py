@@ -643,12 +643,15 @@ def _bare_module_docstring_consumed(tree: ast.Module, *, node_index: NodeIndex |
         current: ast.AST = node
         inside_function = False
         while (parent := parents.get(current)) is not None:
-            if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                inside_function = True
-                if _function_binds_docstring_name(parent):
+            match parent:
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                    inside_function = True
+                    if _function_binds_docstring_name(parent):
+                        break
+                case ast.ClassDef() if not inside_function:
                     break
-            elif isinstance(parent, ast.ClassDef) and not inside_function:
-                break
+                case _:
+                    pass
             current = parent
         else:
             return True
@@ -1187,10 +1190,13 @@ def _metadata_reference_escapes(node: ast.AST, parent: ast.AST | None, symbol: s
 
 
 def _metadata_callable_reference(node: ast.AST, parent: ast.AST | None) -> bool:
-    if isinstance(parent, ast.Call) and parent.func is node:
-        return True
-    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node in parent.decorator_list:
-        return True
+    match parent:
+        case ast.Call() if parent.func is node:
+            return True
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if node in parent.decorator_list:
+            return True
+        case _:
+            pass
     return (
         isinstance(parent, ast.Attribute)
         and isinstance(parent.ctx, ast.Load)

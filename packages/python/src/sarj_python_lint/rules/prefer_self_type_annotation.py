@@ -421,10 +421,13 @@ def _first_positional_parameter(node: ast.FunctionDef | ast.AsyncFunctionDef) ->
 
 
 def _matched_enclosing_class_annotation(node: ast.expr, class_name: str) -> str | None:
-    if isinstance(node, ast.Name) and node.id == class_name:
-        return class_name
-    if isinstance(node, ast.Constant) and node.value == class_name:
-        return class_name
+    match node:
+        case ast.Name() if node.id == class_name:
+            return class_name
+        case ast.Constant() if node.value == class_name:
+            return class_name
+        case _:
+            pass
     return None
 
 

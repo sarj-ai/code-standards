@@ -256,14 +256,17 @@ def _used_as_service(
     call: ast.Call, owner: ast.ClassDef, operations: frozenset[str], context: PythonFileContext
 ) -> bool:
     parent = context.parents.get(call)
-    if isinstance(parent, ast.Attribute) and parent.value is call and parent.attr in operations:
-        operation = context.parents.get(parent)
-        return isinstance(operation, ast.Call) and operation.func is parent
-    if isinstance(parent, ast.Assign | ast.AnnAssign) and parent.value is call:
-        method = _enclosing_method(call, context)
-        if method is None or method.name != "__init__":
-            return False
-        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
-        fields = frozenset(field for target in targets if (field := _self_field(target)) is not None)
-        return bool(operations_for_fields(owner, fields, context.imports))
+    match parent:
+        case ast.Attribute() if parent.value is call and parent.attr in operations:
+            operation = context.parents.get(parent)
+            return isinstance(operation, ast.Call) and operation.func is parent
+        case ast.Assign() | ast.AnnAssign() if parent.value is call:
+            method = _enclosing_method(call, context)
+            if method is None or method.name != "__init__":
+                return False
+            targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+            fields = frozenset(field for target in targets if (field := _self_field(target)) is not None)
+            return bool(operations_for_fields(owner, fields, context.imports))
+        case _:
+            pass
     return False

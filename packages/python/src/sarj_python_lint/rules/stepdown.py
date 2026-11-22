@@ -609,14 +609,17 @@ def _scope_declarations(statement: ast.stmt) -> Iterator[_Def]:
 
 
 def _builtin_imports(statement: ast.stmt) -> Iterator[tuple[str, str]]:
-    if isinstance(statement, ast.Import):
-        for alias in statement.names:
-            if alias.name == "builtins":
-                yield alias.asname or alias.name, "builtins"
-    elif isinstance(statement, ast.ImportFrom) and statement.module == "builtins" and statement.level == 0:
-        for alias in statement.names:
-            if alias.name in _ORDER_TRANSPARENT_DECORATORS:
-                yield alias.asname or alias.name, alias.name
+    match statement:
+        case ast.Import():
+            for alias in statement.names:
+                if alias.name == "builtins":
+                    yield alias.asname or alias.name, "builtins"
+        case ast.ImportFrom() if statement.module == "builtins" and statement.level == 0:
+            for alias in statement.names:
+                if alias.name in _ORDER_TRANSPARENT_DECORATORS:
+                    yield alias.asname or alias.name, alias.name
+        case _:
+            pass
 
 
 def _builtin_decorator_target(node: ast.expr, visible: Mapping[str, str]) -> str | None:

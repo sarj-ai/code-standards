@@ -909,3 +909,105 @@ def test_function_dependency_selection_and_manual_remediation(tmp_path: Path) ->
 def test_native_case_data_and_defaults_are_not_injected_instances(contract: str) -> None:
     source = "import pytest\nclass Store:\n    def __init__(self, value): self.value = value\n" + contract
     assert PreferPytestDependencyFixtures().check(Path("tests/test_values.py"), source) == []
+
+
+def test_repeated_service_subjects_share_fixture_construction(rule: ProjectRule) -> None:
+    source = "class Reader:\n    def read(self): return True\ndef test_first():\n    assert Reader().read()\ndef test_second():\n    assert Reader().read()\n"
+    findings = rule.check(Path("tests/test_reader.py"), source)
+    assert [finding.line for finding in findings] == [4, 6]
+    assert all("fixture" in finding.message for finding in findings)
+    assert fix_source(Path("tests/test_reader.py"), source, rule_ids=[rule.id]) == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Reader:\n    def read(self): return True\ndef test_fresh():\n    assert Reader().read()\n    assert Reader().read()\n",
+        "class Reader:\n    def read(self): return True\ndef test_first():\n    assert Reader(1).read()\ndef test_second():\n    assert Reader(2).read()\n",
+        "from external import Reader\ndef test_first():\n    assert Reader().read()\ndef test_second():\n    assert Reader().read()\n",
+        "import pytest\nclass Reader:\n    def read(self): return True\ndef test_first():\n    with pytest.raises(ValueError): Reader().read()\ndef test_second():\n    with pytest.raises(ValueError): Reader().read()\n",
+        "from pydantic import BaseModel\nclass Value(BaseModel):\n    def read(self): return True\ndef test_first():\n    assert Value().read()\ndef test_second():\n    assert Value().read()\n",
+        "import pytest\nclass Reader:\n    def read(self): return True\n@pytest.fixture\ndef reader(): return Reader()\ndef test_first(reader):\n    assert reader.read()\ndef test_second(reader):\n    assert reader.read()\n",
+    ],
+    ids=(
+        "freshness-in-one-test",
+        "configured-variants",
+        "unknown-external-class",
+        "constructor-rejection",
+        "value-model",
+        "fixture-used",
+    ),
+)
+def test_repeated_service_scope_preserves_variants_values_and_constructor_tests(source: str, rule: ProjectRule) -> None:
+    assert rule.check(Path("tests/test_reader.py"), source) == []
+
+
+@pytest.mark.parametrize("decorator", ["staticmethod", "classmethod", "custom"], ids=["static", "class", "unknown"])
+def test_repeated_utility_or_decorated_operations_do_not_imply_instance_fixtures(
+    decorator: str, rule: ProjectRule
+) -> None:
+    source = (
+        f"class Reader:\n    @{decorator}\n    def read(self): return True\n"
+        "def test_first():\n    assert Reader().read()\n"
+        "def test_second():\n    assert Reader().read()\n"
+    )
+    assert rule.check(Path("tests/test_reader.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        pytest.param("REGISTRY = {'reader': Reader}\n", 2, id="registered-service"),
+        pytest.param("Reader.read = replacement\n", 0, id="patched-operation"),
+        pytest.param("Alias = Reader\nAlias.read = replacement\n", 0, id="patched-through-alias"),
+    ],
+)
+def test_imported_registered_service_retains_operation_and_mutation_proofs(
+    mutation: str, expected: int, rule: ProjectRule, tmp_path: Path
+) -> None:
+    source = (
+        "from app.reader import Reader\n"
+        "def test_first():\n    assert Reader().read()\n"
+        "def test_second():\n    assert Reader().read()\n"
+    )
+    paths = {
+        tmp_path / "app/__init__.py": "",
+        tmp_path / "app/reader.py": (
+            "from abc import ABC, abstractmethod\nfrom typing import final, override\n"
+            "class Port(ABC):\n    @abstractmethod\n    def read(self) -> bool: ...\n"
+            "@final\nclass Reader(Port):\n    @override\n    def read(self) -> bool: return True\n" + mutation
+        ),
+        tmp_path / "tests/test_reader.py": source,
+    }
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='reader-fixture'\nversion='0.0.0'\n")
+    for path, text in paths.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    rule.prepare(ProjectIndexSet.build(list(paths), paths))
+    assert len(rule.check(tmp_path / "tests/test_reader.py", source)) == expected
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        pytest.param("class Reader(External):\n    def read(self): return True\n", id="unknown-ancestry"),
+        pytest.param("class Reader[T]:\n    def read(self): return True\n", id="generic-class"),
+        pytest.param(
+            "class Reader:\n    def __new__(cls): return external()\n    def read(self): return True\n",
+            id="custom-construction",
+        ),
+        pytest.param(
+            "class Reader:\n    def __getattribute__(self, name): return external(name)\n    def read(self): return True\n",
+            id="custom-lookup",
+        ),
+        pytest.param(
+            "class Reader:\n    def __init__(self): self.read = external\n    def read(self): return True\n",
+            id="instance-operation-replacement",
+        ),
+    ],
+)
+def test_repeated_service_keeps_unresolved_or_custom_runtime_contracts(declaration: str, rule: ProjectRule) -> None:
+    source = (
+        declaration + "def test_first():\n    assert Reader().read()\ndef test_second():\n    assert Reader().read()\n"
+    )
+    assert rule.check(Path("tests/test_reader.py"), source) == []

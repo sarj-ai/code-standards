@@ -91,18 +91,21 @@ class AsyncApiProof:
 
     def _safe_api_read(self, node: ast.Name | ast.Attribute, qualified: str) -> bool:
         parent = self.context.parents.get(node)
-        if isinstance(parent, ast.Attribute) and parent.value is node:
-            return parent.attr not in _INTROSPECTION
-        if isinstance(parent, ast.Call) and parent.func is node:
-            return True
-        if isinstance(parent, ast.Subscript) and parent.value is node:
-            return True
-        if isinstance(parent, ast.arg | ast.AnnAssign) and parent.annotation is node:
-            return True
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
-            return parent.returns is node or (
-                qualified == "contextlib.asynccontextmanager" and node in parent.decorator_list
-            )
+        match parent:
+            case ast.Attribute() if parent.value is node:
+                return parent.attr not in _INTROSPECTION
+            case ast.Call() if parent.func is node:
+                return True
+            case ast.Subscript() if parent.value is node:
+                return True
+            case ast.arg() | ast.AnnAssign() if parent.annotation is node:
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                return parent.returns is node or (
+                    qualified == "contextlib.asynccontextmanager" and node in parent.decorator_list
+                )
+            case _:
+                pass
         return isinstance(parent, ast.ExceptHandler) and parent.type is node
 
     def assignment(self, name: ast.Name, at: ast.AST) -> _LocalAssignment | None:

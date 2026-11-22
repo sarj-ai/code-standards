@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "db1ea54d28e579aad4faefb44685790bd645be27863e4a8385ba7f8de0887701",
-  "cliSha256": "dc53b2633b85ed59f6e1cdc28a11c0b355fc8a6d9dbfce85600be740af61fd4f",
+  "catalogSha256": "06fdb9f7399d2f2064a5883cfec69559fe2a7288f00b7a1bdfea5b90750d054c",
+  "cliSha256": "2f792fce8911d1215c6b384d041ecae5b83e0c091ea7178dd30700a661713323",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -18691,6 +18691,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Keep the collection projection declarative"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "def records(rows):\n    result = []\n    observed = register(result)\n    for row in rows:\n        if row.hidden:\n            continue\n        if row.deleted:\n            continue\n        result.append(Record(row.value))\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "prepared-list-escapes",
+          "outcome": "accept",
+          "scenarioId": "prepared-list",
+          "title": "An observed list must retain its incremental construction"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "def records(rows):\n    result = []\n    allowed = {\"ready\"}\n    for row in rows:\n        if row.kind not in allowed:\n            continue\n        if row.hidden:\n            continue\n        result.append(Record(row.value))\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "prepared-ordered-filters",
+          "outcome": "reject",
+          "scenarioId": "prepared-list",
+          "title": "Preparation and ordered continue guards still build one fresh list"
         }
       ],
       "optionsSchemaSource": null
@@ -19611,6 +19641,36 @@
           "outcome": "accept",
           "scenarioId": "mixed-type-dispatch",
           "title": "Class patterns preserve the nested checks within their case bodies"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/nodes.py",
+              "source": "import ast\n\n\ndef owner(parent, current):\n    if isinstance(parent, ast.arg) and current is parent.annotation:\n        return parent\n    if isinstance(parent, ast.FunctionDef) and current is parent.returns:\n        return parent\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/nodes.py",
+          "id": "guarded-ast-dispatch",
+          "outcome": "reject",
+          "scenarioId": "guarded-ast",
+          "title": "AST type branches retain guards inside match cases"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/nodes.py",
+              "source": "import ast\n\n\ndef owner(parent, current):\n    match parent:\n        case ast.arg() if current is parent.annotation:\n            return parent\n        case ast.FunctionDef() if current is parent.returns:\n            return parent\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/nodes.py",
+          "id": "guarded-ast-match",
+          "outcome": "accept",
+          "scenarioId": "guarded-ast",
+          "title": "Case guards preserve attribute access and fallback behavior"
         },
         {
           "expectedCount": 0,
@@ -20726,6 +20786,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The store arrives through pytest"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_reader.py",
+              "source": "import pytest\n\n\nclass Reader:\n    def read(self):\n        return True\n\n\n@pytest.fixture\ndef reader():\n    return Reader()\n\n\ndef test_first(reader):\n    assert reader.read()\n\n\ndef test_second(reader):\n    assert reader.read()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_reader.py",
+          "id": "injected-service-subject",
+          "outcome": "accept",
+          "scenarioId": "repeated-service",
+          "title": "A fixture owns the service lifetime without a global singleton"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "tests/test_reader.py",
+              "source": "class Reader:\n    def read(self):\n        return True\n\n\ndef test_first():\n    assert Reader().read()\n\n\ndef test_second():\n    assert Reader().read()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_reader.py",
+          "id": "repeated-service-subject",
+          "outcome": "reject",
+          "scenarioId": "repeated-service",
+          "title": "Repeated service operations should request the pytest fixture"
         },
         {
           "expectedCount": 0,
@@ -23394,6 +23484,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A match statement parses an opaque field by hand"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/words.py",
+              "source": "from pydantic import JsonValue\n\n\ndef parts(raw: JsonValue):\n    value = raw.get(\"Parts\")\n    return value if isinstance(value, list) else None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/words.py",
+          "id": "opaque-json-field-shape",
+          "outcome": "reject",
+          "scenarioId": "json-value-input",
+          "title": "Opaque JsonValue inputs need declared field shapes"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/words.py",
+              "source": "from pydantic import JsonValue\n\n\ndef forward(raw: JsonValue):\n    return send(raw)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/words.py",
+          "id": "opaque-json-forwarding",
+          "outcome": "accept",
+          "scenarioId": "json-value-input",
+          "title": "Generic JSON forwarding does not invent a record contract"
         }
       ],
       "optionsSchemaSource": null

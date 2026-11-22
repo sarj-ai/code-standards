@@ -284,15 +284,18 @@ def _stable_class(node: ast.ClassDef, context: PythonFileContext, provenance: Re
 
 def _safe_class_use(read: ast.Name, context: PythonFileContext) -> bool:
     parent = context.parents.get(read)
-    if isinstance(parent, ast.Call) and parent.func is read:
-        return True
-    if isinstance(parent, (ast.arg, ast.AnnAssign)) and parent.annotation is read:
-        return True
-    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) and parent.returns is read:
-        return True
-    if isinstance(parent, ast.Attribute) and parent.value is read and parent.attr in _MODEL_APIS:
-        owner = context.parents.get(parent)
-        return isinstance(owner, ast.Call) and owner.func is parent
+    match parent:
+        case ast.Call() if parent.func is read:
+            return True
+        case ast.arg() | ast.AnnAssign() if parent.annotation is read:
+            return True
+        case ast.FunctionDef() | ast.AsyncFunctionDef() if parent.returns is read:
+            return True
+        case ast.Attribute() if parent.value is read and parent.attr in _MODEL_APIS:
+            owner = context.parents.get(parent)
+            return isinstance(owner, ast.Call) and owner.func is parent
+        case _:
+            pass
     return False
 
 

@@ -111,7 +111,7 @@ class PreferMatchTypeDispatch(ProjectRule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
-            "Guarded dispatch over proven classes is additionally a manual warning: keep the type check first, preserve guard order and retain the fallback. Guards with calls, assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
+            "Guarded dispatch over proven stdlib AST classes is an error; other proven classes retain a manual warning. Keep the type check first, preserve guard order and retain the fallback. Guards with calls, assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
             "A single ordinary-class reuse-or-construction normalization is a warning when both branches first assign the same simple target, reusing the subject or constructing the checked class. Preserve all following branch work. This branch has no automatic fix and does not change established dispatch errors.",
             "Normalization requires an undecorated, stable module-local class with proven ordinary ancestry and nonescaping class references. Dynamic or mutated classes, unknown imports, constructor argument effects, pre-assignment work and later reassignment of the subject, target or class remain excluded; constructor arguments are simple names or constants.",
             "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
@@ -123,6 +123,36 @@ class PreferMatchTypeDispatch(ProjectRule):
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
+            RuleExample(
+                example_id="guarded-ast-dispatch",
+                scenario="guarded-ast",
+                title="AST type branches retain guards inside match cases",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/nodes.py",
+                        "import ast\ndef owner(parent, current):\n    if isinstance(parent, ast.arg) and current is parent.annotation:\n        return parent\n    if isinstance(parent, ast.FunctionDef) and current is parent.returns:\n        return parent\n    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/nodes.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="guarded-ast-match",
+                scenario="guarded-ast",
+                title="Case guards preserve attribute access and fallback behavior",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/nodes.py",
+                        "import ast\ndef owner(parent, current):\n    match parent:\n        case ast.arg() if current is parent.annotation:\n            return parent\n        case ast.FunctionDef() if current is parent.returns:\n            return parent\n    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/nodes.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="single-model-type-branch",
                 scenario="single-model-type-dispatch",
@@ -497,10 +527,14 @@ def _guarded_dispatch_findings(
                 "SARJ080",
                 "Use match/case class patterns with guards for this type dispatch; preserve guard order "
                 "and fallbacks. This recommendation has no automatic rewrite.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR if _stdlib_ast_dispatch(parsed) else Severity.WARNING,
             )
         )
     return findings
+
+
+def _stdlib_ast_dispatch(branches: list[_TypeBranch | None]) -> bool:
+    return all(branch is not None and all(kind.startswith("ast.") for kind in branch.types) for branch in branches)
 
 
 def _guarded_type_branch(

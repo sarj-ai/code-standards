@@ -313,12 +313,13 @@ def _declares_query(node: ast.ClassDef) -> bool:
 
 def _has_analytical_driver(tree: ast.Module) -> bool:
     for node in walk(tree):
-        if isinstance(node, ast.Import):
-            names = (alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and not node.level:
-            names = (f"{node.module}.{alias.name}" for alias in node.names)
-        else:
-            continue
+        match node:
+            case ast.Import():
+                names = (alias.name for alias in node.names)
+            case ast.ImportFrom() if not node.level:
+                names = (f"{node.module}.{alias.name}" for alias in node.names)
+            case _:
+                continue
         if any(_driver_dialect(name) == "analytical" for name in names):
             return True
     return False

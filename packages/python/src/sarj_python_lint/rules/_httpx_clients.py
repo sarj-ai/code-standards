@@ -98,12 +98,15 @@ def runtime_expression(context: PythonFileContext, expression: ast.expr) -> bool
     child: ast.AST = expression
     parent = context.parents.get(child)
     while parent is not None:
-        if isinstance(parent, ast.TypeAlias | ast.type_param):
-            return False
-        if isinstance(parent, ast.AnnAssign | ast.arg) and parent.annotation is child:
-            return False
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and parent.returns is child:
-            return False
+        match parent:
+            case ast.TypeAlias() | ast.type_param():
+                return False
+            case ast.AnnAssign() | ast.arg() if parent.annotation is child:
+                return False
+            case ast.FunctionDef() | ast.AsyncFunctionDef() if parent.returns is child:
+                return False
+            case _:
+                pass
         child, parent = parent, context.parents.get(parent)
     return True
 

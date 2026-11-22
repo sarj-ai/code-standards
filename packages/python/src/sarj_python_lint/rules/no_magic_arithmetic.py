@@ -89,27 +89,21 @@ class NoMagicArithmetic(Rule):
             return []
         call_signal = any(symbol in context.symbol_source for symbol in ("range", "sleep", "timeout", "wait_for"))
         facts = AnnotationOrigins(context) if call_signal else None
-        findings: list[Diagnostic] = []
-        for node in context.nodes(ast.Constant):
-            if type(node.value) not in {int, float} or node.value in _TRIVIAL:
-                continue
-            if not _runtime(node, context) or _named_constant(node, context):
-                continue
-            if not _operation_literal(node, context, facts) or context.suppressions.is_suppressed(
-                node.lineno, self.code
-            ):
-                continue
-            findings.append(
-                Diagnostic(
-                    context.path,
-                    node.lineno,
-                    node.col_offset + 1,
-                    self.code,
-                    "Name this numeric factor or operational limit with its meaning and units, or use validated configuration.",
-                    severity=Severity.ERROR,
-                )
+        return [
+            Diagnostic(
+                context.path,
+                node.lineno,
+                node.col_offset + 1,
+                self.code,
+                "Name this numeric factor or operational limit with its meaning and units, or use validated configuration.",
+                severity=Severity.ERROR,
             )
-        return findings
+            for node in context.nodes(ast.Constant)
+            if type(node.value) in {int, float} and node.value not in _TRIVIAL
+            if _runtime(node, context) and not _named_constant(node, context)
+            if _operation_literal(node, context, facts)
+            and not context.suppressions.is_suppressed(node.lineno, self.code)
+        ]
 
 
 def _operation_literal(node: ast.expr, context: PythonFileContext, facts: AnnotationOrigins | None) -> bool:

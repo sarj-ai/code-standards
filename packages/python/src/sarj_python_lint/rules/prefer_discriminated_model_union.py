@@ -365,11 +365,14 @@ def _stable_model(model: ast.ClassDef, context: PythonFileContext, provenance: R
 
 def _stable_model_read(read: ast.Name, context: PythonFileContext) -> bool:
     parent = context.parents.get(read)
-    if isinstance(parent, ast.Call) and parent.func is read:
-        return True
-    if isinstance(parent, ast.Attribute) and parent.value is read and parent.attr in _VALIDATION_APIS:
-        call = context.parents.get(parent)
-        return isinstance(call, ast.Call) and call.func is parent
+    match parent:
+        case ast.Call() if parent.func is read:
+            return True
+        case ast.Attribute() if parent.value is read and parent.attr in _VALIDATION_APIS:
+            call = context.parents.get(parent)
+            return isinstance(call, ast.Call) and call.func is parent
+        case _:
+            pass
     node: ast.AST = read
     while isinstance(parent, (ast.Subscript, ast.BinOp, ast.Tuple)):
         node = parent
@@ -567,21 +570,22 @@ def _selected_tags(
 ) -> frozenset[_Tag] | None:
     if not domain:
         return None
-    if isinstance(operator, (ast.In, ast.NotIn)) and not reversed_operands:
-        if not isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+    match operator:
+        case ast.In() | ast.NotIn() if not reversed_operands:
+            if not isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                return None
+            literals = [_tag_value(member) for member in node.elts]
+        case ast.Eq() | ast.NotEq() | ast.Is() | ast.IsNot():
+            literal = _tag_value(node)
+            if (
+                literal
+                and isinstance(operator, (ast.Is, ast.IsNot))
+                and not (literal[0] is None or isinstance(literal[0], bool))
+            ):
+                return None
+            literals = [literal]
+        case _:
             return None
-        literals = [_tag_value(member) for member in node.elts]
-    elif isinstance(operator, (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
-        literal = _tag_value(node)
-        if (
-            literal
-            and isinstance(operator, (ast.Is, ast.IsNot))
-            and not (literal[0] is None or isinstance(literal[0], bool))
-        ):
-            return None
-        literals = [literal]
-    else:
-        return None
     if any(not literal for literal in literals):
         return None
     selected = frozenset(literal[0] for literal in literals)

@@ -304,20 +304,27 @@ class OpaqueContractFacts:
 
     def _key_read(self, read: ast.Name) -> bool:
         parent = self.context.parents.get(read)
-        if isinstance(parent, ast.Assign | ast.AnnAssign) and parent.value is read:
-            return True
-        if isinstance(parent, ast.Compare):
-            return all(isinstance(operator, ast.Is | ast.IsNot) for operator in parent.ops) or (
-                read in parent.comparators and all(isinstance(operator, ast.In | ast.NotIn) for operator in parent.ops)
-            )
+        match parent:
+            case ast.Assign() | ast.AnnAssign() if parent.value is read:
+                return True
+            case ast.Compare():
+                return all(isinstance(operator, ast.Is | ast.IsNot) for operator in parent.ops) or (
+                    read in parent.comparators
+                    and all(isinstance(operator, ast.In | ast.NotIn) for operator in parent.ops)
+                )
+            case _:
+                pass
         return self._key_operation(read)
 
     def _key_operation(self, read: ast.Name) -> bool:
         parent = self.context.parents.get(read)
-        if isinstance(parent, ast.For | ast.comprehension) and parent.iter is read:
-            return True
-        if isinstance(parent, ast.Attribute) and parent.value is read and parent.attr == "keys":
-            return True
+        match parent:
+            case ast.For() | ast.comprehension() if parent.iter is read:
+                return True
+            case ast.Attribute() if parent.value is read and parent.attr == "keys":
+                return True
+            case _:
+                pass
         return (
             isinstance(parent, ast.Call)
             and parent.args == [read]
@@ -920,11 +927,14 @@ class OpaqueContractFacts:
         if not isinstance(receiver, ast.Name):
             return False
         binding = self.facts.provenance.runtime_binding(receiver.id, receiver)
-        if isinstance(binding, ast.arg) and binding.annotation is not None:
-            return self.facts.qualified(binding.annotation, binding.annotation) in _DECODERS
-        if isinstance(binding, ast.Name):
-            value = self.facts.provenance.assignment_value(binding, receiver)
-            return isinstance(value, ast.Call) and self.facts.qualified(value.func, value) in _DECODERS
+        match binding:
+            case ast.arg() if binding.annotation is not None:
+                return self.facts.qualified(binding.annotation, binding.annotation) in _DECODERS
+            case ast.Name():
+                value = self.facts.provenance.assignment_value(binding, receiver)
+                return isinstance(value, ast.Call) and self.facts.qualified(value.func, value) in _DECODERS
+            case _:
+                pass
         return False
 
 

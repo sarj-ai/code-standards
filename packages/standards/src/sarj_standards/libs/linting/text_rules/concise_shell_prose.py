@@ -32,22 +32,60 @@ _SUPPRESSION = re.compile(
 )
 
 
-class _Position(BaseModel):
+class _ShellRecord(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True, hide_input_in_errors=True)
+
+
+class _Position(_ShellRecord):
     line: int = Field(alias="Line", gt=0)
     column: int = Field(alias="Col", gt=0)
 
 
-class _Descriptor(BaseModel):
-    model_config = ConfigDict(strict=True, frozen=True, hide_input_in_errors=True)
+class _Descriptor(_ShellRecord):
     value: str = Field(alias="Value")
 
 
-class _Heredoc(BaseModel):
-    model_config = ConfigDict(strict=True, frozen=True, hide_input_in_errors=True)
+class _Heredoc(_ShellRecord):
     operator: Literal["<<", "<<-"] = Field(alias="Op")
     descriptor: _Descriptor | None = Field(default=None, alias="N")
     body: JsonValue = Field(alias="Hdoc")
+
+
+class _Word(_ShellRecord):
+    parts: list[JsonValue] = Field(alias="Parts")
+
+
+class _LiteralPart(_ShellRecord):
+    kind: Literal["Lit", "SglQuoted"] = Field(alias="Type")
+    value: str = Field(alias="Value")
+
+
+class _BinaryTest(_ShellRecord):
+    kind: Literal["BinaryTest"] = Field(alias="Type")
+    operator: Literal["=", "=="] = Field(alias="Op")
+    left: JsonValue = Field(alias="X")
+    right: JsonValue = Field(alias="Y")
+
+
+class _TestClause(_ShellRecord):
+    kind: Literal["TestClause"] = Field(alias="Type")
+    expression: _BinaryTest = Field(alias="X")
+
+
+class _Condition(_ShellRecord):
+    negated: bool = Field(default=False, alias="Negated")
+    command: _TestClause = Field(alias="Cmd")
+
+
+class _CallExpression(_ShellRecord):
+    kind: Literal["CallExpr"] = Field(alias="Type")
+    arguments: list[JsonValue] = Field(default_factory=list, alias="Args")
+
+
+class _HelpStatement(_ShellRecord):
+    position: _Position = Field(alias="Pos")
+    command: _CallExpression = Field(alias="Cmd")
+    redirects: list[_Heredoc] = Field(alias="Redirs", min_length=1, max_length=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,63 +255,49 @@ def _standalone(node: dict[str, JsonValue], lines: list[str]) -> bool:
 
 
 def _literal(word: JsonValue) -> str | None:
-    if not isinstance(word, dict):
-        return None
-    parts = word.get("Parts")
-    if not isinstance(parts, list):
-        return None
-    values: list[str] = []
-    for part in parts:
-        if not isinstance(part, dict):
+    match word:
+        case {"Parts": _}:
+            parsed = _Word.model_validate(word)
+        case _:
             return None
-        value = (
-            _literal(part)
-            if part.get("Type") == "DblQuoted"
-            else part.get("Value")
-            if part.get("Type") in {"Lit", "SglQuoted"}
-            else None
-        )
-        if not isinstance(value, str):
+    values: list[str] = []
+    for part in parsed.parts:
+        match part:
+            case {"Type": "DblQuoted"}:
+                value = _literal(part)
+            case {"Type": "Lit" | "SglQuoted"}:
+                value = _LiteralPart.model_validate(part).value
+            case _:
+                return None
+        if value is None:
             return None
         values.append(value)
     return "".join(values)
 
 
 def _help_condition(condition: JsonValue) -> bool:
-    if not isinstance(condition, list) or len(condition) != 1 or not isinstance(condition[0], dict):
-        return False
-    statement = condition[0]
-    if statement.get("Negated"):
-        return False
-    command = statement.get("Cmd")
-    if not isinstance(command, dict) or command.get("Type") != "TestClause":
-        return False
-    test = command.get("X")
-    return (
-        isinstance(test, dict)
-        and test.get("Type") == "BinaryTest"
-        and test.get("Op") in {"=", "=="}
-        and (_literal(test.get("X")) in _HELP or _literal(test.get("Y")) in _HELP)
-    )
+    match condition:
+        case [{"Cmd": {"Type": "TestClause", "X": {"Type": "BinaryTest", "Op": "=" | "=="}}} as statement]:
+            parsed = _Condition.model_validate(statement)
+            test = parsed.command.expression
+            return not parsed.negated and (_literal(test.left) in _HELP or _literal(test.right) in _HELP)
+        case _:
+            return False
 
 
 def _help_heredoc(statement: dict[str, JsonValue]) -> _HelpText | None:
-    command = statement.get("Cmd")
-    if not isinstance(command, dict) or command.get("Type") != "CallExpr":
+    match statement:
+        case {"Cmd": {"Type": "CallExpr"}, "Redirs": [{"Op": "<<" | "<<-"}]}:
+            parsed = _HelpStatement.model_validate(statement)
+        case _:
+            return None
+    if [_literal(argument) for argument in parsed.command.arguments] != ["cat"]:
         return None
-    arguments = command.get("Args")
-    if not isinstance(arguments, list) or [_literal(argument) for argument in arguments] != ["cat"]:
-        return None
-    redirects = statement.get("Redirs")
-    if not isinstance(redirects, list) or len(redirects) != 1 or not isinstance(redirects[0], dict):
-        return None
-    if redirects[0].get("Op") not in {"<<", "<<-"}:
-        return None
-    redirect = _Heredoc.model_validate(redirects[0])
+    [redirect] = parsed.redirects
     if redirect.descriptor is not None and redirect.descriptor.value != "0":
         return None
     text = _literal(redirect.body)
-    return _HelpText(text, _line(statement)) if text is not None else None
+    return _HelpText(text, parsed.position.line) if text is not None else None
 
 
 def _over_budget(text: str, lines: int) -> bool:

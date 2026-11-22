@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import JsonValue, ValidationError
 import pytest
 from sarj_rule_contracts.examples import verify_examples
 
@@ -7,6 +8,11 @@ from sarj_standards.libs.linting.shell_ast import ShellSyntaxError
 from sarj_standards.libs.linting.text_rules.concise_shell_prose import ConciseShellProse
 from sarj_standards.libs.repository.rule_examples import selected
 from sarj_standards.libs.rules import RuleSelector
+
+
+@pytest.fixture(scope="module")
+def rule() -> ConciseShellProse:
+    return ConciseShellProse()
 
 
 def test_documented_examples() -> None:
@@ -30,8 +36,8 @@ _LONG_HELP = "if [[ ${1:-} == --help ]]; then\ncat <<'DOC'\nUsage: app\nConfigur
         _LONG_HELP.replace("--help", "\"--he\"'lp'"),
     ],
 )
-def test_rejects_long_actual_comments_or_proven_help(source: str) -> None:
-    assert len(ConciseShellProse().check(Path("app.sh"), source)) == 1
+def test_rejects_long_actual_comments_or_proven_help(source: str, rule: ConciseShellProse) -> None:
+    assert len(rule.check(Path("app.sh"), source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -49,13 +55,13 @@ def test_rejects_long_actual_comments_or_proven_help(source: str) -> None:
         _LONG_HELP.replace("Read the runbook.\n", ""),
     ],
 )
-def test_preserves_directives_data_short_help_and_unproven_sinks(source: str) -> None:
-    assert ConciseShellProse().check(Path("app.sh"), source) == []
+def test_preserves_directives_data_short_help_and_unproven_sinks(source: str, rule: ConciseShellProse) -> None:
+    assert rule.check(Path("app.sh"), source) == []
 
 
-def test_malformed_shell_propagates_native_parser_rejection() -> None:
+def test_malformed_shell_propagates_native_parser_rejection(rule: ConciseShellProse) -> None:
     with pytest.raises(ShellSyntaxError):
-        ConciseShellProse().check(Path("app.sh"), "if then\n")
+        rule.check(Path("app.sh"), "if then\n")
 
 
 @pytest.mark.parametrize(
@@ -79,8 +85,8 @@ def test_malformed_shell_propagates_native_parser_rejection() -> None:
         ),
     ],
 )
-def test_required_long_contracts_need_real_exact_code_justifications(source: str) -> None:
-    assert ConciseShellProse().check(Path("app.sh"), source) == []
+def test_required_long_contracts_need_real_exact_code_justifications(source: str, rule: ConciseShellProse) -> None:
+    assert rule.check(Path("app.sh"), source) == []
 
 
 @pytest.mark.parametrize(
@@ -105,10 +111,92 @@ def test_required_long_contracts_need_real_exact_code_justifications(source: str
         ),
     ],
 )
-def test_data_and_fake_directives_do_not_authorize_long_prose(source: str) -> None:
-    assert len(ConciseShellProse().check(Path("app.sh"), source)) == 1
+def test_data_and_fake_directives_do_not_authorize_long_prose(source: str, rule: ConciseShellProse) -> None:
+    assert len(rule.check(Path("app.sh"), source)) == 1
 
 
-def test_help_diagnostic_anchors_the_command_without_changing_help_output() -> None:
-    [finding] = ConciseShellProse().check(Path("app.sh"), _LONG_HELP)
+def test_help_diagnostic_anchors_the_command_without_changing_help_output(rule: ConciseShellProse) -> None:
+    [finding] = rule.check(Path("app.sh"), _LONG_HELP)
     assert finding.line == 2
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        pytest.param({"Negated": "false"}, id="native-negation-is-boolean"),
+        pytest.param(
+            {
+                "Cmd": {
+                    "Type": "TestClause",
+                    "X": {
+                        "Type": "BinaryTest",
+                        "Op": "==",
+                        "X": {"Type": "Word", "Parts": [{"Type": "Lit", "Value": 938_271}]},
+                        "Y": {},
+                    },
+                }
+            },
+            id="native-token-is-text",
+        ),
+    ],
+)
+def test_malformed_native_conditions_propagate_validation_without_payloads(
+    invalid: dict[str, JsonValue], monkeypatch: pytest.MonkeyPatch, rule: ConciseShellProse
+) -> None:
+    condition: dict[str, JsonValue] = {
+        "Cmd": {"Type": "TestClause", "X": {"Type": "BinaryTest", "Op": "==", "X": {}, "Y": {}}},
+        **invalid,
+    }
+    payload: dict[str, JsonValue] = {"Type": "File", "Stmts": [{"Type": "IfClause", "Cond": [condition]}]}
+
+    def parse(_source: str) -> dict[str, JsonValue]:
+        return payload
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Inject malformed native output that real shfmt cannot produce.
+        "sarj_standards.libs.linting.text_rules.concise_shell_prose.parse_shell", parse
+    )
+    with pytest.raises(ValidationError) as error:
+        rule.check(Path("app.sh"), "if [[ $1 == --help ]]; then :; fi")
+    assert "938271" not in str(error.value)
+
+
+def test_malformed_native_help_positions_propagate_validation(
+    monkeypatch: pytest.MonkeyPatch, rule: ConciseShellProse
+) -> None:
+    payload: dict[str, JsonValue] = {
+        "Type": "File",
+        "Stmts": [
+            {
+                "Type": "IfClause",
+                "Cond": [
+                    {
+                        "Cmd": {
+                            "Type": "TestClause",
+                            "X": {
+                                "Type": "BinaryTest",
+                                "Op": "==",
+                                "X": {"Type": "Word", "Parts": [{"Type": "Lit", "Value": "--help"}]},
+                                "Y": {},
+                            },
+                        }
+                    }
+                ],
+                "Then": [
+                    {
+                        "Pos": {"Line": 0, "Col": 1},
+                        "Cmd": {"Type": "CallExpr", "Args": []},
+                        "Redirs": [{"Op": "<<", "Hdoc": {}}],
+                    }
+                ],
+            }
+        ],
+    }
+
+    def parse(_source: str) -> dict[str, JsonValue]:
+        return payload
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Inject malformed native output that real shfmt cannot produce.
+        "sarj_standards.libs.linting.text_rules.concise_shell_prose.parse_shell", parse
+    )
+    with pytest.raises(ValidationError):
+        rule.check(Path("app.sh"), _LONG_HELP)

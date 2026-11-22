@@ -94,14 +94,17 @@ def _random_aliases(tree: ast.Module) -> _RandomAliases:
     constructors: set[str] = set()
     binding_counts = _module_binding_counts(tree)
     for node in tree.body:
-        if isinstance(node, ast.Import):
-            modules.update(
-                local
-                for alias in node.names
-                if alias.name == "random" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
-            )
-        elif isinstance(node, ast.ImportFrom) and node.module == "random":
-            _record_random_members(node, binding_counts, functions, seeds, constructors)
+        match node:
+            case ast.Import():
+                modules.update(
+                    local
+                    for alias in node.names
+                    if alias.name == "random" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+                )
+            case ast.ImportFrom() if node.module == "random":
+                _record_random_members(node, binding_counts, functions, seeds, constructors)
+            case _:
+                pass
     return _RandomAliases(modules, functions, seeds, constructors)
 
 
@@ -390,23 +393,26 @@ class UncontrolledRandomnessInTest(Rule):
 
 
 def _record_scope_binding(node: ast.AST, bindings: list[str]) -> None:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        bindings.append(node.name)
-    elif isinstance(node, (ast.Import, ast.ImportFrom)):
-        bindings.extend(alias.asname or alias.name.split(".")[0] for alias in node.names)
-    elif isinstance(node, (ast.Assign, ast.Delete)):
-        for target in node.targets:
-            bindings.extend(_bound_target_names(target))
-    elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
-        bindings.extend(_bound_target_names(node.target))
-    elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
-        bindings.append(node.name)
-    elif isinstance(node, ast.MatchMapping) and node.rest is not None:
-        bindings.append(node.rest)
-    elif isinstance(node, (ast.With, ast.AsyncWith)):
-        for item in node.items:
-            if item.optional_vars is not None:
-                bindings.extend(_bound_target_names(item.optional_vars))
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            bindings.append(node.name)
+        case ast.Import() | ast.ImportFrom():
+            bindings.extend(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        case ast.Assign() | ast.Delete():
+            for target in node.targets:
+                bindings.extend(_bound_target_names(target))
+        case ast.AnnAssign() | ast.AugAssign() | ast.NamedExpr() | ast.For() | ast.AsyncFor():
+            bindings.extend(_bound_target_names(node.target))
+        case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name is not None:
+            bindings.append(node.name)
+        case ast.MatchMapping() if node.rest is not None:
+            bindings.append(node.rest)
+        case ast.With() | ast.AsyncWith():
+            for item in node.items:
+                if item.optional_vars is not None:
+                    bindings.extend(_bound_target_names(item.optional_vars))
+        case _:
+            pass
 
 
 def _record_random_members(

@@ -96,25 +96,27 @@ def _repeated(call: ast.Call, context: PythonFileContext) -> bool:
     child: ast.AST = call
     parent = context.parents.get(child)
     while parent is not None:
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef):
-            return False
-        if (
-            isinstance(parent, ast.For | ast.AsyncFor)
-            and child in parent.body
-            and not known_single_iteration(parent.iter)
-        ):
-            return True
-        if isinstance(parent, ast.comprehension):
-            owner = context.parents.get(parent)
-            if child in parent.ifs or (
-                child is parent.iter
-                and isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
-                and owner.generators.index(parent) > 0
-            ):
+        match parent:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda() | ast.ClassDef():
+                return False
+            case ast.For() | ast.AsyncFor() if child in parent.body and not known_single_iteration(parent.iter):
                 return True
-        if isinstance(parent, ast.ListComp | ast.SetComp | ast.GeneratorExp) and child is parent.elt:
-            return True
-        if isinstance(parent, ast.DictComp) and child in {parent.key, parent.value}:
-            return True
+            case ast.comprehension() if _comprehension_repeats(parent, child, context):
+                return True
+            case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() if child is parent.elt:
+                return True
+            case ast.DictComp() if child in {parent.key, parent.value}:
+                return True
+            case _:
+                pass
         child, parent = parent, context.parents.get(parent)
     return False
+
+
+def _comprehension_repeats(parent: ast.comprehension, child: ast.AST, context: PythonFileContext) -> bool:
+    owner = context.parents.get(parent)
+    return child in parent.ifs or (
+        child is parent.iter
+        and isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
+        and owner.generators.index(parent) > 0
+    )

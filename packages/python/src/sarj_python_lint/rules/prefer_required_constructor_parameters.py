@@ -248,10 +248,13 @@ def _imported(context: PythonFileContext, binding: ast.AST | None) -> str | None
     if not isinstance(binding, ast.alias):
         return None
     statement = context.parents.get(binding)
-    if isinstance(statement, ast.Import):
-        return binding.name if binding.asname else binding.name.partition(".")[0]
-    if isinstance(statement, ast.ImportFrom) and statement.level == 0 and statement.module is not None:
-        return f"{statement.module}.{binding.name}"
+    match statement:
+        case ast.Import():
+            return binding.name if binding.asname else binding.name.partition(".")[0]
+        case ast.ImportFrom() if statement.level == 0 and statement.module is not None:
+            return f"{statement.module}.{binding.name}"
+        case _:
+            pass
     return None
 
 

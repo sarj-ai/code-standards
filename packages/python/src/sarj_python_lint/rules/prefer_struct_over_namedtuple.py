@@ -475,10 +475,13 @@ def _scope_factory_resolution(
     if prior:
         latest = max(prior, key=lambda event: (event.line, event.col))
         return latest.direct and latest.kind == expected
-    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and bindings:
-        return False
-    if isinstance(scope, ast.Module):
-        return False
+    match scope:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() if bindings:
+            return False
+        case ast.Module():
+            return False
+        case _:
+            pass
     return None
 
 

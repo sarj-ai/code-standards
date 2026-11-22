@@ -159,11 +159,14 @@ def _opts_out(statements: Sequence[ast.stmt]) -> bool:
 
 def _assignments(statements: Sequence[ast.stmt]) -> Iterator[tuple[ast.expr, ast.expr]]:
     for statement in statements:
-        if isinstance(statement, ast.Assign):
-            for target in statement.targets:
-                yield target, statement.value
-        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
-            yield statement.target, statement.value
+        match statement:
+            case ast.Assign():
+                for target in statement.targets:
+                    yield target, statement.value
+            case ast.AnnAssign() if statement.value is not None:
+                yield statement.target, statement.value
+            case _:
+                pass
 
 
 def _scope_marks(statements: Sequence[ast.stmt], imports: ImportIndex) -> bool:

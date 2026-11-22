@@ -685,12 +685,16 @@ def _function_local_bound_names(
     for node in scope:
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             names.add(node.id)
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            names.add(node.name)
-        elif isinstance(node, ast.Import | ast.ImportFrom):
-            names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-            names.add(node.name)
+        else:
+            match node:
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                    names.add(node.name)
+                case ast.Import() | ast.ImportFrom():
+                    names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
+                case ast.ExceptHandler() if node.name is not None:
+                    names.add(node.name)
+                case _:
+                    pass
     return frozenset(names)
 
 
