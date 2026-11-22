@@ -321,7 +321,7 @@ def _bound_resource_update(
     if not isinstance(owner, ast.ClassDef):
         return False
     ancestors = _local_ancestors(owner, classes)
-    if ancestors is None or _BULK_OPERATIONS & surface.uncertain:
+    if ancestors is None or not _BULK_OPERATIONS.isdisjoint(surface.uncertain):
         return False
     if any(_BULK_OPERATIONS & scope_bound_names(candidate.body) for candidate in ancestors):
         return False

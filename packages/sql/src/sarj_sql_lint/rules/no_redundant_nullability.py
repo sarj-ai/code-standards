@@ -133,7 +133,7 @@ def _redundant_constraints(path: Path, source: str) -> Iterator[exp.NotNullColum
         return
     source = sql_before_copy_input(source)
     if (
-        {part.casefold() for part in path.parts} & _EXCLUDED
+        not _EXCLUDED.isdisjoint(part.casefold() for part in path.parts)
         or not is_postgres(source)
         or is_dump_file(source, path)
         or is_generated_migration(path, source)
@@ -156,16 +156,19 @@ def _redundant_constraints(path: Path, source: str) -> Iterator[exp.NotNullColum
 
 
 def _columns(statement: exp.Expr | None) -> Iterator[exp.ColumnDef]:
-    if isinstance(statement, exp.Create) and statement.kind == "TABLE":
-        schema = _child(statement, "this")
-        if isinstance(schema, exp.Schema):
-            yield from (item for item in schema.iter_expressions() if isinstance(item, exp.ColumnDef))
-    elif isinstance(statement, exp.Alter) and statement.kind == "TABLE":
-        yield from (
-            item
-            for item in statement.iter_expressions()
-            if item.arg_key == "actions" and isinstance(item, exp.ColumnDef)
-        )
+    match statement:
+        case exp.Create() if statement.kind == "TABLE":
+            schema = _child(statement, "this")
+            if isinstance(schema, exp.Schema):
+                yield from (item for item in schema.iter_expressions() if isinstance(item, exp.ColumnDef))
+        case exp.Alter() if statement.kind == "TABLE":
+            yield from (
+                item
+                for item in statement.iter_expressions()
+                if item.arg_key == "actions" and isinstance(item, exp.ColumnDef)
+            )
+        case _:
+            return
 
 
 def _column_constraints(column: exp.ColumnDef) -> Iterator[exp.NotNullColumnConstraint]:
@@ -185,7 +188,7 @@ def _column_constraints(column: exp.ColumnDef) -> Iterator[exp.NotNullColumnCons
     if len(nullable) != 1:
         return
     constraint, kind = nullable[0]
-    if _child(constraint, "this") is not None or set(kind.args) - {"allow_null"}:
+    if _child(constraint, "this") is not None or not kind.args.keys() <= {"allow_null"}:
         return
     primary = any(isinstance(item.kind, exp.PrimaryKeyColumnConstraint) for item in column.constraints)
     if bool(kind.args.get("allow_null")) != primary:

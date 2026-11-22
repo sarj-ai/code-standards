@@ -326,4 +326,4 @@ def _is_query_binding(target: ast.expr) -> bool:
         return False
     name = target.id if isinstance(target, ast.Name) else target.attr
     tokens = frozenset(part for part in name.lower().split("_") if part)
-    return name == "q" or name.isupper() or bool(tokens & _QUERY_BINDING_TOKENS)
+    return name == "q" or name.isupper() or not tokens.isdisjoint(_QUERY_BINDING_TOKENS)

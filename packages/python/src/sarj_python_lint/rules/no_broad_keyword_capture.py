@@ -540,4 +540,4 @@ def _signature_declaration(
         _known_decorator(decorator, function, context, semantics, mutated_members)
         for decorator in function.decorator_list
     }
-    return bool(decorators & _OVERLOAD_DECORATORS) or not decorators <= _KNOWN_DECORATORS
+    return not _OVERLOAD_DECORATORS.isdisjoint(decorators) or not decorators <= _KNOWN_DECORATORS

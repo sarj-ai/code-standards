@@ -155,7 +155,7 @@ class InvalidPostgresDdl(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         source = sql_before_copy_input(source)
         if (
-            {part.casefold() for part in path.parts} & _NON_PRODUCTION
+            not _NON_PRODUCTION.isdisjoint(part.casefold() for part in path.parts)
             or declared_dialect(source) not in {None, "postgresql"}
             or not is_postgres(source)
         ):

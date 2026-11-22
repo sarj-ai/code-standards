@@ -141,7 +141,7 @@ class NewTableInlineConstraints(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if (
-            {part.casefold() for part in path.parts} & _NON_PRODUCTION
+            not _NON_PRODUCTION.isdisjoint(part.casefold() for part in path.parts)
             or is_dump_file(source, path)
             or is_generated_migration(path, source)
             or not is_postgres_migration(path, source)

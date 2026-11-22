@@ -523,7 +523,7 @@ def _is_excluded_path(path: Path) -> bool:
     lowered = {part.lower() for part in path.parts}
     path_tokens = {token for part in path.parts for token in part.lower().removesuffix(".py").split("_")}
     return (
-        bool(lowered & _MIGRATION_PARTS)
+        not _MIGRATION_PARTS.isdisjoint(lowered)
         or bool((lowered | path_tokens) & _OPERATIONAL_PATH_PARTS)
         or _is_external_adapter_path(path)
     )

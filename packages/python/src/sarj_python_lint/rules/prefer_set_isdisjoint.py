@@ -61,7 +61,7 @@ class PreferSetIsdisjoint(ProjectRule):
         limitations=(
             "Safe fixes require both operands to be comment-free set literals containing only native primitive constants. Dynamic/custom elements and nonliteral operands remain review-only.",
             "Explicit unshadowed built-in bool calls are predicates even in assignments and returns. Raw stored or returned intersections remain values, not predicates.",
-            "Set receivers must come from a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
+            "Set receivers and iterable operands may also come from a singly bound module-level frozenset constructor. Dynamic namespaces, global/nonlocal writes and local shadowing are excluded. Other receivers require a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
             "Dictionary key-view receivers require a literal/comprehension/constructor or one unreassigned, dominating local binding. Custom mappings and unproven parameters are excluded.",
             "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. Captured bindings in deferred lambda/generator bodies and starred intersection arguments are excluded. The other operand must be a known iterable.",
             "Nonliteral intersections remain suggestions because short-circuiting may make custom element equality or hashing side effects observable.",
@@ -131,11 +131,12 @@ class PreferSetIsdisjoint(ProjectRule):
         rebound_names = frozenset(
             node.id for node in context.nodes(ast.Name) if isinstance(node.ctx, (ast.Store, ast.Del))
         )
+        shadowed = _shadowed_builtins(tree, node_index=context.node_index)
+        module_sets = _module_frozensets(context, shadowed)
         fields = {
-            node: declared_set_fields(node, project, context, rebound_names)
+            node: declared_set_fields(node, project, context, rebound_names) | (module_sets - _stored_names(node))
             for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
         }
-        shadowed = _shadowed_builtins(tree, node_index=context.node_index)
         scanner = _Scanner(path, context.source_lines, shadowed, fields, proven_dict_key_views(tree, shadowed))
         scanner.scan_body(tree.body, set())
         scanner.diagnostics.sort(key=lambda item: (item.line, item.col))
@@ -313,19 +314,45 @@ class _Scanner:
 
 
 def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str], key_views: set[ast.Call]) -> bool:
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
-        return (_is_exact_set(node.left, exact, shadowed) or node.left in key_views) and _is_proven_iterable(
-            node.right, exact, shadowed
-        )
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "intersection"
-        and len(node.args) == 1
-        and not isinstance(node.args[0], ast.Starred)
-        and not node.keywords
-        and _is_exact_set(node.func.value, exact, shadowed)
+    match node:
+        case ast.BinOp(left=left, op=ast.BitAnd(), right=right):
+            return (_is_exact_set(left, exact, shadowed) or left in key_views) and _is_proven_iterable(
+                right, exact, shadowed
+            )
+        case ast.Call(func=ast.Attribute(value=receiver, attr="intersection"), args=[argument], keywords=[]) if (
+            not isinstance(argument, ast.Starred)
+        ):
+            return _is_exact_set(receiver, exact, shadowed)
+        case _:
+            return False
+
+
+def _module_frozensets(context: PythonFileContext, shadowed: frozenset[str]) -> set[str]:
+    inventory = context.binding_inventory
+    if context.dynamic_namespace or inventory.wildcard or "frozenset" in shadowed:
+        return set()
+    blocked = (
+        inventory.external_bindings
+        | inventory.mutated
+        | {name for scope, bindings in inventory.bindings.items() if scope is not context.tree for name in bindings}
     )
+    names: set[str] = set()
+    for name, bindings in inventory.bindings.get(context.tree, {}).items():
+        if len(bindings) != 1 or name in blocked:
+            continue
+        parent = inventory.parents.get(bindings[0])
+        if parent is None or inventory.parents.get(parent) is not context.tree:
+            continue
+        match parent:
+            case ast.Assign(targets=[ast.Name()], value=value) | ast.AnnAssign(target=ast.Name(), value=value):
+                match value:
+                    case ast.Call(func=ast.Name(id="frozenset"), args=[] | [_], keywords=[]):
+                        names.add(name)
+                    case _:
+                        pass
+            case _:
+                pass
+    return names
 
 
 def _is_builtin_bool_call(node: ast.expr, shadowed: frozenset[str]) -> bool:

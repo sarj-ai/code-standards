@@ -167,7 +167,7 @@ class InvalidConcurrentDdl(Rule):
         if "CONCURRENTLY" not in source.upper():
             return []
         if (
-            {part.casefold() for part in path.parts} & _NON_PRODUCTION
+            not _NON_PRODUCTION.isdisjoint(part.casefold() for part in path.parts)
             or is_dump_file(source, path)
             or is_generated_migration(path, source)
             or not is_migration_source(path, source)

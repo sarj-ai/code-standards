@@ -573,7 +573,7 @@ def _is_class_var(annotation: ast.expr, imports: ImportIndex, aliases: dict[str,
 
 
 def _is_ordinal_field_name(name: str) -> bool:
-    return bool(_ORDINAL_NAME_TOKENS & set(name.lower().split("_")))
+    return not _ORDINAL_NAME_TOKENS.isdisjoint(name.lower().split("_"))
 
 
 def _describes_smaller_exception(description: str, minimum: int) -> bool:

@@ -117,7 +117,7 @@ class NoNullComparison(Rule):
         source = sql_before_copy_input(source)
         if (
             _NULL.search(source) is None
-            or {part.casefold() for part in path.parts} & _EXCLUDED
+            or not _EXCLUDED.isdisjoint(part.casefold() for part in path.parts)
             or declared_dialect(source) not in {None, "postgresql"}
             or not is_postgres(source)
         ):

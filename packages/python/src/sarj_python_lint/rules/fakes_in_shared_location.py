@@ -149,7 +149,7 @@ def _is_shared_support(path: Path) -> bool:
         path.name == "conftest.py"
         or path.stem.lower() in _SHARED_SUPPORT_NAMES
         or bool(_SUPPORT_STEM_RE.search(path.stem.lower()))
-        or bool(set(parts) & _NON_INFRA_ROOT_NAMES)
+        or not _NON_INFRA_ROOT_NAMES.isdisjoint(parts)
         or _support_below_test_root(parts)
         or _non_collected_module_below_test_root(path, parts)
     )
@@ -160,8 +160,10 @@ def _support_below_test_root(parts: list[str]) -> bool:
     if not test_roots:
         return False
     below_root = parts[test_roots[-1] + 1 : -1]
-    return bool(set(below_root) & _SHARED_SUPPORT_NAMES)
+    return not _SHARED_SUPPORT_NAMES.isdisjoint(below_root)
 
 
 def _non_collected_module_below_test_root(path: Path, parts: list[str]) -> bool:
-    return bool(set(parts) & _TEST_ROOT_NAMES) and not (path.name.startswith("test") or path.name.endswith("_test.py"))
+    return not _TEST_ROOT_NAMES.isdisjoint(parts) and not (
+        path.name.startswith("test") or path.name.endswith("_test.py")
+    )

@@ -111,6 +111,7 @@ class PreferMatchTypeDispatch(ProjectRule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
+            "Guarded dispatch over proven classes is additionally a manual warning: keep the type check first, preserve guard order and retain the fallback. Guards with calls, assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
             "A single ordinary-class reuse-or-construction normalization is a warning when both branches first assign the same simple target, reusing the subject or constructing the checked class. Preserve all following branch work. This branch has no automatic fix and does not change established dispatch errors.",
             "Normalization requires an undecorated, stable module-local class with proven ordinary ancestry and nonescaping class references. Dynamic or mutated classes, unknown imports, constructor argument effects, pre-assignment work and later reassignment of the subject, target or class remain excluded; constructor arguments are simple names or constants.",
             "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
@@ -413,7 +414,7 @@ class PreferMatchTypeDispatch(ProjectRule):
         )
         if (
             not imports.builtin_is_unshadowed("isinstance")
-            or {"isinstance", "builtins.isinstance"} & unsafe_bindings
+            or not unsafe_bindings.isdisjoint({"isinstance", "builtins.isinstance"})
             or has_wildcard_import
         ):
             return []
@@ -463,11 +464,63 @@ class PreferMatchTypeDispatch(ProjectRule):
         )
         findings.extend(_review_dispatch_findings(context, local_classes, unsafe_bindings, findings))
         findings.extend(_reuse_or_construct_findings(context, all_nodes, local_classes, findings))
+        findings.extend(_guarded_dispatch_findings(context, local_classes, unsafe_bindings, findings))
         if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         findings = list({(finding.line, finding.col): finding for finding in findings}.values())
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
+
+
+def _guarded_dispatch_findings(
+    context: PythonFileContext,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+    existing: list[Diagnostic],
+) -> list[Diagnostic]:
+    used = {finding.line for finding in existing}
+    findings: list[Diagnostic] = []
+    for candidates in _review_sequences(context, used):
+        branches = list(candidates)
+        if not any(isinstance(node.test, ast.BoolOp) and isinstance(node.test.op, ast.And) for node in branches):
+            continue
+        parsed = [_guarded_type_branch(node.test, context.imports, local_classes, unsafe_bindings) for node in branches]
+        if _parsed_dispatch(parsed) is None:
+            continue
+        used.update(branch.lineno for branch in branches)
+        first = branches[0]
+        findings.append(
+            Diagnostic(
+                context.path,
+                first.lineno,
+                first.col_offset + 1,
+                "SARJ080",
+                "Use match/case class patterns with guards for this type dispatch; preserve guard order "
+                "and fallbacks. This recommendation has no automatic rewrite.",
+                severity=Severity.WARNING,
+            )
+        )
+    return findings
+
+
+def _guarded_type_branch(
+    test: ast.expr,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> _TypeBranch | None:
+    match test:
+        case ast.BoolOp(op=ast.And(), values=[first, *guards]):
+            if any(
+                isinstance(part, ast.Call | ast.NamedExpr | ast.Await | ast.Yield | ast.YieldFrom)
+                for guard in guards
+                for part in ast.walk(guard)
+            ):
+                return None
+            test = first
+        case _:
+            pass
+    return _type_branch(test, imports, local_classes, unsafe_bindings)
 
 
 def _reuse_or_construct_findings(
@@ -531,7 +584,7 @@ def _normalization_reference(
     if not _normalization_arguments_are_inert(construction):
         return None
     rebound = any(
-        set(binding_names(child)) & {subject, target, kind}
+        not {subject, target, kind}.isdisjoint(binding_names(child))
         for statement in [*node.body[1:], *node.orelse[1:]]
         for child in ast.walk(statement)
     )
@@ -692,7 +745,7 @@ def _review_dispatch_proven(branches: Iterable[ast.If], evidence: _ReviewEvidenc
     has_model_or_enum = False
     for node in branches:
         branch = _review_branch(node, evidence)
-        if branch is None or (subject is not None and branch.subject != subject) or seen & branch.types:
+        if branch is None or (subject is not None and branch.subject != subject) or not seen.isdisjoint(branch.types):
             return None
         subject = branch.subject
         seen.update(branch.types)
@@ -1060,7 +1113,7 @@ def _terminal_prefix(
         if not isinstance(statement, ast.If) or statement.orelse or not body_terminates(statement.body):
             break
         branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
-        if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
+        if branch is None or (subject is not None and branch.subject != subject) or not seen.isdisjoint(branch.types):
             break
         run.append(statement)
         subject = branch.subject
@@ -1083,9 +1136,12 @@ def _dispatch(
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
 ) -> _Dispatch | None:
-    if len(branches) < _MIN_BRANCHES:
+    return _parsed_dispatch([_type_branch(branch.test, imports, local_classes, unsafe_bindings) for branch in branches])
+
+
+def _parsed_dispatch(parsed: list[_TypeBranch | None]) -> _Dispatch | None:
+    if len(parsed) < _MIN_BRANCHES:
         return None
-    parsed = [_type_branch(branch.test, imports, local_classes, unsafe_bindings) for branch in branches]
     if any(branch is None for branch in parsed):
         return None
     typed = [branch for branch in parsed if branch is not None]
@@ -1094,12 +1150,12 @@ def _dispatch(
         return None
     seen: set[str] = set()
     for branch in typed:
-        if seen & branch.types:
+        if not seen.isdisjoint(branch.types):
             return None
         seen.update(branch.types)
     if len(seen) < _MIN_BRANCHES:
         return None
-    return _Dispatch(subjects.pop(), len(branches))
+    return _Dispatch(subjects.pop(), len(parsed))
 
 
 def _two_arm_ast_projection_findings(
@@ -1257,7 +1313,7 @@ def _or_type_branch(
         return None
     combined_types: set[str] = set()
     for part in branches:
-        if combined_types & part.types:
+        if not combined_types.isdisjoint(part.types):
             return None
         combined_types.update(part.types)
     return _TypeBranch(branches[0].subject, frozenset(combined_types))
@@ -1269,12 +1325,13 @@ def _type_references(
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
 ) -> frozenset[str] | None:
-    if isinstance(expression, ast.Tuple):
-        parts = expression.elts
-    elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
-        parts = _flatten_union(expression)
-    else:
-        parts = [expression]
+    match expression:
+        case ast.Tuple(elts=parts):
+            pass
+        case ast.BinOp(op=ast.BitOr()):
+            parts = _flatten_union(expression)
+        case _:
+            parts = [expression]
     references = [_type_reference(part, imports, local_classes, unsafe_bindings) for part in parts]
     if any(reference is None for reference in references):
         return None
