@@ -31,6 +31,9 @@ from pydantic import (
 from sarj_standards.libs.json_boundary import parse_unique_json
 
 
+_BASE64_QUANTUM_CHARS = 4
+
+
 _DEADLINE_SECONDS: Final = 15
 _CONTROL_CHAR_LIMIT: Final = 32
 _MIN_NONCE_BYTES: Final = 16
@@ -378,7 +381,9 @@ def _script_source(value: str) -> bool:
     if not match:
         return False
     try:
-        decoded = base64.b64decode(match.group(2) + "=" * (-len(match.group(2)) % 4), altchars=b"-_", validate=True)
+        decoded = base64.b64decode(
+            match.group(2) + "=" * (-len(match.group(2)) % _BASE64_QUANTUM_CHARS), altchars=b"-_", validate=True
+        )
     except binascii.Error:
         return False
     return (

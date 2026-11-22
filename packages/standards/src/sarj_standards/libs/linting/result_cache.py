@@ -39,6 +39,10 @@ from sarj_standards.libs.diagnostics import (
 from sarj_standards.libs.json_boundary import parse_unique_json
 
 
+_FINGERPRINT_PREVIEW_CHARS = 12
+_CACHE_BLOCK_SHIFT = 20
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
@@ -170,7 +174,7 @@ def cached_analysis(
         outcomes.append(loaded is not None)
     if loaded is not None:
         if outcomes is None:
-            _notice(analyzer, f"reused {fingerprint[:12]}")
+            _notice(analyzer, f"reused {fingerprint[:_FINGERPRINT_PREVIEW_CHARS]}")
         if cache.writable:
             _touch(entry)
         return loaded
@@ -182,7 +186,7 @@ def cached_analysis(
         except OSError as error:
             _notice(analyzer, f"result not stored ({type(error).__name__})")
     if outcomes is None:
-        _notice(analyzer, f"ran {fingerprint[:12]}")
+        _notice(analyzer, f"ran {fingerprint[:_FINGERPRINT_PREVIEW_CHARS]}")
     return result
 
 
@@ -379,7 +383,7 @@ def _file_digest(path: Path) -> str:
         return "directory"
     file_digest = sha256()
     with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
+        for block in iter(lambda: stream.read(1 << _CACHE_BLOCK_SHIFT), b""):
             file_digest.update(block)
     return file_digest.hexdigest()
 

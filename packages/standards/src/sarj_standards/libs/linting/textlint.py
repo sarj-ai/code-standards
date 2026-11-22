@@ -51,6 +51,9 @@ from sarj_standards.libs.rules.contracts import (
 from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml_documents, sequence_items
 
 
+_SHELL_COMMENT_HEADER_LINES = 12
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -2996,7 +2999,7 @@ def _has_generated_config_header(path: Path, lines: list[str]) -> bool:
     if path.suffix.lower() not in {".yaml", ".yml", ".toml", ".jsonc"}:
         return False
     comments: list[str] = []
-    for line in lines[:12]:
+    for line in lines[:_SHELL_COMMENT_HEADER_LINES]:
         if not line.strip():
             continue
         parsed = _standalone_comment(path, line)

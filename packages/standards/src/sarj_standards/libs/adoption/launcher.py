@@ -188,7 +188,7 @@ def rewrite_native_bootstrap_pin(source: bytes, *, version: str) -> bytes | None
         if arguments == ("set", "-euo", "pipefail"):
             continue
         prefix = ("uv", "run", "--no-config", "--no-project", "--python", TOOL_PYTHON, "--with")
-        if arguments[:7] != prefix or arguments[8:] != (
+        if arguments[: len(prefix)] != prefix or arguments[len(prefix) + 1 :] != (
             "python",
             "-m",
             "sarj_standards.libs.adoption.native_bootstrap",

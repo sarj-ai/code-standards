@@ -37,14 +37,37 @@ describe("managed CSS guidance", () => {
     ],
     ["important longhand", ".a { animation-timeline: scroll() !important; animation: reveal 1s; }"],
     ["rule revert", ".a { animation-timeline: scroll(); animation: revert-rule; }"],
+    ["inherited timeline", ".a { animation-timeline: INHERIT; animation: reveal 1s; }"],
+    ["escaped inherited timeline", ".a { animation-timeline: \\69nherit; animation: reveal 1s; }"],
+    [
+      "variable shorthand",
+      ".a { transition-behavior: allow-discrete; transition: var(--transition); }",
+    ],
+    [
+      "escaped variable shorthand",
+      ".a { transition-behavior: allow-discrete; transition: v\\61r(--transition); }",
+    ],
+    [
+      "escaped environment shorthand",
+      ".a { animation-timeline: scroll(); animation: e\\6ev(--animation); }",
+    ],
     ["initial timeline", ".a { animation-timeline: auto; animation: reveal 1s; }"],
+    ["escaped initial timeline", ".a { animation-timeline: \\61uto; animation: reveal 1s; }"],
     ["disabled animation", ".a { animation-timeline: scroll(); animation: none; }"],
+    ["escaped disabled animation", ".a { animation-timeline: scroll(); animation: \\6eone; }"],
     [
       "explicit discrete shorthand",
       ".a { transition-behavior: allow-discrete; transition: display 1s allow-discrete; }",
     ],
+    [
+      "escaped discrete shorthand",
+      ".a { transition-behavior: allow-discrete; transition: display 1s allow-\\64iscrete; }",
+    ],
     ["separate cascade", ".a { animation-timeline: scroll(); } .b { animation: reveal 1s; }"],
-    ["Tailwind media tokens", "@utility container { @media (width >= --theme(--breakpoint-sm)) { max-width: none; } }"],
+    [
+      "Tailwind media tokens",
+      "@utility container { @media (width >= --theme(--breakpoint-sm)) { max-width: none; } }",
+    ],
     ["mixed typography", ".a { font-size: clamp(1rem, 1rem + 1vw, 2rem); }"],
     ["mixed calculation", ".a { font-size: calc(1rem + 2px); }"],
     ["zero and relative text", ".a { font-size: 0px; } .b { font-size: 120%; }"],

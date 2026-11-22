@@ -18,6 +18,9 @@ from sarj_iac_lint.rule_base import (
 from sarj_iac_lint.rules._literal_policy import balanced_blocks, grant_roles, local_collections
 
 
+_JSONENCODE_PREFIX_TOKENS = 3
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
@@ -127,7 +130,7 @@ def _data_policy_roles(block: Block, collections: Mapping[str, str]) -> frozense
 
 def _jsonencode_roles(value: str) -> frozenset[str]:
     parts = tokens(value)
-    if parts[:3] != ("jsonencode", "(", "{") or parts[-2:] != ("}", ")"):
+    if parts[:_JSONENCODE_PREFIX_TOKENS] != ("jsonencode", "(", "{") or parts[-2:] != ("}", ")"):
         return frozenset()
     # Match only literal role attributes of direct objects in the bindings list.
     # Strings in members, metadata, nested conditions or unknown expressions never prove a grant.

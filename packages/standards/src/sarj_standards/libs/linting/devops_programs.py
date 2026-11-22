@@ -28,6 +28,9 @@ from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 from .shell_ast import ShellParseError, make_shell_parser, parse_shell as parse_shell
 
 
+_OCTAL_ESCAPE_BYTE_MODULUS = 256
+
+
 if TYPE_CHECKING:
     from yaml.error import Mark
 
@@ -1857,7 +1860,7 @@ def _ansi_literal(value: str) -> str:
                 msg = "unsupported ANSI-C quoted codepoint"
                 raise ProgramProjectionError(msg) from error
         if escaped[0] in string.octdigits:
-            return chr(int(escaped, 8) % 256)
+            return chr(int(escaped, 8) % _OCTAL_ESCAPE_BYTE_MODULUS)
         if escaped.startswith("c") and len(escaped) > 1:
             return chr(127 if escaped[1] == "?" else ord(escaped[1].upper()) & 31)
         if escaped == "\n":

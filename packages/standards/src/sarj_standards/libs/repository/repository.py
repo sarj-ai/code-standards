@@ -22,6 +22,10 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
+_COMMIT_MESSAGE_BATCH_SIZE = 128
+_PYPROJECT_VERSION_SCAN_CHARS = 2_000
+
+
 _CONFLICT_RE: Final = re.compile(r"^(?:<<<<<<< |>>>>>>> |\|\|\|\|\|\|\| )", re.MULTILINE)
 _GITHUB_MERGE_SUBJECT_RE: Final = re.compile(r"^Merge pull request #[1-9][0-9]* from [A-Za-z0-9_.-]+/[A-Za-z0-9._/-]+$")
 _PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
@@ -249,7 +253,7 @@ def _commit_findings(
 
 
 def _commit_messages(root: Path, revisions: Sequence[str]) -> Iterable[tuple[str, list[str], str]]:
-    for offset in range(0, len(revisions), 128):
+    for offset in range(0, len(revisions), _COMMIT_MESSAGE_BATCH_SIZE):
         batch = revisions[offset : offset + 128]
         fields = _git(root, "show", "--no-patch", "--format=%P%x00%H%n%s%n%b%n%x00", *batch, "--").stdout.split("\0")
         if len(fields) != len(batch) * 2 + 1 or fields[-1].strip():
@@ -557,7 +561,7 @@ def _manifest_version(path: Path) -> str | None:
         except OSError, json.JSONDecodeError:
             return None
         return text_field(as_table(value), "version")
-    match = _PYPROJECT_VERSION_RE.search(_read_text(path)[:2000])
+    match = _PYPROJECT_VERSION_RE.search(_read_text(path)[:_PYPROJECT_VERSION_SCAN_CHARS])
     return match.group(1) if match else None
 
 

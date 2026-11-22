@@ -100,6 +100,9 @@ from sarj_standards.libs.filesystem import is_link_like
 from .process import ProcessRequest
 
 
+_ERROR_PREVIEW_LINES = 3
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Sequence
 
@@ -783,7 +786,7 @@ def _classify(
         return None if selected else _stale_suppressions(message, root=root, cwd=cwd)
     if message.startswith(_PLUGIN_CRASH):
         # Oxlint prints the message, the file path, then the JS error.
-        lines = [*message.splitlines(), message, message][:3]
+        lines = [*message.splitlines(), message, message][:_ERROR_PREVIEW_LINES]
         failure = f"Oxlint JS plugin failed on {record.filename}: {lines[2]}"
         return ExecutionIssue("oxlint", "tool-failure", _redact(failure, root))
     path = _reported_path(record.filename, cwd, root)

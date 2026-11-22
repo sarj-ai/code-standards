@@ -12,6 +12,9 @@ from pydantic import JsonValue
 from sarj_standards.libs.json_boundary import parse_json
 
 
+_BASE64_QUANTUM_CHARS = 4
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -53,7 +56,7 @@ def _integer_string(
 def _base64(value: object) -> bool:
     if isinstance(value, str):
         compact = re.sub(r"[ \t\r\n\f\v]", "", value)
-        base64.b64decode(compact + "=" * (-len(compact) % 4), altchars=b"-_", validate=True)
+        base64.b64decode(compact + "=" * (-len(compact) % _BASE64_QUANTUM_CHARS), altchars=b"-_", validate=True)
     return True
 
 

@@ -15,6 +15,9 @@ from sarj_standards.libs.filesystem import is_link_like
 from .manifest import CorpusKind, CorpusSource
 
 
+_KIB_FACTOR = 1024
+
+
 _GIT_REVISION_OUTPUT_LINES = 2
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _REVISION = re.compile(r"^[0-9a-f]{40}$")
@@ -91,7 +94,7 @@ def snapshot_inventory(source: CorpusSource, files: tuple[Path, ...]) -> CorpusS
         digest.update(size.to_bytes(8, "big"))
         read = 0
         with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
+            while chunk := stream.read(_KIB_FACTOR * _KIB_FACTOR):
                 digest.update(chunk)
                 read += len(chunk)
         after = path.stat()
@@ -137,7 +140,8 @@ def selected_files(source: CorpusSource) -> tuple[Path, ...]:
 
 def _matches(path: str, patterns: tuple[str, ...]) -> bool:
     return any(
-        fnmatch(path, pattern) or (pattern.startswith("**/") and fnmatch(path, pattern[3:])) for pattern in patterns
+        fnmatch(path, pattern) or (pattern.startswith("**/") and fnmatch(path, pattern[len("**/") :]))
+        for pattern in patterns
     )
 
 

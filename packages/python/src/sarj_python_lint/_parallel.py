@@ -14,6 +14,9 @@ from sarj_python_lint.rules._paths import clear_path_caches
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
+_BUFFERED_ITEMS_PER_WORKER = 4
+
+
 if TYPE_CHECKING:
     from sarj_python_lint._prepared_sources import PreparedSourceSnapshot
     from sarj_python_lint.rules._project_index import ProjectSourceSnapshot
@@ -182,7 +185,7 @@ def check_parallel(
             )
             for path, source in loaded.items()
         )
-        for result in pool.map(_check_file, items, chunksize=1, buffersize=workers * 4):
+        for result in pool.map(_check_file, items, chunksize=1, buffersize=workers * _BUFFERED_ITEMS_PER_WORKER):
             # Drain actual results after either replay signal so a later worker
             # failure cannot be disguised as a clean serial replay.
             if needs_serial:

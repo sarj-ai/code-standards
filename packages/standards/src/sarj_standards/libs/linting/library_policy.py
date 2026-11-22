@@ -17,6 +17,9 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
+_GENERATED_HEADER_CHARS = 500
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
@@ -769,7 +772,7 @@ def _requirements_dependencies(
     except (OSError, UnicodeError) as exc:
         msg = f"cannot read {path}: {exc}"
         raise ManifestPolicyError(msg) from exc
-    if any(marker in text[:500].lower() for marker in _GENERATED_MARKERS):
+    if any(marker in text[:_GENERATED_HEADER_CHARS].lower() for marker in _GENERATED_MARKERS):
         return ()
     result: list[tuple[Path, Ecosystem, str]] = []
     for raw in _REQUIREMENTS_CONTINUATION.sub(r"\1", text).splitlines():

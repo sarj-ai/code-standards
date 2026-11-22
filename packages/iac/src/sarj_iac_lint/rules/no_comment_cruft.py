@@ -24,6 +24,9 @@ from sarj_iac_lint.rule_base import (
 )
 
 
+_GENERATED_HEADER_LINES = 20
+
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
@@ -265,7 +268,7 @@ def is_decorative_banner(body: str) -> bool:
 
 
 def _generated_header(source: str, *, hcl: bool = True) -> bool:
-    lines = header_comment_lines(source) if hcl else tuple(source.splitlines()[:20])
+    lines = header_comment_lines(source) if hcl else tuple(source.splitlines()[:_GENERATED_HEADER_LINES])
     header = "\n".join(line for line in lines if line.lstrip().startswith(("#", "//", "/*", "*")))
     return _GENERATED_RE.search(header) is not None
 

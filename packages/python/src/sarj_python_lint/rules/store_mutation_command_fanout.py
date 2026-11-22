@@ -23,6 +23,9 @@ from sarj_python_lint.rules._store_writes import methods, own_nodes
 from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
 
 
+_MAX_UPSERT_CALL_DEPTH = 3
+
+
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._store_writes import Function
@@ -162,7 +165,7 @@ def _upsert_methods(declared: dict[str, Function], context: PythonFileContext) -
     if upsert is None or not _instance_method(upsert, context):
         return set()
     reachable = {upsert}
-    for _ in range(3):
+    for _ in range(_MAX_UPSERT_CALL_DEPTH):
         discovered = {
             declared[node.func.attr]
             for method in reachable

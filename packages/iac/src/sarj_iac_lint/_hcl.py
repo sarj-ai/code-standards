@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING, NamedTuple
 from sarj_iac_lint.json_boundary import parse_json
 
 
+_HEADER_SCAN_LINES = 20
+
+
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Mapping
 
@@ -339,7 +342,7 @@ def suppression_comment_lines(source: str) -> Mapping[int, str]:
 @lru_cache(maxsize=32)
 def header_comment_lines(source: str, *, leading_only: bool = False) -> tuple[str, ...]:
     limit = 0
-    for _ in range(20):
+    for _ in range(_HEADER_SCAN_LINES):
         newline = source.find("\n", limit)
         if newline < 0:
             limit = len(source)

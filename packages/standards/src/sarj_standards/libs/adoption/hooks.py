@@ -16,6 +16,9 @@ from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml
 from . import launcher, manifest
 
 
+_BOOTSTRAP_PACKAGE_INDEX = 6
+
+
 if TYPE_CHECKING:
     from yaml.nodes import MappingNode
 
@@ -781,7 +784,7 @@ def _is_exact_standards_argv(tokens: list[str]) -> bool:
         return False
     candidate = tokens[: len(prefix)]
     return (
-        candidate[:6] == list(prefix[:6])
+        candidate[:_BOOTSTRAP_PACKAGE_INDEX] == list(prefix[:_BOOTSTRAP_PACKAGE_INDEX])
         and re.fullmatch(r"(?:sarj-standards-bootstrap|code-standards)==[0-9]+\.[0-9]+\.[0-9]+", candidate[6])
         is not None
         and candidate[7] == launcher.COMMAND

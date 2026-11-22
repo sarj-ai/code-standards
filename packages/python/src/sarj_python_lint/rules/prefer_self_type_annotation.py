@@ -567,7 +567,7 @@ def _looks_like_metaclass(node: ast.ClassDef) -> bool:
         if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) or statement.name != "__new__":
             continue
         positional = (*statement.args.posonlyargs, *statement.args.args)
-        names = tuple(argument.arg for argument in positional[1:4])
+        names = tuple(argument.arg for argument in positional[1 : _METACLASS_NEW_CONTRACT_PARAMETER_COUNT + 1])
         if (
             len(names) == _METACLASS_NEW_CONTRACT_PARAMETER_COUNT
             and names[0] in {"name", "class_name"}

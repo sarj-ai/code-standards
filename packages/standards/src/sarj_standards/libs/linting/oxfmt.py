@@ -31,6 +31,9 @@ from . import external, oxlint
 from .process import ToolResolution, executor_capabilities
 
 
+_MILLISECONDS_PER_SECOND = 1_000
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -163,7 +166,7 @@ def analyze(
         diagnostics=diagnostics,
         analyzer_id=AnalyzerId(SOURCE),
         invocation_id=invocation,
-        duration_ms=round((time.monotonic() - started) * 1_000),
+        duration_ms=round((time.monotonic() - started) * _MILLISECONDS_PER_SECOND),
         file_count=len(selected),
     )
 

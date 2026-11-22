@@ -32,6 +32,10 @@ def test_real_test_comments(rule: Rule, comment: str) -> None:
     [
         "# ruff: noqa: F401\nimport os\n",
         "# pyright: strict\nvalue = 1\n",
+        "# nosemgrep: python.lang.security.audit.dangerous-system-call\nvalue = 1\n",
+        "value = 1  # nosec B101\n",
+        "# flake8: noqa\nvalue = 1\n",
+        "# language=SQL\nquery = 'SELECT 1'\n",
         "# Copyright 2026 Example\nvalue = 1\n",
         "# Copyright 2026 Example\n# Permission is hereby granted, free of charge.\n# This software is provided without warranty.\nvalue = 1\n",
         "#!/usr/bin/env python\nvalue = 1\n",
@@ -68,3 +72,36 @@ def test_selected_rule_reports_phase_comments_and_test_prose(rule: Rule) -> None
 )
 def test_directory_ownership_and_test_declarations(rule: Rule, path: str, source: str, expected: int) -> None:
     assert len(rule.check(Path(path), source)) == expected
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+def test_pep723_metadata_preserves_adjacent_test_comment_findings(rule: Rule, ending: str) -> None:
+    source = (
+        "# Explain the external fixture.\n"
+        "# /// script\n"
+        '# requires-python = ">=3.12"\n'
+        '# dependencies = ["pytest==9.1.1"]\n'
+        "# ///\n"
+        "# Explain the assertion.\n"
+        "def test_ready():\n    assert ready\n"
+    ).replace("\n", ending)
+    assert [finding.line for finding in rule.check(Path("tests/test_ready.py"), source)] == [1, 6]
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        "# /// script\n# dependencies = []\n",
+        "# /// other\n# dependencies = []\n# ///\n",
+        "# /// script\n# dependencies = [\n# ///\n",
+        "# /// script\n#dependencies = []\n# ///\n",
+        "# /// script\n# dependencies = []\n# ///\n# /// script\n# dependencies = []\n# ///\n",
+    ],
+)
+def test_invalid_metadata_does_not_hide_test_comments(rule: Rule, metadata: str) -> None:
+    assert rule.check(Path("tests/test_ready.py"), metadata)
+
+
+def test_script_metadata_in_string_data_does_not_protect_real_comments(rule: Rule) -> None:
+    source = 'text = """\n# /// script\n# dependencies = []\n# ///\n"""\n# Explain the assertion.\n'
+    assert [finding.line for finding in rule.check(Path("tests/test_ready.py"), source)] == [6]
