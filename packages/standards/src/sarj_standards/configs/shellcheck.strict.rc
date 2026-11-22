@@ -1,5 +1,6 @@
 # Direct ShellCheck defaults preserve existing native gates. Standards enables
-# advisory checks explicitly with --norc and controls their warning severity.
+# advisory checks explicitly with --norc. Its shared severity adapter also makes
+# selected quotation/token-boundary findings errors without changing activation.
 external-sources=false
 extended-analysis=true
 enable=check-extra-masked-returns

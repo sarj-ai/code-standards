@@ -25,7 +25,7 @@ from sarj_standards.libs.linting.toml_literals import TomlStringLocationError, p
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
-from .shell_ast import ShellParseError, make_shell_parser, parse_shell as parse_shell
+from .shell_ast import ShellParseError, ShellSyntaxError, make_shell_parser, parse_shell as parse_shell
 
 
 _OCTAL_ESCAPE_BYTE_MODULUS = 256
@@ -40,6 +40,7 @@ _MAX_DEPTH = 32
 _MAX_NODES = 100_000
 _WORKFLOW_PATH_COMPONENTS = 3
 _MAKE_UNKNOWN = "\0make_unknown\0"
+_MAKE_EMPTY = "\0make_empty\0"
 WORKFLOW_EXPRESSION_RE = re.compile(r"\$\{\{(?:[^'}]++|'(?:[^']++|'')*+'|}(?!}))*+\}\}")
 
 
@@ -310,7 +311,9 @@ def _walk(node: Node, *, depth: int = 0) -> list[Node]:
     return result
 
 
-def _make_source(source: str, variables: Mapping[str, str] | None = None, depth: int = 0) -> str:
+def _make_source(
+    source: str, variables: Mapping[str, str] | None = None, depth: int = 0, *, preserve_empty: bool = False
+) -> str:
     if depth >= _MAX_DEPTH:
         msg = "Make variable expansion exceeds analysis bound"
         raise ProgramProjectionError(msg)
@@ -324,12 +327,12 @@ def _make_source(source: str, variables: Mapping[str, str] | None = None, depth:
         if source.startswith(("$(", "${"), index):
             cursor = _make_expansion_end(source, index)
             name = source[index + 2 : cursor - 1]
-            result.append(_make_variable_source(name, variables, depth))
+            result.append(_make_variable_source(name, variables, depth, preserve_empty=preserve_empty))
             index = cursor
             continue
         if source[index] == "$" and index + 1 < len(source):
             name = source[index + 1]
-            result.append(_make_variable_source(name, variables, depth))
+            result.append(_make_variable_source(name, variables, depth, preserve_empty=preserve_empty))
             index += 2
             continue
         result.append(source[index])
@@ -337,15 +340,20 @@ def _make_source(source: str, variables: Mapping[str, str] | None = None, depth:
     return "".join(result)
 
 
-def _make_variable_source(name: str, variables: Mapping[str, str] | None, depth: int) -> str:
+def _make_variable_source(
+    name: str, variables: Mapping[str, str] | None, depth: int, *, preserve_empty: bool = False
+) -> str:
     if name.lstrip().startswith(("shell ", "eval ")):
         return "$(embedded_make_program)"
     if variables is not None and name in variables:
-        return _make_source(variables[name], variables, depth + 1)
+        value = _make_source(variables[name], variables, depth + 1)
+        return _MAKE_EMPTY if preserve_empty and not value else value
     return _MAKE_UNKNOWN
 
 
 def _make_shell_source(source: str, shell_parser: ShellParser) -> str:
+    if _MAKE_EMPTY in source:
+        source = _make_empty_assignment_values(source, shell_parser)
     if _MAKE_UNKNOWN not in source:
         return source
     # An internal marker carries provenance through recursive/simple aliases.
@@ -367,6 +375,53 @@ def _make_shell_source(source: str, shell_parser: ShellParser) -> str:
     for position in reversed(positions):
         raw = raw[:position] + replacements[position] + raw[position + len(marker) :]
     return raw.decode("utf-8")
+
+
+def _make_empty_assignment_values(source: str, shell_parser: ShellParser) -> str:
+    # Preserve explicit empty Make values only inside assignments. Empty command
+    # and argument expansions must still disappear; literal NAME= stays unchanged.
+    parts = source.encode().split(_MAKE_EMPTY.encode())
+    raw = b"".join(parts)
+    positions = {offset for offset in accumulate(map(len, parts[:-1])) if raw[offset - 1 : offset] == b"="}
+    if not positions:
+        return raw.decode()
+    masked = raw.decode().replace(_MAKE_UNKNOWN, "_" * len(_MAKE_UNKNOWN))
+    try:
+        tree = shell_parser(masked)
+    except ShellSyntaxError:
+        return raw.decode()  # Native ShellCheck retains ownership of malformed source.
+    except ShellParseError as error:
+        msg = f"Make empty value shell parser failed: {error}"
+        raise ProgramProjectionError(msg) from error
+    for offset in sorted(positions & _make_empty_assignment_ends(tree), reverse=True):
+        raw = raw[:offset] + b"''" + raw[offset:]
+    return raw.decode()
+
+
+def _make_empty_assignment_ends(
+    node: object,  # sarj-noqa: SARJ528 -- Validate the native shell AST before using assignment offsets.
+    depth: int = 0,
+) -> set[int]:
+    if depth >= _MAX_DEPTH:
+        msg = "Make empty value shell AST exceeds analysis bound"
+        raise ProgramProjectionError(msg)
+    if is_object_list(node):
+        return set[int]().union(*(_make_empty_assignment_ends(child, depth + 1) for child in node))
+    if not is_object_mapping(node):
+        return set()
+    ends: set[int] = set()
+    if node.get("Type") == "CallExpr":
+        for assignment in _nodes(node.get("Assigns")):
+            if assignment.get("Value") is None:
+                offset = _mapping(assignment.get("End")).get("Offset")
+                if type(offset) is not int or offset < 0:
+                    msg = "invalid Make empty assignment offset"
+                    raise ProgramProjectionError(msg)
+                ends.add(offset)
+    for key, value in node.items():
+        if key not in {"Pos", "End"}:
+            ends.update(_make_empty_assignment_ends(value, depth + 1))
+    return ends
 
 
 def _make_unknown_words(
@@ -505,7 +560,9 @@ class _MakeRecipes:
             self.blocks.append(
                 ExecutionBlock(
                     self.start,
-                    _make_shell_source(_make_source("\n".join(self.pending), variables), self.shell_parser),
+                    _make_shell_source(
+                        _make_source("\n".join(self.pending), variables, preserve_empty=True), self.shell_parser
+                    ),
                     interpreter=interpreter,
                 )
             )
