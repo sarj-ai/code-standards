@@ -168,6 +168,42 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert not any(value["provider"] in {"swiftformat", "mobsfscan"} for value in rules)
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "eslint-js:preserve-caught-error",
+        "unicorn:no-lonely-if",
+        "unicorn-js:prefer-single-object-destructuring",
+    ],
+)
+def test_promoted_upstream_catalog_levels_match_every_managed_context(key: str) -> None:
+    payload = _object(parse_json(ARTIFACT.read_text(encoding="utf-8")))
+    rules = [_object(value) for value in _array(payload["rules"])]
+    promoted = next(rule for rule in rules if rule["key"] == key)
+
+    assert {
+        _text(_object(context)["level"])
+        for profile in _array(promoted["profiles"])
+        for context in _array(_object(profile)["contexts"])
+    } == {"error"}
+
+
+def test_next_barrel_catalog_preserves_both_contexts_and_warning_severity() -> None:
+    payload = _object(parse_json(ARTIFACT.read_text(encoding="utf-8")))
+    rules = [_object(value) for value in _array(payload["rules"])]
+    barrel = next(rule for rule in rules if rule["key"] == "oxc:no-barrel-file")
+
+    assert {
+        (_text(_object(profile)["name"]), _text(_object(context)["id"]), _text(_object(context)["level"]))
+        for profile in _array(barrel["profiles"])
+        for context in _array(_object(profile)["contexts"])
+    } == {
+        (profile, context, "warning")
+        for profile in ("application", "standard")
+        for context in ("next-app-tsx", "next-pages-tsx")
+    }
+
+
 def _assert_react_doctor_inventory(providers: list[dict[str, JsonValue]], rules: list[dict[str, JsonValue]]) -> None:
     react_doctor = next(value for value in providers if value["id"] == "react-doctor")
     assert react_doctor == {

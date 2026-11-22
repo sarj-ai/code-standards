@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from importlib.resources import files
 import json
 from pathlib import Path
 import subprocess
 from typing import Final
 
+import pytest
+
+from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.configs import OXLINT_SUPPRESSIONS
+from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.diagnostics import Completion, ToolReport
-from sarj_standards.libs.linting import oxlint
+from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import oxfmt, oxlint
 from tests.oxlint_project import analyze, commands, environment, project
 
 
@@ -48,6 +54,206 @@ _SOURCES: Final = {
     ),
     "src/legacy/b.ts": "console.log(1);\nexport const b = 1;\n",
 }
+
+
+@pytest.mark.parametrize("staged", [False, True], ids=("file-check", "staged-check"))
+@pytest.mark.parametrize("suppressed", [False, True], ids=("new-finding", "accepted-baseline"))
+@pytest.mark.parametrize(
+    ("rule", "filename", "source"),
+    [
+        (
+            "eslint-js/preserve-caught-error",
+            "src/example.js",
+            "export function example() { try { throw new Error('Original'); } catch (error) { throw new Error(`Operation failed: ${String(error)}`); } }\n",
+        ),
+        (
+            "unicorn/no-lonely-if",
+            "src/example.ts",
+            "interface Condition { readonly enabled: boolean; readonly ready: boolean; } export function example(condition: Condition, publish: () => void): void { if (condition.enabled) { if (condition.ready) { publish(); } } }\n",
+        ),
+        (
+            "unicorn-js/prefer-single-object-destructuring",
+            "src/example.js",
+            "export function example() { const source = {first: 1, second: 2}; const {first} = source; const {second} = source; return first + second; }\n",
+        ),
+    ],
+)
+def test_promoted_upstream_findings_block_core_file_and_staged_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    rule: str,
+    filename: str,
+    source: str,
+    staged: bool,
+    suppressed: bool,
+) -> None:
+    root = project(
+        tmp_path / "repo",
+        {filename: source},
+        config='import { createConfig } from "./oxlint.strict.ts"; export default createConfig();\n',
+        git=staged,
+    )
+    (root / "oxlint.strict.ts").write_text(
+        files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
+    )
+    (root / "oxfmt.strict.mts").write_text(
+        files("sarj_standards").joinpath("configs/oxfmt.strict.mts").read_text(encoding="utf-8")
+    )
+    (root / "oxfmt.config.mts").write_text(oxfmt.render_config(oxfmt.OxfmtSeed(None, {})), encoding="utf-8")
+    formatter = oxfmt.write_command([filename], project=root, root=root)
+    subprocess.run(formatter.argv, cwd=formatter.cwd, check=True, capture_output=True)
+    if staged:
+        subprocess.run(("git", "-C", str(root), "add", "--", filename), check=True, capture_output=True)
+    if suppressed:
+        (root / OXLINT_SUPPRESSIONS).write_text(
+            json.dumps({filename: {oxlint.reported_rule_id(rule): {"count": 1}}}), encoding="utf-8"
+        )
+    paths = ["--staged"] if staged else [filename]
+
+    status = main(
+        [
+            "--root",
+            str(root),
+            "check",
+            "--format",
+            "json",
+            "--trust-repository-code",
+            *paths,
+        ]
+    )
+
+    report = as_table(parse_json(capsys.readouterr().out))
+    assert status == (0 if suppressed else 1), report
+    assert report["completion"] == "complete"
+    assert report["issues"] == []
+    assert [(as_table(item)["code"], as_table(item)["severity"]) for item in list_field(report, "diagnostics")] == (
+        [] if suppressed else [(rule, "error")]
+    )
+
+
+@pytest.mark.parametrize(
+    ("rule", "source"),
+    [
+        (
+            "eslint-js/preserve-caught-error",
+            "export function run(operation) { try { return operation(); } catch (error) { throw new Error('failed', {cause: error}); } }\n",
+        ),
+        (
+            "eslint-js/preserve-caught-error",
+            "export function run(operation) { class Error {} try { return operation(); } catch (error) { throw new Error(); } }\n",
+        ),
+        (
+            "unicorn/no-lonely-if",
+            "export function run(first, second) { if (first) { if (second) { return 1; } else { return 2; } } }\n",
+        ),
+        (
+            "unicorn-js/prefer-single-object-destructuring",
+            "export function run() { const source = {first: 1, second: 2}; const {first = 0} = source; const {second} = source; return first + second; }\n",
+        ),
+        (
+            "unicorn-js/prefer-single-object-destructuring",
+            "export function run() { const source = {value: 1}; const {value: first} = source; const {value: second} = source; return first + second; }\n",
+        ),
+        (
+            "eslint-js/preserve-caught-error",
+            (
+                "export function run(operation) { try { return operation(); } catch (error) {\n"
+                "// eslint-disable-next-line eslint-js/preserve-caught-error -- The public boundary deliberately hides private upstream causes.\n"
+                "throw new Error('failed');\n} }\n"
+            ),
+        ),
+        (
+            "unicorn/no-lonely-if",
+            (
+                "export function run(first, second) {\n"
+                "// eslint-disable-next-line unicorn/no-lonely-if -- Preserve the branching shape required by the external diagnostic contract.\n"
+                "if (first) { if (second) { return 1; } }\n}\n"
+            ),
+        ),
+        (
+            "unicorn-js/prefer-single-object-destructuring",
+            (
+                "export function run() { const source = {first: 1, second: 2}; const {first} = source;\n"
+                "// eslint-disable-next-line unicorn-js/prefer-single-object-destructuring -- Keep the separate observations required by the external adapter contract.\n"
+                "const {second} = source; return first + second; }\n"
+            ),
+        ),
+    ],
+)
+def test_promoted_upstream_boundaries_and_exact_suppressions_remain_valid(
+    tmp_path: Path, rule: str, source: str
+) -> None:
+    root = project(tmp_path / "repo", {"src/example.js": source})
+    (root / "oxlint.strict.ts").write_text(
+        files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
+    )
+
+    report = analyze(root, oxlint.OxlintRequest(rules=frozenset({rule})), "src/example.js")
+
+    assert report.completion is Completion.COMPLETE
+    assert report.issues == ()
+    assert report.diagnostics == ()
+
+
+@pytest.mark.parametrize(
+    ("filename", "ignored"),
+    [
+        ("src/generated/example.js", True),
+        ("dist/example.js", True),
+        ("vendor/example.js", False),
+        ("tests/fixtures/example.js", False),
+    ],
+)
+def test_upstream_promotions_preserve_managed_source_boundaries(
+    tmp_path: Path, filename: str, *, ignored: bool
+) -> None:
+    rules = frozenset(
+        {"eslint-js/preserve-caught-error", "unicorn/no-lonely-if", "unicorn-js/prefer-single-object-destructuring"}
+    )
+    source = (
+        "export function example(first, second) {\n"
+        "if (first) { if (second) { throw new Error('failed'); } }\n"
+        "const source = {first: 1, second: 2}; const {first: left} = source; const {second: right} = source;\n"
+        "try { return left + right; } catch (error) { throw new Error(String(error)); }\n"
+        "}\n"
+    )
+    root = project(
+        tmp_path / "repo",
+        {filename: source},
+        config='import { createConfig } from "./oxlint.strict.ts"; export default createConfig();\n',
+    )
+    (root / "oxlint.strict.ts").write_text(
+        files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
+    )
+    if ignored:
+        assert commands(root, filename) == ()
+        return
+
+    report = analyze(root, oxlint.OxlintRequest(rules=rules), filename)
+
+    assert report.completion is Completion.COMPLETE
+    assert report.issues == ()
+    assert {(item.rule_id, str(item.severity)) for item in report.diagnostics} == {(rule, "error") for rule in rules}
+
+
+def test_vitest_type_assertions_keep_the_native_assertion_owner(tmp_path: Path) -> None:
+    source = (
+        "import {test, expectTypeOf, assertType} from 'vitest';\n"
+        "test('matching types', () => { expectTypeOf<number>().toEqualTypeOf<number>(); });\n"
+        "test('assignable value', () => { assertType<number>(1); });\n"
+        "test('empty test', () => {});\n"
+    )
+    root = project(tmp_path / "repo", {"src/assertions.test.ts": source})
+    (root / "oxlint.strict.ts").write_text(
+        files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
+    )
+
+    report = analyze(root, oxlint.OxlintRequest(rules=frozenset({"vitest/expect-expect"})), "src/assertions.test.ts")
+
+    assert report.completion is Completion.COMPLETE
+    assert report.issues == ()
+    assert [(item.rule_id, str(item.severity)) for item in report.diagnostics] == [("vitest/expect-expect", "warning")]
 
 
 def _rules(report: ToolReport) -> set[tuple[str | None, str]]:

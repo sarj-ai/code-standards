@@ -33,6 +33,8 @@ const CONTEXTS = [
   ["source-tsx", "React source", "src/example.tsx"],
   ["source-js", "JavaScript source", "src/example.js"],
   ["source-jsx", "React JavaScript source", "src/example.jsx"],
+  ["next-app-tsx", "Next.js app source", "src/app/page.tsx"],
+  ["next-pages-tsx", "Next.js pages source", "src/pages/example.tsx"],
   ["test-ts", "TypeScript tests", "tests/example.test.ts"],
   ["test-bun-ts", "Bun tests", "tests/example.bun.test.ts"],
   ["test-playwright-ts", "Playwright end-to-end tests", "tests/example.playwright.ts"],

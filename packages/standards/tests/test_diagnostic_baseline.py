@@ -259,6 +259,12 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
             "f345fe99837af06fc8b801e7993f44e404fc3b11b6239f7ad7e51d0d18511670",
         ),
         (
+            "python:prefer-exception-propagation",
+            "errors.py",
+            "try:\n    send()\nexcept Exception as error:\n    raise RuntimeError(str(error)) from error\n",
+            "c074045223a3d44fcbe390a22b883c837e3b1fb66448fb566c162af083911302",
+        ),
+        (
             "iac:canonical-terraform-declarations",
             "service.tf",
             'variable "region" { type = string }\n',

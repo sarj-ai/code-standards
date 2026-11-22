@@ -137,6 +137,7 @@
   "oxc/erasing-op": "Disallow arithmetic and bitwise operations that always evaluate to `0`.",
   "oxc/misrefactored-assign-op": "Disallow misrefactored compound assignments where the target is duplicated in the right-hand side.",
   "oxc/missing-throw": "Require `throw` in front of a `new` error expression statement",
+  "oxc/no-barrel-file": "Flag star re-export graphs that exceed the configured module-count threshold.",
   "oxc/number-arg-out-of-range": "Disallow radix and precision arguments outside the range number methods accept",
   "oxc/only-used-in-recursion": "Disallow parameters that are only passed to recursive calls",
   "oxc/uninvoked-array-callback": "Disallow array callbacks on arrays with empty slots, which never invoke them",
