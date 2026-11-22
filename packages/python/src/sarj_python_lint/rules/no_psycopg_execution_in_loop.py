@@ -103,9 +103,11 @@ def _repeated(call: ast.Call, context: PythonFileContext) -> bool:
                 return True
             case ast.comprehension() if _comprehension_repeats(parent, child, context):
                 return True
-            case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() if child is parent.elt:
+            case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() if child is parent.elt and not _at_most_once(
+                parent.generators
+            ):
                 return True
-            case ast.DictComp() if child in {parent.key, parent.value}:
+            case ast.DictComp() if child in {parent.key, parent.value} and not _at_most_once(parent.generators):
                 return True
             case _:
                 pass
@@ -115,8 +117,26 @@ def _repeated(call: ast.Call, context: PythonFileContext) -> bool:
 
 def _comprehension_repeats(parent: ast.comprehension, child: ast.AST, context: PythonFileContext) -> bool:
     owner = context.parents.get(parent)
-    return child in parent.ifs or (
-        child is parent.iter
-        and isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
-        and owner.generators.index(parent) > 0
+    if not isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+        return False
+    index = owner.generators.index(parent)
+    # Filters run per combination through this generator; an inner iterable per earlier combination.
+    if child in parent.ifs:
+        return not _at_most_once(owner.generators[: index + 1])
+    return child is parent.iter and index > 0 and not _at_most_once(owner.generators[:index])
+
+
+def _at_most_once(generators: list[ast.comprehension]) -> bool:
+    return any(_empty(item.iter) for item in generators) or all(
+        known_single_iteration(item.iter) for item in generators
     )
+
+
+def _empty(iterable: ast.expr) -> bool:
+    match iterable:
+        case ast.List(elts=[]) | ast.Tuple(elts=[]) | ast.Set(elts=[]) | ast.Dict(keys=[]):
+            return True
+        case ast.Constant(value=str() | bytes() as value):
+            return not value
+        case _:
+            return False

@@ -349,3 +349,34 @@ def test_construction_and_schema_overrides_keep_generic_domain_advice(
     findings = rule.check(Path("app/models.py"), source)
     assert len(findings) == 1
     assert "an explicit numeric domain such as" in findings[0].message
+
+
+_BOUND_HEADER = "from typing import Annotated, Optional\nfrom pydantic import BaseModel, Field\ndef ignore(value):\n    return 'documentation'\nclass Model(BaseModel):\n    value: "
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "Annotated[int, ignore(Field(gt=0))]",
+        "Annotated[int, (Field(gt=0),)]",
+        "Annotated[int, dict(bound=Field(gt=0))]",
+        "Annotated[list[Annotated[int, Field(gt=0)]], 'items']",
+    ],
+)
+def test_field_inside_inert_metadata_is_not_a_field_constraint(rule: PreferTypedSettingsField, annotation: str) -> None:
+    findings = rule.check(Path("app/models.py"), _BOUND_HEADER + annotation + "\n")
+    assert "Declare this model field with PositiveInt" not in [finding.message.split(";")[0] for finding in findings]
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "Annotated[int, Field(gt=0)]",
+        "Annotated[Annotated[int, 'doc'], Field(gt=0)]",
+        "Annotated[int, Field(gt=0)] | None = None",
+        "Optional[Annotated[int, Field(gt=0)]] = None",
+    ],
+)
+def test_direct_annotated_field_constraint_is_active(rule: PreferTypedSettingsField, annotation: str) -> None:
+    findings = rule.check(Path("app/models.py"), _BOUND_HEADER + annotation + "\n")
+    assert [finding.message.split(";")[0] for finding in findings] == ["Declare this model field with PositiveInt"]
