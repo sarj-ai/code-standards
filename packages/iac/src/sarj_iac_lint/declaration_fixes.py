@@ -31,6 +31,7 @@ _SOURCE_READS = frozenset(
         "file",
         "filebase64",
         "filemd5",
+        "filesha1",
         "filesha256",
         "filesha512",
         "filebase64sha256",
@@ -128,13 +129,21 @@ def observes_source(parsed: Mapping[Path, tuple[Block, ...]]) -> bool:
     while pending:
         block = pending.pop()
         pending.extend(block.blocks)
-        for attribute in block.attributes:
-            for expression in (attribute.value, *template_expressions(attribute.value)):
-                parts = tokens(expression)
-                if any(
-                    part in _SOURCE_READS and parts[index + 1 : index + 2] == ("(",) for index, part in enumerate(parts)
-                ):
-                    return True
+        if block.type == "provisioner" or (block.type == "data" and block.labels[:1] == ("external",)):
+            return True
+        if any(_observes_source_expression(attribute.value) for attribute in block.attributes):
+            return True
+    return False
+
+
+def _observes_source_expression(value: str) -> bool:
+    for expression in (value, *template_expressions(value)):
+        parts = tokens(expression)
+        for index, part in enumerate(parts):
+            if parts[index : index + 3] == ("provider", ":", ":"):
+                return True
+            if part in _SOURCE_READS and parts[index + 1 : index + 2] == ("(",):
+                return True
     return False
 
 

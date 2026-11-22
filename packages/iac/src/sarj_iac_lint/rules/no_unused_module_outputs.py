@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
     from pathlib import Path
 
+    from sarj_iac_lint.module_outputs import UnusedModuleOutput
+
 
 @final
 class NoUnusedModuleOutputs(Rule):
@@ -103,6 +105,17 @@ class NoUnusedModuleOutputs(Rule):
         external_outputs: Collection[tuple[str, str]] = (),
         internal_modules: Collection[str] = (),
     ) -> list[Diagnostic]:
+        return cls.diagnostics(
+            root,
+            unused_module_outputs(
+                {path.as_posix(): source for path, source in sources.items()},
+                external_outputs=external_outputs,
+                internal_modules=internal_modules,
+            ),
+        )
+
+    @classmethod
+    def diagnostics(cls, root: Path, outputs: Collection[UnusedModuleOutput]) -> list[Diagnostic]:
         return [
             Diagnostic(
                 path=root / output.path,
@@ -118,9 +131,5 @@ class NoUnusedModuleOutputs(Rule):
                 baselineable=False,
                 severity=DefaultLevel.ERROR,
             )
-            for output in unused_module_outputs(
-                {path.as_posix(): source for path, source in sources.items()},
-                external_outputs=external_outputs,
-                internal_modules=internal_modules,
-            )
+            for output in outputs
         ]

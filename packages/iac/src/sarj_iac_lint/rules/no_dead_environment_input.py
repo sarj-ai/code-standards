@@ -10,13 +10,18 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sarj_rule_contracts import TextEdit, apply_edits
+
 from sarj_iac_lint._hcl import (
     Block,
     ParsedDocument,
+    balanced_structure,
+    comment_locations,
     document,
     document_result,
     header_comment_lines,
     literal_string,
+    physical_lines,
     ungrouped_expression,
 )
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
@@ -31,10 +36,11 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.terraform import is_terraform, is_terraform_override, terraform_blocks
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Collection, Iterator
     from typing import Never
 
 
@@ -57,6 +63,7 @@ _MIN_ENVIRONMENTS = 2
 
 _MAX_VALUE_DISPLAY = 48
 _MAX_NUMBER_STRING_DIGITS = 10_000
+_MAX_FIX_NUMBER_EXPONENT = 308
 
 # Never print quoted tfvars values: quotes can hide secrets or account IDs, even when canonicalized as numeric tags.
 _PRINTABLE_TAGS = frozenset({"bool", "num", "null"})
@@ -144,15 +151,15 @@ class NoDeadEnvironmentInput(Rule):
             "intentional per-environment contract before moving it to a default or shared input source."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Cross-environment comparisons require at least two discovered, readable HCL or JSON tfvars environments.",
             (
                 "Only scalar variables declared exactly as bool, number, or string are compared; dynamic, collection, "
                 "interpolated HCL, heredoc, and incomplete roots are conservatively skipped."
             ),
-            "Unreadable declarations, JSON configuration declarations, and override files suppress findings because the effective variable contracts cannot be proven.",
-            "Malformed or duplicate-key JSON inputs suppress findings for that file and comparisons across the root.",
+            "Unreadable, malformed, duplicate declarations and override files make project analysis incomplete. HCL and Terraform JSON declarations are supported.",
+            "Unbalanced, missing-value, duplicate or parser-rejected inputs make selected project analysis incomplete; native Terraform remains the full language-validity owner. Standalone advisory analysis abstains for rejected files and comparisons across their root.",
             "Numeric-to-string comparisons abstain for non-finite values or exponents expanding beyond 10,000 decimal places; unsupported HCL string escapes are also skipped.",
             (
                 "Named tfvars files are inferred as environments; repeated values are advisory because invocation "
@@ -163,8 +170,41 @@ class NoDeadEnvironmentInput(Rule):
                 "are excluded."
             ),
             "Sensitive and non-primitive values are never printed in diagnostics.",
+            "Code Standards safe fixes only remove tracked root-level auto-loaded HCL/JSON boolean, number and null assignments with no declaration in a complete selected root. String and collection values may contain secrets and are retained. Named varfiles, default-equal and repeated values, ignored/private files, generated sources, directives, source-reading functions and incomplete roots receive no deletion fix. Standalone file fixes lack this proof and leave assignments unchanged.",
+            "Provider-defined functions, external data programs and provisioners have unknown filesystem/evaluation effects and prevent project fixes. Source-observation checks include Terraform 1.17 file-content hash functions such as filesha1.",
+            "Terraform JSON comment properties are not assignments. Generated comment metadata is excluded; other comment metadata requires manual fixes because it can convey ownership or tool directives.",
+            "HCL fixes require a single-line ASCII identifier and boolean/null or decimal/exponent literal with ASCII whitespace. Coercible strings, parenthesized expressions and unsupported numeric syntax are retained; a comparison canonicalizer cannot prove Terraform syntax or preserve parse failures.",
+            "Numeric fixes additionally require a finite Decimal with absolute adjusted decimal exponent at most 308, a conservative Terraform 1.17-supported range. Larger and smaller magnitudes remain review-only, including valid values outside this proof boundary. Quoted numeric/boolean strings are always retained.",
+            "Project fixes require all selected Terraform source to consist only of variables, locals, outputs and Terraform required_version declarations. Module calls, providers, resources, data, backends and unknown constructs can observe file contents outside the proven value flow and require manual remediation. Source-observation checks include unchanged files throughout the selected project.",
         ),
         examples=(
+            RuleExample(
+                example_id="stale-auto-loaded-assignment",
+                title="Remove a tracked auto-loaded assignment Terraform cannot consume",
+                outcome=ExampleOutcome.MATCH,
+                scenario="auto-loaded-fix",
+                files=(
+                    ExampleFile.iac("variables.tf", 'variable "live" { type = bool }\n'),
+                    ExampleFile.iac("terraform.tfvars", "live = false\nretired = true\n"),
+                ),
+                fixed_files=(ExampleFile.iac("terraform.tfvars", "live = false\n"),),
+                focus_path=PurePosixPath("terraform.tfvars"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="declared-auto-loaded-assignment",
+                title="Keep a declared startup input",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="auto-loaded-fix",
+                files=(
+                    ExampleFile.iac("variables.tf", 'variable "live" { type = bool }\n'),
+                    ExampleFile.iac("terraform.tfvars", "live = false\n"),
+                ),
+                focus_path=PurePosixPath("terraform.tfvars"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="json-orphaned-assignment",
                 title="JSON variable files receive the same declaration checks",
@@ -223,7 +263,7 @@ class NoDeadEnvironmentInput(Rule):
             ),
             RuleExample(
                 example_id="sensitive-value-repeated-across-environments",
-                title="Sensitive input duplicated instead of injected once",
+                title="Sensitive input repeated across environments",
                 outcome=ExampleOutcome.MATCH,
                 scenario="sensitive-shared-input",
                 files=(
@@ -321,22 +361,44 @@ class NoDeadEnvironmentInput(Rule):
     )
     description = documentation.summary
 
+    def __init__(self, *, sources: Mapping[Path, str] | None = None) -> None:
+        self._files = _InputFiles(sources)
+        self._analyses: dict[Path, _RootAnalysis] = {}
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        documentation = self.documentation
+        level = DefaultLevel.WARNING if documentation is None else documentation.default_level
+        if level is DefaultLevel.OFF:
+            return []
         if not path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX)):
             return []
         if _excluded_input(path, source):
             return []
-        root = _find_root(path)
+        root = _find_root(path, self._files)
         if root is None:
+            if self._files.sources is not None:
+                message = f"Cannot establish the Terraform root for {path} in the selected source tree"
+                raise ValueError(message)
             return []
-        analysis = _analyze_root(root)
-        resolved = path.resolve()
-        environment = analysis.environment_of(resolved)
+        if self._files.sources is None:
+            analysis = _analyze_root(root, self._files)
+        else:
+            if root not in self._analyses:
+                self._analyses[root] = _analyze_root(root, self._files)
+            analysis = self._analyses[root]
+            if not analysis.declarations_complete:
+                message = f"Cannot establish complete Terraform variable declarations in {root}"
+                raise ValueError(message)
+        resolved = self._files.identity(path)
+        environment = analysis.environment_of(resolved, self._files)
         if environment is None:
             return []
         assignments = _assignments(path, source)
         if assignments is None:
+            if self._files.sources is not None:
+                message = f"Cannot analyze malformed Terraform variable assignments in {path}"
+                raise ValueError(message)
             return []
         diags = [
             Diagnostic(
@@ -345,12 +407,65 @@ class NoDeadEnvironmentInput(Rule):
                 col=attr.col,
                 code=self.code,
                 message=message,
-                severity=DefaultLevel.WARNING,
+                severity=level,
             )
             for attr in assignments
             if (message := _assignment_message(analysis, environment, attr)) is not None
         ]
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+    @classmethod
+    def check_project(cls, root: Path, sources: Mapping[PurePosixPath, str]) -> list[Diagnostic]:
+        files = {root / path: text for path, text in sources.items()}
+        rule = cls(sources=files)
+        return [
+            diagnostic
+            for path, source in files.items()
+            if path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX))
+            for diagnostic in rule.check(path, source)
+            if not diagnostic.suppressible or not _suppressed(path, source, diagnostic)
+        ]
+
+
+def _suppressed(path: Path, source: str, diagnostic: Diagnostic) -> bool:
+    from sarj_iac_lint._hcl import suppression_comment_lines  # ruff: ignore[import-outside-top-level] -- only project-wide findings need the native suppression contract.
+    from sarj_iac_lint.rule_base import is_suppressed  # ruff: ignore[import-outside-top-level] -- retain the same reviewed exception behavior as file-local checks.
+
+    comments: Mapping[int, str] = {} if path.name.endswith(_TFVARS_JSON_SUFFIX) else suppression_comment_lines(source)
+    return is_suppressed(source.splitlines(), diagnostic.line, diagnostic.code, comments=comments)
+
+
+class _InputFiles:
+    def __init__(self, sources: Mapping[Path, str] | None = None) -> None:
+        self.sources = None if sources is None else {path.absolute(): text for path, text in sources.items()}
+
+    def read(self, path: Path) -> str | None:
+        return _read_text(path) if self.sources is None else self.sources.get(path.absolute())
+
+    def identity(self, path: Path) -> Path:
+        return path.resolve() if self.sources is None else path.absolute()
+
+    def glob(self, directory: Path, pattern: str) -> list[Path]:
+        if self.sources is None:
+            return sorted(directory.glob(pattern))
+        directory = directory.absolute()
+        return sorted(
+            path
+            for path in self.sources
+            if path.is_relative_to(directory) and path.relative_to(directory).full_match(pattern)
+        )
+
+    def directories(self, directory: Path) -> list[Path]:
+        if self.sources is None:
+            return sorted(path for path in directory.iterdir() if path.is_dir())
+        directory = directory.absolute()
+        return sorted(
+            {
+                directory / path.relative_to(directory).parts[0]
+                for path in self.sources
+                if path.is_relative_to(directory) and len(path.relative_to(directory).parts) > 1
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,8 +516,10 @@ class _RootAnalysis:
     blind: tuple[_BlindEnvironment, ...]
     declarations_complete: bool
 
-    def environment_of(self, resolved: Path) -> str | None:
-        return next((env for env, paths in self.files.items() if any(resolved == p.resolve() for p in paths)), None)
+    def environment_of(self, resolved: Path, inputs: _InputFiles) -> str | None:
+        return next(
+            (env for env, paths in self.files.items() if any(resolved == inputs.identity(p) for p in paths)), None
+        )
 
 
 def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _InputAssignment) -> str | None:
@@ -438,8 +555,9 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _
     if declaration.sensitive:
         return (
             f"sensitive-constant: `{name}` carries one sensitive value across every environment "
-            f"({environments}) — inject it once through the shared secret source and delete the duplicate "
-            "per-environment assignments; do not hard-code a default."
+            f"({environments}); matching values alone do not establish a shared secret source. "
+            "Review delivery ownership while preserving requiredness, access and rotation contracts; "
+            "do not hard-code a default."
         )
     if declaration.has_default:
         return (
@@ -490,37 +608,44 @@ def _generated_header(source: str) -> bool:
     header = "\n".join(
         line for line in header_comment_lines(source) if line.lstrip().startswith(("#", "//", "/*", "*"))
     )
+    if source.lstrip().startswith("{"):
+        try:
+            value = parse_json(source)
+        except ValueError, RecursionError, ArithmeticError:
+            return False
+        if is_object_mapping(value) and isinstance(comment := value.get("//"), str):
+            header += "\n" + comment
     return _GENERATED_RE.search(header) is not None
 
 
-def _find_root(path: Path) -> Path | None:
+def _find_root(path: Path, files: _InputFiles) -> Path | None:
     absolute = path if path.is_absolute() else Path.cwd() / path
     if any(part in _SKIP_DIR_NAMES for part in absolute.parts):
         return None
     directory = absolute.parent
     for _ in range(_MAX_ANCESTOR_HOPS):
-        if _has_tf_files(directory):
-            return directory if _declares_variables(directory) else None
+        if _has_tf_files(directory, files):
+            return directory
         if directory.parent == directory:
             return None
         directory = directory.parent
     return None
 
 
-def _has_tf_files(directory: Path) -> bool:
-    return next(iter(directory.glob("*.tf")), None) is not None
+def _has_tf_files(directory: Path, files: _InputFiles) -> bool:
+    return bool(files.glob(directory, "*.tf") or files.glob(directory, "*.tf.json"))
 
 
-def _declares_variables(directory: Path) -> bool:
-    return next(_variable_blocks(directory), None) is not None
-
-
-def _variable_blocks(directory: Path) -> Iterator[_VariableContract]:
-    for tf in sorted(directory.glob("*.tf")):
-        text = _read_text(tf)
+def _variable_blocks(directory: Path, files: _InputFiles) -> Iterator[_VariableContract]:
+    for tf in sorted((*files.glob(directory, "*.tf"), *files.glob(directory, "*.tf.json"))):
+        text = files.read(tf)
         if text is None:
             continue
-        for block in document(text).blocks:
+        try:
+            blocks = terraform_blocks(tf, text)
+        except ValueError:
+            continue
+        for block in blocks:
             if block.type == "variable" and block.labels:
                 yield _variable_contract(block)
 
@@ -539,7 +664,17 @@ def _is_override(path: Path) -> bool:
 def _assignments(path: Path, source: str) -> tuple[_InputAssignment, ...] | None:
     if path.name.endswith(_TFVARS_JSON_SUFFIX):
         return _json_assignments(source)
-    return tuple(_InputAssignment(attr.name, attr.value, attr.line, attr.col) for attr in document(source).attributes)
+    parsed = document_result(source)
+    if not isinstance(parsed, ParsedDocument) or not balanced_structure(source):
+        return None
+    attributes = parsed.root.attributes
+    if (
+        parsed.root.blocks
+        or len({attr.name for attr in attributes}) != len(attributes)
+        or any(not attr.value.strip() for attr in attributes)
+    ):
+        return None
+    return tuple(_InputAssignment(attr.name, attr.value, attr.line, attr.col) for attr in attributes)
 
 
 def _unique_json_object[T](pairs: list[tuple[str, T]]) -> dict[str, T]:
@@ -588,16 +723,17 @@ def _validated_json_assignments(source: str) -> tuple[_InputAssignment, ...] | N
         value_start = _skip_json_ws(source, cursor)
         decoded_value: tuple[object, int] = _JSON_DECODER.raw_decode(source, value_start)
         native, cursor = decoded_value
-        assignments.append(
-            _InputAssignment(
-                name,
-                source[value_start:cursor],
-                source.count("\n", 0, key_start) + 1,
-                key_start - source.rfind("\n", 0, key_start),
-                is_json=True,
-                native=native,
+        if name != "//":
+            assignments.append(
+                _InputAssignment(
+                    name,
+                    source[value_start:cursor],
+                    source.count("\n", 0, key_start) + 1,
+                    key_start - source.rfind("\n", 0, key_start),
+                    is_json=True,
+                    native=native,
+                )
             )
-        )
         cursor = _skip_json_ws(source, cursor)
         if source[cursor] == ",":
             cursor = _skip_json_ws(source, cursor + 1)
@@ -644,8 +780,9 @@ def _number_string(value: Decimal) -> _Canon | None:
     return _Canon("str", "0" if value == 0 else text)
 
 
-def _analyze_root(root: Path) -> _RootAnalysis:
-    files = _environment_files(root)
+def _analyze_root(root: Path, inputs: _InputFiles) -> _RootAnalysis:
+    files = _environment_files(root, inputs)
+    contracts = tuple(_variable_blocks(root, inputs))
     declarations = {
         contract.name: _Declaration(
             contract.default is not None,
@@ -655,32 +792,40 @@ def _analyze_root(root: Path) -> _RootAnalysis:
             contract.scalar_type,
             contract.sensitive,
         )
-        for contract in _variable_blocks(root)
+        for contract in contracts
     }
     values: dict[str, dict[str, _AssignmentValue]] = {}
-    blind = list(_structural_blind(root, files))
+    blind = list(_structural_blind(root, files, inputs))
     conflicted: set[str] = set()
     blind.extend(_auto_loaded_blind(files))
     for env, paths in files.items():
         for file in paths:
-            _collect_environment_values(env, paths, file, declarations, values, blind=blind, conflicted=conflicted)
-    blind.extend(_manifest_blind(root, frozenset(files)))
+            _collect_environment_values(
+                env, paths, file, declarations, values, inputs=inputs, blind=blind, conflicted=conflicted
+            )
+    blind.extend(_manifest_blind(root, frozenset(files), inputs))
     return _RootAnalysis(
         root=root,
         files={env: tuple(paths) for env, paths in files.items()},
         declarations=declarations,
         values=values,
         blind=tuple(sorted(blind, key=lambda item: (item.name, item.reason))),
-        declarations_complete=(
-            next(iter(root.glob("*.tf.json")), None) is None
-            and all(
-                (text := _read_text(path)) is not None
-                and not _is_override(path)
-                and isinstance(document_result(text), ParsedDocument)
-                for path in root.glob("*.tf")
-            )
-        ),
+        declarations_complete=len(contracts) == len(declarations) and _complete_declarations(root, inputs),
     )
+
+
+def _complete_declarations(root: Path, inputs: _InputFiles) -> bool:
+    for path in (*inputs.glob(root, "*.tf"), *inputs.glob(root, "*.tf.json")):
+        text = inputs.read(path)
+        if text is None or is_terraform_override(path):
+            return False
+        try:
+            blocks = terraform_blocks(path, text)
+        except ValueError:
+            return False
+        if any(block.type == "variable" and len(block.labels) != 1 for block in blocks):
+            return False
+    return True
 
 
 def _auto_loaded_blind(files: Mapping[str, Sequence[Path]]) -> Iterator[_BlindEnvironment]:
@@ -696,13 +841,13 @@ def _auto_loaded_blind(files: Mapping[str, Sequence[Path]]) -> Iterator[_BlindEn
     )
 
 
-def _environment_files(root: Path) -> dict[str, list[Path]]:
+def _environment_files(root: Path, inputs: _InputFiles) -> dict[str, list[Path]]:
     out: dict[str, list[Path]] = {}
     seen: set[Path] = set()
-    for file, environment in _candidate_environments(root):
-        if _is_non_environment(environment) or _excluded_input(file, _read_text(file) or ""):
+    for file, environment in _candidate_environments(root, inputs):
+        if _is_non_environment(environment) or _excluded_input(file, inputs.read(file) or ""):
             continue
-        resolved = file.resolve()
+        resolved = inputs.identity(file)
         if resolved in seen:
             continue
         seen.add(resolved)
@@ -710,12 +855,12 @@ def _environment_files(root: Path) -> dict[str, list[Path]]:
     return out
 
 
-def _candidate_environments(root: Path) -> Iterator[tuple[Path, str]]:
+def _candidate_environments(root: Path, inputs: _InputFiles) -> Iterator[tuple[Path, str]]:
     for suffix in (_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX):
-        for file in sorted(root.glob(f"*{suffix}")):
+        for file in inputs.glob(root, f"*{suffix}"):
             # All auto-loaded files feed one plan, including JSON counterparts.
             yield file, _AUTO_ENVIRONMENT if _is_auto_loaded(file.name) else _stem_environment(file.name)
-        for file, env_dir in _nested_tfvars(root, suffix):
+        for file, env_dir in _nested_tfvars(root, suffix, inputs):
             stem = _stem_environment(file.name)
             yield file, env_dir.name if stem == _CONVENTIONAL_STEM else stem
 
@@ -730,13 +875,15 @@ def _is_non_environment(label: str) -> bool:
     return lowered in _NON_ENVIRONMENT_STEMS or lowered.rsplit(".", 1)[-1] in _NON_ENVIRONMENT_STEMS
 
 
-def _nested_tfvars(root: Path, suffix: str) -> Iterator[tuple[Path, Path]]:
+def _nested_tfvars(root: Path, suffix: str, inputs: _InputFiles) -> Iterator[tuple[Path, Path]]:
     for pattern in (f"*/*{suffix}", f"*/*/*{suffix}"):
-        for file in sorted(root.glob(pattern)):
+        for file in inputs.glob(root, pattern):
             relative_dirs = file.relative_to(root).parts[:-1]
             if any(part in _SKIP_DIR_NAMES or part.lower() in _FIXTURE_DIR_NAMES for part in relative_dirs):
                 continue
-            if any(_has_tf_files(root.joinpath(*relative_dirs[: index + 1])) for index in range(len(relative_dirs))):
+            if any(
+                _has_tf_files(root.joinpath(*relative_dirs[: index + 1]), inputs) for index in range(len(relative_dirs))
+            ):
                 continue
             yield file, file.parent
 
@@ -746,13 +893,13 @@ def _stem_environment(name: str) -> str:
     return stem.removesuffix(_AUTO_STEM_SUFFIX)
 
 
-def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_BlindEnvironment]:
+def _structural_blind(root: Path, files: dict[str, list[Path]], inputs: _InputFiles) -> Iterator[_BlindEnvironment]:
     containers = _environment_containers(root, files)
     for container in sorted(containers, key=str):
-        for sibling in sorted(item for item in container.iterdir() if item.is_dir()):
+        for sibling in inputs.directories(container):
             if sibling.name in _SKIP_DIR_NAMES or sibling.name.lower() in _FIXTURE_DIR_NAMES or sibling.name in files:
                 continue
-            if _only_excluded_inputs(sibling):
+            if _only_excluded_inputs(sibling, inputs):
                 continue
             yield _BlindEnvironment(
                 sibling.name,
@@ -760,23 +907,19 @@ def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_Bli
             )
 
 
-def _only_excluded_inputs(directory: Path) -> bool:
+def _only_excluded_inputs(directory: Path, files: _InputFiles) -> bool:
     try:
-        inputs = tuple(
-            path
-            for path in directory.iterdir()
-            if path.is_file() and path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX))
-        )
+        inputs = tuple(path for path in (*files.glob(directory, "*.tfvars"), *files.glob(directory, "*.tfvars.json")))
     except OSError:
         return False  # An unreadable sibling remains an unknown environment.
-    return bool(inputs) and all(_excluded_input(path, _read_text(path) or "") for path in inputs)
+    return bool(inputs) and all(_excluded_input(path, files.read(path) or "") for path in inputs)
 
 
-def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_BlindEnvironment]:
+def _manifest_blind(root: Path, environments: frozenset[str], inputs: _InputFiles) -> Iterator[_BlindEnvironment]:
     manifest = root / _ENVS_MANIFEST
-    if not manifest.is_file():
+    if not inputs.glob(root, _ENVS_MANIFEST):
         return
-    text = _read_text(manifest)
+    text = inputs.read(manifest)
     if text is None:
         yield _BlindEnvironment("(all)", f"`{_ENVS_MANIFEST}` names this root's environments but cannot be read")
         return
@@ -973,10 +1116,11 @@ def _collect_environment_values(
     declarations: dict[str, _Declaration],
     values: dict[str, dict[str, _AssignmentValue]],
     *,
+    inputs: _InputFiles,
     blind: list[_BlindEnvironment],
     conflicted: set[str],
 ) -> None:
-    text = _read_text(file)
+    text = inputs.read(file)
     if text is None:
         blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` cannot be read"))
         return
@@ -1032,3 +1176,153 @@ def _environment_containers(root: Path, files: dict[str, list[Path]]) -> set[Pat
         for path in paths
         if root not in {path.parent.parent, path.parent}
     }
+
+
+def remove_stale_assignments(sources: Mapping[Path, str], *, selected: Collection[Path]) -> dict[Path, str]:
+    # Only the Core transaction supplies complete tracked-source provenance.
+    files = _InputFiles(sources)
+    changes: dict[Path, str] = {}
+    for path in sorted(set(selected) & sources.keys()):
+        fixed = _fixed_source(path, sources, files)
+        if fixed != sources[path]:
+            changes[path] = fixed
+    return changes
+
+
+def _fixed_source(path: Path, sources: Mapping[Path, str], files: _InputFiles) -> str:
+    from sarj_iac_lint.declaration_fixes import observes_source  # ruff: ignore[import-outside-top-level] -- reuse project source-observation safeguards only during explicit fixing.
+
+    source = sources[path]
+    if (
+        not path.name.endswith((".tfvars", ".tfvars.json"))
+        or not _is_auto_loaded(path.name)
+        or _excluded_input(path, source)
+        or _find_root(path, files) != path.parent
+    ):
+        return source
+    analysis = _analyze_root(path.parent, files)
+    if not analysis.declarations_complete:
+        return source
+    parsed = {member: terraform_blocks(member, text) for member, text in sources.items() if is_terraform(member)}
+    if not _pure_input_project(parsed) or observes_source(parsed):
+        return source
+    assignments = _assignments(path, source)
+    if assignments is None:
+        return source
+    findings = NoDeadEnvironmentInput(sources=sources).check(path, source)
+    lines = {finding.line for finding in findings if not _suppressed(path, source, finding)}
+    names = _stale_names(assignments, analysis, lines)
+    edits = _json_edits(source, names) if path.name.endswith(".json") else _hcl_edits(source, names)
+    fixed = apply_edits(source, edits)
+    _verify_retained_assignments(path, assignments, fixed, names)
+    return fixed
+
+
+def _pure_input_project(parsed: Mapping[Path, tuple[Block, ...]]) -> bool:
+    return all(
+        block.type in {"variable", "locals", "output"}
+        or (
+            block.type == "terraform"
+            and not block.blocks
+            and all(attribute.name == "required_version" for attribute in block.attributes)
+        )
+        for blocks in parsed.values()
+        for block in blocks
+    )
+
+
+def _stale_names(
+    assignments: Collection[_InputAssignment], analysis: _RootAnalysis, lines: Collection[int]
+) -> set[str]:
+    # String inputs may contain secret material; ordinary fixes retain them.
+    return {
+        assignment.name
+        for assignment in assignments
+        if assignment.line in lines
+        and assignment.name not in analysis.declarations
+        and _fixable_scalar(assignment.text)
+    }
+
+
+def _fixable_scalar(text: str) -> bool:
+    text = ungrouped_expression(text).strip()
+    if text.startswith('"') or (canon := _canonical(text)) is None:
+        return False
+    if canon.tag in {"bool", "null"}:
+        return True
+    return (
+        canon.tag == "num"
+        and isinstance(canon.value, Decimal)
+        and canon.value.is_finite()
+        and abs(canon.value.adjusted()) <= _MAX_FIX_NUMBER_EXPONENT
+    )
+
+
+def _verify_retained_assignments(
+    path: Path, assignments: Collection[_InputAssignment], fixed: str, names: Collection[str]
+) -> None:
+    remaining = _assignments(path, fixed)
+    if remaining is None:
+        message = "Stale input fix produced invalid assignments; no files changed"
+        raise ValueError(message)
+    before = {assignment.name: assignment.text for assignment in assignments}
+    after = {assignment.name: assignment.text for assignment in remaining}
+    removed = before.keys() - after.keys()
+    if not removed.issubset(names) or after != {name: value for name, value in before.items() if name not in removed}:
+        message = "Stale input fix changed a retained assignment; no files changed"
+        raise ValueError(message)
+
+
+def _hcl_edits(source: str, names: Collection[str]) -> list[TextEdit]:
+    lines = physical_lines(source, keepends=True)
+    comments = {line for line, _column in comment_locations(source)}
+    edits: list[TextEdit] = []
+    for attribute in document(source).attributes:
+        if attribute.name not in names or attribute.line in comments:
+            continue
+        first = lines[attribute.line - 1]
+        match = re.fullmatch(
+            r"[ \t]*([A-Za-z_][A-Za-z0-9_-]*)[ \t]*=[ \t]*"
+            r"(true|false|null|-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)[ \t]*(?:\r?\n)?",
+            first,
+        )
+        if match is None or match[1] != attribute.name or _canonical(match[2]) != _canonical(attribute.value):
+            continue
+        start = sum(len(line) for line in lines[: attribute.line - 1])
+        end = start + len(first)
+        edits.append(TextEdit(start, end, ""))
+    return edits
+
+
+def _json_edits(source: str, names: Collection[str]) -> list[TextEdit]:
+    members: list[tuple[str, int, int]] = []
+    cursor = _skip_json_ws(source, _skip_json_ws(source, 0) + 1)
+    while source[cursor] != "}":
+        start = cursor
+        decoded_key: tuple[object, int] = _JSON_DECODER.raw_decode(source, cursor)
+        name, cursor = decoded_key
+        cursor = _skip_json_ws(source, cursor) + 1
+        decoded_value: tuple[object, int] = _JSON_DECODER.raw_decode(source, _skip_json_ws(source, cursor))
+        cursor = decoded_value[1]
+        if not isinstance(name, str) or name == "//":
+            return []
+        members.append((name, start, cursor))
+        cursor = _skip_json_ws(source, cursor)
+        if source[cursor] == ",":
+            cursor = _skip_json_ws(source, cursor + 1)
+    edits: list[TextEdit] = []
+    index = 0
+    while index < len(members):
+        if members[index][0] not in names:
+            index += 1
+            continue
+        first = index
+        while index < len(members) and members[index][0] in names:
+            index += 1
+        start = members[first][1]
+        end = members[index][1] if index < len(members) else members[index - 1][2]
+        if index == len(members) and first:
+            # Include the preceding separator, retaining its preceding value.
+            start = source.index(",", members[first - 1][2], start)
+        edits.append(TextEdit(start, end, ""))
+    return edits

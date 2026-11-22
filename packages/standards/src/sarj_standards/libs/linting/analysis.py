@@ -68,6 +68,7 @@ _EXCEPTION_PROPAGATION_FINGERPRINT_ANCHOR = (
     "This handler only copies the caught message into a generic error; review letting the original "
     "exception propagate while preserving intentional boundary contracts."
 )
+_IAC_PROJECT_RULES = frozenset({"no-unused-module-outputs", "no-unused-module-inputs", "no-dead-environment-input"})
 
 
 if TYPE_CHECKING:
@@ -77,6 +78,7 @@ if TYPE_CHECKING:
     from sarj_iac_lint.guard_contracts import GuardContracts
     from sarj_python_lint.rule_base import Fix as PythonFix
 
+    from .iac_module_outputs import ModuleOutputSources
     from .policy import Policy
 
 
@@ -161,6 +163,12 @@ class _NativeRuleMetadata(NamedTuple):
     description: str
 
 
+@dataclass(frozen=True, slots=True)
+class _ProjectFindings:
+    native: list[_NativeDiagnostic]
+    issues: list[ExecutionIssue]
+
+
 def analyze(
     files: Sequence[str],
     *,
@@ -214,7 +222,7 @@ def analyze(
                 routed.iac,
                 root,
                 sources=sources,
-                rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
+                rule_ids=_iac_file_rules(_selected_ids(rule_selection, RuleEngine.IAC)),
                 guard_contracts=iac_contracts.contracts,
                 module_summaries=module_summaries,
                 policy=policy,
@@ -237,7 +245,13 @@ def analyze(
             item.name,
             item.completion,
             diagnostics=(
-                item.diagnostics if item.name == _IAC_OUTPUTS_TOOL else policy.filter_diagnostics(item.diagnostics)
+                tuple(
+                    diagnostic
+                    for diagnostic in item.diagnostics
+                    if "required-source-policy" in diagnostic.tags or policy.filter_diagnostics((diagnostic,))
+                )
+                if item.name == _IAC_OUTPUTS_TOOL
+                else policy.filter_diagnostics(item.diagnostics)
             ),
             issues=item.issues,
             analyzer_id=item.analyzer_id,
@@ -425,6 +439,8 @@ def _run_native(
         from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- selected IaC engine only.
 
         def rule_allowed(path: Path, rule_id: str, code: str) -> bool:
+            if rule_id == "no-dead-environment-input" and (root / ".git").exists():
+                return False
             return policy is None or policy.allows_rule(
                 Diagnostic(code, "", Severity.INFO, name, Location(policy.relative(path)), rule_id)
             )
@@ -888,16 +904,27 @@ def _iac_contracts(root: Path, *, staged: bool) -> _PreparedIAC:
 
 
 def _iac_outputs_report(root: Path, *, staged: bool, rule_ids: frozenset[str] | None) -> ToolReport | None:
-    if rule_ids is not None and "no-unused-module-outputs" not in rule_ids:
+    if rule_ids is not None and _IAC_PROJECT_RULES.isdisjoint(rule_ids):
         return None
     try:
-        return _iac_project_report(root, staged=staged, required=rule_ids is not None)
+        return _iac_project_report(
+            root,
+            staged=staged,
+            rule_ids=_IAC_PROJECT_RULES if rule_ids is None else _IAC_PROJECT_RULES & rule_ids,
+            required=rule_ids is not None,
+        )
     except Exception as exc:  # ruff: ignore[blind-except] -- incomplete consumer evidence must fail this analysis without erasing other engines.
         issue = ExecutionIssue(_IAC_OUTPUTS_TOOL, "module-output-consumer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport(_IAC_OUTPUTS_TOOL, Completion.FAILED, issues=(issue,))
 
 
-def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolReport | None:
+def _iac_file_rules(rule_ids: frozenset[str] | None) -> frozenset[str] | None:
+    return None if rule_ids is None else rule_ids - _IAC_PROJECT_RULES
+
+
+def _iac_project_report(root: Path, *, staged: bool, rule_ids: frozenset[str], required: bool) -> ToolReport | None:
+    from sarj_iac_lint.rules.no_dead_environment_input import NoDeadEnvironmentInput  # ruff: ignore[import-outside-top-level] -- selected complete-project assignment analysis.
+    from sarj_iac_lint.rules.no_unused_module_inputs import NoUnusedModuleInputs  # ruff: ignore[import-outside-top-level] -- selected complete-project input analysis.
     from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- selected complete-project semantic analysis.
 
     from .iac_module_outputs import selected_sources  # ruff: ignore[import-outside-top-level] -- snapshot acquisition runs only when this rule is selected.
@@ -909,16 +936,18 @@ def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolRepo
             raise ValueError(message)
         return None
     source_text = selected.sources
-    native = NoUnusedModuleOutputs.check_project(
-        root,
-        source_text,
-        external_outputs=tuple((item.module, item.output) for item in selected.contracts),
-        internal_modules=selected.internal_modules,
-    )
+    findings = _iac_consumer_findings(root, selected, rule_ids)
+    if NoDeadEnvironmentInput.id in rule_ids:
+        try:
+            findings.native.extend(NoDeadEnvironmentInput.check_project(root, source_text))
+        except (OSError, ValueError) as exc:
+            findings.issues.append(ExecutionIssue(_IAC_OUTPUTS_TOOL, "environment-input-incomplete", str(exc)))
     documents: dict[Path, SourceDocument | PythonSourceDocument | None] = {
         root / path: SourceDocument(root / path, source) for path, source in source_text.items()
     }
-    metadata = native_metadata({NoUnusedModuleOutputs.id: NoUnusedModuleOutputs})
+    metadata = native_metadata(
+        {rule.id: rule for rule in (NoUnusedModuleOutputs, NoUnusedModuleInputs, NoDeadEnvironmentInput)}
+    )
     resolved_paths = {path: path for path in documents}
     diagnostics = tuple(
         normalize_native(
@@ -929,6 +958,42 @@ def _iac_project_report(root: Path, *, staged: bool, required: bool) -> ToolRepo
             documents=documents,
             resolved_paths=resolved_paths,
         )
-        for item in native
+        for item in findings.native
     )
-    return ToolReport(_IAC_OUTPUTS_TOOL, Completion.COMPLETE, diagnostics=diagnostics, file_count=len(source_text))
+    return ToolReport(
+        _IAC_OUTPUTS_TOOL,
+        Completion.PARTIAL if findings.issues else Completion.COMPLETE,
+        diagnostics=diagnostics,
+        issues=tuple(findings.issues),
+        file_count=len(source_text),
+    )
+
+
+def _iac_consumer_findings(root: Path, selected: ModuleOutputSources, rule_ids: frozenset[str]) -> _ProjectFindings:
+    from sarj_iac_lint.module_outputs import module_consumers  # ruff: ignore[import-outside-top-level] -- share one complete project graph across input and output rules.
+    from sarj_iac_lint.rules.no_unused_module_inputs import NoUnusedModuleInputs  # ruff: ignore[import-outside-top-level] -- selected complete-project input analysis.
+    from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- preserve the existing required output policy.
+
+    native: list[_NativeDiagnostic] = []
+    issues: list[ExecutionIssue] = []
+    if rule_ids.isdisjoint({NoUnusedModuleOutputs.id, NoUnusedModuleInputs.id}):
+        return _ProjectFindings(native, issues)
+    consumers = module_consumers(
+        {path.as_posix(): source for path, source in selected.sources.items()},
+        external_outputs=tuple((item.module, item.output) for item in selected.contracts),
+        internal_modules=selected.internal_modules,
+    )
+    if NoUnusedModuleOutputs.id in rule_ids:
+        native.extend(NoUnusedModuleOutputs.diagnostics(root, consumers.outputs))
+    if NoUnusedModuleInputs.id in rule_ids:
+        if consumers.inputs is None:
+            issues.append(
+                ExecutionIssue(
+                    _IAC_OUTPUTS_TOOL,
+                    "module-input-consumer-incomplete",
+                    "Overrides or undeclared variable/argument references prevent complete effective-input analysis.",
+                )
+            )
+        else:
+            native.extend(NoUnusedModuleInputs.diagnostics(root, consumers.inputs, selected.sources))
+    return _ProjectFindings(native, issues)

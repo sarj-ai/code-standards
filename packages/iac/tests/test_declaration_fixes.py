@@ -65,15 +65,24 @@ def test_duplicate_native_json_interfaces_prevent_movement() -> None:
 
 
 @pytest.mark.parametrize(
-    "value", ['file("main.tf")', '"${file("main.tf")}"', 'filesha256("variables.tf")', 'templatefile("main.tf", {})']
+    "value",
+    [
+        'file("main.tf")',
+        '"${file("main.tf")}"',
+        'filesha1("variables.tf")',
+        'filesha256("variables.tf")',
+        'templatefile("main.tf", {})',
+        'provider::opaque::read("variables.tf")',
+    ],
 )
 def test_source_observation_functions_prevent_movement(value: str) -> None:
     sources = _sources() | {Path("locals.tf"): f"locals {{ observed = {value} }}\n"}
     assert consolidate_declarations(sources, selected=tuple(sources)) == {}
 
 
-def test_string_data_that_mentions_a_file_function_does_not_block_a_fix() -> None:
-    sources = _sources() | {Path("locals.tf"): 'locals { text = "file(main.tf)" }\n'}
+@pytest.mark.parametrize("value", ['"file(main.tf)"', '"provider::opaque::read(path)"'])
+def test_string_data_that_mentions_a_file_function_does_not_block_a_fix(value: str) -> None:
+    sources = _sources() | {Path("locals.tf"): f"locals {{ text = {value} }}\n"}
     assert consolidate_declarations(sources, selected=tuple(sources))
 
 

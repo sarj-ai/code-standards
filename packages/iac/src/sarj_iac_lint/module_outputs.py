@@ -8,7 +8,7 @@ import re
 from typing import Final
 
 from . import _hcl
-from .terraform import terraform_blocks
+from .terraform import is_terraform_override, terraform_blocks
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +16,19 @@ class UnusedModuleOutput:
     path: str
     name: str
     line: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnusedModuleInput:
+    path: str
+    name: str
+    line: int
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleConsumers:
+    outputs: tuple[UnusedModuleOutput, ...]
+    inputs: tuple[UnusedModuleInput, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +47,8 @@ class _Call:
 
 @dataclass(slots=True)
 class _Module:
+    inputs: dict[str, UnusedModuleInput] = field(default_factory=dict)
+    referenced_inputs: set[str] = field(default_factory=set)
     outputs: dict[str, _Output] = field(default_factory=dict)
     locals: dict[str, str] = field(default_factory=dict)
     calls: dict[str, _Call] = field(default_factory=dict)
@@ -80,6 +95,27 @@ def unused_module_outputs(
     external_outputs: Collection[tuple[str, str]] = (),
     internal_modules: Collection[str] = (),
 ) -> tuple[UnusedModuleOutput, ...]:
+    return module_consumers(sources, external_outputs=external_outputs, internal_modules=internal_modules).outputs
+
+
+def module_consumers(
+    sources: Mapping[str, str],
+    *,
+    external_outputs: Collection[tuple[str, str]] = (),
+    internal_modules: Collection[str] = (),
+) -> ModuleConsumers:
+    modules = _modules(sources)
+    flow = _Flow(modules, frozenset(external_outputs), frozenset(internal_modules))
+    outputs = flow.unused()
+    inputs = (
+        None
+        if any(is_terraform_override(PurePosixPath(path)) for path in sources) or not _complete_inputs(modules)
+        else _unused_inputs(flow)
+    )
+    return ModuleConsumers(outputs, inputs)
+
+
+def _modules(sources: Mapping[str, str]) -> dict[str, _Module]:
     modules: dict[str, _Module] = {}
     for path, source in sorted(sources.items()):
         if not path.endswith((".tf", ".tf.json")):
@@ -96,11 +132,31 @@ def unused_module_outputs(
             raise ValueError(message) from exc
         for block in blocks:
             _collect(module, block, path=path, directory=directory)
-    return _Flow(modules, frozenset(external_outputs), frozenset(internal_modules)).unused()
+    return modules
+
+
+def _unused_inputs(flow: _Flow) -> tuple[UnusedModuleInput, ...]:
+    return tuple(
+        declaration
+        for directory, module in sorted(flow.modules.items())
+        for name, declaration in sorted(module.inputs.items())
+        if directory in flow.internal and name in module.referenced_inputs and (directory, name) not in flow.used_inputs
+    )
+
+
+def _complete_inputs(modules: Mapping[str, _Module]) -> bool:
+    for module in modules.values():
+        if not module.referenced_inputs.issubset(module.inputs):
+            return False
+        for call in module.calls.values():
+            if call.target is not None and not call.arguments.keys() <= modules[call.target].inputs.keys():
+                return False
+    return True
 
 
 def _collect(module: _Module, block: _hcl.Block, *, path: str, directory: str) -> None:
     _validate_declaration(block, path=path)
+    module.referenced_inputs.update(_input_names(block))
     match block.type:
         case "locals":
             _add_locals(module, block, path=path)
@@ -109,11 +165,26 @@ def _collect(module: _Module, block: _hcl.Block, *, path: str, directory: str) -
         case "module":
             _add_call(module, block, path=path, directory=directory)
         case "variable":
+            name = block.labels[0]
+            if name in module.inputs:
+                message = f"Duplicate Terraform variable {name} in {path}"
+                raise ValueError(message)
+            module.inputs[name] = UnusedModuleInput(path, name, block.line)
             module.sinks.extend(_validation_expressions(block))
         case _:
             module.sinks.extend(_sinks(block))
             if block.type == "terraform":
                 module.backend |= _declares_backend(block)
+
+
+def _input_names(block: _hcl.Block) -> set[str]:
+    return {
+        reference.name
+        for value in _sinks(block)
+        for expression in (value, *_hcl.template_expressions(value))
+        for reference in _references(_hcl.tokens(expression))
+        if reference.kind == "var"
+    }
 
 
 def _validate_declaration(block: _hcl.Block, *, path: str) -> None:
@@ -336,6 +407,7 @@ class _Flow:
         self.internal = internal
         self.instances: list[_Instance] = []
         self.used: set[tuple[str, str]] = set()
+        self.used_inputs: set[tuple[str, str]] = set()
         self.visited: set[tuple[tuple[str, ...], str, str, tuple[str | None, ...]]] = set()
         self.active: set[tuple[tuple[str, ...], str, str]] = set()
 
@@ -467,14 +539,16 @@ class _Flow:
                 message = f"Terraform reference names an undeclared local: {instance.module}.{reference.name}"
                 raise ValueError(message)
             self._follow(instance, "local", reference.name, module.locals[reference.name], fields)
-        elif instance.parent is not None and reference.name in instance.arguments:
-            self._follow(
-                instance.parent,
-                "input",
-                ".".join((*instance.key, reference.name)),
-                instance.arguments[reference.name],
-                fields,
-            )
+        else:
+            self.used_inputs.add((instance.module, reference.name))
+            if instance.parent is not None and reference.name in instance.arguments:
+                self._follow(
+                    instance.parent,
+                    "input",
+                    ".".join((*instance.key, reference.name)),
+                    instance.arguments[reference.name],
+                    fields,
+                )
 
     def _output(self, instance: _Instance, name: str, projection: tuple[str | None, ...]) -> None:
         output = self.modules[instance.module].outputs.get(name)

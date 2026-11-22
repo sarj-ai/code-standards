@@ -487,6 +487,7 @@ def test_a_sensitive_constant_uses_secret_safe_remediation_and_never_echoes_valu
     assert len(findings) == 1
     assert findings[0].message.startswith("sensitive-constant: `api_enabled`")
     assert "shared secret source" in findings[0].message
+    assert "matching values alone do not establish" in findings[0].message
     assert "do not hard-code a default" in findings[0].message
     assert "(true)" not in findings[0].message
 
