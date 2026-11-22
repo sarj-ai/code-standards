@@ -33,9 +33,8 @@ if TYPE_CHECKING:
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
 
-#: Small displays rarely justify expanding a module's public lifetime and
-#: naming surface. A display in a loop has a lower threshold because the
-#: allocation repeats within one call as well as across calls.
+#: Small displays rarely justify expanding a module's public lifetime and naming surface. A display in a loop has a
+#: lower threshold because the allocation repeats within one call as well as across calls.
 _MIN_ELEMENTS = 8
 _MIN_LOOP_ELEMENTS = 3
 
@@ -473,9 +472,7 @@ def _is_safely_hoistable(
             reads += 1
         else:
             return False
-    # A binding the function never reads is either dead or read reflectively
-    # (`locals()`, a debugger, a frame-inspecting logger); either way there is no
-    # use site the hoist would serve, and moving it changes what `locals()` holds.
+    # Unread bindings may be dead or reflectively observed; hoisting serves no use site and changes locals().
     return reads > 0
 
 
@@ -524,8 +521,7 @@ def _is_safe_read(
         case ast.Attribute():
             return _is_safe_method_call(parent, parents, _safe_methods_for(candidate))
         case ast.Subscript(value=value, slice=index, ctx=ctx):
-            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate.
-            # A binding used as `frame[x]` is not representation-neutral:
+            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate. A binding used as `frame[x]` is not representation-neutral:
             # pandas and other selector APIs distinguish a list from a tuple.
             return (
                 candidate.kind in {"dict", "list"}

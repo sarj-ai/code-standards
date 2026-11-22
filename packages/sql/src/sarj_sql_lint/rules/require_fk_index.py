@@ -509,10 +509,8 @@ class RequireFkIndex(Rule):
                 continue
             fk_cols = _column_names(fk_match.group(1))
             if fk_cols and not _has_covering_index(indexes, fk_cols):
-                # `fk_match.start()`, NOT `ctx.stmt.find(fk_match.group(0))` — the
-                # latter re-finds the clause by value and resolves to the first
-                # identical one, mis-attributing the line and so making the
-                # finding unsuppressable by the line-keyed `-- sarj-noqa`.
+                # Use the clause's original match offset: searching identical text again misattributes findings and
+                # breaks line-keyed suppressions.
                 match_offset = ctx.char_offset + fk_match.start()
                 location = source_location(ctx.masked, match_offset)
                 diags.append(

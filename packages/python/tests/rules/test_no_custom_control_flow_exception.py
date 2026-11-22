@@ -1162,3 +1162,116 @@ def test_method_local_constructor_names_do_not_change_class_construction(tmp_pat
     )
     path = _imported_project(tmp_path, "from base import Base\nclass Rejected(Base): pass\n")
     assert len(NoCustomControlFlowException().check(path, path.read_text())) == 1
+
+
+_TYPED_DOMAIN_GUARD = (
+    "from typing import Literal\nEnvironment = Literal['dev', 'prod']\n"
+    "class Record:\n    environment: Environment\n"
+    "def verify(record: Record, environment: Environment) -> None:\n"
+    "    if record.environment != environment:\n        message = 'Mismatched domain'\n        raise ValueError(message)\n"
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _TYPED_DOMAIN_GUARD,
+        _TYPED_DOMAIN_GUARD.replace("raise ValueError(message)", "raise ValueError(message) from None"),
+        _TYPED_DOMAIN_GUARD.replace(
+            "from typing import Literal", "from builtins import ValueError as Invalid\nfrom typing import Literal"
+        ).replace("raise ValueError(message)", "raise Invalid(message)"),
+        "from pydantic import BaseModel\nclass Record(BaseModel):\n    token: str\ndef verify(record: Record, token: str) -> None:\n    if record.token != token:\n        raise ValueError('Mismatched token')\n",
+        "from pydantic import BaseModel\nclass Record(BaseModel):\n    token: str | None\n    def required_token(self) -> str:\n        if not self.token:\n            raise ValueError('Missing token')\n        return self.token\n",
+    ],
+)
+def test_ad_hoc_validation_of_typed_domain_values_is_rejected(source: str) -> None:
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+    assert "Construct a validated domain value" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pydantic import BaseModel, model_validator\nfrom typing import Self\nclass Record(BaseModel):\n    token: str\n    expected: str\n    @model_validator(mode='after')\n    def verify(self) -> Self:\n        if self.token != self.expected:\n            raise ValueError('Mismatched token')\n        return self\n",
+        _TYPED_DOMAIN_GUARD.replace(
+            "def verify(record: Record, environment: Environment) -> None:",
+            "def verify(record: Record, environment: Environment, ValueError) -> None:",
+        ),
+        _TYPED_DOMAIN_GUARD.replace(
+            "def verify(record: Record, environment: Environment) -> None:",
+            "def verify(record: Record, environment: Environment) -> None:\n    ValueError = First\n    ValueError = Second",
+        ),
+        _TYPED_DOMAIN_GUARD.replace(
+            "raise ValueError(message)",
+            "raise ValueError(message)  # sarj-noqa: SARJ542 -- required external protocol rejection",
+        ),
+        "from typing import Literal\nEnvironment = Literal['dev', 'prod']\ndef decide(environment: Environment) -> bool:\n    return environment == 'dev'\n",
+    ],
+)
+def test_construction_validators_and_proven_boundary_exceptions_remain_valid(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_branch_local_message_assignments_do_not_hide_repeated_domain_guards() -> None:
+    source = (
+        "from pydantic import BaseModel\n"
+        "class Record(BaseModel):\n    first: str\n    second: str\n"
+        "def verify(record: Record, first: str, second: str) -> None:\n"
+        "    if record.first != first:\n        message = 'First mismatch'\n        raise ValueError(message)\n"
+        "    if record.second != second:\n        message = 'Second mismatch'\n        raise ValueError(message)\n"
+    )
+    findings = NoCustomControlFlowException().check(Path("app/service.py"), source)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ542", 8), ("SARJ542", 11)]
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [("SARJ542", 0), ("SARJ585", 1)],
+    ids=["own-multiline-raise-exception", "another-rule-does-not-suppress"],
+)
+def test_multiline_domain_rejection_has_one_exact_statement_exception(code: str, expected: int) -> None:
+    source = (
+        "from pydantic import BaseModel\nclass Record(BaseModel):\n    value: str\n"
+        "def verify(record: Record, value: str) -> None:\n"
+        "    if record.value != value:\n        raise ValueError(\n            'Mismatch'\n"
+        f"        )  # sarj-noqa: {code} -- Preserve a required live verification boundary.\n"
+    )
+    assert len(NoCustomControlFlowException().check(Path("app/service.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from pydantic import BaseModel\nclass Record(BaseModel):\n    def unavailable(self) -> bool: return True\n    def send(self) -> None:\n        if self.unavailable():\n            raise ValueError('Unavailable')\n",
+            id="method-is-not-a-field",
+        ),
+        pytest.param(
+            "from typing import ClassVar\nfrom pydantic import BaseModel\nclass Record(BaseModel):\n    available: ClassVar[bool] = False\n    def send(self) -> None:\n        if not self.available:\n            raise ValueError('Unavailable')\n",
+            id="class-variable-is-not-a-field",
+        ),
+        pytest.param(
+            "from pydantic import BaseModel, PrivateAttr\nclass Record(BaseModel):\n    _ready: bool = PrivateAttr(default=False)\n    def send(self) -> None:\n        if not self._ready:\n            raise ValueError('Unavailable')\n",
+            id="private-attribute-is-not-a-field",
+        ),
+    ],
+)
+def test_model_members_need_an_actual_construction_field(source: str) -> None:
+    assert NoCustomControlFlowException().check(Path("app/service.py"), source) == []
+
+
+def test_root_model_keeps_its_constructor_owned_root_field() -> None:
+    source = "from pydantic import RootModel\nclass Count(RootModel[int]): pass\ndef verify(count: Count, expected: int) -> None:\n    if count.root != expected:\n        raise ValueError('Mismatch')\n"
+    assert len(NoCustomControlFlowException().check(Path("app/service.py"), source)) == 1
+
+
+def test_class_variable_override_stops_inherited_field_ownership() -> None:
+    source = "from typing import ClassVar\nfrom pydantic import BaseModel\nclass Parent(BaseModel):\n    available: bool\nclass Child(Parent):\n    available: ClassVar[bool] = False\n    def send(self) -> None:\n        if not self.available:\n            raise ValueError('Unavailable')\n"
+    assert NoCustomControlFlowException().check(Path("app/service.py"), source) == []
+
+
+def test_generic_record_parameter_is_not_a_module_model() -> None:
+    source = "from pydantic import BaseModel\nclass Record(BaseModel):\n    available: bool\ndef send[Record](record: Record) -> None:\n    if not record.available:\n        raise ValueError('Unavailable')\n"
+    assert NoCustomControlFlowException().check(Path("app/service.py"), source) == []

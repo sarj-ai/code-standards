@@ -16,10 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-# Translates a repository's ESLint flat config into Oxlint entrypoint arguments. It reads a static subset
-# of JavaScript, so no repository code runs during planning.
-
-#: `createConfig` options oxlint.strict.mts still takes; the ESLint-only ones have no Oxlint meaning.
+# Only static ESLint configuration is translated, without executing repository code. Retained createConfig options
+# exclude ESLint-only settings.
 _PRESET_OPTIONS: Final = frozenset({"bunTestFiles", "playwrightTestFiles", "syntaxOnlyConfigFiles", "testFrameworks"})
 #: Spreads of upstream ESLint config objects whose purpose Oxlint covers on its own.
 _DROPPED_SPREADS: Final[Mapping[tuple[str, str], str]] = {

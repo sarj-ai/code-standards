@@ -834,9 +834,8 @@ def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
 
 def parse_ruff_metadata(output: str) -> dict[str, _RuffMetadata]:
     metadata_values = _RuffMetadataList.model_validate_json(output).root
-    # Ruff may expose preview rules by name before assigning a stable code or
-    # linter family. The name is the stable selector Ruff accepts until a code
-    # exists, so it remains part of the effective public inventory.
+    # Ruff may expose preview rules by name before assigning a stable code or linter family. The name is the stable
+    # selector Ruff accepts until a code exists, so it remains part of the effective public inventory.
     return {value.code or value.name: value for value in metadata_values}
 
 

@@ -157,10 +157,8 @@ _SERVICES: tuple[_Service, ...] = (
     ),
 )
 
-# Names alone are especially weak evidence for provider clients: projects often
-# expose their own typed LLM port, while analytics tests commonly record a
-# single BigQuery query seam. Require a distinctive raw provider envelope before
-# claiming that either class re-implements the external wire protocol.
+# Provider names do not establish wire semantics. Require distinctive raw envelopes before diagnosing domain ports or
+# query seams.
 _WIRE_GATED_SUBJECTS = frozenset({"Google BigQuery", "an LLM provider's HTTP API"})
 _LLM_WIRE_KEY_SETS = (
     frozenset({"choices", "usage"}),

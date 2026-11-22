@@ -615,9 +615,8 @@ def test_doubles_wired_through_side_effect_sequences_are_one_collaborator():
 
 
 def test_a_double_handed_to_a_wrapper_call_belongs_to_that_graph():
-    # `video_store.upsert.return_value = ok(mock_video)` — the wrapper does not
-    # make `mock_video` a collaborator of its own; it is what `video_store`
-    # answers with.
+    # `video_store.upsert.return_value = ok(mock_video)` — the wrapper does not make `mock_video` a collaborator of its
+    # own; it is what `video_store` answers with.
     src = """
         def test_thing():
             client = Mock()
@@ -790,9 +789,8 @@ def test_an_unimported_bare_name_stays_itself():
 
 @pytest.mark.parametrize("header", ["from . import gateway", "from .app import gateway"], ids=["bare", "dotted"])
 def test_a_relative_import_does_not_qualify_a_name(header: str):
-    # A relative import gives no absolute path to resolve onto: `.app` is not
-    # the top-level `app`, so rewriting `gateway` to `app.gateway` would merge
-    # two different collaborators.
+    # A relative import gives no absolute path to resolve onto: `.app` is not the top-level `app`, so rewriting
+    # `gateway` to `app.gateway` would merge two different collaborators.
     src = textwrap.dedent(f"""
         from unittest.mock import patch
         {header}
@@ -1192,15 +1190,13 @@ def test_mock_fixtures_beyond_the_injected_ones_still_count():
     assert len(_check(src)) == 1
 
 
-# Each of the four cases below straddles the threshold exactly, so the arity
-# that decides whether a decorator injects a parameter is pinned in both
-# directions: one more or one fewer skipped parameter flips the verdict.
+# Each of the four cases below straddles the threshold exactly, so the arity that decides whether a decorator injects a
+# parameter is pinned in both directions: one more or one fewer skipped parameter flips the verdict.
 
 
 def test_patch_with_a_positional_replacement_injects_nothing():
-    # `patch(target, new)` supplies the replacement itself, so no parameter is
-    # prepended and every `mock_*` in the signature is genuinely a fixture:
-    # five fixtures plus `a` is six.
+    # `patch(target, new)` supplies the replacement itself, so no parameter is prepended and every `mock_*` in the
+    # signature is genuinely a fixture: five fixtures plus `a` is six.
     src = """
         @patch("a.one", stub_one)
         def test_thing(mock_a, mock_b, mock_c, mock_d, mock_e):

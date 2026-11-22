@@ -2345,10 +2345,8 @@ def prepare_branch(
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
-    # Capture the pre-update policy through the same compatibility boundary used
-    # by setup/update. Fleet consumers can legitimately still be on the prior
-    # manifest schema; the rollout is responsible for migrating them before the
-    # strict current-schema loader is used below.
+    # Capture old policy through the setup/update compatibility loader; migrate prior consumer schemas before strict
+    # current-schema validation.
     adopted = load_consumer_manifest(repo, for_setup=True)
     if adopted is None:
         return ReactDoctorPolicy(None, None)
@@ -2450,10 +2448,8 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         return existing
     if dry_run:
         return Outcome(consumer, WouldCreateBranch(rollout_branch(version)))
-    # Consumer package managers can leave short-lived background cleanup work
-    # behind after their command exits. The hosted runner discards this
-    # workspace, so a best-effort temporary-directory cleanup must never mask
-    # the rollout outcome or prevent later consumers from being reconciled.
+    # Hosted package managers can leave cleanup children briefly alive; best-effort temporary cleanup must preserve
+    # rollout outcomes and later reconciliation.
     with tempfile.TemporaryDirectory(prefix="standards-rollout-", ignore_cleanup_errors=True) as temporary:
         repo = Path(temporary) / "repo"
         report("cloning consumer")
@@ -2732,10 +2728,8 @@ def update_consumer_bundle(
             result.check_returncode()
         sys.stderr.write(f"Waiting for Code Standards {version} in the consumer package index\n")
         sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
-    # The exact, refreshed consumer probe already resolved this bundle. Hand
-    # that evidence to this update alone so its CLI does not resolve it again.
-    # The CLI still rejects an executing-version mismatch, installs consumer
-    # dependencies and performs its complete preflight/postflight checks.
+    # Only this exact update reuses refreshed resolution proof; executing-version checks, dependency installation and
+    # full preflight/postflight remain required.
     update_environment = {**environment, "SARJ_STANDARDS_BOOTSTRAPPED": "1"}
     options = ("--preserve-baselines",) if preserve_baselines else ()
     runner.run((*tool_prefix, *tool, "update", "--to", version, *options), cwd=repo, env=update_environment)

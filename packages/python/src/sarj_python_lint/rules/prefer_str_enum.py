@@ -76,10 +76,8 @@ CHOICES_ATTR_NAMES = frozenset({"choices", "states", "statuses", "values", "allo
 
 CHOICE_COLLECTION_FIELDS = MappingProxyType({"statuses": "status", "states": "state"})
 
-#: Literals that are an external / reserved vocabulary rather than an app enum.
-#: Only multi-character tokens live here — single characters are handled by the
-#: tokenizer-scan heuristic (`_is_scanner_key`) so that a genuine two-way
-#: dispatch like `kind == "a"` / `kind == "b"` still fires.
+#: Reserved multi-character vocabulary is external. Single characters use scanner evidence so genuine two-way
+#: application dispatch still reports.
 EXTERNAL_VOCAB = frozenset(
     {
         "is",
@@ -118,9 +116,8 @@ EXTERNAL_VOCAB = frozenset(
     }
 )
 
-#: Variable keys whose single-character comparisons are a tokenizer scan, not an
-#: enum dispatch (`last_char == "g"`), so single-character clusters on them are
-#: not flagged.
+#: Variable keys whose single-character comparisons are a tokenizer scan, not an enum dispatch (`last_char == "g"`), so
+#: single-character clusters on them are not flagged.
 _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "letter", "digit", "glyph"})
 
 #: Variable names whose external vocabulary is open-ended rather than an application enum.

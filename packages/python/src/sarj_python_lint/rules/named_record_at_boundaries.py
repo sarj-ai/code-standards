@@ -124,9 +124,8 @@ class NamedRecordAtBoundaries(Rule):
             # returns a dict" as their contract — that is not a missing model.
             if _is_dict_conversion_name(node.name):
                 return
-            # Pydantic validator hooks (`@model_validator`/`@field_validator`)
-            # take and return raw dict/values by contract — that's the API, not
-            # a missing model.
+            # Pydantic validator hooks (`@model_validator`/`@field_validator`) take and return raw dict/values by
+            # contract — that's the API, not a missing model.
             if _is_framework_hook(node, imports):
                 return
             # SARJ094 owns visible routes; hidden routes retain ordinary Python contract checks.

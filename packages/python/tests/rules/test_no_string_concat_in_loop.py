@@ -703,9 +703,8 @@ def f(items, values, value):
     assert _count(src) == expected
 
 
-# Adversarial coverage — compound statements wrapping an in-loop concat.        #
-# The visitor recurses via generic_visit, so loop_depth stays > 0 inside any    #
-# nested block and the concat must still fire.                                  #
+# Adversarial coverage — compound statements wrapping an in-loop concat. The visitor recurses via generic_visit, so
+# loop_depth stays > 0 inside any nested block and the concat must still fire.
 
 
 _WRAPPED_CONCAT_BODIES = [

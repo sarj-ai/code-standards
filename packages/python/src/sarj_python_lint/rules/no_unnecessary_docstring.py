@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 
 _DOCTEST_PROMPT = ">>>"
+_HELP_MAX_LINES = 3
+_HELP_MAX_WORDS = 40
 _MODULE_DOCUMENTATION_IMPORTS = frozenset({"__main__", "pydoc"})
 _METADATA_MODULES = frozenset({"functools", "dataclasses", "builtins", "abc", "typing", "typing_extensions"})
 _METADATA_CALLABLE_NAMES = frozenset(
@@ -133,6 +135,7 @@ class NoUnnecessaryDocstring(ProjectRule):
                 "Dynamic Click or Typer decorator options are conservatively treated as possible help consumers; "
                 "explicit non-None help leaves the docstring eligible."
             ),
+            "Human-facing framework help is limited to 3 nonempty lines and 40 words. Longer operational instructions belong in documentation; runtime prompts and explicitly consumed metadata retain their existing protections. A required longer help contract needs an exact-code justified exception.",
             (
                 "Source-proven direct decorators returning a wraps-decorated wrapper consume only their input doc; "
                 "factory and wrapper implementation prose remain eligible. Unknown assigned/updated options, shadowed "
@@ -140,6 +143,36 @@ class NoUnnecessaryDocstring(ProjectRule):
             ),
         ),
         examples=(
+            RuleExample(
+                example_id="long-command-help",
+                scenario="concise-help",
+                title="Framework help does not exempt an operational runbook",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/cli.py",
+                        'import typer\napp = typer.Typer()\n@app.command()\ndef run():\n    """Run the command.\n    Prepare the account.\n    Configure the workspace.\n    Read the deployment runbook.\n    """\n    send()\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/cli.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="short-command-help",
+                scenario="concise-help",
+                title="Required concise framework help remains observable",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/cli.py",
+                        'import typer\napp = typer.Typer()\n@app.command()\ndef run():\n    """Run the command."""\n    send()\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/cli.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="module-docstring-autofix",
                 scenario="module-docstring-autofix",
@@ -289,12 +322,14 @@ class NoUnnecessaryDocstring(ProjectRule):
         explicit_consumers = _explicit_docstring_consumers(
             tree, owner_keys, metadata=metadata, node_index=context.node_index
         )
-        shadowed = _module_bound_names(tree)
-        imports = _import_bindings(tree, shadowed)
-        consumed_owner_ids = (
+        imports = _import_bindings(tree, _module_bound_names(tree))
+        help_owner_ids = (
             _fastapi_docstring_consumers(tree, imports)
             | _typer_docstring_consumers(tree, imports)
             | _click_group_docstring_consumers(tree, imports)
+        )
+        consumed_owner_ids = (
+            help_owner_ids
             | _schema_docstring_consumers(tree, imports, node_index=context.node_index)
             | _project_schema_docstring_consumers(context.session.project, path, tree, node_index=context.node_index)
             | _metadata_docstring_consumers(context, metadata)
@@ -307,14 +342,14 @@ class NoUnnecessaryDocstring(ProjectRule):
             if expression is None:
                 continue
             docstring = ast.get_docstring(owner, clean=False)
-            if docstring is None or _DOCTEST_PROMPT in docstring:
+            if docstring is None:
                 continue
-            owner_line = 1 if isinstance(owner, ast.Module) else owner.lineno
-            owner_imports, owner_shadowed = _module_environment_before(tree, owner_line)
-            if (
-                _is_syntax_required(owner)
-                or id(owner) in consumed_owner_ids
-                or _framework_consumes_docstring(owner, owner_imports, owner_shadowed)
+            owner_imports, owner_shadowed = _module_environment_before(
+                tree, 1 if isinstance(owner, ast.Module) else owner.lineno
+            )
+            long_help = _long_framework_help(owner, docstring, help_owner_ids, owner_imports)
+            if not long_help and _retains_docstring(
+                owner, docstring, consumed_owner_ids, owner_imports, owner_shadowed
             ):
                 continue
             if owner_keys[id(owner)] in explicit_consumers.names:
@@ -327,11 +362,51 @@ class NoUnnecessaryDocstring(ProjectRule):
                     line=expression.lineno,
                     col=expression.col_offset + 1,
                     code=self.code,
-                    message=self.description,
+                    message=(
+                        "Keep framework help within 3 nonempty lines and 40 words; move operational instructions to documentation."
+                        if long_help
+                        else self.description
+                    ),
                     severity=Severity.ERROR,
                 )
             )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+
+def _retains_docstring(
+    owner: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+    docstring: str,
+    consumed_owner_ids: frozenset[int],
+    imports: dict[str, str],
+    shadowed: frozenset[str],
+) -> bool:
+    return (
+        _DOCTEST_PROMPT in docstring
+        or _is_syntax_required(owner)
+        or id(owner) in consumed_owner_ids
+        or _framework_consumes_docstring(owner, imports, shadowed)
+    )
+
+
+def _long_framework_help(
+    owner: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+    docstring: str,
+    help_owner_ids: frozenset[int],
+    imports: dict[str, str],
+) -> bool:
+    if (
+        len([line for line in docstring.splitlines() if line.strip()]) <= _HELP_MAX_LINES
+        and len(docstring.split()) <= _HELP_MAX_WORDS
+    ):
+        return False
+    if id(owner) in help_owner_ids:
+        return True
+    return not isinstance(owner, ast.Module) and any(
+        _resolve_imported_name(decorator.func if isinstance(decorator, ast.Call) else decorator, imports)
+        in _CLICK_DOC_DECORATORS
+        and (not isinstance(decorator, ast.Call) or _doc_help_is_implicit(decorator))
+        for decorator in owner.decorator_list
+    )
 
 
 def _docstring_owners(
@@ -1386,9 +1461,8 @@ def _metadata_class_prefix(scope: ast.ClassDef, node: ast.AST, bindings: _Metada
 
 
 def _metadata_current_bindings(statement: ast.AST) -> frozenset[str]:
-    # Definition headers and assignment RHS expressions execute before their
-    # declaration/target is installed. Unknown assignment expressions there
-    # still invalidate provenance conservatively.
+    # Headers and RHS expressions run before their target is bound.
+    # Unknown assignment expressions still invalidate provenance.
     match statement:
         case ast.Assign(value=value) | ast.AnnAssign(value=value):
             return _metadata_bound_names((value,)) if value is not None else frozenset()

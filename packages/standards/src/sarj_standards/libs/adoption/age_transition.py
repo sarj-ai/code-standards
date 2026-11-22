@@ -78,7 +78,9 @@ def _approvals(source: str) -> frozenset[str]:
 def _approval_sequence(source: str) -> SequenceNode | None:
     try:
         node: object = yaml.compose(source, Loader=yaml.SafeLoader)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML parser boundary.
-    except yaml.YAMLError as exc:
+    except (
+        yaml.YAMLError
+    ) as exc:  # sarj-noqa: SARJ585 -- Malformed PNPM policy must reject without echoing private YAML.
         msg = "invalid PNPM age approval policy"
         raise ValueError(msg) from exc
     if isinstance(node, MappingNode):

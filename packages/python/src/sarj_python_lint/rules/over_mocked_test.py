@@ -752,9 +752,8 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[_SubstitutionKe
     if not call.args:
         return []
     receiver = _receiver(call.args[0], names)
-    # `monkeypatch.setattr(mod, "attr", value)` vs `setattr("mod.attr", value)`:
-    # in the two-argument form the second argument is the replacement, and
-    # reading it as an attribute name would key the target off the stub.
+    # `monkeypatch.setattr(mod, "attr", value)` vs `setattr("mod.attr", value)`: in the two-argument form the second
+    # argument is the replacement, and reading it as an attribute name would key the target off the stub.
     if len(call.args) >= _SETATTR_SPLIT_ARITY:
         return [_SubstitutionKey(f"{receiver.target}.{_target_text(call.args[1])}", receiver.owner)]
     return [_SubstitutionKey(receiver.target, _owner_of(receiver.target))]

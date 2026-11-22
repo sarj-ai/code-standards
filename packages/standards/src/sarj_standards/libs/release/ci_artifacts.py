@@ -295,7 +295,7 @@ def _require_current_attempt(root: Path, repository: str, verified: VerifiedArti
         or current.conclusion not in allowed
     ):
         msg = "exact CI identity changed while verifying its artifact"
-        raise ValueError(msg)
+        raise ValueError(msg)  # sarj-noqa: SARJ542 -- Re-read live CI identity before accepting downloaded artifacts.
 
 
 def extract_verified_archive(archive: Path, destination: Path, *, digest: str, sha: str) -> None:

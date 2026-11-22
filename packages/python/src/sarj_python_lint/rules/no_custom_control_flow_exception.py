@@ -90,7 +90,7 @@ class NoCustomControlFlowException(Rule):
     code = "SARJ542"
     documentation = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Return coded typed outcomes for expected domain failures instead of exception-only contracts.",
+        summary="Enforce domain invariants at construction; represent expected rejection in typed outcomes.",
         rationale=(
             "A marker, fixed-message or payload-bearing custom exception creates another control-flow type without declaring failure data in "
             "the function's return contract. Expected domain outcomes can often use tagged result variants "
@@ -99,7 +99,7 @@ class NoCustomControlFlowException(Rule):
             "rejection still need exceptions."
         ),
         remediation=(
-            "Review direct raises of this exception. If the condition is an expected domain outcome, reuse an established Result[T, E] "
+            "First enforce domain invariants in a validated type so invalid values cannot reach ordinary operations. If failure remains an expected outcome, reuse an established Result[T, E] "
             "or a generic Success[T] | Error[E] union with a shared Literal discriminator, a stable domain error code and the handling context. "
             "Update callers to handle, propagate or translate each relevant variant; use the native type checker's assert_never "
             "for exhaustiveness. Extend an existing outcome union rather than wrapping it again. "
@@ -112,6 +112,7 @@ class NoCustomControlFlowException(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Also reviews builtin ValueError in simple ordinary-function guards over established local Literal/NewType/Enum values or Pydantic model fields. Constructors, import-proven model validators, decorated callbacks and guards requiring resource unwinding preserve their exception protocols. An unrelated ValueError name is not assumed to be the builtin. Arbitrary parser failures or untyped values do not prove a construction invariant.",
             "This blocking review policy checks stable module-level Exception/ValueError markers and fixed-message subclasses with a source-visible direct raise. It also reviews typed payload constructors limited to assignments and super().__init__ argument formatting, when raised by a simple rejection guard in an explicitly annotated function. Constructor parameters must be typed and nonvariadic, with at least one used; calls must supply their required arguments. Base ancestry must be source-proven; an opaque external base is not inferred from its name or message.",
             "Payload guards can prepare one literal or simple formatted message before raising. Guards under try/except/finally, with, loops and match are excluded, as are generators, decorated or special-method functions, quoted return annotations and import-proven NoReturn/Never functions, including simple nongeneric module aliases. Constructor calls, arbitrary computations, extra methods or behavior, decorated/generic constructors and unknown argument expansion abstain. Source-visible formatting is not a purity proof and never authorizes an automatic rewrite.",
             "Direct module-level from-imports, including renamed and relative imports, are followed to stable first-party exception definitions using the existing bounded local-source resolver. An imported raise must be a simple guard in an explicitly annotated ordinary function, with source-proven Exception/ValueError ancestry and compatible constructor arguments. Import-proven typing.final/typing_extensions.final class decorators preserve this proof. The rule reports once per function and originating exception, at an unsuppressed raise. Source-definition suppressions are also respected.",
@@ -122,6 +123,36 @@ class NoCustomControlFlowException(Rule):
             "The examples illustrate an existing project Result abstraction; do not introduce another Result library or require these class/tag names. SARJ510 owns explicit data discriminators and SARJ548 reviews discarded tagged outcomes; the native type checker owns exhaustive handling. A tag alone cannot guarantee JSON support for arbitrary T/E: qualify the concrete payloads with their codec. Keep established wire discriminators, legitimate absence and independent outcomes. This policy does not mechanically ban scalar unions or require every function to return Result.",
         ),
         examples=(
+            RuleExample(
+                example_id="postconstruction-domain-rejection",
+                scenario="validated-construction",
+                title="Typed record guards belong at construction",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from typing import Literal\nfrom pydantic import BaseModel\nEnvironment = Literal['sandbox', 'live']\nclass Request(BaseModel):\n    environment: Environment\ndef save(request: Request, environment: Environment) -> None:\n    if request.environment != environment:\n        raise ValueError('Wrong environment')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="validated-domain-construction",
+                scenario="validated-construction",
+                title="The model rejects invalid values at construction",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from typing import Literal\nfrom pydantic import BaseModel, model_validator\nEnvironment = Literal['sandbox', 'live']\nclass Request(BaseModel):\n    environment: Environment\n    expected: Environment\n    @model_validator(mode='after')\n    def validate_pair(self):\n        if self.environment != self.expected:\n            raise ValueError('Wrong environment')\n        return self\ndef save(request: Request) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="empty-domain-exception",
                 title="A local marker hides a domain outcome outside the return contract",
@@ -431,7 +462,42 @@ class NoCustomControlFlowException(Rule):
                     severity=Severity.ERROR,
                 )
             )
-        return findings
+        return [*findings, *_builtin_domain_rejections(context)]
+
+
+def _builtin_domain_rejections(context: PythonFileContext) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    domains = context.domain_boundaries
+    for raised in context.nodes(ast.Raise):
+        call = raised.exc
+        if not isinstance(call, ast.Call) or not (
+            domains.origins.builtin(call.func, "ValueError", call)
+            or domains.origins.qualified(call.func, call) == "builtins.ValueError"
+        ):
+            continue
+        guard = context.parents.get(raised)
+        if not isinstance(guard, ast.If):
+            guard = context.parents.get(guard) if guard is not None else None
+        if not isinstance(guard, ast.If) or _guard_function(raised, context) is None:
+            continue
+        if not domains.has_domain_guard(guard.test) or _suppressed_raise(raised, context):
+            continue
+        findings.append(
+            Diagnostic(
+                context.path,
+                raised.lineno,
+                raised.col_offset + 1,
+                "SARJ542",
+                "Construct a validated domain value that enforces this relationship instead of raising an ad hoc ValueError after construction. If rejection is an expected outcome, return an explicit tagged Result and handle or propagate every variant.",
+                severity=Severity.ERROR,
+            )
+        )
+    return findings
+
+
+def _suppressed_raise(raised: ast.Raise, context: PythonFileContext) -> bool:
+    stop = (raised.end_lineno or raised.lineno) + 1
+    return any(context.suppressions.is_suppressed(line, "SARJ542") for line in range(raised.lineno, stop))
 
 
 def _markers(
@@ -826,7 +892,7 @@ def _rejection_branch(branch: list[ast.stmt], raised: ast.Raise, context: Python
     return any(
         isinstance(node, ast.Name)
         and node.id == target.id
-        and context.static_resource_provenance.binding(node.id, node) is target
+        and context.static_resource_provenance.scope(node) is context.static_resource_provenance.scope(target)
         for node in ast.walk(raised.exc)
     )
 

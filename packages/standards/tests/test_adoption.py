@@ -2690,9 +2690,8 @@ def test_doctor_keeps_shared_configs_at_repo_root_after_subproject_adoption(
     assert str(project / ".markdownlint.yaml") not in second.stdout
 
 
-#: A hook that does not say `pass_filenames: false` receives the staged files
-#: pre-commit matched for it, so replaying one without a path is not the command
-#: that actually runs.
+#: A hook that does not say `pass_filenames: false` receives the staged files pre-commit matched for it, so replaying
+#: one without a path is not the command that actually runs.
 _PRECOMMIT_HOOK = re.compile(r"entry:\s*(?P<entry>.+?)\n(?P<rest>(?:\s+\w[^\n]*\n)*)", re.MULTILINE)
 
 
@@ -2725,9 +2724,8 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
     assert len(entries) == 2, "one hook per Git stage avoids duplicate work within either stage"
     for entry, pass_filenames_false in entries:
-        # Run the CLI the hook names, through the interpreter the tests already
-        # use, so this exercises the generated command shape without needing a
-        # network fetch or a uv-managed virtualenv inside tmp_path.
+        # Run the CLI the hook names, through the interpreter the tests already use, so this exercises the generated
+        # command shape without needing a network fetch or a uv-managed virtualenv inside tmp_path.
         subcommand = entry.rsplit(" code-standards ", 1)[1].split()
         if subcommand == ["commit-message"]:
             subcommand.append(str(message))

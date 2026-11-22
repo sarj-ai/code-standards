@@ -31,7 +31,9 @@ def parse_yaml_documents(
             if (node := loader.get_node()) is not None:
                 _YamlValidation(loader).shape(node, 0)
                 documents.append(loader.construct_document(node))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- validated PyYAML construction boundary.
-    except RecursionError as error:
+    except (
+        RecursionError
+    ) as error:  # sarj-noqa: SARJ585 -- Bounded YAML decoding preserves ValueError rejection and parser disposal.
         msg = "excessively nested YAML cannot be validated"
         raise ValueError(msg) from error
     finally:

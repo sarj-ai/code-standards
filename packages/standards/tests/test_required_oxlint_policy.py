@@ -145,9 +145,8 @@ def test_floor_findings_cannot_be_bulk_suppressed(tmp_path: Path) -> None:
     ],
 )
 def test_line_one_directives_are_reported_without_a_crash(tmp_path: Path, source: str) -> None:
-    # The JS eslint-comments plugin reported column -1 of the directive's line,
-    # which Oxlint 1.91 rejects on line 1, aborting every JS rule for the file.
-    # A report inside the directive also escapes the area that directive disables.
+    # The JS eslint-comments plugin reported column -1 of the directive's line, which Oxlint 1.91 rejects on line 1,
+    # aborting every JS rule for the file. A report inside the directive also escapes the area that directive disables.
     root = project(tmp_path / "repo", {"src/a.ts": source})
 
     report = analyze(root, oxlint.OxlintRequest(), "src")

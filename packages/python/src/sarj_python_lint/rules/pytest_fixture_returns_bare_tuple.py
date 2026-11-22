@@ -515,9 +515,8 @@ def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef, *, has_yi
 
 
 def _scan_for_results(node: ast.AST, *, has_yield: bool) -> list[_TupleResult]:
-    # Descend through control flow but never into a nested function: a tuple
-    # returned by a closure the fixture builds crosses the closure's boundary,
-    # not the fixture's, so it is a different (and legitimate) shape.
+    # Descend through control flow but never into a nested function: a tuple returned by a closure the fixture builds
+    # crosses the closure's boundary, not the fixture's, so it is a different (and legitimate) shape.
     if isinstance(node, (*_FUNC_NODES, ast.Lambda)):
         return []
     found: list[_TupleResult] = []

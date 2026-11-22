@@ -67,21 +67,7 @@ def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId
     assert len(rule.check(path, f"{prefix}\n{signal}")) == 1
 
 
-# One signal per migration rule, each firing exactly once:
-# SARJ103 `CREATE TYPE ... AS ENUM`, SARJ109 `gen_random_uuid()` default,
-# SARJ112 unindexed cascading `REFERENCES`, SARJ104 `VARCHAR(n)`, SARJ106 `JSON`,
-# SARJ101 `TIMESTAMP`, SARJ108 the blocking `CREATE INDEX` on a
-# table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
-# SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ113 the commented-out
-# `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
-# long implementation narrative, SARJ116 the fourth child-table index, and
-# SARJ117 one duplicate child-table index shape, and SARJ118 an application-owned
-# closed text value set repeated as a database CHECK, and SARJ119 the existing-
-# table constraint plus data write mixed with the surrounding expand phase,
-# SARJ120 a stored SQL function, and SARJ102 + SARJ121 an unguarded fresh table
-# followed by a separately declared primary key, SARJ123 adjacent compatible
-# drops, SARJ124 ordinary NULL equality, SARJ125 a concurrent multi-index drop,
-# and SARJ126 a unique hash index. These legacy rules do not require timeout headers.
+# Each legacy migration rule must emit once; timeout-header rules are excluded from this fixture's contract.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.

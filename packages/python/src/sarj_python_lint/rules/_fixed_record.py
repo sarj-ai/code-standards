@@ -263,9 +263,8 @@ class _Analyzer:
         final_flow = self.block(finalbody, flow.active)
         flow.active = final_flow.active
         flow.returned.extend(final_flow.returned)
-        # A return suspends before ``finally`` runs. Return outcomes do not
-        # retain their state, so abstain instead of claiming that a record
-        # returned from the try/handler cannot be mutated or replaced.
+        # A return suspends before ``finally`` runs. Return outcomes do not retain their state, so abstain instead of
+        # claiming that a record returned from the try/handler cannot be mutated or replaced.
         if has_suspended_return:
             flow.returned.append(_ReturnKind.UNKNOWN)
 

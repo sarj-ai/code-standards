@@ -74,12 +74,14 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "iac:no-unused-module-outputs",
         # Invalid build ordering or substitution into executable shell syntax.
         "text:cloudbuild-contract",
+        # Explicit user-requested shell-prose ban, qualified with paired native
+        # cases and immutable corpus controls for data, directives and required contracts.
+        "text:concise-shell-prose",
         # User-approved architecture policy: literal/import-proven interpreter source
         # bypasses the requested independently linted file/module boundary.
         "python:no-interpreter-source-arguments",
-        # User-requested blocking CLI policy: require typed Typer command
-        # contracts instead of raw argv parsing; qualified with paired native
-        # fixtures, inspected adapter exceptions and pinned corpus evidence.
+        # User-requested blocking CLI policy: require typed Typer command contracts instead of raw argv parsing;
+        # qualified with paired native fixtures, inspected adapter exceptions and pinned corpus evidence.
         "python:prefer-typed-cli",
         # User-approved blocking suppression integrity, qualified with native
         # checker repros, labeled cases, and pinned-corpus/performance evidence.

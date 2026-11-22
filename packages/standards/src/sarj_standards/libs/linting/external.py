@@ -1859,9 +1859,8 @@ def _shell_source_reports(
         return CachedResult(tuple(reports))
 
     def shell_file_inputs() -> Iterator[str]:
-        # ShellCheck follows sources only among its inputs (no -x) and shfmt
-        # ignores EditorConfig when given printer flags, so these files are all
-        # either tool reads.
+        # ShellCheck follows sources only among its inputs (no -x) and shfmt ignores EditorConfig when given printer
+        # flags, so these files are all either tool reads.
         if executor_capabilities(runner).tool_resolution is not ToolResolution.LOCAL:
             msg = "only locally resolved shell tools have a provable identity"
             raise UnknownInputsError(msg)
@@ -2832,11 +2831,8 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
         _validate_mobsfscan_coverage(report, root, expected_paths)
-    # Semgrep 1.177.0 does not yet parse Swift's `#Preview` macro. It reports a
-    # warning-only PartialParsing record while still scanning the complete file.
-    # Permit only that exact, known parser limitation and only when the caller
-    # requested and proved exact selected-file coverage above. Every other
-    # engine error remains fatal.
+    # Only Semgrep 1.177.0's warning-only Swift #Preview PartialParsing record is permitted with proven exact coverage;
+    # every other engine error remains fatal.
     tolerated_partial_parsing = expected_paths is not None and all(
         _is_tolerated_swift_partial_parsing(raw_error) for raw_error in errors
     )
@@ -3078,7 +3074,7 @@ def _react_doctor_path(item: _ReactDoctorDiagnostic, directory: Path, root: Path
     resolved = (raw_path if raw_path.is_absolute() else directory / raw_path).resolve()
     try:
         resolved.relative_to(root.resolve())
-    except ValueError as exc:
+    except ValueError as exc:  # sarj-noqa: SARJ585 -- Reject boundary paths without printing absolute private roots.
         msg = "React Doctor reported a path outside the repository root"
         raise ValueError(msg) from exc
     return resolved
@@ -3152,9 +3148,8 @@ def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
 
 
 def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
-    # DEP002 compares project dependencies with its complete import graph. A
-    # selected maintenance script must also scan the package sources explicitly
-    # owned by this wheel, even when those sources have a nested pyproject.
+    # DEP002 compares project dependencies with its complete import graph. A selected maintenance script must also scan
+    # the package sources explicitly owned by this wheel, even when those sources have a nested pyproject.
     packages = _deptry_declared_packages(project)
     roots = {package.path.relative_to(project).as_posix() for package in packages}
     for raw_file in scoped_files:
@@ -3288,7 +3283,7 @@ def _contained_path(value: str, root: Path) -> str:
     resolved = (path if path.is_absolute() else root / path).resolve()
     try:
         resolved.relative_to(root)
-    except ValueError as exc:
+    except ValueError as exc:  # sarj-noqa: SARJ585 -- Reject boundary paths without printing absolute private roots.
         msg = "analysis path is outside the repository root"
         raise ValueError(msg) from exc
     return str(resolved)
@@ -3351,7 +3346,7 @@ def _reported_path(value: str, root: Path) -> Path:
     resolved = (path if path.is_absolute() else root / path).resolve()
     try:
         resolved.relative_to(root.resolve())
-    except ValueError as exc:
+    except ValueError as exc:  # sarj-noqa: SARJ585 -- Reject boundary paths without printing absolute private roots.
         msg = "analyzer reported a path outside the repository root"
         raise ValueError(msg) from exc
     return resolved
@@ -3412,7 +3407,7 @@ def _severity_text(value: str) -> Severity:
 def _relative(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError as exc:
+    except ValueError as exc:  # sarj-noqa: SARJ585 -- Reject boundary paths without printing absolute private roots.
         msg = "analyzer reported a path outside the repository root"
         raise ValueError(msg) from exc
 

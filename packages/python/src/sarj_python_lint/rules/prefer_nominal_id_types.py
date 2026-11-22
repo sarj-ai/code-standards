@@ -145,7 +145,7 @@ class PreferNominalIdTypes(Rule):
     code: str = "SARJ093"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Python boundaries should distinguish swappable identifier roles with nominal types.",
+        summary="Preserve established domain types and distinguish swappable identifier roles.",
         rationale=(
             "Two identifiers with the same primitive or container carrier can be exchanged without a type-checking error. "
             "Erasing an established domain ID has the same problem even when a boundary accepts one identifier. "
@@ -153,11 +153,12 @@ class PreferNominalIdTypes(Rule):
         ),
         remediation=(
             "Use `typing.NewType` as the low-runtime-cost default and propagate it from the raw edge through the domain "
-            "boundary. A nominal value object is also valid when runtime validation or behavior is required."
+            "boundary. Prefer a validated value object when construction must enforce runtime invariants. Preserve established Literal/Enum domains and optionality instead of widening them to primitive carriers."
         ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Local source-proven Literal, NewType and Enum domains propagate through direct calls and rejecting equality guards against a matching typed record field. A relationship and carrier proof are required; a variable name alone does not establish a domain. Raw-input factories returning an established domain retain their construction boundary. Scoped bindings preserve unrelated same-name values. Ambiguous, rebound and type-parameter-shadowed declarations abstain. Dynamic calls, external domain declarations and arbitrary attribute inference are not resolved by this local flow extension. No automatic annotation rewrite is safe, especially for optional values or shadowing names.",
             "A single primitive ID field on a direct Pydantic model receives a warning when an explicit pattern already demonstrates its own identifier domain. Reuse or introduce a nominal ID while retaining the pattern and wire representation; an ID-shaped name alone is insufficient.",
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
             "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs, external/inherited contracts and raw-schema exclusions still apply.",
@@ -169,6 +170,36 @@ class PreferNominalIdTypes(Rule):
             "Canonical object, ABC, Protocol and Generic bases do not hide fields or methods declared by the class. Mutated, escaped or rebound providers remain unknown. Other explicit bases stay excluded without requiring an override decorator; their inherited API may prescribe raw carriers. Local custom bases do not prove runtime member ownership remains closed.",
         ),
         examples=(
+            RuleExample(
+                example_id="erased-domain-argument",
+                scenario="domain-flow",
+                title="A caller retains the established domain",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from typing import Literal\nEnvironment = Literal['sandbox', 'live']\ndef save(environment: Environment) -> None: ...\ndef run(value: str) -> None:\n    save(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="preserved-domain-argument",
+                scenario="domain-flow",
+                title="A typed caller preserves the closed domain",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from typing import Literal\nEnvironment = Literal['sandbox', 'live']\ndef save(environment: Environment) -> None: ...\ndef run(value: Environment) -> None:\n    save(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="owned-abstract-contract-id-roles",
                 scenario="owned-contract",
@@ -391,7 +422,36 @@ class PreferNominalIdTypes(Rule):
                 diagnostics.extend(self._raw_contract_diagnostics(model, context, facts))
         for method in _local_contract_implementations(context, original_facts):
             diagnostics.extend(self._raw_contract_diagnostics(method, context, facts, owned_contract=True))
+        diagnostics.extend(self._domain_diagnostics(context, diagnostics))
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+    def _domain_diagnostics(self, context: PythonFileContext, existing: list[Diagnostic]) -> list[Diagnostic]:
+        diagnostics: list[Diagnostic] = []
+        path = context.path
+        for argument, domains in context.domain_boundaries.required.items():
+            if (
+                len(domains) != 1
+                or argument.annotation is None
+                or context.suppressions.is_suppressed(argument.lineno, self.code)
+            ):
+                continue
+            domain = next(iter(domains))
+            if any(
+                diagnostic.line == argument.annotation.lineno and diagnostic.code == self.code
+                for diagnostic in existing
+            ):
+                continue
+            diagnostics.append(
+                Diagnostic(
+                    path,
+                    argument.annotation.lineno,
+                    argument.annotation.col_offset + 1,
+                    self.code,
+                    f"`{argument.arg}` is compared with or passed to the established `{domain.name}` domain; preserve that type instead of erasing it to a primitive. Preserve optionality and rename shadowing value bindings if necessary.",
+                    severity=Severity.ERROR,
+                )
+            )
+        return diagnostics
 
     def _raw_contract_diagnostics(
         self,

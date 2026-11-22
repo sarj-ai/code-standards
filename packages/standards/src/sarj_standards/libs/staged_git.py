@@ -45,7 +45,10 @@ def staged_environment(root: Path) -> dict[str, str]:
         index = _validated_index(root.resolve(), supplied, environment)
         environment["GIT_INDEX_FILE"] = str(index)
         _validate_index(root, environment)
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (
+        OSError,
+        subprocess.SubprocessError,
+    ) as exc:  # sarj-noqa: SARJ585 -- Reject unvalidated Git indexes through ValueError before any staged mutation.
         message = "cannot validate the active Git index; no staged source was changed"
         raise ValueError(message) from exc
     return environment

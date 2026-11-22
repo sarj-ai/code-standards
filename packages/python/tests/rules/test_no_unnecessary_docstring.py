@@ -2547,3 +2547,32 @@ def test_metadata_intrinsic_annotation_frames_and_alias_assignments(
 ) -> None:
     findings = NoUnnecessaryDocstring().check(Path("app/service.py"), source)
     assert [(finding.line, finding.code) for finding in findings] == expected_diagnostics
+
+
+@pytest.mark.parametrize("framework", ["typer", "click", "fastapi"])
+def test_framework_help_does_not_exempt_operational_runbooks(framework: str) -> None:
+    setup = {
+        "typer": "import typer\napp = typer.Typer()\n@app.command()",
+        "click": "import click\n@click.command()",
+        "fastapi": "from fastapi import FastAPI\napp = FastAPI()\n@app.get('/')",
+    }[framework]
+    source = (
+        setup
+        + '\ndef command() -> None:\n    """First instruction.\n    Second instruction.\n    Third instruction.\n    Fourth instruction.\n    """\n    pass\n'
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+    assert "framework help" in findings[0].message
+
+
+def test_short_help_and_machine_consumed_prompts_are_preserved() -> None:
+    short = 'import typer\napp = typer.Typer()\n@app.command()\ndef command() -> None:\n    """Run the requested operation."""\n    pass\n'
+    prompt = 'from agents import function_tool\n@function_tool\ndef lookup() -> None:\n    """First machine instruction.\n    Second machine instruction.\n    Third machine instruction.\n    Fourth machine instruction.\n    """\n    pass\n'
+    assert _check(short) == []
+    assert _check(prompt) == []
+
+
+def test_doctest_marker_does_not_hide_long_framework_help() -> None:
+    source = 'import typer\napp = typer.Typer()\n@app.command()\ndef command() -> None:\n    """First instruction.\n    Second instruction.\n    Third instruction.\n    >>> pass\n    """\n    pass\n'
+    assert len(_check(source)) == 1

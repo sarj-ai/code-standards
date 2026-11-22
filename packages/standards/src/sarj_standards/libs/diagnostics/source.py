@@ -206,7 +206,9 @@ class SourceDocument:
         prefix = encoded_line[:relative]
         try:
             decoded = prefix.decode("utf-8", errors="surrogateescape")
-        except UnicodeDecodeError as exc:
+        except (
+            UnicodeDecodeError
+        ) as exc:  # sarj-noqa: SARJ585 -- Invalid UTF-8 offsets must reject without echoing private source bytes.
             msg = "source byte offset splits a UTF-8 code point"
             raise ValueError(msg) from exc
         if not source_line.startswith(decoded):

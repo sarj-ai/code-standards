@@ -33,7 +33,7 @@ class AnnotationOrigins:
         value = self.context.annotation_semantics.aliases.get(node.id)
         if value is None:
             return None
-        binding = self.provenance.binding(node.id, at)
+        binding = self.binding(node.id, at)
         if not isinstance(binding, ast.Name):
             return None
         parent = self.context.parents.get(binding)
@@ -75,19 +75,45 @@ class AnnotationOrigins:
             or type_parameter_shadow(root.id, at, self.context)
         ):
             return None
-        binding = self.provenance.binding(root.id, at)
+        binding = self.binding(root.id, at)
         parent = self.context.parents.get(binding) if binding is not None else None
         index = self.imports.get(parent) if isinstance(parent, ast.Import | ast.ImportFrom) else None
         return index.resolved_qualified_name(node) if index is not None else None
 
     def builtin(self, node: ast.expr, name: str, at: ast.AST) -> bool:
-        return (
+        if not (
             self.provenance.builtin_namespace_untouched
             and isinstance(node, ast.Name)
             and node.id == name
             and not type_parameter_shadow(name, at, self.context)
-            and self.provenance.binding(name, at) is None
-        )
+            and self.binding(name, at) is None
+        ):
+            return False
+        scope = self.provenance.scope(self._lookup_at(at))
+        while scope is not None:
+            if name in self.provenance.bindings.get(scope, {}):
+                return False
+            scope = self.provenance.scope(scope)
+        return True
+
+    def binding(self, name: str, at: ast.AST) -> ast.AST | None:
+        if type_parameter_shadow(name, at, self.context):
+            return None
+        return self.provenance.binding(name, self._lookup_at(at))
+
+    def _lookup_at(self, at: ast.AST) -> ast.AST:
+        current = at
+        while (parent := self.context.parents.get(current)) is not None:
+            if isinstance(parent, ast.Lambda | ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+                return at
+            if isinstance(parent, ast.arg) and current is parent.annotation:
+                arguments = self.context.parents.get(parent)
+                function = self.context.parents.get(arguments) if arguments is not None else None
+                return function if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef) else at
+            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and current is parent.returns:
+                return parent
+            current = parent
+        return at
 
 
 def type_parameter_shadow(name: str, at: ast.AST, context: PythonFileContext) -> bool:

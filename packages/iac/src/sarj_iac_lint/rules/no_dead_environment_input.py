@@ -58,17 +58,11 @@ _MIN_ENVIRONMENTS = 2
 _MAX_VALUE_DISPLAY = 48
 _MAX_NUMBER_STRING_DIGITS = 10_000
 
-# Value tags a diagnostic may print, and only from unquoted source text. A
-# string in a tfvars file is routinely a password, token or connection URI, and
-# lint output reaches CI logs and PR annotations — places the (often gitignored)
-# tfvars file never reaches. A quoted account id canonicalizes to a number but was
-# written as a string, so the quote, not the tag alone, is the gate.
+# Never print quoted tfvars values: quotes can hide secrets or account IDs, even when canonicalized as numeric tags.
 _PRINTABLE_TAGS = frozenset({"bool", "num", "null"})
 
-# Stems that name a copy, a specimen or a scratch file rather than a deployment.
-# A `backup.tfvars` beside `production.tfvars` is that file's backup, so treating
-# it as a second environment makes every shared line "constant everywhere" — a
-# tautology comparing a file against its own copy.
+# Backup and specimen tfvars are copies, not environments; comparing a deployment against its copy falsely proves
+# constancy.
 _NON_ENVIRONMENT_STEMS = frozenset(
     {
         "backup",
@@ -460,9 +454,8 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _
 
 def _varies_elsewhere(analysis: _RootAnalysis, name: str) -> bool:
     canons = {value.canon for value in analysis.values.get(name, {}).values()}
-    # An opaque sibling (heredoc or interpolation) counts as variation, not as
-    # agreement: `None` joins the set on its own. Advising deletion of a line a
-    # sibling may override is the costly direction to be wrong in.
+    # An opaque sibling (heredoc or interpolation) counts as variation, not as agreement: `None` joins the set on its
+    # own. Advising deletion of a line a sibling may override is the costly direction to be wrong in.
     return len(canons) > 1
 
 
@@ -1002,10 +995,7 @@ def _collect_environment_values(
         )
         previous = values.setdefault(attr.name, {}).get(env)
         if previous is not None and env not in conflicted:
-            # Terraform rejects a key redefined inside one file, so that
-            # file's inputs are not a thing this rule can reason about;
-            # only a disagreement BETWEEN files is a var-file ordering
-            # question. Both leave the environment unknowable.
+            # Duplicate keys or ordering-dependent disagreements make an environment's effective inputs unknowable.
             same_file = previous.file == file
             if same_file or previous.canon != assignment.canon:
                 conflicted.add(env)

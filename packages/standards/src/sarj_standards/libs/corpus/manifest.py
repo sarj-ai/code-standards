@@ -171,21 +171,25 @@ def _source(
         raise TypeError(msg)
     try:
         corpus_kind = CorpusKind(kind)
-    except ValueError:
+    except ValueError:  # sarj-noqa: SARJ585 -- Private corpus metadata must not echo a rejected enum value.
         msg = "corpus kind must be local or git"
         raise ValueError(msg) from None
     resolved = Path(root)
     if visibility is CorpusVisibility.PUBLIC and resolved.is_absolute():
         msg = "public corpus roots must be relative to the manifest"
-        raise ValueError(msg)
+        raise ValueError(msg)  # sarj-noqa: SARJ542 -- Public corpus construction must reject absolute private roots.
     if not resolved.is_absolute():
         if visibility is CorpusVisibility.PUBLIC and ".." in resolved.parts:
             msg = "public corpus roots must stay below the manifest directory"
-            raise ValueError(msg)
+            raise ValueError(
+                msg
+            )  # sarj-noqa: SARJ542 -- Public corpus construction must reject parent traversal before resolution.
         resolved = (origin.parent / resolved).resolve()
         if visibility is CorpusVisibility.PUBLIC and not resolved.is_relative_to(origin.parent.resolve()):
             msg = "public corpus roots must stay below the manifest directory"
-            raise ValueError(msg)
+            raise ValueError(
+                msg
+            )  # sarj-noqa: SARJ542 -- Resolved corpus paths require containment against the actual manifest root.
     return CorpusSource(
         name,
         resolved,

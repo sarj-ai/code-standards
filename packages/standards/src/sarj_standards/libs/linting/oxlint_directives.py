@@ -1,18 +1,5 @@
-# Remove unused ``eslint-*``/``oxlint-*`` directives that Oxlint reports.
-#
-# Oxlint 1.91 reports unused directives but ``--fix`` never removes them, so
-# this module plans the byte edits itself. For ``rollout.py``, ``plan`` is a
-# read-only audit of tracked sources that returns frozen ``SourcePostimage``
-# values, ``apply`` writes them transactionally and ``validate`` proves the tree
-# still holds them. ``remove_unused_directives`` is the pure edit.
-# ``fix_sources`` (``python -m``) applies the same edits to working-tree files
-# after ``oxlint --fix``, which leaves unused directives in place.
-#
-# Edits keep the surrounding source: a directive on its own line removes the
-# line, a trailing one removes the comment and the space before it, and a partly
-# unused directive loses only the unused rule names. Older Oxlint reports an unused
-# ``/* x-disable */ ... /* x-enable */`` pair at the enable comment, so both
-# comments go. Anything else raises instead of guessing.
+# Oxlint 1.91 reports unused directives without fixing them. Remove only proven spans transactionally, preserving
+# unrelated source and rejecting unknown report shapes.
 
 from __future__ import annotations
 
@@ -476,9 +463,8 @@ def _formatted(
     runtimes: dict[Path, directive_formatter.RuntimeProof],
     run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
 ) -> SourcePostimage:
-    # Deleting a directive can leave layout oxfmt would change; format the postimage the way the
-    # project's oxfmt config would, unless the source already differs from it (that formatter debt
-    # belongs to the rollout's own oxfmt commit, not to directive cleanup).
+    # Format directive postimages only when the original matches project formatting; preexisting formatter debt belongs
+    # to its own change.
     if not directive_formatter.configured(root, relative):
         return postimage
     owner = directive_formatter.select(
@@ -663,7 +649,10 @@ def _git(root: Path, *arguments: str) -> bytes:
             check=False,
             timeout=_GIT_TIMEOUT.total_seconds(),
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except (
+        OSError,
+        subprocess.TimeoutExpired,
+    ) as exc:  # sarj-noqa: SARJ585 -- Git discovery failures must abort directive planning before any source write.
         msg = "Git metadata discovery failed during directive-fix planning"
         raise ValueError(msg) from exc
     if result.returncode != 0:

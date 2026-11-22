@@ -1152,3 +1152,164 @@ def test_local_abstract_contract_and_implementation_keep_the_nominal_boundary() 
     source = "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def stop(self, notice_id: str): ...\nclass DatabaseStore(Store):\n    def stop(self, notice_id: str): return None\n"
     findings = _check(source)
     assert [(finding.line, finding.severity) for finding in findings] == [(4, Severity.WARNING), (6, Severity.WARNING)]
+
+
+_DOMAIN_BOUNDARY = (
+    "from typing import Literal\nEnvironment = Literal['dev', 'prod']\n"
+    "class Record:\n    environment: Environment\n"
+    "def verify(record: Record, environment: str) -> None:\n"
+    "    if record.environment != environment:\n        raise ValueError('Mismatched domain')\n"
+    "def check(record: Record, environment: str) -> None:\n    verify(record, environment)\n"
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _DOMAIN_BOUNDARY,
+        _DOMAIN_BOUNDARY + "def unrelated(Environment: str) -> str:\n    return Environment\n",
+        _DOMAIN_BOUNDARY + "def unrelated(Literal: object) -> object:\n    return Literal\n",
+        _DOMAIN_BOUNDARY.replace("Environment = Literal", "type Environment = Literal"),
+        _DOMAIN_BOUNDARY.replace(
+            "Environment = Literal['dev', 'prod']",
+            "from typing import NewType\nEnvironment = NewType('Environment', str)",
+        ),
+        _DOMAIN_BOUNDARY.replace(
+            "Environment = Literal['dev', 'prod']",
+            "from enum import StrEnum\nclass Environment(StrEnum):\n    DEV = 'dev'\n    PROD = 'prod'",
+        ),
+        _DOMAIN_BOUNDARY.replace("environment: str", "environment: str | None"),
+        _DOMAIN_BOUNDARY.replace("environment: str", "environment: 'str'"),
+    ],
+)
+def test_established_domain_survives_primitive_erasure_and_unrelated_shadowing(source: str) -> None:
+    findings = _check(source)
+    assert len(findings) == 2
+    assert all(finding.code == "SARJ093" and finding.severity is Severity.ERROR for finding in findings)
+    assert all("Environment" in finding.message for finding in findings)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _DOMAIN_BOUNDARY.replace("environment: str", "environment: Environment"),
+        "from typing import Literal\nEnvironment = Literal['dev', 'prod']\ndef description(environment: str) -> str:\n    return environment\n",
+        "from typing import Literal\nEnvironment = Literal['dev', 'prod']\nclass Record:\n    environment: Environment\ndef matches(record: Record, query: str) -> bool:\n    return record.environment == query\n",
+        "from typing import Literal\nEnvironment = Literal['dev', 'prod']\nclass Record:\n    Environment = str\n    environment: Environment\ndef verify(record: Record, environment: str) -> None:\n    if record.environment != environment:\n        raise ValueError('Mismatched')\n",
+        _DOMAIN_BOUNDARY.replace(
+            "Environment = Literal['dev', 'prod']", "Environment = Literal['dev', 'prod']\nEnvironment = str"
+        ),
+    ],
+)
+def test_names_or_comparisons_alone_do_not_prove_domain_contracts(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_typed_callee_establishes_domain_without_parameter_name_matching() -> None:
+    source = "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(text: str) -> None:\n    consume(text)\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "Mode" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef middle(value: str) -> None:\n    consume(value)\ndef outer(value: str) -> None:\n    middle(value)\n",
+            2,
+            id="transitive-domain-flow",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(*, value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(value=raw)\n",
+            1,
+            id="keyword-domain-flow",
+        ),
+        pytest.param(
+            "import typing as t\nMode = t.Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            1,
+            id="qualified-typing-provider",
+        ),
+        pytest.param(
+            "from typing import Literal\nfrom builtins import str as Raw\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: Raw) -> None:\n    consume(raw)\n",
+            1,
+            id="imported-builtin-carrier",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef unrelated[Mode](value: Mode) -> Mode: return value\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            1,
+            id="unrelated-type-parameter",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume[Mode](value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            0,
+            id="actual-generic-shadow",
+        ),
+        pytest.param(
+            "from typing import Literal\ntype Mode[T] = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            0,
+            id="generic-alias-not-a-closed-domain",
+        ),
+        pytest.param(
+            "import typing as t\nt.Literal = custom\nMode = t.Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            0,
+            id="mutated-typing-provider",
+        ),
+        pytest.param(
+            "from enum import Enum\nclass Mode(Enum):\n    READ = 'read'\n    WRITE = dynamic_value\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            0,
+            id="unknown-enum-carrier",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str, options: dict) -> None:\n    consume(raw, **options)\n",
+            0,
+            id="unknown-keyword-expansion",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\n@external\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(raw)\n",
+            0,
+            id="decorated-callee-contract",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(raw: str) -> None:  # sarj-noqa: SARJ093 -- This adapter deliberately preserves its external wire signature.\n    consume(raw)\n",
+            0,
+            id="exact-code-required-adapter-exception",
+        ),
+    ],
+)
+def test_domain_flow_respects_binding_ownership_and_call_shapes(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
+
+
+def test_raw_input_factory_preserves_its_validated_domain_return_contract() -> None:
+    source = (
+        "from typing import Literal\nMode = Literal['read', 'write']\n"
+        "def consume(value: Mode) -> None: ...\n"
+        "def parse(raw: str) -> Mode:\n"
+        "    if raw == 'read':\n        consume(raw)\n        return raw\n"
+        "    if raw == 'write':\n        return raw\n"
+        "    raise ValueError('Unknown mode')\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(Mode: int, value: Mode) -> None: ...\ndef caller(raw: str) -> None:\n    consume(0, raw)\n",
+            id="parameter-value-does-not-shadow-annotation",
+        ),
+        pytest.param(
+            "from typing import Literal\nMode = Literal['read', 'write']\ndef consume(value: Mode) -> None: ...\ndef caller(str: int, raw: str) -> None:\n    consume(raw)\n",
+            id="builtin-value-does-not-shadow-annotation",
+        ),
+    ],
+)
+def test_function_annotation_namespace_precedes_value_parameters(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+def test_generic_carrier_alias_is_not_replaced_by_a_module_value() -> None:
+    source = "from typing import Literal\nMode = Literal['read', 'write']\nRaw = str\ndef consume(value: Mode) -> None: ...\ndef caller[Raw](value: Raw) -> None:\n    consume(value)\n"
+    assert _check(source) == []

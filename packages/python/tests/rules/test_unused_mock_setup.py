@@ -724,9 +724,8 @@ def test_skips_lookup():
     ],
 )
 def test_a_positive_call_assertion_anywhere_exempts_the_setup(positive: str):
-    # `pool_close.assert_not_awaited()` then `await shutdown()` then
-    # `pool_close.assert_awaited_once()` is a mid-test checkpoint; the setup
-    # fires two lines later.
+    # `pool_close.assert_not_awaited()` then `await shutdown()` then `pool_close.assert_awaited_once()` is a mid-test
+    # checkpoint; the setup fires two lines later.
     src = f"""
 def test_lookup_is_deferred():
     lookup.return_value = None

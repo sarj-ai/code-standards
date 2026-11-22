@@ -140,9 +140,8 @@ class NoNestedPydanticFieldValidator(Rule):
                 continue
             outer_fields = _direct_fields(outer, imports)
             for nested in (statement for statement in outer.body if isinstance(statement, ast.ClassDef)):
-                # A based nested class may be an indirect Pydantic model whose inherited
-                # fields are unavailable to this file-local analysis. Only base-less
-                # Config/helper classes provide a deterministic ownership mistake.
+                # A based nested class may be an indirect Pydantic model whose inherited fields are unavailable to this
+                # file-local analysis. Only base-less Config/helper classes provide a deterministic ownership mistake.
                 if nested.bases:
                     continue
                 collect_nested_validators(outer, nested, outer_fields)

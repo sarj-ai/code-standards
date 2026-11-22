@@ -140,12 +140,8 @@ def check_parallel(
     source_inputs: PreparedSourceInputs | None = None,
     frozen: FrozenResolutions | None = None,
 ) -> list[Diagnostic] | None:
-    # The untouched parent rules/session remain the serial fallback. Workers
-    # receive the same complete project snapshot and selected source strings.
-    # Select the untouched serial session before a large batch can require a
-    # complete parallel pass followed by the same quota-sensitive serial replay.
-    # A frozen resolution cache has already spent that quota, so its remaining
-    # files only need the module quota check below.
+    # Workers share the complete immutable snapshot. Choose serial fallback before replay exhausts resolution quota;
+    # frozen caches need only module-quota checks.
     if frozen is None and len(loaded) >= LOCAL_SOURCE_CACHE_LIMIT:
         return None
     source_snapshot = None if source_inputs is None else source_inputs.source_snapshot()

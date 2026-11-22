@@ -59,9 +59,8 @@ def test_is_generated_source_reads_the_header(header: str) -> None:
 
 
 def test_is_generated_source_misses_a_banner_less_generator() -> None:
-    # The gap this module's path half exists to close, pinned so a future
-    # widening of the header regex does not quietly make the path check dead
-    # code without anyone noticing the coverage moved.
+    # The gap this module's path half exists to close, pinned so a future widening of the header regex does not quietly
+    # make the path check dead code without anyone noticing the coverage moved.
     assert not is_generated_source(_UNMARKED_GENERATED_SDK_SOURCE)
 
 

@@ -57,9 +57,8 @@ def test_a_new_analysis_observes_a_package_created_in_the_same_project(tmp_path:
 
 
 def test_a_file_outside_any_project_resolves_to_nothing(tmp_path: Path) -> None:
-    # No `.git` and no `pyproject.toml` anywhere above: there is no project to
-    # be first-party to, and guessing "ours" is the failure mode this module
-    # is biased against.
+    # No `.git` and no `pyproject.toml` anywhere above: there is no project to be first-party to, and guessing "ours" is
+    # the failure mode this module is biased against.
     (tmp_path / "loose").mkdir()
     assert not is_first_party_module("app", tmp_path / "loose" / "svc.py")
 
@@ -102,9 +101,8 @@ def _budget_probe(root: Path, siblings: int) -> bool:
 
 
 def test_the_scan_budget_reaches_the_last_directory_it_promises(tmp_path: Path) -> None:
-    # Breaks if `_MAX_DIRS_SCANNED` is lowered: the budget has to be big enough
-    # to finish a real monorepo, or first-party packages silently become
-    # third-party and the private-import rules stop firing.
+    # Breaks if `_MAX_DIRS_SCANNED` is lowered: the budget has to be big enough to finish a real monorepo, or
+    # first-party packages silently become third-party and the private-import rules stop firing.
     assert _budget_probe(tmp_path, 2998)
 
 

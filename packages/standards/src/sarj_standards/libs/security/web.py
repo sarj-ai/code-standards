@@ -409,7 +409,9 @@ def probe(target: Target) -> Response:
         allowed_hosts = {value.strip().lower() for value in configured_hosts.split(",") if value.strip()}
         if urlsplit(target.url).hostname not in allowed_hosts:
             msg = "Credential probes require an operator-provided CODE_STANDARDS_WEB_CREDENTIAL_HOSTS allowlist."
-            raise ValueError(msg)
+            raise ValueError(
+                msg
+            )  # sarj-noqa: SARJ542 -- Recheck the live operator host allowlist before transmitting credentials.
     for name, variable in target.request_headers_env.items():
         value = os.environ.get(variable)  # ruff: ignore[banned-api] -- Policy declares dynamic credential environment names; values remain in the private probe pipe and are never reported.
         if not value or "\r" in value or "\n" in value:

@@ -16,11 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-# Enumerates every file `terraform validate` and TFLint can read for one root
-# module: each module directory's files, the local and installed module closure,
-# the initialized `.terraform` state, and every path a file function can reach.
-# A file-function argument without a static directory prefix makes the inputs
-# unknown, so that project always runs.
+# Terraform input closure includes modules, initialized state and file-function paths; an unknown static prefix forces
+# analysis.
 _FILE_FUNCTION: Final = re.compile(
     r"\b(file|fileexists|fileset|filebase64|filebase64sha256|filebase64sha512|filemd5|filesha1|filesha256|"
     r"filesha512|templatefile)\s*\("

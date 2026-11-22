@@ -84,9 +84,7 @@ _CODE_STMT_RE = re.compile(
     r"^(?:import |from \S+ import |return\b|yield\b|await |"
     r"del |pass\b|break\b|continue\b|global |nonlocal |print\()"
 )
-# `assert`/`raise` double as English verbs ("assert this is true"), so they are
-# only treated as code when the line also carries a code signal (an operator,
-# paren, bracket, dot, or digit) — prose almost never does.
+# English assert/raise prose needs another code signal before it counts as code.
 _RISKY_STMT_RE = re.compile(r"^(?:assert |raise )")
 _CODE_SIGNAL_RE = re.compile(r"""[=()\[\]{}.:+\-*/%<>!&|@"']|\d""")
 _CODE_HEADER_RE = re.compile(

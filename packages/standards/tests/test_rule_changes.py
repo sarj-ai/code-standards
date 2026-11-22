@@ -472,6 +472,11 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("python", "no-nonlocal-statement", "off", 1),
         ("oxlint", "no-nonlocal-statement", "error", 1),
         ("python", "no-nonlocal-statement-extra", "error", 1),
+        ("text", "concise-shell-prose", "error", 0),
+        ("text", "concise-shell-prose", "off", 1),
+        ("python", "concise-shell-prose", "error", 1),
+        ("text", "concise-shell-prose-extra", "error", 1),
+        ("text", "concise-Shell-prose", "error", 1),
         ("sql", "migration-timeout-requires-justification", "error", 1),
         ("sql", "migration-timeout-requires-justification", "off", 1),
         ("python", "migration-timeout-requires-justification", "error", 1),
@@ -515,13 +520,14 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         "iac:no-hardcoded-deployment-location",
         "iac:no-unused-module-outputs",
         "text:cloudbuild-contract",
+        "text:concise-shell-prose",
         "python:no-interpreter-source-arguments",
         "python:no-blanket-suppression",
         "sql:new-table-inline-constraints",
         "python:no-async-client-in-constructor",
     ],
 )
-def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
+def test_explicit_user_error_first_admission_preserves_exact_selector_scope(
     repository: Path, capsys: pytest.CaptureFixture[str], selector: str
 ) -> None:
     engine, rule_id = selector.split(":", 1)

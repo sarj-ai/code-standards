@@ -264,9 +264,8 @@ def test_payload(value):
     assert len(_check(src)) == 1
 
 
-# FP guard: strict pins, nondeterministic markers, and environment gates.      #
-# The real_llm exemption is mandatory — every non-strict xfail in one          #
-# first-party repo sits on a live-model eval that cannot be strict.            #
+# FP guard: strict pins, nondeterministic markers, and environment gates. The real_llm exemption is mandatory — every
+# non-strict xfail in one first-party repo sits on a live-model eval that cannot be strict.
 
 
 def test_strict_true_is_exempt():
@@ -375,9 +374,8 @@ def test_thing():
     ],
 )
 def test_property_based_tests_are_exempt(property_import: str, decorator: str):
-    # One test function expands into many generated inputs; a documented bug is
-    # usually tripped by only a subset, so the rest legitimately XPASS and
-    # strict=True would turn every passing input into a failure.
+    # One test function expands into many generated inputs; a documented bug is usually tripped by only a subset, so the
+    # rest legitimately XPASS and strict=True would turn every passing input into a failure.
     src = f"""
 import pytest
 {property_import}

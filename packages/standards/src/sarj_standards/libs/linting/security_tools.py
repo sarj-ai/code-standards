@@ -446,7 +446,9 @@ def _yaml_documents(
 ]:
     try:
         return tuple(yaml.safe_load_all(text))
-    except yaml.YAMLError as exc:
+    except (
+        yaml.YAMLError
+    ) as exc:  # sarj-noqa: SARJ585 -- Template parsing must reject without publishing private YAML contents.
         msg = "cannot parse the source Kubernetes template"
         raise ValueError(msg) from exc
 

@@ -937,9 +937,8 @@ def test_thing():
     ["rooms[0].get", "make_room().get", "room.get = other.get"],
 )
 def test_stub_on_a_non_dotted_target_is_still_flagged(target: str):
-    # Two occurrences of `rooms[0]` need not denote the same object, and a
-    # chained assignment binds the one double to several places at once, so
-    # neither can be reasoned about by path.
+    # Two occurrences of `rooms[0]` need not denote the same object, and a chained assignment binds the one double to
+    # several places at once, so neither can be reasoned about by path.
     src = f"""
 from unittest import mock
 
@@ -950,9 +949,8 @@ def test_thing(rooms, other):
 
 
 def test_collaborator_shapes_still_fire_alongside_the_stub_guard():
-    # The shapes the rule exists for, in one file, so a future widening of the
-    # attribute guard breaks here: a bare bound double, a constructor kwarg, a
-    # `patch` context manager, and a `monkeypatch.setattr` replacement.
+    # The shapes the rule exists for, in one file, so a future widening of the attribute guard breaks here: a bare bound
+    # double, a constructor kwarg, a `patch` context manager, and a `monkeypatch.setattr` replacement.
     src = """
 from unittest import mock
 

@@ -790,9 +790,8 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
 
 
 def _has_positional_replacement(node: ast.Call, label: str, names: _MockNames) -> bool:
-    # `spec` / `new` are positional parameters of these signatures, and that is
-    # how they are nearly always spelled — `patch("mod.fn", replacement)` is
-    # `new=replacement`, `Mock(Process)` is `spec=Process`.
+    # `spec` / `new` are positional parameters of these signatures, and that is how they are nearly always spelled —
+    # `patch("mod.fn", replacement)` is `new=replacement`, `Mock(Process)` is `spec=Process`.
     if any(isinstance(arg, ast.Starred) for arg in node.args):
         # `*args` forwarding: the arity is unknown, so decline to guess.
         return True

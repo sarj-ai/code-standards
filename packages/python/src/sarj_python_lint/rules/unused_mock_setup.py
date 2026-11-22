@@ -42,9 +42,7 @@ _EXCEPTION_TYPES = frozenset(
     name for name, value in _BUILTIN_NAMESPACE.items() if isinstance(value, type) and issubclass(value, BaseException)
 )
 
-# Callables whose constructor keywords configure the returned double.  Import
-# resolution is required for bare/module-qualified spellings; the pytest-mock
-# spelling is accepted only when ``mocker`` is a parameter of the test.
+# Constructor keywords configure these doubles; resolve imports, and recognize mocker only as a test parameter.
 _MOCK_CONSTRUCTORS = frozenset(
     {
         "AsyncMock",

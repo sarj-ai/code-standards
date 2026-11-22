@@ -221,9 +221,7 @@ def test_kwarg_group_label_is_kept():
     ],
 )
 def test_comment_inside_a_bracketed_expression_labels_an_element(src: str):
-    # home-assistant tests/components/input_number/test_reproduce_state.py:63 and
-    # tests/components/nest/test_camera.py:379 — the element's own words are what
-    # the label names, and deleting the label loses which case is which.
+    # External parameter labels distinguish the element's own words; deleting those labels loses case identity.
     assert _check(src) == []
 
 

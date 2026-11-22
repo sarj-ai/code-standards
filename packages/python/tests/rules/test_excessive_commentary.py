@@ -10,7 +10,7 @@ from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import RuleExample, Severity
+    from sarj_python_lint.rule_base import RuleExample
 
 
 _PUBLIC_EXAMPLES = ExcessiveCommentary.public_examples()
@@ -22,7 +22,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(ExcessiveCommentary().check(Path(focus.path), focus.source)) == example.expected_count
 
 
-def test_original_activation_rationale_is_not_mechanically_proven_noise() -> None:
+def test_original_activation_rationale_is_not_mechanically_proven_noise_requires_a_concise_contract() -> None:
     source = """def reasons_not_to_activate():
     # Everything standing between this integration and being usable.
     # Returns all the reasons rather than the first failure.
@@ -34,7 +34,7 @@ def test_original_activation_rationale_is_not_mechanically_proven_noise() -> Non
     reasons.extend(action_reasons())
     return reasons
 """
-    assert ExcessiveCommentary().check(Path("activation.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("activation.py"), source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -42,7 +42,10 @@ def test_original_activation_rationale_is_not_mechanically_proven_noise() -> Non
     [
         ("generated/client.py", "\n".join(f"# Narrative implementation sentence number {i}." for i in range(8))),
         ("app.py", "# noqa: explanation one two three four five six seven eight\nvalue = 1\n"),
-        ("app.py", "# First constraint.\n# - one mode\n# - another mode\n# - fallback mode\nvalue = 1\n"),
+        (
+            "app.py",
+            "# First constraint.\n# Keep the fallback mode until the upstream migration completes.\nvalue = 1\n",
+        ),
     ],
 )
 def test_owned_exclusions_do_not_report(path: str, source: str) -> None:
@@ -59,7 +62,7 @@ def test_owned_exclusions_do_not_report(path: str, source: str) -> None:
                 "# The client reads wire_value.\n"
                 "# Remove this with API-901.\nvalue = 1\n"
             ),
-            [],
+            1,
         ),
         (
             (
@@ -68,12 +71,12 @@ def test_owned_exclusions_do_not_report(path: str, source: str) -> None:
                 "# The cleanup must never mask the command outcome.\n"
                 "# This invariant also prevents a retry race.\nvalue = 1\n"
             ),
-            [],
+            1,
         ),
     ],
 )
-def test_constraints_and_references_do_not_have_a_length_budget(source: str, expected: list[Severity]) -> None:
-    assert [finding.severity for finding in ExcessiveCommentary().check(Path("app.py"), source)] == expected
+def test_constraints_and_references_keep_the_explicit_budget(source: str, expected: int) -> None:
+    assert len(ExcessiveCommentary().check(Path("app.py"), source)) == expected
 
 
 def test_three_extends_are_not_a_comment_or_comprehension_violation() -> None:
@@ -85,7 +88,7 @@ reasons.extend(action_reasons())
     assert ExcessiveCommentary().check(Path("activation.py"), source) == []
 
 
-def test_long_prose_without_corresponding_action_names_is_not_proven_noise() -> None:
+def test_long_prose_without_corresponding_action_names_is_not_proven_noise_requires_a_concise_contract() -> None:
     source = """def render_response():
     # This paragraph describes several nearby implementation choices in detail.
     # It has enough words and lines to exceed the general prose budget used here.
@@ -94,10 +97,10 @@ def test_long_prose_without_corresponding_action_names_is_not_proven_noise() -> 
     response = build_response()
     return response
 """
-    assert ExcessiveCommentary().check(Path("response.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("response.py"), source)) == 1
 
 
-def test_empty_collection_does_not_prove_ownership_of_the_paragraph() -> None:
+def test_empty_collection_does_not_prove_ownership_of_the_paragraph_requires_a_concise_contract() -> None:
     source = """def collect_items():
     # This paragraph describes several nearby implementation choices in detail.
     # It has enough words and lines to exceed the general prose budget used here.
@@ -106,10 +109,10 @@ def test_empty_collection_does_not_prove_ownership_of_the_paragraph() -> None:
     items = []
     return load_items(items)
 """
-    assert ExcessiveCommentary().check(Path("items.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("items.py"), source)) == 1
 
 
-def test_protocol_shape_and_rejection_contract_is_not_proven_noise() -> None:
+def test_protocol_shape_and_rejection_contract_is_not_proven_noise_requires_a_concise_contract() -> None:
     source = """def authentication_methods(payload):
     # Inspect this field only when the selected identity provider uses it.
     # Its value contains the RFC 8176 method names as a list of strings.
@@ -118,7 +121,7 @@ def test_protocol_shape_and_rejection_contract_is_not_proven_noise() -> None:
     methods = payload.get("methods")
     return methods
 """
-    assert ExcessiveCommentary().check(Path("app.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("app.py"), source)) == 1
 
 
 def test_concise_protocol_constraint_remains_allowed() -> None:
@@ -126,7 +129,7 @@ def test_concise_protocol_constraint_remains_allowed() -> None:
     assert ExcessiveCommentary().check(Path("app.py"), source) == []
 
 
-def test_constraint_before_accumulation_is_preserved() -> None:
+def test_constraint_before_accumulation_is_preserved_requires_a_concise_contract() -> None:
     source = """def reasons():
     # Collect every failure because the caller presents the complete set.
     # Otherwise a retry reveals only the next missing prerequisite each time.
@@ -137,29 +140,29 @@ def test_constraint_before_accumulation_is_preserved() -> None:
     failures.extend(configuration_failures())
     return failures
 """
-    assert ExcessiveCommentary().check(Path("app.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("app.py"), source)) == 1
 
 
 _COMMENT_BLOCKS = (
     (
         "narration",
         "Build the complete response from the supplied input values.\nThen collect the selected fields and prepare the response values.\nFinally return the completed response to the original caller.",
-        0,
+        1,
     ),
     (
         "walkthrough",
         "Start by collecting the available values for this operation.\nNext convert the selected values into the expected response shape.\nThe following expression then returns those values to its caller.",
-        0,
+        1,
     ),
     (
         "reason",
         "Keep this copy because the downstream client retains its input.\nThe caller can modify its original values after this operation.\nA shared reference would then alter the pending response contents.",
-        0,
+        1,
     ),
     (
         "reference",
         "The upstream wire contract is defined by RFC-8176.\nThe registered vocabulary distinguishes a verified factor from a password.\nChanging this decision requires coordinating the issuer and its consumers.",
-        0,
+        1,
     ),
     (
         "directive",
@@ -190,7 +193,7 @@ def commentary_rule() -> ExcessiveCommentary:
 @pytest.mark.parametrize(
     ("context", "template", "indent"), _COMMENT_CONTEXTS, ids=[case[0] for case in _COMMENT_CONTEXTS]
 )
-def test_unproven_prose_is_preserved_across_owners(
+def test_prose_budget_applies_across_owners(
     *,
     commentary_rule: ExcessiveCommentary,
     kind: str,
@@ -541,7 +544,7 @@ def test_technical_facts_do_not_become_errors_or_advisories_from_wrapping(source
     assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
 
 
-def test_long_operational_rationale_is_not_duplicate_narration() -> None:
+def test_long_operational_rationale_is_not_duplicate_narration_requires_a_concise_contract() -> None:
     source = (
         "# Keep this lease alive until the server has acknowledged the replacement. A timeout means\n"
         "# the client cannot distinguish a rejected write from an accepted write whose response was\n"
@@ -550,4 +553,49 @@ def test_long_operational_rationale_is_not_duplicate_narration() -> None:
         "# cancellation must follow that same recovery path to preserve exactly-once ownership.\n"
         "result = replace_lease()\n"
     )
-    assert ExcessiveCommentary().check(Path("app/lease.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("app/lease.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# One constraint.\n# Another constraint.\n# A third constraint.\nrun()\n",
+        "# One constraint.\n\n# Another constraint.\n\n# A third constraint.\nrun()\n",
+        "# " + "word " * 41 + "\nrun()\n",
+        "value = 1 # " + "word " * 41 + "\n",
+        "# ruff: noqa: E501\n# First constraint.\n# Second constraint.\n# Third constraint.\nrun()\n",
+    ],
+)
+def test_explicit_comment_budget_rejects_long_prose_without_deleting_it(source: str) -> None:
+    findings = ExcessiveCommentary().check(Path("app.py"), source)
+    assert len(findings) == 1
+    assert fix_source(Path("app.py"), source, rule_ids=["excessive-commentary"]) == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# A short hidden constraint stays local.\nvalue = 1\n",
+        "# /// script\n# requires-python = '>=3.14'\n# dependencies = []\n# [tool.config]\n# enabled = true\n# ///\nvalue = 1\n",
+        'text = "# first\\n# second\\n# third"\n',
+        "# SPDX-License-Identifier: MIT\n# Copyright Example\n# Licensed under the MIT license.\nvalue = 1\n",
+    ],
+)
+def test_machine_metadata_licenses_and_string_data_are_not_commentary(source: str) -> None:
+    assert ExcessiveCommentary().check(Path("app.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "# ! First explanation.\n# ! Second explanation.\n# ! Third explanation.\nrun()\n", id="fake-shebangs"
+        ),
+        pytest.param(
+            "# Inspect license metadata.\n# Keep another setting.\n# Read a third setting.\nrun()\n",
+            id="license-word-is-not-a-notice",
+        ),
+    ],
+)
+def test_words_alone_do_not_establish_machine_or_legal_exemptions(source: str) -> None:
+    assert len(ExcessiveCommentary().check(Path("app.py"), source)) == 1

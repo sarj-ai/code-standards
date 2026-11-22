@@ -31,9 +31,8 @@ if TYPE_CHECKING:
 # require corroboration from an environment-shaped literal.
 ENVIRONMENT_SEGMENTS = frozenset({"environment", "env"})
 
-# Segments that are also ordinary product words. These count only when every other
-# segment is a neutral qualifier, so `var.project` and `var.gcp_project_id` match
-# while `var.langfuse_ui_project_id` (a third-party resource id) does not.
+# Segments that are also ordinary product words. These count only when every other segment is a neutral qualifier, so
+# `var.project` and `var.gcp_project_id` match while `var.langfuse_ui_project_id` (a third-party resource id) does not.
 QUALIFIED_SEGMENTS = frozenset(
     {
         "project",
@@ -70,9 +69,8 @@ _NEUTRAL_QUALIFIERS = frozenset(
     }
 )
 
-# Weak identity names need corroboration from the compared literal. These are
-# exact segments rather than substrings: `product` and `developmental` are not
-# deployment labels, while `platform-prod` and `preview_us` are.
+# Weak identity names need corroboration from the compared literal. These are exact segments rather than substrings:
+# `product` and `developmental` are not deployment labels, while `platform-prod` and `preview_us` are.
 _ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
     {
         "dev",

@@ -53,10 +53,8 @@ _RESULT_SEMANTIC_RE = re.compile(
 _GENERATOR_TYPES = frozenset({"AsyncGenerator", "AsyncIterable", "AsyncIterator", "Generator", "Iterable", "Iterator"})
 _BROAD_RETURN_TYPES = frozenset({"Any", "object"})
 
-# Identity semantics: whether the value handed back is a FRESH object or the
-# receiver itself is the one fact `-> Self` and `-> Foo` cannot carry, and the
-# words that state it (`new`, `copy`, `same`) are stopwords for the restatement
-# tokenizer, so the block reads as pure ceremony without this.
+# Fresh-versus-self return identity is absent from annotations; its signal words would otherwise disappear as tokenizer
+# stopwords.
 _IDENTITY_RE = re.compile(
     r"\b(?:new|copy|copies|copied|clone[ds]?|fresh|same|itself|self|shallow|deep|"
     r"in[- ]place|unchanged|original)\b",
