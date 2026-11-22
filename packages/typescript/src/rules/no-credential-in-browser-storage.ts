@@ -54,13 +54,15 @@ export default defineRule({
         ) {
           return;
         }
-        const [key] = node.arguments;
+        const [key, value] = node.arguments;
+        if (value !== undefined && scopedStaticString(value, sourceCode) === "") return;
         if (key !== undefined) report(node, scopedStaticString(key, sourceCode));
       },
       AssignmentExpression(node: ESTree.AssignmentExpression): void {
         const target = node.left as Node;
         if (target.type !== "MemberExpression") return;
         if (isStorage(sourceCode, target.object)) {
+          if (node.operator === "=" && scopedStaticString(node.right, sourceCode) === "") return;
           report(node, storedPropertyKey(sourceCode, target));
           return;
         }
@@ -70,6 +72,7 @@ export default defineRule({
           target.property.name === "cookie" &&
           globalMemberName(sourceCode, target.object) === "document"
         ) {
+          if (node.operator === "=" && clearsCookie(node.right, sourceCode)) return;
           report(node, cookieName(node.right));
         }
       },
@@ -109,6 +112,12 @@ function storedPropertyKey(sourceCode: SourceCode, target: ESTree.MemberExpressi
 }
 
 function cookieName(value: Node): string | null {
+  const text = cookiePrefix(value);
+  if (text === null || !text.includes("=")) return null;
+  return text.slice(0, text.indexOf("=")).trim();
+}
+
+function cookiePrefix(value: Node): string | null {
   let expression: Node = unwrapExpression(value);
   while (expression.type === "BinaryExpression" && expression.operator === "+") {
     expression = unwrapExpression(expression.left);
@@ -116,6 +125,31 @@ function cookieName(value: Node): string | null {
   let text: string | null = null;
   if (expression.type === "Literal" && typeof expression.value === "string") text = expression.value;
   if (expression.type === "TemplateLiteral") text = expression.quasis[0]?.value.cooked ?? null;
-  if (text === null || !text.includes("=")) return null;
-  return text.slice(0, text.indexOf("=")).trim();
+  return text;
+}
+
+function clearsCookie(value: Node, source: Readonly<SourceCode>): boolean {
+  const complete = scopedStaticString(value, source);
+  const text = complete ?? cookiePrefix(value);
+  if (text === null) return false;
+  const end = text.indexOf(";");
+  const pair = end === -1 ? text : text.slice(0, end);
+  const equals = pair.indexOf("=");
+  if (equals === -1) return false;
+  if ((complete !== null || end !== -1) && trimCookieWhitespace(pair.slice(equals + 1)) === "") return true;
+  if (complete === null) return false;
+  let deleted = false;
+  for (const attribute of text.split(";").slice(1)) {
+    const split = attribute.indexOf("=");
+    if (split === -1 || trimCookieWhitespace(attribute.slice(0, split)).toLowerCase() !== "max-age") continue;
+    const age = trimCookieWhitespace(attribute.slice(split + 1));
+    if (!/^-?\d+$/u.test(age)) continue;
+    deleted = age.startsWith("-") || /^0+$/u.test(age);
+  }
+  return deleted;
+}
+
+/** RFC6265 WSP is ASCII space or tab, excluding Unicode whitespace. */
+function trimCookieWhitespace(value: string): string {
+  return value.replaceAll(/^[\t ]+|[\t ]+$/gu, "");
 }

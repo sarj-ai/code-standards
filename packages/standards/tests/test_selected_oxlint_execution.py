@@ -11,9 +11,10 @@ import pytest
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.configs import OXLINT_SUPPRESSIONS
 from sarj_standards.libs.adoption.manifest import as_table, list_field
-from sarj_standards.libs.diagnostics import Completion, ToolReport
+from sarj_standards.libs.diagnostics import Completion, Severity, ToolReport
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import oxfmt, oxlint
+from sarj_standards.libs.linting.analysis import report_from_tools
 from tests.oxlint_project import analyze, commands, environment, project
 
 
@@ -43,6 +44,33 @@ export default {
   overrides: [{ files: ["src/legacy/**"], rules: { "no-console": "off" } }],
 };
 """
+_SARJ_PROMOTIONS: Final = (
+    (
+        "@sarj/prefer-node-fs-promises",
+        "src/example.ts",
+        "import { readFileSync } from 'node:fs'; export function load(): string { return readFileSync('data.txt', 'utf8'); }\n",
+        "61a3eb33cba845fac250846a794722a53d6bb057b09bc76ce6cc02f1292eb15f",
+    ),
+    (
+        "@sarj/no-credential-in-browser-storage",
+        "src/example.ts",
+        "export function store(token: string): void { localStorage.setItem('accessToken', token); }\n",
+        "c2a8fc46c1f1a56c35997187216a229aeef86e10117594243f0c61b8d2eed52d",
+    ),
+    (
+        "@sarj/no-flake-masking",
+        "src/example.test.ts",
+        "import { expect, it } from 'vitest'; it('works', { retry: 2 }, () => { expect(true).toBe(true); });\n",
+        "0ea2c138df8e09685d3a305959424e88b2d1f473f43d63e340377ad22e94e79e",
+    ),
+    (
+        "@sarj/prefer-node-crypto-hash",
+        "src/example.ts",
+        "import { createHash } from 'node:crypto'; export function digest(value: string): string { return createHash('sha256').update(value).digest('hex'); }\n",
+        "b15de2e12ca19e0578294f38e38033d51361ca8559d95f3e895418dcb136589c",
+    ),
+)
+
 _SOURCES: Final = {
     "local-plugin.mjs": _LOCAL_PLUGIN,
     "src/a.ts": (
@@ -76,6 +104,7 @@ _SOURCES: Final = {
             "src/example.js",
             "export function example() { const source = {first: 1, second: 2}; const {first} = source; const {second} = source; return first + second; }\n",
         ),
+        *((rule, filename, source) for rule, filename, source, _ in _SARJ_PROMOTIONS),
     ],
 )
 def test_promoted_upstream_findings_block_core_file_and_staged_cli(
@@ -88,12 +117,24 @@ def test_promoted_upstream_findings_block_core_file_and_staged_cli(
     staged: bool,
     suppressed: bool,
 ) -> None:
+    filename = {
+        "@sarj/prefer-node-fs-promises": "src/load.ts",
+        "@sarj/no-credential-in-browser-storage": "src/store.ts",
+        "@sarj/prefer-node-crypto-hash": "src/digest.ts",
+    }.get(rule, filename)
+    if rule == "@sarj/no-flake-masking":
+        source = "import { isAbsolute } from 'node:path';\n" + source.replace(
+            "expect(true).toBe(true)", "expect(isAbsolute('/input')).toBe(true)"
+        )
     root = project(
         tmp_path / "repo",
         {filename: source},
         config='import { createConfig } from "./oxlint.strict.ts"; export default createConfig();\n',
         git=staged,
     )
+    configuration = as_table(parse_json((root / "tsconfig.json").read_text()))
+    configuration["compilerOptions"] = {**as_table(configuration["compilerOptions"]), "types": ["node"]}
+    (root / "tsconfig.json").write_text(json.dumps(configuration))
     (root / "oxlint.strict.ts").write_text(
         files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
     )
@@ -360,3 +401,24 @@ def test_fix_overlay_turns_per_path_exclusions_off_for_js_rules(tmp_path: Path) 
 
     assert (root / "src/a.ts").read_text(encoding="utf-8") == "export function f() { return Array; }\n"
     assert (root / "src/legacy/b.ts").read_text(encoding="utf-8") == sources["src/legacy/b.ts"]
+
+
+@pytest.mark.parametrize(("rule", "filename", "source", "fingerprint"), _SARJ_PROMOTIONS)
+def test_sarj_promotions_preserve_published_warning_fingerprints(
+    tmp_path: Path, rule: str, filename: str, source: str, fingerprint: str
+) -> None:
+    root = project(tmp_path / "repo", {filename: source})
+    configuration = as_table(parse_json((root / "tsconfig.json").read_text()))
+    configuration["compilerOptions"] = {**as_table(configuration["compilerOptions"]), "types": ["node"]}
+    (root / "tsconfig.json").write_text(json.dumps(configuration))
+    (root / "oxlint.strict.ts").write_text(
+        files("sarj_standards").joinpath("configs/oxlint.strict.mts").read_text(encoding="utf-8")
+    )
+    tool = analyze(root, oxlint.OxlintRequest(rules=frozenset({rule}), forced={}), filename)
+    report = report_from_tools(root, (tool,))
+    assert report.completion is Completion.COMPLETE
+    assert report.exit_code == 1
+    assert report.issues == ()
+    [finding] = report.diagnostics
+    assert finding.severity is Severity.ERROR
+    assert finding.fingerprint == fingerprint

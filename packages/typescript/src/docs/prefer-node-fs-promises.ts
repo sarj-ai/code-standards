@@ -3,12 +3,14 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const PREFER_NODE_FS_PROMISES_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.",
   rationale: "Synchronous filesystem work blocks the event loop and can stall unrelated daemon, server, and worker tasks.",
   remediation: "Import the promise API from node:fs/promises and await it; use FileHandle.sync only where a documented durability boundary requires it.",
   category: "performance",
   limitations: [
+    "This is organization policy for production Node filesystem APIs. Required synchronous framework or public-callable contracts need review and an exact justified exception; preserve scheduling and return contracts during migration.",
+    "Declaration-level and named-specifier type-only imports are erased and do not perform synchronous filesystem work. Mixed imports still check their runtime synchronous bindings.",
     "Tests and generated files are excluded.",
     "This recommendation applies to Node-compatible runtimes. Changing a synchronous API to a promise changes its caller contract; review startup-only work and APIs that require synchronous execution rather than mechanically adding await.",
     "ESLint rule implementations under src/rules are excluded because visitor creation and execution are synchronous by contract.",
