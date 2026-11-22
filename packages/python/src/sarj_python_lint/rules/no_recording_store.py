@@ -180,32 +180,34 @@ def _records(
 
 
 def _unsupported_recording_node(node: ast.AST) -> bool:
-    if isinstance(
-        node,
-        ast.Await
-        | ast.Yield
-        | ast.YieldFrom
-        | ast.Raise
-        | ast.If
-        | ast.IfExp
-        | ast.BoolOp
-        | ast.For
-        | ast.AsyncFor
-        | ast.While
-        | ast.Try
-        | ast.TryStar
-        | ast.With
-        | ast.AsyncWith
-        | ast.Match
-        | ast.FunctionDef
-        | ast.AsyncFunctionDef
-        | ast.ClassDef
-        | ast.Lambda
-        | ast.comprehension,
-    ):
-        return True
-    if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
-        return True
+    match node:
+        case (
+            ast.Await()
+            | ast.Yield()
+            | ast.YieldFrom()
+            | ast.Raise()
+            | ast.If()
+            | ast.IfExp()
+            | ast.BoolOp()
+            | ast.For()
+            | ast.AsyncFor()
+            | ast.While()
+            | ast.Try()
+            | ast.TryStar()
+            | ast.With()
+            | ast.AsyncWith()
+            | ast.Match()
+            | ast.FunctionDef()
+            | ast.AsyncFunctionDef()
+            | ast.ClassDef()
+            | ast.Lambda()
+            | ast.comprehension()
+        ):
+            return True
+        case ast.Attribute() | ast.Subscript() if isinstance(node.ctx, ast.Store | ast.Del):
+            return True
+        case _:
+            pass
     return _self_rebound(node)
 
 
@@ -414,12 +416,15 @@ def _declared_name(node: ast.stmt) -> str | None:
 def _provider_writes(nodes: tuple[ast.AST, ...]) -> dict[str, set[ast.expr]]:
     result: dict[str, set[ast.expr]] = {}
     for node in nodes:
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
-            result.setdefault(node.id, set()).add(node)
-        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del):
-            root = _root_name(node)
-            if root is not None:
-                result.setdefault(root.id, set()).add(node)
+        match node:
+            case ast.Name() if isinstance(node.ctx, ast.Store | ast.Del):
+                result.setdefault(node.id, set()).add(node)
+            case ast.Attribute() if isinstance(node.ctx, ast.Store | ast.Del):
+                root = _root_name(node)
+                if root is not None:
+                    result.setdefault(root.id, set()).add(node)
+            case _:
+                pass
     return result
 
 

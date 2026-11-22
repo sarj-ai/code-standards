@@ -789,16 +789,17 @@ def _fixed_message_initializer(node: ast.FunctionDef) -> bool:
 def _builtin_namespace_safe(context: PythonFileContext) -> bool:
     # Direct exception imports expose immutable class objects.
     for node in context.nodes(ast.Import, ast.ImportFrom, ast.Name):
-        if isinstance(node, ast.Import) and any(alias.name == "builtins" for alias in node.names):
-            return False
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module == "builtins"
-            and (node.level or any(alias.name not in _BUILTIN_BASES for alias in node.names))
-        ):
-            return False
-        if isinstance(node, ast.Name) and node.id == "__builtins__":
-            return False
+        match node:
+            case ast.Import() if any(alias.name == "builtins" for alias in node.names):
+                return False
+            case ast.ImportFrom() if node.module == "builtins" and (
+                node.level or any(alias.name not in _BUILTIN_BASES for alias in node.names)
+            ):
+                return False
+            case ast.Name() if node.id == "__builtins__":
+                return False
+            case _:
+                pass
     return True
 
 
@@ -1119,16 +1120,13 @@ def _functional_metadata(read: ast.Name, context: PythonFileContext, provenance:
 
 def _validation_annotation(annotation: ast.expr, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
     declaration = context.parents.get(annotation)
-    if isinstance(declaration, ast.TypeAlias):
-        binding = declaration.name
-    elif (
-        isinstance(declaration, ast.AnnAssign)
-        and isinstance(declaration.target, ast.Name)
-        and declaration.value is annotation
-    ):
-        binding = declaration.target
-    else:
-        return _validation_field(annotation, context, provenance)
+    match declaration:
+        case ast.TypeAlias():
+            binding = declaration.name
+        case ast.AnnAssign() if isinstance(declaration.target, ast.Name) and declaration.value is annotation:
+            binding = declaration.target
+        case _:
+            return _validation_field(annotation, context, provenance)
     if not (
         isinstance(context.parents.get(declaration), ast.Module)
         and context.annotation_semantics.aliases.get(binding.id) is annotation
@@ -1181,17 +1179,20 @@ def _escapes(marker: ast.ClassDef, context: PythonFileContext, provenance: Resou
 def _binding_escapes(name: str, binding: ast.AST, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
     for read in provenance.binding_reads(name, binding):
         parent = context.parents.get(read)
-        if isinstance(parent, ast.Call) and parent.func is read:
-            owner = context.parents.get(parent)
-            if isinstance(owner, ast.Raise) and owner.exc is parent:
+        match parent:
+            case ast.Call() if parent.func is read:
+                owner = context.parents.get(parent)
+                if isinstance(owner, ast.Raise) and owner.exc is parent:
+                    continue
+                return True
+            case ast.Raise() | ast.ExceptHandler():
                 continue
-            return True
-        if isinstance(parent, ast.Raise | ast.ExceptHandler):
-            continue
-        if isinstance(parent, ast.Tuple) and isinstance(context.parents.get(parent), ast.ExceptHandler):
-            continue
-        if isinstance(parent, ast.ClassDef) and read in parent.bases:
-            continue
+            case ast.Tuple() if isinstance(context.parents.get(parent), ast.ExceptHandler):
+                continue
+            case ast.ClassDef() if read in parent.bases:
+                continue
+            case _:
+                pass
         return True
     return False
 

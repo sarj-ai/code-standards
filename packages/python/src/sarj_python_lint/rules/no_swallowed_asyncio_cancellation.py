@@ -162,12 +162,15 @@ def _local_nodes(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:
     yield function
     while stack:
         node = stack.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-            continue
-        if isinstance(node, ast.Try | ast.TryStar) and any(
-            not isinstance(statement, _SIMPLE_STATEMENTS) for statement in node.finalbody
-        ):
-            continue
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case ast.Try() | ast.TryStar() if any(
+                not isinstance(statement, _SIMPLE_STATEMENTS) for statement in node.finalbody
+            ):
+                continue
+            case _:
+                pass
         yield node
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
 

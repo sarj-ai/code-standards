@@ -773,14 +773,13 @@ class _FunctionAnalyzer:
                 return _Origin.INJECTED
             if node.attr in self._ownership.external:
                 return _Origin.EXTERNAL
-        if isinstance(node, ast.Call) and _database_creator(node, self._types, self._shadowed):
-            return _Origin.EXTERNAL
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"connection", "cursor"}
-        ):
-            return self._expression_origin(node.func.value, state)
+        match node:
+            case ast.Call() if _database_creator(node, self._types, self._shadowed):
+                return _Origin.EXTERNAL
+            case ast.Call() if isinstance(node.func, ast.Attribute) and node.func.attr in {"connection", "cursor"}:
+                return self._expression_origin(node.func.value, state)
+            case _:
+                pass
         return None
 
     def _context_origin(self, node: ast.expr, state: dict[str, _Origin]) -> _Origin | None:

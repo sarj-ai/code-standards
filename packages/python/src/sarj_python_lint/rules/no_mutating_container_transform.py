@@ -269,13 +269,16 @@ class _ContainerTransforms:
             return False
         current: ast.AST | None = at
         while current is not None:
-            if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and any(
-                isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name
-                for parameter in current.type_params
-            ):
-                return False
-            if isinstance(current, ast.ClassDef) and (current.bases or current.keywords or current.decorator_list):
-                return False
+            match current:
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if any(
+                    isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name
+                    for parameter in current.type_params
+                ):
+                    return False
+                case ast.ClassDef() if current.bases or current.keywords or current.decorator_list:
+                    return False
+                case _:
+                    pass
             current = self.context.parents.get(current)
         return True
 

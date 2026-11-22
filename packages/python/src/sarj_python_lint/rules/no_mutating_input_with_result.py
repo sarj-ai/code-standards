@@ -128,11 +128,14 @@ def _input_owner(
     if not isinstance(expression, ast.Name) or depth >= _MAX_ALIAS_DEPTH:
         return None
     binding = context.static_resource_provenance.binding(expression.id, expression)
-    if isinstance(binding, ast.arg):
-        arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-        return binding.arg if binding in arguments and binding.arg not in {"self", "cls"} else None
-    if isinstance(binding, ast.Name):
-        value = context.static_resource_provenance.assignment_value(binding, expression)
-        if value is not None:
-            return _input_owner(value, function, context, depth + 1)
+    match binding:
+        case ast.arg():
+            arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+            return binding.arg if binding in arguments and binding.arg not in {"self", "cls"} else None
+        case ast.Name():
+            value = context.static_resource_provenance.assignment_value(binding, expression)
+            if value is not None:
+                return _input_owner(value, function, context, depth + 1)
+        case _:
+            pass
     return None

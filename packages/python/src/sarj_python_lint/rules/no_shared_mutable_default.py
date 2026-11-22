@@ -188,12 +188,15 @@ def _native_mutable_default(value: ast.expr, names: RuntimeNames) -> bool:
 
 
 def _readonly(annotation: ast.expr | None, names: RuntimeNames) -> bool:
-    if annotation is None:
-        return False
-    if isinstance(annotation, ast.Constant):
-        return annotation.value is None
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return _readonly(annotation.left, names) and _readonly(annotation.right, names)
+    match annotation:
+        case None:
+            return False
+        case ast.Constant():
+            return annotation.value is None
+        case ast.BinOp() if isinstance(annotation.op, ast.BitOr):
+            return _readonly(annotation.left, names) and _readonly(annotation.right, names)
+        case _:
+            pass
     base = annotation.value if isinstance(annotation, ast.Subscript) else annotation
     qualified = names.imported_qualified(base)
     if qualified is None:

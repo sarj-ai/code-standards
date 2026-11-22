@@ -480,11 +480,14 @@ class _MockNames:
         return isinstance(node, ast.Attribute) and node.attr == _PATCH and self.is_mock_module(node.value)
 
     def factory(self, func: ast.expr) -> str | None:
-        if isinstance(func, ast.Name):
-            symbol = self.symbols.get(func.id)
-            return symbol if symbol in _MOCK_FACTORIES else None
-        if isinstance(func, ast.Attribute) and func.attr in _MOCK_FACTORIES and self.is_mock_module(func.value):
-            return func.attr
+        match func:
+            case ast.Name():
+                symbol = self.symbols.get(func.id)
+                return symbol if symbol in _MOCK_FACTORIES else None
+            case ast.Attribute() if func.attr in _MOCK_FACTORIES and self.is_mock_module(func.value):
+                return func.attr
+            case _:
+                pass
         return None
 
     def is_parametrize(self, func: ast.expr) -> bool:
@@ -794,29 +797,38 @@ def _is_mock_fixture(name: str) -> bool:
 
 
 def _target_text(node: ast.expr) -> str:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.JoinedStr):
-        return _joined_text(node)
+    match node:
+        case ast.Constant() if isinstance(node.value, str):
+            return node.value
+        case ast.JoinedStr():
+            return _joined_text(node)
+        case _:
+            pass
     return _dotted(node) or "?"
 
 
 def _joined_text(node: ast.JoinedStr) -> str:
     parts: list[str] = []
     for value in node.values:
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            parts.append(value.value)
-        elif isinstance(value, ast.FormattedValue):
-            parts.append(_dotted(value.value) or "?")
+        match value:
+            case ast.Constant() if isinstance(value.value, str):
+                parts.append(value.value)
+            case ast.FormattedValue():
+                parts.append(_dotted(value.value) or "?")
+            case _:
+                pass
     return "".join(parts)
 
 
 def _collect_parametrized_names(argnames: ast.expr | None, parametrized: set[str]) -> None:
-    if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
-        parametrized.update(stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip()))
-    elif isinstance(argnames, (ast.List, ast.Tuple)):
-        parametrized.update(
-            element.value
-            for element in argnames.elts
-            if isinstance(element, ast.Constant) and isinstance(element.value, str)
-        )
+    match argnames:
+        case ast.Constant() if isinstance(argnames.value, str):
+            parametrized.update(stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip()))
+        case ast.List() | ast.Tuple():
+            parametrized.update(
+                element.value
+                for element in argnames.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            )
+        case _:
+            pass

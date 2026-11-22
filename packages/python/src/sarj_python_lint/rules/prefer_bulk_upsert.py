@@ -338,20 +338,22 @@ def _eager_calls(root: ast.AST) -> list[ast.Call]:
     calls: list[ast.Call] = []
     while pending:
         node = pending.pop()
-        if isinstance(
-            node,
-            ast.FunctionDef
-            | ast.AsyncFunctionDef
-            | ast.ClassDef
-            | ast.Lambda
-            | ast.GeneratorExp
-            | ast.ListComp
-            | ast.SetComp
-            | ast.DictComp,
-        ):
-            continue
-        if isinstance(node, ast.Call):
-            calls.append(node)
+        match node:
+            case (
+                ast.FunctionDef()
+                | ast.AsyncFunctionDef()
+                | ast.ClassDef()
+                | ast.Lambda()
+                | ast.GeneratorExp()
+                | ast.ListComp()
+                | ast.SetComp()
+                | ast.DictComp()
+            ):
+                continue
+            case ast.Call():
+                calls.append(node)
+            case _:
+                pass
         pending.extend(ast.iter_child_nodes(node))
     return calls
 

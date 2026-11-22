@@ -34,10 +34,13 @@ class _StringStateEvent(NamedTuple):
 
 
 def _src(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute) and isinstance(node.value, (ast.Name, ast.Attribute)):
-        return f"{_src(node.value)}.{node.attr}"
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute() if isinstance(node.value, (ast.Name, ast.Attribute)):
+            return f"{_src(node.value)}.{node.attr}"
+        case _:
+            pass
     return ast.unparse(node)
 
 
@@ -456,10 +459,15 @@ def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute
 
 
 def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
-    if isinstance(value, ast.JoinedStr):
-        return any(isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values)
-    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
-        return _add_tree_contains_target(target, value)
+    match value:
+        case ast.JoinedStr():
+            return any(
+                isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values
+            )
+        case ast.BinOp() if isinstance(value.op, ast.Add):
+            return _add_tree_contains_target(target, value)
+        case _:
+            pass
     return False
 
 

@@ -364,11 +364,14 @@ def _is_authenticator_name(identifier: str) -> bool:
 
 
 def _is_external_lookup(node: ast.expr) -> bool:
-    if isinstance(node, ast.Subscript):
-        key = node.slice
-        return _is_auth_mapping(node.value) and _is_auth_key(key)
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
-        return bool(node.args) and _is_auth_mapping(node.func.value) and _is_auth_key(node.args[0])
+    match node:
+        case ast.Subscript():
+            key = node.slice
+            return _is_auth_mapping(node.value) and _is_auth_key(key)
+        case ast.Call() if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            return bool(node.args) and _is_auth_mapping(node.func.value) and _is_auth_key(node.args[0])
+        case _:
+            pass
     return False
 
 
@@ -426,15 +429,18 @@ def _is_expected_source(node: ast.expr, environment_names: frozenset[str]) -> bo
 
 def _is_environment_call(node: ast.Call, environment_names: frozenset[str]) -> bool:
     func = node.func
-    if isinstance(func, ast.Attribute) and func.attr in _ENV_CALLS:
-        return _root_name(func.value) in environment_names and bool(node.args) and _is_auth_key(node.args[0])
-    if isinstance(func, ast.Attribute) and func.attr == "get":
-        return (
-            _root_name(func.value) in environment_names
-            and _terminal_name(func.value) in _ENV_MAPPINGS
-            and bool(node.args)
-            and _is_auth_key(node.args[0])
-        )
+    match func:
+        case ast.Attribute() if func.attr in _ENV_CALLS:
+            return _root_name(func.value) in environment_names and bool(node.args) and _is_auth_key(node.args[0])
+        case ast.Attribute() if func.attr == "get":
+            return (
+                _root_name(func.value) in environment_names
+                and _terminal_name(func.value) in _ENV_MAPPINGS
+                and bool(node.args)
+                and _is_auth_key(node.args[0])
+            )
+        case _:
+            pass
     return False
 
 
@@ -536,8 +542,11 @@ def _same_scope_compares(function: ast.FunctionDef | ast.AsyncFunctionDef) -> It
     stack: list[ast.AST] = list(function.body)
     while stack:
         current = stack.pop()
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            continue
-        if isinstance(current, ast.Compare):
-            yield current
+        match current:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                continue
+            case ast.Compare():
+                yield current
+            case _:
+                pass
         stack.extend(children(current))

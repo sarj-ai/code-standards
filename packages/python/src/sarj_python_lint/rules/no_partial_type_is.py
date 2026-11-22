@@ -347,15 +347,17 @@ def _rejects_truthiness(node: ast.expr | None, parameter: str, kind: str, import
 
 
 def _literal(node: ast.expr) -> int | str | bytes | bool | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, str, bytes, bool)):
-        return node.value
-    if (
-        isinstance(node, ast.UnaryOp)
-        and isinstance(node.op, (ast.USub, ast.UAdd))
-        and isinstance(node.operand, ast.Constant)
-        and type(node.operand.value) is int
-    ):
-        return -node.operand.value if isinstance(node.op, ast.USub) else node.operand.value
+    match node:
+        case ast.Constant() if isinstance(node.value, (int, str, bytes, bool)):
+            return node.value
+        case ast.UnaryOp() if (
+            isinstance(node.op, (ast.USub, ast.UAdd))
+            and isinstance(node.operand, ast.Constant)
+            and type(node.operand.value) is int
+        ):
+            return -node.operand.value if isinstance(node.op, ast.USub) else node.operand.value
+        case _:
+            pass
     return None
 
 

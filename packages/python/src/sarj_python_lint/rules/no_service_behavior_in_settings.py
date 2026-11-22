@@ -205,18 +205,21 @@ def _collaborator_fields(node: ast.ClassDef) -> frozenset[str]:
 
 
 def _is_collaborator_annotation(annotation: ast.expr | None) -> bool:
-    if annotation is None:
-        return False
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return _is_collaborator_annotation(annotation.left) or _is_collaborator_annotation(annotation.right)
-    if isinstance(annotation, ast.Subscript):
-        wrapper = _dotted_tail(annotation.value)
-        if wrapper in {"Optional", "Union"}:
-            members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-            return any(_is_collaborator_annotation(member) for member in members)
-        if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
-            return _is_collaborator_annotation(annotation.slice.elts[0])
-        return _is_collaborator_annotation(annotation.value)
+    match annotation:
+        case None:
+            return False
+        case ast.BinOp() if isinstance(annotation.op, ast.BitOr):
+            return _is_collaborator_annotation(annotation.left) or _is_collaborator_annotation(annotation.right)
+        case ast.Subscript():
+            wrapper = _dotted_tail(annotation.value)
+            if wrapper in {"Optional", "Union"}:
+                members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+                return any(_is_collaborator_annotation(member) for member in members)
+            if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
+                return _is_collaborator_annotation(annotation.slice.elts[0])
+            return _is_collaborator_annotation(annotation.value)
+        case _:
+            pass
     return (
         isinstance(annotation, (ast.Name, ast.Attribute))
         and _COLLABORATOR_RE.search(_dotted_tail(annotation) or "") is not None

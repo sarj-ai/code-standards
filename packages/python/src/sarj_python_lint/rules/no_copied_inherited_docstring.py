@@ -216,12 +216,13 @@ def _local_class_alias(
     statement: ast.stmt,
     visible: dict[str, ast.ClassDef],
 ) -> _ClassAlias | None:
-    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-        target = statement.targets[0]
-    elif isinstance(statement, ast.AnnAssign):
-        target = statement.target
-    else:
-        return None
+    match statement:
+        case ast.Assign() if len(statement.targets) == 1:
+            target = statement.targets[0]
+        case ast.AnnAssign():
+            target = statement.target
+        case _:
+            return None
     if not isinstance(target, ast.Name) or not isinstance(statement.value, ast.Name):
         return None
     parent = visible.get(statement.value.id)

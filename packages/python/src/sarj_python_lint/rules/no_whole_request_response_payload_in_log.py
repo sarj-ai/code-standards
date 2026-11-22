@@ -353,10 +353,13 @@ def _facts_for_statements(statements: list[ast.stmt]) -> _SuiteFacts:
 
 
 def _direct_binding(statement: ast.stmt) -> tuple[str, ast.expr] | None:
-    if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
-        return statement.targets[0].id, statement.value
-    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
-        return statement.target.id, statement.value
+    match statement:
+        case ast.Assign() if len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+            return statement.targets[0].id, statement.value
+        case ast.AnnAssign() if isinstance(statement.target, ast.Name) and statement.value is not None:
+            return statement.target.id, statement.value
+        case _:
+            pass
     return None
 
 
@@ -369,10 +372,13 @@ def _bound_names(statement: ast.stmt) -> tuple[str, ...]:
             node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
         ):
             continue
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            names.append(node.id)
-        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-            names.append(node.name)
+        match node:
+            case ast.Name() if isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.append(node.id)
+            case ast.ExceptHandler() if node.name is not None:
+                names.append(node.name)
+            case _:
+                pass
         stack.extend(ast.iter_child_nodes(node))
     return tuple(names)
 
