@@ -77,7 +77,6 @@ def test_exact_ordered_action_names_are_errors_with_a_line_preserving_fix(source
         ("    load_current", "    if ready: load_current"),
         ("    load_current", "    for item in items: load_current"),
         ("    load_current", "    audit()\n    load_current"),
-        ("    load_current", "    # Preserve an independent protocol fact.\n    load_current"),
         ("settings()\n", "settings()  # remote state is changed here\n"),
         ("def activate():\n", "def activate():\n    already_started = True\n"),
         ("def activate():\n", 'def activate():\n    """Published command documentation."""\n'),
@@ -100,7 +99,6 @@ def test_exact_ordered_action_names_are_errors_with_a_line_preserving_fix(source
         "guard",
         "loop",
         "additional-action",
-        "intervening-comment",
         "trailing-fact",
         "prior-statement",
         "prior-docstring",
@@ -111,6 +109,16 @@ def test_exact_action_narration_abstains_on_meaning_or_unowned_behavior(old: str
     source = _FLAT.replace(old, new)
     ast.parse(source)
     assert ExcessiveCommentary().check(_PATH, source) == []
+    assert fix_source(_PATH, source, rule_ids=["excessive-commentary"]) == source
+
+
+def test_intervening_comment_has_only_a_manual_budget_finding() -> None:
+    source = _FLAT.replace("    load_current", "    # Preserve an independent protocol fact.\n    load_current")
+    findings = ExcessiveCommentary().check(_PATH, source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ434"
+    assert findings[0].severity is Severity.ERROR
+    assert "two comment lines" in findings[0].message
     assert fix_source(_PATH, source, rule_ids=["excessive-commentary"]) == source
 
 

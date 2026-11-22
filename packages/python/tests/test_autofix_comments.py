@@ -8,6 +8,7 @@ import pytest
 from sarj_rule_contracts import RuleId
 
 from sarj_python_lint.autofix import fix_source
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules import REGISTRY
 
 
@@ -138,11 +139,15 @@ def test_native_comment_findings_with_unresolved_meaning_remain_manual(rule_id: 
     ],
     ids=("novel-word", "different-order", "argument-bearing-call", "additional-statement", "unrelated-return"),
 )
-def test_accumulation_paragraph_needs_exact_ordered_ownership(old: str, new: str) -> None:
+def test_accumulation_without_exact_ownership_has_only_a_manual_budget_finding(old: str, new: str) -> None:
     rule_id = "excessive-commentary"
     source = _example(RuleId(rule_id)).focus_file.source.replace(old, new)
     path = Path("app/service.py")
-    assert REGISTRY[rule_id]().check(path, source) == []
+    findings = REGISTRY[rule_id]().check(path, source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ434"
+    assert findings[0].severity is Severity.ERROR
+    assert "two comment lines" in findings[0].message
     assert fix_source(path, source, rule_ids=[rule_id]) == source
 
 
