@@ -840,6 +840,12 @@ def _dispatch_roots(root: ast.If, context: PythonFileContext) -> list[ast.If]:
 
 
 def _dispatch_match(roots: Sequence[ast.If], context: PythonFileContext, *, type_dispatch: bool) -> ast.Match | None:
+    if not type_dispatch:
+        match roots:
+            case [ast.If(orelse=[ast.If()])]:
+                pass
+            case _:
+                return None
     cases: list[ast.match_case] = []
     pending = list(reversed(roots))
     subject: ast.Name | None = None

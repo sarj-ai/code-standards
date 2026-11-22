@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ca27c279fde1ae71f649733b18eee82259ba0ebc7b3122efc3a2591c43e13b54",
-  "cliSha256": "9d35e57c862dcea3d5c897f01498ee2af678b188b415b52b683323607dd41118",
+  "catalogSha256": "7db9445341ca6cee3eb967899649184eff62af2c8958a11ceea006b61def24cb",
+  "cliSha256": "392c8d80d54bf7071b54d3a4e6a6994da1d1c65dc88f5a6ccf249d3c1a681ba1",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19974,6 +19974,36 @@
     },
     "python:prefer-match-value-dispatch": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/formats.py",
+              "source": "from typing import Literal\n\nFormat = Literal[\"pcm\", \"wav\", \"mp3\", \"flac\"]\n\n\ndef encode(value: Format):\n    match value:\n        case \"pcm\" | \"wav\":\n            return direct(value)\n        case \"mp3\" | \"flac\":\n            return compressed(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formats.py",
+          "id": "explicit-format-cases",
+          "outcome": "accept",
+          "scenarioId": "finite-literal-partition",
+          "title": "Every format belongs to an explicit case"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/formats.py",
+              "source": "from typing import Literal\n\nFormat = Literal[\"pcm\", \"wav\", \"mp3\", \"flac\"]\n\n\ndef encode(value: Format):\n    if value in (\"pcm\", \"wav\"):\n        return direct(value)\n    return compressed(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formats.py",
+          "id": "finite-format-partition",
+          "outcome": "reject",
+          "scenarioId": "finite-literal-partition",
+          "title": "An implicit format group hides future values"
+        },
         {
           "expectedCount": 0,
           "files": [

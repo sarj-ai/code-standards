@@ -1380,6 +1380,30 @@ def test_assertion_validator_delegation_keeps_all_raw_formals_correlated(rule: P
             1,
         ),
         (
+            "def f(value: object) -> str:\n    if []:\n        assert isinstance(value, list)\n    return 'known'\n",
+            1,
+        ),
+        (
+            "def f(value: object) -> str:\n    if 1 == 2:\n        assert isinstance(value, list)\n    return 'known'\n",
+            1,
+        ),
+        (
+            "def f(value: object) -> str:\n    assert ()\n    assert isinstance(value, list)\n    return 'known'\n",
+            1,
+        ),
+        (
+            "def f(value: object) -> str:\n    while {}:\n        assert isinstance(value, list)\n    return 'known'\n",
+            1,
+        ),
+        (
+            "def f(value: object) -> str:\n    if -0:\n        assert isinstance(value, list)\n    return 'known'\n",
+            1,
+        ),
+        (
+            "def f(value: object) -> str:\n    assert True, isinstance(value, list) or str(value)\n    return 'known'\n",
+            1,
+        ),
+        (
             "def f(value: object) -> list[object]:\n    assert isinstance(value, list) or True\n    return value\n",
             2,
         ),
