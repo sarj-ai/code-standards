@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts
+from sarj_python_lint.rules._finite_literal_dispatch import finite_literal_dispatches
 
 
 if TYPE_CHECKING:
@@ -52,6 +53,11 @@ class PreferMatchValueDispatch(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
+            "A stable string- or integer-Literal parameter also warns when one returning positive equality or membership branch, with the parameter on the left, partitions it against an else ending in return, or against a return immediately following it in a function body or if/else branch; elif branches, negated or reversed comparisons, Boolean selectors, and following returns preceded by other statements or nested in with, try, loop or match blocks abstain. This subset is always WARNING and has no autofix.",
+            "After explicit literal cases, a non-rejecting match wildcard covering remaining known values also warns, including captured wildcards. Explicit rejection and import-proven assert_never remain valid, including logging prefixes and return assert_never.",
+            "Direct Literal annotations, module-local aliases and unique first-party imports, including imports in module-level TYPE_CHECKING blocks, are resolved without executing imports; aliases defined inside conditional blocks abstain. Open, mutated, guarded, locally shadowed and unresolved domains abstain. Alias resolution stops after eight binding nodes and source ownership after eight modules.",
+            "Literal comparisons, Boolean combinations and assertions narrow reachable values through enclosing if branches, try bodies before their else, and preceding if/elif chains whose branches end in return, raise, continue, break, assert False, assert_never or sys.exit/os._exit/os.abort. Any other preceding statement that reads the subject and can return, raise, assert, call those exits or leave its enclosing loop, any such statement inside a subject-narrowed branch, enclosing while tests and match cases whose subject or guard reads the subject, and guards nested over eight levels abstain. Nested function definitions are not executed. Assertion narrowing assumes assertions run (not python -O); other NoReturn helpers are treated as returning.",
+            "Rejection proof follows statement order and runtime import lookup, including methods that skip class bindings, is bounded to eight levels and abstains on uncertain control flow. Upstream type checking owns missing-case exhaustiveness; protection requires reportMatchNotExhaustive, enabled as an error by the Sarj strict preset.",
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free literal-equality ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions and guards remain review-only.",
             "ERROR covers direct literal equality ladders on an unrebound local parameter and terminal equality dispatch on a stable local name against distinct dotted values from one import-proven namespace or local enum. A proven minimum Python version of 3.10 and no visible namespace access are required. Other supported dispatch remains WARNING.",
             "Equality-only ladders require two or more tests on the same left-hand name or attribute chain, followed by else.",
@@ -59,7 +65,7 @@ class PreferMatchValueDispatch(Rule):
             "This is a readability suggestion, not proof of exhaustiveness or a safe automatic rewrite: attributes can have side effects and match evaluates its subject once.",
             "Grouped or guarded ladders and terminal sibling branches require three distinct arms on a bare name; only the last arm may have a selector-first guard.",
             "Two or more terminal sibling equality branches with a terminal fallback, or an if/elif ladder with else, also qualify when comparing one bare name with distinct values from the same qualified namespace. Imported values are not assumed to be exhaustive enum members. This subset remains review-only because import attributes and equality may have custom behavior.",
-            "Groups contain two to six distinct string literals in a tuple, list, or set. Set hashing and custom equality can differ from pattern matching; no runtime string type is inferred.",
+            "Legacy grouped ladders contain two to six distinct string literals in a tuple, list, or set; the finite-parameter subset accepts any nonempty literal group within its proven domain. Set hashing and custom equality can differ from pattern matching; no runtime string type is inferred.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
             "An if/elif ladder without else warns at three or more arms and never receives the safe fix. Identity checks against members of a source-proven Enum, IntEnum or StrEnum class without a custom __eq__ also warn; value patterns compare with ==, so confirm the subject is a member before rewriting. Unresolved, relative or reassigned enum namespaces abstain.",
         ),
@@ -210,6 +216,41 @@ class PreferMatchValueDispatch(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="finite-format-partition",
+                scenario="finite-literal-partition",
+                title="An implicit format group hides future values",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/formats.py",
+                        "from typing import Literal\nFormat = Literal['pcm', 'wav', 'mp3', 'flac']\n"
+                        "def encode(value: Format):\n    if value in ('pcm', 'wav'):\n"
+                        "        return direct(value)\n    return compressed(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/formats.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-format-cases",
+                scenario="finite-literal-partition",
+                title="Every format belongs to an explicit case",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/formats.py",
+                        "from typing import Literal\nFormat = Literal['pcm', 'wav', 'mp3', 'flac']\n"
+                        "def encode(value: Format):\n    match value:\n"
+                        "        case 'pcm' | 'wav':\n            return direct(value)\n"
+                        "        case 'mp3' | 'flac':\n            return compressed(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/formats.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="safe-autofix-subset",
                 title="A proven subset has a convergent automatic fix",
                 outcome=ExampleOutcome.MATCH,
@@ -246,44 +287,86 @@ class PreferMatchValueDispatch(Rule):
             return []
         findings: list[Diagnostic] = []
         candidates = _candidate_dispatches(context, tree)
-        if candidates and context.session.python_target.has_declared_support_before(path, (3, 10)):
+        finite_candidates = finite_literal_dispatches(context)
+        if (candidates or finite_candidates) and context.session.python_target.has_declared_support_before(
+            path, (3, 10)
+        ):
             return []
         provenance = context.static_resource_provenance if candidates else None
-        for node, subject, qualified in sorted(candidates, key=lambda candidate: candidate[0].lineno):
-            arms = _dispatch_arms(node, context)
-            identity = any(_identity_test(arm.test) for arm in arms)
-            fallback = bool(arms[-1].orelse) or len(arms) == 1 or not node.orelse
-            findings.append(
-                Diagnostic(
-                    path=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
-                    code=self.code,
-                    severity=(
-                        Severity.ERROR
-                        if provenance is not None
-                        and fallback
-                        and not identity
-                        and (
-                            _blocking_literal_dispatch(context, node, provenance)
-                            or (qualified and _blocking_qualified_dispatch(context, node, subject, provenance))
-                        )
-                        else Severity.WARNING
-                    ),
-                    message=(
-                        f"Repeated value dispatch on '{subject}'{' with a fallback' if fallback else ''} — consider "
-                        "match/case; preserve fallback and constant semantics, and review repeated attribute "
-                        "evaluation, membership versus equality, and guard order."
-                        + (
-                            " Value patterns compare with ==; confirm the subject is a member of this enum before "
-                            "replacing identity checks."
-                            if identity
-                            else ""
-                        )
-                    ),
-                )
+        findings.extend(
+            self._dispatch_diagnostic(context, node, subject, provenance, qualified=qualified)
+            for node, subject, qualified in sorted(candidates, key=lambda candidate: candidate[0].lineno)
+        )
+        existing: set[int] = _owned_dispatch_nodes(context, tree, candidates) if finite_candidates else set()
+        findings.extend(
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=self.code,
+                severity=Severity.WARNING,
+                message=(
+                    f"Finite Literal dispatch on '{subject}' has an implicit value group; enumerate every value "
+                    "with match/case and retain the type checker's exhaustiveness check. "
+                    "Use assert_never for an unreachable remainder."
+                ),
             )
-        return findings
+            for node, subject in finite_candidates
+            if id(node) not in existing and not context.suppressions.is_suppressed(node.lineno, self.code)
+        )
+        return sorted(findings, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+    def _dispatch_diagnostic(
+        self,
+        context: PythonFileContext,
+        node: ast.If,
+        subject: str,
+        provenance: ResourceProvenance | None,
+        *,
+        qualified: bool,
+    ) -> Diagnostic:
+        arms = _dispatch_arms(node, context)
+        identity = any(_identity_test(arm.test) for arm in arms)
+        fallback = bool(arms[-1].orelse) or len(arms) == 1 or not node.orelse
+        return Diagnostic(
+            path=context.path,
+            line=node.lineno,
+            col=node.col_offset + 1,
+            code=self.code,
+            severity=(
+                Severity.ERROR
+                if provenance is not None
+                and fallback
+                and not identity
+                and (
+                    _blocking_literal_dispatch(context, node, provenance)
+                    or (qualified and _blocking_qualified_dispatch(context, node, subject, provenance))
+                )
+                else Severity.WARNING
+            ),
+            message=(
+                f"Repeated value dispatch on '{subject}'{' with a fallback' if fallback else ''} — consider "
+                "match/case; preserve fallback and constant semantics, and review repeated attribute "
+                "evaluation, membership versus equality, and guard order."
+                + (
+                    " Value patterns compare with ==; confirm the subject is a member of this enum before "
+                    "replacing identity checks."
+                    if identity
+                    else ""
+                )
+            ),
+        )
+
+
+def _owned_dispatch_nodes(
+    context: PythonFileContext, tree: ast.Module, candidates: list[tuple[ast.If, str, bool]]
+) -> set[int]:
+    owned = {id(node) for node, _, _ in candidates}
+    if owned:
+        for branches in _terminal_sibling_dispatches(tree, node_index=context.node_index):
+            if id(branches[0]) in owned:
+                owned.update(id(branch) for branch in branches)
+    return owned
 
 
 def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[tuple[ast.If, str, bool]]:
