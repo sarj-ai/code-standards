@@ -101,18 +101,19 @@ def unused_module_outputs(
 
 def _collect(module: _Module, block: _hcl.Block, *, path: str, directory: str) -> None:
     _validate_declaration(block, path=path)
-    if block.type == "locals":
-        _add_locals(module, block, path=path)
-    elif block.type == "output":
-        _add_output(module, block, path=path)
-    elif block.type == "module":
-        _add_call(module, block, path=path, directory=directory)
-    elif block.type == "variable":
-        module.sinks.extend(_validation_expressions(block))
-    else:
-        module.sinks.extend(_sinks(block))
-        if block.type == "terraform":
-            module.backend |= _declares_backend(block)
+    match block.type:
+        case "locals":
+            _add_locals(module, block, path=path)
+        case "output":
+            _add_output(module, block, path=path)
+        case "module":
+            _add_call(module, block, path=path, directory=directory)
+        case "variable":
+            module.sinks.extend(_validation_expressions(block))
+        case _:
+            module.sinks.extend(_sinks(block))
+            if block.type == "terraform":
+                module.backend |= _declares_backend(block)
 
 
 def _validate_declaration(block: _hcl.Block, *, path: str) -> None:

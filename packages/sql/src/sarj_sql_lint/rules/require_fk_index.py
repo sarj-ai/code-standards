@@ -564,14 +564,17 @@ def _clause_end(statement: str, start: int) -> int:
     for match in sql_code_matches(_CLAUSE_DELIMITER, statement, pos=start):
         position = match.start()
         char = match.group()
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            if depth == 0:
+        match char:
+            case "(":
+                depth += 1
+            case ")":
+                if depth == 0:
+                    return position
+                depth -= 1
+            case "," if depth == 0:
                 return position
-            depth -= 1
-        elif char == "," and depth == 0:
-            return position
+            case _:
+                pass
     return len(statement)
 
 

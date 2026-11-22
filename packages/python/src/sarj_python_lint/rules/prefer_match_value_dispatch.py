@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._declared_contracts import DeclaredContracts
 
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ _MIN_EXPANDED_ARMS = 3
 _GUARDED_TEST_PARTS = 2
 _MIN_GROUP_VALUES = 2
 _MAX_GROUP_VALUES = 6
+_ENUM_BASES = frozenset({"enum.Enum", "enum.IntEnum", "enum.StrEnum"})
 
 
 @final
@@ -59,6 +61,7 @@ class PreferMatchValueDispatch(Rule):
             "Two or more terminal sibling equality branches with a terminal fallback, or an if/elif ladder with else, also qualify when comparing one bare name with distinct values from the same qualified namespace. Imported values are not assumed to be exhaustive enum members. This subset remains review-only because import attributes and equality may have custom behavior.",
             "Groups contain two to six distinct string literals in a tuple, list, or set. Set hashing and custom equality can differ from pattern matching; no runtime string type is inferred.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
+            "An if/elif ladder without else warns at three or more arms and never receives the safe fix. Identity checks against members of a source-proven Enum, IntEnum or StrEnum class without a custom __eq__ also warn; value patterns compare with ==, so confirm the subject is a member before rewriting. Unresolved, relative or reassigned enum namespaces abstain.",
         ),
         examples=(
             RuleExample(
@@ -247,6 +250,9 @@ class PreferMatchValueDispatch(Rule):
             return []
         provenance = context.static_resource_provenance if candidates else None
         for node, subject, qualified in sorted(candidates, key=lambda candidate: candidate[0].lineno):
+            arms = _dispatch_arms(node, context)
+            identity = any(_identity_test(arm.test) for arm in arms)
+            fallback = bool(arms[-1].orelse) or len(arms) == 1 or not node.orelse
             findings.append(
                 Diagnostic(
                     path=path,
@@ -256,6 +262,8 @@ class PreferMatchValueDispatch(Rule):
                     severity=(
                         Severity.ERROR
                         if provenance is not None
+                        and fallback
+                        and not identity
                         and (
                             _blocking_literal_dispatch(context, node, provenance)
                             or (qualified and _blocking_qualified_dispatch(context, node, subject, provenance))
@@ -263,9 +271,15 @@ class PreferMatchValueDispatch(Rule):
                         else Severity.WARNING
                     ),
                     message=(
-                        f"Repeated value dispatch on '{subject}' with a fallback — consider match/case; "
-                        "preserve fallback and constant semantics, and review repeated attribute evaluation, "
-                        "membership versus equality, and guard order."
+                        f"Repeated value dispatch on '{subject}'{' with a fallback' if fallback else ''} — consider "
+                        "match/case; preserve fallback and constant semantics, and review repeated attribute "
+                        "evaluation, membership versus equality, and guard order."
+                        + (
+                            " Value patterns compare with ==; confirm the subject is a member of this enum before "
+                            "replacing identity checks."
+                            if identity
+                            else ""
+                        )
                     ),
                 )
             )
@@ -280,7 +294,7 @@ def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[
         if id(node) in continuations:
             continue
         chain = _elif_chain(node, context.source_lines, continuations)
-        if len(chain.branches) < _MIN_TESTS or not chain.last.orelse:
+        if len(chain.branches) < (_MIN_TESTS if chain.last.orelse else _MIN_EXPANDED_ARMS):
             continue
         subject = _dispatch_subject(chain.branches, constants)
         if subject is None:
@@ -309,12 +323,16 @@ def _qualified_dispatch_subject(branches: list[ast.If], context: PythonFileConte
     bodies: set[tuple[str, ...]] = set()
     for branch in branches:
         match branch.test:
-            case ast.Compare(left=ast.Name(id=name), ops=[ast.Eq()], comparators=[ast.Attribute() as value]):
+            case ast.Compare(
+                left=ast.Name(id=name), ops=[ast.Eq() | ast.Is() as operator], comparators=[ast.Attribute() as value]
+            ):
                 owner = _subject(value.value)
             case _:
                 return None
         body = tuple(ast.dump(statement) for statement in branch.body)
         if owner is None or not _qualified_namespace(value.value, context):
+            return None
+        if isinstance(operator, ast.Is) and not _proven_enum(value.value, context, branch):
             return None
         if (subject is not None and subject != name) or (namespace is not None and namespace != owner):
             return None
@@ -347,6 +365,35 @@ def _qualified_namespace(node: ast.expr, context: PythonFileContext) -> bool:
             for base in binding.bases
         )
     )
+
+
+def _proven_enum(namespace: ast.expr, context: PythonFileContext, at: ast.AST) -> bool:
+    contracts = DeclaredContracts(context)
+    enum = contracts.class_type(namespace, at=at)
+    if enum is None or any(
+        isinstance(statement, ast.FunctionDef) and statement.name == "__eq__" for statement in enum.declaration.body
+    ):
+        return False
+    imports = contracts.imports_for(enum.unit)
+    bases = enum.declaration.bases
+    return bool(bases) and all(imports.resolved_qualified_name(base) in _ENUM_BASES for base in bases)
+
+
+def _identity_test(test: ast.expr) -> bool:
+    return isinstance(test, ast.Compare) and isinstance(test.ops[0], ast.Is)
+
+
+def _dispatch_arms(node: ast.If, context: PythonFileContext) -> list[ast.If]:
+    arms = _elif_chain(node, context.source_lines, set()).branches
+    if len(arms) > 1 or node.orelse:
+        return arms
+    block = next((field for field in _statement_lists(context.parents.get(node, node)) if node in field), [node])
+    siblings: list[ast.If] = []
+    for statement in block[block.index(node) :]:
+        if not isinstance(statement, ast.If) or statement.orelse:
+            break
+        siblings.append(statement)
+    return siblings
 
 
 def _blocking_qualified_dispatch(

@@ -115,13 +115,14 @@ def test_stale_module_preconditions_fail_before_writing(
     def concurrent_capture(
         root: Path, paths: tuple[Path, ...], *, mode: transaction.CaptureMode
     ) -> transaction.FileTransaction:
-        if change == "source":
-            (root / "retained.tf").write_text('locals { retained = "concurrent" }\n')
-        elif change == "membership":
-            (root / "new.tf").write_text("locals {}\n")
-        else:
-            (root / "unrelated.txt").write_text("new staged content\n")
-            _git(root, "add", "unrelated.txt")
+        match change:
+            case "source":
+                (root / "retained.tf").write_text('locals { retained = "concurrent" }\n')
+            case "membership":
+                (root / "new.tf").write_text("locals {}\n")
+            case _:
+                (root / "unrelated.txt").write_text("new staged content\n")
+                _git(root, "add", "unrelated.txt")
         return capture(root, paths, mode=mode)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inject a real concurrent edit at capture; retain real planning, validation and file writes.

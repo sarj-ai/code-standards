@@ -2764,13 +2764,14 @@ def parse_swiftlint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         except ValueError as exc:
             msg = f"unsupported SwiftLint severity: {raw_severity!r}"
             raise ValueError(msg) from exc
-        if severity_value is _ExternalSeverity.ERROR:
-            severity = Severity.ERROR
-        elif severity_value is _ExternalSeverity.WARNING:
-            severity = Severity.WARNING
-        else:
-            msg = f"unsupported SwiftLint severity: {raw_severity!r}"
-            raise ValueError(msg)
+        match severity_value:
+            case _ExternalSeverity.ERROR:
+                severity = Severity.ERROR
+            case _ExternalSeverity.WARNING:
+                severity = Severity.WARNING
+            case _:
+                msg = f"unsupported SwiftLint severity: {raw_severity!r}"
+                raise ValueError(msg)
         diagnostics.append(
             Diagnostic(
                 rule,

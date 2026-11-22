@@ -788,8 +788,10 @@ def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
             continue
         type_dispatch = diagnostic.code == "SARJ080"
         roots = _dispatch_roots(root, source.context) if type_dispatch else [root]
-        if source.comments_between(root.lineno, _last_line(roots[-1])) or (
-            len(roots) > 1 and any(source.full_statement(branch) is None for branch in roots)
+        if (
+            not _fixable_ladder(root, type_dispatch=type_dispatch)
+            or source.comments_between(root.lineno, _last_line(roots[-1]))
+            or (len(roots) > 1 and any(source.full_statement(branch) is None for branch in roots))
         ):
             continue
         matched = _dispatch_match(roots, source.context, type_dispatch=type_dispatch)
@@ -806,6 +808,14 @@ def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
             )
         ]
     return []
+
+
+def _fixable_ladder(root: ast.If, *, type_dispatch: bool) -> bool:
+    if type_dispatch:
+        return True
+    while len(root.orelse) == 1 and isinstance(root.orelse[0], ast.If):
+        root = root.orelse[0]
+    return bool(root.orelse)
 
 
 def _dispatch_roots(root: ast.If, context: PythonFileContext) -> list[ast.If]:

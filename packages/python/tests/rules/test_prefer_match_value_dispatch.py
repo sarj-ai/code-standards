@@ -486,3 +486,56 @@ def test_qualified_dispatch_with_nonlocal_or_rebound_subject_stays_advisory(tmp_
     path.write_text(source)
     findings = PreferMatchValueDispatch().check(path, source)
     assert [finding.severity.value for finding in findings] == ["warning"]
+
+
+_NO_ELSE = "def apply(fault, report):\n    if fault == 'schema':\n        report.schema = True\n    elif fault == 'missing':\n        report.findings = []\n    elif fault == 'drift':\n        report.level = 'drift'\n"
+_ENUM = "from enum import Enum\nclass Level(Enum):\n    ERROR = 1\n    WARNING = 2\n    NOTE = 3\n"
+
+
+def test_three_arm_ladder_without_else_is_review_only() -> None:
+    [finding] = _check(_NO_ELSE)
+    assert finding.severity.value == "warning"
+    assert "with a fallback" not in finding.message
+    helper = "def run():\n    def _apply(fault):\n        if fault == 'a':\n            print(1)\n        elif fault == 'b':\n            print(2)\n        elif fault == 'c':\n            print(3)\n    _apply('a')\n"
+    assert len(_check(helper)) == 1
+    assert fix_source(Path("app/dispatch.py"), helper, rule_ids=["prefer-match-value-dispatch"]) == helper
+
+
+@pytest.mark.parametrize(
+    "dispatch",
+    [
+        "def label(level):\n    if level is Level.ERROR:\n        return 'error'\n    elif level is Level.WARNING:\n        return 'warning'\n    else:\n        return 'note'\n",
+        "def label(level):\n    if level is Level.ERROR:\n        return 'error'\n    if level is Level.WARNING:\n        return 'warning'\n    return 'note'\n",
+    ],
+    ids=["ladder", "terminal-siblings"],
+)
+def test_identity_dispatch_on_proven_enum_members_warns(dispatch: str) -> None:
+    [finding] = _check(_ENUM + dispatch)
+    assert finding.severity.value == "warning"
+    assert "compare with ==" in finding.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def apply(fault):\n    if fault == 'a':\n        go()\n    elif fault == 'b':\n        stop()\n",
+        "class Level:\n    ERROR = 1\n    WARNING = 2\ndef label(level):\n    if level is Level.ERROR:\n        return 'e'\n    elif level is Level.WARNING:\n        return 'w'\n    else:\n        return 'n'\n",
+        _ENUM.replace("    NOTE = 3\n", "    NOTE = 3\n    def __eq__(self, other):\n        return True\n")
+        + "def label(level):\n    if level is Level.ERROR:\n        return 'e'\n    elif level is Level.WARNING:\n        return 'w'\n    else:\n        return 'n'\n",
+        "from provider import Level\ndef label(level):\n    if level is Level.ERROR:\n        return 'e'\n    elif level is Level.WARNING:\n        return 'w'\n    else:\n        return 'n'\n",
+        _ENUM
+        + "def label(level, Level):\n    if level is Level.ERROR:\n        return 'e'\n    elif level is Level.WARNING:\n        return 'w'\n    else:\n        return 'n'\n",
+        _ENUM
+        + "def label(level, other):\n    if level is Level.ERROR:\n        return 'e'\n    elif other is Level.WARNING:\n        return 'w'\n    else:\n        return 'n'\n",
+    ],
+    ids=[
+        "two-arm-no-else",
+        "plain-class-constants",
+        "custom-eq-enum",
+        "unproven-import",
+        "shadowed-enum",
+        "two-subjects",
+    ],
+)
+def test_unproven_identity_and_short_ladders_remain(source: str) -> None:
+    assert _check(source) == []
