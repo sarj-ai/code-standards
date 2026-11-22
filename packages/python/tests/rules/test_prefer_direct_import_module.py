@@ -55,7 +55,7 @@ def test_relative_builtin_spelling_does_not_hide_static_loader(
     source = f"import importlib\n{namespace_import}\nlocal_fn()\nplugin = importlib.import_module('plugins.billing')\n"
     findings = rule.check(Path("app/loader.py"), source)
     assert [(finding.code, finding.line, finding.col, finding.severity) for finding in findings] == (
-        [("SARJ529", 4, 10, "warning")] if expected else []
+        [("SARJ529", 4, 10, "error")] if expected else []
     )
 
 
@@ -65,7 +65,7 @@ def test_unused_parameter_in_another_scope_does_not_hide_static_loader(rule: Pre
     )
     findings = rule.check(Path("app/loader.py"), source)
     assert [(finding.code, finding.line, finding.col, finding.severity) for finding in findings] == [
-        ("SARJ529", 4, 10, "warning")
+        ("SARJ529", 4, 10, "error")
     ]
 
 

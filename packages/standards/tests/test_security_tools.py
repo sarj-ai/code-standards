@@ -372,20 +372,14 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
     expected = ProcessOutput(37, "child output", "child diagnostic")
 
     def bounded(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, environment, timeout_seconds = (
-            request.argv,
-            request.cwd,
-            request.environment,
-            request.timeout_seconds,
-        )
-        assert argv == ("checkov",)
-        assert cwd == tmp_path
-        assert "AWS_ACCESS_KEY_ID" not in environment
-        assert "GITHUB_TOKEN" not in environment
-        assert "UV_INDEX_PASSWORD" not in environment
+        assert request.argv == ("checkov",)
+        assert request.cwd == tmp_path
+        assert "AWS_ACCESS_KEY_ID" not in request.environment
+        assert "GITHUB_TOKEN" not in request.environment
+        assert "UV_INDEX_PASSWORD" not in request.environment
         for key in safe_keys:
-            assert environment[key] == str(tmp_path / key)
-        assert timeout_seconds == 300
+            assert request.environment[key] == str(tmp_path / key)
+        assert request.timeout_seconds == 300
         return expected
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the actual request after security policy and optional executor decoration.

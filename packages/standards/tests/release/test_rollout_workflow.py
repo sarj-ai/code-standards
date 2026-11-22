@@ -865,33 +865,33 @@ def test_only_automated_runs_skip_a_consumer_whose_identical_inputs_failed(
     tmp_path: Path, event: str, actor: str, *, reused: bool
 ) -> None:
     result = _unchanged_failures(tmp_path, EVENT_NAME=event, TRIGGERING_ACTOR=actor, FAILED_RUN="77")
-    outputs, commands, log = result.outputs, result.commands, result.log
 
-    lookups = [command for command in commands if command[:2] == ["gh", "api"] and "/actions/artifacts?" in command[2]]
+    lookups = [
+        command for command in result.commands if command[:2] == ["gh", "api"] and "/actions/artifacts?" in command[2]
+    ]
     assert bool(lookups) is reused
     if reused:
-        assert outputs == {"consumers": "[]", "skipped": '["App"]'}
-        assert "example/app@main: skipped" in log
-        assert "https://github.com/example/standards/actions/runs/77" in log
+        assert result.outputs == {"consumers": "[]", "skipped": '["App"]'}
+        assert "example/app@main: skipped" in result.log
+        assert "https://github.com/example/standards/actions/runs/77" in result.log
         assert re.fullmatch(
             rf"repos/example/standards/actions/artifacts\?name={_FAILURE_KEY}&per_page=1", lookups[0][2]
         )
     else:
-        assert outputs["skipped"] == "[]"
-        [consumer] = _planned(outputs)
+        assert result.outputs["skipped"] == "[]"
+        [consumer] = _planned(result.outputs)
         assert re.fullmatch(_FAILURE_KEY, consumer.pop("failure_key"))
         assert consumer == {"name": "App", "identity": "example/app@main", "workflow_runner": "fixture-runner"}
-        assert not log
+        assert not result.log
 
 
 def test_consumers_without_a_recorded_failure_keep_their_matrix_entry_and_failure_key(tmp_path: Path) -> None:
     result = _unchanged_failures(tmp_path)
-    outputs, commands = result.outputs, result.commands
 
-    assert outputs["skipped"] == "[]"
-    [consumer] = _planned(outputs)
+    assert result.outputs["skipped"] == "[]"
+    [consumer] = _planned(result.outputs)
     assert re.fullmatch(_FAILURE_KEY, consumer["failure_key"])
-    assert ["gh", "api", "repos/example/app/git/ref/heads/main", "--jq", ".object.sha"] in commands
+    assert ["gh", "api", "repos/example/app/git/ref/heads/main", "--jq", ".object.sha"] in result.commands
 
 
 @pytest.mark.parametrize(
@@ -907,20 +907,18 @@ def test_unknown_rollout_inputs_retry_the_consumer_without_recording_a_failure(
     tmp_path: Path, values: dict[str, str]
 ) -> None:
     result = _unchanged_failures(tmp_path, FAILED_RUN="77", **values)
-    outputs, commands = result.outputs, result.commands
 
-    assert outputs["skipped"] == "[]"
-    [consumer] = _planned(outputs)
+    assert result.outputs["skipped"] == "[]"
+    [consumer] = _planned(result.outputs)
     assert "failure_key" not in consumer
-    assert not any("/actions/artifacts?" in argument for command in commands for argument in command)
+    assert not any("/actions/artifacts?" in argument for command in result.commands for argument in command)
 
 
 def test_invalid_consumer_json_passes_the_plan_through(tmp_path: Path) -> None:
     result = _unchanged_failures(tmp_path, CONSUMERS="invalid JSON")
-    outputs, commands = result.outputs, result.commands
 
-    assert outputs == {"consumers": "invalid JSON", "skipped": "[]"}
-    assert not any(command[0] == "gh" for command in commands)
+    assert result.outputs == {"consumers": "invalid JSON", "skipped": "[]"}
+    assert not any(command[0] == "gh" for command in result.commands)
 
 
 @pytest.mark.parametrize(

@@ -6,9 +6,9 @@
       "task": "rule-audit/iac/canonical-terraform-declarations",
       "family": "iac",
       "ruleId": "canonical-terraform-declarations",
-      "state": "pending",
-      "evidence": "Native source and complete-project fixtures cover HCL/JSON declarations, canonical files, same-module ownership, overrides, generated/vendor exclusions, policy selection and staged snapshot conflicts. Immutable isolated calibration covers 613 Terraform files across two revisions; 745 placement findings were grouped by module and declaration kind, with 50 findings stratified by revision, module and declaration kind inspected. Five alternating full-registry pairs have baseline/candidate cold medians 6.319/5.389 seconds, warm medians 5.789/5.192 seconds and median process peaks 47,368/54,444 KiB. Private sources, paths and identifying revisions remain local. Broader field calibration remains pending.",
-      "outcome": "Ship SARJ224 at WARNING. Core's native fix pathway can consolidate complete declaration blocks into existing selected canonical HCL files in the same module, with complete-module semantic comparison, snapshot/index checks and atomic rollback. Refuse comments/directives, overrides, duplicate interfaces, source-reading functions, guards and unavailable destinations. Terraform JSON placement is detected but remains review-only. Never create an unnecessary module, relocate tfvars, change resource addresses or claim filename placement proves module cohesion. Promotion requires a separate reviewed release."
+      "state": "complete",
+      "evidence": "Promotion qualification includes native HCL/Terraform JSON and module/fix boundary controls, plus six alternating rounds over 304 immutable Terraform files. All 374 placement findings were retained and 50 were inspected in a deterministic stratified sample. Wall medians were 4.069/5.432 seconds under shared-VM contention, a disclosed regression rather than a speedup claim. File/staged CLI tests preserve warning debt. The finite sample does not establish universal precision or recall.",
+      "outcome": "Enforce SARJ224 at ERROR while preserving the established atomic SAFE HCL move into existing selected canonical files in the same module. Refuse comments/directives, overrides, duplicates, source-reading functions, stale index/context and unavailable destinations. Terraform JSON remains manual. Never relocate tfvars or change resource addresses."
     },
     {
       "task": "rule-audit/typescript/no-flake-masking",
@@ -90,9 +90,9 @@
       "task": "rule-audit/python/no-magic-arithmetic",
       "family": "python",
       "ruleId": "no-magic-arithmetic",
-      "state": "pending",
-      "evidence": "The immutable evaluation adds 640 arithmetic/operational-limit findings. Fixtures cover arithmetic, slicing/range and import-proven sleep/timeout calls, with exclusions for small values, defaults, named constants and tests. The shared stratified review includes legitimate scientific-formula exceptions. Redacted evidence is in packages/standards/benchmarks/python-model-contracts-20261112.json.",
-      "outcome": "Ship SARJ570 at WARNING without autofix, complementing comparison-only magic-value checks. Ask for meaning and units or validated configuration; preserve intentional formulas with a reasoned exception. Per-rule empirical precision and recall remain unmeasured."
+      "state": "complete",
+      "evidence": "Promotion qualification covers 3,018 immutable Python files over six alternating rounds. All 303 numeric findings were retained; a deterministic stratified sample of 50 was inspected together with native positive/negative boundary cases. A class-field default false positive was repaired while retaining method-body arithmetic. Normal file/staged CLI and legacy-warning baseline tests establish blocking behavior. The sample does not establish universal precision or recall.",
+      "outcome": "Enforce SARJ570 at ERROR without autofix as an organization meaning-and-units policy. Name operational limits and factors or use validated configuration; retain constants, defaults, excluded trivial values, tests/generated boundaries and exact explained formula exceptions."
     },
     {
       "task": "rule-audit/python/prefer-outcome-variants",
@@ -227,16 +227,16 @@
       "family": "python",
       "ruleId": "duplicate-pytest-fixture-params",
       "state": "complete",
-      "evidence": "A paired pytest reproduction schedules two cases for duplicate fixture literals and one after reviewed deduplication; the previous 174 native rules and Ruff PT014 report neither fixture gap. Final labeled cases: 8 TP,18 TN,0 FP/FN. Focused regressions cover aliases/shadowing, immutable type/sign distinctions, explicit IDs, mutable/dynamic inputs, request identity, exact suppressions and deep tuples with bounded key growth; valid very large hexadecimal integers use conversion-limit-safe keys. An isolated immutable sample contains all 352 fixture-bearing files selected without reference to detector hits from 1,588 inspected test files. Neither new rule reports a live finding; only three fixture parameter tables were present, so live precision and recall remain unmeasured. Private pins, paths and source remain local. No corpus program code was executed. Three paired fresh-worker comparisons against the reconciled current-main engine on a fixed 24-file full-engine sample give first-analysis medians 5.955s versus 6.867s and warm medians 6.281s versus 6.455s, with all 29 diagnostics identical. First-analysis timing excludes imports/startup; shared-VM sample measurements do not establish fleet overhead.",
-      "outcome": "Ship SARJ524 at WARNING without autofix. Review dependent contracts before removing repeated parameters: consumers, hooks and global state may give repeated runs distinct meaning. Explicit case IDs or an exact reasoned suppression preserve intentional repetition. Error promotion requires separate field evidence."
+      "evidence": "Promotion calibration scans 4,475 immutable Python files in four corpora with six alternating baseline/candidate rounds and two process passes per batch. All 91 findings were inspected: 79 exact aggregate-alias policy matches and 12 closed local list accumulators. Finding identities and messages are unchanged; only severity changes. No parse or execution issues occurred. Median wall time is 63.194/70.226 seconds; peak worker RSS is 66,092/65,960 KiB. These finite measurements do not establish fleet overhead or universal precision/recall. This detector has zero live corpus findings, so empirical precision/recall remain unmeasured. Existing labeled native cases and new file/staged CLI debt tests cover import-proven fixtures, type/sign-sensitive immutable values, explicit IDs, request identity, wrappers, mutation, deep literals and exact exceptions.",
+      "outcome": "Promote SARJ524 to ERROR in a separate release after WARNING. Require distinct immutable fixture inputs or explicit IDs/exact explanation for intentional repeated runs. Review dependent hooks and contracts; do not auto-delete parameters."
     },
     {
       "task": "rule-audit/python/pytest-fixture-returns-closed-resource",
       "family": "python",
       "ruleId": "pytest-fixture-returns-closed-resource",
       "state": "complete",
-      "evidence": "A paired pytest reproduction fails when a fixture returns a managed StringIO and passes when it yields the live stream. Final labeled cases: 8 TP,28 TN,0 FP/FN. Focused regressions cover proven streams/tempfiles/HTTPX clients, async lifetime, provider identity/mutation, nested scopes, escaped/rebound resources, snapshots, exact suppressions and generated/non-test paths. Native analysis rejects three malformed labeled inputs across the shared evaluation. An isolated immutable sample contains all 352 fixture-bearing files selected without reference to detector hits from 1,588 inspected test files. Neither new rule reports a live finding; only three fixture parameter tables were present, so live precision and recall remain unmeasured. Private pins, paths and source remain local. No corpus program code was executed. Three paired fresh-worker comparisons against the reconciled current-main engine on a fixed 24-file full-engine sample give first-analysis medians 5.955s versus 6.867s and warm medians 6.281s versus 6.455s, with all 29 diagnostics identical. First-analysis timing excludes imports/startup; shared-VM sample measurements do not establish fleet overhead.",
-      "outcome": "Ship SARJ525 at WARNING without autofix. Yield a proven managed resource until its requesting tests finish, or document an intentional closed-resource contract with an exact suppression. Unknown managers, TestClient, aliases/escapes and returns after a context remain excluded. Review cleanup/exception behavior before rewriting; error promotion requires separate field evidence."
+      "evidence": "Promotion calibration scans 4,475 immutable Python files in four corpora with six alternating baseline/candidate rounds and two process passes per batch. All 91 findings were inspected: 79 exact aggregate-alias policy matches and 12 closed local list accumulators. Finding identities and messages are unchanged; only severity changes. No parse or execution issues occurred. Median wall time is 63.194/70.226 seconds; peak worker RSS is 66,092/65,960 KiB. These finite measurements do not establish fleet overhead or universal precision/recall. This detector has zero live corpus findings, so empirical precision/recall remain unmeasured. Native cases retain proven stream/tempfile/HTTPX lifetimes, async fixtures, snapshots, yield, aliases, escapes, rebinding, provider identity and exact intentional-closed exceptions. File/staged CLI tests preserve old warning debt and block new findings.",
+      "outcome": "Promote SARJ525 to ERROR after its warning release without autofix. Yield the managed dependency through test execution or preserve an intentional closed-resource contract with the existing exact explanation. Review cleanup and exception semantics before rewriting."
     },
     {
       "task": "rule-audit/python/no-dual-shape-model-field-reader",
@@ -2976,9 +2976,9 @@
       "task": "rule-audit/python/no-create-verb-in-post-path",
       "family": "python",
       "ruleId": "no-create-verb-in-post-path",
-      "state": "pending",
-      "evidence": "Focused cases cover create, add and new as whole or first words of the final segment, trailing slashes, multiline and path-keyword decorators, api_route, final path parameters, word prefixes such as addresses, other methods, dynamic paths and unknown receivers. A scan of one private application corpus reported 3 findings, each a POST path ending in an RPC-style create or add segment.",
-      "outcome": "Keep SARJ500 warning-only without autofix. Deliberate RPC-style integration endpoints keep a reasoned local suppression."
+      "state": "complete",
+      "evidence": "Promotion qualification scans 3,018 immutable Python files over six alternating rounds and inspects the one live finding. Native cases cover import-proven FastAPI/APIRouter literal POST routes, aliases, reassigned/unproven owners, dynamic paths, tests/generated boundaries and resource noun add-ons. The published warning fingerprint remains stable despite clearer policy wording. No broad empirical precision/recall claim follows from one live finding.",
+      "outcome": "Enforce SARJ500 at ERROR without autofix as an organization resource-path naming policy. It is not an HTTP prohibition on RPC endpoints; retain necessary integration contracts with the existing exact reasoned exception."
     },
     {
       "task": "rule-audit/python/no-work-verb-get-route",
@@ -3064,9 +3064,9 @@
       "task": "rule-audit/python/prefer-direct-import-module",
       "family": "python",
       "ruleId": "prefer-direct-import-module",
-      "state": "pending",
-      "evidence": "Corrected after the static-import requirement was clarified: fixed eager stdlib import_module calls now recommend static module imports, including directly imported loaders. Lazy, optional, conditional, configured, relative and callback cases remain supported. New regressions and an immutable corpus comparison qualify this corrected behavior separately. Historical pre-correction 1.68.0 evidence follows and does not qualify the corrected static-import detector: Executable examples and focused regressions cover qualified imports, stable aliases, default loader references, shadowed or mutated providers and unrelated importlib APIs. The frozen replay contains one qualified module-loader finding. The unchanged calibration corpus contains 50 content-pinned files / 639,913 bytes across repository, Pydantic, pytest and private linked-source samples, replayed in fresh processes capped at 250 files. Initial paired measurements against a control with the eight affected rules disabled showed about 17% warm overhead and 2% peak-RSS overhead; prior warm measurements varied 8\u201326%. These are historical control measurements, not an unchanged shipped-registry comparison. The PR records refreshed complete-base-versus-candidate measurements after cohort integration. Private source, paths and identifying pins remain outside public artifacts. This finite sample does not establish whole-project recall or fleet performance.",
-      "outcome": "Keep SARJ529 at WARNING without autofix. Prefer import plugins.billing as plugin over eager import_module calls for a literal absolute module name. Preserve necessary dynamic selection and import timing; no diagnostic merely for qualifying importlib.import_module or passing the loader as a callback."
+      "state": "complete",
+      "evidence": "Promotion calibration scans 4,475 immutable Python files in four corpora with six alternating baseline/candidate rounds and two process passes per batch. All 91 findings were inspected: 79 exact aggregate-alias policy matches and 12 closed local list accumulators. Finding identities and messages are unchanged; only severity changes. No parse or execution issues occurred. Median wall time is 63.194/70.226 seconds; peak worker RSS is 66,092/65,960 KiB. These finite measurements do not establish fleet overhead or universal precision/recall. This detector has zero live corpus findings, so empirical precision/recall remain unmeasured. Native cases cover proven stdlib loaders, stable aliases, exact absolute NFKC-valid import syntax and boundaries for lazy, guarded, optional, relative, configured, mutated and escaped providers. File/staged CLI tests preserve warning debt and block new findings.",
+      "outcome": "Promote SARJ529 to ERROR after its warning release without autofix. Use a static module import at the existing execution position and preserve the leaf-module binding. Retain necessary import timing and loader contracts through the existing exact exception; dynamic selection remains supported."
     },
     {
       "task": "rule-audit/python/prefer-typed-settings-field",
@@ -3336,9 +3336,9 @@
       "task": "rule-audit/python/no-redundant-attribute-unpacking",
       "family": "python",
       "ruleId": "no-redundant-attribute-unpacking",
-      "state": "pending",
-      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_redundant_attribute_unpacking.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
-      "outcome": "SARJ554: Retain WARNING without autofix. Limit advice to unconditional repeated attribute-name aliases; preserve branch normalization and intentional snapshots for review. Full campaign completion is not claimed."
+      "state": "complete",
+      "evidence": "Promotion calibration scans 4,475 immutable Python files in four corpora with six alternating baseline/candidate rounds and two process passes per batch. All 91 findings were inspected: 79 exact aggregate-alias policy matches and 12 closed local list accumulators. Finding identities and messages are unchanged; only severity changes. No parse or execution issues occurred. Median wall time is 63.194/70.226 seconds; peak worker RSS is 66,092/65,960 KiB. These finite measurements do not establish fleet overhead or universal precision/recall. All 79 matches satisfy the declared identical-name, same-receiver, direct-function-body policy. This is a syntax/readability judgment, not proof that snapshots are behaviorally redundant. Native positive/negative cases and file/staged CLI debt tests cover the policy boundary; source migrations preserve reassigned locals, lexical bindings and shared references.",
+      "outcome": "Promote SARJ554 to ERROR after its warning release as an organization style policy. Preserve branch/context normalization and meaningful snapshots through the existing explained exact-code exception. No autofix or semantic-equivalence claim is provided."
     },
     {
       "task": "rule-audit/python/no-test-comments",
@@ -3756,9 +3756,9 @@
       "task": "rule-audit/python/prefer-defaultdict",
       "family": "python",
       "ruleId": "prefer-defaultdict",
-      "state": "pending",
-      "evidence": "Executable examples and focused boundary controls are maintained in packages/python/tests/rules/test_prefer_defaultdict.py. Bounded baseline/candidate corpus review and repeated detector measurements are retained in private evidence storage. Purpose-labeled examples and a finite source snapshot do not establish broad consumer precision or recall; independent field calibration remains pending.",
-      "outcome": "SARJ579: Introduce WARNING without autofix. Review closed fresh local list accumulators; preserve escapes, rebinding, missing-key-sensitive reads and custom factories. No consumer activation or severity promotion is included."
+      "state": "complete",
+      "evidence": "Promotion calibration scans 4,475 immutable Python files in four corpora with six alternating baseline/candidate rounds and two process passes per batch. All 91 findings were inspected: 79 exact aggregate-alias policy matches and 12 closed local list accumulators. Finding identities and messages are unchanged; only severity changes. No parse or execution issues occurred. Median wall time is 63.194/70.226 seconds; peak worker RSS is 66,092/65,960 KiB. These finite measurements do not establish fleet overhead or universal precision/recall. All 12 accumulator declarations and binding reads were inspected; only read-only items/keys/values followed grouping. Positive and negative controls preserve escapes, direct mapping returns, missing-key probes, aliases, captures, rebinding, custom factories and loop-else suites. File/staged CLI tests preserve published warning fingerprints and reject new errors.",
+      "outcome": "Promote SARJ579 to ERROR after its warning release as an organization grouping policy, without autofix or a guaranteed speedup. Preserve concrete return type and missing-key contracts; the detector excludes unproven ownership."
     },
     {
       "task": "rule-audit/python/no-value-error-forwarder",
@@ -3806,7 +3806,7 @@
       "ruleId": "prefer-exception-propagation",
       "state": "pending",
       "evidence": "Executable cases distinguish unchanged caught messages copied into generic builtin errors from privacy, retry metadata, domain errors, cleanup, logging, additional context, malformed input and exact suppressions. Bounded isolated labeled and actual before/after source calibration plus repeated measurements are retained privately. This finite sample does not establish fleet-wide precision or recall; field calibration remains pending.",
-      "outcome": "SARJ585: Introduce WARNING without autofix for message-only generic catch/raise wrappers. Preserve intentional exception contracts and explicit cause suppression. Ruff TRY201/TRY203 remain the owners of bare rethrows. No consumer activation or severity promotion is included."
+      "outcome": "Currently enforce SARJ585 at ERROR without autofix for the proven message-only wrapper boundary. Preserve cleanup, public/privacy exception contracts and exact explained exceptions; Ruff TRY201/TRY203 still own bare rethrows. Core preserves the published warning fingerprint across message changes, with file/staged accepted-debt and new-error controls. Broader field calibration remains pending; this record does not claim completed consumer adoption."
     },
     {
       "task": "rule-audit/sql/no-redundant-nullability",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from collections import Counter
+from collections import Counter, defaultdict
 import copy
 from pathlib import PurePosixPath
 import re
@@ -379,10 +379,10 @@ def _collect_duplicate_bucket(
     positions: dict[int, int],
     found: list[list[_Shape]],
 ) -> None:
-    groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = {}
+    groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = defaultdict(list)
     for outline in bucket:
         shape = _Shape(outline.node, comments, imports)
-        groups.setdefault(shape.key, []).append(shape)
+        groups[shape.key].append(shape)
     for members in groups.values():
         candidates = _duplicate_candidates(members, positions)
         found.extend(

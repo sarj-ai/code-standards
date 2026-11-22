@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -195,7 +196,7 @@ def _duplicates(indexes: ProjectIndexSet, symbol: SymbolRef) -> dict[tuple[Path,
     operations = frozenset(abstract)
     if _observed_operations(unit, operations):
         return {}
-    groups: dict[str, list[tuple[Path, str]]] = {}
+    groups: dict[str, list[tuple[Path, str]]] = defaultdict(list)
     for path, name in sorted(indexes.direct_subclasses(unit, symbol.name), key=lambda item: (str(item[0]), item[1])):
         candidate = indexes.unit(path)
         if candidate is None or candidate.tree is None:
@@ -206,7 +207,7 @@ def _duplicates(indexes: ProjectIndexSet, symbol: SymbolRef) -> dict[tuple[Path,
         if node is None:
             continue
         for method in _strict_operations(node, candidate, abstract):
-            groups.setdefault(method, []).append((candidate.path, name))
+            groups[method].append((candidate.path, name))
     duplicates: dict[tuple[Path, str], list[str]] = {}
     for method, owners in sorted(groups.items()):
         for owner in owners[1:]:

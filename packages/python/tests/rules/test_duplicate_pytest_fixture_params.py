@@ -130,8 +130,8 @@ def test_each_later_duplicate_points_to_the_original_parameter() -> None:
     source = _BASE.replace('("empty", "empty")', '[\n    "empty",\n    "empty",\n    "empty",\n]')
     findings = DuplicatePytestFixtureParams().check(Path("tests/conftest.py"), source)
     assert [(finding.line, finding.col, finding.severity) for finding in findings] == [
-        (5, 5, Severity.WARNING),
-        (6, 5, Severity.WARNING),
+        (5, 5, Severity.ERROR),
+        (6, 5, Severity.ERROR),
     ]
     assert all("line 4" in finding.message for finding in findings)
 

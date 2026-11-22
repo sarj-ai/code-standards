@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -347,12 +348,12 @@ def _swap_prone_annotation(args: ast.arguments) -> _SwapProneGroup | None:
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
-    groups: dict[str, list[str]] = {}
+    groups: dict[str, list[str]] = defaultdict(list)
     for p in params:
         if _is_dunder_prefixed(p.arg):
             continue
         if isinstance(ann := p.annotation, ast.Name) and ann.id in _PRIMITIVES:
-            groups.setdefault(ann.id, []).append(p.arg)
+            groups[ann.id].append(p.arg)
     for name, arg_names in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         if (
             len(arg_names) >= _MIN_SAME_TYPE

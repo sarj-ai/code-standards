@@ -29,7 +29,7 @@ class PreferDirectImportModule(Rule):
     id = "prefer-direct-import-module"
     code = "SARJ529"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer static imports for eager module loads with a literal module name.",
         rationale="Static imports expose known dependencies to readers and tooling without dynamic loader indirection.",
         remediation="Replace a fixed eager module load with a module-level import, preserving its binding: plugin = importlib.import_module('plugins.billing') becomes import plugins.billing as plugin. Use import plugins.billing when callers use the qualified module name; avoid a redundant alias for a single-component module. Keep dynamic loading when module selection or import timing requires it.",
@@ -38,7 +38,7 @@ class PreferDirectImportModule(Rule):
         limitations=(
             "Checks direct module-level assignments and expression statements calling the proven stdlib import_module function, through qualified or directly imported names, with one literal absolute module name.",
             "Function/class bodies, conditional or guarded imports, variable module names, relative imports, callback references, shadowed or mutated providers and generated code are excluded. Static import syntax must be valid for every module-name segment.",
-            "This is a warning without automatic rewriting: moving an import can change execution order, optional-dependency behavior or cycle handling. The rule does not prefer one spelling of genuinely dynamic import_module calls.",
+            "Static imports must preserve the current execution position and module binding. No automatic rewrite moves imports or changes optional-dependency or cycle handling. Preserve an intentional loader contract with an explained exact-code exception; genuinely dynamic import_module calls remain allowed.",
         ),
         examples=(
             RuleExample(
@@ -91,7 +91,7 @@ class PreferDirectImportModule(Rule):
                 node.col_offset + 1,
                 self.code,
                 _recommendation(statement, module),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for statement in context.tree.body
             if isinstance(statement, ast.Assign | ast.AnnAssign | ast.Expr)

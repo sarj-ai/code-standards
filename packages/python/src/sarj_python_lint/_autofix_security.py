@@ -77,21 +77,21 @@ def _comparison_edit(context: PythonFileContext, diagnostic: Diagnostic, compari
     guarded = _guarded_owner(context, comparison, names)
     if guarded is None:
         return None
-    owner, guard = guarded.owner, guarded.guard
-    captures = _captured_parameters(context, owner)
+    captures = _captured_parameters(context, guarded.owner)
     if captures is None or not names.isdisjoint(
         (captures.compare.arg, captures.type_check.arg, captures.bytes_type.arg)
     ):
         return None
-    guards = _bytes_guard(guard, names, captures)
-    if guards is None or not _canonical_captures(context, owner, guards, captures):
+    guards = _bytes_guard(guarded.guard, names, captures)
+    if guards is None or not _canonical_captures(context, guarded.owner, guards, captures):
         return None
     parameters = ParameterFixes(context)
-    calls = parameters.closed_calls(owner)
-    if not calls or not _forwarded_parameter_call(context, owner, calls):
+    calls = parameters.closed_calls(guarded.owner)
+    if not calls or not _forwarded_parameter_call(context, guarded.owner, calls):
         return None
     if any(
-        token.type == tokenize.COMMENT and owner.lineno <= token.start[0] <= (owner.end_lineno or owner.lineno)
+        token.type == tokenize.COMMENT
+        and guarded.owner.lineno <= token.start[0] <= (guarded.owner.end_lineno or guarded.owner.lineno)
         for token in parameters.tokens
     ):
         return None

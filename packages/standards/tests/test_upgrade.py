@@ -1460,7 +1460,6 @@ def test_update_preserves_disabled_typescript_with_independent_projects(tmp_path
 
 def test_update_uses_enabled_explicit_typescript_destination_with_independent_projects(tmp_path: Path) -> None:
     projects = _independent_javascript_projects(tmp_path)
-    deploy, docs = projects.deploy, projects.docs
     adopted = manifest.Manifest(
         version="0.0.1", configs=("typescript",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
     )
@@ -1468,19 +1467,18 @@ def test_update_uses_enabled_explicit_typescript_destination_with_independent_pr
 
     plan = upgrade.build_plan(tmp_path)
 
-    assert plan.ecosystems.typescript_root == docs
-    assert plan.scaffold_plan.ecosystems.typescript_root == docs
+    assert plan.ecosystems.typescript_root == projects.docs
+    assert plan.scaffold_plan.ecosystems.typescript_root == projects.docs
     assert not plan.scaffold_plan.errors
-    assert any(target == docs / "oxlint.strict.mts" for _source, target in plan.config_writes)
-    assert all(not target.is_relative_to(deploy) for _source, target in plan.config_writes)
+    assert any(target == projects.docs / "oxlint.strict.mts" for _source, target in plan.config_writes)
+    assert all(not target.is_relative_to(projects.deploy) for _source, target in plan.config_writes)
 
 
 def test_disabled_typescript_upgrade_still_refreshes_existing_owned_package_pins(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     projects = _independent_javascript_projects(tmp_path)
-    deploy, docs = projects.deploy, projects.docs
-    original_deploy = parse_json((deploy / "package.json").read_text())
-    package = docs / "package.json"
+    original_deploy = parse_json((projects.deploy / "package.json").read_text())
+    package = projects.docs / "package.json"
     package.write_text('{"name":"docs","devDependencies":{"@sarj/eslint-plugin":"15.17.0"}}\n')
     adopted = manifest.Manifest(
         version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
@@ -1494,9 +1492,9 @@ def test_disabled_typescript_upgrade_still_refreshes_existing_owned_package_pins
     updated = manifest.as_table(parse_json(package.read_text()))
     dependencies = manifest.table_field(updated, "devDependencies")
     assert dependencies["@sarj/eslint-plugin"] == manifest.typescript_peers()["@sarj/eslint-plugin"]
-    assert parse_json((deploy / "package.json").read_text()) == original_deploy
-    assert not (docs / "eslint.strict.mjs").exists()
-    assert not (deploy / "eslint.strict.mjs").exists()
+    assert parse_json((projects.deploy / "package.json").read_text()) == original_deploy
+    assert not (projects.docs / "eslint.strict.mjs").exists()
+    assert not (projects.deploy / "eslint.strict.mjs").exists()
 
 
 def test_fresh_setup_still_rejects_ambiguous_typescript_projects(tmp_path: Path) -> None:

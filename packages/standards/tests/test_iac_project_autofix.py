@@ -46,63 +46,62 @@ def test_project_fixes_use_one_transaction_preserve_bytes_and_converge(
     tmp_path: Path, *, staged: bool, prefix: bytes
 ) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
-    for path in (source, target):
+    for path in (fixture.source, fixture.target):
         path.write_bytes(prefix + path.read_bytes().replace(b"\n", b"\r\n"))
         path.chmod(0o640)
     _git(tmp_path, "add", ".")
     index_before = _git(tmp_path, "write-tree")
 
-    assert set(autofix.fix_paths(tmp_path, (str(source), str(target)), staged=staged)) == {source, target}
-    assert source.read_bytes() == prefix + b'resource "terraform_data" "this" { input = var.region }\r\n'
-    assert target.read_bytes().startswith(prefix)
-    assert b'variable "region"' in target.read_bytes()
-    assert all(path.stat().st_mode & 0o777 == 0o640 for path in (source, target))
+    assert set(autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), staged=staged)) == {
+        fixture.source,
+        fixture.target,
+    }
+    assert fixture.source.read_bytes() == prefix + b'resource "terraform_data" "this" { input = var.region }\r\n'
+    assert fixture.target.read_bytes().startswith(prefix)
+    assert b'variable "region"' in fixture.target.read_bytes()
+    assert all(path.stat().st_mode & 0o777 == 0o640 for path in (fixture.source, fixture.target))
     assert _git(tmp_path, "write-tree") == index_before
     _git(tmp_path, "add", ".")
-    assert autofix.fix_paths(tmp_path, (str(source), str(target)), staged=staged) == ()
+    assert autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), staged=staged) == ()
 
 
 def test_policy_exclusion_or_unselected_destination_refuses_movement(tmp_path: Path) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
-    original = source.read_bytes(), target.read_bytes()
+    original = fixture.source.read_bytes(), fixture.target.read_bytes()
     adopted = manifest.Manifest(
         manifest.adopted_version(), (), ".", ".", excluded_rules=("iac:canonical-terraform-declarations",)
     )
     policy = Policy.from_manifest(tmp_path, adopted)
 
-    assert autofix.fix_paths(tmp_path, (str(source), str(target)), policy=policy) == ()
-    assert autofix.fix_paths(tmp_path, (str(source),)) == ()
-    assert (source.read_bytes(), target.read_bytes()) == original
+    assert autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), policy=policy) == ()
+    assert autofix.fix_paths(tmp_path, (str(fixture.source),)) == ()
+    assert (fixture.source.read_bytes(), fixture.target.read_bytes()) == original
 
 
 def test_unstaged_module_context_cannot_qualify_a_staged_move(tmp_path: Path) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
     (tmp_path / "retained.tf").write_text('locals { retained = "unstaged" }\n')
-    original = source.read_bytes(), target.read_bytes()
+    original = fixture.source.read_bytes(), fixture.target.read_bytes()
 
     with pytest.raises(ValueError, match="module context differs"):
-        autofix.fix_paths(tmp_path, (str(source), str(target)), staged=True)
-    assert (source.read_bytes(), target.read_bytes()) == original
+        autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), staged=True)
+    assert (fixture.source.read_bytes(), fixture.target.read_bytes()) == original
 
 
 def test_real_staged_cli_fixes_both_files_and_requires_review_without_staging(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
     before = _git(tmp_path, "write-tree")
 
     assert main(["--root", str(tmp_path), "check", "--staged", "--fix", "--trust-repository-code"]) == 1
 
     assert "Safe fixes applied" in capsys.readouterr().err
-    assert 'variable "region"' not in source.read_text()
-    assert 'variable "region"' in target.read_text()
+    assert 'variable "region"' not in fixture.source.read_text()
+    assert 'variable "region"' in fixture.target.read_text()
     assert _git(tmp_path, "write-tree") == before
     _git(tmp_path, "add", ".")
-    assert autofix.fix_paths(tmp_path, (str(source), str(target)), staged=True) == ()
+    assert autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), staged=True) == ()
 
 
 @pytest.mark.parametrize("change", ["source", "membership", "index"])
@@ -110,8 +109,7 @@ def test_stale_module_preconditions_fail_before_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
 ) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
-    original = source.read_bytes(), target.read_bytes()
+    original = fixture.source.read_bytes(), fixture.target.read_bytes()
     capture = transaction.FileTransaction.capture
 
     def concurrent_capture(
@@ -130,16 +128,15 @@ def test_stale_module_preconditions_fail_before_writing(
         transaction.FileTransaction, "capture", concurrent_capture
     )
     with pytest.raises((OSError, ValueError), match="changed"):
-        autofix.fix_paths(tmp_path, (str(source), str(target)), staged=True)
-    assert (source.read_bytes(), target.read_bytes()) == original
+        autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)), staged=True)
+    assert (fixture.source.read_bytes(), fixture.target.read_bytes()) == original
     if change == "source":
         assert "concurrent" in (tmp_path / "retained.tf").read_text()
 
 
 def test_a_failed_second_write_rolls_back_the_first_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fixture = _repository(tmp_path)
-    source, target = fixture.source, fixture.target
-    original = source.read_bytes(), target.read_bytes()
+    original = fixture.source.read_bytes(), fixture.target.read_bytes()
     write = transaction.FileTransaction.write_bytes
     calls: list[Path] = []
 
@@ -154,8 +151,8 @@ def test_a_failed_second_write_rolls_back_the_first_file(tmp_path: Path, monkeyp
         transaction.FileTransaction, "write_bytes", fail_second
     )
     with pytest.raises(OSError, match="second write"):
-        autofix.fix_paths(tmp_path, (str(source), str(target)))
-    assert (source.read_bytes(), target.read_bytes()) == original
+        autofix.fix_paths(tmp_path, (str(fixture.source), str(fixture.target)))
+    assert (fixture.source.read_bytes(), fixture.target.read_bytes()) == original
 
 
 def test_existing_immutable_guard_contracts_refuse_redundant_validation_deletion(tmp_path: Path) -> None:

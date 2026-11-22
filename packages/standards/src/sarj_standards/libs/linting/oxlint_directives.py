@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
@@ -349,12 +350,12 @@ def _audit(
     if result.issues:
         msg = f"Oxlint failed before producing a directive-only plan: {result.issues[0].message}"
         raise ValueError(msg)
-    unused: dict[str, list[UnusedDirective]] = {}
+    unused: dict[str, list[UnusedDirective]] = defaultdict(list)
     for diagnostic in result.diagnostics:
         region = diagnostic.location.region
         if diagnostic.rule_id != oxlint.UNUSED_DIRECTIVE or region is None:
             continue
-        unused.setdefault(diagnostic.location.path, []).append(
+        unused[diagnostic.location.path].append(
             UnusedDirective(diagnostic.message, region.start.byte_offset, region.end.byte_offset)
         )
     rewrites: dict[str, SourcePostimage] = {}

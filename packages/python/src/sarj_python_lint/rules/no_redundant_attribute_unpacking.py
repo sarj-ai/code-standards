@@ -36,7 +36,7 @@ class NoRedundantAttributeUnpacking(Rule):
     id = "no-redundant-attribute-unpacking"
     code = "SARJ554"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use an aggregate's named attributes instead of repeating their names in tuple aliases.",
         rationale="A tuple assignment that repeats every attribute name adds parallel bindings without describing a transformation or a new concept.",
         remediation="Read the aggregate's named attributes directly. Retain intentional value snapshots with an explained local suppression.",
@@ -45,7 +45,7 @@ class NoRedundantAttributeUnpacking(Rule):
         limitations=(
             "Reports unconditional tuple/list assignments directly in function bodies only when every element aliases an identically named attribute of the same simple receiver and no target rebinds that receiver.",
             "Conditional/loop/context-manager aliases can normalize branch results or preserve resource scopes and are excluded. Renamed attributes, mixed receivers, nested unpacking, calls, module/class bindings, generated source and malformed source are excluded.",
-            "This is an explicitly requested warning-level style preference. A retained snapshot can be meaningful when the aggregate changes; no autofix or claim of behavioral equivalence is made.",
+            "This is an organization style policy. A retained snapshot can be meaningful when the aggregate changes; preserve that contract with an explained exact-code exception. No autofix or claim of behavioral equivalence is made.",
         ),
         examples=(
             RuleExample(
@@ -100,7 +100,7 @@ class NoRedundantAttributeUnpacking(Rule):
                         node.col_offset + 1,
                         self.code,
                         "Use these named attributes on their aggregate directly; retain intentional snapshots with an explained exception.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return list({(finding.line, finding.col): finding for finding in findings}.values())

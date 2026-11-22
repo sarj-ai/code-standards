@@ -283,19 +283,20 @@ class Stepdown(Rule):
         if tree is None:
             return []
         index = _tree_index(tree)
-        nodes, parents = index.nodes, index.parents
-        transparent = _transparent_builtin_decorators(tree, nodes)
-        diags = _check_module_scope(path, tree, self.code, transparent, parents)
-        for node in nodes:
+        transparent = _transparent_builtin_decorators(tree, index.nodes)
+        diags = _check_module_scope(path, tree, self.code, transparent, index.parents)
+        for node in index.nodes:
             if isinstance(node, _DEF_NODES):
                 diags.extend(
                     _check_module_scope(
-                        path, ast.Module(body=node.body, type_ignores=[]), self.code, transparent, parents
+                        path, ast.Module(body=node.body, type_ignores=[]), self.code, transparent, index.parents
                     )
                 )
-        classes = [node for node in nodes if isinstance(node, ast.ClassDef)]
+        classes = [node for node in index.nodes if isinstance(node, ast.ClassDef)]
         family_external = _family_external_refs(classes)
-        mutable_names = {name for node in nodes if isinstance(node, (ast.Global, ast.Nonlocal)) for name in node.names}
+        mutable_names = {
+            name for node in index.nodes if isinstance(node, (ast.Global, ast.Nonlocal)) for name in node.names
+        }
         for cls in classes:
             diags.extend(
                 _check_class_scope(
@@ -304,8 +305,8 @@ class Stepdown(Rule):
                     self.code,
                     family_external.get(id(cls), frozenset()),
                     transparent,
-                    parents=parents,
-                    stable_class_name=cls.name not in mutable_names and _stable_class_binding(cls, parents),
+                    parents=index.parents,
+                    stable_class_name=cls.name not in mutable_names and _stable_class_binding(cls, index.parents),
                 )
             )
         diags.sort(key=lambda d: (d.line, d.col))

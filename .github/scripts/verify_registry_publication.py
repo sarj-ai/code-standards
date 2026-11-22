@@ -42,9 +42,8 @@ WORKFLOW = "release.yml"
 REF = "refs/heads/main"
 PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
 PYPI_FILE_TIMEOUT = timedelta(minutes=3)
-# npm publishes metadata, provenance, and package-spec installability through
-# independent paths. Give each path its own bounded convergence budget so delay
-# in one stage cannot starve the next one.
+# Give npm metadata, provenance and package-spec installability separate
+# convergence budgets so delay in one stage cannot starve the next.
 NPM_METADATA_TIMEOUT = timedelta(minutes=15)
 NPM_PROVENANCE_TIMEOUT = timedelta(minutes=10)
 NPM_INSTALL_TIMEOUT = timedelta(minutes=10)
@@ -74,11 +73,11 @@ class _RegistryDocument(RootModel[dict[str, JsonValue]]):
 
 
 class VerificationError(Exception):
-    """Registry bytes or provenance do not match the staged release."""
+    pass
 
 
 class PermanentVerificationError(VerificationError):
-    """A verified immutable mismatch that retries cannot repair."""
+    pass
 
 
 RETRYABLE_EXCEPTIONS = (
@@ -499,28 +498,27 @@ def verify_npm(
 
 
 def _npm_artifact(tarball: Path, identity: PackageIdentity) -> NpmArtifact:
-    name, version = identity.name, identity.version
-    metadata = _json(f"https://registry.npmjs.org/{quote(name, safe='')}/{quote(version, safe='')}")
+    metadata = _json(f"https://registry.npmjs.org/{quote(identity.name, safe='')}/{quote(identity.version, safe='')}")
     dist = metadata.get("dist")
     if not isinstance(dist, dict):
-        _fail(f"npm has no tarball for {name}@{version}")
+        _fail(f"npm has no tarball for {identity.name}@{identity.version}")
     tarball_url = dist.get("tarball")
     if not isinstance(tarball_url, str):
-        _fail(f"npm has no tarball for {name}@{version}")
+        _fail(f"npm has no tarball for {identity.name}@{identity.version}")
     local = tarball.read_bytes()
     if _bytes(tarball_url) != local:
         _fail_permanently(f"npm bytes differ from staged file {tarball.name}")
     sha512 = _digest(local, "sha512")
     attestations = dist.get("attestations")
     if not isinstance(attestations, dict):
-        _fail(f"npm has no attestations for {name}@{version}")
+        _fail(f"npm has no attestations for {identity.name}@{identity.version}")
     attestation_url = attestations.get("url")
     if not isinstance(attestation_url, str):
-        _fail(f"npm has no attestations for {name}@{version}")
+        _fail(f"npm has no attestations for {identity.name}@{identity.version}")
     return NpmArtifact(
         identity=identity,
         attestation_url=attestation_url,
-        expected_subject=f"pkg:npm/{quote(name, safe='/')}@{version}",
+        expected_subject=f"pkg:npm/{quote(identity.name, safe='/')}@{identity.version}",
         sha512=sha512,
     )
 

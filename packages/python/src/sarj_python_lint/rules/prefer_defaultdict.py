@@ -31,7 +31,7 @@ class PreferDefaultdict(Rule):
     id = "prefer-defaultdict"
     code = "SARJ579"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use defaultdict(list) for a locally owned list-grouping dictionary.",
         rationale="setdefault(key, []) constructs a new empty list on every grouping iteration, including keys already present. A declared list factory keeps initialization in one place and avoids discarded defaults for repeated keys.",
         remediation="Use collections.defaultdict(list) for this local accumulator and append through groups[key]. Preserve ordering, missing-key behavior and the concrete type at any returned boundary.",
@@ -40,7 +40,7 @@ class PreferDefaultdict(Rule):
         limitations=(
             "Checks only fresh function-local empty dict literals whose stable binding is used for loop-local setdefault(key, []).append(value) and read-only items/keys/values or native len/dict calls.",
             "Returned dictionaries, indexing, get/membership probes, aliases, captures, rebinding and opaque escapes abstain because defaultdict can change missing-key and concrete-type behavior. Nonempty defaults, custom mappings, grouping outside loops and loop else suites remain allowed.",
-            "One warning is emitted per local accumulator. Cardinality and repeated-key frequency are not inferred; this is a grouping preference rather than a guaranteed speedup. Tests remain in scope; generated or malformed sources are excluded. No automatic rewrite changes mapping behavior.",
+            "One finding is emitted per local accumulator. Cardinality and repeated-key frequency are not inferred; this is an organization grouping policy rather than a guaranteed speedup. Tests remain in scope; generated or malformed sources are excluded. No automatic rewrite changes mapping behavior.",
         ),
         examples=(
             RuleExample(
@@ -90,7 +90,7 @@ class PreferDefaultdict(Rule):
                         call.col_offset + 1,
                         self.code,
                         "Declare defaultdict(list) for this local grouping accumulator instead of allocating [] in every setdefault call; preserve missing-key and return-type contracts.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return findings

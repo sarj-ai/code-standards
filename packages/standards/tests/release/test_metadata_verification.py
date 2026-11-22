@@ -94,9 +94,12 @@ def candidate(tmp_path: Path) -> Candidate:
 
 
 def _proved(candidate: Candidate) -> bool:
-    repo, base, baseline = candidate.repo, candidate.base, candidate.baseline
     return metadata_verification.metadata_only_rollout(
-        repo, rollout.SubprocessRunner(), base_sha=base, version="8.38.17", baseline_path=baseline
+        candidate.repo,
+        rollout.SubprocessRunner(),
+        base_sha=candidate.base,
+        version="8.38.17",
+        baseline_path=candidate.baseline,
     )
 
 
@@ -128,15 +131,14 @@ def test_real_git_bundle_and_provenance_update_is_proved(candidate: Candidate) -
     ],
 )
 def test_other_real_git_changes_require_full_verification(candidate: Candidate, change: str) -> None:
-    repo, baseline = candidate.repo, candidate.baseline
-    manifest = repo / ".sarj-standards.toml"
+    manifest = candidate.repo / ".sarj-standards.toml"
     match change:
         case "source":
-            (repo / "app.py").write_text("value = 2\n")
+            (candidate.repo / "app.py").write_text("value = 2\n")
         case "lock":
-            (repo / "uv.lock").write_text("version = 1\n")
+            (candidate.repo / "uv.lock").write_text("version = 1\n")
         case "workflow":
-            workflow = repo / ".github/workflows/standards.yml"
+            workflow = candidate.repo / ".github/workflows/standards.yml"
             workflow.parent.mkdir(parents=True)
             workflow.write_text("name: changed\n")
         case "rule-settings":
@@ -144,9 +146,9 @@ def test_other_real_git_changes_require_full_verification(candidate: Candidate, 
         case "manifest-type":
             manifest.write_text(manifest.read_text().replace("schema = 4", "schema = 4.0"))
         case "baseline-type":
-            data = _data(baseline)
+            data = _data(candidate.baseline)
             data["schemaVersion"] = True
-            baseline.write_text(json.dumps(data))
+            candidate.baseline.write_text(json.dumps(data))
         case (
             "diagnostics"
             | "baseline-schema"
@@ -155,7 +157,7 @@ def test_other_real_git_changes_require_full_verification(candidate: Candidate, 
             | "provenance-version"
             | "provenance-digest"
         ):
-            data = _data(baseline)
+            data = _data(candidate.baseline)
             provenance = data["provenance"]
             assert _object(provenance)
             match change:
@@ -171,51 +173,51 @@ def test_other_real_git_changes_require_full_verification(candidate: Candidate, 
                     provenance["bundleVersion"] = "8.38.18"
                 case "provenance-digest":
                     provenance["catalogDigest"] = "invalid"
-            baseline.write_text(json.dumps(data))
+            candidate.baseline.write_text(json.dumps(data))
         case "addition":
-            (repo / "extra.json").write_text("{}\n")
+            (candidate.repo / "extra.json").write_text("{}\n")
         case "deletion":
-            baseline.unlink()
+            candidate.baseline.unlink()
         case "executable":
             manifest.chmod(0o755)
         case "symlink":
-            baseline.unlink()
-            baseline.symlink_to("app.py")
+            candidate.baseline.unlink()
+            candidate.baseline.symlink_to("app.py")
         case "malformed-manifest":
             manifest.write_text("bundle = [\n")
         case "malformed-baseline":
-            baseline.write_text("{\n")
+            candidate.baseline.write_text("{\n")
         case _:
             raise AssertionError(change)
-    _commit(repo)
+    _commit(candidate.repo)
     assert not _proved(candidate)
 
 
 @pytest.mark.parametrize("change", ["modified", "untracked", "missing-base", "outside-baseline", "wrong-version"])
 def test_unproved_checkout_or_identity_uses_full_gate(candidate: Candidate, change: str) -> None:
-    repo, base, baseline = candidate.repo, candidate.base, candidate.baseline
+    base = candidate.base
+    baseline = candidate.baseline
     version = "8.38.17"
     match change:
         case "modified":
-            (repo / "app.py").write_text("value = 2\n")
+            (candidate.repo / "app.py").write_text("value = 2\n")
         case "untracked":
-            (repo / "unexpected.txt").write_text("extra\n")
+            (candidate.repo / "unexpected.txt").write_text("extra\n")
         case "missing-base":
             base = "d" * 40
         case "outside-baseline":
-            baseline = repo.parent / "diagnostic-baseline.json"
+            baseline = candidate.repo.parent / "diagnostic-baseline.json"
         case "wrong-version":
             version = "8.38.18"
         case _:
             raise AssertionError(change)
     assert not metadata_verification.metadata_only_rollout(
-        repo, rollout.SubprocessRunner(), base_sha=base, version=version, baseline_path=baseline
+        candidate.repo, rollout.SubprocessRunner(), base_sha=base, version=version, baseline_path=baseline
     )
 
 
 @pytest.mark.parametrize("failed", ["", "standards", "metadata"])
 def test_proved_path_requires_full_standards_and_repository_checks(candidate: Candidate, failed: str) -> None:
-    repo, base, baseline = candidate.repo, candidate.base, candidate.baseline
     calls: list[tuple[str, ...]] = []
 
     class Runner(rollout.SubprocessRunner):
@@ -231,8 +233,8 @@ def test_proved_path_requires_full_standards_and_repository_checks(candidate: Ca
             if command[0] == "git":
                 return super().run(command, cwd=cwd, check=check, env=env)
             calls.append(tuple(command))
-            assert cwd == repo
-            assert env == {"SARJ_STANDARDS_BASE": base}
+            assert cwd == candidate.repo
+            assert env == {"SARJ_STANDARDS_BASE": candidate.base}
             assert not check
             label = "standards" if command[1] == "exact-published-tool" else "metadata"
             return subprocess.CompletedProcess(command, int(label == failed), label, "")
@@ -242,14 +244,14 @@ def test_proved_path_requires_full_standards_and_repository_checks(candidate: Ca
     )
     result = rollout.run_consumer_verification(
         consumer,
-        repo,
+        candidate.repo,
         Runner(),
         ("prefix",),
-        environment={"SARJ_STANDARDS_BASE": base},
+        environment={"SARJ_STANDARDS_BASE": candidate.base},
         standards_tool=("exact-published-tool",),
-        base_sha=base,
+        base_sha=candidate.base,
         version="8.38.17",
-        baseline_path=baseline,
+        baseline_path=candidate.baseline,
     )
     expected: list[tuple[str, ...]] = [("prefix", "exact-published-tool", "check", "--trust-repository-code", ".")]
     if failed != "standards":
@@ -260,10 +262,9 @@ def test_proved_path_requires_full_standards_and_repository_checks(candidate: Ca
 
 @pytest.mark.parametrize("condition", ["default", "no-tool", "source-change"])
 def test_unproved_or_disabled_path_runs_the_normal_gate(candidate: Candidate, condition: str) -> None:
-    repo, base, baseline = candidate.repo, candidate.base, candidate.baseline
     if condition == "source-change":
-        (repo / "app.py").write_text("value = 2\n")
-        _commit(repo)
+        (candidate.repo / "app.py").write_text("value = 2\n")
+        _commit(candidate.repo)
     calls: list[tuple[str, ...]] = []
 
     class Runner(rollout.SubprocessRunner):
@@ -289,14 +290,14 @@ def test_unproved_or_disabled_path_runs_the_normal_gate(candidate: Candidate, co
     )
     result = rollout.run_consumer_verification(
         consumer,
-        repo,
+        candidate.repo,
         Runner(),
         (),
         environment={},
         standards_tool=() if condition == "no-tool" else ("exact-published-tool",),
-        base_sha=base,
+        base_sha=candidate.base,
         version="8.38.17",
-        baseline_path=baseline,
+        baseline_path=candidate.baseline,
     )
     assert result.returncode == 0
     assert calls == [("full",), ("application-tests",)]

@@ -125,16 +125,15 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
     calls: list[tuple[str, ...]] = []
 
     def resolve(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
-        assert cwd == tmp_path
-        assert timeout_seconds == 5
-        calls.append(tuple(argv))
-        if argv[0] == str(stalled):
-            raise subprocess.TimeoutExpired(argv, timeout_seconds)
-        if argv[0] == str(mise):
-            path = installation if argv[4] == "where" else installed
+        assert request.cwd == tmp_path
+        assert request.timeout_seconds == 5
+        calls.append(tuple(request.argv))
+        if request.argv[0] == str(stalled):
+            raise subprocess.TimeoutExpired(request.argv, request.timeout_seconds)
+        if request.argv[0] == str(mise):
+            path = installation if request.argv[4] == "where" else installed
             return ProcessOutput(0, f"{path}\n", "")
-        assert argv == (str(installed), "version", "--short")
+        assert request.argv == (str(installed), "version", "--short")
         return ProcessOutput(0, f"v{installed_version}\n", "")
 
     if installed_version == "4.3.1":
@@ -185,16 +184,15 @@ def test_unparseable_path_compose_preserves_pinned_mise_fallback(
     calls: list[tuple[str, ...]] = []
 
     def resolve(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
-        assert cwd == tmp_path
-        assert timeout_seconds == 5
-        calls.append(tuple(argv))
-        if argv[0] == str(multicall):
+        assert request.cwd == tmp_path
+        assert request.timeout_seconds == 5
+        calls.append(tuple(request.argv))
+        if request.argv[0] == str(multicall):
             return ProcessOutput(127, "", 'unsupported argv0 "docker-tools"\n')
-        if argv[0] == str(mise):
-            path = installation if argv[4] == "where" else installed
+        if request.argv[0] == str(mise):
+            path = installation if request.argv[4] == "where" else installed
             return ProcessOutput(0, f"{path}\n", "")
-        assert argv == (str(installed), "version", "--format", "json")
+        assert request.argv == (str(installed), "version", "--format", "json")
         return ProcessOutput(0, '{"version":"v5.6.1"}\n', "")
 
     tool = checked_tool(
@@ -389,12 +387,11 @@ def test_version_deadline_accepts_slow_knip_without_relaxing_other_native_contra
         return str(executable) if command == name else None
 
     def native_process(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
-        assert cwd == tmp_path
-        calls.append((tuple(argv), timeout_seconds))
+        assert request.cwd == tmp_path
+        calls.append((tuple(request.argv), request.timeout_seconds))
         # Model the bounded OS runner, not the attestation's choice of deadline.
-        if elapsed > timeout_seconds:
-            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        if elapsed > request.timeout_seconds:
+            raise subprocess.TimeoutExpired(request.argv, request.timeout_seconds)
         return ProcessOutput(0, stdout, "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- model executable discovery for the public managed/runtime attestation boundary.
@@ -440,14 +437,13 @@ def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_v
         return str(mise) if command == "mise" else None
 
     def native_process(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
-        assert cwd == tmp_path
-        calls.append((tuple(argv), timeout_seconds))
-        if argv[0] == str(mise):
-            target = installation if argv[4] == "where" else executable
+        assert request.cwd == tmp_path
+        calls.append((tuple(request.argv), request.timeout_seconds))
+        if request.argv[0] == str(mise):
+            target = installation if request.argv[4] == "where" else executable
             return ProcessOutput(0, f"{target}\n", "")
-        if timeout_seconds < 6:
-            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        if request.timeout_seconds < 6:
+            raise subprocess.TimeoutExpired(request.argv, request.timeout_seconds)
         return ProcessOutput(0, "6.42.1\n", "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate managed executable lookup from the host environment.

@@ -103,12 +103,19 @@ def _returns_int(owner: ast.FunctionDef) -> bool:
 
 
 def _closed_classes(profile: _Profile) -> bool:
-    port, store, service = profile.port, profile.store, profile.service
-    if not all(_plain_class(owner) for owner in (port, store, service)) or store.bases or service.bases:
+    if (
+        not all(_plain_class(owner) for owner in (profile.port, profile.store, profile.service))
+        or profile.store.bases
+        or profile.service.bases
+    ):
         return False
-    if len(port.bases) != 1 or not isinstance(port.bases[0], ast.Name) or port.bases[0].id != "Protocol":
+    if (
+        len(profile.port.bases) != 1
+        or not isinstance(profile.port.bases[0], ast.Name)
+        or profile.port.bases[0].id != "Protocol"
+    ):
         return False
-    match port.body, store.body, service.body:
+    match profile.port.body, profile.store.body, profile.service.body:
         case [ast.FunctionDef() as abstract], [ast.FunctionDef() as concrete], [
             ast.FunctionDef() as initializer,
             ast.FunctionDef() as reader,
@@ -116,7 +123,7 @@ def _closed_classes(profile: _Profile) -> bool:
             return (
                 _port_method(abstract)
                 and _store_method(concrete)
-                and _service_initializer(initializer, port.name)
+                and _service_initializer(initializer, profile.port.name)
                 and _service_reader(reader)
             )
         case _:

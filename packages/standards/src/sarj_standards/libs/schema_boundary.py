@@ -139,30 +139,32 @@ def _visit_resource(
     legacy_identifiers: bool,
     profile: SchemaReferenceProfile | None,
 ) -> None:
-    resource, base = item.resource, item.base
-    identity = (id(resource.contents), id(base))
+    base = item.base
+    identity = (id(item.resource.contents), id(base))
     if identity in walk.visited:
         return
-    walk.visited[identity] = resource.contents
+    walk.visited[identity] = item.resource.contents
     if len(walk.visited) > _MAX_SCHEMA_RESOURCES:
         msg = "schema semantic resource closure exceeds the analysis bound"
         raise ValueError(msg)
-    content = _schema(resource.contents)
+    content = _schema(item.resource.contents)
     validator = _validator(schema=content, default=item.validator)
     if not isinstance(content, bool):
         _native_dialect(content, dialects)
         references = _own_references(content, validator, profile=profile)
         walk.references.extend(references)
-        identifier = _resource_identifier(resource, content, validator=validator, legacy_identifiers=legacy_identifiers)
+        identifier = _resource_identifier(
+            item.resource, content, validator=validator, legacy_identifiers=legacy_identifiers
+        )
         if identifier:
             walk.identifiers.append(identifier)
             if identifier.split("#", 1)[0]:
-                base = resource.contents
+                base = item.resource.contents
         _queue_pointer_targets(walk, references, base=base, validator=validator)
     validator.check_schema(content)  # pyright: ignore[reportArgumentType] -- upstream protocol stub excludes valid modern boolean schemas.
     walk.pending.extend(
         _SchemaResource(child, base, validator)
-        for child in _native_subresources(resource=resource, content=content, validator=validator)
+        for child in _native_subresources(resource=item.resource, content=content, validator=validator)
     )
     walk.pending.extend(
         _SchemaResource(child, base, validator)

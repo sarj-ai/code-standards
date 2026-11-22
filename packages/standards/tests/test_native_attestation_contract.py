@@ -137,10 +137,9 @@ def test_canonical_discovery_keeps_missing_and_invalid_distinct(
         return str(executable) if name == "shellcheck" and payload is not None else None
 
     def runner(request: ProcessRequest) -> ProcessOutput:
-        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
-        assert cwd == tmp_path
-        assert argv[0] == str(executable)
-        calls.append((tuple(argv), timeout_seconds))
+        assert request.cwd == tmp_path
+        assert request.argv[0] == str(executable)
+        calls.append((tuple(request.argv), request.timeout_seconds))
         assert payload is not None
         return ProcessOutput(0, payload, "")
 

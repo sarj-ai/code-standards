@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
@@ -324,11 +325,11 @@ def _ruff_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> list
         source = source if source.is_absolute() else root / source
         if source.is_file() and source.suffix.lower() in {".py", ".pyi"}:
             sources.append(str(source.resolve()))
-    groups: dict[tuple[Path, Path | None, frozenset[str]], list[str]] = {}
+    groups: dict[tuple[Path, Path | None, frozenset[str]], list[str]] = defaultdict(list)
     for project, config, scoped in ruff_project_groups(sources, root):
         for path in scoped:
             key = (project, config, policy.excluded_rule_ids(path, "ruff"))
-            groups.setdefault(key, []).append(Path(os.path.relpath(path, project)).as_posix())
+            groups[key].append(Path(os.path.relpath(path, project)).as_posix())
     commands: list[Command] = []
     for (project, config, disabled), group in sorted(
         groups.items(), key=lambda item: (str(item[0][0]), str(item[0][1]), sorted(item[0][2]))
@@ -390,14 +391,14 @@ def oxlint_exclusions(command: Command, policy: Policy) -> OxlintRequest:
 
     custom = rule_catalog_artifact.selector_index().canonical
     base = oxlint.config_directory(command)
-    grouped: dict[frozenset[str], list[str]] = {}
+    grouped: dict[frozenset[str], list[str]] = defaultdict(list)
     for path in sorted(oxlint.command_files(command)):
         disabled = frozenset(
             f"@sarj/{rule}" if f"oxlint:{rule}" in custom else oxlint.canonical_rule_id(rule)
             for rule in policy.excluded_rule_ids(path, "oxlint")
         )
         if disabled:
-            grouped.setdefault(disabled, []).append(_literal_glob(Path(os.path.relpath(path, base)).as_posix()))
+            grouped[disabled].append(_literal_glob(Path(os.path.relpath(path, base)).as_posix()))
     ordered = sorted(grouped.items(), key=lambda item: sorted(item[0]))
     return oxlint.OxlintRequest(forced={}, disabled=tuple((tuple(files), rules) for rules, files in ordered))
 
