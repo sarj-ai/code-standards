@@ -76,7 +76,7 @@ from .result_cache import (
     file_identity,
 )
 from .runner import GroupedPaths, accepts_hook_path, group_paths
-from .shell_policy import SHELLCHECK_ARGS
+from .shell_policy import ERROR_RULES as SHELLCHECK_ERROR_RULES, SHELLCHECK_ARGS
 
 
 _MILLISECONDS_PER_SECOND = 1_000
@@ -3019,7 +3019,9 @@ def parse_shellcheck(
         except ValueError as exc:
             msg = f"unsupported ShellCheck severity: {item.level!r}"
             raise ValueError(msg) from exc
-        severity = Severity.ERROR if level is _ShellCheckLevel.ERROR else Severity.WARNING
+        severity = (
+            Severity.ERROR if level is _ShellCheckLevel.ERROR or rule in SHELLCHECK_ERROR_RULES else Severity.WARNING
+        )
         start = _one_based_position({"row": item.line, "column": item.column}, path, documents)
         end = _one_based_position({"row": item.end_line, "column": item.end_column}, path, documents)
         if (end.line, end.character) < (start.line, start.character):
