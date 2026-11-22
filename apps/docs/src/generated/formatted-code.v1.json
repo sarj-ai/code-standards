@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f3bac07cce952ad89958e39df2e3ed5b46af065936b1da963e68b4a909a86475",
-  "cliSha256": "ec63eb133081780c7e2eb012b22d44aab68d89725381b221d55326015faf45f0",
+  "catalogSha256": "5547570b5a67dfded8fc5b682b5a0dfbf991665be9229a57f64d9b31ec60895b",
+  "cliSha256": "d6880583d95ebb5ec0193c520a8def503b708fb82207ef53b67ea816472c213e",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -9980,6 +9980,48 @@
     },
     "oxlint:prefer-schema-for-api-payload": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "import { z } from \"zod\";\nconst UserSchema = z.object({ id: z.string() });\nasync function load(response: Response) {\n  const body = await response.json().finally(UserSchema.safeParse);\n  return body.id;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "cleanup-parser",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "reject",
+          "scenarioId": "promise-fulfillment",
+          "title": "A cleanup parser does not validate the fulfilled payload"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "import { z } from \"zod\";\nconst UserSchema = z.object({ id: z.string() });\nasync function load(response: Response) {\n  const body = await response.json().then(UserSchema.parse).finally(cleanup);\n  return body.id;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "fulfilled-parser",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "promise-fulfillment",
+          "title": "Validate the fulfilled payload before cleanup"
+        },
         {
           "expectedCount": 1,
           "files": [

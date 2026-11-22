@@ -32,14 +32,6 @@ const unwrap = (node: Node | null | undefined): Node | null => {
 /** Promise methods that preserve an unvalidated payload. */
 const PROMISE_CHAIN_METHODS: ReadonlySet<string> = new Set(["then", "catch", "finally"]);
 
-/** True for `ZUser.parse` / `ZUser.safeParse` handed to a chain link as a callback. */
-const isSchemaParseReference = (node: Node | null | undefined): boolean => {
-  const inner = unwrap(node);
-  if (inner?.type !== "MemberExpression") return false;
-  const name = getPropertyName(inner);
-  return name === "parse" || name === "safeParse";
-};
-
 /** Match optionally awaited `.json()` calls and non-local `JSON.parse()` calls. */
 const isRawPayloadSource = (node: Node | null | undefined, context: Context, isKnownLocalText: IsKnownLocalText): boolean => {
   let current = unwrap(node);
@@ -49,12 +41,29 @@ const isRawPayloadSource = (node: Node | null | undefined, context: Context, isK
   if (callee?.type !== "MemberExpression") return false;
   const property = getPropertyName(callee);
   if (property === "json") return current.arguments.length === 0 && isResponseSource(callee.object, context);
-  // Promise methods preserve taint unless their callback is a schema parser.
   if (property !== null && PROMISE_CHAIN_METHODS.has(property)) {
-    return !current.arguments.some(isSchemaParseReference) && isRawPayloadSource(callee.object, context, isKnownLocalText);
+    if (property === "then" && !preservesFulfilledPayload(current.arguments[0], context)) return false;
+    return isRawPayloadSource(callee.object, context, isKnownLocalText);
   }
   // Other `.parse()` calls may be the requested schema validation.
   return property === "parse" && isJsonParseOfPeerText(current, callee.object, context, isKnownLocalText);
+};
+
+/** Prove passthrough without guessing what an opaque fulfillment callback returns. */
+const preservesFulfilledPayload = (node: Node | null | undefined, context: Context): boolean => {
+  const callback = unwrap(node);
+  if (callback === null || callback.type === "Literal" && callback.value === null) return true;
+  if (callback.type === "Identifier") return callback.name === "undefined" && isUnshadowedGlobal(callback, context);
+  if (callback.type !== "ArrowFunctionExpression" || callback.async || callback.params.length !== 1) return false;
+  const parameter = callback.params[0] as Node | undefined;
+  let returned = unwrap(callback.body);
+  if (returned?.type === "BlockStatement") {
+    const [statement] = returned.body;
+    returned = returned.body.length === 1 && statement?.type === "ReturnStatement" ? unwrap(statement.argument) : null;
+  }
+  if (parameter?.type !== "Identifier" || returned?.type !== "Identifier") return false;
+  const binding = findVariable(context.sourceCode.getScope(parameter), parameter.name);
+  return binding !== null && findVariable(context.sourceCode.getScope(returned), returned.name) === binding;
 };
 
 /** `JSON.parse(text)` where `text` is neither `JSON.stringify(...)` nor repository-local file text. */
