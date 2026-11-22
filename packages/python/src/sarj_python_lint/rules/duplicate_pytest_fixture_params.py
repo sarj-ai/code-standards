@@ -33,7 +33,7 @@ class DuplicatePytestFixtureParams(Rule):
     id: str = "duplicate-pytest-fixture-params"
     code: str = "SARJ524"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Review repeated immutable values in a pytest fixture parameter list.",
         rationale=(
             "Each fixture parameter reruns its dependent tests. Repeating the same immutable literal can add "
@@ -102,7 +102,7 @@ class DuplicatePytestFixtureParams(Rule):
                         line=value.lineno,
                         col=value.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             f"fixture `{fixture.name}` repeats the immutable parameter from line {first.lineno}; "
                             "review dependent contracts before removing it, or give intentional repetition explicit IDs"

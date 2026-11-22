@@ -250,11 +250,10 @@ def _hook_resource(hook: str) -> str:
 )
 def test_rejects_unknown_identity_and_stale_source(tmp_path: Path, key: str, value: str) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
-    target[key] = value
-    _write_receipt(path, target)
+    fixture.target[key] = value
+    _write_receipt(fixture.path, fixture.target)
     reports = analyze_prepared(
-        (path,),
+        (fixture.path,),
         root=tmp_path,
         declared=(PreparedTarget("example", "deploy.yaml"),),
         runner=FakeProcessExecutor(_native),
@@ -285,15 +284,14 @@ def test_missing_and_duplicate_targets_are_infrastructure_failures(tmp_path: Pat
 @pytest.mark.parametrize("name", ["../resource.yaml", "/private/tmp/resource.yaml", "resource\\file.yaml"])
 def test_artifacts_cannot_escape_receipt_directory(tmp_path: Path, name: str) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
-    target["manifests"] = [name]
-    target["artifacts"] = {
+    fixture.target["manifests"] = [name]
+    fixture.target["artifacts"] = {
         name: "0" * 64,
-        "schema.json": sha256((path.parent / "schema.json").read_bytes()).hexdigest(),
+        "schema.json": sha256((fixture.path.parent / "schema.json").read_bytes()).hexdigest(),
     }
-    _write_receipt(path, target)
+    _write_receipt(fixture.path, fixture.target)
     reports = analyze_prepared(
-        (path,),
+        (fixture.path,),
         root=tmp_path,
         declared=(PreparedTarget("example", "deploy.yaml"),),
         runner=FakeProcessExecutor(_native),
@@ -314,58 +312,63 @@ def test_hashes_cover_values_and_manifests(tmp_path: Path) -> None:
 
 def test_authored_input_changes_invalidate_receipts(tmp_path: Path) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
     catalog = tmp_path / "applications.json"
     catalog.write_text("{}", encoding="utf-8")
-    target["source_inputs"] = {
-        "deploy.yaml": target["source_sha256"],
+    fixture.target["source_inputs"] = {
+        "deploy.yaml": fixture.target["source_sha256"],
         "applications.json": sha256(catalog.read_bytes()).hexdigest(),
     }
-    _write_receipt(path, target)
+    _write_receipt(fixture.path, fixture.target)
     declared = (PreparedTarget("example", "deploy.yaml"),)
     assert (
-        analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].completion
+        analyze_prepared((fixture.path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[
+            0
+        ].completion
         is Completion.COMPLETE
     )
     catalog.write_text('{"changed":true}', encoding="utf-8")
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].issues
+    assert analyze_prepared((fixture.path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[
+        0
+    ].issues
 
 
 def test_list_resources_are_checked_individually_and_duplicates_rejected(tmp_path: Path) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
-    resource = path.parent / "resource.yaml"
+    resource = fixture.path.parent / "resource.yaml"
     resource.write_text(
         "apiVersion: v1\nkind: List\nitems:\n- apiVersion: v1\n  kind: ConfigMap\n  metadata:\n    name: example\n",
         encoding="utf-8",
     )
-    target["artifacts"] = {
-        name: sha256((path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    fixture.target["artifacts"] = {
+        name: sha256((fixture.path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
     }
-    _write_receipt(path, target)
+    _write_receipt(fixture.path, fixture.target)
     declared = (PreparedTarget("example", "deploy.yaml"),)
     assert (
-        analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].completion
+        analyze_prepared((fixture.path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[
+            0
+        ].completion
         is Completion.COMPLETE
     )
     resource.write_text("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n---\n" * 2, encoding="utf-8")
-    target["artifacts"] = {
-        name: sha256((path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    fixture.target["artifacts"] = {
+        name: sha256((fixture.path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
     }
-    _write_receipt(path, target)
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].issues
+    _write_receipt(fixture.path, fixture.target)
+    assert analyze_prepared((fixture.path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[
+        0
+    ].issues
 
 
 def test_local_schema_closure_cannot_fetch_http(tmp_path: Path) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
-    (path.parent / "schema.json").write_text('{"$ref":"https://example.invalid/schema.json"}', encoding="utf-8")
-    target["artifacts"] = {
-        name: sha256((path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    (fixture.path.parent / "schema.json").write_text('{"$ref":"https://example.invalid/schema.json"}', encoding="utf-8")
+    fixture.target["artifacts"] = {
+        name: sha256((fixture.path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
     }
-    _write_receipt(path, target)
+    _write_receipt(fixture.path, fixture.target)
     assert analyze_prepared(
-        (path,),
+        (fixture.path,),
         root=tmp_path,
         declared=(PreparedTarget("example", "deploy.yaml"),),
         runner=FakeProcessExecutor(_native),
@@ -375,17 +378,18 @@ def test_local_schema_closure_cannot_fetch_http(tmp_path: Path) -> None:
 @pytest.mark.parametrize("explicit_first", [False, True], ids=("omitted-first", "explicit-first"))
 def test_target_namespace_cannot_hide_duplicate_workload_identity(tmp_path: Path, explicit_first: bool) -> None:
     fixture = _receipt(tmp_path)
-    path, target = fixture.path, fixture.target
-    target["namespace"] = "work"
+    fixture.target["namespace"] = "work"
     body = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: example\n"
     explicit = f"{body}  namespace: work\n"
-    (path.parent / "resource.yaml").write_text(f"{explicit}---\n{body}" if explicit_first else f"{body}---\n{explicit}")
-    target["artifacts"] = {
-        name: sha256((path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    (fixture.path.parent / "resource.yaml").write_text(
+        f"{explicit}---\n{body}" if explicit_first else f"{body}---\n{explicit}"
+    )
+    fixture.target["artifacts"] = {
+        name: sha256((fixture.path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
     }
-    _write_receipt(path, target)
+    _write_receipt(fixture.path, fixture.target)
     [report] = analyze_prepared(
-        (path,),
+        (fixture.path,),
         root=tmp_path,
         declared=(PreparedTarget("example", "deploy.yaml"),),
         runner=FakeProcessExecutor(_native),

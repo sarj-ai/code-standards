@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -71,10 +72,10 @@ class PreferSinglePsycopgCursor(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None:
             return []
-        by_function: dict[ast.FunctionDef | ast.AsyncFunctionDef, list[ast.Call]] = {}
+        by_function: dict[ast.FunctionDef | ast.AsyncFunctionDef, list[ast.Call]] = defaultdict(list)
         for call in psycopg_cursor_calls(context):
             if (owner := query_owner(call, context).method) is not None:
-                by_function.setdefault(owner, []).append(call)
+                by_function[owner].append(call)
         findings: list[Diagnostic] = []
         for calls in by_function.values():
             previous: list[ast.Call] = []

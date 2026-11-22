@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cache
 import json
@@ -482,13 +483,13 @@ def _renamed_rules() -> dict[str, tuple[str, ...]]:
 
 def _plan_tsconfig_references(typescript_root: Path, sources: Sequence[Path], changes: _Changes) -> None:
     documents = tsconfigs.read(sources)
-    additions: dict[Path, list[Path]] = {}
+    additions: dict[Path, list[Path]] = defaultdict(list)
     for path in tsconfigs.unreferenced_projects(documents):
         owner = path.parent / tsconfigs.TSCONFIG_JSON
         if path.name == _ESLINT_TSCONFIG:
             changes.notes.append(f"{_relative(path, typescript_root)} only served ESLint's typed rules; delete it")
         elif owner in documents and tsconfigs.can_reference(documents[owner], documents[path]):
-            additions.setdefault(owner, []).append(path)
+            additions[owner].append(path)
         else:
             changes.notes.append(_reference_by_hand(typescript_root, owner, [path]))
     for owner, projects in sorted(additions.items()):

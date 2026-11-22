@@ -217,18 +217,17 @@ def test_contract_normalizer_preserves_literals() -> None:
 
 
 def test_initializer_and_immutable_manifest(guard_adapter: _GuardFixture) -> None:
-    adapter, state = guard_adapter.adapter, guard_adapter.state
-    policy = adapter.prepare()
+    policy = guard_adapter.adapter.prepare()
     assert policy is not None
     assert policy.entries == _entries()
-    state.introduced = True
-    assert adapter.prepare() == policy
+    guard_adapter.state.introduced = True
+    assert guard_adapter.adapter.prepare() == policy
     with pytest.raises(ValueError, match="regeneration"):
-        adapter.initialize(["main.tf"], original_revision=_REVISION)
-    path = adapter.root / CONTRACT_PATH
+        guard_adapter.adapter.initialize(["main.tf"], original_revision=_REVISION)
+    path = guard_adapter.adapter.root / CONTRACT_PATH
     path.write_text(path.read_text() + " ")
     with pytest.raises(ValueError, match=r"immutable.*changed"):
-        adapter.prepare()
+        guard_adapter.adapter.prepare()
 
 
 @pytest.mark.parametrize(
@@ -266,51 +265,48 @@ def test_contract_tamper_rejected(guard_adapter: _GuardFixture, before: str, aft
 @pytest.mark.parametrize("staged", [False, True])
 @pytest.mark.parametrize("missing", ["source", "manifest", "option"])
 def test_stale_or_missing_contract_fails_closed(guard_adapter: _GuardFixture, *, staged: bool, missing: str) -> None:
-    adapter, state = guard_adapter.adapter, guard_adapter.state
-    adapter.staged = staged
-    state.introduced = True
+    guard_adapter.adapter.staged = staged
+    guard_adapter.state.introduced = True
     match missing:
         case "source":
-            (adapter.root / "main.tf").unlink()
+            (guard_adapter.adapter.root / "main.tf").unlink()
         case "manifest":
-            (adapter.root / CONTRACT_PATH).unlink()
+            (guard_adapter.adapter.root / CONTRACT_PATH).unlink()
         case _:
-            state.option = False
+            guard_adapter.state.option = False
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
-        adapter.prepare()
+        guard_adapter.adapter.prepare()
 
 
 @pytest.mark.parametrize("staged", [False, True])
 def test_retired_guard_keeps_the_original_contract(guard_adapter: _GuardFixture, *, staged: bool) -> None:
-    adapter, state = guard_adapter.adapter, guard_adapter.state
-    adapter.staged = staged
-    state.introduced = True
+    guard_adapter.adapter.staged = staged
+    guard_adapter.state.introduced = True
     source = _ORIGINAL.replace(_GUARD, "")
-    (adapter.root / "main.tf").write_text(source)
-    state.index_source = source
-    original = (adapter.root / CONTRACT_PATH).read_bytes()
+    (guard_adapter.adapter.root / "main.tf").write_text(source)
+    guard_adapter.state.index_source = source
+    original = (guard_adapter.adapter.root / CONTRACT_PATH).read_bytes()
 
-    policy = adapter.prepare()
+    policy = guard_adapter.adapter.prepare()
 
     assert policy is not None
     assert policy.entries == frozenset()
-    assert (adapter.root / CONTRACT_PATH).read_bytes() == original
+    assert (guard_adapter.adapter.root / CONTRACT_PATH).read_bytes() == original
 
 
 def test_staged_guard_and_option_cannot_hide_behind_worktree(guard_adapter: _GuardFixture) -> None:
-    adapter, state = guard_adapter.adapter, guard_adapter.state
-    adapter.staged = True
-    assert adapter.prepare() is not None
-    state.index_source = _ORIGINAL.replace("condition = var.approved", "condition = true")
+    guard_adapter.adapter.staged = True
+    assert guard_adapter.adapter.prepare() is not None
+    guard_adapter.state.index_source = _ORIGINAL.replace("condition = var.approved", "condition = true")
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
-        adapter.prepare()
-    state.index_source = _ORIGINAL.replace(_GUARD, "")
+        guard_adapter.adapter.prepare()
+    guard_adapter.state.index_source = _ORIGINAL.replace(_GUARD, "")
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
-        adapter.prepare()
-    state.index_source = _ORIGINAL
-    state.index_option = False
+        guard_adapter.adapter.prepare()
+    guard_adapter.state.index_source = _ORIGINAL
+    guard_adapter.state.index_option = False
     with pytest.raises(ValueError, match=r"guard|contract|SARJ222"):
-        adapter.prepare()
+        guard_adapter.adapter.prepare()
 
 
 def test_contract_failures_block_empty_partial_and_full_selection(

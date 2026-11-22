@@ -43,7 +43,7 @@ class PytestFixtureReturnsClosedResource(Rule):
     id: str = "pytest-fixture-returns-closed-resource"
     code: str = "SARJ525"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Yield a managed fixture resource until its requesting test finishes.",
         rationale=(
             "Returning a context-managed stream or HTTPX client exits its context before pytest receives the value. "
@@ -60,7 +60,7 @@ class PytestFixtureReturnsClosedResource(Rule):
             "Only proven pytest/pytest-asyncio fixtures in test paths with one decorator and a direct return inside the owning with/async with are analyzed.",
             "Recognizes built-in/io streams, tempfile TemporaryFile/NamedTemporaryFile, HTTPX Client and async-with AsyncClient; arbitrary context managers and TestClient are excluded.",
             "Aliases, escaped/rebound resources, provider mutation, nested helpers, generator fixtures, returned snapshots and returns after the context are not inferred.",
-            "Unreachable branches and intentional closed-resource contracts are not inferred; findings are warnings requiring review.",
+            "Unreachable branches and intentional closed-resource contracts are not inferred; preserve a required closed-resource contract with an explained exact-code exception. No automatic rewrite changes cleanup or exception behavior.",
         ),
         examples=(
             RuleExample(
@@ -126,7 +126,7 @@ class PytestFixtureReturnsClosedResource(Rule):
                     line=returned.lineno,
                     col=returned.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"fixture returns `{returned.value.id}` after its context closes it; yield inside the context "
                         "until the requesting test finishes, or document an intentional closed-resource contract"

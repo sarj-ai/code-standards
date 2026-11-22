@@ -535,24 +535,23 @@ def _mutation(
 
 
 def _evaluated_children(current: _Evaluation, eager_generators: frozenset[ast.GeneratorExp]) -> list[_Evaluation]:
-    node, origins = current.node, current.origins
-    match node:
+    match current.node:
         case ast.AnnAssign(target=target, value=value):
             if value is None:
-                return [_Evaluation(child, origins) for child in ast.iter_child_nodes(target)]
-            return [_Evaluation(target, origins), _Evaluation(value, origins)]
+                return [_Evaluation(child, current.origins) for child in ast.iter_child_nodes(target)]
+            return [_Evaluation(target, current.origins), _Evaluation(value, current.origins)]
         case ast.BoolOp():
-            return _boolean_operands(node, origins)
+            return _boolean_operands(current.node, current.origins)
         case ast.Compare():
-            return _comparison_operands(node, origins)
+            return _comparison_operands(current.node, current.origins)
         case ast.IfExp():
-            return _conditional_operands(node, origins)
-        case ast.GeneratorExp() if node not in eager_generators:
-            return [_Evaluation(node.generators[0].iter, origins)]
+            return _conditional_operands(current.node, current.origins)
+        case ast.GeneratorExp() if current.node not in eager_generators:
+            return [_Evaluation(current.node.generators[0].iter, current.origins)]
         case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
-            return _comprehension_operands(node, origins)
+            return _comprehension_operands(current.node, current.origins)
         case _:
-            return [_Evaluation(child, origins) for child in ast.iter_child_nodes(node)]
+            return [_Evaluation(child, current.origins) for child in ast.iter_child_nodes(current.node)]
 
 
 def _boolean_operands(node: ast.BoolOp, origins: dict[str, _Borrowed]) -> list[_Evaluation]:

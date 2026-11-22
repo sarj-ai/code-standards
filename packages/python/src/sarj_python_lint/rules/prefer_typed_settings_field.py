@@ -254,14 +254,15 @@ def _preferred(
     default_contract = _field_options(field, facts, contracts.context)
     if default_contract is None:
         return None
-    default, options = default_contract.default, default_contract.options
-    if (domain := _domain_type(default, contracts)) is not None:
+    if (domain := _domain_type(default_contract.default, contracts)) is not None:
         return domain
     match primitive:
         case "str":
-            return _string_domain(default)
+            return _string_domain(default_contract.default)
         case "int" | "float":
-            return _numeric_type(primitive, options, field=field, default=default, facts=facts)
+            return _numeric_type(
+                primitive, default_contract.options, field=field, default=default_contract.default, facts=facts
+            )
         case _:
             return None
 

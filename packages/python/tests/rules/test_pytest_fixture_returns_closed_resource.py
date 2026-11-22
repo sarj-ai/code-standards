@@ -159,7 +159,7 @@ def test_labeled_cases(case: EvaluationCase) -> None:
 def test_known_synchronous_resource_contracts(provider: str, constructor: str) -> None:
     source = _BASE.replace("from io import StringIO", provider).replace('StringIO("payload")', constructor)
     findings = PytestFixtureReturnsClosedResource().check(Path("tests/conftest.py"), source)
-    assert [(finding.line, finding.col, finding.severity) for finding in findings] == [(7, 9, Severity.WARNING)]
+    assert [(finding.line, finding.col, finding.severity) for finding in findings] == [(7, 9, Severity.ERROR)]
 
 
 @pytest.mark.parametrize("uses_yield", [False, True], ids=("return", "yield"))

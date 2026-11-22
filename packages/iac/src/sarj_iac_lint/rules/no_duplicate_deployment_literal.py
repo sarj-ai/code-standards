@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -123,7 +124,7 @@ class NoDuplicateDeploymentLiteral(Rule):
             top = balanced_blocks(source)
         except ValueError:
             return []
-        uses: dict[tuple[str, tuple[str, ...], str, str], list[Attribute]] = {}
+        uses: dict[tuple[str, tuple[str, ...], str, str], list[Attribute]] = defaultdict(list)
         for block in top:
             if block.type not in {"resource", "data"} or len(block.labels) != _LABEL_COUNT:
                 continue
@@ -132,7 +133,7 @@ class NoDuplicateDeploymentLiteral(Rule):
             for attribute in block.attributes:
                 if not (value := _deployment_value(provider, attribute)):
                     continue
-                uses.setdefault((provider, binding, attribute.name, value), []).append(attribute)
+                uses[provider, binding, attribute.name, value].append(attribute)
         findings: list[Diagnostic] = []
         for (_, _, name, _), attributes in uses.items():
             if len(attributes) >= _REPEATED_USE_COUNT:

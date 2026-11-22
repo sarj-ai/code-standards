@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from dataclasses import dataclass
 from http import HTTPStatus
 import re
@@ -35,12 +36,12 @@ def route_decorators(context: PythonFileContext) -> Iterator[RouteDecorator]:
         return
     index = context.fastapi
     for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
-        grouped: dict[int, list[str]] = {}
+        grouped: dict[int, list[str]] = defaultdict(list)
         first: dict[int, RouteDecorator] = {}
         for route in index.routes(function):
             if route.has_unpack:
                 continue
-            grouped.setdefault(id(route.decorator), []).append(route.method)
+            grouped[id(route.decorator)].append(route.method)
             first.setdefault(
                 id(route.decorator), RouteDecorator(route.decorator, frozenset(), route.path, route.inherited_prefix)
             )

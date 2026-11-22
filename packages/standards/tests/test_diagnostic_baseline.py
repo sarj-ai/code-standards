@@ -265,6 +265,36 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
             "c074045223a3d44fcbe390a22b883c837e3b1fb66448fb566c162af083911302",
         ),
         (
+            "python:prefer-defaultdict",
+            "group.py",
+            "def group(rows):\n    groups = {}\n    for key, value in rows:\n        groups.setdefault(key, []).append(value)\n    return dict(groups)\n",
+            "822077fb1420c61b60e79d3eee89c3e90208c375312c8c7588d327966fd7ba35",
+        ),
+        (
+            "python:prefer-direct-import-module",
+            "loader.py",
+            "import importlib\nplugin = importlib.import_module('plugins.billing')\n",
+            "3b0b26ade6c27b3a6c419cb264a7c70e202c8bc0ac9399627be2f2912f985b57",
+        ),
+        (
+            "python:no-redundant-attribute-unpacking",
+            "attributes.py",
+            "def use(seed):\n    scenario, current = seed.scenario, seed.current\n    return scenario.id == current.id\n",
+            "b122580f8fc8e03739c248b05387e26b269c9dd38f8bdb44a5a4a9072c911ab6",
+        ),
+        (
+            "python:duplicate-pytest-fixture-params",
+            "tests/fixture_params.py",
+            "import pytest\n\n@pytest.fixture(params=('empty', 'empty'))\ndef payload(request):\n    return request.param\n",
+            "537a8516a0d37f40223401765aabff359225db7923b30ce6340949df27f2f940",
+        ),
+        (
+            "python:pytest-fixture-returns-closed-resource",
+            "tests/fixture_resource.py",
+            "from io import StringIO\nimport pytest\n\n@pytest.fixture\ndef stream():\n    with StringIO('payload') as handle:\n        return handle\n",
+            "1574f8ddaefc1ece3b461b207dd91d5d29f5ba42cae8834371bed683d342cba2",
+        ),
+        (
             "iac:canonical-terraform-declarations",
             "service.tf",
             'variable "region" { type = string }\n',
@@ -281,6 +311,7 @@ def test_promotions_preserve_published_warning_debt_without_accepting_new_findin
     published_fingerprint: str,
     staged: bool,
 ) -> None:
+    (git_root / filename).parent.mkdir(parents=True, exist_ok=True)
     (git_root / filename).write_text(source)
     standards = api.Standards(git_root)
     raw = standards.analyze([filename], mode=api.AnalysisMode.RAW, rules=[selector])
@@ -299,13 +330,17 @@ def test_promotions_preserve_published_warning_debt_without_accepting_new_findin
     policy = standards.analyze([filename], staged=staged, rules=[selector])
     assert policy.exit_code == 0
     assert sum(tool.baselined_count for tool in policy.tools) == 1
-    new_filename = f"new_{filename}"
+    selection = ["--staged"] if staged else [filename]
+    assert cli_main(["--root", str(git_root), "check", "--rule", selector, *selection]) == 0
+    new_filename = str(Path(filename).with_name(f"new_{Path(filename).name}"))
     (git_root / new_filename).write_text(source)
     subprocess.run(("git", "add", new_filename), cwd=git_root, check=True)
     changed = standards.analyze([filename, new_filename], staged=staged, rules=[selector])
 
     assert changed.exit_code == 1
     assert [(item.location.path, item.severity) for item in changed.diagnostics] == [(new_filename, Severity.ERROR)]
+    selection = ["--staged"] if staged else [filename, new_filename]
+    assert cli_main(["--root", str(git_root), "check", "--rule", selector, *selection]) == 1
     assert baseline_path.read_text() == document  # sarj-noqa: SARJ402 -- Preserve accepted baseline bytes.
 
 

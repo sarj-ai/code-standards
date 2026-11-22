@@ -81,19 +81,27 @@ def _report(fixture: _ClosureFixture) -> ToolReport:
 def test_contained_relative_schema_closure_matches_native_resolution(tmp_path: Path, reference: str) -> None:
     fixture = _closure(tmp_path, reference)
     assert _report(fixture).completion is Completion.COMPLETE
-    schema, shared = fixture.schema, fixture.shared
     tool = checked_tool("kubeconform", root=tmp_path)
     assert tool.version == "0.8.0"
     for valid in (True, False):
         instance: dict[str, object] = {"apiVersion": "v1", "kind": "Pod"}
         if valid:
             instance["metadata"] = {"name": "example"}
-        assert bool(validate_local_schema(instance, schema, (schema, shared))) is not valid
+        assert bool(validate_local_schema(instance, fixture.schema, (fixture.schema, fixture.shared))) is not valid
         manifest = tmp_path / "pod.json"
         manifest.write_text(json.dumps(instance), encoding="utf-8")
         output = invoke(
             tool,
-            ("-strict", "-verbose", "-summary", "-output", "json", "-schema-location", str(schema), str(manifest)),
+            (
+                "-strict",
+                "-verbose",
+                "-summary",
+                "-output",
+                "json",
+                "-schema-location",
+                str(fixture.schema),
+                str(manifest),
+            ),
             root=tmp_path,
         )
         assert output.returncode == (0 if valid else 1), output.stderr

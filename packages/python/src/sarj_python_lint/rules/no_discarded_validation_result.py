@@ -235,20 +235,22 @@ class _ValidationResults:
         resolved = self._resolve(call.func)
         if resolved is None:
             return False
-        owner, function = resolved.owner, resolved.function
-        if isinstance(function, ast.AsyncFunctionDef) != isinstance(statement.value, ast.Await):
+        if isinstance(resolved.function, ast.AsyncFunctionDef) != isinstance(statement.value, ast.Await):
             return False
-        if function not in self.contracts:
-            provenance = self._source_provenance(owner.path)
-            self.contracts[function] = (
-                not owner.generated
-                and _value_validator(function)
+        if resolved.function not in self.contracts:
+            provenance = self._source_provenance(resolved.owner.path)
+            self.contracts[resolved.function] = (
+                not resolved.owner.generated
+                and _value_validator(resolved.function)
                 and provenance is not None
-                and self._value_annotation(provenance, function.returns, function, _MAX_ANNOTATION_DEPTH, frozenset())
-                and self._returned_constructions(provenance, function)
+                and self._value_annotation(
+                    provenance, resolved.function.returns, resolved.function, _MAX_ANNOTATION_DEPTH, frozenset()
+                )
+                and self._returned_constructions(provenance, resolved.function)
             )
-        return self.contracts[function] and not any(
-            _namespace_uncertain(provenance, owner.path) or _namespace_uncertain(provenance, provenance.context.path)
+        return self.contracts[resolved.function] and not any(
+            _namespace_uncertain(provenance, resolved.owner.path)
+            or _namespace_uncertain(provenance, provenance.context.path)
             for provenance in resolved.namespaces
         )
 

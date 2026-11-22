@@ -51,23 +51,22 @@ def test_install_retains_existing_exact_approval_then_restores_canonical_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _plan(tmp_path)
-    plan, policy = fixture.plan, fixture.policy
     target = f"@sarj/eslint-plugin@{manifest.typescript_age_gate_preapprovals()['@sarj/eslint-plugin']}"
-    canonical = dict(plan.pin_writes)[policy]
+    canonical = dict(fixture.plan.pin_writes)[fixture.policy]
     seen: list[object] = []
 
     def execute(_commands: Sequence[lifecycle.Command]) -> int:
-        approvals = _approvals(policy)
+        approvals = _approvals(fixture.policy)
         seen.append(approvals)
         return 0 if OLD in approvals else 1
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- installer interception tests upgrade transaction boundaries without executing consumer code.
         lifecycle, "execute", execute
     )
-    assert upgrade.apply(plan) == 0
+    assert upgrade.apply(fixture.plan) == 0
     assert seen == [[OLD, "third-party@1.0.0", target]]
-    assert policy.read_text(encoding="utf-8") == canonical
-    assert OLD not in _approvals(policy)
+    assert fixture.policy.read_text(encoding="utf-8") == canonical
+    assert OLD not in _approvals(fixture.policy)
 
 
 @pytest.mark.parametrize("status", [1, 130])
@@ -75,11 +74,10 @@ def test_failed_install_rolls_back_temporary_approvals(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
     fixture = _plan(tmp_path)
-    plan, policy, original = fixture.plan, fixture.policy, fixture.original
     before = {path: path.read_bytes() for path in tmp_path.iterdir()}
 
     def execute(_commands: Sequence[lifecycle.Command]) -> int:
-        assert OLD in _approvals(policy)
+        assert OLD in _approvals(fixture.policy)
         if status == 130:
             raise KeyboardInterrupt
         return status
@@ -87,31 +85,29 @@ def test_failed_install_rolls_back_temporary_approvals(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- installer interception tests upgrade transaction boundaries without executing consumer code.
         lifecycle, "execute", execute
     )
-    assert upgrade.apply(plan) == status
-    assert policy.read_text(encoding="utf-8") == original
+    assert upgrade.apply(fixture.plan) == status
+    assert fixture.policy.read_text(encoding="utf-8") == fixture.original
     assert {path: path.read_bytes() for path in tmp_path.iterdir()} == before
 
 
 def test_concurrent_policy_edit_survives_failed_restoration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fixture = _plan(tmp_path)
-    plan, policy = fixture.plan, fixture.policy
     concurrent = "minimumReleaseAge: 99999\n"
 
     def execute(_commands: Sequence[lifecycle.Command]) -> int:
-        policy.write_text(concurrent)
+        fixture.policy.write_text(concurrent)
         return 0
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- installer interception tests upgrade transaction boundaries without executing consumer code.
         lifecycle, "execute", execute
     )
     with pytest.raises(OSError, match="recovery incomplete"):
-        upgrade.apply(plan)
-    assert policy.read_text(encoding="utf-8") == concurrent
+        upgrade.apply(fixture.plan)
+    assert fixture.policy.read_text(encoding="utf-8") == concurrent
 
 
 def test_no_install_does_not_retain_previous_approvals(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fixture = _plan(tmp_path)
-    plan, policy = fixture.plan, fixture.policy
 
     def execute(_commands: Sequence[lifecycle.Command]) -> int:
         pytest.fail("no-install must not invoke an installer")
@@ -119,8 +115,8 @@ def test_no_install_does_not_retain_previous_approvals(tmp_path: Path, monkeypat
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- installer interception tests upgrade transaction boundaries without executing consumer code.
         lifecycle, "execute", execute
     )
-    assert upgrade.apply(plan, install=False) == 0
-    assert policy.read_text(encoding="utf-8") == dict(plan.pin_writes)[policy]
+    assert upgrade.apply(fixture.plan, install=False) == 0
+    assert fixture.policy.read_text(encoding="utf-8") == dict(fixture.plan.pin_writes)[fixture.policy]
 
 
 @pytest.mark.parametrize("flow", [False, True])

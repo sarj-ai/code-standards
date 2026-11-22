@@ -508,19 +508,18 @@ def _local_entrypoint(invocation: _Invocation) -> _LocalEntrypoint:
 
 
 def _arguments(invocation: _Invocation) -> dict[str, HashedFileRecord]:
-    tool, args, cwd = invocation.tool, invocation.args, invocation.cwd
     configs: dict[str, HashedFileRecord] = {}
-    match tool:
+    match invocation.tool:
         case "oxfmt":
             _require(
-                condition=len(args) == _OXFMT_ARGUMENT_COUNT
-                and args[0].startswith("--config=")
-                and args[1].startswith("--stdin-filepath="),
+                condition=len(invocation.args) == _OXFMT_ARGUMENT_COUNT
+                and invocation.args[0].startswith("--config=")
+                and invocation.args[1].startswith("--stdin-filepath="),
                 message="oxfmt argv must be exact stdin-to-stdout mode",
             )
-            config = _regular_input(args[0].removeprefix("--config="))
+            config = _regular_input(invocation.args[0].removeprefix("--config="))
             configs[str(config.path)] = config.proof
-            _stdin_path(args[1].removeprefix("--stdin-filepath="), cwd)
+            _stdin_path(invocation.args[1].removeprefix("--stdin-filepath="), invocation.cwd)
     return configs
 
 

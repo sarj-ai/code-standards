@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from io import StringIO
 from pathlib import PurePosixPath
 import re
@@ -221,10 +222,10 @@ def _numbered_walkthrough_lines(
         containing = [node for node in owners if node.lineno <= line <= (node.end_lineno or node.lineno)]
         return id(max(containing, key=lambda node: node.lineno)) if containing else id(tree)
 
-    grouped: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    grouped: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
     for line, col, body in standalone:
         if match := _NUMBERED_WALKTHROUGH_RE.match(body):
-            grouped.setdefault((owner_of(line), col), []).append((line, int(match.group(1))))
+            grouped[owner_of(line), col].append((line, int(match.group(1))))
 
     protected: set[int] = set()
     for entries in grouped.values():
