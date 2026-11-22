@@ -199,7 +199,7 @@ def setup_tools_only(root: Path) -> ToolsSetupResult:
 
         try:
             CoreIAC(root).prepare()
-        except subprocess.SubprocessError as error:
+        except subprocess.SubprocessError as error:  # sarj-noqa: SARJ585 -- Setup rejects unavailable immutable history through its ValueError boundary.
             message = (
                 "immutable Terraform guard history is unavailable; fetch the original commits and blobs before setup"
             )

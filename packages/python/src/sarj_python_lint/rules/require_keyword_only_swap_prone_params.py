@@ -259,9 +259,8 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     # Owned constructors are ordinary calls; other dunders have fixed Python protocols.
     if name != "__init__" and name.startswith("__") and name.endswith("__"):
         return True
-    # A variadic constructor commonly forwards a third-party/base signature;
-    # syntax alone cannot prove that making its named prefix keyword-only is
-    # compatible with the inherited API.
+    # A variadic constructor commonly forwards a third-party/base signature; syntax alone cannot prove that making its
+    # named prefix keyword-only is compatible with the inherited API.
     if name == "__init__" and (node.args.vararg is not None or node.args.kwarg is not None):
         return True
     if name.startswith(_EXEMPT_NAME_PREFIXES):
@@ -487,9 +486,8 @@ def _is_conventional_order(arg_names: list[str]) -> bool:
 
 _NUMERIC_SUFFIX_RE = re.compile(r"_?\d+$")
 
-#: `policy_id_a` / `policy_id_b` — the alphabetic spelling of the same symmetry.
-#: The underscore is required, so `a`/`b` and `s`/`d` keep firing: there the
-#: whole name is the label and the call site really cannot tell them apart.
+#: `policy_id_a` / `policy_id_b` — the alphabetic spelling of the same symmetry. The underscore is required, so `a`/`b`
+#: and `s`/`d` keep firing: there the whole name is the label and the call site really cannot tell them apart.
 _LETTER_SUFFIX_RE = re.compile(r"_[a-z]$")
 
 

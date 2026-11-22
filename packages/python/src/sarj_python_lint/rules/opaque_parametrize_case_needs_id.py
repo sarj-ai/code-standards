@@ -37,9 +37,8 @@ class _UnnameableTable(NamedTuple):
 # Node kinds pytest cannot render into a readable test id.
 _OPAQUE_NODES = (ast.Dict, ast.Set, ast.DictComp, ast.SetComp, ast.ListComp, ast.GeneratorExp)
 
-# Constructors whose result pytest's `_idval` always renders: the scalar types
-# it stringifies, plus `type` and `re.compile`, whose results carry a `__name__`
-# / a `.pattern` that pytest reads instead.
+# Constructors whose result pytest's `_idval` always renders: the scalar types it stringifies, plus `type` and
+# `re.compile`, whose results carry a `__name__` / a `.pattern` that pytest reads instead.
 _NAMEABLE_CONSTRUCTORS = frozenset({"str", "bytes", "int", "float", "bool", "complex", "type"})
 _STRING_TRANSFORMS = frozenset({"encode", "format"})
 _PYTEST_MARK_SOURCES = frozenset({"pytest.mark"})
@@ -141,9 +140,8 @@ def _message(count: int) -> str:
 def _tables_with_unnameable_cases(
     tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
 ) -> list[_UnnameableTable]:
-    # One diagnostic per table, not per case: a single `ids=` on the decorator
-    # resolves every case at once, so per-case reporting would be N copies of
-    # one fix and would bury a large table's other diagnostics.
+    # One diagnostic per table, not per case: a single `ids=` on the decorator resolves every case at once, so per-case
+    # reporting would be N copies of one fix and would bury a large table's other diagnostics.
     hits: list[_UnnameableTable] = []
     for node in _decorator_calls(tree, node_index=node_index):
         if not _is_parametrize(node.func, imports):
@@ -230,9 +228,8 @@ def _is_param_wrapper(func: ast.expr, imports: ImportIndex) -> bool:
 
 
 def _is_opaque_value(value: ast.expr, *, single_value: bool, imports: ImportIndex) -> bool:
-    # A multi-column case is a tuple. pytest joins the per-column ids with `-`,
-    # so one nameable column is enough to tell the case apart — only an
-    # all-opaque case falls back to argument-name-and-index components.
+    # A multi-column case is a tuple. pytest joins the per-column ids with `-`, so one nameable column is enough to tell
+    # the case apart — only an all-opaque case falls back to argument-name-and-index components.
     if single_value and isinstance(value, (ast.Tuple, ast.List)):
         return True
     if isinstance(value, ast.Constant) and value.value is Ellipsis:

@@ -7,6 +7,7 @@ from sarj_rule_contracts import RuleId
 
 from sarj_standards.libs.linting import runner as linting_runner, textlint
 from sarj_standards.libs.linting.devops_programs import execution_blocks
+from sarj_standards.libs.linting.shell_ast import ShellSyntaxError
 from sarj_standards.libs.rules.contracts import (
     DefaultLevel,
     EvaluationCase,
@@ -1553,7 +1554,7 @@ def test_shell_iac_source_rule_allows_structured_runtime_near_misses(tmp_path: P
     assert "SARJ304" not in _codes(path, root=tmp_path)
 
 
-def test_shell_iac_source_rule_ignores_non_test_and_malformed_shell(tmp_path: Path) -> None:
+def test_shell_iac_source_rule_skips_non_tests_and_rejects_malformed_shell(tmp_path: Path) -> None:
     helper = tmp_path / "scripts" / "deploy.sh"
     helper.parent.mkdir()
     helper.write_text("grep resource iac/main.tf\n", encoding="utf-8")
@@ -1561,7 +1562,8 @@ def test_shell_iac_source_rule_ignores_non_test_and_malformed_shell(tmp_path: Pa
     malformed.parent.mkdir()
     malformed.write_text("grep 'unterminated iac/main.tf\n", encoding="utf-8")
     assert "SARJ304" not in _codes(helper, root=tmp_path)
-    assert "SARJ304" not in _codes(malformed, root=tmp_path)
+    with pytest.raises(ShellSyntaxError, match="reached EOF"):
+        _codes(malformed, root=tmp_path)
 
 
 @pytest.mark.parametrize(("substantive", "expected"), [(199, False), (200, True), (201, True)])
@@ -1617,6 +1619,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
     assert set(textlint.REGISTRY) == {
         "commented-out-config",
         "cloudbuild-contract",
+        "concise-shell-prose",
         "config-comment-wall",
         "declarative-deployment-boundary",
         "ephemeral-execution-artifact",

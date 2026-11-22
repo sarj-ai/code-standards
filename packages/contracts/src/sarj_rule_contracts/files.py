@@ -119,7 +119,7 @@ def _refuse_extended_attributes(descriptor: int) -> None:
         return
     try:
         attributes = os.listxattr(descriptor)
-    except OSError as exc:
+    except OSError as exc:  # sarj-noqa: SARJ585 -- Safe-fix metadata inspection must use the ValueError abort contract.
         message = "cannot inspect source or temporary-file extended attribute metadata"
         raise ValueError(message) from exc
     if attributes:

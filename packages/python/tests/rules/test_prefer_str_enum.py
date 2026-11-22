@@ -1452,9 +1452,8 @@ def walk(inner_schema):
     ["JustifyMethod", '"JustifyMethod"', "AlignMethod | None", "Optional[AlignMethod]", "rich.AlignMethod"],
 )
 def test_separately_typed_parameter_is_exempt(annotation: str):
-    # Minimized from rich/rich/containers.py:129 — `JustifyMethod` is a Literal
-    # alias declared in rich/console.py and imported here, so the closed set
-    # already exists at a definition site this module does not own.
+    # Minimized from rich/rich/containers.py:129 — `JustifyMethod` is a Literal alias declared in rich/console.py and
+    # imported here, so the closed set already exists at a definition site this module does not own.
     src = f"""
 def justify(text, justify: {annotation}) -> int:
     if justify == "left":

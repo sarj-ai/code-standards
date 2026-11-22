@@ -108,7 +108,7 @@ def _native_tool(config: _NativeConfig, *, root: Path, runner: ProcessExecutor) 
 def _stage(directory: Path, config: _NativeConfig, work: Path) -> None:
     if set(config.executables) - config.artifacts.keys():
         message = "prepared executables require artifact hashes"
-        raise ValueError(message)
+        raise ValueError(message)  # sarj-noqa: SARJ542 -- Reject unhashed executable ownership before staging any tool.
     total = 0
     for name, digest in config.artifacts.items():
         source = contained_file(directory, name)
@@ -128,7 +128,9 @@ def _arguments(config: _NativeConfig, work: Path) -> tuple[str, ...]:
     if config.kind == "compose":
         if config.environment_file is None or config.environment_file not in config.artifacts:
             message = "Prepared Compose requires a hashed environment_file"
-            raise ValueError(message)
+            raise ValueError(
+                message
+            )  # sarj-noqa: SARJ542 -- Compose execution requires a hash-qualified environment file.
         files = tuple(argument for path in paths for argument in ("-f", path))
         return ("compose", "--env-file", str(work / config.environment_file), *files, "config", "--quiet")
     if config.kind == "systemd":

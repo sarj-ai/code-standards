@@ -523,9 +523,8 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
         typescript_dest=legacy.typescript_dest,
         profile=legacy.profile,
         hook_manager=legacy.hook_manager,
-        # A schema-three manifest already made an explicit TypeScript authority
-        # choice. Preserve unrelated nested projects during its one-way schema
-        # migration; the subsequent upgrade diagnoses the selected authority.
+        # A schema-three manifest already made an explicit TypeScript authority choice. Preserve unrelated nested
+        # projects during its one-way schema migration; the subsequent upgrade diagnoses the selected authority.
         allow_existing_nested_oxlint=True,
     )
     if migration.scaffold.errors or migration.sync is None:
@@ -657,10 +656,8 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
             )
             return None
         try:
-            # The normal upgrade transaction owns dependency installation.  A
-            # legacy-manifest repair must only establish the current manifest
-            # and wiring first, otherwise its installer runs before the
-            # upgrade plan can refresh package-manager age-gate exemptions.
+            # Legacy repair establishes manifest and wiring first; normal upgrade must refresh age exemptions before
+            # installing dependencies.
             _repair_legacy_manifest(root, install=False)
             migrated_legacy = True
         except (OSError, TypeError, ValueError) as migration_error:

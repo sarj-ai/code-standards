@@ -1,63 +1,5 @@
-# Oxlint execution for the Standards ``typescript`` capability.
-#
-# This module owns everything Oxlint-specific so ``external.py``, ``lifecycle.py``
-# and ``autofix.py`` only wire it in. Facts it relies on were measured on Oxlint
-# 1.91.0; see ``tests/test_oxlint_*.py``.
-#
-# Selection
-#     ``select_oxlint_commands(root, paths, *, label, fix,
-#     include_config_sources) -> OxlintSelection``: one ``Command`` per Oxlint
-#     project, i.e. per nearest ``.oxlintrc.json``/``.oxlintrc.jsonc``/
-#     ``oxlint.config.ts``/``oxlint.config.mts``. ``-c`` disables Oxlint's own
-#     nested-config lookup, so grouping by nearest config reproduces it. The
-#     command runs where ``oxlint-suppressions.json`` lives (Oxlint reads it from
-#     the working directory) and lists explicit files after a final ``--``;
-#     directories always expand, because only explicit files let the
-#     ``number_of_files`` count prove coverage.
-#     ``is_oxlint_source`` and ``oxlint_config`` expose the same predicates;
-#     ``config_directory(command)`` is the directory its override globs are relative to.
-#     ``local_binary(name, cwd, root)`` finds ``node_modules/.bin/<name>`` at or
-#     above ``cwd``, else the adopted TypeScript project's, so projects without an
-#     install of their own (CI helpers, tool configs) run its Oxlint and tsrs-lint.
-#
-# Analysis
-#     ``run_oxlint(command, *, root, runner, environment, request) -> ToolReport``
-#     runs one command through ``selected_config`` with ``-f json
-#     --type-aware`` (plus ``--type-check`` on full runs) and
-#     ``OXLINT_TSGOLINT_PATH`` from ``oxlint_environment``. It returns a report
-#     named ``oxlint`` without analyzer/invocation IDs or duration; the caller
-#     adds those as ``external._invoke`` does. When Oxlint lints fewer files than
-#     selected it proves authored exclusions through native discovery with and
-#     without ignores, reports skipped scope, and fails on unproven coverage.
-#     ``OxlintRequest(rules=None)`` is a full run; ``rules=frozenset(...)`` runs
-#     only those canonical rule IDs. Both force ``REQUIRED_RULES`` on last, so a
-#     consumer config cannot turn the floor off. Callers add upstream advisory
-#     rules to ``forced``. Selected runs never prune or report stale
-#     ``oxlint-suppressions.json`` entries and turn off unused-directive reports.
-#
-# Fixes
-#     ``select_oxlint_commands(..., fix=True)`` adds ``--fix``. Run each command
-#     inside ``selected_config(command, OxlintRequest(forced={}, disabled=...))``
-#     to turn per-path excluded rules off (``-A`` does not reach JS plugin
-#     rules), with ``oxlint_environment`` for typed fixes. ``--fix`` never
-#     removes unused directives; ``oxlint_directives`` does.
-#
-# Parsing
-#     ``read_oxlint(output, *, root, cwd, selected) -> OxlintResult`` and
-#     ``oxlint_rule_id(code)``/``canonical_rule_id(name)``. Diagnostic codes map
-#     to the rule IDs used in configs: ``eslint(no-x)`` -> ``no-x``,
-#     ``typescript(x)`` -> ``typescript/x``, ``next(x)`` -> ``nextjs/x``,
-#     ``react-hooks(x)`` -> ``react/x``, ``@sarj(x)`` -> ``@sarj/x``, JS plugin
-#     aliases keep their alias (``unicorn-js(x)`` -> ``unicorn-js/x``), and
-#     ``--type-check`` codes go through ``type_check_diagnostic``
-#     (``typescript(TS2322)`` -> ``tsc/TS2322``; ``typescript(tsconfig-error)``
-#     -> ``tsc/tsconfig-error``, tagged non-baselineable because a baselined
-#     tsconfig error would switch type checking off). Parser codes
-#     ``TS(1036)`` -> ``tsc/TS1036``. Records
-#     without a code are unused directives (``oxlint/unused-directive``), stale
-#     suppressions (``oxlint/unused-suppression``, full runs only), JS plugin
-#     crashes and parse errors (``tool-failure`` issues). Plain-text stdout means
-#     a configuration failure. Byte spans become ``SourceDocument`` regions.
+# Oxlint 1.91 coverage requires explicit files and nearest configs. Only full runs retire suppressions; required rules
+# and parser failures remain enforced.
 
 from __future__ import annotations
 
@@ -131,9 +73,8 @@ PLUGIN_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 _DIRECTIVES = "@sarj/directive-"
-# The @sarj directive rules read both `eslint-*` and `oxlint-*` directives.
-# @eslint-community/eslint-comments' own no-unlimited-disable is replaced by the
-# native unicorn rule, which also covers both prefixes.
+# The @sarj directive rules read both `eslint-*` and `oxlint-*` directives. @eslint-community/eslint-comments' own
+# no-unlimited-disable is replaced by the native unicorn rule, which also covers both prefixes.
 _PROTECTED_RULES: Final = (
     *(
         f"{_DIRECTIVES}{name}"
@@ -253,9 +194,8 @@ _NEW_SUPPRESSIONS: Final = "There are new violations not covered by the suppress
 _MISSING_FILE_LIMIT: Final = 5
 # The @sarj plugin prints this when tsrs fails and its type-aware rules fall back to their untyped path.
 TSRS_FAILURE: Final = "@sarj: tsrs request failed"
-# Oxlint reports unused directives without a `code`. A whole-directive span
-# covers the comment (for an unused block pair, the closing `*-enable`); a
-# `from`/`for` rule span covers that rule name inside the comment.
+# Oxlint reports unused directives without a `code`. A whole-directive span covers the comment (for an unused block
+# pair, the closing `*-enable`); a `from`/`for` rule span covers that rule name inside the comment.
 UNUSED_DIRECTIVE_RE: Final = re.compile(
     r"Unused (?P<tool>eslint|oxlint)-(?P<kind>disable|enable) directive \("
     r"(?:no problems were reported(?: from (?P<disabled>.+))?"
@@ -889,7 +829,9 @@ def with_options(argv: Sequence[str], *options: str) -> tuple[str, ...]:
 def _executable_index(argv: Sequence[str]) -> int:
     try:
         return next(index for index, value in enumerate(argv) if Path(value).name in {"oxlint", "oxlint.cmd"})
-    except StopIteration as exc:
+    except (
+        StopIteration
+    ) as exc:  # sarj-noqa: SARJ585 -- Invalid command ownership uses ValueError, not iterator exhaustion.
         msg = "Oxlint command does not contain an oxlint executable"
         raise ValueError(msg) from exc
 

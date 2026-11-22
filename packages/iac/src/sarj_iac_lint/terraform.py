@@ -171,7 +171,9 @@ def _json_blocks(source: str) -> tuple[_hcl.Block, ...]:
     context = _JSONContext(source, {}, tuple(match.start() for match in re.finditer(r"\n", source)), {})
     try:
         context.locate(root)
-    except RecursionError as exc:
+    except (
+        RecursionError
+    ) as exc:  # sarj-noqa: SARJ585 -- Native JSON parse rejection normalizes unsupported nesting as ValueError.
         message = "Terraform JSON exceeds supported nesting"
         raise ValueError(message) from exc
     result: list[_hcl.Block] = []
@@ -238,9 +240,8 @@ def _body(
         attributes.append(
             _hcl.Attribute(name, _attribute(kind, name, value, literal=literal), point.line, point.col, point.line)
         )
-        # Provider schemas decide object versus nested-block meaning. Retain the
-        # expression and a structural projection; rules must select known schema
-        # paths before interpreting a projection as a provider block.
+        # Provider schemas decide object versus nested-block meaning. Retain the expression and a structural projection;
+        # rules must select known schema paths before interpreting a projection as a provider block.
         if _project_body(kind, name, value):
             label_count = _label_count(kind, name, value)
             for nested_labels, body, nested_path in _declarations(value, label_count, location):

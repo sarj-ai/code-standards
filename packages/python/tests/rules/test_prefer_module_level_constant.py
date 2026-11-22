@@ -452,9 +452,8 @@ def test_sorted_copies_but_sort_mutates():
 
 
 def test_ignores_binding_the_function_never_reads():
-    # Sweep evidence: rich/examples/log.py:54 binds `foo = (1, 2, 3)` and never
-    # reads it — Console(log_locals=True) picks it up by frame inspection, so
-    # the hoist would both serve no use site and empty the frame it renders.
+    # Sweep evidence: rich/examples/log.py:54 binds `foo = (1, 2, 3)` and never reads it — Console(log_locals=True)
+    # picks it up by frame inspection, so the hoist would both serve no use site and empty the frame it renders.
     assert _check(_fn('allowed = ["a", "b", "c"]\nreturn payload')) == []
 
 

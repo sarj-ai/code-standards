@@ -136,9 +136,8 @@ KOTLIN_CONFIGS: Final = frozenset({"detekt", "ktlint"})
 MOBILE_CONFIGS: Final = frozenset({"mobile-security"})
 
 
-#: Directories a detection walk must not descend into: an installed dependency
-#: carries thousands of `package.json` files and a vendored tree carries the
-#: pyproject of something this repo did not write.
+#: Directories a detection walk must not descend into: an installed dependency carries thousands of `package.json` files
+#: and a vendored tree carries the pyproject of something this repo did not write.
 CONFIG_SKIP_DIRECTORIES: Final = frozenset(
     {
         ".git",

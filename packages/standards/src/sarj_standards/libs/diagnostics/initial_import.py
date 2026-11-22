@@ -133,7 +133,11 @@ def _git(root: Path, *arguments: str, allowed: tuple[int, ...] = (0,)) -> bytes:
             timeout=30,
             env=git_environment(),
         )
-    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+    except (
+        OSError,
+        ValueError,
+        subprocess.TimeoutExpired,
+    ) as error:  # sarj-noqa: SARJ585 -- Git transport failures must reach the import transaction as sanitized ValueError.
         msg = "cannot validate initial-import Git state"
         raise ValueError(msg) from error
     if result.returncode not in allowed:

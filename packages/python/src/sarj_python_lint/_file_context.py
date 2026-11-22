@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis
+    from sarj_python_lint.rules._domain_boundaries import DomainBoundaries
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
     from sarj_python_lint.rules._store_sql import StoreQuery
     from sarj_python_lint.rules._test_provenance import TestProvenance
@@ -118,6 +119,12 @@ class PythonFileContext:
     @cached_property
     def annotation_semantics(self) -> AnnotationSemantics:
         return AnnotationSemantics.from_imports(self._valid_tree(), self.module_imports)
+
+    @cached_property
+    def domain_boundaries(self) -> DomainBoundaries:
+        from sarj_python_lint.rules._domain_boundaries import DomainBoundaries  # ruff: ignore[import-outside-top-level] -- share scoped domain facts without a context import cycle.
+
+        return DomainBoundaries(self)
 
     @cached_property
     def dynamic_namespace(self) -> bool:

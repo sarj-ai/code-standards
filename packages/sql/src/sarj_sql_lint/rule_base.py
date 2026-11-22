@@ -324,9 +324,8 @@ def has_dbmate_directive(source: str, directive: str) -> bool:
 # Drizzle writes this separator between statements in every migration it emits.
 _GENERATED_MIGRATION_SENTINEL = "--> statement-breakpoint"
 
-# A directory holding one of these is the root of a generator-owned migration
-# tree: Prisma writes `migration_lock.toml`, Drizzle writes `meta/_journal.json`,
-# Atlas writes `atlas.sum`.
+# A directory holding one of these is the root of a generator-owned migration tree: Prisma writes `migration_lock.toml`,
+# Drizzle writes `meta/_journal.json`, Atlas writes `atlas.sum`.
 _GENERATED_MIGRATION_MARKERS = ("migration_lock.toml", "atlas.sum")
 
 _MAX_MARKER_ASCENT = 12
@@ -389,9 +388,8 @@ def is_postgres_migration(path: Path, source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    # Dbmate/Goose/Liquibase directives establish migration intent even when a
-    # small PostgreSQL seed uses no dialect-exclusive syntax. Supabase is a
-    # PostgreSQL migration root by contract. Ambiguous plain SQL stays silent.
+    # Dbmate/Goose/Liquibase directives establish migration intent even when a small PostgreSQL seed uses no
+    # dialect-exclusive syntax. Supabase is a PostgreSQL migration root by contract. Ambiguous plain SQL stays silent.
     return source_directive or is_postgres_source(path, source)
 
 

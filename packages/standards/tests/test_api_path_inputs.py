@@ -153,9 +153,8 @@ def _unexpected_fix(
 
 
 def test_scalar_fix_cannot_rewrite_a_sibling_through_its_dot_character(tmp_path: Path) -> None:
-    # These are real facade/custom-fixer inputs, with no dispatcher/runner double.
-    # In the old comprehension, "a.py" selects a, ., p, y; the dot exposes both
-    # banner-bearing Python files, including the separate unselected victim.
+    # These are real facade/custom-fixer inputs, with no dispatcher/runner double. In the old comprehension, "a.py"
+    # selects a, ., p, y; the dot exposes both banner-bearing Python files, including the separate unselected victim.
     root = tmp_path / "scalar-negative"
     control = tmp_path / "explicit-positive"
     root.mkdir()

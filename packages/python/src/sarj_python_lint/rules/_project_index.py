@@ -339,10 +339,8 @@ def _proxied(value: object) -> object:
 
 @final  # ruff: ignore[too-many-public-methods] -- one index owns the whole-project fact caches that spawned workers restore and check.
 class ProjectIndexSet:
-    # Borrowed ASTs and import mappings must stay unchanged for this index's lifetime.
-    # They remain mutable Python objects; in-place mutation can leave cached facts stale.
-    # Use with_unit() with a fresh unit, or rebuild from an updated source snapshot.
-    # Snapshots capture source strings, not later AST or import mutations.
+    # Borrowed ASTs and imports remain immutable for the index lifetime. Replace units or rebuild snapshots after
+    # changes to avoid stale facts.
     def __init__(
         self,
         units: Mapping[Path, SourceUnit],
@@ -399,9 +397,8 @@ class ProjectIndexSet:
         return not self._value_origins_incomplete
 
     def source_snapshot(self, *, with_facts: bool = False) -> ProjectSourceSnapshot:
-        # Rebuild memoized facts without rescanning roots or changing the
-        # module identities/order of the complete prepared source graph.
-        # with_facts also carries facts this index has already computed.
+        # Rebuild memoized facts without rescanning roots or changing the module identities/order of the complete
+        # prepared source graph. with_facts also carries facts this index has already computed.
         return ProjectSourceSnapshot(
             self._roots,
             tuple(

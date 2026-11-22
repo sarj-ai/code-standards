@@ -36,10 +36,8 @@ for specification in \
       echo "::error::$expected_name concluded $conclusion for $TARGET_SHA"
       exit 1
     fi
-    # GitHub can finish every job successfully while leaving the
-    # outer workflow-run record indefinitely in_progress. Derive the
-    # same terminal result from the exact run's jobs so publishing is
-    # not coupled to that eventual-consistency finalizer.
+    # GitHub's outer run can lag successful jobs. Derive the same terminal result from that exact run's jobs
+    # so publishing need not wait for its finalizer.
     run_id="$(jq -er '.id | select(type == "number" and . > 0 and floor == .)' <<<"$run")"
     attempt="$(jq -er '.run_attempt | select(type == "number" and . > 0 and floor == .)' <<<"$run")"
     jobs="$(gh api --method GET \

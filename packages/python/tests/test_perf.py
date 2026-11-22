@@ -37,7 +37,7 @@ _RELATIVE_OUTLIER_FACTOR = 10.0
 # Was 0.003 s.
 _RELATIVE_SLACK_VS_PARSE = 0.12
 
-# Rule timings on this file are strongly bimodal: roughly half the rules early-out (a test-scoped rule on non-test source, a SQL rule on a file with no SQL, a tenant rule on a file with no tenant column) and land under 1 ms, while rules that actually walk the tree cost 3-55 ms.
+# Per-rule timings are bimodal: symbol-prefilter exits take under 1 ms, while actual AST walks take 3-55 ms.
 _ACTIVE_RULE_FLOOR_VS_PARSE = 0.17
 
 
@@ -97,11 +97,8 @@ def test_no_rule_exceeds_absolute_budget(rule_timings: _RuleTimings) -> None:
 
 
 def test_no_rule_is_algorithmic_outlier(rule_timings: _RuleTimings) -> None:
-    # Every rule is timed on the path flavour where it does real work (see the
-    # module docstring), so the "active" floor below is a canary on the benchmark
-    # source rather than a filter on gated rules: with per-path timing there is no
-    # rule that legitimately sits at zero, so anything that does means the
-    # synthetic module stopped exercising the registry.
+    # Every rule is measured on an active path. The activity floor detects a stale benchmark fixture; it never excludes
+    # rules from gating.
     parse_s, timings = rule_timings.parse_s, rule_timings.rules
     floor = parse_s * _ACTIVE_RULE_FLOOR_VS_PARSE
     active = sorted(t for t in timings.values() if t >= floor)

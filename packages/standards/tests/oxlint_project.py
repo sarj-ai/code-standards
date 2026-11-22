@@ -1,8 +1,5 @@
-# Real Oxlint projects for the Standards Oxlint tests.
-#
-# Fixtures link each package of the TypeScript package's locked
-# ``node_modules`` and install the built ``@sarj`` Oxlint plugin from ``dist`` as
-# ``@sarj/eslint-plugin``, the specifier the managed config uses.
+# Real Oxlint fixtures link locked dependencies and install the built plugin under the managed config's expected package
+# specifier.
 
 from __future__ import annotations
 

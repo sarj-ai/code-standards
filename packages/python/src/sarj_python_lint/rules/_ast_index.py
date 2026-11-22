@@ -105,11 +105,8 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
         yield current
 
 
-# Parsed modules are shared by the file context, the project index and every rule.
-# Their owner (a project `SourceUnit`) holds a `SharedModule`, which indexes the
-# module once, on first use. The registry is weak, so the index lives exactly as
-# long as its owner. Unowned (usually synthetic) modules are walked directly:
-# indexing costs more than one walk.
+# SourceUnit owns a weakly registered SharedModule, indexing its immutable AST once. Unowned synthetic modules use
+# direct walks.
 @final
 class SharedModule:
     def __init__(self, tree: ast.Module) -> None:

@@ -502,6 +502,7 @@
     "text": [
       "cloudbuild-contract",
       "commented-out-config",
+      "concise-shell-prose",
       "config-comment-wall",
       "declarative-deployment-boundary",
       "ephemeral-execution-artifact",
@@ -823,7 +824,8 @@
       "SARJ310",
       "SARJ311",
       "SARJ315",
-      "SARJ316"
+      "SARJ316",
+      "SARJ317"
     ]
   },
   "retired": [

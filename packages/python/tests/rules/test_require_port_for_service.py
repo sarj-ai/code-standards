@@ -1445,9 +1445,8 @@ def test_class_whose_suffix_is_not_in_scope_still_fires() -> None:
 
 
 def test_name_containing_a_service_tail_mid_word_is_silent() -> None:
-    # The gate is a tail, not a substring: `BigThingServiceRunner` contains `Service`
-    # but does not end in it. (The conjunct that the *port suffix* must itself be
-    # service-shaped is pinned separately, below.)
+    # The gate is a tail, not a substring: `BigThingServiceRunner` contains `Service` but does not end in it. (The
+    # conjunct that the *port suffix* must itself be service-shaped is pinned separately, below.)
     assert (
         len(
             _check(

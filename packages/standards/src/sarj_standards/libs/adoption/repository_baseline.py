@@ -22,47 +22,8 @@ if TYPE_CHECKING:
 
 
 PATH = ".repo-standards/baseline.json"
-# These releases only introduce and promote the nonbaselineable Makefile rule;
-# ordinary finding identities and the existing manifest scope stay compatible.
-# Policy 21 changes a baselineable documentation rule's fingerprint version;
-# policy 22 adds baselineable PR-template checks. Preserve rejection of these
-# transitions rather than silently recapturing or dropping existing debt.
-# Policy 26 accepts literal Git paths previously rejected as wildcard syntax.
-# Every previously valid manifest scope and finding identity stays unchanged;
-# retain all recorded warning/error debt and change only the policy metadata.
-# Policy 27 adds a default-disabled local-residue warning. Existing rule
-# definitions, fingerprints and scope serialization are unchanged. Explicitly
-# enabling it still leaves every new finding unaccepted by the warning ratchet.
-# Policy 28 changes operational-script-tests identities; only empty policy 27
-# baselines remain compatible. Accepted debt still requires a separate review.
-# Policy 29 adds a default-disabled migration warning. Existing finding
-# identities and manifest scope remain unchanged; preserve all accepted debt.
-# Empty policy 27 baselines may compose the reviewed 27 -> 28 -> 29 steps.
-# Policy 30 corrects counts for the opt-in migration warning introduced in 29.
-# Policy 28 debt predates that rule and keeps its identities. Empty policy 27
-# baselines compose the reviewed 27 -> 28 transition; empty 29 baselines have
-# no accepted warning debt to invalidate. Error-only policy 29 baselines also
-# exclude that warning; parsing an omitted include_warnings flag means False.
-# Nonempty policy 29 warning baselines still require a separate review.
-# Policies 31/32 introduce/promote the opt-in image rule. Policy 30 debt
-# predates it; all existing rule identities and empty-image scopes stay stable.
-# Policy 31 warning debt may include image-v1 findings: preserve rejection
-# unless it is empty or explicitly error-only, rather than dropping that debt.
-# Policy 33 excludes nonconsolidatable migrations from counts; the rule already
-# exists in 6.16.3, so counts change without changing identities or scope. Reach
-# it only by composing the existing policy 32 migration with the reviewed 32 -> 33 step.
-# Policy 34 changes PR-template fingerprints. Preserve nonempty debt only when
-# the configured repository has no template review policy; active scopes need
-# a separate provenance review. Empty baselines contain no accepted identities.
-# Policy 35 requires Merge Risk in active template scopes and changes that
-# rule's fingerprints again. Keep the same empty-or-no-review-policy boundary.
-# Policy 36 changes JavaScript severity and default selection. Only empty
-# policy 35 baselines can advance without accepting or discarding any debt.
-# Policies 37/38 add Markdown advice; 39 changes PR-template fingerprints.
-# Compose these upgrades only for empty baselines, preserving warning choices
-# and scope. Existing debt still needs its own compatibility review.
-# Policy 40 adds warning-first Terraform topology rules without changing existing
-# identities. Only empty baselines advance; new findings remain unaccepted.
+# Only explicitly reviewed policy transitions preserve baseline identities, scope and warning choices. Fingerprint
+# changes or accepted debt require separate review unless the encoded compatibility proof permits migration.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -108,10 +69,7 @@ def compatible_policy_change(root: Path, before: bytes, after: bytes) -> bool:
         return False
 
 
-# Fingerprints of the committed findings on files the migration deletes. The Oxlint migration deletes
-# eslint.config.mjs and eslint.strict.mjs; Repo Standards rejects a baseline that still accepts a finding
-# on a file that is gone ("resolved fingerprints"). Without a baseline, or when the analysis is incomplete,
-# nothing is retired.
+# Retire only findings on migration-deleted files; absent or incomplete baselines authorize no retirement.
 def retired_fingerprints(root: Path, deleted: Collection[str]) -> frozenset[str]:
     if not deleted or not (root / PATH).is_file():
         return frozenset()
@@ -121,9 +79,8 @@ def retired_fingerprints(root: Path, deleted: Collection[str]) -> frozenset[str]
     return frozenset(item.fingerprint for item in report.diagnostics if item.path in deleted)
 
 
-# Carry the baseline over the Oxlint migration: drop the accepted fingerprints in `retired` (findings on
-# files it deletes) and follow a manifest change that only drops JavaScript artifact entries, such as the
-# deleted eslint.strict.mjs. No finding can name a deleted file, so the remaining fingerprints stay valid.
+# Oxlint migration drops only deleted JavaScript artifacts and their accepted fingerprints; surviving findings retain
+# valid identities.
 def rescope(contents: bytes, previous: bytes, manifest: bytes, retired: Collection[str] = frozenset()) -> bytes:
     contents = _without_fingerprints(contents, frozenset(retired) & set(parse_baseline_bytes(contents).fingerprints))
     baseline = parse_baseline_bytes(contents)

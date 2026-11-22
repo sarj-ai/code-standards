@@ -257,9 +257,8 @@ def _hidden_parameters(
 
     hidden: dict[str, bool] = {}
     rebound: set[str] = set()
-    # Python decides every local binding for the whole function before it
-    # executes. Seed the resolver with that complete scope so a branch-local
-    # `settings = ...` cannot be mistaken for the imported settings object.
+    # Python decides every local binding for the whole function before it executes. Seed the resolver with that complete
+    # scope so a branch-local `settings = ...` cannot be mistaken for the imported settings object.
     shadowed = set(scope_bindings(init))
     receiver = positional[0].arg if positional else None
     for statement in init.body:

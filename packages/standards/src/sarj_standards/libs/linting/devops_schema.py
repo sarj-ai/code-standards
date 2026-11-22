@@ -300,9 +300,8 @@ def _deploy_schema(node: MappingNode, version: str) -> Schema:
     if kind is None or kind not in _DEPLOY_FIELDS:
         message = f"No structural Cloud Deploy contract covers kind {kind}"
         raise ValueError(message)
-    # This deliberately permits additional fields. Google publishes a YAML
-    # reference, not a complete standalone JSON schema; this contract checks
-    # documented known field types and never pretends to replace native API validation.
+    # This deliberately permits additional fields. Google publishes a YAML reference, not a complete standalone JSON
+    # schema; this contract checks documented known field types and never pretends to replace native API validation.
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "allOf": [

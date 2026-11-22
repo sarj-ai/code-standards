@@ -162,7 +162,9 @@ def run_typescript_release(
 ) -> PackedArtifact | None:
     if mode not in {"check", "pack", "publish"}:
         msg = f"unsupported TypeScript release mode: {mode}"
-        raise ValueError(msg)
+        raise ValueError(
+            msg
+        )  # sarj-noqa: SARJ542 -- Reject invalid external release modes before invoking pack or publish.
     build_runner = run_build_process if runner is run_process else runner
     if mode == "pack":
         if destination is None:

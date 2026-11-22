@@ -85,7 +85,9 @@ class ReleaseAgePolicy:
         raw_days = "14" if days_value is None else days_value
         try:
             parsed_days = int(raw_days, 10)
-        except ValueError as exc:
+        except (
+            ValueError
+        ) as exc:  # sarj-noqa: SARJ585 -- Do not echo untrusted release-age environment values in parser errors.
             msg = "MIN_RELEASE_AGE_DAYS must be a non-negative integer"
             raise ValueError(msg) from exc
         if parsed_days < 0 or str(parsed_days) != raw_days.strip():

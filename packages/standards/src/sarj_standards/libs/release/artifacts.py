@@ -193,7 +193,9 @@ def _inspect_package_manifest(
             msg = "package archive manifest exceeds the byte limit"
             raise ValueError(msg)
         manifest: object = parse_unique_json(source.decode("utf-8"))
-    except json.JSONDecodeError as exc:
+    except (
+        json.JSONDecodeError
+    ) as exc:  # sarj-noqa: SARJ585 -- Archive rejection must withhold raw package.json source from diagnostics.
         msg = "package archive contains invalid package/package.json"
         raise ValueError(msg) from exc
     manifest_data = string_object_dict(manifest, label="packed package.json")

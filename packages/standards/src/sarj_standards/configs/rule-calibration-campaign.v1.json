@@ -1477,6 +1477,14 @@
       "outcome": "Kept SARJ301 and its canonical name stable, clarified its summary and executable UI examples, and retained warning severity. Analysis now requires two same-indent entries or an immediately adjacent same-key active alternative in YAML, TOML, or JSONC. Explanatory blocks, protected references, exact suppressions, and multiline scalar payloads are preserved. Ambiguous reference-config and shell dialects are out of scope; YAML sequence and collection-valued mappings remain conservative false negatives. No autofix or SARJ420 changes."
     },
     {
+      "task": "rule-audit/text/concise-shell-prose",
+      "family": "text",
+      "ruleId": "concise-shell-prose",
+      "state": "pending",
+      "evidence": "Paired native shell AST cases cover comments, literal help output, quoted hashes, configuration heredocs, redirects, shadowed commands, directives, malformed syntax and exact justified exceptions. A frozen 51-case multi-owner corpus has 24 true-positive and 27 true-negative cases, with no false positives, missed expectations or duplicate anchors. The maintained 66-script inventory has no retained findings after one comment-only adoption; its minified program is unchanged. Broader field calibration remains pending.",
+      "outcome": "Apply the explicitly user-requested blocking prose policy: two nonempty comment lines and 40 words, or three nonempty help lines and 40 words. Preserve required data, machine directives, legal notices and exact-code justified contracts. Parser failures propagate; prose-budget findings never delete observable help or unproved commentary automatically."
+    },
+    {
       "task": "rule-audit/text/config-comment-wall",
       "family": "text",
       "ruleId": "config-comment-wall",

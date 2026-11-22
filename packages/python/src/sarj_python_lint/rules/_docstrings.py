@@ -174,9 +174,8 @@ PROMPT_DECORATOR_MARKERS = frozenset(
     }
 )
 
-# Class docstrings consumed as schema descriptions rather than reader-only
-# prose. Final dotted names are intentional: imports can alias packages, while
-# the runtime base/decorator still has one of these stable framework surfaces.
+# Class docstrings consumed as schema descriptions rather than reader-only prose. Final dotted names are intentional:
+# imports can alias packages, while the runtime base/decorator still has one of these stable framework surfaces.
 SCHEMA_BASE_NAMES = frozenset(
     {
         "BaseModel",
@@ -195,9 +194,8 @@ SCHEMA_BASE_NAMES = frozenset(
 
 SCHEMA_DECORATOR_MARKERS = frozenset({"graphene", "msgspec", "pydantic", "strawberry"})
 
-# Python/framework constructs that visibly publish or copy the decorated
-# function's docstring. Generic decorators are not exempt merely because they
-# exist.
+# Python/framework constructs that visibly publish or copy the decorated function's docstring. Generic decorators are
+# not exempt merely because they exist.
 FRAMEWORK_DOCSTRING_DECORATOR_MARKERS = PROMPT_DECORATOR_MARKERS | frozenset(
     {"cached_property", "fixture", "property", "wraps"}
 )

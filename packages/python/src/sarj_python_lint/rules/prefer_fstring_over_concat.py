@@ -85,9 +85,8 @@ _MAX_LITERAL_CHARACTERS = 160
 # A `<expr> + "<whitespace>"` pair is a terminator, not string building.
 _TERMINATOR_OPERANDS = 2
 
-# Calls whose Python contract guarantees a concrete ``str`` result.  Keep the
-# list deliberately small: user functions named ``render``/``serialize`` may
-# return expression objects with an overloaded ``+``.
+# Calls whose Python contract guarantees a concrete ``str`` result.  Keep the list deliberately small: user functions
+# named ``render``/``serialize`` may return expression objects with an overloaded ``+``.
 _STRING_CALLS = frozenset({"ascii", "bin", "chr", "format", "hex", "oct", "repr", "str"})
 _STRING_METHODS = frozenset(
     {
@@ -251,9 +250,8 @@ class PreferFstringOverConcat(Rule):
         if tree is None:
             return []
 
-        # One walk collects everything: the candidate chains, the inner links of
-        # each chain (so a 4-operand chain reports once), and the chains sitting
-        # in a context whose rewrite would be wrong.
+        # One walk collects everything: the candidate chains, the inner links of each chain (so a 4-operand chain
+        # reports once), and the chains sitting in a context whose rewrite would be wrong.
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
@@ -549,9 +547,8 @@ def _unsupported_interpolation_operands(
         return True
     if sum(len(text) for text in literals) > _MAX_LITERAL_CHARACTERS:
         return True
-    # A literal is not sufficient type proof: libraries such as pandas and
-    # SQLAlchemy overload reflected ``+`` on their expression objects.  Only
-    # recommend an f-string when every runtime operand is provably a string.
+    # A literal is not sufficient type proof: libraries such as pandas and SQLAlchemy overload reflected ``+`` on their
+    # expression objects.  Only recommend an f-string when every runtime operand is provably a string.
     if not all(_is_string_expr(expr, evidence) for expr in dynamic):
         return True
     if any("{" in text or "}" in text for text in literals):
@@ -706,9 +703,8 @@ def _is_string_expr(expr: ast.expr, evidence: _StringEvidence) -> bool:
         case _:
             return False
 
-    # Indexing/slicing a proven string preserves ``str`` only for integer
-    # positions and slices; a mapping subscript does not inherit its
-    # container's annotation.
+    # Indexing/slicing a proven string preserves ``str`` only for integer positions and slices; a mapping subscript does
+    # not inherit its container's annotation.
     integer_index = (
         isinstance(index, ast.Constant) and isinstance(index.value, int) and not isinstance(index.value, bool)
     )

@@ -339,7 +339,9 @@ class RuleSpec(RuleDocumentation):
         if self.options_schema is not None:
             try:
                 parsed_schema: object = json.loads(self.options_schema)  # pyright: ignore[reportAny] -- narrow the standard-library JSON boundary below.
-            except json.JSONDecodeError as exc:
+            except (
+                json.JSONDecodeError
+            ) as exc:  # sarj-noqa: SARJ585 -- Pydantic rule-schema rejection must use sanitized ValueError.
                 msg = "rule options schema must be valid JSON"
                 raise ValueError(msg) from exc
             if not isinstance(parsed_schema, dict):

@@ -114,9 +114,8 @@ def test_fires_in_ordinary_test_paths(path: str):
     ],
 )
 def test_reaches_shared_double_modules_that_is_test_path_misses(path: str):
-    # One first-party repo keeps its shared fakes in `common/testing/fakes.py`
-    # and another keeps one in `app/observability/langfuse_stub.py`; neither
-    # lives under `tests/`.
+    # One first-party repo keeps its shared fakes in `common/testing/fakes.py` and another keeps one in
+    # `app/observability/langfuse_stub.py`; neither lives under `tests/`.
     assert len(_check(_FAKE_S3, path)) == 1
 
 
@@ -1004,9 +1003,8 @@ class InMemorySmtpServer:
 
 
 def test_a_long_single_method_canned_data_factory_is_exempt():
-    # dagster `examples/ingestion-patterns/tests/conftest.py:32` —
-    # `MockKafkaConsumerResource.poll_messages` fabricates message dicts and
-    # implements no part of the Kafka protocol.
+    # dagster `examples/ingestion-patterns/tests/conftest.py:32` — `MockKafkaConsumerResource.poll_messages` fabricates
+    # message dicts and implements no part of the Kafka protocol.
     rows = "\n".join(f'            {{"offset": {i}, "value": "v{i}"}},' for i in range(22))
     src = f"""
 class MockKafkaConsumerResource:
@@ -1192,9 +1190,8 @@ if TYPE_CHECKING:
     ],
 )
 def test_a_word_that_merely_contains_a_token_does_not_match(name: str):
-    # `Requests` matches, `Request` does not; `ses` never matches as an infix, so
-    # `Responses`/`Processes`/`Session` stay silent; `time`/`now` are not clock
-    # tokens at all because `Timer`/`Timeout`/`Nowhere` are everywhere.
+    # `Requests` matches, `Request` does not; `ses` never matches as an infix, so `Responses`/`Processes`/`Session` stay
+    # silent; `time`/`now` are not clock tokens at all because `Timer`/`Timeout`/`Nowhere` are everywhere.
     src = f"""
 class {name}:
     def a(self):

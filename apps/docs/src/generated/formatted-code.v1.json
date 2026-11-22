@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e5fd16f006eda4608f3500d0803e422477b94cc14c6247925c456cdbdc716952",
-  "cliSha256": "49871408b3bc9a138dd75af0bae3079a4cde624d7c239844358e136ede3516b9",
+  "catalogSha256": "a21e6f6901e1630f3ef16020ffe89951d5d4e1d12bb7df4d3818405ab58c4188",
+  "cliSha256": "bfe5899f06e537342395af4ae85321bc9ed0f8d213554db5546a443f417e860a",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -12272,7 +12272,7 @@
           "files": [
             {
               "path": "app.py",
-              "source": "def activation_reasons():\n    # Everything standing between this integration and being usable.\n    # Returns all the reasons rather than the first failure.\n    # Someone activating a half-built integration wants the complete list.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
+              "source": "def activation_reasons():\n    # Returns all the reasons rather than the first failure.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
             }
           ],
           "fixedFiles": [],
@@ -12280,7 +12280,7 @@
           "id": "activation-rationale",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "The original activation paragraph explains why all failures are returned"
+          "title": "A concise necessary constraint remains local"
         }
       ],
       "optionsSchemaSource": null
@@ -13832,6 +13832,21 @@
           "title": "An ordinary guard has no validator rejection protocol"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel\n\nEnvironment = Literal[\"sandbox\", \"live\"]\n\n\nclass Request(BaseModel):\n    environment: Environment\n\n\ndef save(request: Request, environment: Environment) -> None:\n    if request.environment != environment:\n        raise ValueError(\"Wrong environment\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "postconstruction-domain-rejection",
+          "outcome": "reject",
+          "scenarioId": "validated-construction",
+          "title": "Typed record guards belong at construction"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -13879,6 +13894,21 @@
           "outcome": "reject",
           "scenarioId": "typed-payload",
           "title": "A guarded rejection hides typed context in its exception contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel, model_validator\n\nEnvironment = Literal[\"sandbox\", \"live\"]\n\n\nclass Request(BaseModel):\n    environment: Environment\n    expected: Environment\n\n    @model_validator(mode=\"after\")\n    def validate_pair(self):\n        if self.environment != self.expected:\n            raise ValueError(\"Wrong environment\")\n        return self\n\n\ndef save(request: Request) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "validated-domain-construction",
+          "outcome": "accept",
+          "scenarioId": "validated-construction",
+          "title": "The model rejects invalid values at construction"
         }
       ],
       "optionsSchemaSource": null
@@ -17686,6 +17716,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/cli.py",
+              "source": "import typer\n\napp = typer.Typer()\n\n\n@app.command()\ndef run():\n    \"\"\"Run the command.\n    Prepare the account.\n    Configure the workspace.\n    Read the deployment runbook.\n    \"\"\"\n    send()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "long-command-help",
+          "outcome": "reject",
+          "scenarioId": "concise-help",
+          "title": "Framework help does not exempt an operational runbook"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/service.py",
               "source": "\"\"\"Service entry points.\n\nCoordinates requests.\n\"\"\"\n\nVALUE = 1\n"
             }
@@ -17716,6 +17761,21 @@
           "outcome": "accept",
           "scenarioId": "module-docstring-autofix",
           "title": "A module description consumed at runtime is retained"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/cli.py",
+              "source": "import typer\n\napp = typer.Typer()\n\n\n@app.command()\ndef run():\n    \"\"\"Run the command.\"\"\"\n    send()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "short-command-help",
+          "outcome": "accept",
+          "scenarioId": "concise-help",
+          "title": "Required concise framework help remains observable"
         },
         {
           "expectedCount": 1,
@@ -18977,6 +19037,21 @@
           "files": [
             {
               "path": "app/send.py",
+              "source": "try:\n    send()\nexcept (OSError, ValueError):\n    message = \"Request failed\"\n    raise SystemExit(message) from None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "constant-cli-replacement",
+          "outcome": "reject",
+          "scenarioId": "constant-replacement",
+          "title": "A generic CLI replacement hides the original failure"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/send.py",
               "source": "try:\n    send()\nexcept Exception as error:\n    raise RuntimeError(str(error)) from error\n"
             }
           ],
@@ -19001,6 +19076,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Let the original exception reach its owner"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/send.py",
+              "source": "send()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/send.py",
+          "id": "unwrapped-failure",
+          "outcome": "accept",
+          "scenarioId": "constant-replacement",
+          "title": "The original failure retains its type and context"
         }
       ],
       "optionsSchemaSource": null
@@ -19999,6 +20089,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from typing import Literal\n\nEnvironment = Literal[\"sandbox\", \"live\"]\n\n\ndef save(environment: Environment) -> None: ...\ndef run(value: str) -> None:\n    save(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "erased-domain-argument",
+          "outcome": "reject",
+          "scenarioId": "domain-flow",
+          "title": "A caller retains the established domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/services/files.py",
               "source": "from typing import NewType\n\nFileId = NewType(\"FileId\", str)\n\n\ndef load(file_id: str) -> None: ...\n"
             }
@@ -20069,6 +20174,21 @@
           "outcome": "accept",
           "scenarioId": "owned-contract",
           "title": "Abstract contracts use distinct domain identifiers"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Literal\n\nEnvironment = Literal[\"sandbox\", \"live\"]\n\n\ndef save(environment: Environment) -> None: ...\ndef run(value: Environment) -> None:\n    save(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "preserved-domain-argument",
+          "outcome": "accept",
+          "scenarioId": "domain-flow",
+          "title": "A typed caller preserves the closed domain"
         },
         {
           "expectedCount": 1,
@@ -25928,6 +26048,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A labeled optional override remains documentation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:concise-shell-prose": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.sh",
+              "source": "cat > settings.ini << 'DATA'\n[service]\nname = 'worker'\nmode = 'safe'\nregion = 'west'\nDATA\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.sh",
+          "id": "configuration-data",
+          "outcome": "accept",
+          "scenarioId": "help",
+          "title": "Configuration heredocs are data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.sh",
+              "source": "if [[ ${1:-} == --help ]]; then\n  cat << 'DOC'\nUsage: app\nConfigure the account.\nPrepare the workspace.\nRead the deployment runbook.\nDOC\nfi\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.sh",
+          "id": "help-runbook",
+          "outcome": "reject",
+          "scenarioId": "help",
+          "title": "A help branch is not a runbook"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.sh",
+              "source": "# First explanation.\n# More explanation.\n# Yet more explanation.\nrun\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.sh",
+          "id": "long-comments",
+          "outcome": "reject",
+          "scenarioId": "comments",
+          "title": "An ordinary comment wall is rejected"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.sh",
+              "source": "# The remote token expires before this lock can be retried.\nrun\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.sh",
+          "id": "short-constraint",
+          "outcome": "accept",
+          "scenarioId": "comments",
+          "title": "A concise hidden constraint remains local"
         }
       ],
       "optionsSchemaSource": null

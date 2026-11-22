@@ -277,7 +277,9 @@ def _object(path: Path, inputs: dict[Path, InputProof]) -> dict[str, JsonValue]:
     proof = inputs[path]
     try:
         parsed = parse_unique_json(proof.contents.decode("utf-8"))
-    except RecursionError as exc:
+    except (
+        RecursionError
+    ) as exc:  # sarj-noqa: SARJ585 -- Formatter ownership depth failures require the ValueError abort contract.
         msg = "formatter ownership metadata is too deeply nested"
         raise ValueError(msg) from exc
     if type(parsed) is not dict:
@@ -330,7 +332,9 @@ def _declared_dependency(package: Mapping[str, JsonValue], name: str) -> str:
 def _catalog_dependency(version: str, name: str, proof: InputProof) -> str:
     try:
         documents = parse_yaml_documents(proof.contents.decode("utf-8"))
-    except yaml.YAMLError as exc:
+    except (
+        yaml.YAMLError
+    ) as exc:  # sarj-noqa: SARJ585 -- Private formatter catalog errors must be sanitized before public diagnostics.
         msg = "native formatter catalog is malformed YAML"
         raise ValueError(msg) from exc
     parsed = documents[0] if len(documents) == 1 else None

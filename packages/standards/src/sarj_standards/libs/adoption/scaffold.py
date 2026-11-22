@@ -878,9 +878,8 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan, *, enable_rules: Se
 
 
 def _plan_repository_scope(root: Path, plan: Plan, previous: bytes, configured: bytes) -> bytes:
-    # Repo Standards rejects a [[javascript.artifacts]] entry whose file is gone, such as the
-    # eslint.strict.mjs the Oxlint migration deletes, and a baseline that accepts a finding on a gone
-    # file, such as eslint.config.mjs; drop both from the planned manifest and baseline.
+    # Oxlint migration deletes stale JavaScript artifact entries and accepted findings on those deleted files; neither
+    # may remain in the migrated manifest.
     gone = {target.relative_to(root).as_posix() for target in plan.deletes if target in plan.migration_paths}
     if not gone:
         _plan_repository_baseline(root, plan, configured)
@@ -1101,9 +1100,8 @@ def _report_independent_roots(
 
 
 def _report_unwired_nested_oxlint_configs(repository: Path, selected: Path, plan: Plan) -> None:
-    # A selected TypeScript destination is an authority boundary. Oxlint roots
-    # in sibling workspaces cannot shadow that project. Below it, Oxlint lints
-    # each file with its nearest config, so a nested config must extend the policy.
+    # A selected TypeScript destination is an authority boundary. Oxlint roots in sibling workspaces cannot shadow that
+    # project. Below it, Oxlint lints each file with its nearest config, so a nested config must extend the policy.
     for config_root in _all_roots(selected, _OXLINT_CONFIG_NAMES):
         if config_root == selected:
             continue
@@ -1248,7 +1246,9 @@ def _render_manifest_preserving_extensions(  # ruff: ignore[too-many-locals] -- 
 ) -> str:
     try:
         parsed: object = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as exc:
+    except (
+        tomllib.TOMLDecodeError
+    ) as exc:  # sarj-noqa: SARJ585 -- Manifest preservation must reject without rendering invalid private TOML.
         msg = "cannot preserve extensions from an invalid Standards manifest"
         raise ValueError(msg) from exc
     data = manifest.as_table(parsed)
@@ -1656,9 +1656,8 @@ def _plan_typescript(repository: Path, root: Path, plan: Plan) -> None:
         _plan_yarn_workspace_peers(root, plan, package)
     elif not same_package:
         _plan_package_scripts(root, plan, package)
-    # pnpm 11 reads overrides from pnpm-workspace.yaml even for a standalone
-    # package. Setup creates that policy file below, so the ensuing install is
-    # always a workspace install for pnpm.
+    # pnpm 11 reads overrides from pnpm-workspace.yaml even for a standalone package. Setup creates that policy file
+    # below, so the ensuing install is always a workspace install for pnpm.
     is_workspace = (
         client is PackageManager.PNPM or install_root != root or (install_root / "pnpm-workspace.yaml").is_file()
     )
@@ -2182,7 +2181,7 @@ def _remove_owned_precommit_hooks(text: str) -> str:
         )
         try:
             parsed: object = parse_yaml(f"repos:\n{replacement}")
-        except yaml.YAMLError as exc:
+        except yaml.YAMLError as exc:  # sarj-noqa: SARJ585 -- Generated-hook validation must abort the setup transaction through ValueError.
             msg = "generated local hook block is not valid YAML"
             raise ValueError(msg) from exc
         repositories = manifest.list_field(manifest.as_table(parsed), "repos")
@@ -2214,7 +2213,9 @@ def _owned_hook_mappings(
 ) -> tuple[dict[str, object], ...]:  # sarj-noqa: SARJ528 -- Preserve raw YAML hooks.
     try:
         parsed: object = parse_yaml(f"repos:\n{text}")
-    except yaml.YAMLError as exc:
+    except (
+        yaml.YAMLError
+    ) as exc:  # sarj-noqa: SARJ585 -- Hook inspection uses the setup transaction's ValueError abort contract.
         msg = "cannot safely inspect local pre-commit hooks: repository block is invalid YAML"
         raise ValueError(msg) from exc
     repositories = manifest.list_field(manifest.as_table(parsed), "repos")
@@ -2539,10 +2540,8 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     return "\n".join(lines) + "\n"
 
 
-# Analyzer results (Python, SQL, shell, Terraform and text lint) are reused only
-# when every input is unchanged. Pushes to the default branch write them; other
-# events only read. A cache step never fails the gate: a miss runs the analyzer.
-# The STANDARDS_RESULT_CACHE repository variable set to off forces full analysis.
+# Cache analysis only for identical inputs. Default-branch pushes write; other events read, misses rerun, and
+# STANDARDS_RESULT_CACHE=off disables reuse.
 _RESULT_CACHE_PATH: Final = "${{ runner.temp }}/standards-results"
 _RESULT_CACHE_PREFIX: Final = (
     "standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-"

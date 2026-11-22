@@ -248,9 +248,8 @@ class PolicyExemption:
     environment: tuple[tuple[str, str], ...] = ()
 
 
-# Exempts the managed versions for one install at `root` and leaves the repository's policy files
-# unchanged. An inline list replaces the configured one instead of extending it, so the
-# repository's own entries are repeated.
+# Exempts the managed versions for one install at `root` and leaves the repository's policy files unchanged. An inline
+# list replaces the configured one instead of extending it, so the repository's own entries are repeated.
 def policy_exemption(client: PackageManager, root: Path, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> PolicyExemption:
     managed = manifest.typescript_installed_versions()
     if client is PackageManager.PNPM:
@@ -301,9 +300,8 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
         case PackageManager.NPM:
             return ("npm", "exec", "--offline", "--", *command)
         case PackageManager.PNPM:
-            # `pnpm exec` only resolves binaries from the installed dependency
-            # tree. Unlike `pnpm dlx`, it never downloads a missing package, so
-            # an `--offline` flag is both unnecessary and invalid on pnpm 11.
+            # `pnpm exec` only resolves binaries from the installed dependency tree. Unlike `pnpm dlx`, it never
+            # downloads a missing package, so an `--offline` flag is both unnecessary and invalid on pnpm 11.
             return ("pnpm", "exec", *command)
         case PackageManager.YARN:
             return ("yarn", "exec", *command)

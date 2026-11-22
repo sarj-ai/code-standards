@@ -186,7 +186,9 @@ def _block(root: Path, side: _Side, paths: dict[str, str]) -> _Block:
         paths[side.name] = relative
     if side.end < side.start:
         message = f"jscpd reported a reversed line range in {relative}"
-        raise ValueError(message)
+        raise ValueError(
+            message
+        )  # sarj-noqa: SARJ542 -- Reject untrusted native clone ranges before publishing source locations.
     return _Block(relative, side.start, side.end)
 
 

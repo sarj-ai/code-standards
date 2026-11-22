@@ -68,9 +68,8 @@ def test_setter_docstring_with_lifecycle_detail_is_kept():
 
 
 def test_negation_counts_as_content():
-    # `not` is a stopword for the comment rules and deliberately NOT one here:
-    # contradicting the obvious reading of a name is the most useful thing a
-    # docstring can do.
+    # `not` is a stopword for the comment rules and deliberately NOT one here: contradicting the obvious reading of a
+    # name is the most useful thing a docstring can do.
     assert _fn("close_stream(stream: Stream)", "Close the stream. Does NOT close the socket.") == []
 
 

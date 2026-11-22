@@ -52,7 +52,9 @@ def validate_rewrites(root: Path, expected: Mapping[str, bytes]) -> frozenset[st
 def validate_native_pins(root: Path, expected: Mapping[str, NativePinRewrite]) -> frozenset[str]:
     try:
         validate_rewrites(root, {relative: rewrite.contents for relative, rewrite in expected.items()})
-    except ValueError as exc:
+    except (
+        ValueError
+    ) as exc:  # sarj-noqa: SARJ585 -- Pin retirement exposes canonical rewrite failure through ValueError.
         msg = "source differs from the canonical native bootstrap pin rewrite"
         raise ValueError(msg) from exc
     for relative, rewrite in expected.items():

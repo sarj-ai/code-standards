@@ -425,7 +425,8 @@ def test_handles_syntax_error(src: str):
     assert _check(src) == []
 
 
-# Family 11: FALSE-POSITIVE guards — non-secret lookalikes                     # These names embed a secret *substring* but are NOT secrets: LLM usage metrics (`*tokens*` counts, `token_count`), innocent words that merely embed a secret word (`secretary`), and boolean presence / state flags that answer "is it there / was it set" (`token_present`, `password_set`) rather than carrying the credential.
+# Secret substrings do not prove credentials: usage metrics, secretary-like words and boolean presence flags carry no
+# secret value.
 
 FALSE_POSITIVE_KEYWORDS = [
     "token_count",
@@ -564,7 +565,7 @@ def test_plural_secret_bundle_should_be_flagged(kw: str):
     assert _codes(f'logger.info("loaded", {kw}={kw})\n') == ["SARJ012"]
 
 
-# Family 19: LEADING boolean-flag prefixes (`has_secret`, `isToken`)           # The mirror image of the trailing flag markers in Family 11: a name whose leading WORD is a boolean predicate answers "does a secret exist?" and carries no credential, so logging it leaks nothing.
+# Leading boolean predicates such as has_secret describe presence, not credentials, just like trailing presence markers.
 
 _LEADING_FLAG_KEYWORDS = [
     "has_secret",

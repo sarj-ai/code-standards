@@ -619,9 +619,8 @@ def repository_base_sha(root: Path) -> str:
     )
     candidate = result.stdout.strip()
     if _GIT_SHA.fullmatch(candidate) is None:
-        # A baseline may be initialized before the consumer's first commit.
-        # The all-zero object ID is an explicit "no commit yet" sentinel; a
-        # rollout replaces it with the captured immutable base SHA.
+        # Before the first commit, an all-zero base is explicit absence.
+        # Rollout replaces that sentinel with the captured immutable SHA.
         return "0" * _GIT_SHA1_HEX_CHARS
     return candidate
 

@@ -144,15 +144,13 @@ _NEXT_CONFIG_NAMES: Final = frozenset(f"next.config.{suffix}" for suffix in ("js
 _PNPM_LOCKFILE_VERIFYING_MAJOR: Final = 11
 _NEXT_IGNORES_TYPE_ERRORS = re.compile(r"\bignoreBuildErrors\s*:\s*true\b")
 
-#: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
-#: particular, ``exclude-newer`` can make a just-published exact bundle appear
-#: unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
+#: Standards must not inherit a consumer repository's ``uv.toml`` policy. In particular, ``exclude-newer`` can make a
+#: just-published exact bundle appear unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
 _UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+(?:code|sarj)-standards(?:==[^\s]+)?)")
 _PERSISTED_CREDENTIALS_OFF = re.compile(r"(?m)^(?P<indent>[ \t]*)persist-credentials:\s*false\s*$")
 
-#: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.
-#:
-#: Raw commit pins can silently become stale, so report them as unverifiable.
+#: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.  Raw commit pins can silently become stale,
+#: so report them as unverifiable.
 _REV = re.compile(r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?""")
 _HOOK_ID = re.compile(r"(?m)^\s*-\s+id:\s*(?P<id>[^\s#]+)")
 
@@ -194,11 +192,8 @@ _CONFIG_TARGETS: Final = MappingProxyType(
     }
 )
 
-#: Where a rule identifier can be written: configs and suppression baselines, but
-#: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
-#: rule that no longer exists is its own error under the managed Oxlint config's
-#: `reportUnusedDisableDirectives: "error"`, and a `sarj-noqa: SARJnnn` comment
-#: outlives the code it named.
+#: Retired rule identifiers remain invalid in source suppressions as well as configs; unused-directive checks enforce
+#: those references.
 _REFERENCE_SUFFIXES: Final = (
     ".cjs",
     ".cts",

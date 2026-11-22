@@ -364,9 +364,8 @@ def test_syntax_error_returns_empty():
 
 
 def test_function_referenced_as_value_is_exempt():
-    # Minimized from attrs' fmt_setter family: the function is returned as a
-    # value, so its signature is a callback protocol shared with other
-    # implementations and cannot go keyword-only unilaterally.
+    # Minimized from attrs' fmt_setter family: the function is returned as a value, so its signature is a callback
+    # protocol shared with other implementations and cannot go keyword-only unilaterally.
     src = """
 def _assign(attr_name: str, value: str, has_on_setattr: bool) -> str:
     return f"self.{attr_name} = {value}"
@@ -478,9 +477,8 @@ def test_protocol_names_as_plain_functions_still_fire(name: str):
 
 
 def test_super_call_proves_an_override_and_exempts():
-    # Minimized from httpx `_models.py:1257`,
-    # `_CookieCompatRequest(urllib.request.Request).add_unredirected_header`:
-    # an override cannot narrow the base class's calling convention.
+    # Minimized from httpx `_models.py:1257`, `_CookieCompatRequest(urllib.request.Request).add_unredirected_header`: an
+    # override cannot narrow the base class's calling convention.
     src = """
 class Child(Base):
     def register(self, old_key: str, new_key: str) -> None:
@@ -536,9 +534,8 @@ def f(source_id: str, target_id: str) -> None: ...
 
 
 def test_pep484_positional_only_param_names_are_exempt():
-    # Minimized from rich `_null_file.py:24`, `NullFile(IO[str]).seek`:
-    # PEP 484 spells positional-only parameters `__x`, so they cannot be made
-    # keyword-only at all.
+    # Minimized from rich `_null_file.py:24`, `NullFile(IO[str]).seek`: PEP 484 spells positional-only parameters `__x`,
+    # so they cannot be made keyword-only at all.
     src = """
 class NullFile:
     def scroll(self, __offset: int, __whence: int = 1) -> int: ...
@@ -646,9 +643,8 @@ def test_a_leading_letter_label_is_not_a_symmetric_suffix():
     ],
 )
 def test_test_support_directories_are_exempt(path: str):
-    # `is_test_path` knows the segments `tests` and `test` only, so a shared
-    # test-helper package one directory name away was being linted as
-    # production code although the charter already exempts test helpers.
+    # `is_test_path` knows the segments `tests` and `test` only, so a shared test-helper package one directory name away
+    # was being linted as production code although the charter already exempts test helpers.
     src = "def create_container(bucket_id: str, blob_id: str) -> None: ...\n"
     assert _check(src, path) == []
 

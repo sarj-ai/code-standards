@@ -107,9 +107,8 @@ class CoreIAC:
         if self._git("show", f"{introduced}:{CONTRACT_PATH}") != current:
             message = "immutable guard contract manifest was changed"
             raise ValueError(message)
-        # An integration commit may be the first addition on this branch. Its
-        # parent independently proves these guards already existed here, without
-        # depending on feature-branch commit IDs that squash/rebase can discard.
+        # An integration commit may be the first addition on this branch. Its parent independently proves these guards
+        # already existed here, without depending on feature-branch commit IDs that squash/rebase can discard.
         return self._git("rev-parse", "--verify", f"{introduced}^1").strip()
 
     def _original_sources(self, introductions: tuple[str, ...], current: str, paths: Sequence[str]) -> dict[str, str]:

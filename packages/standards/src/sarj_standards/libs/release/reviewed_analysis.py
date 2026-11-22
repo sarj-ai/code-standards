@@ -302,10 +302,14 @@ def _member_path(member: ZipInfo, kind: CheckKind) -> PurePosixPath:
     if member.is_dir():
         if kind != CheckKind.WHEELS or path != PurePosixPath("deps"):
             msg = "unsafe reviewed analysis ZIP directory"
-            raise ValueError(msg)
+            raise ValueError(
+                msg
+            )  # sarj-noqa: SARJ542 -- Validate ZIP directory containment before accepting any artifact member.
     elif path.is_absolute() or "\\" in str(path) or not _allowed_member(path, kind):
         msg = "unsafe reviewed analysis ZIP member"
-        raise ValueError(msg)
+        raise ValueError(
+            msg
+        )  # sarj-noqa: SARJ542 -- Validate ZIP member containment before accepting any artifact path.
     return path
 
 
@@ -313,7 +317,7 @@ def _verify_results(bundle: ZipFile, paths: tuple[PurePosixPath, ...], proof: An
     sarif_paths = [path for path in paths if path.suffix == ".sarif"]
     if bool(sarif_paths) != (proof.kind in {CheckKind.PYTHON, CheckKind.JAVASCRIPT}):
         msg = "reviewed CodeQL proof requires its SARIF results"
-        raise ValueError(msg)
+        raise ValueError(msg)  # sarj-noqa: SARJ542 -- Artifact members must match the source-qualified workflow proof.
     for path in sarif_paths:
         document = bundle.read(str(path)).decode("utf-8")
         parse_unique_json(document)
@@ -321,10 +325,10 @@ def _verify_results(bundle: ZipFile, paths: tuple[PurePosixPath, ...], proof: An
     if proof.kind == CheckKind.WHEELS:
         if bundle.read("SOURCE_COMMIT").decode("ascii").strip() != proof.source_commit:
             msg = "reviewed wheel source commit does not match its proof"
-            raise ValueError(msg)
+            raise ValueError(msg)  # sarj-noqa: SARJ542 -- Wheel source commit must match the reviewed archive proof.
         if bundle.read("SOURCE_TREE").decode("ascii").strip() != proof.tree:
             msg = "reviewed wheel source tree does not match its proof"
-            raise ValueError(msg)
+            raise ValueError(msg)  # sarj-noqa: SARJ542 -- Wheel source tree must match the reviewed archive proof.
         if not any(path.suffix == ".whl" and len(path.parts) == 1 for path in paths):
             msg = "reviewed wheel proof contains no release wheel"
             raise ValueError(msg)

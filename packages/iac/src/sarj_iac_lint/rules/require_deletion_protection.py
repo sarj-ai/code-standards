@@ -63,9 +63,8 @@ _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"
 _PREVENT_DESTROY = "prevent_destroy"
 
-# A `google_bigquery_table` carrying one of these children is a view, not a table:
-# it stores no rows, and the provider requires `deletion_protection = false` for a
-# view whose query can be updated, since the update is a replace.
+# A `google_bigquery_table` carrying one of these children is a view, not a table: it stores no rows, and the provider
+# requires `deletion_protection = false` for a view whose query can be updated, since the update is a replace.
 _BIGQUERY_TABLE = "google_bigquery_table"
 _VIEW_CHILDREN = ("view", "materialized_view")
 

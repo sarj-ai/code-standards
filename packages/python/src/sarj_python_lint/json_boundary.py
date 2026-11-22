@@ -5,7 +5,9 @@ from typing import TypeIs
 def parse_json(text: str) -> object:
     try:
         return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_invalid_constant)  # pyright: ignore[reportAny] -- untyped stdlib parser boundary.
-    except RecursionError as error:
+    except (
+        RecursionError
+    ) as error:  # sarj-noqa: SARJ585 -- Bounded JSON decoding exposes depth rejection through ValueError.
         message = "JSON nesting exceeds the supported depth"
         raise ValueError(message) from error
 

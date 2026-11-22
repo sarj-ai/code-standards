@@ -37,11 +37,15 @@ def _paragraph(kind: str) -> str:
 
 @pytest.mark.parametrize("kind", ["rationale", "technical", "citation"])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=("lf", "crlf"))
-def test_meaning_beyond_action_names_preserves_the_comments(kind: str, newline: str) -> None:
+def test_meaning_beyond_action_names_requires_manual_budget_repair(kind: str, newline: str) -> None:
     source = _paragraph(kind).replace("\n", newline)
     findings = REGISTRY[_RULE]().check(_PATH, source)
-    assert findings == []
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ434"
+    assert findings[0].severity is Severity.ERROR
+    assert "two comment lines" in findings[0].message
     context = PythonFileContext(_PATH, source)
+    assert CommentFixes(context).fixes(findings[0]) == []
     forced_error = Diagnostic(_PATH, 2, 5, "SARJ434", "duplicate narration", severity=Severity.ERROR)
     assert CommentFixes(context).fixes(forced_error) == []
     assert fix_source(_PATH, source, rule_ids=[_RULE]) == source
@@ -71,7 +75,7 @@ def test_original_error_fix_still_converges_beside_preserved_technical_prose() -
     warning = _paragraph("rationale").replace("def reasons():", "def guarded_reasons():")
     source = example.focus_file.source + "\n" + warning
     findings = REGISTRY[_RULE]().check(_PATH, source)
-    assert [finding.severity for finding in findings] == [Severity.ERROR]
+    assert [finding.severity for finding in findings] == [Severity.ERROR, Severity.ERROR]
     fixed = fix_source(_PATH, source, rule_ids=[_RULE])
     assert fixed == example.fixed_files[0].source + "\n" + warning
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
@@ -83,7 +87,12 @@ def test_original_error_fix_still_converges_beside_preserved_technical_prose() -
             source, str(_PATH), "exec", dont_inherit=True
         )
     )
-    assert REGISTRY[_RULE]().check(_PATH, fixed) == []
+    remaining = REGISTRY[_RULE]().check(_PATH, fixed)
+    assert len(remaining) == 1
+    assert remaining[0].code == "SARJ434"
+    assert remaining[0].severity is Severity.ERROR
+    assert "two comment lines" in remaining[0].message
+    assert CommentFixes(PythonFileContext(_PATH, fixed)).fixes(remaining[0]) == []
     assert fix_source(_PATH, fixed, rule_ids=[_RULE]) == fixed
 
 

@@ -65,7 +65,9 @@ def application_logging_uses(path: Path, source: str, *, root: Path) -> tuple[Ap
         raise ValueError(msg)
     try:
         relative = path.relative_to(root)
-    except ValueError as exc:
+    except (
+        ValueError
+    ) as exc:  # sarj-noqa: SARJ585 -- Containment errors must not expose absolute private repository paths.
         msg = "logging policy source escapes repository root"
         raise ValueError(msg) from exc
     if relative.suffix not in {".py", ".pyi"} or len(source) > _MAX_SOURCE_CHARACTERS:
