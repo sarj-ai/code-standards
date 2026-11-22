@@ -232,10 +232,13 @@ def _is_opaque_value(value: ast.expr, *, single_value: bool, imports: ImportInde
     # the case apart — only an all-opaque case falls back to argument-name-and-index components.
     if single_value and isinstance(value, (ast.Tuple, ast.List)):
         return True
-    if isinstance(value, ast.Constant) and value.value is Ellipsis:
-        return True
-    if isinstance(value, ast.Call):
-        return not _is_nameable_call(value, imports)
+    match value:
+        case ast.Constant() if value.value is Ellipsis:
+            return True
+        case ast.Call():
+            return not _is_nameable_call(value, imports)
+        case _:
+            pass
     return isinstance(value, _OPAQUE_NODES)
 
 

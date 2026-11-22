@@ -327,21 +327,25 @@ class FastapiIndex:
                 for target in targets
                 for name in self._target_names(target)
             )
-        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None:
-            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
-            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.rest))
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            self._bind_function_names(node)
-        elif isinstance(node, ast.ClassDef):
-            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            self.bound_names.update(
-                _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
-                for alias in node.names
-            )
-        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+            return
+        match node:
+            case ast.MatchAs() | ast.MatchStar() if node.name is not None:
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+            case ast.MatchMapping() if node.rest is not None:
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.rest))
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                self._bind_function_names(node)
+            case ast.ClassDef():
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+            case ast.Import() | ast.ImportFrom():
+                self.bound_names.update(
+                    _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
+                    for alias in node.names
+                )
+            case ast.ExceptHandler() if node.name is not None:
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+            case _:
+                pass
 
     def _binding_scope(self, node: ast.AST) -> int:
         scope = self._node_scopes[id(node)]
@@ -370,12 +374,16 @@ class FastapiIndex:
             name = _binding_name(node.targets[0])
             if name:
                 return self._assignment_scope(node, name), name, node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            name = _binding_name(node.target)
-            if name:
-                return self._assignment_scope(node, name), name, node.value
-        elif isinstance(node, ast.TypeAlias):
-            return self._node_scopes[id(node)], node.name.id, node.value
+        else:
+            match node:
+                case ast.AnnAssign() if node.value is not None:
+                    name = _binding_name(node.target)
+                    if name:
+                        return self._assignment_scope(node, name), name, node.value
+                case ast.TypeAlias():
+                    return self._node_scopes[id(node)], node.name.id, node.value
+                case _:
+                    pass
         return None
 
     def _resolve_alias(self, key: _ReceiverKey, value: ast.expr) -> bool:
@@ -646,12 +654,15 @@ class FastapiIndex:
         if not isinstance(node, (ast.Name, ast.Attribute)) or self._is_shadowed_in_enclosing_scope(node):
             return None
         qualified = self.imports.resolved_qualified_name(node)
-        if isinstance(node, ast.Name) and qualified is None:
-            binding = self.imports.bindings.get(node.id)
-            return binding.module if binding is not None and binding.symbol is None else None
-        if isinstance(node, ast.Attribute) and qualified is None:
-            module = self.imports.resolved_qualified_name(node.value)
-            return f"{module}.{node.attr}" if module is not None else None
+        match node:
+            case ast.Name() if qualified is None:
+                binding = self.imports.bindings.get(node.id)
+                return binding.module if binding is not None and binding.symbol is None else None
+            case ast.Attribute() if qualified is None:
+                module = self.imports.resolved_qualified_name(node.value)
+                return f"{module}.{node.attr}" if module is not None else None
+            case _:
+                pass
         return qualified
 
     def _status_provider(self, node: ast.expr) -> str | None:

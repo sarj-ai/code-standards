@@ -867,3 +867,37 @@ def test_dictionary_evaluation_order_requires_manual_review() -> None:
             ),
             {"expected": expected},
         )
+
+
+@pytest.mark.parametrize(
+    "preparation",
+    ["", "    rows = source_rows()\n    limit = 4\n"],
+    ids=("adjacent", "assignment-preparation"),
+)
+def test_ordered_continue_filters_and_constructor_projection_require_comprehension(preparation: str) -> None:
+    source = (
+        "def build(rows):\n    result = []\n"
+        + preparation
+        + "    for row in rows:\n        if not accepted(row):\n            continue\n        if any(row == previous for previous in old_rows):\n            continue\n        result.append(Entry(row.id, enabled=True))\n    return result\n"
+    )
+    [finding] = PreferCollectionComprehension().check(Path("app/builder.py"), source)
+    assert finding.severity is Severity.ERROR
+    assert "manual review" in finding.message
+    assert fix_source(Path("app/builder.py"), source, rule_ids=["prefer-collection-comprehension"]) == source
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        pytest.param("    alias = result\n", id="escaped-before-loop"),
+        pytest.param("    observe(result)\n", id="observed-before-loop"),
+        pytest.param("    def capture(): return result\n", id="closure-capture"),
+    ],
+)
+def test_prepared_builder_keeps_observed_or_captured_destination(replacement: str) -> None:
+    source = (
+        "def build(rows):\n    result = []\n"
+        + replacement
+        + "    for row in rows:\n        if not accepted(row):\n            continue\n        result.append(Entry(row.id))\n    return result\n"
+    )
+    assert PreferCollectionComprehension().check(Path("app/builder.py"), source) == []

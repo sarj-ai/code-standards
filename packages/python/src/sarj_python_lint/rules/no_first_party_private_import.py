@@ -218,12 +218,15 @@ def _non_import_bindings(tree: ast.Module, *, node_index: NodeIndex | None = Non
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
     }
     for node in walk_ast(tree, index=node_index):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound.add(node.name)
-        elif isinstance(node, ast.arg):
-            bound.add(node.arg)
-        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
-            bound.add(node.name)
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                bound.add(node.name)
+            case ast.arg():
+                bound.add(node.arg)
+            case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name is not None:
+                bound.add(node.name)
+            case _:
+                pass
     return frozenset(bound)
 
 

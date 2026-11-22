@@ -549,3 +549,24 @@ def test_repeated_mapping_aliases_have_a_bounded_parse_budget(
     source += "".join(f"type A{index} = A{index - 1} | A{index - 1}\n" for index in range(1, 13))
     source += "def parse(payload: dict[str, A12]):\n    return isinstance(payload['value'], str)\n"
     assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("annotation", ["JsonValue", "'JsonValue'", "JsonValue | None"])
+def test_json_value_field_probes_require_a_declared_record(annotation: str) -> None:
+    source = f"from pydantic import JsonValue\ndef read(raw: {annotation}) -> bool:\n    if not isinstance(raw, dict): return False\n    value = raw.get('parts')\n    return isinstance(value, list)\n"
+    [finding] = _check(source)
+    assert finding.code == "SARJ521"
+    assert finding.line == 4
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pydantic import JsonValue\ndef forward(raw: JsonValue):\n    return raw.get('parts')\n",
+        "class JsonValue:\n    def get(self, key): return 1\ndef read(raw: JsonValue):\n    return isinstance(raw.get('parts'), int)\n",
+        "from pydantic import JsonValue\ndef read[JsonValue](raw: JsonValue):\n    return isinstance(raw.get('parts'), list)\n",
+    ],
+    ids=("forward-only", "same-spelled-application-class", "generic-shadow"),
+)
+def test_json_value_proof_does_not_follow_names_or_plain_forwarding(source: str) -> None:
+    assert _check(source) == []

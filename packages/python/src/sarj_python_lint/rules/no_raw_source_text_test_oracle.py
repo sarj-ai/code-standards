@@ -387,10 +387,13 @@ def _class_declares_global_test(node: ast.ClassDef) -> bool:
     pending: list[ast.AST] = list(node.body)
     while pending:
         current = pending.pop()
-        if isinstance(current, ast.Global) and "__test__" in current.names:
-            return True
-        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-            continue
+        match current:
+            case ast.Global() if "__test__" in current.names:
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case _:
+                pass
         pending.extend(ast.iter_child_nodes(current))
     return False
 

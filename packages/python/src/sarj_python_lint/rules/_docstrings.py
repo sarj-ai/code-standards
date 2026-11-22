@@ -416,10 +416,13 @@ def _is_docstring_reader(node: ast.Call) -> bool:
     if not node.args:
         return False
     function = node.func
-    if isinstance(function, ast.Name) and function.id == "help":
-        return True
-    if isinstance(function, ast.Attribute) and function.attr in {"getdoc", "render_doc"}:
-        return True
+    match function:
+        case ast.Name() if function.id == "help":
+            return True
+        case ast.Attribute() if function.attr in {"getdoc", "render_doc"}:
+            return True
+        case _:
+            pass
     return (
         isinstance(function, ast.Name)
         and function.id == "getattr"

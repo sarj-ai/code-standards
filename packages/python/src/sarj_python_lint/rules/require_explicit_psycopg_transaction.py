@@ -294,11 +294,14 @@ class _Analysis:
 
     def simple(self, statement: ast.stmt, state: _State) -> None:
         self.executions(statement, state)
-        if isinstance(statement, ast.Assign):
-            for target in statement.targets:
-                self.bind(target, statement.value, state)
-        elif isinstance(statement, ast.AnnAssign) and statement.value:
-            self.bind(statement.target, statement.value, state)
+        match statement:
+            case ast.Assign():
+                for target in statement.targets:
+                    self.bind(target, statement.value, state)
+            case ast.AnnAssign() if statement.value:
+                self.bind(statement.target, statement.value, state)
+            case _:
+                pass
 
     def bind(self, target: ast.expr, value: ast.expr, state: _State) -> None:
         binding = state.bindings.get(_key(value))

@@ -81,13 +81,43 @@ class RequirePydanticForMappingShape(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks literal-string get/subscript reads on parameters or local names annotated as standard string mappings with object, Any or pydantic.JsonValue values. Stable module type aliases, quoted annotations, wrappers and local value aliases are recognized with bounded resolution.",
+            "Checks literal-string get/subscript reads on opaque string mappings and direct pydantic.JsonValue inputs. A shape/discriminator probe must consume the field; ordinary JSON forwarding remains allowed. Stable module type aliases, quoted annotations, wrappers and local value aliases are recognized with bounded resolution.",
             "A field must feed builtin isinstance/type checks, literal comparisons, truth tests or a constrained match pattern. Ordinary reads/forwarding, dynamic keys, homogeneous typed maps, imported application aliases, attributes and ambiguous/rebound assignments are excluded.",
             "Import-resolved Pydantic before/wrap decorators with literal or stable local mode aliases, metadata validators and registered Discriminator callbacks own raw normalization. Stable function aliases, functools.partial binding only keyword-only configuration and simple bound/static/class methods are recognized. Prefer declarative fields before introducing callbacks.",
             "Callback classes must be stable direct local declarations with no bases, class options, custom constructor or descriptor hooks. Import-proven typing.final and empty __slots__ preserve ownership. Other decorators, imported/inherited classes and directly mutated callback owners abstain. Nonescaping direct local helpers inherit raw ownership; escaped helpers remain checked. Generic type parameters shadow matching builtin/import annotation names.",
             "Parsing helpers in authored tests are checked, but assert-contained test oracles are excluded. Generated/vendor sources and dynamic namespaces are excluded. This is a warning with no automatic rewrite because coercion, missing-field handling and error policy can differ.",
         ),
         examples=(
+            RuleExample(
+                example_id="opaque-json-field-shape",
+                scenario="json-value-input",
+                title="Opaque JsonValue inputs need declared field shapes",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/words.py",
+                        "from pydantic import JsonValue\ndef parts(raw: JsonValue):\n    value = raw.get('Parts')\n    return value if isinstance(value, list) else None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/words.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="opaque-json-forwarding",
+                scenario="json-value-input",
+                title="Generic JSON forwarding does not invent a record contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/words.py",
+                        "from pydantic import JsonValue\ndef forward(raw: JsonValue):\n    return send(raw)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/words.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="manual-mapping-shape",
                 title="A match statement parses an opaque field by hand",
@@ -168,9 +198,8 @@ class MappingShapeFacts(AnnotationOrigins):
                 self.annotation(member, at, mapping=mapping, depth=depth + 1) for member in (parsed.left, parsed.right)
             )
         qualified = self.qualified(parsed, at)
-        if not mapping and (
-            self.builtin(parsed, "object", at)
-            or qualified in {"typing.Any", "typing_extensions.Any", "pydantic.JsonValue"}
+        if qualified == "pydantic.JsonValue" or (
+            not mapping and (self.builtin(parsed, "object", at) or qualified in {"typing.Any", "typing_extensions.Any"})
         ):
             return True
         if not isinstance(parsed, ast.Subscript):

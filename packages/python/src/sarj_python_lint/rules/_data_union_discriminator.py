@@ -553,21 +553,24 @@ class _DataUnions:
 
     def _literal_piece(self, item: _Expansion) -> _Domain | list[_Expansion]:
         member = item.node
-        if isinstance(member, ast.Name) and member.id in self.aliases:
-            if member.id in item.aliases:
-                return _Domain(opaque=True)
-            parsed = _string_expression(self.aliases[member.id])
-            if parsed is None:
-                return _Domain(opaque=True)
-            return [_Expansion(parsed, item.aliases | {member.id})]
-        if isinstance(member, ast.Subscript):
-            children = (
-                _subscript_members(member)
-                if self._typing_symbol(member.value) == "Literal"
-                else self._union_members(member)
-            )
-            if children is not None:
-                return [_Expansion(child, item.aliases) for child in children]
+        match member:
+            case ast.Name() if member.id in self.aliases:
+                if member.id in item.aliases:
+                    return _Domain(opaque=True)
+                parsed = _string_expression(self.aliases[member.id])
+                if parsed is None:
+                    return _Domain(opaque=True)
+                return [_Expansion(parsed, item.aliases | {member.id})]
+            case ast.Subscript():
+                children = (
+                    _subscript_members(member)
+                    if self._typing_symbol(member.value) == "Literal"
+                    else self._union_members(member)
+                )
+                if children is not None:
+                    return [_Expansion(child, item.aliases) for child in children]
+            case _:
+                pass
         return _literal_value(member)
 
 

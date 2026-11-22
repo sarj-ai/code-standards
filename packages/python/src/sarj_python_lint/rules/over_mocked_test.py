@@ -455,12 +455,13 @@ class _MockNames:
         return f"{full}.{rest}" if dot else full
 
     def is_mock_module(self, node: ast.expr) -> bool:
-        if isinstance(node, ast.Name):
-            return node.id in self.modules
-        # `unittest.mock.patch(...)` — the receiver is itself an attribute chain.
-        if isinstance(node, ast.Attribute) and node.attr == _MOCK_BACKPORT:
-            return isinstance(node.value, ast.Name) and node.value.id in self.modules
-        return False
+        match node:
+            case ast.Name():
+                return node.id in self.modules
+            case ast.Attribute() if node.attr == _MOCK_BACKPORT:
+                return isinstance(node.value, ast.Name) and node.value.id in self.modules
+            case _:
+                return False
 
     def patch_subform(self, func: ast.expr) -> _PatchSubform | None:
         if isinstance(func, ast.Name):
@@ -590,18 +591,21 @@ def _body_substitutions(func: ast.FunctionDef | ast.AsyncFunctionDef, names: _Mo
     )
     scan = _BodyScan(subs=set(), facets={})
     for node in _lexical_body_nodes(func):
-        if isinstance(node, ast.Call):
-            scan.subs.update(_call_substitutions(node, scoped_names))
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                scan.subs.update(_binding_keys(target, node.value, scoped_names))
-            _record_facets(node.targets, node.value, scoped_names, scan.facets)
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            scan.subs.update(_binding_keys(node.target, node.value, scoped_names))
-            _record_facets([node.target], node.value, scoped_names, scan.facets)
-        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
-            scan.subs.update(_binding_keys(node.optional_vars, node.context_expr, scoped_names))
-            _record_handle_facet([node.optional_vars], node.context_expr, scoped_names, scan.facets)
+        match node:
+            case ast.Call():
+                scan.subs.update(_call_substitutions(node, scoped_names))
+            case ast.Assign():
+                for target in node.targets:
+                    scan.subs.update(_binding_keys(target, node.value, scoped_names))
+                _record_facets(node.targets, node.value, scoped_names, scan.facets)
+            case ast.AnnAssign() if node.value is not None:
+                scan.subs.update(_binding_keys(node.target, node.value, scoped_names))
+                _record_facets([node.target], node.value, scoped_names, scan.facets)
+            case ast.withitem() if node.optional_vars is not None:
+                scan.subs.update(_binding_keys(node.optional_vars, node.context_expr, scoped_names))
+                _record_handle_facet([node.optional_vars], node.context_expr, scoped_names, scan.facets)
+            case _:
+                pass
     return scan
 
 

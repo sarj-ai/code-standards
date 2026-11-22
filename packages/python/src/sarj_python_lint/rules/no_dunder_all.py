@@ -379,9 +379,12 @@ def _declares_global_dunder_all(statements: list[ast.stmt]) -> bool:
     pending: list[ast.AST] = list(statements)
     while pending:
         node = pending.pop()
-        if isinstance(node, ast.Global) and "__all__" in node.names:
-            return True
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
+        match node:
+            case ast.Global() if "__all__" in node.names:
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case _:
+                pass
         pending.extend(ast.iter_child_nodes(node))
     return False

@@ -1863,13 +1863,16 @@ def _absolute_import_symbols(tree: ast.Module) -> Mapping[str, SymbolRef]:
         return symbols
     first: dict[str, SymbolRef] = {}
     for statement in _module_import_statements(tree):
-        if isinstance(statement, ast.ImportFrom) and statement.level == 0 and statement.module is not None:
-            for alias in statement.names:
-                first.setdefault(alias.asname or alias.name, SymbolRef(statement.module, alias.name))
-        elif isinstance(statement, ast.Import):
-            for alias in statement.names:
-                local = alias.asname or alias.name.partition(".")[0]
-                first.setdefault(local, SymbolRef(alias.name if alias.asname else alias.name.partition(".")[0], ""))
+        match statement:
+            case ast.ImportFrom() if statement.level == 0 and statement.module is not None:
+                for alias in statement.names:
+                    first.setdefault(alias.asname or alias.name, SymbolRef(statement.module, alias.name))
+            case ast.Import():
+                for alias in statement.names:
+                    local = alias.asname or alias.name.partition(".")[0]
+                    first.setdefault(local, SymbolRef(alias.name if alias.asname else alias.name.partition(".")[0], ""))
+            case _:
+                pass
     symbols = _ABSOLUTE_IMPORT_SYMBOLS[tree] = MappingProxyType(first)
     return symbols
 

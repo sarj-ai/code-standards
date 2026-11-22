@@ -151,10 +151,13 @@ def _update_app_names(statement: ast.stmt, names: set[str], imports: ImportIndex
 
 
 def _is_app_expression(node: ast.expr, names: set[str], imports: ImportIndex) -> bool:
-    if isinstance(node, ast.Name):
-        return node.id in names
-    if isinstance(node, ast.Attribute) and node.attr == "router":
-        return isinstance(node.value, ast.Name) and node.value.id in names
+    match node:
+        case ast.Name():
+            return node.id in names
+        case ast.Attribute() if node.attr == "router":
+            return isinstance(node.value, ast.Name) and node.value.id in names
+        case _:
+            pass
     return isinstance(node, ast.Call) and any(
         imports.resolves(node.func, sources=frozenset({source}), symbol=symbol) for source, symbol in _APP_TYPES
     )

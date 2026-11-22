@@ -84,24 +84,20 @@ class PreferExplicitClassContract(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.tree is None or context.generated or is_test_path(context.path) or context.path.stem.startswith("_"):
             return []
-        findings: list[Diagnostic] = []
-        for node in context.tree.body:
-            if not isinstance(node, ast.ClassDef) or not _execution_boundary(node, context):
-                continue
-            if context.suppressions.is_suppressed(node.lineno, self.code):
-                continue
-            findings.append(
-                Diagnostic(
-                    context.path,
-                    node.lineno,
-                    node.col_offset + 1,
-                    self.code,
-                    "This stateful behavior class has no declared contract; share a focused ABC or Protocol "
-                    "with its consumers, or mark an intentionally concrete class final.",
-                    severity=Severity.WARNING,
-                )
+        return [
+            Diagnostic(
+                context.path,
+                node.lineno,
+                node.col_offset + 1,
+                self.code,
+                "This stateful behavior class has no declared contract; share a focused ABC or Protocol "
+                "with its consumers, or mark an intentionally concrete class final.",
+                severity=Severity.WARNING,
             )
-        return findings
+            for node in context.tree.body
+            if isinstance(node, ast.ClassDef) and _execution_boundary(node, context)
+            if not context.suppressions.is_suppressed(node.lineno, self.code)
+        ]
 
 
 def _execution_boundary(node: ast.ClassDef, context: PythonFileContext) -> bool:

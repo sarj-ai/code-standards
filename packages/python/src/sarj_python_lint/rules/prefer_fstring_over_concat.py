@@ -760,12 +760,15 @@ def _imported_modules(statements: list[ast.stmt], before_line: int | None) -> fr
 def _bound_names(node: ast.AST) -> set[str]:
     names = _stored_names(node)
     for child in walk_ast(node):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(child.name)
-        elif isinstance(child, (ast.Import, ast.ImportFrom)):
-            names.update(alias.asname or alias.name.split(".")[0] for alias in child.names)
-        elif isinstance(child, ast.ExceptHandler) and child.name is not None:
-            names.add(child.name)
+        match child:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                names.add(child.name)
+            case ast.Import() | ast.ImportFrom():
+                names.update(alias.asname or alias.name.split(".")[0] for alias in child.names)
+            case ast.ExceptHandler() if child.name is not None:
+                names.add(child.name)
+            case _:
+                pass
     return names
 
 

@@ -21,12 +21,15 @@ _MIN_MATCH_CASES = 3
 
 def _annotation_reference(node: ast.AST, context: PythonFileContext) -> bool:
     while (parent := context.parents.get(node)) is not None:
-        if isinstance(parent, ast.arg | ast.AnnAssign) and parent.annotation is node:
-            return True
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and parent.returns is node:
-            return True
-        if isinstance(parent, ast.stmt):
-            return False
+        match parent:
+            case ast.arg() | ast.AnnAssign() if parent.annotation is node:
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() if parent.returns is node:
+                return True
+            case ast.stmt():
+                return False
+            case _:
+                pass
         node = parent
     return False
 

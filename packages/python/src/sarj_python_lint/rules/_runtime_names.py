@@ -195,15 +195,18 @@ class RuntimeNames:
         original = node
         parent = self.context.parents.get(node)
         while parent is not None:
-            if isinstance(parent, ast.TypeAlias):
-                return parent
-            if isinstance(parent, ast.comprehension) and parent.iter is node:
-                owner = self.context.parents.get(parent)
-                if (
-                    isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
-                    and owner.generators[0] is parent
-                ):
-                    return self._scope(owner)
+            match parent:
+                case ast.TypeAlias():
+                    return parent
+                case ast.comprehension() if parent.iter is node:
+                    owner = self.context.parents.get(parent)
+                    if (
+                        isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
+                        and owner.generators[0] is parent
+                    ):
+                        return self._scope(owner)
+                case _:
+                    pass
             if isinstance(parent, (ast.Module, ast.ClassDef, *_FUNCTION_SCOPES)):
                 break
             node, parent = parent, self.context.parents.get(parent)
@@ -235,22 +238,28 @@ class RuntimeNames:
             return None
         parent = self.context.parents.get(node)
         if isinstance(node, ast.alias):
-            if isinstance(parent, ast.Import):
-                return node.name if node.asname else node.name.partition(".")[0]
-            if isinstance(parent, ast.ImportFrom) and parent.level == 0 and parent.module is not None:
-                return f"{parent.module}.{node.name}"
+            match parent:
+                case ast.Import():
+                    return node.name if node.asname else node.name.partition(".")[0]
+                case ast.ImportFrom() if parent.level == 0 and parent.module is not None:
+                    return f"{parent.module}.{node.name}"
+                case _:
+                    pass
         if assignments and isinstance(node, ast.Name) and (value := self._assignment(node)) is not None:
             return self._qualified(value, seen | {node}, assignments=assignments)
         return None
 
     def _assignment(self, node: ast.Name) -> ast.expr | None:
         parent = self.context.parents.get(node)
-        if isinstance(parent, ast.Assign) and node in parent.targets:
-            return parent.value
-        if isinstance(parent, ast.AnnAssign) and parent.target is node:
-            return parent.value
-        if isinstance(parent, ast.NamedExpr) and parent.target is node:
-            return parent.value
+        match parent:
+            case ast.Assign() if node in parent.targets:
+                return parent.value
+            case ast.AnnAssign() if parent.target is node:
+                return parent.value
+            case ast.NamedExpr() if parent.target is node:
+                return parent.value
+            case _:
+                pass
         return None
 
     def _inplace_target(self, node: ast.AST) -> bool:

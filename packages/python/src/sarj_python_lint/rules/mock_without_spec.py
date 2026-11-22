@@ -318,16 +318,17 @@ class _MockNames:
         return func.attr if self._is_mock_module(func.value) else None
 
     def _is_mock_module(self, node: ast.expr) -> bool:
-        if isinstance(node, ast.Name):
-            return node.id in self.modules and not self._is_shadowed(node.id, node)
-        # `unittest.mock.Mock(...)` — the receiver is itself an attribute chain.
-        if isinstance(node, ast.Attribute) and node.attr == "mock":
-            return (
-                isinstance(node.value, ast.Name)
-                and node.value.id in self.modules
-                and not self._is_shadowed(node.value.id, node.value)
-            )
-        return False
+        match node:
+            case ast.Name():
+                return node.id in self.modules and not self._is_shadowed(node.id, node)
+            case ast.Attribute() if node.attr == "mock":
+                return (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in self.modules
+                    and not self._is_shadowed(node.value.id, node.value)
+                )
+            case _:
+                return False
 
     def is_default(self, node: ast.expr) -> bool:
         if isinstance(node, ast.Name):

@@ -455,10 +455,13 @@ def _is_double_module(path: Path) -> bool:
 def _imported_modules(tree: ast.Module) -> frozenset[str]:
     modules: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.Import):
-            modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None and node.level == 0:
-            modules.add(node.module)
+        match node:
+            case ast.Import():
+                modules.update(alias.name for alias in node.names)
+            case ast.ImportFrom() if node.module is not None and node.level == 0:
+                modules.add(node.module)
+            case _:
+                pass
     return frozenset(modules)
 
 
@@ -682,12 +685,15 @@ def _collect_protocol_writes(child: ast.AST, method_name: str, writes: dict[str,
 
 def _collect_protocol_reads(child: ast.AST, method_name: str, reads: dict[str, set[str]]) -> None:
     expressions: tuple[ast.expr, ...] = ()
-    if isinstance(child, ast.Return) and child.value is not None:
-        expressions = (child.value,)
-    elif isinstance(child, (ast.If, ast.While)):
-        expressions = (child.test,)
-    elif isinstance(child, ast.Match):
-        expressions = (child.subject,)
+    match child:
+        case ast.Return() if child.value is not None:
+            expressions = (child.value,)
+        case ast.If() | ast.While():
+            expressions = (child.test,)
+        case ast.Match():
+            expressions = (child.subject,)
+        case _:
+            pass
     for expression in expressions:
         for descendant in walk(expression):
             if (field := _receiver_field(descendant)) is not None:

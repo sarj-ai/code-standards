@@ -2082,11 +2082,11 @@ def test_normalization_native_entry_rejects_invalid_source() -> None:
     "guard",
     ["node.id == 'x'", "node.id == 'x' and ready"],
 )
-def test_guarded_ast_dispatch_has_one_manual_warning(guard: str) -> None:
+def test_guarded_ast_dispatch_requires_manual_match_conversion(guard: str) -> None:
     source = f"import ast\ndef inspect(node, ready):\n    if isinstance(node, ast.Name) and {guard}:\n        return 1\n    elif isinstance(node, ast.Attribute) and node.attr == 'x':\n        return 2\n    return None\n"
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "guards" in findings[0].message
     assert fix_source(Path("app/parser.py"), source, rule_ids=["prefer-match-type-dispatch"]) == source
 
@@ -2103,3 +2103,11 @@ def test_guarded_ast_dispatch_has_one_manual_warning(guard: str) -> None:
 def test_effectful_reordered_and_unproven_guarded_dispatch_remains(condition: str) -> None:
     source = f"import ast\nfrom external import Imported\ndef inspect(node, ready, other):\n    if {condition}:\n        return 1\n    elif isinstance(node, ast.Attribute) and node.attr == 'x':\n        return 2\n    return None\n"
     assert _check(source) == []
+
+
+def test_guarded_ast_siblings_inside_parent_walk_require_match() -> None:
+    source = "import ast\ndef owner(current, parent):\n    while parent is not None:\n        if isinstance(parent, ast.Lambda | ast.ListComp):\n            return current\n        if isinstance(parent, ast.arg) and current is parent.annotation:\n            return parent\n        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and current is parent.returns:\n            return parent\n        parent = None\n    return current\n"
+    [finding] = _check(source)
+    assert finding.severity is Severity.ERROR
+    assert finding.line == 4
+    assert fix_source(Path("app/parser.py"), source, rule_ids=["prefer-match-type-dispatch"]) == source

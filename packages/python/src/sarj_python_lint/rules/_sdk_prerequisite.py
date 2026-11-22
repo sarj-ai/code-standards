@@ -58,27 +58,23 @@ def _class_diagnostics(
     if owner.decorator_list or owner.type_params or owner.keywords:
         return []
     methods = [node for node in owner.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)]
-    findings: list[Diagnostic] = []
-    for field, (parameter, registry) in _constructor_fields(methods, facts, project, unit).items():
-        if not _unchanged_field(owner, field, registry=registry, facts=facts):
-            continue
-        if not any(_rejects_dependency(method, field, registry=registry, facts=facts) for method in methods):
-            continue
-        findings.append(
-            Diagnostic(
-                path=facts.context.path,
-                line=parameter.lineno,
-                col=parameter.col_offset + 1,
-                code=code,
-                severity=Severity.ERROR,
-                message=(
-                    f"SDK dependency '{parameter.arg}' admits an absent client that an operation rejects; "
-                    "declare required non-null dependencies or a complete typed configuration variant "
-                    "at construction. Preserve required boundary validation instead of only deleting the guard."
-                ),
-            )
+    return [
+        Diagnostic(
+            path=facts.context.path,
+            line=parameter.lineno,
+            col=parameter.col_offset + 1,
+            code=code,
+            severity=Severity.ERROR,
+            message=(
+                f"SDK dependency '{parameter.arg}' admits an absent client that an operation rejects; "
+                "declare required non-null dependencies or a complete typed configuration variant "
+                "at construction. Preserve required boundary validation instead of only deleting the guard."
+            ),
         )
-    return findings
+        for field, (parameter, registry) in _constructor_fields(methods, facts, project, unit).items()
+        if _unchanged_field(owner, field, registry=registry, facts=facts)
+        and any(_rejects_dependency(method, field, registry=registry, facts=facts) for method in methods)
+    ]
 
 
 def _constructor_fields(

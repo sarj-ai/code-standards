@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
@@ -19,12 +19,20 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._declared_contracts import (
+    MODEL_BASES,
     SETTINGS_BASES,
     DeclaredClass,
     DeclaredContracts,
     ordinary_pytest_test,
+    written_attribute_roots,
 )
-from sarj_python_lint.rules._fixture_contracts import PORT_BASES, method_definition
+from sarj_python_lint.rules._fixture_contracts import (
+    CONSTRUCTION_HOOKS,
+    PORT_BASES,
+    direct_method_definition,
+    has_class_hook,
+    method_definition,
+)
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 from sarj_python_lint.rules._pytest import collected_tests
 from sarj_python_lint.rules._pytest_contract_parameters import FixtureContractParameters
@@ -65,6 +73,7 @@ class PreferPytestDependencyFixtures(ProjectRule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Repeated zero-argument construction of the same source-owned service in distinct collected tests is additionally checked when each fresh instance immediately performs a directly declared instance operation. Registration does not suppress this advisory; explicit class/member writes, custom construction/lookup hooks and unknown ancestry abstain. Named value models, enum records, unresolved or shadowed classes, constructor arguments, constructor-failure tests and single-test freshness checks abstain. These findings have no fix: fixture scope and mutable-state isolation require deliberate selection. Existing nominal compatibility and factory-fix proofs are unchanged.",
             "Source-visible module-level collaborator instances must also enter tests through fixtures. Argument binding must be explicit: starred positional arguments, keyword unpacking and duplicate bindings abstain rather than guessing collaborator ownership.",
             "Safe fixes only reuse an already-requested typed factory inside an authored runtime identity guard over a closed source-owned collaborator graph. They change only its immediate constructor callee; no fixture, signature, guard, setup event or lifecycle is introduced. All other findings require review.",
             "Checks collected pytest functions and plain test classes. A local or inline class construction must feed a proven stored-and-invoked ABC/Protocol collaborator, or a proven BaseSettings instance must be passed to a call. Names alone never identify a service. Constructor failure tests, fixtures, dynamic/unresolved sources, generated and test-support paths are excluded. No automatic fixture extraction or lifecycle change.",
@@ -75,6 +84,36 @@ class PreferPytestDependencyFixtures(ProjectRule):
             "Also recognizes an unrequested function-scoped provider in the test module, ancestor conftest or a literal pytest_plugins registration when a source-owned ABC implementation borrows an attribute of a typed requested fixture. Its single assigned instance must perform an operation before a later assertion directly observes the original fixture; constructor-only and direct-subject observations abstain. Only direct one-input providers are supported; factories, variants, broader lifetimes, class-local providers, unexplained overrides and nested/dynamic registration abstain. Parametrized owner data, unresolved marks and visible generation hooks abstain. Ambient marks need direct module/class declarations; imported, read/escaped, augmented or indirectly assigned pytestmark bindings abstain. Provider class matching does not prove resource or lifecycle equivalence; these findings require manual fixture/factory selection and have no automatic fix.",
         ),
         examples=(
+            RuleExample(
+                example_id="repeated-service-subject",
+                scenario="repeated-service",
+                title="Repeated service operations should request the pytest fixture",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_reader.py",
+                        "class Reader:\n    def read(self): return True\ndef test_first():\n    assert Reader().read()\ndef test_second():\n    assert Reader().read()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_reader.py"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="injected-service-subject",
+                scenario="repeated-service",
+                title="A fixture owns the service lifetime without a global singleton",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_reader.py",
+                        "import pytest\nclass Reader:\n    def read(self): return True\n@pytest.fixture\ndef reader(): return Reader()\ndef test_first(reader):\n    assert reader.read()\ndef test_second(reader):\n    assert reader.read()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_reader.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="bypassed-probe-factory",
                 scenario="requested-constructor-factory",
@@ -279,6 +318,7 @@ class PreferPytestDependencyFixtures(ProjectRule):
         for function in functions:
             hits.update(_constructed_dependencies(function, context, contracts, consumers, fixture_parameters))
             borrowed.update(_borrowed_fixture_constructors(function, context, contracts))
+        hits.update(_repeated_service_subjects(functions, context, contracts))
         for helper in _test_owned_helpers(context, functions):
             aliases = bindings(helper)
             for call in (node for node in direct_nodes(helper) if isinstance(node, ast.Call)):
@@ -291,12 +331,71 @@ class PreferPytestDependencyFixtures(ProjectRule):
                 call.lineno,
                 call.col_offset + 1,
                 self.code,
-                "Request this constructed collaborator or settings value through a function-scoped fixture; use a typed factory fixture for variants and preserve lifecycle ownership.",
+                "Request this service, collaborator or settings value through a fixture; preserve function-scoped isolation and use typed factories for variants or fresh instances.",
                 severity=Severity.WARNING,
             )
             for call in sorted(hits, key=lambda item: (item.lineno, item.col_offset))
             if not context.suppressions.is_suppressed(call.lineno, self.code)
         ]
+
+
+def _repeated_service_subjects(
+    functions: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...],
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+) -> Iterator[ast.Call]:
+    constructions: dict[ast.ClassDef, dict[ast.Call, ast.FunctionDef | ast.AsyncFunctionDef]] = defaultdict(dict)
+    for function in functions:
+        if _parametrized_names(function, context) is None:
+            continue
+        for call in (node for node in direct_nodes(function) if isinstance(node, ast.Call)):
+            model = _service_subject(call, function, context, contracts)
+            if model is not None:
+                constructions[model.declaration][call] = function
+    for calls in constructions.values():
+        if len(set(calls.values())) > 1:
+            yield from calls
+
+
+def _service_subject(
+    call: ast.Call,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+) -> DeclaredClass | None:
+    if call.args or call.keywords or _inside_raises(context, call, function):
+        return None
+    operation = context.parents.get(call)
+    invoked = context.parents.get(operation) if operation is not None else None
+    if not isinstance(operation, ast.Attribute) or not isinstance(invoked, ast.Call) or invoked.func is not operation:
+        return None
+    model = contracts.class_type(call.func, at=call)
+    value_bases = MODEL_BASES | SETTINGS_BASES | {"enum.Enum", "enum.IntEnum", "enum.StrEnum", "typing.NamedTuple"}
+    if model is None or contracts.inherits(model, value_bases) or operation.attr.startswith("__"):
+        return None
+    return model if _declared_service_operation(model, operation.attr, contracts) else None
+
+
+def _declared_service_operation(model: DeclaredClass, name: str, contracts: DeclaredContracts) -> bool:
+    if model.unit.tree is None or model.declaration.name in written_attribute_roots(model.unit.tree):
+        return False
+    protected = CONSTRUCTION_HOOKS | {name, "__init__", "__getattribute__", "__getattr__"}
+    if any(
+        isinstance(node, ast.Attribute) and node.attr in protected and isinstance(node.ctx, ast.Store | ast.Del)
+        for node in ast.walk(model.unit.tree)
+    ):
+        return False
+    if has_class_hook(model, contracts, CONSTRUCTION_HOOKS | {"__getattribute__", "__getattr__"}):
+        return False
+    method = direct_method_definition(model, name)
+    if method is None:
+        return False
+    imports = contracts.imports_for(method.owner.unit)
+    return all(
+        imports.resolved_qualified_name(decorator)
+        in {"typing.override", "typing_extensions.override", "typing.final", "typing_extensions.final"}
+        for decorator in method.declaration.decorator_list
+    )
 
 
 def _borrowed_fixture_hits(

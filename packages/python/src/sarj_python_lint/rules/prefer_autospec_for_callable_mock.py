@@ -195,15 +195,18 @@ def _spec_is_closed(name: str, context: PythonFileContext) -> bool:
         if reference.id != name or not isinstance(reference.ctx, ast.Load):
             continue
         parent = context.parents.get(reference)
-        if isinstance(parent, ast.Call) and parent.func is reference:
-            continue
-        if isinstance(parent, ast.keyword) and parent.arg in {"spec", "spec_set"}:
-            call = context.parents.get(parent)
-            if (
-                isinstance(call, ast.Call)
-                and context.imports.resolved_symbol(call.func, sources=_MOCK_SOURCES) in _CONSTRUCTORS
-            ):
+        match parent:
+            case ast.Call() if parent.func is reference:
                 continue
+            case ast.keyword() if parent.arg in {"spec", "spec_set"}:
+                call = context.parents.get(parent)
+                if (
+                    isinstance(call, ast.Call)
+                    and context.imports.resolved_symbol(call.func, sources=_MOCK_SOURCES) in _CONSTRUCTORS
+                ):
+                    continue
+            case _:
+                pass
         return False
     return True
 

@@ -104,15 +104,17 @@ class AnnotationOrigins:
     def _lookup_at(self, at: ast.AST) -> ast.AST:
         current = at
         while (parent := self.context.parents.get(current)) is not None:
-            if isinstance(parent, ast.Lambda | ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-                return at
-            if isinstance(parent, ast.arg) and current is parent.annotation:
-                arguments = self.context.parents.get(parent)
-                function = self.context.parents.get(arguments) if arguments is not None else None
-                return function if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef) else at
-            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and current is parent.returns:
-                return parent
-            current = parent
+            match parent:
+                case ast.Lambda() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                    return at
+                case ast.arg() if current is parent.annotation:
+                    arguments = self.context.parents.get(parent)
+                    function = self.context.parents.get(arguments) if arguments is not None else None
+                    return function if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef) else at
+                case ast.FunctionDef() | ast.AsyncFunctionDef() if current is parent.returns:
+                    return parent
+                case _:
+                    current = parent
         return at
 
 

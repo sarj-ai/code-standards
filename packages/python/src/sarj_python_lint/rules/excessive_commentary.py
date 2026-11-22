@@ -169,45 +169,37 @@ class ExcessiveCommentary(Rule):
 
 
 def _budget_findings(context: PythonFileContext, existing: list[Diagnostic]) -> list[Diagnostic]:
-    findings: list[Diagnostic] = []
     comments, _ = standalone_comments(context.source)
     metadata = script_metadata_lines(context.source, comments)
     ordinary = [item for item in comments if item.line not in metadata and not _machine_directive(item)]
-    for paragraph in _paragraphs(ordinary, context.source.splitlines()):
-        if not _long_paragraph(paragraph):
-            continue
-        if any(paragraph[0].line <= finding.line <= paragraph[-1].line for finding in existing):
-            continue
-        findings.append(
-            Diagnostic(
-                context.path,
-                paragraph[0].line,
-                paragraph[0].column + 1,
-                "SARJ434",
-                "Keep a necessary constraint within two comment lines and 40 words; move longer prose to documentation.",
-                severity=Severity.ERROR,
-                column_encoding=ColumnEncoding.CODEPOINTS,
-            )
+    return [
+        Diagnostic(
+            context.path,
+            paragraph[0].line,
+            paragraph[0].column + 1,
+            "SARJ434",
+            "Keep a necessary constraint within two comment lines and 40 words; move longer prose to documentation.",
+            severity=Severity.ERROR,
+            column_encoding=ColumnEncoding.CODEPOINTS,
         )
-    for comment in trailing_comments(context.source):
-        if (
-            len(comment.body.split()) <= _MAX_COMMENT_WORDS
-            or _machine_directive(comment)
-            or _LEGAL_NOTICE.match(comment.body)
-        ):
-            continue
-        findings.append(
-            Diagnostic(
-                context.path,
-                comment.line,
-                comment.column + 1,
-                "SARJ434",
-                "Keep a necessary inline constraint within 40 words; move longer prose to documentation.",
-                severity=Severity.ERROR,
-                column_encoding=ColumnEncoding.CODEPOINTS,
-            )
+        for paragraph in _paragraphs(ordinary, context.source.splitlines())
+        if _long_paragraph(paragraph)
+        and not any(paragraph[0].line <= finding.line <= paragraph[-1].line for finding in existing)
+    ] + [
+        Diagnostic(
+            context.path,
+            comment.line,
+            comment.column + 1,
+            "SARJ434",
+            "Keep a necessary inline constraint within 40 words; move longer prose to documentation.",
+            severity=Severity.ERROR,
+            column_encoding=ColumnEncoding.CODEPOINTS,
         )
-    return findings
+        for comment in trailing_comments(context.source)
+        if len(comment.body.split()) > _MAX_COMMENT_WORDS
+        and not _machine_directive(comment)
+        and not _LEGAL_NOTICE.match(comment.body)
+    ]
 
 
 def _paragraphs(comments: list[PositionedComment], lines: list[str]) -> list[list[PositionedComment]]:

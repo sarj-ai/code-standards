@@ -99,20 +99,23 @@ class NativeObjectContracts:
         if not isinstance(value, ast.Name) or value.id in self.facts.provenance.mutated:
             return False
         binding = self.facts.provenance.runtime_binding(value.id, value)
-        if isinstance(binding, ast.arg) and binding.annotation is not None:
-            annotation = self.context.annotation_semantics.parse(binding.annotation)
-            return (
-                annotation is not None
-                and self.qualified(annotation, binding.annotation) in _FUNCTION_TYPES
-                and not self.namespace_rebound(value.id)
-            )
-        if isinstance(binding, ast.Name):
-            assigned = self.facts.provenance.assignment_value(binding, value)
-            return (
-                isinstance(assigned, ast.Call)
-                and self.qualified(assigned.func, assigned) in _FUNCTION_TYPES
-                and not self.namespace_rebound(value.id)
-            )
+        match binding:
+            case ast.arg() if binding.annotation is not None:
+                annotation = self.context.annotation_semantics.parse(binding.annotation)
+                return (
+                    annotation is not None
+                    and self.qualified(annotation, binding.annotation) in _FUNCTION_TYPES
+                    and not self.namespace_rebound(value.id)
+                )
+            case ast.Name():
+                assigned = self.facts.provenance.assignment_value(binding, value)
+                return (
+                    isinstance(assigned, ast.Call)
+                    and self.qualified(assigned.func, assigned) in _FUNCTION_TYPES
+                    and not self.namespace_rebound(value.id)
+                )
+            case _:
+                pass
         return False
 
     def _constant(self, value: ast.expr) -> bool:
@@ -294,12 +297,15 @@ class _NamespaceFlow:
 
     def _namespace_input_read(self, read: ast.Name) -> bool:
         parent = self.native.context.parents.get(read)
-        if isinstance(parent, ast.Assign | ast.AnnAssign) and parent.value is read:
-            return True
-        if isinstance(parent, ast.Subscript) and parent.value is read:
-            return isinstance(parent.ctx, ast.Store)
-        if isinstance(parent, ast.Call):
-            return self.native.dict_call(parent) or any(namespace is read for namespace in self.arguments(parent))
+        match parent:
+            case ast.Assign() | ast.AnnAssign() if parent.value is read:
+                return True
+            case ast.Subscript() if parent.value is read:
+                return isinstance(parent.ctx, ast.Store)
+            case ast.Call():
+                return self.native.dict_call(parent) or any(namespace is read for namespace in self.arguments(parent))
+            case _:
+                pass
         return False
 
     def evaluates(self, call: ast.Call) -> bool:
