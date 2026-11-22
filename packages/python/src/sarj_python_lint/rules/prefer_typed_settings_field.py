@@ -280,14 +280,33 @@ def _field_options(field: ast.AnnAssign, facts: AnnotationOrigins, context: Pyth
 
 
 def _field_calls(field: ast.AnnAssign, facts: AnnotationOrigins, context: PythonFileContext) -> Iterator[ast.Call]:
-    annotation = context.annotation_semantics.parse(field.annotation)
-    if annotation is not None:
-        for node in ast.walk(annotation):
-            if isinstance(node, ast.Call) and facts.qualified(node.func, field.annotation) in _FIELD_NAMES:
-                yield node
+    yield from _annotated_field_calls(field.annotation, field.annotation, facts, context)
     default = field.value
     if isinstance(default, ast.Call) and facts.qualified(default.func, default) in _FIELD_NAMES:
         yield default
+
+
+def _annotated_field_calls(
+    annotation: ast.expr, at: ast.expr, facts: AnnotationOrigins, context: PythonFileContext
+) -> Iterator[ast.Call]:
+    # Pydantic reads Field only as direct Annotated metadata; nested Annotated flattens inner-first.
+    current = context.annotation_semantics.parse(annotation)
+    if isinstance(current, ast.BinOp) and isinstance(current.op, ast.BitOr):
+        yield from _annotated_field_calls(current.left, at, facts, context)
+        yield from _annotated_field_calls(current.right, at, facts, context)
+    if not isinstance(current, ast.Subscript):
+        return
+    origin = facts.qualified(current.value, at)
+    members = current.slice.elts if isinstance(current.slice, ast.Tuple) else [current.slice]
+    if origin in {"typing.Annotated", "typing_extensions.Annotated"} and len(members) > 1:
+        base, *metadata = members
+        yield from _annotated_field_calls(base, at, facts, context)
+        yield from (
+            item for item in metadata if isinstance(item, ast.Call) and facts.qualified(item.func, at) in _FIELD_NAMES
+        )
+    elif origin in {"typing.Optional", "typing.Union", "typing_extensions.Optional", "typing_extensions.Union"}:
+        for member in members:
+            yield from _annotated_field_calls(member, at, facts, context)
 
 
 def _string_domain(default: ast.expr | None) -> str | None:

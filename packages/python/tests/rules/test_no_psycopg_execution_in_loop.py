@@ -88,3 +88,25 @@ def test_suppression_generated_code_and_malformed_input() -> None:
     assert NoPsycopgExecutionInLoop().check(P, source) == []
     assert NoPsycopgExecutionInLoop().check(P, "# Code generated. DO NOT EDIT.\n" + source) == []
     assert NoPsycopgExecutionInLoop().check(P, "async def (") == []
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("[await connection.execute(query) for _ in ()]", 0),
+        ("[await connection.execute(query) for _ in (0,)]", 0),
+        ("{row: await connection.execute(query) for row in ()}", 0),
+        ("[row for row in (0,) if await connection.execute(query)]", 0),
+        ("[value for _ in (0,) for value in await connection.execute(query)]", 0),
+        ("[await connection.execute(query) for _ in () for row in rows]", 0),
+        ("[await connection.execute(query) for _ in (0, 1)]", 1),
+        ("[value for _ in (0, 1) for value in await connection.execute(query)]", 1),
+        ("[await connection.execute(query) for row in rows for _ in (0,)]", 1),
+        ("[row for row in rows if await connection.execute(query)]", 1),
+        ("[value for row in rows for value in await connection.execute(query)]", 1),
+        ("[[await connection.execute(query) for _ in (0,)] for row in rows]", 1),
+    ],
+)
+def test_comprehension_repetition_follows_evaluation_cardinality(body: str, expected: int) -> None:
+    source = f"from psycopg import AsyncConnection\nasync def load(connection: AsyncConnection, query, rows):\n    return {body}\n"
+    assert len(NoPsycopgExecutionInLoop().check(P, source)) == expected
