@@ -27,6 +27,7 @@ from sarj_sql_lint.rules.no_noop_migration_down import NoNoopMigrationDown
 from sarj_sql_lint.rules.no_null_comparison import NoNullComparison
 from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
+from sarj_sql_lint.rules.no_redundant_nullability import NoRedundantNullability
 from sarj_sql_lint.rules.prefer_constrained_status import PreferConstrainedStatus
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoRedundantNullability.id: NoRedundantNullability,
         DeclaredColumnBounds.id: DeclaredColumnBounds,
         NoMigrationComments.id: NoMigrationComments,
         NoNoopMigrationDown.id: NoNoopMigrationDown,
