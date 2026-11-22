@@ -296,12 +296,15 @@ def _module_xfail_aliases(tree: ast.Module, imports: ImportIndex) -> frozenset[s
 def _unique_xfail_alias(statement: ast.stmt, stores: Counter[str], imports: ImportIndex) -> str | None:
     target: ast.Name | None = None
     value: ast.expr | None = None
-    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-        target, value = statement.target, statement.value
-    elif isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-        assigned = statement.targets[0]
-        if isinstance(assigned, ast.Name):
-            target, value = assigned, statement.value
+    match statement:
+        case ast.AnnAssign() if isinstance(statement.target, ast.Name):
+            target, value = statement.target, statement.value
+        case ast.Assign() if len(statement.targets) == 1:
+            assigned = statement.targets[0]
+            if isinstance(assigned, ast.Name):
+                target, value = assigned, statement.value
+        case _:
+            pass
     if target is None or value is None or stores[target.id] != 1:
         return None
     return target.id if _pytest_marker_name(value, imports) == _XFAIL else None

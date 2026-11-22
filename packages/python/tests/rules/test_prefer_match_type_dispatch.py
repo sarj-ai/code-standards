@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDis
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from _pytest.capture import CaptureFixture
 
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
@@ -2094,7 +2097,6 @@ def test_guarded_ast_dispatch_requires_manual_match_conversion(guard: str) -> No
 @pytest.mark.parametrize(
     "condition",
     [
-        "isinstance(node, ast.Name) and ready()",
         "isinstance(node, ast.Name) and (node := other)",
         "ready and isinstance(node, ast.Name)",
         "isinstance(node, Imported) and ready",
@@ -2111,3 +2113,110 @@ def test_guarded_ast_siblings_inside_parent_walk_require_match() -> None:
     assert finding.severity is Severity.ERROR
     assert finding.line == 4
     assert fix_source(Path("app/parser.py"), source, rule_ids=["prefer-match-type-dispatch"]) == source
+
+
+_STABLE_LOCAL = "import ast\ndef inspect(node, ready):\n"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    if isinstance(node, ast.Name) and ready():\n        return 1\n    elif isinstance(node, ast.Attribute):\n        return 2\n    return None\n",
+        "    if isinstance(node, ast.Name):\n        return node.id\n    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):\n        return node.attr\n    return None\n",
+        "    if isinstance(node, ast.arg):\n        return node.arg\n    if isinstance(node, ast.Name):\n        if ready(node):\n            return node.id\n    return None\n",
+        "    if isinstance(node, ast.Name) and node.id == 'x':\n        return 1\n    if isinstance(node, ast.Name) and ready(node):\n        return 2\n    return None\n",
+        "    for child in ast.walk(node):\n        if isinstance(child, ast.Lambda):\n            continue\n        if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):\n            yield child\n",
+    ],
+    ids=["call-guard", "nested-field-guard", "terminating-prefix-final-arm", "repeated-guarded-type", "loop-filter"],
+)
+def test_stable_local_dispatch_with_calls_or_fallthrough_warns(body: str) -> None:
+    source = _STABLE_LOCAL + body
+    [finding] = _check(source)
+    assert finding.severity is Severity.WARNING
+    assert fix_source(Path("app/parser.py"), source, rule_ids=["prefer-match-type-dispatch"]) == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import ast\ndef inspect(ready):\n    global node\n    if isinstance(node, ast.Name) and ready():\n        return 1\n    if isinstance(node, ast.Attribute):\n        return 2\n",
+        "import ast\nif isinstance(node, ast.Name) and ready():\n    x = 1\nelif isinstance(node, ast.Attribute):\n    x = 2\n",
+        "import ast\ndef inspect(node):\n    def reset():\n        nonlocal node\n        node = None\n        return True\n    if isinstance(node, ast.Name) and reset():\n        return 1\n    if isinstance(node, ast.Attribute):\n        return 2\n",
+        "import ast\ndef inspect(node):\n    if isinstance(node, ast.Name):\n        return 1\n    if isinstance(node, ast.Name) and ready(node):\n        return 2\n",
+        "import ast\ndef inspect(node):\n    if isinstance(node, ast.Name):\n        log(node)\n    if isinstance(node, ast.Attribute) and ready(node):\n        return 2\n",
+        "import ast\ndef inspect(a, b):\n    if isinstance(a, ast.Name) and ready(a):\n        return 1\n    if isinstance(b, ast.Name):\n        return 2\n",
+        "import ast\ndef inspect(node, ast):\n    if isinstance(node, ast.Name) and ready(node):\n        return 1\n    if isinstance(node, ast.Attribute):\n        return 2\n",
+        "import ast\ndef inspect(node):\n    if isinstance(node, ast.Name) and ready(node):\n        return 1\n    return 0\n",
+    ],
+    ids=[
+        "global",
+        "module",
+        "nonlocal",
+        "dead-unguarded-repeat",
+        "nonterminating-prefix",
+        "two-subjects",
+        "shadowed-ast",
+        "single-arm",
+    ],
+)
+def test_unstable_or_non_dispatch_sequences_remain(source: str) -> None:
+    assert _check(source) == []
+
+
+_CALL_GUARD_ORIGINAL = """import ast
+def original(node, seen):
+    if isinstance(node, ast.Lambda):
+        return 'lambda'
+    if isinstance(node, ast.Attribute) and seen(node) and isinstance(node.value, ast.Name):
+        return node.attr
+    if isinstance(node, ast.Attribute) and seen(node):
+        seen(node.value)
+    return 'fallback'
+"""
+_CALL_GUARD_MATCH = """import ast
+def converted(node, seen):
+    match node:
+        case ast.Lambda():
+            return 'lambda'
+        case ast.Attribute() if seen(node) and isinstance(node.value, ast.Name):
+            return node.attr
+        case ast.Attribute() if seen(node):
+            seen(node.value)
+        case _:
+            pass
+    return 'fallback'
+"""
+
+
+type _Dispatch = Callable[[ast.expr, Callable[[ast.AST], bool]], object]
+
+
+class _GuardLog:
+    def __init__(self) -> None:
+        self.names: list[str] = []
+
+    def __call__(self, item: ast.AST) -> bool:
+        self.names.append(type(item).__name__)
+        return True
+
+
+def _compiled(fixture: str, name: str) -> _Dispatch:
+    namespace: dict[str, _Dispatch] = {}
+    exec(  # ruff: ignore[exec-builtin] -- execute reviewed equivalence fixtures without external inputs.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate transformation equivalence.
+            fixture, "<reviewed-example>", "exec"
+        ),
+        namespace,
+    )
+    return namespace[name]
+
+
+@pytest.mark.parametrize("source", ["lambda: 0", "a.b", "a().b", "a", "f(x)"])
+def test_call_guard_match_preserves_results_and_guard_calls(source: str) -> None:
+    assert len(_check(_CALL_GUARD_ORIGINAL)) == 1
+    node = ast.parse(source, mode="eval").body
+    original_log, converted_log = _GuardLog(), _GuardLog()
+    assert _compiled(_CALL_GUARD_ORIGINAL, "original")(node, original_log) == _compiled(_CALL_GUARD_MATCH, "converted")(
+        node, converted_log
+    )
+    assert original_log.names == converted_log.names

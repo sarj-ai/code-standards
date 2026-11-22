@@ -74,10 +74,13 @@ def _cast_receiver(node: ast.Call | ast.Subscript, provenance: ResourceProvenanc
     if not isinstance(node.ctx, ast.Load) or _static_text(node.slice) != "cast":
         return None
     namespace = node.value
-    if isinstance(namespace, ast.Attribute) and namespace.attr == "__dict__" and isinstance(namespace.value, ast.Name):
-        return namespace.value
-    if isinstance(namespace, ast.Call) and len(namespace.args) == 1 and _builtin_call(namespace, "vars", provenance):
-        return namespace.args[0] if isinstance(namespace.args[0], ast.Name) else None
+    match namespace:
+        case ast.Attribute() if namespace.attr == "__dict__" and isinstance(namespace.value, ast.Name):
+            return namespace.value
+        case ast.Call() if len(namespace.args) == 1 and _builtin_call(namespace, "vars", provenance):
+            return namespace.args[0] if isinstance(namespace.args[0], ast.Name) else None
+        case _:
+            pass
     return None
 
 
@@ -214,10 +217,13 @@ def _static_text(node: ast.expr, depth: int = 0) -> str | None:
 
 
 def _reflection_carrier(node: ast.Call | ast.Subscript) -> ast.AST | None:
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        return node.func
-    if isinstance(node, ast.Subscript):
-        return node.value.func if isinstance(node.value, ast.Call) else node.value
+    match node:
+        case ast.Call() if isinstance(node.func, ast.Attribute):
+            return node.func
+        case ast.Subscript():
+            return node.value.func if isinstance(node.value, ast.Call) else node.value
+        case _:
+            pass
     return None
 
 

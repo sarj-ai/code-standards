@@ -474,10 +474,13 @@ def _query_binding_values(
 ) -> None:
     for assignment in nodes(tree, ast.Assign, ast.AnnAssign, index=node_index):
         target: ast.expr | None = None
-        if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1:
-            target = assignment.targets[0]
-        elif isinstance(assignment, ast.AnnAssign):
-            target = assignment.target
+        match assignment:
+            case ast.Assign() if len(assignment.targets) == 1:
+                target = assignment.targets[0]
+            case ast.AnnAssign():
+                target = assignment.target
+            case _:
+                pass
         if not isinstance(target, ast.Name) or assignment.value is None:
             continue
         owner = _scope(assignment, parents)

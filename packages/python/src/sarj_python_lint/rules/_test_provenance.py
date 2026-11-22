@@ -165,10 +165,13 @@ class TestProvenance:
                 return self._symbol(ast.parse(expression.value, mode="eval").body, owner)
             except SyntaxError:
                 return None
-        if isinstance(expression, ast.Subscript):
-            return self._symbol(expression.value, owner)
-        if isinstance(expression, ast.Name) and expression.id in self._writes(owner):
-            return None
+        match expression:
+            case ast.Subscript():
+                return self._symbol(expression.value, owner)
+            case ast.Name() if expression.id in self._writes(owner):
+                return None
+            case _:
+                pass
         return self.indexes.resolve(owner, expression)
 
     def _writes(self, unit: SourceUnit) -> frozenset[str]:
@@ -374,16 +377,13 @@ class TestProvenance:
         imports = self._imports(function)
         returns: list[_Binding | None] = []
         for statement in function.body:
-            if isinstance(statement, ast.Return) and statement.value is not None:
-                returns.append(self._expression(statement.value, bindings, imports, factories=False))
-            elif (
-                isinstance(statement, ast.Expr)
-                and isinstance(statement.value, ast.Yield)
-                and statement.value.value is not None
-            ):
-                returns.append(self._expression(statement.value.value, bindings, imports, factories=False))
-            else:
-                self._bind(statement, bindings, imports)
+            match statement:
+                case ast.Return() if statement.value is not None:
+                    returns.append(self._expression(statement.value, bindings, imports, factories=False))
+                case ast.Expr() if isinstance(statement.value, ast.Yield) and statement.value.value is not None:
+                    returns.append(self._expression(statement.value.value, bindings, imports, factories=False))
+                case _:
+                    self._bind(statement, bindings, imports)
         return returns[0] if len(returns) == 1 else None
 
     def _fixture_name(self, function: _Function) -> str | None:
@@ -462,12 +462,15 @@ class TestProvenance:
             return
         self._observe_grafts(statement, bindings, imports)
         for node in _scope_nodes(statement):
-            if isinstance(node, ast.Attribute):
-                self._observe_model_attribute(node, bindings)
-            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                model = self._model_receiver(node.func, bindings)
-                if model is not None:
-                    model.behavioral = True
+            match node:
+                case ast.Attribute():
+                    self._observe_model_attribute(node, bindings)
+                case ast.Call() if isinstance(node.func, ast.Attribute):
+                    model = self._model_receiver(node.func, bindings)
+                    if model is not None:
+                        model.behavioral = True
+                case _:
+                    pass
 
     def _observe_grafts(self, statement: ast.stmt, bindings: Mapping[str, _Binding], imports: ImportIndex) -> None:
         match statement:

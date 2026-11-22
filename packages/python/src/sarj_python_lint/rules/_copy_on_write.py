@@ -286,12 +286,15 @@ class _Models:
         if qualified is not None:
             module, _, name = qualified.rpartition(".")
             return SymbolRef(module, name)
-        if isinstance(expression, ast.Name) and expression.id in imports.shadowed_names:
-            return SymbolRef(owner.module or "__copy_source__", expression.id)
-        if isinstance(expression, ast.Attribute) and any(
-            isinstance(node, ast.Name) and node.id in imports.shadowed_names for node in ast.walk(expression)
-        ):
-            return None
+        match expression:
+            case ast.Name() if expression.id in imports.shadowed_names:
+                return SymbolRef(owner.module or "__copy_source__", expression.id)
+            case ast.Attribute() if any(
+                isinstance(node, ast.Name) and node.id in imports.shadowed_names for node in ast.walk(expression)
+            ):
+                return None
+            case _:
+                pass
         return self.indexes.resolve(owner, expression)
 
     def class_node(self, symbol: SymbolRef) -> tuple[SourceUnit, ast.ClassDef] | None:

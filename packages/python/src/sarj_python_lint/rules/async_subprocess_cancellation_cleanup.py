@@ -184,14 +184,16 @@ def _is_same_or_later_wait(proof: AsyncApiProof, member: ast.Attribute, awaited:
 def _global_child_owner(context: PythonFileContext) -> bool:
     namespaces = _child_owner_namespaces(context)
     for node in context.nodes(ast.ImportFrom, ast.Attribute, ast.Name):
-        if isinstance(node, ast.ImportFrom) and _imports_child_owner(node):
-            return True
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in namespaces:
-            parent = context.parents.get(node)
-            if not isinstance(parent, ast.Attribute) or parent.value is not node or parent.attr == "__dict__":
+        match node:
+            case ast.ImportFrom() if _imports_child_owner(node):
                 return True
-        elif isinstance(node, ast.Attribute) and _child_owner_member(node, namespaces):
-            return True
+            case ast.Name() if isinstance(node.ctx, ast.Load) and node.id in namespaces:
+                parent = context.parents.get(node)
+                if not isinstance(parent, ast.Attribute) or parent.value is not node or parent.attr == "__dict__":
+                    return True
+            case _:
+                if isinstance(node, ast.Attribute) and _child_owner_member(node, namespaces):
+                    return True
     return False
 
 

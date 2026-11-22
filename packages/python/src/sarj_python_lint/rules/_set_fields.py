@@ -70,16 +70,19 @@ def _plain_field(unit: SourceUnit, class_name: str, name: str) -> bool:
     if owner is None:
         return False
     for statement in owner.body:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name in {
-            name,
-            "__getattribute__",
-            "__getattr__",
-        }:
-            return False
-        if isinstance(statement, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id in {name, "set", "frozenset"} for target in statement.targets
-        ):
-            return False
+        match statement:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() if statement.name in {
+                name,
+                "__getattribute__",
+                "__getattr__",
+            }:
+                return False
+            case ast.Assign() if any(
+                isinstance(target, ast.Name) and target.id in {name, "set", "frozenset"} for target in statement.targets
+            ):
+                return False
+            case _:
+                pass
     return True
 
 

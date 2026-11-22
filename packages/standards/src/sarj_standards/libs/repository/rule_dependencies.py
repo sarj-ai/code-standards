@@ -337,13 +337,16 @@ class _PythonImports(ast.NodeVisitor):
         return _relative_name(name.lstrip("."), level, package or "") if level else name
 
     def _target(self, node: ast.AST) -> str | None:
-        if isinstance(node, ast.Name):
-            return self.bindings.get(node.id)
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.attr in self.mutated_attributes.get(node.value.id, frozenset()):
-                return None
-            target = self.bindings.get(node.value.id)
-            return target + "." + node.attr if target is not None else None
+        match node:
+            case ast.Name():
+                return self.bindings.get(node.id)
+            case ast.Attribute() if isinstance(node.value, ast.Name):
+                if node.attr in self.mutated_attributes.get(node.value.id, frozenset()):
+                    return None
+                target = self.bindings.get(node.value.id)
+                return target + "." + node.attr if target is not None else None
+            case _:
+                pass
         return None
 
 
@@ -406,19 +409,19 @@ def _data_registry(tree: ast.Module, collector: _PythonImports, leaves: frozense
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
             registration |= any(_rule_id_key(key, rule_names) for key in node.keys)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            return False
-        if isinstance(node, ast.Call) and not (
-            isinstance(node.func, ast.Name) and collector.bindings.get(node.func.id) == "types.MappingProxyType"
-        ):
-            return False
-        if (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id in rule_names
-            and node.attr != "id"
-        ):
-            return False
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                return False
+            case ast.Call() if not (
+                isinstance(node.func, ast.Name) and collector.bindings.get(node.func.id) == "types.MappingProxyType"
+            ):
+                return False
+            case ast.Attribute() if (
+                isinstance(node.value, ast.Name) and node.value.id in rule_names and node.attr != "id"
+            ):
+                return False
+            case _:
+                pass
     return registration
 
 

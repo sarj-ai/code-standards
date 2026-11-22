@@ -142,12 +142,13 @@ def _stored_parameters(initializer: Function) -> dict[str, str]:
         if isinstance(node, ast.Attribute) and _is_self(node.value) and isinstance(node.ctx, (ast.Store, ast.Del))
     )
     for statement in initializer.body:
-        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-            target, value = statement.targets[0], statement.value
-        elif isinstance(statement, ast.AnnAssign):
-            target, value = statement.target, statement.value
-        else:
-            continue
+        match statement:
+            case ast.Assign() if len(statement.targets) == 1:
+                target, value = statement.targets[0], statement.value
+            case ast.AnnAssign():
+                target, value = statement.target, statement.value
+            case _:
+                continue
         if (
             isinstance(value, ast.Name)
             and isinstance(target, ast.Attribute)
@@ -182,18 +183,13 @@ def _method_fields(method: Function) -> Iterator[str]:
 def bindings(function: Function) -> dict[str, ast.expr]:
     candidates: dict[str, list[ast.expr]] = {}
     for statement in function.body:
-        if (
-            isinstance(statement, ast.Assign)
-            and len(statement.targets) == 1
-            and isinstance(statement.targets[0], ast.Name)
-        ):
-            candidates.setdefault(statement.targets[0].id, []).append(statement.value)
-        elif (
-            isinstance(statement, ast.AnnAssign)
-            and isinstance(statement.target, ast.Name)
-            and statement.value is not None
-        ):
-            candidates.setdefault(statement.target.id, []).append(statement.value)
+        match statement:
+            case ast.Assign() if len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+                candidates.setdefault(statement.targets[0].id, []).append(statement.value)
+            case ast.AnnAssign() if isinstance(statement.target, ast.Name) and statement.value is not None:
+                candidates.setdefault(statement.target.id, []).append(statement.value)
+            case _:
+                pass
     writes = [
         node.id
         for node in direct_nodes(function)
@@ -205,12 +201,15 @@ def bindings(function: Function) -> dict[str, ast.expr]:
 def local_names(function: Function) -> set[str]:
     names: set[str] = set()
     for node in direct_nodes(function):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            names.add(node.id)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(node.name)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
+        match node:
+            case ast.Name() if isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                names.add(node.name)
+            case ast.Import() | ast.ImportFrom():
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
+            case _:
+                pass
     return names
 
 

@@ -120,10 +120,13 @@ def flat_name(node: ast.expr) -> str:
 
 
 def _binding_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
-        return f"self.{node.attr}"
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute() if isinstance(node.value, ast.Name) and node.value.id == "self":
+            return f"self.{node.attr}"
+        case _:
+            pass
     return ""
 
 
@@ -1155,10 +1158,13 @@ def _binding_expression(binding: ast.stmt | None, symbol: str) -> ast.expr | Non
         target = binding.targets[0]
         if isinstance(target, ast.Name) and target.id == symbol:
             return binding.value
-    if isinstance(binding, ast.AnnAssign) and isinstance(binding.target, ast.Name) and binding.target.id == symbol:
-        return binding.value
-    if isinstance(binding, ast.TypeAlias) and binding.name.id == symbol:
-        return binding.value
+    match binding:
+        case ast.AnnAssign() if isinstance(binding.target, ast.Name) and binding.target.id == symbol:
+            return binding.value
+        case ast.TypeAlias() if binding.name.id == symbol:
+            return binding.value
+        case _:
+            pass
     return None
 
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     ProjectRule,
@@ -23,7 +24,7 @@ from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Sequence
 
     from sarj_python_lint._file_context import PythonFileContext
 
@@ -111,7 +112,8 @@ class PreferMatchTypeDispatch(ProjectRule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
-            "Guarded dispatch over proven stdlib AST classes is an error; other proven classes retain a manual warning. Keep the type check first, preserve guard order and retain the fallback. Guards with calls, assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
+            "Guarded dispatch over proven stdlib AST classes is an error; other proven classes retain a manual warning. Keep the type check first, preserve guard order and retain the fallback. Guards with assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
+            "Call-bearing guards, a guarded type repeated in a later arm, and a terminating prefix whose final arm falls through are warnings only for proven non-builtin classes on a function-local subject that no global or nonlocal declaration can rebind; an unguarded repeated type remains excluded as dead dispatch.",
             "A single ordinary-class reuse-or-construction normalization is a warning when both branches first assign the same simple target, reusing the subject or constructing the checked class. Preserve all following branch work. This branch has no automatic fix and does not change established dispatch errors.",
             "Normalization requires an undecorated, stable module-local class with proven ordinary ancestry and nonescaping class references. Dynamic or mutated classes, unknown imports, constructor argument effects, pre-assignment work and later reassignment of the subject, target or class remain excluded; constructor arguments are simple names or constants.",
             "Source-proven Pydantic/Enum dispatch is an error even for a single positive isinstance branch. Mixed model/builtin dispatch is supported. These findings have no automatic fixes; preserve nested checks inside case bodies. Predicate expressions, assertions, negated checks and compound guards remain allowed.",
@@ -512,10 +514,8 @@ def _guarded_dispatch_findings(
     findings: list[Diagnostic] = []
     for candidates in _review_sequences(context, used):
         branches = list(candidates)
-        if not any(isinstance(node.test, ast.BoolOp) and isinstance(node.test.op, ast.And) for node in branches):
-            continue
-        parsed = [_guarded_type_branch(node.test, context.imports, local_classes, unsafe_bindings) for node in branches]
-        if _parsed_dispatch(parsed) is None:
+        severity = _guarded_dispatch_severity(context, branches, local_classes, unsafe_bindings)
+        if severity is None:
             continue
         used.update(branch.lineno for branch in branches)
         first = branches[0]
@@ -527,14 +527,63 @@ def _guarded_dispatch_findings(
                 "SARJ080",
                 "Use match/case class patterns with guards for this type dispatch; preserve guard order "
                 "and fallbacks. This recommendation has no automatic rewrite.",
-                severity=Severity.ERROR if _stdlib_ast_dispatch(parsed) else Severity.WARNING,
+                severity=severity,
             )
         )
     return findings
 
 
-def _stdlib_ast_dispatch(branches: list[_TypeBranch | None]) -> bool:
-    return all(branch is not None and all(kind.startswith("ast.") for kind in branch.types) for branch in branches)
+def _guarded_dispatch_severity(
+    context: PythonFileContext,
+    branches: list[ast.If],
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> DiagnosticSeverity | None:
+    parsed = [_guarded_type_branch(node.test, context.imports, local_classes, unsafe_bindings) for node in branches]
+    guarded = [branch for branch in parsed if branch is not None]
+    if len(guarded) != len(parsed) or len(guarded) < _MIN_BRANCHES:
+        return None
+    dispatches = [branch.dispatch for branch in guarded]
+    established = (
+        _parsed_dispatch(dispatches) is not None
+        and any(branch.guard is not None for branch in guarded)
+        and not any(branch.calls for branch in guarded)
+    )
+    if established:
+        return Severity.ERROR if _stdlib_ast_dispatch(dispatches) else Severity.WARNING
+    return Severity.WARNING if _stable_local_dispatch(context, branches[0], guarded) else None
+
+
+def _stable_local_dispatch(context: PythonFileContext, first: ast.If, branches: list[_GuardedBranch]) -> bool:
+    subjects = {branch.dispatch.subject for branch in branches}
+    if len(subjects) != 1 or context.dynamic_namespace:
+        return False
+    subject = subjects.pop()
+    if all(branch.dispatch.types <= _BUILTIN_TYPES for branch in branches):
+        return False
+    unguarded: set[str] = set()
+    for branch in branches:
+        if not unguarded.isdisjoint(branch.dispatch.types):
+            return False
+        if branch.guard is None:
+            unguarded.update(branch.dispatch.types)
+    inventory = context.binding_inventory
+    scope = inventory.scope(first)
+    return (
+        isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef)
+        and subject not in inventory.external_bindings
+        and subject in inventory.bindings.get(scope, {})
+    )
+
+
+def _stdlib_ast_dispatch(branches: list[_TypeBranch]) -> bool:
+    return all(all(kind.startswith("ast.") for kind in branch.types) for branch in branches)
+
+
+class _GuardedBranch(NamedTuple):
+    dispatch: _TypeBranch
+    guard: ast.expr | None
+    calls: bool
 
 
 def _guarded_type_branch(
@@ -542,19 +591,20 @@ def _guarded_type_branch(
     imports: ImportIndex,
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
-) -> _TypeBranch | None:
+) -> _GuardedBranch | None:
+    guard: ast.expr | None = None
     match test:
         case ast.BoolOp(op=ast.And(), values=[first, *guards]):
-            if any(
-                isinstance(part, ast.Call | ast.NamedExpr | ast.Await | ast.Yield | ast.YieldFrom)
-                for guard in guards
-                for part in ast.walk(guard)
-            ):
+            parts = [part for guard in guards for part in ast.walk(guard)]
+            if any(isinstance(part, ast.NamedExpr | ast.Await | ast.Yield | ast.YieldFrom) for part in parts):
                 return None
-            test = first
+            test, guard = first, guards[0]
         case _:
-            pass
-    return _type_branch(test, imports, local_classes, unsafe_bindings)
+            parts = []
+    dispatch = _type_branch(test, imports, local_classes, unsafe_bindings)
+    if dispatch is None:
+        return None
+    return _GuardedBranch(dispatch, guard, any(isinstance(part, ast.Call) for part in parts))
 
 
 def _reuse_or_construct_findings(
@@ -753,7 +803,12 @@ def _review_dispatch_findings(
 
 
 def _review_sequences(context: PythonFileContext, used: set[int]) -> Iterator[Iterator[ast.If]]:
-    blocks = (block for owner in context.nodes(ast.AST) for block in _statement_blocks(owner))
+    blocks = (
+        block
+        for owner in context.nodes(ast.AST)
+        for block in _statement_blocks(owner)
+        if not (isinstance(owner, ast.If) and block is owner.orelse and [type(item) for item in block] == [ast.If])
+    )
     expanded: set[int] = set()
     for block in blocks:
         yield from _review_block(block, used, expanded)
@@ -1173,7 +1228,7 @@ def _dispatch(
     return _parsed_dispatch([_type_branch(branch.test, imports, local_classes, unsafe_bindings) for branch in branches])
 
 
-def _parsed_dispatch(parsed: list[_TypeBranch | None]) -> _Dispatch | None:
+def _parsed_dispatch(parsed: Sequence[_TypeBranch | None]) -> _Dispatch | None:
     if len(parsed) < _MIN_BRANCHES:
         return None
     if any(branch is None for branch in parsed):

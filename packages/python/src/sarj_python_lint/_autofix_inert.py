@@ -117,10 +117,13 @@ def inert_private_scope(owner: ast.FunctionDef, context: PythonFileContext) -> b
     containing = [owner]
     parent = context.parents.get(owner)
     while parent is not None:
-        if isinstance(parent, (ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            return False
-        if isinstance(parent, ast.FunctionDef):
-            containing.append(parent)
+        match parent:
+            case ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                return False
+            case ast.FunctionDef():
+                containing.append(parent)
+            case _:
+                pass
         parent = context.parents.get(parent)
     analyzer = _Analysis(context, containing[-1])
     try:
@@ -353,14 +356,15 @@ class _Analysis:
         statement = self.context.parents.get(binding) if binding is not None else None
         if isinstance(binding, ast.FunctionDef) and self.context.parents.get(binding) is self.context.tree:
             statement = binding
-        if isinstance(statement, ast.AnnAssign) and statement.value is None:
-            raise _UnsafeError
-        if (
-            isinstance(statement, (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.FunctionDef))
-            and statement.lineno < self.outer.lineno
-            and self.context.parents.get(statement) is self.context.tree
-        ):
-            return _Value(_Kind.UNKNOWN)
+        match statement:
+            case ast.AnnAssign() if statement.value is None:
+                raise _UnsafeError
+            case ast.Import() | ast.ImportFrom() | ast.Assign() | ast.AnnAssign() | ast.FunctionDef() if (
+                statement.lineno < self.outer.lineno and self.context.parents.get(statement) is self.context.tree
+            ):
+                return _Value(_Kind.UNKNOWN)
+            case _:
+                pass
         raise _UnsafeError
 
     def _call(self, call: ast.Call, environment: dict[str, _Value]) -> _Value:
@@ -506,12 +510,13 @@ class _Analysis:
             if case.guard is not None:
                 raise _UnsafeError
             pattern = case.pattern
-            if isinstance(pattern, ast.MatchValue) and isinstance(pattern.value, ast.Constant):
-                selected = subject.literal == pattern.value.value
-            elif isinstance(pattern, ast.MatchAs) and pattern.pattern is None and pattern.name is None:
-                selected = True
-            else:
-                raise _UnsafeError
+            match pattern:
+                case ast.MatchValue() if isinstance(pattern.value, ast.Constant):
+                    selected = subject.literal == pattern.value.value
+                case ast.MatchAs() if pattern.pattern is None and pattern.name is None:
+                    selected = True
+                case _:
+                    raise _UnsafeError
             if selected:
                 return self._body(case.body, environment)
         return _Result(returned=False, value=_constant(None))

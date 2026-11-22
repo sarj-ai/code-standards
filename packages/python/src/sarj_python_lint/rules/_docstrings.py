@@ -388,27 +388,31 @@ def _terminal_name(node: ast.expr) -> str | None:
 
 
 def _record_docstring_use(node: ast.AST, consumed: set[str], aliases: dict[str, set[str]]) -> None:
-    if isinstance(node, ast.Attribute) and node.attr == "__doc__":
-        if name := _terminal_name(node.value):
-            consumed.add(name)
-    elif isinstance(node, ast.Call) and _is_docstring_reader(node):
-        if name := _terminal_name(node.args[0]):
-            consumed.add(name)
-    elif isinstance(node, ast.Subscript):
-        if name := _subscripted_docstring_owner(node):
-            consumed.add(name)
-    else:
-        _record_docstring_alias(node, aliases)
+    match node:
+        case ast.Attribute() if node.attr == "__doc__":
+            if name := _terminal_name(node.value):
+                consumed.add(name)
+        case ast.Call() if _is_docstring_reader(node):
+            if name := _terminal_name(node.args[0]):
+                consumed.add(name)
+        case ast.Subscript():
+            if name := _subscripted_docstring_owner(node):
+                consumed.add(name)
+        case _:
+            _record_docstring_alias(node, aliases)
 
 
 def _subscripted_docstring_owner(node: ast.Subscript) -> str | None:
     if not isinstance(node.slice, ast.Constant) or node.slice.value != "__doc__":
         return None
     value = node.value
-    if isinstance(value, ast.Attribute) and value.attr == "__dict__":
-        return _terminal_name(value.value)
-    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "vars" and value.args:
-        return _terminal_name(value.args[0])
+    match value:
+        case ast.Attribute() if value.attr == "__dict__":
+            return _terminal_name(value.value)
+        case ast.Call() if isinstance(value.func, ast.Name) and value.func.id == "vars" and value.args:
+            return _terminal_name(value.args[0])
+        case _:
+            pass
     return None
 
 
@@ -433,16 +437,15 @@ def _is_docstring_reader(node: ast.Call) -> bool:
 
 
 def _record_docstring_alias(node: ast.AST, aliases: dict[str, set[str]]) -> None:
-    if isinstance(node, ast.Assign) and isinstance(node.value, (ast.Name, ast.Attribute)):
-        original = _terminal_name(node.value)
-        for target in node.targets:
-            if isinstance(target, ast.Name) and original is not None:
-                aliases.setdefault(target.id, set()).add(original)
-    elif (
-        isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and isinstance(node.value, (ast.Name, ast.Attribute))
-    ):
-        original = _terminal_name(node.value)
-        if original is not None:
-            aliases.setdefault(node.target.id, set()).add(original)
+    match node:
+        case ast.Assign() if isinstance(node.value, (ast.Name, ast.Attribute)):
+            original = _terminal_name(node.value)
+            for target in node.targets:
+                if isinstance(target, ast.Name) and original is not None:
+                    aliases.setdefault(target.id, set()).add(original)
+        case ast.AnnAssign() if isinstance(node.target, ast.Name) and isinstance(node.value, (ast.Name, ast.Attribute)):
+            original = _terminal_name(node.value)
+            if original is not None:
+                aliases.setdefault(node.target.id, set()).add(original)
+        case _:
+            pass

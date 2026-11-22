@@ -34,13 +34,16 @@ def sql_string_value(node: ast.expr, *, interpolation_placeholder: str = " ") ->
 
 
 def _sql_string_value(node: ast.expr, *, interpolation_placeholder: str) -> str | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _sql_string_value(node.left, interpolation_placeholder=interpolation_placeholder)
-        right = _sql_string_value(node.right, interpolation_placeholder=interpolation_placeholder)
-        if left is not None and right is not None:
-            return left + right
+    match node:
+        case ast.Constant() if isinstance(node.value, str):
+            return node.value
+        case ast.BinOp() if isinstance(node.op, ast.Add):
+            left = _sql_string_value(node.left, interpolation_placeholder=interpolation_placeholder)
+            right = _sql_string_value(node.right, interpolation_placeholder=interpolation_placeholder)
+            if left is not None and right is not None:
+                return left + right
+        case _:
+            pass
     if isinstance(node, ast.JoinedStr):
         pieces: list[str] = []
         for value in node.values:

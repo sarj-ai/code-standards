@@ -103,26 +103,31 @@ def same_words(body: str, identifier: str) -> bool:
 def empty_collection_name(statement: ast.stmt, context: PythonFileContext) -> str | None:
     target: ast.expr | None = None
     value: ast.expr | None = None
-    if isinstance(statement, ast.AnnAssign):
-        target, value = statement.target, statement.value
-    elif isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-        target, value = statement.targets[0], statement.value
+    match statement:
+        case ast.AnnAssign():
+            target, value = statement.target, statement.value
+        case ast.Assign() if len(statement.targets) == 1:
+            target, value = statement.targets[0], statement.value
+        case _:
+            pass
     if not isinstance(target, ast.Name) or value is None:
         return None
-    if isinstance(value, (ast.List, ast.Set)) and not value.elts:
-        return target.id
-    if isinstance(value, ast.Dict) and not value.keys:
-        return target.id
-    if (
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Name)
-        and value.func.id in {"dict", "list", "set"}
-        and not value.args
-        and not value.keywords
-    ):
-        provenance = context.static_resource_provenance
-        if provenance.builtin_namespace_untouched and provenance.binding(value.func.id, value.func) is None:
+    match value:
+        case ast.List() | ast.Set() if not value.elts:
             return target.id
+        case ast.Dict() if not value.keys:
+            return target.id
+        case ast.Call() if (
+            isinstance(value.func, ast.Name)
+            and value.func.id in {"dict", "list", "set"}
+            and not value.args
+            and not value.keywords
+        ):
+            provenance = context.static_resource_provenance
+            if provenance.builtin_namespace_untouched and provenance.binding(value.func.id, value.func) is None:
+                return target.id
+        case _:
+            pass
     return None
 
 
