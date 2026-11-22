@@ -22,6 +22,7 @@ MAX_SLOTS: Final = 64
 MAX_DEFAULT_SLOTS: Final = 4
 CPUS_PER_SLOT: Final = 8
 MEMORY_GIB_PER_SLOT: Final = 12
+_BYTES_PER_GIB: Final = 1_073_741_824
 LEASE_ENV: Final = "SARJ_LOCAL_CHECK_LEASE"
 JSON_PARSER: Callable[[str], dict[str, object] | list[object] | str | int | float | bool | None] = json.loads
 
@@ -148,7 +149,7 @@ def _registered_waiter(directory: Path, wait: Wait) -> Generator[Path]:
 def default_slots(cpus: int, memory_bytes: int) -> int:
     # Must match sarj-ai/platform scripts/dev/run-local-check.py _default_slots,
     # which documents the sizing; both launchers share this queue directory.
-    return max(1, min(MAX_DEFAULT_SLOTS, cpus // CPUS_PER_SLOT, memory_bytes // 2**30 // MEMORY_GIB_PER_SLOT))
+    return max(1, min(MAX_DEFAULT_SLOTS, cpus // CPUS_PER_SLOT, memory_bytes // _BYTES_PER_GIB // MEMORY_GIB_PER_SLOT))
 
 
 def host_default_slots() -> int:

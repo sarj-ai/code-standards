@@ -22,6 +22,9 @@ from sarj_iac_lint.rules.no_comment_cruft import is_comment_directive, is_decora
 from sarj_iac_lint.rules.no_restated_comment import comment_candidates, has_generated_header
 
 
+_MAX_FIX_PASSES = 4
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
@@ -54,7 +57,7 @@ _PRESERVED_COMMENT = re.compile(
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
     current = source
-    for _ in range(4):
+    for _ in range(_MAX_FIX_PASSES):
         fixed = _fix_once(path, current, rule_ids=rule_ids)
         if fixed == current:
             return current

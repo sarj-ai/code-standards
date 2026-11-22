@@ -43,7 +43,7 @@ class NoMagicArithmetic(Rule):
     id = "no-magic-arithmetic"
     code = "SARJ570"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Name nontrivial numeric factors and operational limits.",
         rationale="Unnamed conversion factors, frame sizes and timing limits hide units and can drift across related operations.",
         remediation="Extract a meaningfully named constant or use validated configuration. Reuse an existing constant when it represents the same unit or limit.",
@@ -106,7 +106,7 @@ class NoMagicArithmetic(Rule):
                     node.col_offset + 1,
                     self.code,
                     "Name this numeric factor or operational limit with its meaning and units, or use validated configuration.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings
@@ -135,6 +135,8 @@ def _runtime(node: ast.AST, context: PythonFileContext) -> bool:
                 return current in parent.body
             case ast.Lambda():
                 return current is parent.body
+            case ast.ClassDef():
+                return False
             case _:
                 pass
         current = parent

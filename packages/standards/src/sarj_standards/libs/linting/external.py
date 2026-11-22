@@ -79,6 +79,11 @@ from .runner import GroupedPaths, accepts_hook_path, group_paths
 from .shell_policy import SHELLCHECK_ARGS
 
 
+_MILLISECONDS_PER_SECOND = 1_000
+_KIB_FACTOR = 1024
+_REDACTED_MESSAGE_CHARS = 1024
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
     from typing import BinaryIO
@@ -699,7 +704,7 @@ def _invoke_oxlint(
         report,
         analyzer_id=AnalyzerId("oxlint"),
         invocation_id=invocation,
-        duration_ms=round((monotonic() - started) * 1_000),
+        duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
         file_count=report.file_count or file_count,
     )
 
@@ -1157,7 +1162,7 @@ def _invoke_text_tool(
             diagnostics=diagnostics,
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
@@ -1168,7 +1173,7 @@ def _invoke_text_tool(
             issues=(issue,),
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
         )
 
@@ -1205,7 +1210,7 @@ def _invoke_detekt(
             diagnostics=diagnostics,
             analyzer_id=AnalyzerId("detekt"),
             invocation_id=InvocationId("detekt"),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
@@ -1216,7 +1221,7 @@ def _invoke_detekt(
             issues=(issue,),
             analyzer_id=AnalyzerId("detekt"),
             invocation_id=InvocationId("detekt"),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
         )
 
@@ -1779,7 +1784,7 @@ def _invoke_deptry_projects(
                         issues=(issue,),
                         analyzer_id=AnalyzerId("deptry"),
                         invocation_id=invocation_id,
-                        duration_ms=round((monotonic() - started) * 1_000),
+                        duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
                         file_count=len(scoped_files),
                     )
                 )
@@ -1797,7 +1802,7 @@ def _invoke_deptry_projects(
                         issues=(issue,),
                         analyzer_id=AnalyzerId("deptry"),
                         invocation_id=invocation_id,
-                        duration_ms=round((monotonic() - started) * 1_000),
+                        duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
                         file_count=len(scoped_files),
                     )
                 )
@@ -1809,7 +1814,7 @@ def _invoke_deptry_projects(
                     diagnostics=diagnostics,
                     analyzer_id=AnalyzerId("deptry"),
                     invocation_id=invocation_id,
-                    duration_ms=round((monotonic() - started) * 1_000),
+                    duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
                     file_count=len(scoped_files),
                 )
             )
@@ -1822,7 +1827,7 @@ def _invoke_deptry_projects(
                     issues=(issue,),
                     analyzer_id=AnalyzerId("deptry"),
                     invocation_id=invocation_id,
-                    duration_ms=round((monotonic() - started) * 1_000),
+                    duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
                     file_count=len(scoped_files),
                 )
             )
@@ -2242,7 +2247,7 @@ def process_request(
 
 
 def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_seconds: float = 10) -> ProcessOutput:
-    if len(source.encode("utf-8")) > 1024 * 1024:
+    if len(source.encode("utf-8")) > _KIB_FACTOR * _KIB_FACTOR:
         msg = "analyzer source exceeds the 1 MiB input limit"
         raise OutputLimitError(msg)
     return DEFAULT_EXECUTOR.run(
@@ -2251,7 +2256,7 @@ def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_se
             cwd=cwd,
             timeout_seconds=timeout_seconds,
             input_bytes=source.encode("utf-8"),
-            max_input_bytes=1024 * 1024,
+            max_input_bytes=_KIB_FACTOR * _KIB_FACTOR,
         )
     )
 
@@ -2565,7 +2570,7 @@ def _invoke(
             rule_executions=report.rule_executions,
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
             version=version if report.completion is Completion.COMPLETE else None,
         )
@@ -2578,7 +2583,7 @@ def _invoke(
             issues=(issue,),
             analyzer_id=AnalyzerId(name),
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
-            duration_ms=round((monotonic() - started) * 1_000),
+            duration_ms=round((monotonic() - started) * _MILLISECONDS_PER_SECOND),
             file_count=file_count,
         )
 
@@ -3423,7 +3428,7 @@ def redact_message(value: str, root: Path) -> str:
     )
     message = re.sub(r"(?<![\w:./])/(?:[^\s:]+/?)+", "<path>", message)
     message = re.sub(r"\b[A-Za-z]:\\[^\s]+", "<path>", message)
-    return message[:1024]
+    return message[:_REDACTED_MESSAGE_CHARS]
 
 
 def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected_paths: Sequence[str]) -> None:

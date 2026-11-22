@@ -16,6 +16,10 @@ from sarj_standards.libs.filesystem import is_link_like
 from . import library_policy, textlint
 
 
+_KIB_FACTOR = 1024
+_GENERATED_HEADER_LINES = 12
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
 
@@ -489,7 +493,7 @@ def _validate_source_file(path: Path, display: str) -> None:
 def _validate_source_size(path: Path, size: int) -> None:
     limit = _MAX_MARKDOWN_FILE_BYTES if path.suffix.lower() in {".md", ".mdx"} else _MAX_SOURCE_FILE_BYTES
     if size > limit:
-        msg = f"source input exceeds the {limit // (1024 * 1024)} MiB analysis limit: {path}"
+        msg = f"source input exceeds the {limit // (_KIB_FACTOR * _KIB_FACTOR)} MiB analysis limit: {path}"
         raise ValueError(msg)
 
 
@@ -537,7 +541,7 @@ def _has_generated_header(path: Path) -> bool:
         return False
     comments: list[bytes] = []
     in_block = False
-    for raw_line in lines[:12]:
+    for raw_line in lines[:_GENERATED_HEADER_LINES]:
         line = raw_line.strip()
         if not line:
             continue

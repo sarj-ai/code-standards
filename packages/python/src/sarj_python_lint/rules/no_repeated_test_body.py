@@ -520,7 +520,7 @@ def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
 
 
 def _test_name_tokens(name: str) -> set[str]:
-    suffix = name[4:].lstrip("_") if name.startswith(_TEST_PREFIX) else name
+    suffix = name[len(_TEST_PREFIX) :].lstrip("_") if name.startswith(_TEST_PREFIX) else name
     return {token for token in suffix.split("_") if token}
 
 

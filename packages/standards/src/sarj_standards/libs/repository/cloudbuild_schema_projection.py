@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 import typer
 
 
+_PROTO_INT32_VALUE_BITS = 31
+
+
 app = typer.Typer(help="Project pinned Google discovery into the bundled Build-only field schema")
 
 
@@ -52,7 +55,11 @@ class _Field(BaseModel):
             alternatives: JsonSchema = {
                 "anyOf": [
                     {"type": "string", "enum": [*self.values]},
-                    {"type": "integer", "minimum": -(2**31), "maximum": 2**31 - 1},
+                    {
+                        "type": "integer",
+                        "minimum": -(2**_PROTO_INT32_VALUE_BITS),
+                        "maximum": 2**_PROTO_INT32_VALUE_BITS - 1,
+                    },
                 ]
             }
             return alternatives

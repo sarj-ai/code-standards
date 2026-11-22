@@ -27,7 +27,7 @@ class CanonicalTerraformDeclarations(Rule):
     id = "canonical-terraform-declarations"
     code = "SARJ224"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep variable and output declarations in their owning module canonical interface files.",
         rationale="A module's inputs and exports form its interface. Canonical files expose that interface without introducing folders Terraform does not load.",
         remediation="Consolidate declarations into variables.tf or outputs.tf in the same module directory; use variables.tf.json or outputs.tf.json for JSON. Keep implementation and deployment entrypoints in place. Review comments, override files and duplicate declarations before moving blocks.",
@@ -37,7 +37,7 @@ class CanonicalTerraformDeclarations(Rule):
             "Checks top-level variable/output blocks in .tf and .tf.json; filenames alone cannot establish this source-semantic finding.",
             "No empty files, new module, resource move or tfvars relocation is required. Terraform does not recursively load variables/ or outputs/ folders.",
             "Generated/vendor/example/fixture sources and Terraform override files are excluded. Overrides merge by filename ordering and require review.",
-            "First ships as a warning; a separate reviewed promotion through maintain rules promote-error enables blocking. Source, registry and generated lifecycle metadata must agree before qualification.",
+            "Promoted separately after the warning release through maintain rules promote-error. Source, registry and generated lifecycle metadata must agree before qualification.",
             "Core check/fix and staged checks can move native HCL declaration blocks into existing selected canonical files in the same module. The per-file IaC fixer cannot establish a complete module and refuses movement. JSON, missing/unselected destinations, guards, comments/directives, overrides, duplicate interfaces and source-reading functions require review. Core verifies the entire module structure and stale source/index/directory preconditions, then applies all files through its existing rollback transaction.",
         ),
         examples=(

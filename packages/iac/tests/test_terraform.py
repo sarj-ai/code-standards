@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date
 import json
 from pathlib import Path
@@ -21,8 +20,8 @@ from sarj_iac_lint.terraform import terraform_blocks
 
 
 @pytest.mark.parametrize("extension", [".tf", ".tf.json"])
-def test_declaration_policy_has_a_blocking_cli_path_after_reviewed_promotion(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], extension: str
+def test_promoted_declaration_policy_blocks_the_native_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], extension: str
 ) -> None:
     path = tmp_path / f"service{extension}"
     path.write_text(
@@ -31,13 +30,9 @@ def test_declaration_policy_has_a_blocking_cli_path_after_reviewed_promotion(
         else 'variable "region" { type = string }\n'
     )
     arguments = ["check", "--rule", CanonicalTerraformDeclarations.id, str(path)]
-    assert main(arguments) == 0
     metadata = CanonicalTerraformDeclarations.documentation
     assert metadata is not None
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- promote only the authored metadata; exercise the real CLI severity and exit boundary.
-        CanonicalTerraformDeclarations, "documentation", replace(metadata, default_level=DefaultLevel.ERROR)
-    )
-
+    assert metadata.default_level == DefaultLevel.ERROR
     assert main(arguments) == 1
     assert "SARJ224" in capsys.readouterr().out
 

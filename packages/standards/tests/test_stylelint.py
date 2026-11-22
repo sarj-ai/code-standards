@@ -120,7 +120,7 @@ def test_installed_css_cli_reports_managed_findings_from_a_consumer(tmp_path: Pa
     }
     assert {diagnostic.code: diagnostic.severity for diagnostic in report.diagnostics} == {
         "declaration-property-value-disallowed-list": Severity.ERROR,
-        "@sarj/no-modern-shorthand-reset": Severity.WARNING,
+        "@sarj/no-modern-shorthand-reset": Severity.ERROR,
     }
 
 
@@ -135,6 +135,19 @@ def test_pixel_typography_blocks_native_cli(
 
     output = capsys.readouterr()
     assert "declaration-property-value-disallowed-list" in output.out
+
+
+@pytest.mark.parametrize("staged", [False, True], ids=("analyze", "staged-check"))
+def test_modern_shorthand_reset_blocks_native_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, staged: bool
+) -> None:
+    project(tmp_path, {"view.css": ".a { animation-timeline: scroll(); animation: reveal 1s; }"}, git=staged)
+    command = ["check", "--staged"] if staged else ["analyze", "--external", "view.css"]
+
+    assert cli.main(["--root", str(tmp_path), *command, "--trust-repository-code"]) == 1
+
+    output = capsys.readouterr()
+    assert "@sarj/no-modern-shorthand-reset" in output.out
 
 
 def test_css_validity_findings_are_blocking_errors(tmp_path: Path) -> None:

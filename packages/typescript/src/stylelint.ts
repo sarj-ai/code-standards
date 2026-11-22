@@ -1,6 +1,6 @@
 import stylelint, { type Rule } from "stylelint";
 import type { Declaration } from "postcss";
-import { parse, walk } from "@eslint/css-tree";
+import { ident, parse, walk } from "@eslint/css-tree";
 
 const NAME = "@sarj/no-modern-shorthand-reset";
 const INITIAL: ReadonlySet<string> = new Set([
@@ -35,8 +35,8 @@ function resetBy(
   if (index < declarations.indexOf(longhand)) return false;
   const value = shorthand.value.trim().toLowerCase();
   if (
-    value === "none" ||
-    INITIAL.has(longhand.value.trim().toLowerCase()) ||
+    ident.decode(value).toLowerCase() === "none" ||
+    INITIAL.has(ident.decode(longhand.value.trim()).toLowerCase()) ||
     hasUnknownValue(value) ||
     hasUnknownValue(longhand.value)
   )
@@ -67,7 +67,7 @@ function resetBy(
   let discrete = false;
   if (shorthand.prop.toLowerCase() === "transition") {
     walk(parse(value, { context: "value" }), (node) => {
-      if (node.type === "Identifier" && node.name.toLowerCase() === "allow-discrete")
+      if (node.type === "Identifier" && ident.decode(node.name).toLowerCase() === "allow-discrete")
         discrete = true;
     });
   }
@@ -75,10 +75,13 @@ function resetBy(
 }
 
 function hasUnknownValue(value: string): boolean {
-  let unknown = UNKNOWN.has(value);
+  let unknown = UNKNOWN.has(ident.decode(value.trim()).toLowerCase());
   try {
     walk(parse(value, { context: "value" }), (node) => {
-      if (node.type === "Function" && ["var", "env"].includes(node.name.toLowerCase()))
+      if (
+        node.type === "Function" &&
+        ["var", "env"].includes(ident.decode(node.name).toLowerCase())
+      )
         unknown = true;
     });
   } catch {

@@ -13,6 +13,15 @@ from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.rule_base import physical_lines
 
 
+_ISO_DATE_CHARS = 10
+_ISO_HOUR_START = 11
+_ISO_HOUR_END = 13
+_ISO_MINUTE_START = 14
+_ISO_MINUTE_END = 16
+_ISO_SECOND_START = 17
+_ISO_SECOND_END = 19
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -365,13 +374,13 @@ def _valid_iso_timestamp(value: str) -> bool:
     if re.fullmatch(_ISO_TIMESTAMP, value) is None:
         return False
     try:
-        date.fromisoformat(value[:10])
+        date.fromisoformat(value[:_ISO_DATE_CHARS])
     except ValueError:
         return False
     return (
-        int(value[11:13]) < _HOURS_PER_DAY
-        and int(value[14:16]) < _MINUTES_PER_HOUR
-        and int(value[17:19]) < _SECONDS_PER_MINUTE
+        int(value[_ISO_HOUR_START:_ISO_HOUR_END]) < _HOURS_PER_DAY
+        and int(value[_ISO_MINUTE_START:_ISO_MINUTE_END]) < _MINUTES_PER_HOUR
+        and int(value[_ISO_SECOND_START:_ISO_SECOND_END]) < _SECONDS_PER_MINUTE
     )
 
 

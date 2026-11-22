@@ -15,7 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._comments import PositionedComment, comment_runs, has_legal_notice
+from sarj_python_lint.rules._comments import PositionedComment, comment_runs, has_legal_notice, script_metadata_lines
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 from sarj_python_lint.rules._pytest import collected_tests
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 _DIRECTIVE = re.compile(
     r"^(?:!|.*?coding[:=]|(?:sarj-noqa|noqa|ruff|pyright|basedpyright|type|fmt|isort|pragma|"
-    r"mypy|pylint|nosec|doctest|pytest|uv|region|endregion)\s*[:\[]|(?:fmt|isort):|%%)",
+    r"mypy|pylint|flake8|doctest|pytest|uv|region|endregion)\s*[:\[]|(?:nosec|nosemgrep)\b|language=|-\*-|(?:fmt|isort):|%%)",
     re.IGNORECASE,
 )
 
@@ -133,7 +133,14 @@ class NoTestComments(Rule):
         if context.generated or context.tree is None or not _test_comment_source(context):
             return []
         comments = scan_comments_or_none(context.source) or ()
-        legal_lines = _legal_comment_lines(comments)
+        protected = _legal_comment_lines(comments) | script_metadata_lines(
+            context.source,
+            [
+                PositionedComment(comment.line, comment.col - 1, comment.body)
+                for comment in comments
+                if comment.standalone
+            ],
+        )
         return [
             Diagnostic(
                 path=context.path,
@@ -145,7 +152,7 @@ class NoTestComments(Rule):
             )
             for comment in comments
             if comment.body.strip()
-            and comment.line not in legal_lines
+            and comment.line not in protected
             and not _DIRECTIVE.search(comment.body)
             and not has_legal_notice(comment.body)
             and not context.suppressions.is_suppressed(comment.line, self.code)

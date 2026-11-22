@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 
 _CREATE_WORDS: Final = frozenset({"create", "add", "new"})
 _MESSAGE = (
-    "POST already means create; name the collection (POST /tickets) instead of a create, add or new segment, "
-    "and use PUT for an upsert."
+    "Name the collection (POST /tickets) instead of ending the path in create, add or new. "
+    "Keep a reasoned exact exception for an external RPC contract."
 )
 
 
@@ -33,13 +33,14 @@ class NoCreateVerbInPostPath(Rule):
     id = "no-create-verb-in-post-path"
     code = "SARJ500"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="POST routes name their collection instead of ending in a create, add or new segment.",
         rationale=(
-            "The HTTP method already states the action. A trailing create, add or new segment turns a resource API "
-            "into ad hoc RPC names, so clients cannot predict paths and PUT, PATCH and DELETE lose their pairing."
+            "The organization uses resource-oriented paths for predictable collection and item APIs. "
+            "A trailing create, add or new segment repeats the operation in the path. HTTP POST itself supports "
+            "resource-specific processing and does not require creation semantics."
         ),
-        remediation="POST to the collection path, use PUT on the item path for an upsert and PATCH for a partial update.",
+        remediation="Use the collection path for resource creation. Preserve deliberate external RPC contracts with a reasoned exact suppression; review client compatibility before changing a published path.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -92,7 +93,7 @@ class NoCreateVerbInPostPath(Rule):
                 route.decorator.col_offset + 1,
                 self.code,
                 _MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for route in route_decorators(context)
             if "post" in route.methods

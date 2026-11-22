@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
-from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.__main__ import analyze, main
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
 
 
@@ -65,3 +66,33 @@ def test_allows_collection_paths(decorator: str) -> None:
 
 def test_skips_test_modules() -> None:
     assert _lines("@router.post('/create')", path="tests/test_api.py") == []
+
+
+def test_resource_path_policy_blocks_cli_and_retains_external_rpc_exception(tmp_path: Path) -> None:
+    path = tmp_path / "api.py"
+    body = "\nasync def handler() -> None:\n    return None\n"
+    path.write_text(f"{_HEADER}@router.post('/tickets/create'){body}")
+    arguments = ["check", "--rule", NoCreateVerbInPostPath.id, str(path)]
+    baseline = tmp_path / "baseline.json"
+
+    assert [finding.severity for finding in analyze([NoCreateVerbInPostPath.id], [path])] == [Severity.ERROR]
+    assert main(arguments) == 1
+    assert main([*arguments, "--update-baseline", str(baseline)]) == 0
+    assert main([*arguments, "--baseline", str(baseline)]) == 0
+    path.write_text(
+        f"{_HEADER}@router.post('/tickets/create')  "
+        f"# sarj-noqa: SARJ500 -- Preserve the partner's published RPC path.{body}"
+    )
+    assert main(arguments) == 0
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class FastAPI:\n    def post(self, path): ...\nrouter = FastAPI()\n",
+        "from fastapi import APIRouter\nrouter = APIRouter()\nrouter = unknown_router()\n",
+    ],
+)
+def test_unproven_or_reassigned_receivers_are_not_resource_path_evidence(source: str) -> None:
+    source += "@router.post('/create')\nasync def handler(): pass\n"
+    assert NoCreateVerbInPostPath().check(Path("api.py"), source) == []

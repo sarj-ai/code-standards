@@ -101,7 +101,7 @@ class RuleDependencies:
         for path in snapshot.modules:
             if not path.endswith(".py"):
                 continue
-            name = (path.split("/src/", 1)[1] if "/src/" in path else path)[:-3].replace("/", ".")
+            name = (path.split("/src/", 1)[1] if "/src/" in path else path)[: -len(".py")].replace("/", ".")
             name = name.removesuffix(".__init__")
             if name in self.modules:
                 msg = f"ambiguous immutable Python module: {name}"
@@ -145,7 +145,7 @@ class RuleDependencies:
             if current in seen:
                 continue
             if current.startswith("<missing>"):
-                msg = f"missing immutable local import: {current[9:]}"
+                msg = f"missing immutable local import: {current[len('<missing>') :]}"
                 raise ValueError(msg)
             if current in self.errors:
                 raise ValueError(self.errors[current])

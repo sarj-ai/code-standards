@@ -223,6 +223,59 @@ def test_check_unknown_rule_fails_closed(tmp_path: Path, capsys: pytest.CaptureF
     assert "unknown" in capsys.readouterr().out.lower()
 
 
+@pytest.mark.parametrize("staged", [False, True], ids=("file-check", "staged-check"))
+@pytest.mark.parametrize(
+    ("selector", "filename", "source", "code"),
+    [
+        (
+            "python:no-magic-arithmetic",
+            "audio.py",
+            "def normalize(sample):\n    return sample / 32768\n",
+            "SARJ570",
+        ),
+        (
+            "python:no-create-verb-in-post-path",
+            "api.py",
+            (
+                "from fastapi import APIRouter\nrouter = APIRouter()\n"
+                "@router.post('/tickets/create')\nasync def create_ticket(): pass\n"
+            ),
+            "SARJ500",
+        ),
+        (
+            "iac:canonical-terraform-declarations",
+            "service.tf",
+            'variable "region" { type = string }\n',
+            "SARJ224",
+        ),
+    ],
+)
+def test_promoted_source_policies_block_core_file_and_staged_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    selector: str,
+    filename: str,
+    source: str,
+    code: str,
+    staged: bool,
+) -> None:
+    (tmp_path / filename).write_text(source)
+    if staged:
+        for arguments in (("init", "--template="), ("add", "--", filename)):
+            subprocess.run(("git", "-C", str(tmp_path), *arguments), check=True, capture_output=True)
+    paths = ["--staged"] if staged else [filename]
+
+    status = main(["--root", str(tmp_path), "check", "--rule", selector, "--format", "json", *paths])
+
+    report = _report(capsys.readouterr().out)
+    assert status == 1
+    assert report["completion"] == "complete"
+    assert [(as_table(item)["code"], as_table(item)["severity"]) for item in list_field(report, "diagnostics")] == [
+        (code, "error")
+    ]
+
+
 @pytest.mark.parametrize(
     ("filename", "suppression", "expected_status"),
     [

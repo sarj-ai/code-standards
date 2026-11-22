@@ -239,6 +239,70 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert "baseline-notice" in to_sarif(policy)
 
 
+@pytest.mark.parametrize("staged", [False, True], ids=("file-check", "staged-check"))
+@pytest.mark.parametrize(
+    ("selector", "filename", "source", "published_fingerprint"),
+    [
+        (
+            "python:no-magic-arithmetic",
+            "audio.py",
+            "def normalize(sample):\n    return sample / 32768\n",
+            "62788041d9a76370b12bf159ca8581690f2bf73bc203b14b18bcfb65fae51939",
+        ),
+        (
+            "python:no-create-verb-in-post-path",
+            "api.py",
+            (
+                "from fastapi import APIRouter\nrouter = APIRouter()\n"
+                "@router.post('/tickets/create')\nasync def create_ticket(): pass\n"
+            ),
+            "f345fe99837af06fc8b801e7993f44e404fc3b11b6239f7ad7e51d0d18511670",
+        ),
+        (
+            "iac:canonical-terraform-declarations",
+            "service.tf",
+            'variable "region" { type = string }\n',
+            "94117e162f3b6ad014f94e663ebaf7e5d1bb972d1aea58f0a0b8faf3d8a7eef2",
+        ),
+    ],
+)
+def test_promotions_preserve_published_warning_debt_without_accepting_new_findings(
+    git_root: Path,
+    *,
+    selector: str,
+    filename: str,
+    source: str,
+    published_fingerprint: str,
+    staged: bool,
+) -> None:
+    (git_root / filename).write_text(source)
+    standards = api.Standards(git_root)
+    raw = standards.analyze([filename], mode=api.AnalysisMode.RAW, rules=[selector])
+    assert raw.exit_code == 1
+    assert len(raw.diagnostics) == 1
+    finding = raw.diagnostics[0]
+    assert finding.fingerprint == published_fingerprint
+    assert finding.severity is Severity.ERROR
+    baseline_path = git_root / "diagnostic-baseline.json"
+    document = _policy_baseline((replace(finding, severity=Severity.WARNING),))
+    baseline_path.write_text(document)
+    (git_root / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render())
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "accepted warning debt"), cwd=git_root, check=True)
+
+    policy = standards.analyze([filename], staged=staged, rules=[selector])
+    assert policy.exit_code == 0
+    assert sum(tool.baselined_count for tool in policy.tools) == 1
+    new_filename = f"new_{filename}"
+    (git_root / new_filename).write_text(source)
+    subprocess.run(("git", "add", new_filename), cwd=git_root, check=True)
+    changed = standards.analyze([filename, new_filename], staged=staged, rules=[selector])
+
+    assert changed.exit_code == 1
+    assert [(item.location.path, item.severity) for item in changed.diagnostics] == [(new_filename, Severity.ERROR)]
+    assert baseline_path.read_text() == document  # sarj-noqa: SARJ402 -- Preserve accepted baseline bytes.
+
+
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
     test_source = """override_module {
   target = module.fixture

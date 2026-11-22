@@ -20,6 +20,10 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
+_HASH_CHUNK_KIB = 64
+_BYTES_PER_KIB = 1024
+
+
 _VERSION: Final = "2.2.2"
 _CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
 _LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
@@ -264,7 +268,7 @@ def has_managed_uvx_environment(path: Path) -> bool:
 def _sha256(path: Path) -> bytes:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(64 * 1024), b""):
+        for chunk in iter(lambda: stream.read(_HASH_CHUNK_KIB * _BYTES_PER_KIB), b""):
             digest.update(chunk)
     return digest.digest()
 

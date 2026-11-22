@@ -95,7 +95,7 @@ def _loads_local_plugin(root: Path, command: lifecycle.Command) -> bool:
         if (
             isinstance(dependency, str)
             and dependency.startswith("file:")
-            and (command.cwd / dependency[5:]).resolve() == package
+            and (command.cwd / dependency[len("file:") :]).resolve() == package
         ):
             return True
     return False

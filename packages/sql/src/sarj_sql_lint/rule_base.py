@@ -38,6 +38,9 @@ type Statement = list[StatementFragment]
 """A statement as `(lineno, text)` fragments — one per source line it spans."""
 
 
+_DUMP_HEADER_CHARS = 1024
+
+
 class SourceLocation(NamedTuple):
     line: int
     column: int
@@ -113,7 +116,7 @@ def is_explicit_dump_file(source: str, path: Path | None = None) -> bool:
 def is_dump_file(source: str, path: Path | None = None) -> bool:
     if is_explicit_dump_file(source, path):
         return True
-    header = source[:1024].lower()
+    header = source[:_DUMP_HEADER_CHARS].lower()
     if "set statement_timeout = 0;" not in header or "set lock_timeout = 0;" not in header:
         return False
     code = mask_sql(header, mask_dollar_literals=True)

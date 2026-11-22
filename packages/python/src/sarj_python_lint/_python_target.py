@@ -10,6 +10,9 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 
+_VERSION_COMPONENTS = 3
+
+
 _MAX_ANCESTORS = 24
 _PROJECT_BOUNDARIES = ("pyproject.toml", "setup.py", "setup.cfg")
 _INSTALLED_ROOTS = frozenset({"site-packages", "dist-packages"})
@@ -146,7 +149,7 @@ def _has_legacy_witness(declaration: str, minimum: tuple[int, int]) -> bool:
             continue
         if boundary.epoch:
             continue
-        release = (*boundary.release, 0, 0)[:3]
+        release = (*boundary.release, 0, 0)[:_VERSION_COMPONENTS]
         candidates.add(Version(".".join(map(str, release))))
         candidates.add(Version(f"{release[0]}.{release[1]}.{release[2] + 1}"))
     return any(

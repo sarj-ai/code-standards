@@ -22,6 +22,10 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 from . import initial_import
 
 
+_DIFF_HEADER_PREFIX_CHARS = 4
+_GIT_SHA1_HEX_CHARS = 40
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
@@ -200,7 +204,7 @@ def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
             expect_header = True
             continue
         if expect_header and line.startswith("+++ "):
-            current = _patch_path(line[4:])
+            current = _patch_path(line[_DIFF_HEADER_PREFIX_CHARS:])
             expect_header = False
             if current:
                 parsed.setdefault(current, set())
@@ -609,7 +613,7 @@ def repository_base_sha(root: Path) -> str:
         return explicit
     git = shutil.which("git")
     if git is None:
-        return "0" * 40
+        return "0" * _GIT_SHA1_HEX_CHARS
     result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed read-only Git argv.
         (git, "rev-parse", "HEAD"), cwd=root, check=False, text=True, capture_output=True, shell=False
     )
@@ -618,7 +622,7 @@ def repository_base_sha(root: Path) -> str:
         # A baseline may be initialized before the consumer's first commit.
         # The all-zero object ID is an explicit "no commit yet" sentinel; a
         # rollout replaces it with the captured immutable base SHA.
-        return "0" * 40
+        return "0" * _GIT_SHA1_HEX_CHARS
     return candidate
 
 

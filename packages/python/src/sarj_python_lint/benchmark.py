@@ -17,6 +17,9 @@ from sarj_python_lint.__main__ import analyze, expand_paths
 from sarj_python_lint.rules import REGISTRY
 
 
+_BYTES_PER_KIB = 1024
+
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -56,7 +59,7 @@ def peak_memory_bytes() -> int | None:
     except ImportError:
         return None
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return peak if sys.platform == "darwin" else peak * 1024
+    return peak if sys.platform == "darwin" else peak * _BYTES_PER_KIB
 
 
 def measure(

@@ -31,6 +31,9 @@ from sarj_python_lint.rules._fixed_record import builds_fixed_record
 from sarj_python_lint.rules._paths import is_test_path
 
 
+_HTTP_STATUS_CLASS_WIDTH = 100
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -894,11 +897,11 @@ def _status_code(node: ast.expr | None, index: FastapiIndex) -> int | None:
 
 def _response_codes(node: ast.Dict, index: FastapiIndex) -> set[int]:
     if any(key is None for key in node.keys):
-        return set(range(100, 600))
+        return set(range(_MIN_HTTP_STATUS, _MAX_HTTP_STATUS + 1))
     codes: set[int] = set()
     for key in node.keys:
         if key is None:
-            return set(range(100, 600))
+            return set(range(_MIN_HTTP_STATUS, _MAX_HTTP_STATUS + 1))
         code = _status_code(key, index)
         if code is not None:
             codes.add(code)
@@ -906,15 +909,15 @@ def _response_codes(node: ast.Dict, index: FastapiIndex) -> set[int]:
         if isinstance(key, ast.Constant) and isinstance(key.value, str):
             normalized = key.value.upper()
             if normalized == "DEFAULT":
-                return set(range(100, 600))
+                return set(range(_MIN_HTTP_STATUS, _MAX_HTTP_STATUS + 1))
             if normalized.isdigit() and len(normalized) == _STATUS_CODE_DIGITS:
                 codes.add(int(normalized))
                 continue
             if re.fullmatch(r"[1-5]XX", normalized):
-                start = int(normalized[0]) * 100
+                start = int(normalized[0]) * _HTTP_STATUS_CLASS_WIDTH
                 codes.update(range(start, start + 100))
                 continue
-        return set(range(100, 600))
+        return set(range(_MIN_HTTP_STATUS, _MAX_HTTP_STATUS + 1))
     return codes
 
 

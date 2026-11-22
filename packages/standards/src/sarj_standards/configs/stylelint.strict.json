@@ -4,7 +4,7 @@
     "@sarj/eslint-plugin/stylelint"
   ],
   "rules": {
-    "@sarj/no-modern-shorthand-reset": true,
+    "@sarj/no-modern-shorthand-reset": [true, {"severity": "error"}],
     "color-no-invalid-hex": [
       true,
       {

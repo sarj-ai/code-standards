@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
-from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.__main__ import analyze, main
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_magic_arithmetic import NoMagicArithmetic
 
 
@@ -26,6 +27,7 @@ def test_documented_examples() -> None:
         "import asyncio as a\nasync def run():\n    await a.sleep(0.05)\n",
         "from time import sleep as pause\ndef run():\n    pause(10)\n",
         "def convert(x):\n    x *= 32000\n    return x\n",
+        "def configure():\n    class Options:\n        def scale(self, value):\n            return value / 640\n    return Options\n",
     ],
 )
 def test_runtime_factors_and_limits_are_named(source: str) -> None:
@@ -45,6 +47,8 @@ def test_runtime_factors_and_limits_are_named(source: str) -> None:
         "def rounded(value):\n    return round(value, 3)\n",
         "def run(timeout: float = 60):\n    return timeout\n",
         "class FieldSpec:\n    timeout: float = 60\n",
+        "def configure():\n    class Options:\n        timeout_seconds = 10 * 60\n    return Options\n",
+        "def configure():\n    class Options:\n        timeout_seconds: int = 10 * 60\n    return Options\n",
         "def run(asyncio):\n    asyncio.timeout(10)\n",
         "def range(*args): ...\ndef run(data):\n    return range(0, len(data), 640)\n",
         "def run(value):\n    return value / 32768  # sarj-noqa: SARJ570 -- This standard-defined transform is kept inline for review.\n",
@@ -59,3 +63,23 @@ def test_named_declarations_trivial_math_and_external_contracts(source: str) -> 
 def test_test_data_is_excluded() -> None:
     source = "def test_audio():\n    assert normalize(32768) == 1\n"
     assert NoMagicArithmetic().check(Path("tests/test_audio.py"), source) == []
+
+
+def test_arithmetic_blocks_cli_without_growing_accepted_debt(tmp_path: Path) -> None:
+    path = tmp_path / "audio.py"
+    path.write_text("def normalize(sample):\n    return sample / 32768\n")
+    baseline = tmp_path / "baseline.json"
+    arguments = ["check", "--rule", NoMagicArithmetic.id, str(path)]
+
+    assert [finding.severity for finding in analyze([NoMagicArithmetic.id], [path])] == [Severity.ERROR]
+    assert main(arguments) == 1
+    assert main([*arguments, "--update-baseline", str(baseline)]) == 0
+    assert main([*arguments, "--baseline", str(baseline)]) == 0
+
+    path.write_text("def normalize(sample):\n    return sample / 32768 + sample * 1000\n")
+    assert main([*arguments, "--baseline", str(baseline)]) == 1
+    path.write_text(
+        "def normalize(sample):\n"
+        "    return sample / 32768  # sarj-noqa: SARJ570 -- Keep the standard's inline formula for comparison.\n"
+    )
+    assert main(arguments) == 0

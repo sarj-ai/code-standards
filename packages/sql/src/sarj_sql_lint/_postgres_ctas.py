@@ -9,6 +9,10 @@ from sqlglot.errors import SqlglotError, TokenError
 from sqlglot.tokenizer_core import TokenType
 
 
+_MAX_CREATE_PREFIX_TOKENS = 4
+_QUALIFIED_CREATE_PREFIX_TOKENS = 3
+
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -119,10 +123,10 @@ def _temporary_qualifier(tokens: Sequence[Token]) -> Token | None:
 
 
 def _is_table_create(tokens: Sequence[Token]) -> bool:
-    kinds = tuple(token.token_type for token in tokens[:4])
-    if kinds[:2] == (TokenType.CREATE, TokenType.TABLE) or kinds[:3] == _TEMP_TABLE:
+    kinds = tuple(token.token_type for token in tokens[:_MAX_CREATE_PREFIX_TOKENS])
+    if kinds[:2] == (TokenType.CREATE, TokenType.TABLE) or kinds[:_QUALIFIED_CREATE_PREFIX_TOKENS] == _TEMP_TABLE:
         return True
-    if kinds[:3] == (TokenType.CREATE, TokenType.VAR, TokenType.TABLE):
+    if kinds[:_QUALIFIED_CREATE_PREFIX_TOKENS] == (TokenType.CREATE, TokenType.VAR, TokenType.TABLE):
         return tokens[1].text.upper() == "UNLOGGED"
     return (
         kinds == (TokenType.CREATE, TokenType.VAR, TokenType.TEMPORARY, TokenType.TABLE)

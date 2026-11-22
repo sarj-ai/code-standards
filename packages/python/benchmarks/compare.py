@@ -18,6 +18,7 @@ import typer
 
 
 _DEFAULT_PYTHON = Path(sys.executable)
+_PERCENT_SCALE = 100
 _PACKAGES = ("python", "contracts")
 _ARTIFACT_ROOTS = tuple(
     f"packages/{package}/{directory}"
@@ -330,7 +331,7 @@ def comparison(
         samples,
         summary,
         speedup,
-        100 * (1 - 1 / speedup),
+        _PERCENT_SCALE * (1 - 1 / speedup),
     )
 
 

@@ -24,6 +24,9 @@ from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.no_repeated_test_body import duplicate_test_owner_ids
 
 
+_EVIDENCE_PREVIEW_CHARS = 512
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -504,7 +507,7 @@ def _static_shape(node: ast.expr) -> _StaticShape:
 
 def _static_value(node: ast.expr) -> str:
     rendered = ast.dump(node, annotate_fields=False, include_attributes=False)
-    return rendered[:512]
+    return rendered[:_EVIDENCE_PREVIEW_CHARS]
 
 
 def _propagate_mutating_aliases(tree: ast.Module, aliases: set[str]) -> bool:

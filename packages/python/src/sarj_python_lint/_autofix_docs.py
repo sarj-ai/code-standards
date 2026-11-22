@@ -19,6 +19,9 @@ from sarj_python_lint.rules._prose_budget import groups
 from sarj_python_lint.rules.no_unnecessary_docstring import module_docstring_may_escape
 
 
+_TRIPLE_QUOTE_WIDTH = 3
+
+
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rule_base import Diagnostic
@@ -259,7 +262,11 @@ class DocstringFixes:
             return None
         start, end = bounds
         literal = self.context.source[start:end]
-        if literal[:3] not in {'"""', "'''"} or literal[-3:] != literal[:3] or "\\" in literal:
+        if (
+            literal[:_TRIPLE_QUOTE_WIDTH] not in {'"""', "'''"}
+            or literal[-_TRIPLE_QUOTE_WIDTH:] != literal[:_TRIPLE_QUOTE_WIDTH]
+            or "\\" in literal
+        ):
             return None
         return start, end, literal
 
@@ -311,7 +318,7 @@ class DocstringFixes:
             document = document[:start] + document[end:]
         if not document.strip():
             return self._remove(owner, expression)
-        quote = literal[2][:3]
+        quote = literal[2][:_TRIPLE_QUOTE_WIDTH]
         newline = "\r\n" if "\r\n" in literal[2] else "\n"
         document = document.rstrip() + "\n" + " " * expression.col_offset
         replacement = quote + document.replace("\n", newline) + quote

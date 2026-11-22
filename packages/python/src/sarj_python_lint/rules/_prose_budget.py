@@ -13,6 +13,9 @@ from sarj_python_lint.rules._docstrings import PROMPT_DECORATOR_MARKERS, decorat
 from sarj_python_lint.rules._paths import is_generated
 
 
+_FENCE_MARKER_WIDTH = 3
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -457,7 +460,7 @@ def _without_fenced_examples(doc: str) -> list[str]:
     fence: str | None = None
     for raw in doc.splitlines():
         stripped = raw.lstrip()
-        marker = stripped[:3] if stripped.startswith(("```", "~~~")) else None
+        marker = stripped[:_FENCE_MARKER_WIDTH] if stripped.startswith(("```", "~~~")) else None
         if fence is not None:
             visible.append("")
             if marker == fence:

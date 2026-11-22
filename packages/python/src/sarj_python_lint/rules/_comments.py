@@ -4,6 +4,7 @@ import ast
 import io
 import re
 import tokenize
+import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -162,6 +163,7 @@ def has_narration_qualifier(body: str) -> bool:
 
 # Below this length an inflection strip would eat the word itself.
 _MIN_STEM_LENGTH = 3
+_NO_CODE_LINE = 1 << 30
 
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+")
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
@@ -350,6 +352,28 @@ class PositionedComment(NamedTuple):
     body: str
 
 
+_SCRIPT_METADATA_RE = re.compile(r"^# /// script\n(?P<content>(?:#(?: .*)?\n)+)# ///(?=\n|$)", re.MULTILINE)
+
+
+def script_metadata_lines(source: str, standalone: Sequence[PositionedComment]) -> frozenset[int]:
+    normalized = "\n".join(source.splitlines())
+    matches = list(_SCRIPT_METADATA_RE.finditer(normalized))
+    if len(matches) != 1:
+        return frozenset()
+    match = matches[0]
+    first = normalized.count("\n", 0, match.start()) + 1
+    lines = frozenset(range(first, first + match.group().count("\n") + 1))
+    top_level = {line for line, col, _ in standalone if col == 0}
+    if not lines <= top_level:
+        return frozenset()
+    content = "\n".join(line[2:] if line.startswith("# ") else "" for line in match.group("content").splitlines())
+    try:
+        tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return frozenset()
+    return lines
+
+
 class _OrderedComment(NamedTuple):
     line: int
     column: int
@@ -414,7 +438,7 @@ def _scan_memo(source: str) -> _Scan:
     try:
         result = _scan(source)
     except UnicodeError:
-        result = _Scan([], [], set(), 1 << 30, [])
+        result = _Scan([], [], set(), _NO_CODE_LINE, [])
     _last_scan = _ScanMemo(source, result, cached.comment_lines if cached is not None else None)
     return result
 
@@ -424,7 +448,7 @@ def _scan(source: str) -> _Scan:
     trailing: list[PositionedComment] = []
     ordered: _Ordered = []
     nested: set[int] = set()
-    first_code_line = 1 << 30
+    first_code_line = _NO_CODE_LINE
     prev_end_row = 0
     depth = 0
     readline = io.StringIO(source).readline

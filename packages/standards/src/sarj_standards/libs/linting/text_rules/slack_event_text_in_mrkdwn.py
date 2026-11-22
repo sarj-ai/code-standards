@@ -285,7 +285,7 @@ def _guarded_events(node: Node | None, events: frozenset[str]) -> frozenset[str]
         return frozenset()
     expression = _text(node).strip(" \t\r\n")
     if expression.startswith("${{") and expression.endswith("}}"):
-        expression = expression[3:-2].strip(" \t\r\n")
+        expression = expression[len("${{") : -2].strip(" \t\r\n")
     if expression.lower() == "false":
         return frozenset()
     match = _EVENT_GUARD.fullmatch(expression)

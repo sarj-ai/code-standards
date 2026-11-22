@@ -41,6 +41,9 @@ from sarj_sql_lint.rules._constraint_analysis import (
 )
 
 
+_UNIQUE_INDEX_PREFIX_TOKENS = 3
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
@@ -243,7 +246,9 @@ def _definition_target(tokens: list[Token]) -> TableKey | None:
     if (parsed := _create_target(tokens)) is not None:
         return parsed[0]
     if sequence(tokens, 0, ("CREATE", "UNIQUE", "INDEX")):
-        on = next((index for index in range(3, len(tokens)) if consume(tokens, index, "ON")), None)
+        on = next(
+            (index for index in range(_UNIQUE_INDEX_PREFIX_TOKENS, len(tokens)) if consume(tokens, index, "ON")), None
+        )
         if on is None:
             return None
         cursor = on + 1

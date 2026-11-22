@@ -51,10 +51,18 @@ from .result_cache import (
 from .runner import GroupedPaths, group_paths
 
 
+_MILLISECONDS_PER_SECOND = 1_000
+
+
 # Native Python reaches its 512-entry module-resolution quota only on large
 # selections; workers then check the files after that quota is spent.
 _PARALLEL_PYTHON_FILES = 512
 _IAC_OUTPUTS_TOOL = "sarj-iac-lint/module-outputs"
+# Keep accepted debt stable after correcting the HTTP rationale in this message.
+_POST_CREATE_FINGERPRINT_ANCHOR = (
+    "POST already means create; name the collection (POST /tickets) instead of a create, add or new segment, "
+    "and use PUT for an upsert."
+)
 
 
 if TYPE_CHECKING:
@@ -275,7 +283,7 @@ def _normalized_tool_report(report: ToolReport) -> ToolReport:
                 (
                     item
                     if item.fingerprint is not None
-                    else replace(item, fingerprint=diagnostic_fingerprint(item, anchor=item.message))
+                    else replace(item, fingerprint=diagnostic_fingerprint(item, anchor=_fingerprint_anchor(item)))
                     for item in report.diagnostics
                 ),
                 key=_diagnostic_key,
@@ -283,6 +291,12 @@ def _normalized_tool_report(report: ToolReport) -> ToolReport:
         ),
         issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
     )
+
+
+def _fingerprint_anchor(diagnostic: Diagnostic) -> str:
+    if diagnostic.source == "sarj-python-lint" and diagnostic.rule_id == "no-create-verb-in-post-path":
+        return _POST_CREATE_FINGERPRINT_ANCHOR
+    return diagnostic.message
 
 
 def _diagnostic_key(diagnostic: Diagnostic) -> _DiagnosticKey:
@@ -444,7 +458,7 @@ def _run_native(
         diagnostics=diagnostics,
         analyzer_id=AnalyzerId(name),
         invocation_id=InvocationId(name),
-        duration_ms=round((time.monotonic() - started) * 1_000),
+        duration_ms=round((time.monotonic() - started) * _MILLISECONDS_PER_SECOND),
         file_count=len(files),
     )
 
