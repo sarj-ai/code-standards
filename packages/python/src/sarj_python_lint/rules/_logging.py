@@ -37,10 +37,13 @@ def is_logger_expr(expr: ast.expr) -> bool:
             return is_logger_expr(value)
         case ast.Call(func=callee):
             # A factory name denotes a logger only when called; otherwise it is merely a function.
-            if isinstance(callee, ast.Attribute) and callee.attr.lower() in _LOGGER_FACTORIES:
-                return True
-            if isinstance(callee, ast.Name) and callee.id.lower() in _LOGGER_FACTORIES:
-                return True
+            match callee:
+                case ast.Attribute() if callee.attr.lower() in _LOGGER_FACTORIES:
+                    return True
+                case ast.Name() if callee.id.lower() in _LOGGER_FACTORIES:
+                    return True
+                case _:
+                    pass
             return is_logger_expr(callee)
         case _:
             return False

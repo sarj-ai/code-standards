@@ -129,22 +129,26 @@ def _simple_constructor(methods: list[ast.FunctionDef | ast.AsyncFunctionDef]) -
     ):
         return None
     for statement in constructor.body:
-        if isinstance(statement, ast.Assign | ast.AnnAssign):
-            continue
-        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
-            continue
+        match statement:
+            case ast.Assign() | ast.AnnAssign():
+                continue
+            case ast.Expr() if isinstance(statement.value, ast.Constant):
+                continue
+            case _:
+                pass
         # Validation or registration at construction already owns this boundary.
         return None
     return constructor
 
 
 def _field_assignment(statement: ast.stmt, receiver: str) -> _FieldAssignment | None:
-    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-        target, value = statement.targets[0], statement.value
-    elif isinstance(statement, ast.AnnAssign):
-        target, value = statement.target, statement.value
-    else:
-        return None
+    match statement:
+        case ast.Assign() if len(statement.targets) == 1:
+            target, value = statement.targets[0], statement.value
+        case ast.AnnAssign():
+            target, value = statement.target, statement.value
+        case _:
+            return None
     if value is None or not isinstance(target, ast.Attribute) or not isinstance(target.value, ast.Name):
         return None
     return _FieldAssignment(target, value) if target.value.id == receiver else None
@@ -225,10 +229,13 @@ def _unchanged_field(owner: ast.ClassDef, field: str, *, registry: bool, facts: 
             writes += 1
         elif registry:
             parent = context.parents.get(node)
-            if isinstance(parent, ast.Attribute) and parent.attr in {"get", "keys", "values", "items"}:
-                continue
-            if isinstance(parent, ast.Subscript) and isinstance(parent.ctx, ast.Load):
-                continue
+            match parent:
+                case ast.Attribute() if parent.attr in {"get", "keys", "values", "items"}:
+                    continue
+                case ast.Subscript() if isinstance(parent.ctx, ast.Load):
+                    continue
+                case _:
+                    pass
             return False
     return writes == 1
 
@@ -321,9 +328,12 @@ def _called_after(statements: list[ast.stmt], selected: ast.expr) -> bool:
     pending: list[ast.AST] = list(statements)
     while pending:
         node = pending.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-            continue
-        if isinstance(node, ast.Call) and any(ast.dump(part) == target for part in ast.walk(node.func)):
-            return True
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case ast.Call() if any(ast.dump(part) == target for part in ast.walk(node.func)):
+                return True
+            case _:
+                pass
         pending.extend(ast.iter_child_nodes(node))
     return False

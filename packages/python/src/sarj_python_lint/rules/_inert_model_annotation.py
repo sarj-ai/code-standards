@@ -146,12 +146,15 @@ def inert_direct_model_body(cls: ast.ClassDef, imports: ImportIndex) -> bool:
 
 
 def _model_literal_value(node: ast.expr | None) -> PythonLiteral:
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
-        numeric = _model_numeric_value(node.operand.value)
-        if numeric is not None:
-            return -numeric
+    match node:
+        case ast.Constant():
+            return node.value
+        case ast.UnaryOp() if isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
+            numeric = _model_numeric_value(node.operand.value)
+            if numeric is not None:
+                return -numeric
+        case _:
+            pass
     return None
 
 

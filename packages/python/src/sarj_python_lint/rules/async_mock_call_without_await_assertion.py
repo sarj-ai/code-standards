@@ -596,15 +596,18 @@ def _state_evidence(attribute: str, operator: ast.cmpop, expected: ast.expr) -> 
 
 
 def _literal_number(node: ast.expr) -> int | float | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return node.value
-    if isinstance(node, ast.UnaryOp) and isinstance(node.operand, ast.Constant):
-        value = node.operand.value
-        if isinstance(value, (int, float)):
-            if isinstance(node.op, ast.USub):
-                return -value
-            if isinstance(node.op, ast.UAdd):
-                return +value
+    match node:
+        case ast.Constant() if isinstance(node.value, (int, float)):
+            return node.value
+        case ast.UnaryOp() if isinstance(node.operand, ast.Constant):
+            value = node.operand.value
+            if isinstance(value, (int, float)):
+                if isinstance(node.op, ast.USub):
+                    return -value
+                if isinstance(node.op, ast.UAdd):
+                    return +value
+        case _:
+            pass
     return None
 
 

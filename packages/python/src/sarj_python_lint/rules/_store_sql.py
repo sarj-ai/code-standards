@@ -279,20 +279,18 @@ def _query_origin(expression: ast.expr, context: PythonFileContext) -> ast.expr:
             if value is not None:
                 expression = value
                 continue
-        if (
-            isinstance(expression, ast.Call)
-            and isinstance(expression.func, ast.Attribute)
-            and expression.func.attr == "format"
-        ):
-            expression = expression.func.value
-            continue
-        if (
-            isinstance(expression, ast.Call)
-            and expression.args
-            and context.static_resource_provenance.runtime_import_name(expression.func) == "psycopg.sql.SQL"
-        ):
-            expression = expression.args[0]
-            continue
+        match expression:
+            case ast.Call() if isinstance(expression.func, ast.Attribute) and expression.func.attr == "format":
+                expression = expression.func.value
+                continue
+            case ast.Call() if (
+                expression.args
+                and context.static_resource_provenance.runtime_import_name(expression.func) == "psycopg.sql.SQL"
+            ):
+                expression = expression.args[0]
+                continue
+            case _:
+                pass
         break
     return expression
 

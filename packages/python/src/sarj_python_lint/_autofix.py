@@ -609,15 +609,16 @@ def _exception_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 def _exception_types(
     node: ast.expr | None, context: PythonFileContext, provenance: ResourceProvenance
 ) -> list[ast.Name]:
-    if (
-        isinstance(node, ast.Name)
-        and not _type_parameter_reference(node, context)
-        and exception_rule.is_builtin_exception_type(node, context, provenance)
-    ):
-        return [node]
-    if isinstance(node, ast.Tuple):
-        members = [_exception_types(element, context, provenance) for element in node.elts]
-        return [name for member in members for name in member] if all(members) else []
+    match node:
+        case ast.Name() if not _type_parameter_reference(node, context) and exception_rule.is_builtin_exception_type(
+            node, context, provenance
+        ):
+            return [node]
+        case ast.Tuple():
+            members = [_exception_types(element, context, provenance) for element in node.elts]
+            return [name for member in members for name in member] if all(members) else []
+        case _:
+            pass
     return []
 
 
@@ -755,18 +756,18 @@ def _disjoint_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     for expression in source.context.nodes(ast.BinOp, ast.Call):
         if not _at(expression, diagnostic) or source.comments_between(expression.lineno, _last_line(expression)):
             continue
-        if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitAnd):
-            left, right = expression.left, expression.right
-        elif (
-            isinstance(expression, ast.Call)
-            and isinstance(expression.func, ast.Attribute)
-            and expression.func.attr == "intersection"
-            and len(expression.args) == 1
-            and not expression.keywords
-        ):
-            left, right = expression.func.value, expression.args[0]
-        else:
-            continue
+        match expression:
+            case ast.BinOp() if isinstance(expression.op, ast.BitAnd):
+                left, right = expression.left, expression.right
+            case ast.Call() if (
+                isinstance(expression.func, ast.Attribute)
+                and expression.func.attr == "intersection"
+                and len(expression.args) == 1
+                and not expression.keywords
+            ):
+                left, right = expression.func.value, expression.args[0]
+            case _:
+                continue
         if _primitive_set(left) and _primitive_set(right):
             return [source.replace(expression, f"(not ({source.segment(left)}).isdisjoint({source.segment(right)}))")]
     return []

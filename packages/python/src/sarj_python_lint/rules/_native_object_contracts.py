@@ -83,14 +83,17 @@ class NativeObjectContracts:
         return ()
 
     def output(self, value: ast.expr, function: _Function) -> bool:
-        if isinstance(value, ast.Call) and self._function_value(value.func):
-            return True
-        if isinstance(value, ast.Call) and self.namespace(function).evaluates(value):
-            return True
-        if isinstance(value, ast.Attribute) and value.attr == "value" and self._constant(value.value):
-            return True
-        if isinstance(value, ast.Name) and self._constant_capture(value):
-            return True
+        match value:
+            case ast.Call() if self._function_value(value.func):
+                return True
+            case ast.Call() if self.namespace(function).evaluates(value):
+                return True
+            case ast.Attribute() if value.attr == "value" and self._constant(value.value):
+                return True
+            case ast.Name() if self._constant_capture(value):
+                return True
+            case _:
+                pass
         return self.namespace(function).unknown_read(value)
 
     def _function_value(self, value: ast.expr) -> bool:
@@ -133,10 +136,13 @@ class NativeObjectContracts:
                 and self._constant_test(parent.test, value)
             ):
                 return True
-            if isinstance(parent, ast.match_case) and self._constant_case(parent, value):
-                return True
-            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
-                break
+            match parent:
+                case ast.match_case() if self._constant_case(parent, value):
+                    return True
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    break
+                case _:
+                    pass
             current = parent
         return False
 
@@ -331,10 +337,13 @@ class _NamespaceFlow:
         )
 
     def _receiver(self, node: ast.expr) -> ast.expr | None:
-        if isinstance(node, ast.Subscript):
-            return node.value
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
-            return node.func.value
+        match node:
+            case ast.Subscript():
+                return node.value
+            case ast.Call() if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+                return node.func.value
+            case _:
+                pass
         return None
 
     def _execution(self, receiver: ast.expr, at: ast.expr) -> ast.Call | None:
@@ -359,16 +368,19 @@ class _NamespaceFlow:
         return found
 
     def _mutates(self, node: ast.AST, receiver: ast.expr) -> bool:
-        if isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign | ast.Delete):
-            targets = node.targets if isinstance(node, ast.Assign | ast.Delete) else [node.target]
-            return any(
-                isinstance(target, ast.Subscript) and bool(self.related(target.value) & self.related(receiver))
-                for target in targets
-            )
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            return node.func.attr not in {"get", "keys", "values", "items", "copy"} and bool(
-                self.related(node.func.value) & self.related(receiver)
-            )
+        match node:
+            case ast.Assign() | ast.AnnAssign() | ast.AugAssign() | ast.Delete():
+                targets = node.targets if isinstance(node, ast.Assign | ast.Delete) else [node.target]
+                return any(
+                    isinstance(target, ast.Subscript) and bool(self.related(target.value) & self.related(receiver))
+                    for target in targets
+                )
+            case ast.Call() if isinstance(node.func, ast.Attribute):
+                return node.func.attr not in {"get", "keys", "values", "items", "copy"} and bool(
+                    self.related(node.func.value) & self.related(receiver)
+                )
+            case _:
+                pass
         return False
 
     def _reads(self, parameter: ast.arg) -> tuple[ast.Name, ...]:
@@ -642,18 +654,22 @@ class _NamespaceEscapes:
             yield from self._stored_values(node, roots)
 
     def _stored_values(self, node: ast.AST, roots: set[ast.AST]) -> Iterator[ast.expr]:
-        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(target, ast.Subscript) and self._same_carrier(target.value, roots) for target in targets):
-                yield node.value
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr not in {"get", "keys", "values", "items", "copy", "count", "index"}
-            and self._same_carrier(node.func.value, roots)
-        ):
-            yield from node.args
-            yield from (keyword.value for keyword in node.keywords)
+        match node:
+            case ast.Assign() | ast.AnnAssign() if node.value is not None:
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(
+                    isinstance(target, ast.Subscript) and self._same_carrier(target.value, roots) for target in targets
+                ):
+                    yield node.value
+            case ast.Call() if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr not in {"get", "keys", "values", "items", "copy", "count", "index"}
+                and self._same_carrier(node.func.value, roots)
+            ):
+                yield from node.args
+                yield from (keyword.value for keyword in node.keywords)
+            case _:
+                pass
 
     def _same_carrier(self, value: ast.expr, roots: set[ast.AST]) -> bool:
         other = self._carrier_roots(value)

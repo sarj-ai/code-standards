@@ -122,13 +122,12 @@ def _unchanged_receiver(proof: AsyncApiProof, binding: ast.Name) -> bool:
         ):
             return False
         consumer = proof.context.parents.get(parent)
-        if isinstance(consumer, ast.Call) and consumer.func is parent:
-            continue
-        if (
-            isinstance(consumer, ast.Call)
-            and parent in consumer.args
-            and proof.imported(consumer.func, "asyncio.to_thread")
-        ):
-            continue
+        match consumer:
+            case ast.Call() if consumer.func is parent:
+                continue
+            case ast.Call() if parent in consumer.args and proof.imported(consumer.func, "asyncio.to_thread"):
+                continue
+            case _:
+                pass
         return False
     return True

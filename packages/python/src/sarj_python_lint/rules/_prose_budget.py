@@ -210,12 +210,15 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
             isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)
         ):
             continue
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
-            _decorator_terminal_names(node) & PROMPT_DECORATOR_MARKERS
-        ):
-            continue
-        if isinstance(node, ast.ClassDef) and _is_schema_class(node):
-            continue
+        match node:
+            case ast.ClassDef() | ast.FunctionDef() | ast.AsyncFunctionDef() if (
+                _decorator_terminal_names(node) & PROMPT_DECORATOR_MARKERS
+            ):
+                continue
+            case ast.ClassDef() if _is_schema_class(node):
+                continue
+            case _:
+                pass
         out.append(_docstring_group(node, first, first.value.value))
     return out
 

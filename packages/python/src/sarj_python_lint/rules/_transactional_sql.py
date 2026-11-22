@@ -372,22 +372,25 @@ def _receiver_dialect(node: ast.expr, context: PythonFileContext, *, seen: froze
     if isinstance(node, ast.Await):
         return _receiver_dialect(node.value, context, seen=seen)
     provenance = context.static_resource_provenance
-    if isinstance(node, ast.Name):
-        if not provenance.unescaped(node, node, allow_context=True):
-            return None
-        binding = provenance.runtime_binding(node.id, node)
-        if isinstance(binding, ast.arg) and binding.annotation is not None:
-            return _annotation_dialect(binding.annotation, context)
-        if isinstance(binding, ast.Name) and (value := provenance.assignment_value(binding, node)) is not None:
-            return _receiver_dialect(value, context, seen=seen)
-        constructor = provenance.constructor(node, node)
-        return _receiver_dialect(constructor, context, seen=seen) if constructor is not None else None
-    if isinstance(node, ast.Call):
-        qualified = provenance.runtime_import_name(node.func)
-        if qualified in _NATIVE_CONNECTIONS:
-            return _driver_dialect(qualified)
-        if isinstance(node.func, ast.Attribute) and node.func.attr in _CONNECTION_METHODS:
-            return _receiver_dialect(node.func.value, context, seen=seen)
+    match node:
+        case ast.Name():
+            if not provenance.unescaped(node, node, allow_context=True):
+                return None
+            binding = provenance.runtime_binding(node.id, node)
+            if isinstance(binding, ast.arg) and binding.annotation is not None:
+                return _annotation_dialect(binding.annotation, context)
+            if isinstance(binding, ast.Name) and (value := provenance.assignment_value(binding, node)) is not None:
+                return _receiver_dialect(value, context, seen=seen)
+            constructor = provenance.constructor(node, node)
+            return _receiver_dialect(constructor, context, seen=seen) if constructor is not None else None
+        case ast.Call():
+            qualified = provenance.runtime_import_name(node.func)
+            if qualified in _NATIVE_CONNECTIONS:
+                return _driver_dialect(qualified)
+            if isinstance(node.func, ast.Attribute) and node.func.attr in _CONNECTION_METHODS:
+                return _receiver_dialect(node.func.value, context, seen=seen)
+        case _:
+            pass
     return None
 
 

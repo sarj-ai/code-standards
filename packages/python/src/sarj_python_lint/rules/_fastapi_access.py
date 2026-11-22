@@ -280,26 +280,29 @@ class SecurityResolver:
     def _annotation_declares(self, annotation: ast.expr | None, at: ast.AST | None, depth: int) -> bool:
         if annotation is None or depth > _MAX_ALIAS_DEPTH:
             return False
-        if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-            try:
-                parsed = ast.parse(annotation.value, mode="eval").body
-            except SyntaxError:
-                return False
-            return self._annotation_declares(parsed, at, depth + 1)
-        if isinstance(annotation, ast.Name) and at is not None:
-            binding = self._context.static_resource_provenance.binding(annotation.id, at)
-            if binding is None:
-                return False
-            value = self._bound_value(binding)
-            if value is not None:
-                return self._annotation_declares(value, value, depth + 1)
-            return isinstance(binding, ast.alias) and self._index.is_imported_security_alias(annotation)
-        if isinstance(annotation, ast.Subscript) and self._import_name(annotation.value, at, annotation=True) in {
-            "typing.Annotated",
-            "typing_extensions.Annotated",
-        }:
-            parts = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-            return any(self._is_security(item, at, annotation=True) for item in parts[1:])
+        match annotation:
+            case ast.Constant() if isinstance(annotation.value, str):
+                try:
+                    parsed = ast.parse(annotation.value, mode="eval").body
+                except SyntaxError:
+                    return False
+                return self._annotation_declares(parsed, at, depth + 1)
+            case ast.Name() if at is not None:
+                binding = self._context.static_resource_provenance.binding(annotation.id, at)
+                if binding is None:
+                    return False
+                value = self._bound_value(binding)
+                if value is not None:
+                    return self._annotation_declares(value, value, depth + 1)
+                return isinstance(binding, ast.alias) and self._index.is_imported_security_alias(annotation)
+            case ast.Subscript() if self._import_name(annotation.value, at, annotation=True) in {
+                "typing.Annotated",
+                "typing_extensions.Annotated",
+            }:
+                parts = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+                return any(self._is_security(item, at, annotation=True) for item in parts[1:])
+            case _:
+                pass
         return False
 
     def _is_security(self, node: ast.expr, at: ast.AST | None, *, annotation: bool) -> bool:

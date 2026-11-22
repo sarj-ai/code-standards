@@ -268,14 +268,17 @@ def _captured_namespace_untouched(
     for node in context.nodes(ast.AST):
         if not _namespace_node_safe(node, ancestors) or not _allowed_call(node, namespace.guards, name, owner.name):
             return False
-        if isinstance(node, ast.Name) and not _captured_read_safe(context, node, namespace.captures, namespace.guards):
-            return False
-        if isinstance(node, ast.Name) and node.id == name:
-            if node is namespace.captures.compare_default:
-                continue
-            if not _canonical_value_read(context, node, namespace.provenance, namespace.alias):
+        match node:
+            case ast.Name() if not _captured_read_safe(context, node, namespace.captures, namespace.guards):
                 return False
-            actual_read = True
+            case ast.Name() if node.id == name:
+                if node is namespace.captures.compare_default:
+                    continue
+                if not _canonical_value_read(context, node, namespace.provenance, namespace.alias):
+                    return False
+                actual_read = True
+            case _:
+                pass
     return actual_read
 
 
@@ -333,25 +336,25 @@ def _contains_local_hmac(path: Path, root: Path) -> bool:
 
 
 def _namespace_node_safe(node: ast.AST, ancestors: set[ast.AST]) -> bool:
-    if isinstance(
-        node,
-        (
-            ast.AsyncFunctionDef,
-            ast.ClassDef,
-            ast.Lambda,
-            ast.TypeAlias,
-            ast.Global,
-            ast.Nonlocal,
-            ast.Yield,
-            ast.YieldFrom,
-            ast.GeneratorExp,
-        ),
-    ):
-        return False
-    if isinstance(node, ast.FunctionDef) and node not in ancestors:
-        return False
-    if isinstance(node, (ast.Attribute, ast.Subscript)) and not isinstance(node.ctx, ast.Load):
-        return False
+    match node:
+        case (
+            ast.AsyncFunctionDef()
+            | ast.ClassDef()
+            | ast.Lambda()
+            | ast.TypeAlias()
+            | ast.Global()
+            | ast.Nonlocal()
+            | ast.Yield()
+            | ast.YieldFrom()
+            | ast.GeneratorExp()
+        ):
+            return False
+        case ast.FunctionDef() if node not in ancestors:
+            return False
+        case ast.Attribute() | ast.Subscript() if not isinstance(node.ctx, ast.Load):
+            return False
+        case _:
+            pass
     return not isinstance(node, ast.Attribute) or not node.attr.startswith("__")
 
 

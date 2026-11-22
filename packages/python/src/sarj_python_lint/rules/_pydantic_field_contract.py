@@ -117,13 +117,16 @@ def _plain_member(node: ast.stmt, context: PythonFileContext, provenance: Resour
 
 
 def inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
-    if isinstance(node, (ast.Tuple, ast.List)):
-        return all(inert_annotation(element, context) for element in node.elts)
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        try:
-            node = ast.parse(node.value, mode="eval").body
-        except SyntaxError, UnicodeError:
-            return False
+    match node:
+        case ast.Tuple() | ast.List():
+            return all(inert_annotation(element, context) for element in node.elts)
+        case ast.Constant() if isinstance(node.value, str):
+            try:
+                node = ast.parse(node.value, mode="eval").body
+            except SyntaxError, UnicodeError:
+                return False
+        case _:
+            pass
     return _inert_expr(node, context)
 
 
@@ -150,29 +153,29 @@ def _inert_expr(node: ast.AST, context: PythonFileContext) -> bool:
     pending = [node]
     while pending:
         current = pending.pop()
-        if isinstance(current, ast.Subscript) and not _inert_subscription(current, context):
-            return False
-        if isinstance(current, ast.Lambda):
-            if current.args.defaults or current.args.kw_defaults:
+        match current:
+            case ast.Subscript() if not _inert_subscription(current, context):
                 return False
-            continue
-        if isinstance(current, ast.Call) and not _inert_pydantic_call(current, context):
-            return False
-        if isinstance(
-            current,
-            (
-                ast.NamedExpr,
-                ast.Starred,
-                ast.Await,
-                ast.Yield,
-                ast.YieldFrom,
-                ast.ListComp,
-                ast.SetComp,
-                ast.DictComp,
-                ast.GeneratorExp,
-            ),
-        ):
-            return False
+            case ast.Lambda():
+                if current.args.defaults or current.args.kw_defaults:
+                    return False
+                continue
+            case ast.Call() if not _inert_pydantic_call(current, context):
+                return False
+            case (
+                ast.NamedExpr()
+                | ast.Starred()
+                | ast.Await()
+                | ast.Yield()
+                | ast.YieldFrom()
+                | ast.ListComp()
+                | ast.SetComp()
+                | ast.DictComp()
+                | ast.GeneratorExp()
+            ):
+                return False
+            case _:
+                pass
         pending.extend(reversed(tuple(ast.iter_child_nodes(current))))
     return True
 
@@ -256,16 +259,18 @@ def inert_class_value(
 
 def _mutated_imports(context: PythonFileContext, modules: frozenset[str]) -> bool:
     for node in context.nodes(ast.Attribute, ast.Subscript, ast.Call):
-        if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            if _sensitive_import_root(node, context, modules):
+        match node:
+            case ast.Attribute() | ast.Subscript() if isinstance(node.ctx, (ast.Store, ast.Del)):
+                if _sensitive_import_root(node, context, modules):
+                    return True
+            case ast.Call() if (
+                node.args
+                and _is_attribute_mutator(node.func, context)
+                and _sensitive_import_root(node.args[0], context, modules)
+            ):
                 return True
-        elif (
-            isinstance(node, ast.Call)
-            and node.args
-            and _is_attribute_mutator(node.func, context)
-            and _sensitive_import_root(node.args[0], context, modules)
-        ):
-            return True
+            case _:
+                pass
     return False
 
 

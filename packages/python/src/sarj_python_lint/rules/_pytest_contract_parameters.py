@@ -439,13 +439,16 @@ class FixtureContractParameters:
 
 def _hidden_consumer(function: Function, name: str) -> bool:
     for node in ast.walk(function):
-        if isinstance(node, ast.Nonlocal) and name in node.names:
-            return True
-        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) and any(
-            isinstance(read, ast.Name) and read.id == name and isinstance(read.ctx, ast.Load)
-            for read in ast.walk(node.generators[0].iter)
-        ):
-            return True
+        match node:
+            case ast.Nonlocal() if name in node.names:
+                return True
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp() if any(
+                isinstance(read, ast.Name) and read.id == name and isinstance(read.ctx, ast.Load)
+                for read in ast.walk(node.generators[0].iter)
+            ):
+                return True
+            case _:
+                pass
     return False
 
 
