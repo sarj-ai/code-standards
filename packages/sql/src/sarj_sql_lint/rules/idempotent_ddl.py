@@ -313,13 +313,16 @@ def _action_ranges(text: str, start: int) -> list[tuple[int, int]]:
             cursor = end
             continue
         char = text[cursor]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-        elif char == "," and depth == 0:
-            ranges.append((start, cursor))
-            start = cursor + 1
+        match char:
+            case "(":
+                depth += 1
+            case ")":
+                depth -= 1
+            case "," if depth == 0:
+                ranges.append((start, cursor))
+                start = cursor + 1
+            case _:
+                pass
         cursor += 1
     ranges.append((start, len(text)))
     return [(left + len(text[left:right]) - len(text[left:right].lstrip()), right) for left, right in ranges]

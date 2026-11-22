@@ -67,16 +67,19 @@ def test_only_existing_substitutable_contracts_are_recommended(
         f"class HttpPublisher({contract_name}):\n"
         "    def publish(self) -> None: ...\n    def extra(self) -> None: ...\n"
     )
-    if alternative == "concrete":
-        implementation_source += f"class QueuePublisher({contract_name}):\n    def publish(self) -> None: ...\n"
-    elif alternative == "abstract_extra":
-        implementation_source += (
-            "from abc import abstractmethod\n"
-            f"class QueuePublisher({contract_name}):\n    def publish(self) -> None: ...\n"
-            "    @abstractmethod\n    def other(self) -> None: ...\n"
-        )
-    elif alternative == "abstract":
-        implementation_source += f"class QueuePublisher({contract_name}): ...\n"
+    match alternative:
+        case "concrete":
+            implementation_source += f"class QueuePublisher({contract_name}):\n    def publish(self) -> None: ...\n"
+        case "abstract_extra":
+            implementation_source += (
+                "from abc import abstractmethod\n"
+                f"class QueuePublisher({contract_name}):\n    def publish(self) -> None: ...\n"
+                "    @abstractmethod\n    def other(self) -> None: ...\n"
+            )
+        case "abstract":
+            implementation_source += f"class QueuePublisher({contract_name}): ...\n"
+        case _:
+            pass
     implementations.write_text(implementation_source)
     operation_body = f"    def run(self) -> None: self.publisher.{operation}()\n"
     if operation == "private_extra":

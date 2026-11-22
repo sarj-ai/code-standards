@@ -111,17 +111,20 @@ def test_crlf_yaml_and_non_ascii_positions(tmp_path: Path) -> None:
 def test_check_only_forms_never_rewrite_the_owner(tmp_path: Path, form: str) -> None:
     relative = ".github/workflows/checks.yml"
     source = _workflow("if true; then\necho ok\nfi\n")
-    if form == "template":
-        source = _workflow('if true; then\necho "${{ github.ref }}"\nfi\n')
-    elif form == "folded":
-        source = _workflow("if true; then\necho ok; fi\n", style=">-")
-    elif form == "alias":
-        source = source.replace("run: |", "run: &program |") + "      - shell: bash\n        run: *program\n"
-    elif form == "parent-alias":
-        source = source.replace("- shell: bash", "- &step\n        shell: bash") + "      - *step\n"
-    elif form == "argv":
-        relative = "cloudbuild.yaml"
-        source = "steps:\n  - name: bash\n    entrypoint: bash\n    args: ['-c', 'if true; then echo ok; fi']\n"
+    match form:
+        case "template":
+            source = _workflow('if true; then\necho "${{ github.ref }}"\nfi\n')
+        case "folded":
+            source = _workflow("if true; then\necho ok; fi\n", style=">-")
+        case "alias":
+            source = source.replace("run: |", "run: &program |") + "      - shell: bash\n        run: *program\n"
+        case "parent-alias":
+            source = source.replace("- shell: bash", "- &step\n        shell: bash") + "      - *step\n"
+        case "argv":
+            relative = "cloudbuild.yaml"
+            source = "steps:\n  - name: bash\n    entrypoint: bash\n    args: ['-c', 'if true; then echo ok; fi']\n"
+        case _:
+            pass
     path = _path(tmp_path, relative, source)
     reports = embedded_shell.analyze_sources(root=tmp_path, paths=(str(path),), selected=frozenset({"shfmt"}))
     assert reports

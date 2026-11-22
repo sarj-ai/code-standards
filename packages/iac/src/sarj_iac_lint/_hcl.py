@@ -416,13 +416,16 @@ def comma_parts(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
     values: list[tuple[str, ...]] = []
     start, depth = 0, 0
     for index, part in enumerate(parts):
-        if part in {"(", "[", "{"}:
-            depth += 1
-        elif part in {")", "]", "}"}:
-            depth -= 1
-        elif part == "," and depth == 0:
-            values.append(parts[start:index])
-            start = index + 1
+        match part:
+            case "(" | "[" | "{":
+                depth += 1
+            case ")" | "]" | "}":
+                depth -= 1
+            case "," if depth == 0:
+                values.append(parts[start:index])
+                start = index + 1
+            case _:
+                pass
     if start < len(parts):
         values.append(parts[start:])
     return tuple(values)

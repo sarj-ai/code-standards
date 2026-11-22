@@ -562,14 +562,17 @@ def test_invalid_active_repository_comparison_is_an_execution_issue(
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     event_path = tmp_path / "event.json"
     payload = '{"before":"' + "a" * 40 + '"}'
-    if input_kind == "short-ref":
-        monkeypatch.setenv("SARJ_STANDARDS_BASE", "main")
-    elif input_kind == "missing-base":
-        payload = "{}"
-    elif input_kind == "duplicate-key":
-        payload = '{"before":"' + "a" * 40 + '","before":"' + "b" * 40 + '"}'
-    elif input_kind == "large-event":
-        payload = " " * (1024 * 1024 + 1)
+    match input_kind:
+        case "short-ref":
+            monkeypatch.setenv("SARJ_STANDARDS_BASE", "main")
+        case "missing-base":
+            payload = "{}"
+        case "duplicate-key":
+            payload = '{"before":"' + "a" * 40 + '","before":"' + "b" * 40 + '"}'
+        case "large-event":
+            payload = " " * (1024 * 1024 + 1)
+        case _:
+            pass
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     if input_kind != "missing-event":
         event_path.write_text(payload, encoding="utf-8")

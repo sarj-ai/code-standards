@@ -550,13 +550,16 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
     jobs = [{"name": "Detect affected checks", "status": "completed", "conclusion": "success"}]
     if terminal is not None and terminal.startswith("package-"):
         package = {"name": "CI packages", "status": "completed", "conclusion": "success"}
-        if terminal == "package-failure":
-            package["conclusion"] = "failure"
-        elif terminal == "package-pending":
-            package["status"] = "in_progress"
-            package["conclusion"] = ""
-        elif terminal == "package-skipped":
-            package["conclusion"] = "skipped"
+        match terminal:
+            case "package-failure":
+                package["conclusion"] = "failure"
+            case "package-pending":
+                package["status"] = "in_progress"
+                package["conclusion"] = ""
+            case "package-skipped":
+                package["conclusion"] = "skipped"
+            case _:
+                pass
         if terminal != "package-missing":
             jobs.append(package)
         if terminal == "package-duplicate":

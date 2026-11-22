@@ -1214,15 +1214,18 @@ def test_exact_json_leaf_preserves_immutable_boundary_failures(repository: Path,
         "escaping": "implementation path must be repository-relative",
         "oversized": "immutable Git blob exceeds byte limit",
     }
-    if case == "nonregular":
-        helper.with_name("actual.json").write_text("false", encoding="utf-8")
-        helper.symlink_to("actual.json")
-    elif case == "escaping":
-        external = repository.parent / f"outside_{repository.name}.json"
-        external.write_text("false", encoding="utf-8")
-        reference = f"../../../../{external.name}"
-    elif case == "oversized":
-        helper.write_bytes(b'"' + b"a" * (8 * 1024 * 1024) + b'"')
+    match case:
+        case "nonregular":
+            helper.with_name("actual.json").write_text("false", encoding="utf-8")
+            helper.symlink_to("actual.json")
+        case "escaping":
+            external = repository.parent / f"outside_{repository.name}.json"
+            external.write_text("false", encoding="utf-8")
+            reference = f"../../../../{external.name}"
+        case "oversized":
+            helper.write_bytes(b'"' + b"a" * (8 * 1024 * 1024) + b'"')
+        case _:
+            pass
     source.write_text(f"console.log(typeof require('{reference}'));", encoding="utf-8")
     revision = _write_revision(repository, [entry], "JSON leaf boundary fixture")
     native = subprocess.run(("node", str(source)), cwd=repository, check=False, capture_output=True, text=True)

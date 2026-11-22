@@ -1234,20 +1234,23 @@ class TestTargetCommitPolicyWorkflow:
             "root": str(tmp_path.parent if fault == "wrong-root" else tmp_path),
             "findings": [finding],
         }
-        if fault == "bool-schema":
-            report["schema"] = True
-        elif fault == "float-schema":
-            report["schema"] = 1.0
-        elif fault == "missing":
-            report["findings"] = []
-        elif fault == "duplicate":
-            report["findings"] = [finding, finding]
-        elif fault == "drift":
-            finding["level"] = "drift"
-        elif fault == "wrong-path":
-            finding["where"] = ".github/workflows/other.yml"
-        elif fault == "malformed":
-            report["findings"] = [None]
+        match fault:
+            case "bool-schema":
+                report["schema"] = True
+            case "float-schema":
+                report["schema"] = 1.0
+            case "missing":
+                report["findings"] = []
+            case "duplicate":
+                report["findings"] = [finding, finding]
+            case "drift":
+                finding["level"] = "drift"
+            case "wrong-path":
+                finding["where"] = ".github/workflows/other.yml"
+            case "malformed":
+                report["findings"] = [None]
+            case _:
+                pass
         doctor = subprocess.CompletedProcess(
             ("target", "doctor", "--format", "json"),
             0,

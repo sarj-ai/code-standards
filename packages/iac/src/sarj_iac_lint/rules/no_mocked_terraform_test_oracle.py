@@ -254,18 +254,21 @@ def _directly_reasserts(condition: str, injected: _InjectedLiteral) -> bool:
     condition_tokens = strip_outer_parentheses(tokens(condition))
     depth = 0
     for index, part in enumerate(condition_tokens):
-        if part in {"(", "[", "{"}:
-            depth += 1
-        elif part in {")", "]", "}"}:
-            depth -= 1
-        elif part == "==" and depth == 0:
-            operands = (
-                strip_outer_parentheses(condition_tokens[:index]),
-                strip_outer_parentheses(condition_tokens[index + 1 :]),
-            )
-            reference = tokens(injected.expression)
-            return any(
-                candidate == reference and _literal_value(literal) == injected.literal
-                for candidate, literal in (operands, tuple(reversed(operands)))
-            )
+        match part:
+            case "(" | "[" | "{":
+                depth += 1
+            case ")" | "]" | "}":
+                depth -= 1
+            case "==" if depth == 0:
+                operands = (
+                    strip_outer_parentheses(condition_tokens[:index]),
+                    strip_outer_parentheses(condition_tokens[index + 1 :]),
+                )
+                reference = tokens(injected.expression)
+                return any(
+                    candidate == reference and _literal_value(literal) == injected.literal
+                    for candidate, literal in (operands, tuple(reversed(operands)))
+                )
+            case _:
+                pass
     return False

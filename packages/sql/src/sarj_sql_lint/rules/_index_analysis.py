@@ -419,16 +419,19 @@ def _split_elements(value: str) -> tuple[str, ...]:
         if char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
             position = dollar_end
             continue
-        if char in {"'", '"'}:
-            quote = char
-        elif char == "(":
-            depth += 1
-        elif char == ")":
-            depth = max(0, depth - 1)
-        elif char == "," and depth == 0:
-            if normalized := _normalize_sql(value[start:position]):
-                elements.append(normalized)
-            start = position + 1
+        match char:
+            case "'" | '"':
+                quote = char
+            case "(":
+                depth += 1
+            case ")":
+                depth = max(0, depth - 1)
+            case "," if depth == 0:
+                if normalized := _normalize_sql(value[start:position]):
+                    elements.append(normalized)
+                start = position + 1
+            case _:
+                pass
         position += 1
     if normalized := _normalize_sql(value[start:]):
         elements.append(normalized)

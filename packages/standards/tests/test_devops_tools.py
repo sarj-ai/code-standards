@@ -333,12 +333,15 @@ def test_mise_rejects_ambiguous_or_escaping_executable_paths(
     elif case != "missing":
         executable.write_text("native fixture")
     payload = f"{executable}\n"
-    if case == "relative":
-        payload = "installed/helm\n"
-    elif case == "multiline":
-        payload += f"{outside}\n"
-    elif case == "escape":
-        payload = f"{outside}\n"
+    match case:
+        case "relative":
+            payload = "installed/helm\n"
+        case "multiline":
+            payload += f"{outside}\n"
+        case "escape":
+            payload = f"{outside}\n"
+        case _:
+            pass
     mise = tmp_path / "bin/mise"
     mise.parent.mkdir()
     mise.write_text("native protocol runner fixture")

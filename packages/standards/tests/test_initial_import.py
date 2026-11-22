@@ -172,25 +172,26 @@ def test_initial_import_rejects_unverifiable_repository_state(
     imported: ImportRepository, monkeypatch: pytest.MonkeyPatch, state: str
 ) -> None:
     root = imported.root
-    if state == "existing-head":
-        _git(root, "commit", "-qm", "Existing history")
-    elif state == "corrupt-head":
-        (root / ".git" / "refs" / "heads").mkdir(exist_ok=True)
-        branch = _git(root, "symbolic-ref", "--short", "HEAD")
-        (root / ".git" / "refs" / "heads" / branch).write_text("f" * 40 + "\n", encoding="ascii")
-    elif state == "detached-head":
-        (root / ".git" / "HEAD").write_text("f" * 40 + "\n", encoding="ascii")
-    elif state in {"index", "worktree"}:
-        (root / "app.py").write_text("value = 2\n", encoding="utf-8")
-        if state == "index":
-            _git(root, "add", ".")
-    elif state == "mode":
-        _git(root, "config", "core.filemode", "false")
-        (root / "app.py").chmod(0o755)
-    elif state == "untracked":
-        (root / "new.py").write_text("value = 2\n", encoding="utf-8")
-    else:
-        _git(root, "update-index", "--assume-unchanged" if state == "assume" else "--skip-worktree", "app.py")
+    match state:
+        case "existing-head":
+            _git(root, "commit", "-qm", "Existing history")
+        case "corrupt-head":
+            (root / ".git" / "refs" / "heads").mkdir(exist_ok=True)
+            branch = _git(root, "symbolic-ref", "--short", "HEAD")
+            (root / ".git" / "refs" / "heads" / branch).write_text("f" * 40 + "\n", encoding="ascii")
+        case "detached-head":
+            (root / ".git" / "HEAD").write_text("f" * 40 + "\n", encoding="ascii")
+        case "index" | "worktree":
+            (root / "app.py").write_text("value = 2\n", encoding="utf-8")
+            if state == "index":
+                _git(root, "add", ".")
+        case "mode":
+            _git(root, "config", "core.filemode", "false")
+            (root / "app.py").chmod(0o755)
+        case "untracked":
+            (root / "new.py").write_text("value = 2\n", encoding="utf-8")
+        case _:
+            _git(root, "update-index", "--assume-unchanged" if state == "assume" else "--skip-worktree", "app.py")
     monkeypatch.setenv(_ENV, imported.source)
     report = api.Standards(root).analyze([], staged=True, rules=_RULES)
     assert report.exit_code == 2
