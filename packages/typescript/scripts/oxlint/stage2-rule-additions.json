@@ -10,7 +10,7 @@
     "@sarj/no-shared-mutable-zod-default": { "level": "warn" },
     "@sarj/prefer-monotonic-for-elapsed-time": { "level": "warn" },
     "@sarj/prefer-typed-cli": { "level": "warn" },
-    "@sarj/no-flake-masking": { "level": "warn" },
+    "@sarj/no-flake-masking": { "level": "error" },
     "@sarj/no-unsignaled-poll": { "level": "warn" },
     "@sarj/prefer-zod-field-bounds": { "level": "warn" },
     "@sarj/prefer-coordinated-react-state": { "level": "warn", "note": "Complete repeated setter groups with a local record witness; review ownership without an automatic fix." },

@@ -97,7 +97,7 @@ export default defineRule({
         namespaces.clear();
       },
       ImportDeclaration(node: ESTree.ImportDeclaration): void {
-        if (node.source.value !== "node:fs" && node.source.value !== "fs") return;
+        if (node.importKind === "type" || (node.source.value !== "node:fs" && node.source.value !== "fs")) return;
         const synchronousImports: string[] = [];
         for (const specifier of node.specifiers) {
           if (specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier") {
@@ -106,6 +106,7 @@ export default defineRule({
           }
           if (
             specifier.type === "ImportSpecifier" &&
+            specifier.importKind !== "type" &&
             importSpecifierName(specifier).endsWith("Sync")
           ) synchronousImports.push(importSpecifierName(specifier));
         }

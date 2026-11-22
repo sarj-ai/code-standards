@@ -6,6 +6,9 @@ const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("prefer-node-fs-promises", rule, {
   valid: [
+    { name: "erases a type-only sync function import", code: "import type { readFileSync } from 'node:fs'; export type Reader = typeof readFileSync;" },
+    { name: "erases a named type-only specifier in a runtime import", code: "import { type readFileSync, createReadStream } from 'fs'; export type Reader = typeof readFileSync; export const stream = createReadStream;" },
+    { name: "erases a namespace type import", code: "import type * as fs from 'node:fs'; export type Reader = typeof fs.readFileSync;" },
     { name: "does not inherit fs identity through a second var initializer", code: "var fs = require('node:fs'); var fs = custom; fs.readFileSync('x');" },
     { name: "does not treat reassigned namespace as fs", code: "let fs = require('node:fs'); fs = custom; fs.readFileSync('x');" },
     { name: "accounts for later namespace writes before visiting an earlier use", code: "let fs = require('node:fs'); function read() { return fs.readFileSync('x'); } fs = custom;" },
@@ -28,6 +31,7 @@ RULE_TESTER.run("prefer-node-fs-promises", rule, {
     { filename: "src/rules/check-files.ts", code: "import { readFileSync } from 'node:fs'; readFileSync('x');" },
   ],
   invalid: [
+    { name: "keeps runtime sync imports alongside erased specifiers", code: "import { type readFileSync, writeFileSync } from 'node:fs'; export type Reader = typeof readFileSync; export const write = writeFileSync;", errors: [{ messageId: "preferAsyncFs", data: { name: "writeFileSync" } }] },
     { name: "reports a sync import under eslint-disable-next-line (valid under ESLint; Oxlint's RuleTester ignores disable directives)", code: "// eslint-disable-next-line @rule-tester/prefer-node-fs-promises -- synchronous transaction boundary\nimport { readFileSync, writeFileSync } from 'node:fs';", errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync, writeFileSync" } }] },
     { name: "retains a native fs binding through a bare var redeclaration", code: "var fs = require('node:fs'); var fs; fs.readFileSync('x');", errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync" } }] },
     {

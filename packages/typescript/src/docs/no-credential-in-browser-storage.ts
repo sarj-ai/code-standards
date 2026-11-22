@@ -3,7 +3,7 @@
 import type { RuleDocumentation } from "../documentation.js";
 
 export const NO_CREDENTIAL_IN_BROWSER_STORAGE_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Do not write credential-named values to browser storage or script-readable cookies.",
   rationale:
     "localStorage, sessionStorage and cookies written through document.cookie are readable by any script on the origin, so one injected script can copy the credential and replay it elsewhere.",
@@ -11,6 +11,8 @@ export const NO_CREDENTIAL_IN_BROWSER_STORAGE_DOCUMENTATION = {
     "Keep the credential on the server and send it as an httpOnly, Secure, SameSite cookie set by a server response, or hold a short-lived token in memory only.",
   category: "security",
   limitations: [
+    "Proven empty storage values and empty cookie writes do not store credentials. Cookie whitespace is ASCII space/tab. The last valid Max-Age controls expiry; invalid attributes are ignored. A nonpositive integer deletes the cookie, while partial or unknown expiry cannot establish deletion. Compound storage writes remain checked.",
+    "This is a credential-key naming policy. Value provenance and neutral-key storage require separate security review; existing metadata-name exceptions remain valid.",
     "Only static keys and cookie names whose words name an access credential (token, secret, password, jwt, credential, api key) are checked.",
     "Storage wrappers, computed keys and values stored under neutral names are not followed.",
   ],

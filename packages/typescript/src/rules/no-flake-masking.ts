@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-flake-masking — a retried test or a raised test timeout passes CI while the race it hides stays.
+ * @fileoverview no-flake-masking — keep retries disabled and explicit test budgets within framework defaults.
  *
  * Ported from interfere-inc/landmines `no-flake-masking` (MIT), narrowed to framework-proven bindings
  * and to timeouts that exceed the framework default.
@@ -10,7 +10,7 @@ import { unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isTestFile } from "../utils/paths.js";
 import { stableConstInitializer } from "../utils/stable-value-binding.js";
-import { getPropertyName, staticValue } from "../utils/static-string.js";
+import { findVariable, getPropertyName, staticValue } from "../utils/static-string.js";
 import {
   importedTestMockNamespace,
   isUnshadowedTestMockGlobal,
@@ -23,6 +23,7 @@ const NAME = "no-flake-masking";
 
 const UNIT_DEFAULT_TIMEOUT_MS = 5000;
 const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_LITERAL_RETRY_DEPTH = 8;
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test", "describe", "suite"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set([
@@ -56,15 +57,86 @@ function objectArgument(node: Node | undefined): ESTree.ObjectExpression | null 
 /** The static value of a literal expression or an earlier unchanged local const, else null. */
 function resolvedStaticValue(node: Node, source: Readonly<SourceCode>): ReturnType<typeof staticValue> {
   const unwrapped = unwrapExpression(node);
+  if (unwrapped.type === "Identifier" && unwrapped.name === "undefined" &&
+    (findVariable(source.getScope(unwrapped), unwrapped.name)?.defs.length ?? 0) === 0) return { value: undefined };
   return unwrapped.type === "Identifier"
     ? staticValue(stableConstInitializer(source, unwrapped)?.value)
     : staticValue(unwrapped);
 }
 
 /** A retry count enables reruns unless it is statically zero or false. */
-function enablesRetry(node: Node, source: Readonly<SourceCode>): boolean {
+function enablesRetry(node: Node, source: Readonly<SourceCode>, objectCount = false, depth = 0): boolean {
+  const options = objectCount ? objectArgument(node) : null;
+  if (options !== null) return retryObjectEnables(options, source, depth);
   const value = resolvedStaticValue(node, source);
-  return value?.value !== 0 && value?.value !== false;
+  return value === null || (value.value !== undefined && value.value !== 0 && value.value !== false);
+}
+
+function retryObjectEnables(options: ESTree.ObjectExpression, source: Readonly<SourceCode>, depth: number): boolean {
+  const count = retryObjectCount(options, source, depth);
+  return count !== undefined && count !== "disabled" && count !== "set";
+}
+
+type RetryCount = "enabled" | "disabled" | "get" | "set" | "unknown";
+
+function retryObjectCount(
+  options: ESTree.ObjectExpression,
+  source: Readonly<SourceCode>,
+  depth: number,
+  includePrototype = true,
+): RetryCount | undefined {
+  if (depth >= MAX_LITERAL_RETRY_DEPTH) return "unknown";
+  let count: RetryCount | undefined;
+  let inherited: RetryCount | undefined;
+  for (const property of options.properties) {
+    if (property.type !== "Property") {
+      count = spreadRetryCount(property.argument, source, depth) ?? count;
+      continue;
+    }
+    const key = getPropertyName(property);
+    if (key === null) count = "unknown";
+    else if (key === "count") count = nextRetryCount(property, source, count);
+    else if (includePrototype && isPrototypeInitializer(property)) {
+      inherited = prototypeEnablesRetry(property.value, source, depth) ? "enabled" : "disabled";
+    }
+  }
+  return count ?? inherited;
+}
+
+function nextRetryCount(
+  property: ESTree.ObjectProperty,
+  source: Readonly<SourceCode>,
+  previous: RetryCount | undefined,
+): RetryCount {
+  if (property.kind === "set") return previous === "get" || previous === "unknown" ? previous : "set";
+  if (property.kind === "get") return "get";
+  const value = resolvedStaticValue(property.value, source);
+  return value === null || (value.value !== null && value.value !== undefined && value.value !== 0 && value.value !== false)
+    ? "enabled" : "disabled";
+}
+
+function prototypeEnablesRetry(node: Node, source: Readonly<SourceCode>, depth: number): boolean {
+  const prototype = resolvedStaticValue(node, source);
+  if (prototype !== null && (prototype.value === null ||
+    (typeof prototype.value !== "object" && typeof prototype.value !== "function"))) return false;
+  return enablesRetry(node, source, true, depth + 1);
+}
+
+function spreadRetryCount(node: Node, source: Readonly<SourceCode>, depth: number): RetryCount | undefined {
+  const spread = objectArgument(node);
+  if (spread !== null) {
+    const count = retryObjectCount(spread, source, depth + 1, false);
+    if (count === "get") return "enabled";
+    return count === "set" ? "disabled" : count;
+  }
+  const value = resolvedStaticValue(node, source);
+  return value !== null && (value.value === null ||
+    (typeof value.value !== "object" && typeof value.value !== "function")) ? undefined : "unknown";
+}
+
+function isPrototypeInitializer(property: ESTree.ObjectExpression["properties"][number]): boolean {
+  return property.type === "Property" && getPropertyName(property) === "__proto__" &&
+    property.kind === "init" && !property.computed && !property.shorthand && !property.method;
 }
 
 /** A timeout is raised when it statically exceeds the framework default. */
@@ -87,7 +159,7 @@ function inspectOptions(
   for (const property of options.properties) {
     if (property.type !== "Property") continue;
     const key = getPropertyName(property);
-    if (key === keys.retry && enablesRetry(property.value, source)) report(property, "retry");
+    if (key === keys.retry && enablesRetry(property.value, source, keys.retry === "retry")) report(property, "retry");
     else if (key !== null && keys.timeouts.has(key) && raisesTimeout(property.value, source, keys.defaultMs)) {
       report(property, "timeout");
     }
@@ -204,7 +276,7 @@ function inspectVitestTestOptions(test: ESTree.ObjectExpression, source: Readonl
   for (const option of test.properties) {
     if (option.type !== "Property") continue;
     const key = getPropertyName(option);
-    if (key === "retry" && enablesRetry(option.value, source)) report(option, "retry");
+    if (key === "retry" && enablesRetry(option.value, source, true)) report(option, "retry");
     if (key === "projects") eachObjectElement(option.value, (project) => { inspectVitestConfig(project, source, report); });
   }
 }
@@ -236,7 +308,7 @@ export default defineRule({
   meta: {
     type: "problem",
     docs: {
-      description: "Fix flaky tests at their cause instead of retrying them or raising their timeouts.",
+      description: "Keep test retries disabled and explicit test timeouts within framework defaults.",
       url: docsUrl(NAME),
     },
     schema: [],
