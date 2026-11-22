@@ -1,3 +1,4 @@
+from itertools import product
 from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
@@ -5,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_set_isdisjoint import PreferSetIsdisjoint
@@ -423,4 +425,37 @@ def test_native_attribute_spelling_preserves_proven_set_intersections(operation:
     ],
 )
 def test_attribute_spelling_does_not_replace_set_provenance(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "condition"),
+    list(
+        product(
+            ["EXCLUDED = frozenset({'tests'})", "EXCLUDED: frozenset[str] = frozenset({'tests'})"],
+            ["{part.casefold() for part in parts} & EXCLUDED", "EXCLUDED & {'tests'}"],
+        )
+    ),
+)
+def test_module_frozenset_overlap_is_reported(declaration: str, condition: str) -> None:
+    source = f"{declaration}\ndef inspect(parts):\n    if {condition}:\n        return True\n"
+    assert len(_check(source)) == 1
+    assert fix_source(Path("app/policy.py"), source, rule_ids=["prefer-set-isdisjoint"]) == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "EXCLUDED = frozenset({'tests'})\nEXCLUDED = custom\ndef inspect(parts):\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\ndef inspect(EXCLUDED):\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\ndef inspect(parts):\n    EXCLUDED = custom\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\ndef replace():\n    global EXCLUDED\n    EXCLUDED = custom\ndef inspect(parts):\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\nfrom custom import EXCLUDED\ndef inspect(parts):\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\ndef inspect(parts):\n    return {'tests'} & EXCLUDED\n",
+        "EXCLUDED = set({'tests'})\ndef inspect(parts):\n    if {'tests'} & EXCLUDED:\n        return True\n",
+        "EXCLUDED = frozenset({'tests'})\ndef outer(EXCLUDED):\n    def inspect():\n        if {'tests'} & EXCLUDED:\n            return True\n    return inspect\n",
+        "if ready:\n    EXCLUDED = frozenset({'tests'})\ndef inspect():\n    if {'tests'} & EXCLUDED:\n        return True\n",
+    ],
+)
+def test_unproven_module_bindings_and_stored_intersections_remain(source: str) -> None:
     assert _check(source) == []

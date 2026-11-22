@@ -316,7 +316,7 @@ _IMPORTED_VALUES = frozenset(
 
 def _is_service_role(node: ast.ClassDef, context: PythonFileContext) -> bool:
     parts = frozenset(context.path.parts)
-    if parts & _NON_SERVICE_DIRECTORIES or node.name.endswith(_NON_SERVICE_SUFFIXES):
+    if not _NON_SERVICE_DIRECTORIES.isdisjoint(parts) or node.name.endswith(_NON_SERVICE_SUFFIXES):
         return False
     for keyword in node.keywords:
         if keyword.arg is None:
@@ -333,7 +333,7 @@ def _is_service_role(node: ast.ClassDef, context: PythonFileContext) -> bool:
             continue
         return False
     return (
-        bool(parts & BOUNDARY_DIRECTORIES)
+        not BOUNDARY_DIRECTORIES.isdisjoint(parts)
         or node.name.endswith(BOUNDARY_SUFFIXES)
         or (
             any(marker in context.source for marker in ("run_in_executor", "to_thread", "httpx", "Callable"))

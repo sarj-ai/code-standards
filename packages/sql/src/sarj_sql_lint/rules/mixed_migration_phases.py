@@ -121,7 +121,7 @@ class MixedMigrationPhases(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         parts = {part.casefold() for part in path.parts}
         if (
-            parts & _NON_PRODUCTION_PARTS
+            not _NON_PRODUCTION_PARTS.isdisjoint(parts)
             or not is_migration_source(path, source)
             or is_dump_file(source, path)
             or is_generated_migration(path, source)

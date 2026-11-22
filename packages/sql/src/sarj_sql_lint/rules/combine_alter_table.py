@@ -242,7 +242,7 @@ def combine_alter_table(path: Path, source: str) -> str:
 def _combinations(path: Path, source: str) -> Iterator[tuple[_Statement, _Alter, int]]:
     source = sql_before_copy_input(source)
     if (
-        {part.casefold() for part in path.parts} & _NON_PRODUCTION
+        not _NON_PRODUCTION.isdisjoint(part.casefold() for part in path.parts)
         or is_dump_file(source, path)
         or is_generated_migration(path, source)
         or not is_postgres_migration(path, source)

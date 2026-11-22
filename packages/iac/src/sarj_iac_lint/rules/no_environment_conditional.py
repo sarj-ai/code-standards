@@ -732,9 +732,9 @@ def _is_environment_name(name: str, *, literal: str | None) -> bool:
     segments = [segment for segment in re.split(r"[_-]", name.lower()) if segment]
     if not segments:
         return False
-    if ENVIRONMENT_SEGMENTS & set(segments):
+    if not ENVIRONMENT_SEGMENTS.isdisjoint(segments):
         return True
-    if not QUALIFIED_SEGMENTS & set(segments):
+    if QUALIFIED_SEGMENTS.isdisjoint(segments):
         return False
     qualified = all(segment in QUALIFIED_SEGMENTS or segment in _NEUTRAL_QUALIFIERS for segment in segments)
     return qualified and literal is not None and _literal_names_environment(literal)
@@ -744,7 +744,7 @@ def _literal_names_environment(literal: str) -> bool:
     if not _is_literal_string(literal):
         return False
     segments = frozenset(_LITERAL_SEGMENT_RE.split(literal[1:-1].lower()))
-    return bool(segments & _ENVIRONMENT_LITERAL_SEGMENTS)
+    return not _ENVIRONMENT_LITERAL_SEGMENTS.isdisjoint(segments)
 
 
 def _is_literal_string(tok: str) -> bool:

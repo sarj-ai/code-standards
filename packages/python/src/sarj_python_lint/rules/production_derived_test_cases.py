@@ -82,22 +82,25 @@ def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
 
 def _node_binding_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        names.add(node.name)
-    elif isinstance(node, (ast.Import, ast.ImportFrom)):
-        names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
-    elif isinstance(node, (ast.Assign, ast.Delete)):
-        names.update(*(_bound_target_names(target) for target in node.targets))
-    elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
-        names.update(_bound_target_names(node.target))
-    elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
-        names.add(node.name)
-    elif isinstance(node, ast.MatchMapping) and node.rest is not None:
-        names.add(node.rest)
-    elif isinstance(node, (ast.With, ast.AsyncWith)):
-        names.update(
-            *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
-        )
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            names.add(node.name)
+        case ast.Import() | ast.ImportFrom():
+            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        case ast.Assign() | ast.Delete():
+            names.update(*(_bound_target_names(target) for target in node.targets))
+        case ast.AnnAssign() | ast.AugAssign() | ast.NamedExpr() | ast.For() | ast.AsyncFor():
+            names.update(_bound_target_names(node.target))
+        case ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar() if node.name is not None:
+            names.add(node.name)
+        case ast.MatchMapping() if node.rest is not None:
+            names.add(node.rest)
+        case ast.With() | ast.AsyncWith():
+            names.update(
+                *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
+            )
+        case _:
+            pass
     return names
 
 
@@ -137,25 +140,28 @@ def _is_first_party_production_module(module: str, path: Path, facts: FirstParty
 
 
 def _is_test_support_module_part(part: str) -> bool:
-    return part in _TEST_MODULE_PARTS or bool(_TEST_SUPPORT_TOKENS & set(part.split("_")))
+    return part in _TEST_MODULE_PARTS or not _TEST_SUPPORT_TOKENS.isdisjoint(part.split("_"))
 
 
 def _is_membership_contract(name: str) -> bool:
-    return bool(_MEMBERSHIP_TOKENS & set(name.lower().split("_")))
+    return not _MEMBERSHIP_TOKENS.isdisjoint(name.lower().split("_"))
 
 
 def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> _PytestBindings:
     modules: set[str] = set()
     marks: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.Import):
-            _collect_pytest_modules(node, binding_counts, modules)
-        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
-            marks.update(
-                local
-                for alias in node.names
-                if alias.name == "mark" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
-            )
+        match node:
+            case ast.Import():
+                _collect_pytest_modules(node, binding_counts, modules)
+            case ast.ImportFrom() if node.module == "pytest":
+                marks.update(
+                    local
+                    for alias in node.names
+                    if alias.name == "mark" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+                )
+            case _:
+                pass
     return _PytestBindings(modules, marks)
 
 

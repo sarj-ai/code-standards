@@ -338,12 +338,13 @@ def _type_branch(test: ast.expr, imports: ImportIndex) -> _TypeBranch | None:
 
 
 def _exception_type_references(expression: ast.expr, imports: ImportIndex) -> frozenset[str] | None:
-    if isinstance(expression, ast.Tuple):
-        parts = expression.elts
-    elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
-        parts = _flatten_union(expression)
-    else:
-        parts = [expression]
+    match expression:
+        case ast.Tuple(elts=parts):
+            pass
+        case ast.BinOp(op=ast.BitOr()):
+            parts = _flatten_union(expression)
+        case _:
+            parts = [expression]
     references = [_exception_type_reference(part, imports) for part in parts]
     if any(reference is None for reference in references):
         return None

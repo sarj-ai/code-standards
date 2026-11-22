@@ -190,7 +190,7 @@ def _outcome_tag(annotation: ast.expr, facts: AnnotationOrigins) -> bool:
         return False
     members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
     values = {member.value for member in members if isinstance(member, ast.Constant) and isinstance(member.value, str)}
-    return bool(values & _SUCCESS_TAGS) and bool(values & _ERROR_TAGS)
+    return not values.isdisjoint(_SUCCESS_TAGS) and not values.isdisjoint(_ERROR_TAGS)
 
 
 def _failure_field(name: str, annotation: ast.expr, facts: AnnotationOrigins) -> bool:

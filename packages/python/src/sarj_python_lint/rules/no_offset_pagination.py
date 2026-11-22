@@ -135,7 +135,7 @@ class NoOffsetPagination(Rule):
         if (
             not is_store_module(path)
             or context.generated
-            or _MIGRATION_PARTS.intersection(part.casefold() for part in path.parts)
+            or not _MIGRATION_PARTS.isdisjoint(part.casefold() for part in path.parts)
         ):
             return []
         tree = context.tree

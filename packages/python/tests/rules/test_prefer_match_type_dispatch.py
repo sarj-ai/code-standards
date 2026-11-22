@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
 from sarj_python_lint.__main__ import check_source, main
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
@@ -31,7 +32,7 @@ _MIXED_PROBLEM = RuleProblem(
         "match value:\n    case str(): return 'text'\n    case int(): return 'number'\n    case list(): return 'list'\n",
     ),
     exclusions=(
-        "Non-terminating prefixes, unknown or repeated types, guarded type tests, and nonadjacent statements.",
+        "Non-terminating prefixes, unknown or repeated types, effectful guarded type tests, and nonadjacent statements.",
     ),
 )
 
@@ -136,6 +137,7 @@ _MIXED_CASES = (
         "guarded-tail",
         Language.PYTHON,
         "def check(value, ready):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, int) and ready:\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "runtime-type-group",
@@ -543,7 +545,7 @@ def dotted_tail(node: ast.expr) -> str | None:
 )
 def test_two_arm_dispatch_requires_only_a_shared_subject(body: str) -> None:
     source = f"import ast\n\ndef dotted_tail(node, other, ready):\n    {body}\n"
-    expected = 0 if "isinstance(other," in body or "and ready" in body else 1
+    expected = 0 if "isinstance(other," in body else 1
     assert len(_check(source)) == expected
 
 
@@ -718,7 +720,7 @@ def parse(first: object, second: object):
     assert _check(source) == []
 
 
-def test_allows_guarded_branches() -> None:
+def test_guarded_dispatch_is_manual_warning() -> None:
     source = """
 def parse(value: object):
     if isinstance(value, str) and value:
@@ -730,7 +732,9 @@ def parse(value: object):
     return None
 """
 
-    assert _check(source) == []
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
 
 
 def test_allows_repeated_or_overlapping_types() -> None:
@@ -2072,3 +2076,30 @@ def test_normalization_warning_respects_python_target_and_keeps_cli_success(
 def test_normalization_native_entry_rejects_invalid_source() -> None:
     with pytest.raises(ValueError, match="could not be parsed"):
         check_source([PreferMatchTypeDispatch()], Path("app/normalization.py"), "def normalize(candidate):\n    if\n")
+
+
+@pytest.mark.parametrize(
+    "guard",
+    ["node.id == 'x'", "node.id == 'x' and ready"],
+)
+def test_guarded_ast_dispatch_has_one_manual_warning(guard: str) -> None:
+    source = f"import ast\ndef inspect(node, ready):\n    if isinstance(node, ast.Name) and {guard}:\n        return 1\n    elif isinstance(node, ast.Attribute) and node.attr == 'x':\n        return 2\n    return None\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert "guards" in findings[0].message
+    assert fix_source(Path("app/parser.py"), source, rule_ids=["prefer-match-type-dispatch"]) == source
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "isinstance(node, ast.Name) and ready()",
+        "isinstance(node, ast.Name) and (node := other)",
+        "ready and isinstance(node, ast.Name)",
+        "isinstance(node, Imported) and ready",
+    ],
+)
+def test_effectful_reordered_and_unproven_guarded_dispatch_remains(condition: str) -> None:
+    source = f"import ast\nfrom external import Imported\ndef inspect(node, ready, other):\n    if {condition}:\n        return 1\n    elif isinstance(node, ast.Attribute) and node.attr == 'x':\n        return 2\n    return None\n"
+    assert _check(source) == []
