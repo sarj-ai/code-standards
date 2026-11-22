@@ -144,6 +144,45 @@ ruleTester().run("prefer-schema-for-api-payload", rule, {
     {
       code: "async function f(r: Response) { const d = await r.json().then(ZUser.safeParse); return d.success; }",
     },
+    {
+      name: "validation of fulfillment survives later cleanup",
+      code: "async function f(r: Response) { const d = await r.json().then(ZUser.parse).finally(cleanup); return d.name; }",
+    },
+    {
+      name: "computed fulfillment parser remains a validation boundary",
+      code: "async function f(r: Response) { const d = await r.json()['then'](ZUser['safeParse']); return d.success; }",
+    },
+    {
+      name: "shadowed JSON can be a source-owned schema parser",
+      code: "async function f(r: Response, JSON) { const d = await r.json().then(JSON.parse); return d.name; }",
+    },
+    {
+      name: "a global JSON parse wrapper can validate fulfillment",
+      filename: "src/client.ts",
+      code: "import { z } from 'zod'; const UserSchema = z.object({ id: z.string() }); const nativeParse = JSON.parse; JSON.parse = text => UserSchema.parse(nativeParse(text)); async function f(r: Response) { const d = await r.json().then(JSON.parse); return d.id; }",
+    },
+    {
+      name: "a leading spread can place the parser in the fulfillment position",
+      code: "async function f(r: Response) { const d = await r.json().then(...([] as const), ZUser.parse); return d.name; }",
+    },
+    {
+      name: "a fulfillment arrow can validate before the rejection parser",
+      filename: "src/client.ts",
+      code: "import { z } from 'zod'; const UserSchema = z.object({ id: z.string() }); async function f(r: Response) { const d = await r.json().then(value => UserSchema.parse(value), UserSchema.parse); return d.id; }",
+    },
+    {
+      name: "an opaque fulfillment transform can replace the raw payload",
+      code: "async function f(r: Response) { const d = await r.json().then(() => ({ id: 'local' }), ZUser.parse); return d.id; }",
+    },
+    {
+      name: "a shadowed undefined can be a fulfillment parser",
+      code: "async function f(r: Response, undefined: typeof ZUser.parse) { const d = await r.json().then(undefined, ZUser.parse); return d.name; }",
+    },
+    {
+      name: "an identity-shaped callback can validate before returning its input",
+      filename: "src/client.ts",
+      code: "import { z } from 'zod'; const UserSchema = z.object({ id: z.string() }); async function f(r: Response) { const d = await r.json().then(value => { UserSchema.parse(value); return value; }, UserSchema.parse); return d.id; }",
+    },
 
     { code: "const raw = JSON.parse(text); const data = Schema.parse(raw); use(data.foo);" },
     { code: "const data = Schema.parse(JSON.parse(text)); use(data.foo);" },
@@ -194,6 +233,36 @@ ruleTester().run("prefer-schema-for-api-payload", rule, {
     { name: "documented example unvalidated-payload-dynamic-member", filename: "src/client.ts", code: "async function load(response: Response) { const body = await response[auditDynamicMember](); return body[auditDynamicMember]; }" },
   ],
   invalid: [
+    {
+      name: "rejection parsing does not validate successful response JSON",
+      code: "async function f(r: Response) { const d = await r.json().catch(ZUser.parse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "finally ignores a successful safeParse result",
+      code: "async function f(r: Response) { const d = await r.json().finally(ZUser.safeParse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a then rejection callback does not parse fulfillment",
+      code: "async function f(r: Response) { const d = await r.json().then(undefined, ZUser.parse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a parser after the fulfillment callback does not validate its identity result",
+      code: "async function f(r: Response) { const d = await r.json().then(value => value, ZUser.parse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "null fulfillment leaves successful payloads unvalidated",
+      code: "async function f(r: Response) { const d = await r.json().then(null, ZUser.parse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "a lone identity return preserves the raw fulfilled payload",
+      code: "async function f(r: Response) { const d = await r.json().then(value => { return value; }, ZUser.parse); return d.name; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
     {
       name: "requires validation after a static computed native fetch",
       code: "async function load() { const response = await globalThis['fetch']('/items'); const body = await response.json(); return body.id; }",
