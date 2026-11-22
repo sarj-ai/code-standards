@@ -64,6 +64,11 @@ _POST_CREATE_FINGERPRINT_ANCHOR = (
     "and use PUT for an upsert."
 )
 
+_EXCEPTION_PROPAGATION_FINGERPRINT_ANCHOR = (
+    "This handler only copies the caught message into a generic error; review letting the original "
+    "exception propagate while preserving intentional boundary contracts."
+)
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
@@ -296,6 +301,8 @@ def _normalized_tool_report(report: ToolReport) -> ToolReport:
 def _fingerprint_anchor(diagnostic: Diagnostic) -> str:
     if diagnostic.source == "sarj-python-lint" and diagnostic.rule_id == "no-create-verb-in-post-path":
         return _POST_CREATE_FINGERPRINT_ANCHOR
+    if diagnostic.source == "sarj-python-lint" and diagnostic.rule_id == "prefer-exception-propagation":
+        return _EXCEPTION_PROPAGATION_FINGERPRINT_ANCHOR
     return diagnostic.message
 
 

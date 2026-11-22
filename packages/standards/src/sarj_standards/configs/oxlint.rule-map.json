@@ -7288,15 +7288,15 @@
     "kind": "js-alias",
     "oxlintId": "eslint-js/preserve-caught-error",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     },
     "options": [
       {
@@ -9368,15 +9368,15 @@
     "kind": "native",
     "oxlintId": "unicorn/no-lonely-if",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "unicorn/no-loop-iterable-mutation": {
@@ -11646,15 +11646,15 @@
     "kind": "js-alias",
     "oxlintId": "unicorn-js/prefer-single-object-destructuring",
     "contexts": {
-      "source-ts": "warn",
-      "source-tsx": "warn",
-      "source-js": "warn",
-      "source-jsx": "warn",
-      "test-ts": "warn",
-      "test-bun-ts": "warn",
-      "test-playwright-ts": "warn",
-      "config-ts": "warn",
-      "design-system-tsx": "warn"
+      "source-ts": "error",
+      "source-tsx": "error",
+      "source-js": "error",
+      "source-jsx": "error",
+      "test-ts": "error",
+      "test-bun-ts": "error",
+      "test-playwright-ts": "error",
+      "config-ts": "error",
+      "design-system-tsx": "error"
     }
   },
   "unicorn/prefer-single-replace": {
@@ -12255,7 +12255,9 @@
       {
         "assertFunctionNames": [
           "expect",
-          "assert"
+          "expectTypeOf",
+          "assert",
+          "assertType"
         ],
         "additionalTestBlockFunctions": []
       }
