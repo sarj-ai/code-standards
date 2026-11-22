@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from importlib import import_module
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from repo_standards.repository import GitIdentity
@@ -245,12 +245,97 @@ def _plan(root: Path, policy: Policy, grouped: runner.GroupedPaths, *, staged: b
         _project_changes(changes, module.inputs, policy=policy)
         if terraform:
             _format_terraform(changes, module.inputs, policy=policy)
+    module = _environment_input_changes(root, changes, module, policy=policy, staged=staged)
     return _FixPlan(
         tuple(change for change in changes.values() if change.original != change.replacement),
         module.inputs,
         module.directories,
         module.index,
     )
+
+
+def _environment_input_changes(
+    root: Path, changes: dict[Path, _Change], module: _ModuleInputs, *, policy: Policy, staged: bool
+) -> _ModuleInputs:
+    from sarj_iac_lint.rules.no_dead_environment_input import remove_stale_assignments  # ruff: ignore[import-outside-top-level] -- only explicit project fixes may delete proven stale assignments.
+
+    selected = tuple(
+        path
+        for path in changes
+        if path.name.endswith((".tfvars", ".tfvars.json"))
+        and policy.allows_rule(
+            Diagnostic(
+                "SARJ205",
+                "",
+                Severity.INFO,
+                "sarj-iac-lint",
+                Location(policy.relative(path)),
+                "no-dead-environment-input",
+            )
+        )
+    )
+    if not selected:
+        return module
+    context = _environment_inputs(root, staged=staged)
+    if context is None:
+        return module
+    sources = {path: raw.decode("utf-8-sig") for path, raw in context.inputs.items()}
+    for path, change in changes.items():
+        if path in sources:
+            if change.original != context.inputs[path]:
+                message = "Terraform input changed while planning; no files changed"
+                raise OSError(message)
+            sources[path] = change.replacement.decode(_encoding(path, change.original))
+    for path, source in remove_stale_assignments(sources, selected=selected).items():
+        original = changes[path].original
+        changes[path] = _Change(path, original, source.encode(_encoding(path, original)))
+    return _ModuleInputs(
+        {**module.inputs, **context.inputs}, {**module.directories, **context.directories}, context.index
+    )
+
+
+def _environment_inputs(root: Path, *, staged: bool) -> _ModuleInputs | None:
+    from repo_standards.repository import git_index_identity  # ruff: ignore[import-outside-top-level] -- pin the selected index before collecting contextual files.
+
+    from .iac_module_outputs import selected_sources  # ruff: ignore[import-outside-top-level] -- reuse the exact tracked source boundary and contract acquisition.
+
+    index = git_index_identity(root) if staged else None
+    snapshot = selected_sources(root, staged=staged)
+    if snapshot is None:
+        return None
+    if staged and git_index_identity(root) != index:
+        message = "Git index changed while collecting Terraform fix inputs; no files changed"
+        raise ValueError(message)
+    paths = tuple(root / path for path in snapshot.sources)
+    transaction.validate_targets(root, paths)
+    inputs = {path: path.read_bytes() for path in paths}
+    directories = _environment_directories(paths)
+    if staged and any(
+        raw.decode("utf-8-sig") != snapshot.sources[PurePosixPath(path.relative_to(root).as_posix())]
+        for path, raw in inputs.items()
+    ):
+        message = "Terraform context differs from the staged index; no stale inputs were fixed"
+        raise ValueError(message)
+    # The ordinary transaction validates every contextual source before and after
+    # writes. It also rolls back the whole plan if any precondition changes.
+    return _ModuleInputs(inputs, directories, index)
+
+
+def _environment_directories(paths: Sequence[Path]) -> dict[Path, tuple[str, ...]]:
+    from sarj_iac_lint.terraform import is_terraform  # ruff: ignore[import-outside-top-level] -- reuse supported module membership.
+
+    expected: dict[Path, set[Path]] = {}
+    for path in paths:
+        if is_terraform(path):
+            expected.setdefault(path.parent, set()).add(path)
+    directories: dict[Path, tuple[str, ...]] = {}
+    for directory, members in expected.items():
+        names = _terraform_names(directory)
+        if {directory / name for name in names} != members:
+            message = "Terraform worktree membership differs from the selected tracked tree; no stale inputs were fixed"
+            raise ValueError(message)
+        directories[directory] = names
+    return directories
 
 
 def _native_changes(

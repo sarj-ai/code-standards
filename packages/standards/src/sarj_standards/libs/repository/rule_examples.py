@@ -80,8 +80,11 @@ def _iac(rule_id: str) -> SelectedRule:
     selected_rule = _native(rule_id, RuleEngine.IAC, REGISTRY.get(rule_id), analyze)
     if rule_id == "canonical-terraform-declarations":
         return SelectedRule(selected_rule.spec, selected_rule.analyze, _declaration_fix)
-    if rule_id != "no-unused-module-outputs":
+    if rule_id == "no-dead-environment-input":
+        return SelectedRule(selected_rule.spec, selected_rule.analyze, _environment_input_fix)
+    if rule_id not in {"no-unused-module-outputs", "no-unused-module-inputs"}:
         return selected_rule
+    from sarj_iac_lint.rules.no_unused_module_inputs import NoUnusedModuleInputs  # ruff: ignore[import-outside-top-level] -- this rule shares the complete example graph.
     from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs  # ruff: ignore[import-outside-top-level] -- this rule requires the explicit complete example boundary.
 
     def run(root: Path, _focus: Path) -> list[ExampleFinding]:
@@ -94,9 +97,9 @@ def _iac(rule_id: str) -> SelectedRule:
         }
         return [
             ExampleFinding(d.path, d.line, d.col, d.code, d.message)
-            for d in NoUnusedModuleOutputs.check_project(
-                root, sources, internal_modules=terraform_internal_modules(options)
-            )
+            for d in (
+                NoUnusedModuleOutputs if rule_id == NoUnusedModuleOutputs.id else NoUnusedModuleInputs
+            ).check_project(root, sources, internal_modules=terraform_internal_modules(options))
         ]
 
     return SelectedRule(selected_rule.spec, run)
@@ -111,6 +114,17 @@ def _declaration_fix(root: Path, path: Path, source: str) -> str:
         if item.is_file() and item.name.endswith((".tf", ".tf.json"))
     }
     return consolidate_declarations(sources, selected=tuple(sources)).get(path, source)
+
+
+def _environment_input_fix(root: Path, path: Path, source: str) -> str:
+    from sarj_iac_lint.rules.no_dead_environment_input import remove_stale_assignments  # ruff: ignore[import-outside-top-level] -- the example's complete authored source set supplies the project proof boundary.
+
+    sources = {
+        item: item.read_text(encoding="utf-8")
+        for item in root.rglob("*")
+        if item.is_file() and item.name.endswith((".tf", ".tf.json", ".tfvars", ".tfvars.json"))
+    }
+    return remove_stale_assignments(sources, selected=tuple(sources)).get(path, source)
 
 
 def _native(rule_id: str, engine: RuleEngine, rule: type[NativeRule] | None, analyze: NativeAnalyzer) -> SelectedRule:

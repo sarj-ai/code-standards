@@ -59,7 +59,11 @@ def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
     if len(tracked) != inspection.tracked_file_count:
         message = "Complete tracked source evidence is required for Terraform consumers"
         raise ValueError(message)
-    paths = sorted(PurePosixPath(path) for path in tracked if path.endswith((".tf", ".tf.json")))
+    paths = sorted(
+        PurePosixPath(path)
+        for path in tracked
+        if path.endswith((".tf", ".tf.json", ".tfvars", ".tfvars.json")) or PurePosixPath(path).name == "envs.json"
+    )
     manifest_path = PurePosixPath(MANIFEST_NAME)
     selected = [*paths, *([manifest_path] if MANIFEST_NAME in tracked else [])]
     contents = _selected_contents(root, identity, selected)

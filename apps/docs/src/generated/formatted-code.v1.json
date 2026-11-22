@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a0cd6cdc2389583a9ac30747255826d71065fe3ce5633c119790329d04de915b",
-  "cliSha256": "4878f4c994044d507a411f258ca1d6cec71e45f4ce09c893c559885f03af4b61",
+  "catalogSha256": "47215e5becb30829e911e83a2919bbdf3ff45e4f419a292c72578b8f4c933ce5",
+  "cliSha256": "c1d08453447f27ae888301201a0facf9a90b34711d13189d73bbc4244b378c22",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -438,6 +438,25 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "terraform.tfvars",
+              "source": "live = false\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"live\" { type = bool }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "terraform.tfvars",
+          "id": "declared-auto-loaded-assignment",
+          "outcome": "accept",
+          "scenarioId": "auto-loaded-fix",
+          "title": "Keep a declared startup input"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "env/dev/terraform.tfvars",
               "source": "text_llm_enable_thinking = true\n"
             },
@@ -608,7 +627,31 @@
           "id": "sensitive-value-repeated-across-environments",
           "outcome": "reject",
           "scenarioId": "sensitive-shared-input",
-          "title": "Sensitive input duplicated instead of injected once"
+          "title": "Sensitive input repeated across environments"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "terraform.tfvars",
+              "source": "live    = false\nretired = true\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"live\" { type = bool }\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "terraform.tfvars",
+              "source": "live = false\n"
+            }
+          ],
+          "focusPath": "terraform.tfvars",
+          "id": "stale-auto-loaded-assignment",
+          "outcome": "reject",
+          "scenarioId": "auto-loaded-fix",
+          "title": "Remove a tracked auto-loaded assignment Terraform cannot consume"
         }
       ],
       "optionsSchemaSource": null
@@ -1639,6 +1682,65 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Move custom input policy out of variable declarations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-unused-module-inputs": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[iac.no-unused-module-outputs]\ninternal_modules = [\"child\"]\n"
+            },
+            {
+              "path": "child/main.tf",
+              "source": "locals { unused = var.region }\n"
+            },
+            {
+              "path": "child/variables.tf",
+              "source": "variable \"region\" { type = string }\n"
+            },
+            {
+              "path": "main.tf",
+              "source": "module \"child\" {\n  source = \"./child\"\n  region = \"west\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "child/variables.tf",
+          "id": "forwarded-to-unused-local",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A local reference does not establish effective consumption"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[iac.no-unused-module-outputs]\ninternal_modules = [\"child\"]\n"
+            },
+            {
+              "path": "child/main.tf",
+              "source": "resource \"example\" \"service\" { region = var.region }\n"
+            },
+            {
+              "path": "child/variables.tf",
+              "source": "variable \"region\" { type = string }\n"
+            },
+            {
+              "path": "main.tf",
+              "source": "module \"child\" {\n  source = \"./child\"\n  region = \"west\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "child/variables.tf",
+          "id": "resource-consumes-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A resource argument consumes the forwarded value"
         }
       ],
       "optionsSchemaSource": null

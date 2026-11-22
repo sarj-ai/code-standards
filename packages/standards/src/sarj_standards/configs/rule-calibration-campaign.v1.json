@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/iac/no-unused-module-inputs",
+      "family": "iac",
+      "ruleId": "no-unused-module-inputs",
+      "state": "pending",
+      "evidence": "Independent semantic labels cover seven proven stale or ineffective input locations, nine retention/native-owner cases, three incomplete-analysis abstentions and one disclosed conservative merge-overwrite non-detection. Native Terraform and TFLint distinguish effective value flow from textual reference and verify scalar-fix behavior, JSON comment semantics and generated-source ownership. Native negative oracles also preserve malformed syntax, numeric overflow/underflow and quoted-string ownership; comparison coercion is not a fix proof. Isolated immutable calibration covers 642 Terraform files across three repositories; eight existing advisory findings are retained and no natural new-rule positive is established. Private sources and identifying provenance remain outside published artifacts. Broader natural-positive calibration remains pending.",
+      "outcome": "Ship SARJ225 at WARNING, sharing the existing selected-project consumer graph and reviewed internal-module contract. Public interfaces, whole-object and dynamic consumers retain inputs. No declaration/caller deletion fix: requiredness, conversion and validation remain observable. Preserve SARJ223 required error semantics. SARJ205 stale assignments gain only a bounded tracked auto-loaded scalar fix with complete-project, source-observation and transactional snapshot checks. Automatic deletion is limited to pure variable/local/output and required_version projects; modules, providers, resources, data and backend behavior remain manual. A native unchanged-child hash oracle establishes this boundary. Equal-default and repeated-value advice remains review-only. Warnings do not block checks; promotion requires a separate reviewed release."
+    },
+    {
       "task": "rule-audit/iac/canonical-terraform-declarations",
       "family": "iac",
       "ruleId": "canonical-terraform-declarations",

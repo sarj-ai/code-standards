@@ -9,6 +9,7 @@ from sarj_iac_lint._hcl import suppression_comment_lines
 from sarj_iac_lint.rule_base import ExampleOutcome, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
+from sarj_iac_lint.rules.no_unused_module_inputs import NoUnusedModuleInputs
 from sarj_iac_lint.rules.no_unused_module_outputs import NoUnusedModuleOutputs
 
 
@@ -432,10 +433,14 @@ def test_noqa_requires_complete_directive_codes(
     assert findings == analyze(["no-managed-service-account-key"], [path])
 
 
-# Required project diagnostics have dedicated whole-project non-suppression tests.
+# Project diagnostics have dedicated whole-project suppression contract tests.
 @pytest.mark.parametrize(
     "rule_id",
-    tuple(rule_id for rule_id in REGISTRY if rule_id not in {NoTerraformComments.id, NoUnusedModuleOutputs.id}),
+    tuple(
+        rule_id
+        for rule_id in REGISTRY
+        if rule_id not in {NoTerraformComments.id, NoUnusedModuleOutputs.id, NoUnusedModuleInputs.id}
+    ),
 )
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("crlf", [False, True])
