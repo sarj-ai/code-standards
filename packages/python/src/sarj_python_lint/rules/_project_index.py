@@ -281,8 +281,7 @@ class ImportNamespaceMutations:
         visited: set[str] = set()
         mutated: set[str] = set()
         if self._facts is None:
-            load = self._load()
-            if load is None:
+            if (load := self._load()) is None:
                 return None
             self._facts = load()
         facts = self._facts
@@ -504,8 +503,7 @@ class ProjectIndexSet:
         )
 
     def unit(self, path: Path) -> SourceUnit | None:
-        direct = self._units.get(path)
-        if direct is not None:
+        if (direct := self._units.get(path)) is not None:
             return direct
         if path in self._aliases:
             return self._units.get(self._aliases[path])
@@ -517,11 +515,9 @@ class ProjectIndexSet:
             return None
 
     def unit_or_source(self, path: Path, source: str, tree: ast.Module) -> SourceUnit | None:
-        indexed = self.unit(path)
-        if indexed is not None:
+        if (indexed := self.unit(path)) is not None:
             return indexed
-        module = _module_name(path, self._roots)
-        if module is None:
+        if (module := _module_name(path, self._roots)) is None:
             return None
         return SourceUnit(
             path=path,
@@ -541,10 +537,12 @@ class ProjectIndexSet:
             return None
         if isinstance(expression, ast.Name):
             return unit.imports.get(expression.id) or SymbolRef(unit.module, expression.id)
-        if isinstance(expression, ast.Attribute) and isinstance(expression.value, ast.Name):
-            root = unit.imports.get(expression.value.id)
-            if root is not None:
-                return SymbolRef(root.module, expression.attr) if not root.name else None
+        if (
+            isinstance(expression, ast.Attribute)
+            and isinstance(expression.value, ast.Name)
+            and (root := unit.imports.get(expression.value.id)) is not None
+        ):
+            return SymbolRef(root.module, expression.attr) if not root.name else None
         return None
 
     def class_for(self, unit: SourceUnit, expression: ast.expr) -> ClassSummary | None:
@@ -905,6 +903,23 @@ class ProjectIndexSet:
                 continue
             for base in summary.bases:
                 if f"{base.module}.{base.name}" in qualified_bases:
+                    return True
+                pending.append(base)
+        return False
+
+    def symbol_inherits_builtin(self, symbol: SymbolRef, builtin_names: AbstractSet[str]) -> bool:
+        pending = [symbol]
+        seen: set[SymbolRef] = set()
+        while pending:
+            current = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            summary = self._classes.get(current)
+            if summary is None:
+                continue
+            for base in summary.bases:
+                if base not in self._classes and base.module == current.module and base.name in builtin_names:
                     return True
                 pending.append(base)
         return False
@@ -1311,8 +1326,7 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
     root = next((candidate for candidate in roots if resolved == candidate or candidate in resolved.parents), None)
     if root is not None:
         try:
-            project_module = _project_module_name(resolved, root)
-            if project_module is not None:
+            if (project_module := _project_module_name(resolved, root)) is not None:
                 return project_module
             package_dir = _outer_package_directory(resolved, root)
         except OSError:
@@ -1781,8 +1795,7 @@ def _class_typed_dependencies(unit: SourceUnit, owner: ast.ClassDef) -> Iterator
 
 
 def _mock_spec_targets(unit: SourceUnit, call: ast.Call) -> Iterator[SymbolRef]:
-    mock_name = _mock_function_name(unit, call.func)
-    if mock_name is None:
+    if (mock_name := _mock_function_name(unit, call.func)) is None:
         return
     for keyword in call.keywords:
         if keyword.arg in {"spec", "spec_set"} and (target := _direct_base_symbol(unit, keyword.value)) is not None:
@@ -1837,8 +1850,7 @@ _ABSOLUTE_IMPORT_SYMBOLS: WeakKeyDictionary[ast.Module, Mapping[str, SymbolRef]]
 
 
 def _absolute_import_symbols(tree: ast.Module) -> Mapping[str, SymbolRef]:
-    symbols = _ABSOLUTE_IMPORT_SYMBOLS.get(tree)
-    if symbols is not None:
+    if (symbols := _ABSOLUTE_IMPORT_SYMBOLS.get(tree)) is not None:
         return symbols
     first: dict[str, SymbolRef] = {}
     for statement in _module_import_statements(tree):
@@ -1869,8 +1881,7 @@ def _annotation_symbols(unit: SourceUnit, annotation: ast.expr | None) -> Iterat
 
 def _record_import(node: ast.stmt, package: str, result: dict[str, SymbolRef]) -> None:
     if isinstance(node, ast.ImportFrom) and not any(alias.name == "*" for alias in node.names):
-        target = _relative_module(package, node.level, node.module)
-        if target is None:
+        if (target := _relative_module(package, node.level, node.module)) is None:
             return
         for alias in node.names:
             result[alias.asname or alias.name] = SymbolRef(target, alias.name)

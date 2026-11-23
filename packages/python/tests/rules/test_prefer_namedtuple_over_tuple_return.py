@@ -58,7 +58,7 @@ def test_flags_fixed_tuple_returns_everywhere(source: str) -> None:
     [
         "def values() -> tuple[int, ...]: ...\n",
         "def values() -> tuple[int]: ...\n",
-        "def values() -> list[tuple[int, str]]: ...\n",
+        "def values() -> list[tuple[int, ...]]: ...\n",
         "def values() -> Profile: ...\n",
         "class tuple: ...\ndef values() -> tuple[int, str]: ...\n",
         "from fake import Tuple\ndef values() -> Tuple[int, str]: ...\n",
@@ -154,7 +154,8 @@ _TEST_RETURN_ANNOTATIONS = (
     ("annotated", "from typing import Annotated\n", "Annotated[tuple[int, str], 'record']", 1),
     ("optional", "", "tuple[int, str] | None", 1),
     ("collection", "", "tuple[int, ...]", 0),
-    ("nested-collection", "", "list[tuple[int, str]]", 0),
+    ("nested-collection", "", "list[tuple[int, str]]", 1),
+    ("variadic-collection", "", "list[tuple[int, ...]]", 0),
     ("application-type", "from app.types import tuple\n", "tuple[int, str]", 0),
 )
 _TEST_RETURN_OWNERS = (
@@ -215,3 +216,80 @@ def test_variadic_fields_require_a_proven_unpack(provider: str, annotation: str,
 def test_typing_extensions_records_start_as_warnings(provider: str, annotation: str) -> None:
     findings = _check(f"{provider}\ndef pair() -> {annotation}: ...\n", "tests/test_pair.py")
     assert [finding.severity for finding in findings] == [Severity.WARNING]
+
+
+_PR_13609 = (
+    "from typing import override\n"
+    "from collections.abc import Sequence\n"
+    "from app.ports import GenerationService\n"
+    "class GenerationServiceImpl(GenerationService):\n"
+    "    @override\n"
+    "    async def generate(self, message: object) -> None: ...\n"
+    "    async def _prepare_many(\n"
+    "        self, renders: Sequence[tuple[Request, Group]]\n"
+    "    ) -> tuple[dict[str, File], BaseException | None]: ...\n"
+    "    async def _get_missing(self, message: object) -> dict[str, tuple[Request, Group]]:\n"
+    "        renders: dict[str, tuple[Request, Group]] = {}\n"
+    "        return renders\n"
+)
+
+
+def test_private_subclass_helpers_parameters_and_locals_are_reported_as_warnings() -> None:
+    findings = _check(_PR_13609)
+
+    assert [(item.line, item.severity) for item in findings] == [
+        (7, Severity.WARNING),
+        (8, Severity.WARNING),
+        (10, Severity.WARNING),
+        (11, Severity.WARNING),
+    ]
+    assert "`tuple[Request, Group]` is a positional record" in findings[1].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from collections.abc import Sequence\ndef total(pairs: Sequence[tuple[str, int]]) -> int: ...\n",
+        "def total(pair: tuple[str, int] | None = None) -> int: ...\n",
+        "def total(*pairs: tuple[str, int]) -> int: ...\n",
+        "from collections.abc import Callable\ndef handler(callback: Callable[[tuple[str, int]], None]) -> None: ...\n",
+        "from collections import deque\ndef load() -> None:\n    window: deque[tuple[float, float]] = deque()\n",
+        "INDEX: dict[tuple[str, str], int] = {}\n",
+        "class Config:\n    pairs: frozenset[tuple[str, str]]\n",
+        "def load() -> None:\n    seen: set[tuple[str, int]] = set()\n",
+        "def load() -> dict[str, tuple[int, int]]: ...\n",
+        "type Pair = tuple[str, int]\ndef total(pairs: list[Pair]) -> int: ...\n",
+        "def load() -> tuple[tuple[str, int], ...]: ...\n",
+        "def load() -> 'list[tuple[str, int]]': ...\n",
+    ],
+)
+def test_reports_fixed_tuples_in_every_annotation_position(source: str) -> None:
+    findings = _check(source)
+
+    assert [item.severity for item in findings] == [Severity.WARNING]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def total(values: tuple[int, ...]) -> int: ...\n",
+        "def total(values: Sequence[tuple[int, ...]]) -> int: ...\n",
+        "def total(value: tuple[int]) -> int: ...\n",
+        "class Port:\n    def __reduce__(self) -> tuple[object, tuple[int, int]]: ...\n",
+        "class Adapter(Port):\n    def coordinates(self, origin: tuple[int, int]) -> tuple[int, int]: ...\n",
+        (
+            "class Base:\n    def _hook(self) -> tuple[int, int]: ...  # sarj-noqa: SARJ026 -- base contract\n"
+            "class Child(Base):\n    def _hook(self) -> tuple[int, int]: ...\n"
+        ),
+        "from app.types import tuple\ndef total(pair: tuple[str, int]) -> None: ...\n",
+        "import numpy as np\ndef load() -> np.ndarray[tuple[int, int], np.dtype[np.float32]]: ...\n",
+        "from vendor import Generic\ndef load(value: Generic[tuple[int, int]]) -> None: ...\n",
+        (
+            "from typing import override\nfrom vendor import Server\nclass Tools(Server):\n"
+            "    @override\n    def _unflatten(self, args: dict[str, tuple[str, int]]) -> tuple[str, int]: ...\n"
+        ),
+        "def _sort_key(row: Row) -> tuple[datetime, str]: ...\nordered = sorted(rows, key=_sort_key)\n",
+    ],
+)
+def test_keeps_collections_dunders_inherited_contracts_and_overridden_private_hooks(source: str) -> None:
+    assert _check(source) == []

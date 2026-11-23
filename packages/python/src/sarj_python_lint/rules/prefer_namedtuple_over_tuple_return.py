@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -21,7 +23,10 @@ from sarj_python_lint.rules._inherited_contract import inherited_contract
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -29,6 +34,54 @@ _MIN_FIELDS = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 _TUPLE_SOURCES = frozenset({"builtins"})
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+_BUILTIN_CONTAINERS = frozenset({"dict", "frozenset", "list", "set", "tuple", "type"})
+_CONTAINER_SOURCES = frozenset({"collections", "collections.abc", "types", "typing", "typing_extensions"})
+_CONTAINER_SYMBOLS = frozenset(
+    {
+        "AbstractSet",
+        "Annotated",
+        "AsyncGenerator",
+        "AsyncIterable",
+        "AsyncIterator",
+        "Awaitable",
+        "Callable",
+        "ChainMap",
+        "ClassVar",
+        "Collection",
+        "Container",
+        "Coroutine",
+        "Counter",
+        "DefaultDict",
+        "Deque",
+        "Dict",
+        "Final",
+        "FrozenSet",
+        "Generator",
+        "ItemsView",
+        "Iterable",
+        "Iterator",
+        "KeysView",
+        "List",
+        "Mapping",
+        "MappingProxyType",
+        "MutableMapping",
+        "MutableSequence",
+        "MutableSet",
+        "NotRequired",
+        "Optional",
+        "OrderedDict",
+        "ReadOnly",
+        "Required",
+        "Reversible",
+        "Sequence",
+        "Set",
+        "Type",
+        "Union",
+        "ValuesView",
+        "defaultdict",
+        "deque",
+    }
+)
 
 _MSG = (
     "function returns a fixed positional tuple record — return a dataclass or validation model; "
@@ -56,7 +109,8 @@ class PreferNamedtupleOverTupleReturn(Rule):
             "Generated files and documentation examples are excluded.",
             "Provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported, including stable local aliases, quoted annotations, Annotated wrappers and optional unions in test helpers and fixtures; variadic tuples remain valid collections.",
             "Existing direct tuple records remain errors; newly resolved typing_extensions providers, local aliases, application types named Unpack and optional-union records start as warnings for adoption review.",
-            "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
+            "Public methods on classes with explicit bases, dunder methods and `@override` methods are excluded as inherited contracts. Private helpers on subclasses remain eligible unless a base class in the same module declares the same name.",
+            "Fixed tuples nested in proven container, union, Callable and local-alias type arguments of parameters, returns and annotated variables or fields are warnings. Arguments of other generics (for example array shape parameters) and returns of functions passed as `key=` callables are excluded.",
         ),
         examples=(
             RuleExample(
@@ -100,36 +154,154 @@ class PreferNamedtupleOverTupleReturn(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        if context.generated or _is_documentation_path(path):
-            return []
         tree = context.tree
-        if tree is None or context.has_wildcard_import:
+        if context.generated or _is_documentation_path(path) or tree is None or context.has_wildcard_import:
             return []
-        imports = context.imports
-        diagnostics: list[Diagnostic] = []
-        for node in context.nodes(ast.AST):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.returns is None:
-                continue
-            if not any(
-                _is_public_record_tuple(member, imports)
-                for member in context.annotation_semantics.transparent_members(node.returns)
-            ):
-                continue
-            if inherited_contract(context.parents.get(node)):
-                continue
-            diagnostics.append(
+        semantics = context.annotation_semantics
+        sort_keys = _sort_key_functions(tree)
+        findings = [
+            *(
+                finding
+                for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+                for finding in _function_findings(node, context.parents.get(node), tree, semantics, sort_keys)
+            ),
+            *(
+                finding
+                for node in context.nodes(ast.AnnAssign)
+                for finding in _nested_findings(node.annotation, semantics)
+            ),
+        ]
+        return sorted(
+            (
                 Diagnostic(
                     path=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
+                    line=finding.node.lineno,
+                    col=finding.node.col_offset + 1,
                     code=self.code,
-                    message=_MSG,
-                    severity=Severity.ERROR
-                    if _is_public_record_tuple(node.returns, imports, legacy=True)
-                    else Severity.WARNING,
+                    message=finding.message,
+                    severity=finding.severity,
                 )
-            )
-        return diagnostics
+                for finding in findings
+                if not context.suppressions.is_suppressed(finding.node.lineno, self.code)
+            ),
+            key=lambda item: (item.line, item.col),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Finding:
+    node: ast.stmt | ast.expr
+    message: str
+    severity: DiagnosticSeverity
+
+
+def _function_findings(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    owner: ast.AST | None,
+    tree: ast.Module,
+    semantics: AnnotationSemantics,
+    sort_keys: frozenset[str],
+) -> Iterator[_Finding]:
+    imports = semantics.imports
+    private_method = isinstance(owner, ast.ClassDef) and bool(owner.bases) and _private_helper(node, owner, tree)
+    if _is_dunder(node.name) or (inherited_contract(owner) and not private_method) or _declares_override(node, imports):
+        return
+    arguments = node.args
+    for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg, arguments.kwarg):
+        if argument is not None:
+            yield from _nested_findings(argument.annotation, semantics)
+    if node.returns is None or node.name in sort_keys:
+        return
+    if not any(_is_public_record_tuple(member, imports) for member in semantics.transparent_members(node.returns)):
+        yield from _nested_findings(node.returns, semantics)
+        return
+    legacy = not private_method and _is_public_record_tuple(node.returns, imports, legacy=True)
+    yield _Finding(node, _MSG, Severity.ERROR if legacy else Severity.WARNING)
+
+
+def _nested_findings(annotation: ast.expr | None, semantics: AnnotationSemantics) -> Iterator[_Finding]:
+    if annotation is not None and (record := _nested_record(annotation, semantics)) is not None:
+        yield _Finding(annotation, _nested_message(record), Severity.WARNING)
+
+
+def _private_helper(node: ast.FunctionDef | ast.AsyncFunctionDef, owner: ast.ClassDef, tree: ast.Module) -> bool:
+    if not node.name.startswith("_") or _is_dunder(node.name):
+        return False
+    bases = {base.id for base in owner.bases if isinstance(base, ast.Name)}
+    return not any(
+        isinstance(statement, ast.ClassDef)
+        and statement.name in bases
+        and any(
+            isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == node.name
+            for member in statement.body
+        )
+        for statement in tree.body
+    )
+
+
+def _is_dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__")
+
+
+def _nested_record(annotation: ast.expr, semantics: AnnotationSemantics) -> ast.Subscript | None:
+    pending: list[tuple[ast.expr, frozenset[str]]] = [(annotation, frozenset())]
+    while pending:
+        node, seen = pending.pop()
+        parsed = semantics.parse(node)
+        if isinstance(parsed, ast.Name) and parsed.id in semantics.aliases:
+            if parsed.id not in seen:
+                pending.append((semantics.aliases[parsed.id], seen | {parsed.id}))
+        elif isinstance(parsed, ast.Subscript) and _is_public_record_tuple(parsed, semantics.imports):
+            return parsed
+        elif parsed is not None:
+            pending.extend((child, seen) for child in reversed(_type_arguments(parsed, semantics.imports)))
+    return None
+
+
+def _type_arguments(node: ast.expr, imports: ImportIndex) -> list[ast.expr]:
+    match node:
+        case ast.Subscript(value=target) if not _is_container(target, imports):
+            return []
+        case ast.Subscript(slice=ast.Tuple(elts=elements) | ast.List(elts=elements)):
+            return elements
+        case ast.Subscript(slice=element):
+            return [element]
+        case ast.BinOp(op=ast.BitOr(), left=left, right=right):
+            return [left, right]
+        case ast.List(elts=elements) | ast.Tuple(elts=elements):
+            return elements
+        case _:
+            return []
+
+
+def _is_container(target: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(target, ast.Name) and target.id in _BUILTIN_CONTAINERS and imports.builtin_is_unshadowed(target.id):
+        return True
+    return imports.resolved_symbol(target, sources=_CONTAINER_SOURCES) in _CONTAINER_SYMBOLS
+
+
+def _declares_override(node: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    return any(
+        imports.resolves(decorator, sources=_TYPING_SOURCES, symbol="override") for decorator in node.decorator_list
+    )
+
+
+def _sort_key_functions(tree: ast.Module) -> frozenset[str]:
+    return frozenset(
+        keyword.value.id
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        for keyword in call.keywords
+        if keyword.arg == "key" and isinstance(keyword.value, ast.Name)
+    )
+
+
+def _nested_message(record: ast.Subscript) -> str:
+    return (
+        f"`{ast.unparse(record)}` is a positional record — name its fields with a frozen dataclass or validation "
+        "model, or use `tuple[T, ...]` for a homogeneous sequence (typing.NamedTuple only when tuple protocol "
+        "compatibility is required)."
+    )
 
 
 def _is_documentation_path(path: Path) -> bool:

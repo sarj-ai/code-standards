@@ -233,8 +233,10 @@ from sarj_python_lint.rules.delete_route_returns_no_content import DeleteRouteRe
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
 from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
+from sarj_python_lint.rules.exit_stack_requires_lifecycle_owner import ExitStackRequiresLifecycleOwner
 from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
 from sarj_python_lint.rules.fastapi_route_declares_security import FastapiRouteDeclaresSecurity
+from sarj_python_lint.rules.inline_single_use_local import InlineSingleUseLocal
 from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
 from sarj_python_lint.rules.no_async_client_in_constructor import NoAsyncClientInConstructor
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
@@ -279,6 +281,7 @@ from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicit
 from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
 from sarj_python_lint.rules.prefer_named_literal_alias import PreferNamedLiteralAlias
+from sarj_python_lint.rules.prefer_next_over_search_loop import PreferNextOverSearchLoop
 from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMappingKeys
 from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
 from sarj_python_lint.rules.prefer_outcome_variants import PreferOutcomeVariants
@@ -288,6 +291,7 @@ from sarj_python_lint.rules.prefer_pydantic_field_bounds import PreferPydanticFi
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
 from sarj_python_lint.rules.prefer_required_prerequisite import PreferRequiredPrerequisite
+from sarj_python_lint.rules.prefer_result_over_nullable_exception import PreferResultOverNullableException
 from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
 from sarj_python_lint.rules.prefer_semantic_temporal_types import PreferSemanticTemporalTypes
 from sarj_python_lint.rules.prefer_single_parametrize_contract import PreferSingleParametrizeContract
@@ -296,6 +300,7 @@ from sarj_python_lint.rules.prefer_typed_cli import PreferTypedCli
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
 from sarj_python_lint.rules.prefer_validated_uuid_comparison import PreferValidatedUuidComparison
+from sarj_python_lint.rules.prefer_walrus_none_guard import PreferWalrusNoneGuard
 from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
 from sarj_python_lint.rules.pytest_test_size_budget import PytestTestSizeBudget
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -313,6 +318,11 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        InlineSingleUseLocal.id: InlineSingleUseLocal,
+        PreferResultOverNullableException.id: PreferResultOverNullableException,
+        PreferNextOverSearchLoop.id: PreferNextOverSearchLoop,
+        PreferWalrusNoneGuard.id: PreferWalrusNoneGuard,
+        ExitStackRequiresLifecycleOwner.id: ExitStackRequiresLifecycleOwner,
         PytestTestSizeBudget.id: PytestTestSizeBudget,
         PreferNamedLiteralAlias.id: PreferNamedLiteralAlias,
         PreferExceptionPropagation.id: PreferExceptionPropagation,
