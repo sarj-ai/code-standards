@@ -254,6 +254,7 @@
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "server-proxied-file-upload",
       "service-singleton-delegates-to-bulk",
       "shared-mutable-pydantic-factory",
       "stepdown",
@@ -767,7 +768,8 @@
       "SARJ589",
       "SARJ590",
       "SARJ591",
-      "SARJ592"
+      "SARJ592",
+      "SARJ593"
     ],
     "sql": [
       "SARJ101",
