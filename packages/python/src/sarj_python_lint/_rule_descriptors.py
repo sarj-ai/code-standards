@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("server-proxied-file-upload"),
+        module="sarj_python_lint.rules.server_proxied_file_upload",
+        class_name="ServerProxiedFileUpload",
+        code="SARJ593",
+        description="Accept file uploads through short-lived pre-signed object-storage URLs instead of API request bodies",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("inline-single-use-local"),
         module="sarj_python_lint.rules.inline_single_use_local",
         class_name="InlineSingleUseLocal",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "98211015acf3a464915335b01914f2f53ddf72ad0d74e8f1c3571ca8a8b1b173",
-  "cliSha256": "87795ffa58b714a8d8e63a3c2a48a19ff91f6cfb0d108875f490ff1d81263be8",
+  "catalogSha256": "e1a20d85682441e1c03508de9d98b95ba4a6ea07578bcb522674e8262708fa35",
+  "cliSha256": "55da59d642730e70d89bab3dbe00f581296daec372fcd426e89415b51cc210f6",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -24115,6 +24115,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:server-proxied-file-upload": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/documents/uploads\")\ndef create_upload(user: CurrentUser) -> SignedUpload:\n    return sign_document_upload(user.id)\n\n\n@router.post(\"/documents\")\ndef create_document(request: DocumentFromUpload) -> Document: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "signed-upload-url",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A route returns a pre-signed upload URL and later accepts only its id"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter, UploadFile\n\nrouter = APIRouter()\n\n\n@router.post(\"/documents\")\nasync def upload(file: UploadFile) -> Document: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "upload-file-parameter",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A route receives an `UploadFile`"
         }
       ],
       "optionsSchemaSource": null

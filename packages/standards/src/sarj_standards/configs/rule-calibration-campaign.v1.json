@@ -3879,6 +3879,14 @@
       "state": "complete",
       "evidence": "Warning calibration on a 2026-11 application corpus: three source findings, all true positives; about 13 loops have the exact shape and the remainder are skipped for the 120-column cap, comments or boolean pairs owned by ruff SIM110/SIM111.",
       "outcome": "Warn on a synchronous first-match for/if/return loop followed by a side-effect-free default return and suggest next over a generator expression. Async loops, yield, walrus, awaited conditions, constant results and non-name targets are excluded. No autofix."
+    },
+    {
+      "task": "rule-audit/python/server-proxied-file-upload",
+      "family": "python",
+      "ruleId": "server-proxied-file-upload",
+      "state": "pending",
+      "evidence": "Thirteen focused tests cover five matching parameter shapes, qualified and aliased imports, four near misses and test/generated exclusions; four executable documentation examples pass. The bundled corpus evaluation scanned 1,328 Python files with zero findings. Four maintained service repositories (4,525 Python files) produced seven findings, all inspected as true route-level file uploads, with zero known false positives; one route registered on an app received as a function parameter was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
+      "outcome": "Introduce SARJ593 at WARNING without autofix. Recommend short-lived pre-signed object-storage uploads with server-chosen keys, bounded size and fixed content type, and accept only the upload id. Raw request-body reads, Starlette and add_api_route routes, parameter-received apps and other frameworks remain limits; broader field calibration remains pending before any error promotion."
     }
   ]
 }
