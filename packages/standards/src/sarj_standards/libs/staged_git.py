@@ -72,7 +72,6 @@ def _validated_index(root: Path, supplied: str, environment: dict[str, str]) -> 
     if any(os.environ.get(name) for name in _UNSUPPORTED_OBJECT_CONTEXT):  # ruff: ignore[banned-api] -- object-store routing cannot establish the selected worktree's pending-index provenance.
         message = "active Git index has an unsupported object-store context"
         raise ValueError(message)
-    # Git interprets a relative INDEX_FILE after -C/cwd selects the repository.
     candidate = Path(supplied)
     if not candidate.is_absolute():
         candidate = root / candidate
@@ -181,6 +180,4 @@ def has_committed_tree(root: Path, *, environment: Mapping[str, str] | None = No
         text=True,
         timeout=30,
     )
-    # Only an absent branch reference proves an unborn repository. A present or
-    # unreadable reference must reach Repo Standards and fail analysis closed.
     return referenced.returncode != 1

@@ -191,7 +191,7 @@ class DocstringArgsRestateSignature(Rule):
         parameters = _parameter_stems(node, class_name)
         for name, annotation, description in entries:
             if not description:
-                return  # a machine-emitted `name (type):` stub — see the module docstring
+                return
             normalized_name = name.lstrip("*")
             parameter = parameters.get(normalized_name)
             if parameter is None or _ARGUMENT_CONSTRAINT_RE.search(description):

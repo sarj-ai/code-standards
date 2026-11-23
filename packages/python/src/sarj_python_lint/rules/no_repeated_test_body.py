@@ -35,40 +35,32 @@ if TYPE_CHECKING:
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _TEST_PREFIX = "test"
 
-# Collapse case literals so differing inputs do not hide duplicated test structure.
 _LITERAL_PLACEHOLDER = "\x00sarj-literal"
 
 _MIN_STATEMENTS = 3
 
-# Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
 _MIN_SHORT_CASE_GROUP = 3
 
 _MIN_EMBEDDED_SOURCE_GROUP = 5
 _MIN_REPEATED_SOURCE_OPERATION = 3
 
-# Pytest cannot parametrize unittest-style classes, including project-specific TestCase bases.
 _UNITTEST_BASE_RE = re.compile(r"TestCase$")
 
-# `self.<name>` calls that only exist on a `unittest.TestCase`.
 _UNITTEST_SELF_ATTRS = frozenset({"subTest", "skipTest", "addCleanup", "addTypeEqualityFunc", "fail"})
 
 _UNITTEST_ASSERT_PREFIX = "assert"
 
 _SELF = "self"
 
-# Longest literal echoed back in the message before it is elided.
 _LITERAL_ECHO_LIMIT = 32
 
-# Differing literals named in the message; past this the list is summarized.
 _MAX_LITERALS_SHOWN = 3
 
-# Long multiline literals are fixture documents, not case values to normalize away.
 _MAX_CASE_LITERAL = 32
 _LONG_SINGLE_LINE_FIXTURE_MIN_CHARS = 80
 _LONG_SINGLE_LINE_FIXTURE_MIN_WORDS = 10
 
-# Generic test-name words cannot corroborate shared behavior.
 _WEAK_TEST_NAME_TOKENS = frozenset({"case", "key", "test", "value"})
 _GENERIC_ORDINAL_TEST_RE = re.compile(r"test_?(?:[a-z]|first|one|second|three|third|two)$")
 
@@ -192,7 +184,6 @@ class NoRepeatedTestBody(Rule):
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
         except RecursionError:
-            # Deep or generated trees may exceed recursion limits during normalization.
             return []
 
         diags = [
@@ -223,7 +214,6 @@ class _Outline:
                 statements += isinstance(child, ast.stmt)
         self.statements: int = statements
         self.embedded_source_checker: bool = _is_embedded_source_checker(node)
-        # Container, async status, signature and decorators distinguish otherwise identical test bodies.
         self.key: tuple[str, bool, tuple[str, ...], str, str] = (
             container,
             isinstance(node, ast.AsyncFunctionDef),
@@ -245,8 +235,6 @@ class _Shape:
         self.literals: tuple[object, ...] = tuple(canonical.literals)
         self.embedded_source_checker: bool = _is_embedded_source_checker(node)
         self.embedded_source_signals: frozenset[str] = _embedded_source_signals(node)
-        # Prose is identity, not shape: merging two tests forces one of the two
-        # explanations to be deleted, and `ids=` cannot carry a paragraph.
         self.key: tuple[str, tuple[str, ...]] = (self.body, _documentation(node, comments))
 
 
@@ -354,7 +342,6 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
 
     buckets = [bucket for bucket in outlines.values() if len(bucket) >= _MIN_GROUP]
     if not buckets:
-        # The tokenize pass is only worth paying for once something might fire.
         return []
     comments = _comment_lines(source)
 
@@ -454,8 +441,6 @@ def _documentation(node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[
 def _erases_a_fixture_document(members: list[_Shape]) -> bool:
     if all(member.embedded_source_checker for member in members):
         return False
-    # `zip(*...)` loses the element type through the star-unpack, so the columns
-    # are materialised with an explicit annotation rather than inlined.
     columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
     return any(
         any(value != column[0] or type(value) is not type(column[0]) for value in column)
@@ -572,7 +557,6 @@ def _base_name(base: ast.expr) -> str:
             return name
         case ast.Attribute(attr=attr):
             return attr
-        # A generic base such as `Generic[T]` or a parametrized mixin factory.
         case ast.Subscript(value=value):
             return _base_name(value)
         case ast.Call(func=func):

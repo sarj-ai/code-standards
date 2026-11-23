@@ -163,7 +163,6 @@ def select(
     runtimes: dict[Path, RuntimeProof] | None = None,
     _node: Callable[[Path], Path] | None = None,
 ) -> FormatterOwner:
-    # oxfmt formats a source with the nearest oxfmt config, as `oxfmt` run in that directory would.
     path = root / relative
     inputs: dict[Path, InputProof] = {}
     missing: set[Path] = set()
@@ -384,8 +383,6 @@ def _installed_package_file(root: Path, owner: Path, package_name: str, inputs: 
 
 
 def _in_pnpm_global_virtual_store(modules: Path, package_file: Path, inputs: dict[Path, InputProof]) -> bool:
-    # pnpm's global virtual store links packages from its content-addressed store, outside the
-    # repository. Accept that location only where this install's own state records it.
     state = modules / ".modules.yaml"
     if not os.path.lexists(state):
         return False
@@ -431,7 +428,6 @@ def _configuration(
         if present:
             config = present[0]
             _tracked(config, root, tracked, inputs)
-            # The managed TypeScript config spreads the synced policy module next to it.
             if config.suffix in {".ts", ".mts"}:
                 strict = parent / _OXFMT_POLICY
                 if os.path.lexists(strict):

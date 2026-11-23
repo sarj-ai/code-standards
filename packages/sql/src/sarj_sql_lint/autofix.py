@@ -72,7 +72,6 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
             if _parseable(fixed):
                 source = fixed
     if "combine-alter-table" in selected:
-        # The rule proves its supported actions directly; SQLGlot treats REPLICA IDENTITY as an opaque command.
         source = combine_alter_table(path, source)
     return source
 

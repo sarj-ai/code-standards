@@ -204,7 +204,6 @@ def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, Impr
 
 
 def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
-    # Recompute exceptions so a file loses grandfathering as soon as it reaches the ceiling.
     exceptions = {path: n for path, n in measurement.files.items() if n > baseline.per_file_ceiling}
     return Baseline(
         codes=dict(sorted(measurement.codes.items())),

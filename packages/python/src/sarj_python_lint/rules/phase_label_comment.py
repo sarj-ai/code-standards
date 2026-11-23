@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# The whole-comment phase grammar preserves prose and constraints.
 _PHASE_WORD = r"(?:arrange|act|assert(?:ion)?s?|given|when|then)(?:\s+phase)?"
 _PHASE_RE = re.compile(
     rf"^(?:\d+[.)]\s*)?[-=~*_#.\s]{{0,40}}(?:{_PHASE_WORD})"

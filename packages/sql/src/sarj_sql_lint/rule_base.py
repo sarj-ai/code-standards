@@ -94,7 +94,6 @@ _SARJ_NOQA_RE = re.compile(
 _NON_NEWLINE = re.compile(r"[^\r\n]")
 _PLAIN_SQL_RUN = re.compile(r"""[^'"`$/\[{-]+""")
 
-# A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
 POSTGRES_IDENTIFIER_CONTINUATION = r"[A-Za-z0-9_$\u0080-\U0010ffff]"
 _IDENT_CHAR_RE = re.compile(POSTGRES_IDENTIFIER_CONTINUATION)
@@ -123,18 +122,16 @@ def is_dump_file(source: str, path: Path | None = None) -> bool:
     return "set statement_timeout = 0;" in code and "set lock_timeout = 0;" in code
 
 
-# Tokens (like backticks or AUTO_INCREMENT) that exist in MySQL/SQLite and cannot appear in Postgres DDL.
 _NON_POSTGRES_RE = re.compile(
-    r"`[^`\n]+`"  # backtick-quoted identifier — MySQL, MariaDB, SQLite
-    r"|\b(?:AUTO_INCREMENT\b"  # MySQL column attribute
-    r"|AUTOINCREMENT\b"  # SQLite column attribute
-    r"|ENGINE\s*="  # MySQL table option (`ENGINE=InnoDB`)
-    r"|COLLATE\s+utf8"  # MySQL collation family (`utf8mb4_unicode_ci`)
-    r"|UNSIGNED\b)",  # MySQL integer modifier
+    r"`[^`\n]+`"
+    r"|\b(?:AUTO_INCREMENT\b"
+    r"|AUTOINCREMENT\b"
+    r"|ENGINE\s*="
+    r"|COLLATE\s+utf8"
+    r"|UNSIGNED\b)",
     re.IGNORECASE,
 )
 
-# Tokens exclusive to MySQL/MariaDB, intentionally narrower than _NON_POSTGRES_RE so SQLite files are not matched.
 _MYSQL_RE = re.compile(
     r"\bAUTO_INCREMENT\b"
     r"|\bENGINE\s*="
@@ -154,7 +151,6 @@ _DBMATE_DIRECTIVE_RE = re.compile(
     r"^(?P<header>--[ \t\n\f\r]*migrate:(?P<section>up|down))([ \t\n\f\r]*$|[ \t\n\f\r]+[^ \t\n\f\r]+)",
     re.MULTILINE,
 )
-# Dbmate uses Go RE2 ASCII whitespace for fields, and Unicode White_Space for option-edge trimming.
 _DBMATE_FIELD_SPACE = re.compile(r"[ \t\n\f\r]+")
 _DBMATE_OPTION_TRIM = re.compile(r"^[^\S\x1c-\x1f]+|[^\S\x1c-\x1f]+$")
 _DBMATE_PREFIX_SPACE = " \t\n\f\r"
@@ -299,7 +295,6 @@ def dbmate_section_boundaries(source: str) -> tuple[tuple[int, re.Match[str]], .
     directives = dbmate_directives(source)
     if directives:
         return tuple((item.match.start(), item.match) for item in directives)
-    # Preserve genuine down-section boundaries in existing partial SQL inputs.
     boundaries: list[tuple[int, re.Match[str]]] = []
     for comment in _standalone_directive_comments(source):
         match = _DBMATE_DIRECTIVE_RE.match(f"--{comment.body}")
@@ -321,11 +316,8 @@ def has_dbmate_directive(source: str, directive: str) -> bool:
     return any(item.section == directive for item in dbmate_directives(source))
 
 
-# Drizzle writes this separator between statements in every migration it emits.
 _GENERATED_MIGRATION_SENTINEL = "--> statement-breakpoint"
 
-# A directory holding one of these is the root of a generator-owned migration tree: Prisma writes `migration_lock.toml`,
-# Drizzle writes `meta/_journal.json`, Atlas writes `atlas.sum`.
 _GENERATED_MIGRATION_MARKERS = ("migration_lock.toml", "atlas.sum")
 
 _MAX_MARKER_ASCENT = 12
@@ -388,8 +380,6 @@ def is_postgres_migration(path: Path, source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    # Dbmate/Goose/Liquibase directives establish migration intent even when a small PostgreSQL seed uses no
-    # dialect-exclusive syntax. Supabase is a PostgreSQL migration root by contract. Ambiguous plain SQL stays silent.
     return source_directive or is_postgres_source(path, source)
 
 
@@ -600,7 +590,6 @@ class _SqlMasker:
     def scan(self) -> _ScanResult:
         no_dollars = "$" not in self.source
         while self.offset < len(self.source):
-            # Statement history only controls dollar bodies; lexical openers keep their existing branches.
             if no_dollars and (plain := _PLAIN_SQL_RUN.match(self.source, self.offset)) is not None:
                 self.offset = plain.end()
                 continue
@@ -696,7 +685,6 @@ def _scan(
     mask_dollar_literals: bool = False,
     cross_dialect_identifiers: bool = False,
 ) -> _ScanResult:
-    # Preserve offsets while masking noise inside executable dollar-quoted bodies.
     return _SqlMasker(
         source,
         preserve_quoted_identifiers=preserve_quoted_identifiers,
@@ -730,7 +718,6 @@ def quoted_identifier_spans(source: str) -> tuple[tuple[int, int], ...]:
 def sql_code_matches(
     pattern: re.Pattern[str], source: str, *, group: str | int = 0, pos: int = 0
 ) -> Iterator[re.Match[str]]:
-    # The caller supplies a literal/comment-masked view that preserves identifiers.
     spans = quoted_identifier_spans(source)
     starts = tuple(start for start, _ in spans)
     for match in pattern.finditer(source, pos):
@@ -754,7 +741,6 @@ _TEMP_SCHEMA_RE = re.compile(r"pg_temp_[0-9]+")
 
 
 def sql_relation_key(value: str) -> tuple[str, ...]:
-    # PostgreSQL UTF-8 identifiers fold ASCII letters only; quoted parts preserve their exact text.
     parts: list[str] = []
     for match in _SQL_IDENTIFIER_PART.finditer(value):
         token = match.group()
@@ -790,8 +776,6 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
     inside: set[int] = set()
     for start, end in spans:
         first = source_location(source, start).line
-        # `end - 1` is the span's last character: an unterminated body runs to
-        # end-of-file, and its trailing newline must not add a phantom line.
         last = source_location(source, end - 1).line
         inside.update(range(first, last + 1))
     return frozenset(inside)

@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from sarj_standards.libs.linting.policy import Policy
 
 
-# The Standards capability that runs Oxlint, oxfmt and the tsrs type check.
 TYPESCRIPT_CAPABILITY: Final = manifest.TYPESCRIPT_CONFIGS[0]
 
 
@@ -52,9 +51,7 @@ class Command:
     label: str
     argv: Sequence[str]
     cwd: Path
-    # Variables added to the inherited environment.
     environment: tuple[tuple[str, str], ...] = ()
-    # Wraps execution, e.g. to write a temporary Oxlint config; yields the argv and cwd to run.
     prepare: Callable[[Command], AbstractContextManager[Command]] | None = field(default=None, compare=False)
 
 
@@ -77,7 +74,6 @@ def package_install(
     workspace: bool,
     yarn: packagemanager.YarnVariant,
 ) -> Command:
-    # Installs exempt exactly the managed versions from the repository's age and trust policies.
     return Command(
         label,
         packagemanager.install_argv(client, workspace=workspace, yarn=yarn),
@@ -90,7 +86,6 @@ def package_install(
 def _exempt_managed_versions(
     command: Command, *, client: packagemanager.PackageManager, yarn: packagemanager.YarnVariant
 ) -> Generator[Command]:
-    # Read the policy when the install runs: setup writes the install root's files first.
     exemption = packagemanager.policy_exemption(client, command.cwd, yarn=yarn)
     yield replace(
         command,
@@ -122,8 +117,6 @@ def install_commands(
     commands.extend(security_install_commands(root, ecosystems, adopted))
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
-        # Setup writes pnpm-workspace.yaml before this command executes because
-        # pnpm 11 requires overrides there even for a standalone package.
         is_workspace = (
             ecosystems.client is packagemanager.PackageManager.PNPM
             or install_root != ecosystems.typescript_root
@@ -241,8 +234,6 @@ def selected_typescript_commands(root: Path, paths: Iterable[str], *, label: str
 def _with_tsgolint(command: Command, root: Path) -> Command:
     from sarj_standards.libs.linting import oxlint  # ruff: ignore[import-outside-top-level] -- oxlint imports Command from this module.
 
-    # Managed configs enable type-aware linting, which needs tsrs-lint even for fixes. Without a local
-    # tsrs-lint, Oxlint itself reports the missing executable when the command runs.
     try:
         environment = oxlint.oxlint_environment(command.cwd, root)
     except FileNotFoundError:
@@ -368,7 +359,6 @@ def oxlint_fix_commands(
     for command in oxlint.select_oxlint_commands(
         repository, paths, fix=True, include_config_sources=include_config_sources
     ).commands:
-        # The directive step below removes unused directives; reporting them here would be noise.
         quiet = replace(
             command, argv=oxlint.with_options(command.argv, "--report-unused-disable-directives-severity=off")
         )
@@ -384,8 +374,6 @@ def oxlint_fix_commands(
 
 
 def oxlint_exclusions(command: Command, policy: Policy) -> OxlintRequest:
-    # `-A` does not reach JS plugin rules, so per-path excluded rules go through the overlay
-    # config, whose override globs are relative to the consumer config.
     from sarj_standards.libs.linting import oxlint  # ruff: ignore[import-outside-top-level] -- oxlint imports Command from this module.
     from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level] -- distinguish custom selectors from upstream Oxlint IDs.
 
@@ -404,12 +392,10 @@ def oxlint_exclusions(command: Command, policy: Policy) -> OxlintRequest:
 
 
 def _literal_glob(path: str) -> str:
-    # Next.js routes such as `app/[id]/page.tsx` must not become character classes.
     return re.sub(r"[][*?{}]", lambda match: f"[{match[0]}]", path)
 
 
 def _unused_directive_command(root: Path, paths: Sequence[str]) -> Command:
-    # `oxlint --fix` never removes unused directives; Oxlint's own report drives the edit.
     return Command(
         "Oxlint unused directives",
         (

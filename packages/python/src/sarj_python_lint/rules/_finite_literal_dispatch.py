@@ -94,7 +94,6 @@ def _terminal_partition(node: ast.If, context: PythonFileContext) -> bool:
 
 
 def _same_statements(first: list[ast.stmt], second: list[ast.stmt]) -> bool:
-    # Deep but valid expressions can exceed ast.dump recursion; they only lose the identical-body deferral.
     try:
         return [ast.dump(statement) for statement in first] == [ast.dump(statement) for statement in second]
     except RecursionError:
@@ -196,7 +195,6 @@ def _reachable_values(
 def _suite_values(
     node: ast.stmt, parent: ast.AST, subject: str, values: frozenset[_FiniteValue], context: PythonFileContext
 ) -> frozenset[_FiniteValue] | None:
-    # A try's else suite runs only after its body completed normally.
     completed = parent.body if isinstance(parent, ast.Try | ast.TryStar) and node in parent.orelse else []
     for previous in (*completed, *previous_statements(node, parent)):
         remaining = _preceding_guard_values(previous, subject, values, context)
@@ -283,8 +281,6 @@ def _branch_survivors(
     *,
     narrowed: bool,
 ) -> frozenset[_FiniteValue] | None:
-    # Exits here leave the suite that contains the guard, so later sibling dispatch never sees these values.
-    # In a subject-narrowed branch, any other statement that may exit is unmodelled and abstains.
     for statement in body:
         if _exit_statement(statement, context):
             return frozenset()
@@ -312,7 +308,6 @@ def _never_returns(call: ast.Call, context: PythonFileContext) -> bool:
 
 
 def _may_exit(node: ast.AST, context: PythonFileContext) -> bool:
-    # Loop control inside a loop nested in this statement cannot skip code after that loop.
     pending: list[tuple[ast.AST, bool]] = [(node, False)]
     while pending:
         child, in_loop = pending.pop()
@@ -665,7 +660,6 @@ def _eager_definition_operand(
 ) -> bool:
     match parent:
         case ast.FunctionDef() | ast.AsyncFunctionDef():
-            # Without the future import, annotation timing can depend on the target Python version.
             return node not in parent.body and (
                 node is parent.args or node in parent.decorator_list or not _deferred_annotations(context)
             )
@@ -810,7 +804,6 @@ def _parameter_annotation(context: PythonFileContext, subject: ast.Name) -> ast.
 
 
 def _potential_domain(context: PythonFileContext, annotation: ast.expr) -> bool:
-    # This rejects unsupported signatures; provenance still decides every finding.
     expression = context.annotation_semantics.parse(annotation)
     if isinstance(expression, ast.Subscript):
         return True

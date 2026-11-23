@@ -9,6 +9,7 @@ from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 
 
 _PATH = Path("app/service.py")
+_BUDGETED_PATH = Path("tests/support/service.py")
 _COMMENTS = "# Load current account profile activation settings\n# Build current account profile activation response\n"
 _CALLS = "load_current_account_profile_activation_settings()\nbuild_current_account_profile_activation_response()\n"
 _FLAT = "def activate():\n" + "".join("    " + line for line in (_COMMENTS + _CALLS).splitlines(keepends=True))
@@ -108,23 +109,23 @@ def test_exact_ordered_action_names_are_errors_with_a_line_preserving_fix(source
 def test_exact_action_narration_abstains_on_meaning_or_unowned_behavior(old: str, new: str) -> None:
     source = _FLAT.replace(old, new)
     ast.parse(source)
-    assert ExcessiveCommentary().check(_PATH, source) == []
-    assert fix_source(_PATH, source, rule_ids=["excessive-commentary"]) == source
+    assert ExcessiveCommentary().check(_BUDGETED_PATH, source) == []
+    assert fix_source(_BUDGETED_PATH, source, rule_ids=["excessive-commentary"]) == source
 
 
 def test_intervening_comment_has_only_a_manual_budget_finding() -> None:
     source = _FLAT.replace("    load_current", "    # Preserve an independent protocol fact.\n    load_current")
-    findings = ExcessiveCommentary().check(_PATH, source)
+    findings = ExcessiveCommentary().check(_BUDGETED_PATH, source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ434"
     assert findings[0].severity is Severity.ERROR
     assert "two comment lines" in findings[0].message
-    assert fix_source(_PATH, source, rule_ids=["excessive-commentary"]) == source
+    assert fix_source(_BUDGETED_PATH, source, rule_ids=["excessive-commentary"]) == source
 
 
 def test_reordered_actions_do_not_match_the_original_paragraph() -> None:
     source = _COMMENTS + "".join(reversed(_CALLS.splitlines(keepends=True)))
-    assert ExcessiveCommentary().check(_PATH, source) == []
+    assert ExcessiveCommentary().check(_BUDGETED_PATH, source) == []
 
 
 @pytest.mark.parametrize(
@@ -134,7 +135,7 @@ def test_reordered_actions_do_not_match_the_original_paragraph() -> None:
 )
 def test_structured_suite_owners_are_not_flat_action_owners(wrapper: str) -> None:
     source = wrapper + "".join("    " + line for line in (_COMMENTS + _CALLS).splitlines(keepends=True))
-    assert ExcessiveCommentary().check(_PATH, source) == []
+    assert ExcessiveCommentary().check(_BUDGETED_PATH, source) == []
 
 
 @pytest.mark.parametrize(
@@ -153,7 +154,7 @@ def test_existing_restatement_qualifiers_veto_even_exact_identifier_words(senten
         f"{'_'.join(sentence.casefold().split())}()\n"
         "build_current_account_profile_activation_response()\n"
     )
-    assert ExcessiveCommentary().check(_PATH, source) == []
+    assert ExcessiveCommentary().check(_BUDGETED_PATH, source) == []
 
 
 @pytest.mark.parametrize("count", [2, 3, 4])
@@ -194,4 +195,4 @@ def test_exact_accumulation_narration_has_a_line_preserving_fix(count: int, newl
     ids=("under-word-floor", "one-line", "generated", "directive", "malformed"),
 )
 def test_candidate_floor_and_owned_exclusions(source: str) -> None:
-    assert ExcessiveCommentary().check(_PATH, source) == []
+    assert ExcessiveCommentary().check(_BUDGETED_PATH, source) == []

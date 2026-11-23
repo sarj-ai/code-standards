@@ -50,8 +50,6 @@ def _sql_string_value(node: ast.expr, *, interpolation_placeholder: str) -> str 
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 pieces.append(value.value)
             elif isinstance(value, ast.FormattedValue):
-                # Keep static SQL tokens on either side adjacent while ensuring
-                # an interpolation can never manufacture SELECT/FROM/* itself.
                 pieces.append(interpolation_placeholder)
             else:  # pragma: no cover - the parser emits only these two forms
                 return None

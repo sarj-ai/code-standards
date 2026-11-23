@@ -49,7 +49,6 @@ def main() -> None:
 
 
 def _lint(query: str, clients: dict[str, Linter]) -> SQLResult:
-    # Embedded comments cannot replace the fixed dialect or select an executable templater.
     if _INLINE_CONFIG.search(query):
         return SQLResult(unsupported=True)
     style: Literal["percent", "pyformat"] = "pyformat" if _NAMED_PARAMETER.search(query) else "percent"

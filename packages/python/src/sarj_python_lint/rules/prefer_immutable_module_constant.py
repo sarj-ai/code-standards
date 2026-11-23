@@ -322,7 +322,6 @@ def _mutated_names(tree: ast.Module) -> frozenset[str]:
     module_bindings: dict[str, int] = {}
     for statement in _module_statements(tree.body):
         if isinstance(statement, ast.Assign) and len(statement.targets) > 1:
-            # Skip every chained alias because mutation or escape through one name changes them all.
             mutated.update(target.id for target in statement.targets if isinstance(target, ast.Name))
         for name, _ in _bindings(statement):
             module_bindings[name] = module_bindings.get(name, 0) + 1

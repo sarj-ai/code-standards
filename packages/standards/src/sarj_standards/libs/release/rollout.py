@@ -213,8 +213,6 @@ DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
         *MANAGED_WORKFLOW_PATHS,
     }
 )
-#: Files the TypeScript migration owns only in the adopted TypeScript root: setup adds project
-#: references to tsconfig.json and turns the Biome formatter off once oxfmt formats the repository.
 TYPESCRIPT_ROOT_ROLLOUT_NAMES = frozenset({*BIOME_CONFIG_NAMES, LEGACY_ESLINT_SUPPRESSIONS, "tsconfig.json"})
 MAX_VERIFICATION_ATTEMPTS = 2
 BASE_MANIFEST_READ_ATTEMPTS = 3
@@ -464,8 +462,6 @@ class SubprocessRunner:
 
 def _timeout_output_tail(output: str | bytes | None) -> str:
     if isinstance(output, bytes):
-        # TimeoutExpired may contain bytes even when text=True. A partial UTF-8
-        # sequence must not conceal the original command failure.
         return output[-_FAILURE_PREVIEW_CHARS:].decode("utf-8", errors="replace")
     return output[-_FAILURE_PREVIEW_CHARS:] if output else ""
 
@@ -1108,7 +1104,6 @@ def open_pull_commit_provenance(
 
 
 def failed_verification_outcome(consumer: Consumer, pull: Mapping[str, object], runner: CommandRunner) -> Outcome:
-    # Rebuilding the patch from the same release, base and controller reruns the same failing verification.
     marker = controller_marker()
     unchanged = (
         marker is not None
@@ -1301,7 +1296,6 @@ def _rewrite_native_action_pin(source: bytes, *, version: str) -> bytes | None:
             continue
         command_text = scalar_value(command)
         start, end = command.start_mark.index, command.end_mark.index
-        # Keep quoted/folded scalars and scalar aliases protected; identify the literal run value.
         if (
             command.style is not None
             or start < step.start_mark.index
@@ -1369,7 +1363,6 @@ def prepare_unused_oxlint_directives(
     )
     run_native = _native_runner(runner, tool_prefix, native_environment)
     try:
-        # A migrating update seeds the oxfmt configs the formatter reads; its admitted paths are owned.
         expected = oxlint_directives.plan(repo, selected, run=run_native, owned=update_paths)
     except (OSError, TypeError, ValueError) as exc:
         msg = f"canonical unused Oxlint directive cleanup is invalid: {exc}"
@@ -1418,7 +1411,6 @@ def _native_runner(
 def _require_update_postimages(
     expected: Mapping[str, oxlint_directives.SourcePostimage], update_postimages: Mapping[str, bytes]
 ) -> None:
-    # A source the update already rewrote is proven against that canonical postimage instead of the base.
     if any(
         update_postimages[relative] != proof.before
         for relative, proof in expected.items()
@@ -1429,8 +1421,6 @@ def _require_update_postimages(
 
 
 class TypescriptMigration(NamedTuple):
-    # Paths are repository-relative. `rewrites` are the migration's own source postimages, predicted on
-    # the immutable base before `update` runs; `formats` is the root the one-time oxfmt reformat covers.
     rewrites: Mapping[str, bytes] = MappingProxyType({})
     deletions: frozenset[str] = frozenset()
     formats: str | None = None
@@ -1447,7 +1437,6 @@ def expected_typescript_migration(
     root = (repository / adopted.typescript_dest).resolve()
     try:
         migration = typescript_migration.plan(repository, root, adoption_doctor.authored_files(repository))
-        # Setup plans the oxfmt seeding with the migration; seeding from .oxfmtrc.json deletes it.
         seeding = typescript_tooling.plan_oxfmt_config(root)
     except (OSError, TypeError, ValueError) as exc:
         msg = f"could not plan the canonical TypeScript migration: {exc}"
@@ -1481,8 +1470,6 @@ def prove_typescript_migration(
     base: Callable[[Sequence[str]], Mapping[str, bytes]],
     format_source: Callable[[str, bytes], bytes],
 ) -> dict[str, bytes]:
-    # Admit a changed path only when its bytes are exactly the migration's predicted rewrite, or exactly
-    # what the repository's own oxfmt makes of that rewrite (or of the base blob) in the seeding update.
     formats = expected.formats
     formatted = (
         tuple(
@@ -1518,7 +1505,6 @@ def validate_typescript_migration(
         if path.is_symlink() or not path.is_file() or path.read_bytes() != expected:
             msg = f"source differs from its canonical TypeScript migration postimage: {relative}"
             raise RolloutError(msg)
-    # A predicted deletion admits only the deletion: a file the update kept and changed stays protected.
     deleted = {relative for relative in deletions if not (repo / relative).exists(follow_symlinks=False)}
     return frozenset(proved) | deleted
 
@@ -1535,7 +1521,6 @@ def _prove_update_migration(
     base_sha: str,
 ) -> dict[str, bytes]:
     if expected.formats is not None and not (repo / expected.formats / OXFMT_ENTRYPOINT).is_file():
-        # The update did not seed oxfmt, so it formatted nothing.
         expected = expected._replace(formats=None)
     candidates = tuple(
         relative
@@ -1545,7 +1530,6 @@ def _prove_update_migration(
     if not candidates:
         return {}
     native_environment = native_byte_bridge.child_environment(environment)
-    # The seeding update writes the oxfmt configs the formatter proof reads; they are owned paths.
     tracked = frozenset((*_tracked_files(repo, runner, native_environment), *worktree_paths))
     runtimes: dict[Path, directive_formatter.RuntimeProof] = {}
     run_native = _native_runner(runner, tool_prefix, native_environment)
@@ -1697,8 +1681,6 @@ def _tracked_text_blobs(
             ).encode("utf-8")
         except UnicodeError:
             continue
-        # The text runner normalizes line endings. Object identity proves an
-        # exact round trip; unsupported binary/encoding/newline forms stay protected.
         identity = hashlib.sha1(
             b"blob " + str(len(contents)).encode() + b"\0" + contents, usedforsecurity=False
         ).hexdigest()
@@ -1910,7 +1892,6 @@ class PreservedBaselines:
 def refresh_preserved_provenance(
     repo: Path, expected: Mapping[Path, adoption_transaction.FileSnapshot]
 ) -> PreservedBaselines:
-    # Advance snapshots only for canonical diagnostic or reviewed repository policy metadata refreshes.
     if not expected:
         return PreservedBaselines(expected)
     paths = tuple(expected)
@@ -2036,7 +2017,6 @@ def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
         except (OSError, yaml.YAMLError) as exc:
             msg = f"could not read consumer workflow tool declarations from {path}: {exc}"
             raise RolloutError(msg) from exc
-        # PyYAML reads the ordinary workflow key `on` as the boolean True.
         if not is_object_mapping(parsed):
             continue
         jobs = parsed.get("jobs")
@@ -2058,8 +2038,6 @@ def provision_consumer_tools(
     _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
     mise_prefix = ("mise", "exec", *workflow_tools, "--") if has_mise_config or workflow_tools else ()
 
-    # Tool provisioning happens before `code-standards update`, so consumers
-    # may still use the immediately preceding manifest schema here.
     adopted = load_consumer_manifest(repo, for_setup=True)
     python_root = None if adopted is None else repo / adopted.python_dest
     uv_source = adoption_uvtool.version_file(python_root)
@@ -2112,8 +2090,6 @@ def run_consumer_bootstrap(
     if javascript_roots:
         installs.append(partial(_install_secondary_javascript, javascript_roots, tool_prefix, runner, environment))
     if len(installs) > 1:
-        # Python and JavaScript own separate environment trees. JavaScript roots
-        # stay serial because nested workspaces may share dependency directories.
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="bootstrap") as workers:
             pending = [workers.submit(install) for install in installs]
             results = [future.result() for future in pending]
@@ -2135,8 +2111,6 @@ def run_consumer_bootstrap(
 
 
 def _uninstalled_primary_javascript(root: Path) -> tuple[Path, ...]:
-    # `update` installs the primary root only when its plan changes dependencies, so a
-    # routine bump leaves it empty; consumer bootstrap scripts still need its packages.
     has_lock = any((root / name).is_file() for name, _manager in adoption_packagemanager.LOCKFILES)
     return (root,) if has_lock and not (root / "node_modules").exists() else ()
 
@@ -2345,8 +2319,6 @@ def prepare_branch(
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
-    # Capture old policy through the setup/update compatibility loader; migrate prior consumer schemas before strict
-    # current-schema validation.
     adopted = load_consumer_manifest(repo, for_setup=True)
     if adopted is None:
         return ReactDoctorPolicy(None, None)
@@ -2448,8 +2420,6 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         return existing
     if dry_run:
         return Outcome(consumer, WouldCreateBranch(rollout_branch(version)))
-    # Hosted package managers can leave cleanup children briefly alive; best-effort temporary cleanup must preserve
-    # rollout outcomes and later reconciliation.
     with tempfile.TemporaryDirectory(prefix="standards-rollout-", ignore_cleanup_errors=True) as temporary:
         repo = Path(temporary) / "repo"
         report("cloning consumer")
@@ -2708,7 +2678,6 @@ def update_consumer_bundle(
     if preserve_baselines and enable_repository_rules:
         msg = "baseline-preserving rollout cannot activate repository rules; use a separate migration"
         raise RolloutError(msg)
-    # Refresh once for consumer-specific uv and newly published siblings; reuse its cache afterward.
     command = (*tool_prefix, tool[0], "--refresh", *tool[1:], "--version")
     for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
         result = runner.run(command, cwd=repo, env=environment, check=False)
@@ -2717,19 +2686,15 @@ def update_consumer_bundle(
                 msg = f"consumer package probe did not report Code Standards {version}"
                 raise RolloutError(msg)
             break
-        # Keep retry classification independent of the human-readable excerpt's stream budgets.
         detail = verification_output(result)[-_FAILURE_PREVIEW_CHARS:]
         missing_release = (
             "No solution found when resolving tool dependencies" in detail
             and re.search(rf"there is no version of code-standards=={re.escape(version)}(?:\s|$)", detail) is not None
         )
-        # Only the read-only probe retries. The mutating update executes once.
         if not missing_release or attempt + 1 == RELEASE_VISIBILITY_ATTEMPTS:
             result.check_returncode()
         sys.stderr.write(f"Waiting for Code Standards {version} in the consumer package index\n")
         sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
-    # Only this exact update reuses refreshed resolution proof; executing-version checks, dependency installation and
-    # full preflight/postflight remain required.
     update_environment = {**environment, "SARJ_STANDARDS_BOOTSTRAPPED": "1"}
     options = ("--preserve-baselines",) if preserve_baselines else ()
     runner.run((*tool_prefix, *tool, "update", "--to", version, *options), cwd=repo, env=update_environment)
@@ -2760,8 +2725,6 @@ def push_rollout_head(
     version: str,
     environment: Mapping[str, str],
 ) -> str:
-    # Verification can outlive a decline. Only an owned reopened PR for this
-    # exact version overrides it; no Git transport runs before this read.
     declined = closed_rollout_decline(consumer, version, runner)
     if declined is not None:
         pull = pull_request(consumer, version, runner)
@@ -2784,11 +2747,8 @@ def push_rollout_head(
         head_tree,
         base_sha,
     ):
-        # A byte-identical patch on the same base would only restart every
-        # consumer CI workflow, so the verified remote head stays in place.
         return preparation.previous_sha
     lease = force_with_lease(preparation.branch, preparation.previous_sha)
-    # Verification runs without credentials; disable transport hooks to isolate the App token.
     runner.run(
         ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", preparation.branch),
         cwd=repo,
@@ -3667,7 +3627,6 @@ def _wait_for_pushed_pull_head(
             break
         sleep(PUSHED_HEAD_VISIBILITY_DELAY.total_seconds())
         observed = pull_request(consumer, version, runner)
-        # A transient empty list must not turn a known PR into permission to create another.
         if observed is not None:
             pull = observed
     return pull
@@ -3741,12 +3700,9 @@ def _prepare_rollout_baseline(
             "consumer manifest does not declare diagnostic_baseline"
         )
         raise RolloutError(msg)
-    # Declared generators must finish before analysis captures accepted diagnostics.
     bootstrap = _bootstrap_for_baseline(repo, tool_prefix, runner, environment, baseline_path=baseline_path)
     updates_baseline = bool(baseline_rules) or regenerate
     if not preserve_baselines and bootstrap is None and baseline_path is not None and updates_baseline:
-        # ESLint-era fingerprints cannot be recomputed for Oxlint findings, so the switch to Oxlint
-        # regenerates the whole baseline instead of translating it; that covers any promoted rules too.
         _generate_baseline(
             consumer,
             repo,
@@ -3973,13 +3929,11 @@ def run_consumer_verification(
         )
     ):
         progress(consumer, "proved bundle/provenance-only diff; running full Standards check and metadata verification")
-        # An explicit root overrides the base-SHA environment's changed-file scope.
         standards = run(0, (*standards_tool, "check", "--trust-repository-code", "."))
         if standards.returncode != 0:
             return standards
         return run(1, consumer.verify_metadata)
 
-    # Finish formatting and synchronization before parallel checks read the candidate tree.
     preparation = run(0, consumer.verify)
     if preparation.returncode != 0 or not consumer.verify_checks:
         return preparation

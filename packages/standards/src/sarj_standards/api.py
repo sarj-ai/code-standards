@@ -85,7 +85,6 @@ if TYPE_CHECKING:
 _INVALID_EXIT = 2
 _INTERRUPTED_EXIT = 130
 _NO_UPSTREAM_RULES = UpstreamRules()
-#: External capability that runs each selectable external engine.
 _EXTERNAL_ENGINE_CAPABILITIES: Mapping[RuleEngine, str] = MappingProxyType(
     {RuleEngine.OXLINT: "typescript", RuleEngine.CHECKOV: "checkov", RuleEngine.ZIZMOR: "zizmor"}
 )
@@ -131,7 +130,6 @@ def _analysis_manifest(root: Path, mode: AnalysisMode) -> Manifest | None:
     try:
         return load_manifest(root)
     except ValueError:
-        # Legacy manifests may still supply path exclusions.
         return None
 
 
@@ -927,8 +925,6 @@ def _without_baselined_diagnostics(
         return False
 
     def filter_tool(item: ToolReport) -> ToolReport:
-        # A native policy ratchet owns its accepted debt independently. A central
-        # diagnostic budget cannot erase its active findings or failed decision.
         if item.policy_failed:
             return item
         diagnostics = tuple(diagnostic for diagnostic in item.diagnostics if active(diagnostic))
@@ -994,7 +990,6 @@ def _grouped_analysis(
 ) -> AnalysisReport:
     def external_then_sql() -> tuple[ToolReport, ...]:
         reports = external()
-        # The external group usually finishes first; overlap the SQL pass with native analysis.
         sql_pass.run()
         return reports
 
@@ -1369,7 +1364,6 @@ def _engine_for_diagnostic(item: Diagnostic) -> RuleEngine | None:
         "iac": RuleEngine.IAC,
         "text": RuleEngine.TEXT,
         oxlint_ids.SOURCE: RuleEngine.OXLINT,
-        # Baselines written before Oxlint carry the `eslint` source.
         oxlint_ids.LEGACY_SOURCE: RuleEngine.OXLINT,
         "checkov": RuleEngine.CHECKOV,
         "zizmor": RuleEngine.ZIZMOR,

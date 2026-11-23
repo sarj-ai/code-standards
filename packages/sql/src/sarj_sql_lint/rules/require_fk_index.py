@@ -182,13 +182,9 @@ def _collect_indexes(source: str) -> dict[_TableKey, set[tuple[str, ...]]]:
     return indexed_cols
 
 
-# Directory names marking the root of a migration tree where an index in any migration covers FKs across the tree.
 _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzle"})
 
-# Bounds on the sibling scan, so a pathological tree cannot turn a per-file lint
-# into a repo-wide one.
 _MAX_TREE_FILES = 600
-# Count every directory entry, including non-SQL files, before retaining or classifying it.
 _MAX_TREE_ENTRIES = 12_000
 _MAX_TREE_BYTES = 1_000_000
 _MAX_CACHED_SOURCE_LENGTH = 16_384
@@ -233,7 +229,6 @@ def _snapshot_current_paths(files: tuple[_FileIndexes, ...], current: Path, iden
     owners = {current}
     spelling = str(current).casefold()
     candidates = {file.path for file in files if str(file.path).casefold() == spelling}
-    # Case-folding only selects spellings to probe; live physical identity proves each owner.
     for candidate in candidates - owners:
         try:
             metadata = candidate.stat()
@@ -294,7 +289,6 @@ def _directory_paths(
     entries: Iterator[os.DirEntry[str]], directories: list[Path], gaps: list[_IndexGap], budget: _DiscoveryBudget
 ) -> Iterator[Path]:
     for entry in entries:
-        # One lookahead distinguishes an exhausted budget from a complete tree.
         if budget.visited >= _MAX_TREE_ENTRIES:
             gaps.append(_IndexGap(_GapKind.ENTRY_LIMIT, None, None))
             budget.limit_hit = True
@@ -350,7 +344,6 @@ def _sibling_indexes(path: Path, table: _TableKey) -> _IndexEvidence:
     try:
         metadata = path.stat()
     except FileNotFoundError:
-        # Pure source checks can use a virtual migration path without a live tree.
         try:
             root.stat()
         except FileNotFoundError:
@@ -509,8 +502,6 @@ class RequireFkIndex(Rule):
                 continue
             fk_cols = _column_names(fk_match.group(1))
             if fk_cols and not _has_covering_index(indexes, fk_cols):
-                # Use the clause's original match offset: searching identical text again misattributes findings and
-                # breaks line-keyed suppressions.
                 match_offset = ctx.char_offset + fk_match.start()
                 location = source_location(ctx.masked, match_offset)
                 diags.append(
@@ -523,18 +514,14 @@ class RequireFkIndex(Rule):
                     )
                 )
 
-        # Mask table-level FK definitions before inspecting inline column references
         body = ctx.stmt[ctx.header_end :]
         body = _FK_CLEAN_PATTERN.sub(lambda m: " " * len(m.group(0)), body)
 
-        # Align segment_start with source using header_end and fixed-length substitutions.
         for relative_start, segment in _segments(body, _COLUMN_DELIMITER):
             segment_start = ctx.header_end + relative_start
             if _is_index_requiring_inline_reference(segment) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
                 col_name = _normalize_name(col_match.group(1))
                 if col_name not in RESERVED_KEYWORDS and not _has_covering_index(indexes, (col_name,)):
-                    # Point at the column token itself, not the segment start,
-                    # so a multi-line column definition lands on its own line.
                     col_offset = ctx.char_offset + segment_start + col_match.start(1)
                     location = source_location(ctx.masked, col_offset)
                     diags.append(

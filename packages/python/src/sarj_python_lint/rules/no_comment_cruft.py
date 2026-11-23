@@ -63,15 +63,12 @@ _DIRECTIVE_PREFIXES = (
 
 _UNTRACKED_WORK_RE = re.compile(r"^(?:todo|fixme|hack|xxx|bug)\b", re.IGNORECASE)
 
-# License text is legally required and therefore never comment cruft.
 _LICENSE_HEADER_MAX_LINE = 8
 _LICENSE_HEADER_RADIUS = 4
 
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
-# `[\u2500-\u257f]` is the Unicode box-drawing block.
 _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}|[\u2500-\u257f]{4,}")
 
-# Recognize editor folding markers such as region and endregion.
 _REGION_MARKER_RE = re.compile(r"^#?(?:end)?region\b(?P<title>.*)$", re.IGNORECASE)
 _REGION_TITLE_RE = re.compile(r"^[\s:\-\u2013\u2014]*\w[\w \-/&+]*$")
 _REGION_TITLE_MAX_WORDS = 5
@@ -84,7 +81,6 @@ _CODE_STMT_RE = re.compile(
     r"^(?:import |from \S+ import |return\b|yield\b|await |"
     r"del |pass\b|break\b|continue\b|global |nonlocal |print\()"
 )
-# English assert/raise prose needs another code signal before it counts as code.
 _RISKY_STMT_RE = re.compile(r"^(?:assert |raise )")
 _CODE_SIGNAL_RE = re.compile(r"""[=()\[\]{}.:+\-*/%<>!&|@"']|\d""")
 _CODE_HEADER_RE = re.compile(
@@ -93,34 +89,25 @@ _CODE_HEADER_RE = re.compile(
 )
 _ASSIGN_OR_CALL_RE = re.compile(r"^[A-Za-z_][\w.\[\]]*\s*(?:=|:=|\+=|-=|\*=|/=)\s*\S|^[A-Za-z_][\w.]*\(")
 
-# Grammar-example markers protect notation that intentionally resembles commented code.
 _PSEUDOCODE_RE = re.compile(r"%[^%\s]+%|\[opt\]|<[^<>]+>|\.\.\.")
 
-# Preserve commented commands that document intentional regeneration recipes.
 _CODE_REGEN_CALL_RE = re.compile(r"^insert_assert\s*\(")
 
-# Any letter, in any script.
 _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
 
-# Sentence-final punctuation.
 _SENTENCE_END_RE = re.compile(r"""[.!?:;)\]}"'`]$""")
 
-# Step-narration lead-ins ("First, ...", "Then, ...", "Finally, ...", "Step 2:").
 _STEP_NARRATION_RE = re.compile(
     r"^(?:first(?:ly)?|second(?:ly)?|third(?:ly)?|then|next|after(?:wards| that)?"
     r"|finally|lastly|now)\s*[,:]\s*\S",
     re.IGNORECASE,
 )
 
-# A rationale marker turns step narration into a legitimate *why* comment
-# ("First, we take the outer send lock, because of Trio's standard semantics").
 _RATIONALE_RE = re.compile(r"\b(?:because|since|so that|otherwise)\b", re.IGNORECASE)
 _RATIONALE_RUN_RE = re.compile(r"\b(?:because|since|so that|otherwise|if|unless|when|until)\b", re.IGNORECASE)
 
-# Expression syntax already structures embedded Markdown headings.
 _MARKDOWN_HEADING_RE = re.compile(r"(?:^|\s)#{1,6}\s+\S")
 
-# Self-admitted meta-commentary — the "why later", not the why.
 _META_COMMENTARY_RE = re.compile(
     r"\b(?:for now|keeping (?:it|this) simple|could be (?:refactored|improved|cleaned up|simplified)"
     r"|refactor(?:ed|ing)? (?:later|this)|not sure (?:if|whether|why|how)"
@@ -138,7 +125,6 @@ _EDITORIAL_PLACEHOLDER_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Known one-word section labels are structural signposts rather than prose.
 _SECTION_LABEL_WORDS = frozenset(
     {
         "actions",
@@ -196,13 +182,11 @@ _SECTION_LABEL_WORDS = frozenset(
 _SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+(?:[ \t]+[A-Za-z]+)?)\s*:?\s*$")
 _EDITORIAL_PREFIX_RE = re.compile(r"^(?:note|nb):\s+(?=\S)", re.IGNORECASE)
 
-# A "helper function" opener narrates mechanics without explaining intent.
 _HELPER_OPENER_RE = re.compile(
     r"^(?:a\s+)?helper\s+(?:function|method|component|hook|class|type|util(?:ity)?)\b",
     re.IGNORECASE,
 )
 
-# Verbs that describe the mechanics of the code below.
 _NARRATION_VERBS = (
     r"add|append|assign|await|build|calculate|call|check|clear|close|compute|convert|copy|count|"
     r"create|declare|decrement|define|delete|extract|fetch|filter|find|format|generate|get|handle|"
@@ -211,16 +195,13 @@ _NARRATION_VERBS = (
     r"store|update|validate|wrap|write"
 )
 
-# "Let's not await the promise" — the first-person-plural walkthrough voice.
 _LETS_RE = re.compile(
     rf"^let'?s\s+(?:not\s+|just\s+|now\s+|first\s+)?(?:{_NARRATION_VERBS})(?:s|es|ed|ing)?\b",
     re.IGNORECASE,
 )
 
-# Enumeration markers that narrate a sequence: `# 1.
 _ENUMERATION_RE = re.compile(r"^(?:\d+[.)]\s+\S|(?:phase|step)\s+\d+\b)", re.IGNORECASE)
 
-# Dummy translational comments: ultra-short comments that just restate the code.
 _DUMMY_TRANSLATION_RE = re.compile(
     r"^(?:increment|return|returns|get|gets|set\b(?! up\b)|sets\b(?! up\b)|function to|method to)\b",
     re.IGNORECASE,
@@ -233,7 +214,6 @@ def _is_word_char(ch: str) -> bool:
 
 _CODING_COOKIE_RE = re.compile(r"coding[:=]\s*[-_.a-zA-Z0-9]+")
 
-# Only `>>>` arms a doctest block.
 _DOCTEST_PROMPT = ">>>"
 
 
@@ -311,7 +291,7 @@ def _is_redundant_narration(
     if not c or _looks_like_code(c):
         return False
     if _RATIONALE_RE.search(c):
-        return False  # "First, take the lock, because ..." carries a why
+        return False
     if _is_sentence_continuation(prev_body):
         return False
     if _STEP_NARRATION_RE.search(c) or _META_COMMENTARY_RE.search(c):
@@ -415,7 +395,6 @@ def _looks_like_code(body: str) -> bool:
     if c.startswith("@"):
         return _compiles(f"{c}\ndef _f():\n    pass")
     if _ASSIGN_OR_CALL_RE.match(c):
-        # Implicit type condition documentation (e.g. under `else:`)
         if c.startswith(("isinstance(", "issubclass(")):
             return False
         return _is_assign_or_call(c)
@@ -547,8 +526,6 @@ class NoCommentCruft(Rule):
         source = context.source
         if context.generated:
             return []
-        # A Sphinx `docs/**/conf.py` is quickstart-generated boilerplate whose
-        # `# Section` banners are the tool's own convention.
         if path.name == "conf.py" and "docs" in path.parts:
             return []
         try:
@@ -676,8 +653,7 @@ class NoCommentCruft(Rule):
         if any(has_legal_notice(body) for _, _, body in leading):
             return
         if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
-            return  # line-art logo, not prose a module docstring could carry
-        # Keep prose preambles; only content-free headers are cruft.
+            return
         if any(_is_prose_line(body) for _, _, body in leading):
             return
         if len(leading) >= _LEADING_PREAMBLE_MIN:

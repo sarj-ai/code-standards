@@ -72,8 +72,6 @@ def _program(path: Path, top: dict[str, Node], job: dict[str, Node], step: dict[
     source = _text(step.get("run"))
     if not source or len(source) > _MAX_SOURCE:
         return None
-    # Inline programs have their own complete source. An external builder is
-    # admitted only as a literal, argument-free invocation inside this checkout.
     defaults = {
         **_fields(_fields(top.get("defaults")).get("run")),
         **_fields(_fields(job.get("defaults")).get("run")),

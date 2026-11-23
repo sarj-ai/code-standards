@@ -130,7 +130,7 @@ class NoTestComments(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if context.generated or context.tree is None or not _test_comment_source(context):
+        if context.generated or context.tree is None or not owns_test_comments(context):
             return []
         comments = scan_comments_or_none(context.source) or ()
         protected = _legal_comment_lines(comments) | script_metadata_lines(
@@ -159,7 +159,7 @@ class NoTestComments(Rule):
         ]
 
 
-def _test_comment_source(context: PythonFileContext) -> bool:
+def owns_test_comments(context: PythonFileContext) -> bool:
     directory = context.path.with_name("__init__.py")
     if context.path.name == "conftest.py" or is_test_path(directory) or is_test_support_path(directory):
         return True

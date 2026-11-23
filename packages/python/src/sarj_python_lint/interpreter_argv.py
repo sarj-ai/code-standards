@@ -22,7 +22,6 @@ class InterpreterInvocation:
     kind: ProgramKind
     payload: str | None = None
     forwarded: tuple[str, ...] = ()
-    # Runtime options do not change source-payload identity.
     execution_options: frozenset[str] = field(default=frozenset[str](), compare=False)
 
 
@@ -140,7 +139,6 @@ def unwrap_command(
             continue
         if command not in _WRAPPER_VALUES or (allowed_wrappers is not None and command not in allowed_wrappers):
             return current
-        # dumb-init uses execvp; its child cannot be a shell builtin.
         allow_shell_builtins = allow_shell_builtins and command != "dumb-init"
         current = current[_value_wrapper_index(current, command) :]
     msg = "command wrapper nesting exceeds analysis bound"
@@ -177,7 +175,6 @@ def _value_wrapper_index(arguments: Sequence[str], command: str) -> int:
         if not argument.startswith("-") or argument == "-":
             break
         index += 2 if argument in _WRAPPER_VALUES[command] else 1
-    # Timeout's positional duration precedes its executable.
     return index + int(command == "timeout")
 
 
@@ -210,7 +207,6 @@ def _env_wrapper_index(arguments: Sequence[str]) -> int:
             index += 1
             break
         index += _env_option_size(arguments, index)
-    # After env assignments begin, option-looking words are executable operands, including after --.
     while index < len(arguments) and "=" in arguments[index]:
         if arguments[index].startswith("="):
             msg = "env assignment requires a nonempty variable name"
@@ -222,7 +218,7 @@ def _env_wrapper_index(arguments: Sequence[str]) -> int:
 def _env_option_size(arguments: Sequence[str], index: int) -> int:
     argument = arguments[index]
     if argument in {"--help", "--version"}:
-        return len(arguments) - index  # GNU env terminates without executing operands.
+        return len(arguments) - index
     if argument in {"-S", "--split-string"} or argument.startswith(("-S", "--split-string=")):
         msg = "env split-string has a separate unproven quoting grammar"
         raise UnprovableCommandError(msg)
@@ -344,7 +340,6 @@ def _ruby_option(arguments: Sequence[str], index: int) -> ParsedOption:
         if flag == "h":
             return ParsedOption(InterpreterInvocation("external"))
         if flag in "Fix":
-            # These operands are attached only and consume the rest of this word.
             return ParsedOption()
         if flag == "e" or flag in _RUBY_VALUE_FLAGS:
             if cursor + 1 == len(argument) and _following_operand(arguments, index) is None:
@@ -483,7 +478,6 @@ def _shell_short_option(arguments: Sequence[str], index: int, values: frozenset[
     for flag in flags:
         if flag in values:
             operand = _following_operand(arguments, index + consumed - 1)
-            # Bash shopt (-O) uses a separate versioned namespace; no native contract is proven here.
             if flag == "O" or operand not in _SHELL_NAMED_OPTIONS:
                 return ParsedOption(InterpreterInvocation("unknown"))
             consumed += 1

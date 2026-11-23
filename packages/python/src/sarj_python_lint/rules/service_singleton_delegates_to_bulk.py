@@ -373,7 +373,6 @@ def _decorator_name(expression: ast.expr, method: _Method, context: PythonFileCo
     owner = context.parents.get(method)
     if not isinstance(owner, ast.ClassDef) or context.tree is None:
         return None
-    # Class decorators and method decorators execute in distinct namespaces.
     name = decorator_name(expression, owner, context.tree, context.module_imports)
     return decorator_name(expression, method, owner, context.module_imports) if name is not None else None
 
@@ -406,7 +405,6 @@ def _inherited_methods(
     result: dict[str, _Method] = {}
     uncertain: set[str] = set()
     instance_bound = {name for candidate in ancestors for name in instance_member_bindings(candidate, context)}
-    # An unresolved MRO cannot prove inherited dispatch; own bindings remain evidence.
     for candidate in reversed(order if order is not None else (owner,)):
         declared = methods(candidate)
         writes = instance_member_bindings(candidate, context)
@@ -536,7 +534,6 @@ def _supported_bulk(bulk: _Method, context: PythonFileContext) -> bool:
 def _adapter_problem(
     singleton: _Method, bulk: _Method, available: dict[str, _Method], context: PythonFileContext
 ) -> str | None:
-    # Async generators are consumed rather than awaited; defer after checking known reverse calls.
     if isinstance(bulk, ast.AsyncFunctionDef) and has_own_yield(bulk):
         return None
     if not _parameters(bulk):
@@ -692,7 +689,6 @@ def _called_method(
         return None
     if not _original_self(value.value, method, context):
         return None
-    # An escape cannot prove delegation, but cannot erase an explicit reverse call either.
     if not allow_escaped and not all(
         _local_invocation(read, method, context) for read in proof.binding_reads(binding.id, binding)
     ):
@@ -702,7 +698,6 @@ def _called_method(
 
 def _original_self(receiver: ast.AST, method: _Method, context: PythonFileContext) -> bool:
     positional = [*method.args.posonlyargs, *method.args.args]
-    # Comprehension scopes retain lexical receiver proof; any local rebinding makes it uncertain.
     return (
         bool(positional)
         and positional[0].arg == "self"
@@ -817,7 +812,6 @@ def _method_calls(
 ) -> list[_Call]:
     calls: list[_Call] = []
     symbols = {**bindings, "self": _SELF}
-    # Only a synchronous, eager helper can forward its caller's await to a returned coroutine.
     await_result = await_result and isinstance(method, ast.FunctionDef) and not has_own_yield(method)
     for statement in method.body:
         if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):

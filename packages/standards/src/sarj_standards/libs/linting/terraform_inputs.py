@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-# Terraform input closure includes modules, initialized state and file-function paths; an unknown static prefix forces
-# analysis.
 _FILE_FUNCTION: Final = re.compile(
     r"\b(file|fileexists|fileset|filebase64|filebase64sha256|filebase64sha512|filemd5|filesha1|filesha256|"
     r"filesha512|templatefile)\s*\("
@@ -74,7 +72,6 @@ class _Inputs:
             for name in sorted(names):
                 path = base / name
                 if sized is not None and path.is_relative_to(sized) and not path.is_symlink():
-                    # Provider binaries are pinned by the lock file; record them by size.
                     self.files.setdefault(self.relative(path), f"size={path.stat().st_size}")
                 else:
                     self.record(path)
@@ -196,7 +193,6 @@ def _argument(text: str, start: int) -> tuple[_Segment, ...]:
 
 
 def _template(text: str, start: int) -> _Template:
-    # Splits one quoted HCL template into literal and interpolation segments.
     segments: list[_Segment] = []
     literal: list[str] = []
     index = start
@@ -273,7 +269,6 @@ def _static_prefix(segments: tuple[_Segment, ...], module: Path, inputs: _Inputs
 
 
 def _local_value(module: Path, name: str) -> tuple[_Segment, ...]:
-    # A local resolves only when one module file assigns it exactly one single-line string.
     assignment = re.compile(rf'(?m)^\s*{re.escape(name)}\s*=\s*"')
     found: list[tuple[_Segment, ...]] = []
     for path in sorted(module.glob("*.tf")):

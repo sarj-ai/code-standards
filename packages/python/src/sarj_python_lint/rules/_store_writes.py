@@ -514,8 +514,6 @@ class _ReceiverAliases:
         preceding = sorted(
             (binding for binding in bindings if self._precedes_read(binding, expression)), key=_source_position
         )
-        # A definite local overwrite discards earlier possible objects; conditional
-        # writes retain all possible origins until another definite overwrite.
         start = 0
         for index, binding in enumerate(preceding):
             statement = self.context.parents.get(binding)

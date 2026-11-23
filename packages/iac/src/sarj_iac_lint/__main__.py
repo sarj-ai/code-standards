@@ -52,8 +52,6 @@ SKIP_DIR_NAMES = frozenset(
     }
 )
 
-# YAML files are included for banner checks while HCL rules self-filter by extension.
-# `.json` includes Terraform JSON configuration; rules ignore unrelated JSON.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml", ".json"})
 
 _MAX_FILE_BYTES = 500_000
@@ -315,7 +313,6 @@ def apply_baseline(
         path_key = normalize_path(d.path)
         key = (path_key, d.code)
         seen[key] += 1
-        # The raw lookup keeps baselines written with absolute paths working.
         allowance = max(
             baseline.get(path_key, {}).get(d.code, 0),
             baseline.get(str(d.path), {}).get(d.code, 0),

@@ -114,7 +114,6 @@ def _requires_explicit_conflict_policy(statement: exp.Expr) -> bool:
 
     if not isinstance(statement, exp.Query | exp.Insert | exp.Update | exp.Delete | exp.Merge | exp.Copy):
         return False
-    # An unresolved suffix can supply conflict policy; an INSERT's own RETURNING cannot.
     for identifier in statement.find_all(exp.Identifier):
         if _UNRESOLVED_SQL_IDENTIFIER not in identifier.name:
             continue

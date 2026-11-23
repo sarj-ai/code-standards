@@ -32,20 +32,16 @@ if TYPE_CHECKING:
 
 _MIN_SAME_TYPE = 2
 
-# Ruff FBT001 already owns positional booleans in the same production domain.
 _PRIMITIVES = frozenset({"str", "int", "float"})
 
 _EXEMPT_DECORATORS = frozenset({"override", "overload", "abstractmethod"})
 
 _HTTP_ROUTE_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options", "websocket"})
 
-#: Decorator receivers whose attribute access marks a CLI command handler.
 _CLI_DECORATOR_MODULES = frozenset({"click", "typer"})
 
-#: `@<name>.command(...)` / `@<name>.group(...)` — click groups and typer apps.
 _CLI_DECORATOR_ATTRS = frozenset({"command", "group"})
 
-#: Methods that implement a duck-typed stdlib protocol.
 _DUCK_PROTOCOL_METHODS = frozenset(
     {
         "read",
@@ -76,7 +72,6 @@ _DUCK_PROTOCOL_METHODS = frozenset(
     }
 )
 
-#: Parameter-name vocabularies whose ORDER is the notation.
 _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"x", "y", "z"}),
     frozenset({"lat", "lon", "alt"}),
@@ -97,10 +92,8 @@ _CONVENTIONAL_ORDER_GROUPS = (
     frozenset({"start", "stop", "step"}),
 )
 
-#: A DIRECTORY named `tests_common`, `test_utils`, `system_tests`, ...
 _TEST_SUPPORT_DIR_RE = re.compile(r"tests?_.+|.+_tests?", re.IGNORECASE)
 
-#: A numbered migration: an append-only artifact that has already run.
 _MIGRATIONS_DIR = "migrations"
 _MIGRATION_FILE_RE = re.compile(r"\d{4}_")
 
@@ -200,7 +193,6 @@ class RequireKeywordOnlySwapProneParams(Rule):
         tree = context.tree
         if tree is None:
             return []
-        # Run cheap signature guards before allocating the analysis visitor.
         candidates = [
             (node, offending)
             for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
@@ -226,8 +218,6 @@ class RequireKeywordOnlySwapProneParams(Rule):
             )
             if any(exclusions):
                 continue
-            # Checked last: `_calls_super_same_name` walks the body, so it runs
-            # only for the few signatures that would otherwise be reported.
             if id(node) in method_ids and (node.name in _DUCK_PROTOCOL_METHODS or _calls_super_same_name(node)):
                 continue
             diags.append(
@@ -257,11 +247,8 @@ def _is_exempt_path(path: Path) -> bool:
 
 def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     name = node.name
-    # Owned constructors are ordinary calls; other dunders have fixed Python protocols.
     if name != "__init__" and name.startswith("__") and name.endswith("__"):
         return True
-    # A variadic constructor commonly forwards a third-party/base signature; syntax alone cannot prove that making its
-    # named prefix keyword-only is compatible with the inherited API.
     if name == "__init__" and (node.args.vararg is not None or node.args.kwarg is not None):
         return True
     if name.startswith(_EXEMPT_NAME_PREFIXES):
@@ -487,8 +474,6 @@ def _is_conventional_order(arg_names: list[str]) -> bool:
 
 _NUMERIC_SUFFIX_RE = re.compile(r"_?\d+$")
 
-#: `policy_id_a` / `policy_id_b` — the alphabetic spelling of the same symmetry. The underscore is required, so `a`/`b`
-#: and `s`/`d` keep firing: there the whole name is the label and the call site really cannot tell them apart.
 _LETTER_SUFFIX_RE = re.compile(r"_[a-z]$")
 
 

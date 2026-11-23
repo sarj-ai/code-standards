@@ -39,7 +39,6 @@ def load(root: Path, *, staged: bool) -> InitialImport | None:
     if Path(top).resolve() != root.resolve():
         msg = "initial import requires the analyzed Git worktree root"
         raise ValueError(msg)
-    # A symbolic, missing HEAD distinguishes an initial commit from a broken detached checkout.
     branch = _git(root, "symbolic-ref", "--quiet", "HEAD").removesuffix(b"\n").decode("utf-8", errors="surrogateescape")
     if not branch.startswith("refs/heads/"):
         msg = "initial import requires an unborn branch HEAD"
@@ -53,7 +52,6 @@ def load(root: Path, *, staged: bool) -> InitialImport | None:
     if any(entry and entry[:1] != b"H" for entry in flags):
         msg = "initial import requires verifiable index flags"
         raise ValueError(msg)
-    # Stat-only differences can return one with no content diff; numstat also captures mode/type changes.
     if _git(
         root,
         "-c",

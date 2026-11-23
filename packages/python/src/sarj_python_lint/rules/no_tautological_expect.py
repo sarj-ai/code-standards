@@ -28,10 +28,8 @@ class _Tautology(NamedTuple):
     reason: str
 
 
-# `pytest.fail(...)` / `self.fail(...)` — an arm that calls it cannot pass.
 _FAIL = "fail"
 
-# Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
 
 
@@ -225,7 +223,6 @@ def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, _ScalarVa
             ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
         ) if value is not None:
             if isinstance(value, (ast.GeneratorExp, ast.Lambda)):
-                # Outer iterables and defaults execute now and can write earlier bindings.
                 bindings.clear()
                 bindings[name] = _DEFERRED_TRUTHY
                 return True

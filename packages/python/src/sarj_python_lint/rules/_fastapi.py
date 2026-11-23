@@ -471,7 +471,6 @@ class FastapiIndex:
         local_scope = self._node_scopes.get(id(node), 0)
         scope: int | None = local_scope
         while scope is not None and scope != 0:
-            # Method bodies do not close over their class namespace.
             if (scope == local_scope or scope not in self._class_scopes) and _ReceiverKey(
                 scope, root
             ) in self.bound_names:
@@ -679,7 +678,6 @@ class FastapiIndex:
                 if binding is not None and binding.symbol is None and binding.module != "fastapi.status"
                 else None
             )
-        # FastAPI exports Starlette's status module rather than a status submodule.
         if qualified == "fastapi.status":
             return "starlette.status"
         return qualified if qualified in {"starlette.status", "http.HTTPStatus"} else None
@@ -837,7 +835,6 @@ class FastapiIndex:
         if isinstance(node, ast.Attribute):
             root = self._root_name(node)
         node_scope = self._node_scopes.get(id(node), 0)
-        # Method bodies do not close over intervening class namespaces during annotation lookup.
         scope: int | None = node_scope
         while scope is not None and scope != 0:
             if (scope == node_scope or scope not in self._class_scopes) and _ReceiverKey(
@@ -1024,7 +1021,6 @@ def _resolve_module_path_without_checkout(current: Path, reference: _ImportedRef
             if package != current.parent and not current.is_relative_to(package):
                 continue
             candidates.update(_existing_module_files(ancestor.joinpath(*module_parts), ancestor))
-        # A detached module directory is an import root; its parents may contain unrelated modules.
         candidates.update(_existing_module_files(current.parent.joinpath(*module_parts), current.parent))
     return next(iter(candidates)) if len(candidates) == 1 else None
 

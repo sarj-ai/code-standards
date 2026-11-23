@@ -1,6 +1,3 @@
-# Oxlint 1.91 reports unused directives without fixing them. Remove only proven spans transactionally, preserving
-# unrelated source and rejecting unknown report shapes.
-
 from __future__ import annotations
 
 from bisect import bisect_left
@@ -62,7 +59,6 @@ class SourcePostimage:
 
 @dataclass(frozen=True, slots=True)
 class UnusedDirective:
-    # One Oxlint unused-directive report: its message and UTF-8 byte span.
     message: str
     start: int
     end: int
@@ -90,7 +86,6 @@ class _Edit:
 @dataclass(frozen=True, slots=True)
 class _Reported:
     directive: _Directive
-    # The unused rule name, or None when the whole directive is unused.
     rule: str | None
 
 
@@ -123,7 +118,6 @@ def remove_unused_directives(source: bytes, unused: Iterable[UnusedDirective]) -
     for report in unused:
         reported = _reported(source, report)
         directive = reported.directive
-        # Oxlint reports an unused block disable at its enable comment; edit both comments of the pair.
         pair = report.message.startswith(f"Unused {directive.tool}-disable") and directive.kind == "enable"
         for item in (directive, _opening(source, directive)) if pair else (directive,):
             if reported.rule is None:
@@ -248,8 +242,6 @@ def plan(
     run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
     owned: Collection[str] = (),
 ) -> Mapping[str, SourcePostimage]:
-    # `owned` names untracked files the caller already admitted that the formatter may read, such
-    # as the oxfmt configs a migrating update seeded; every other formatter input must be tracked.
     if not paths:
         return MappingProxyType({})
     if not SUPPORTS_DIRECTIVE_REWRITES:
@@ -338,7 +330,6 @@ def _audit(
     environment = oxlint.oxlint_environment(command.cwd, root)
     with oxlint.selected_config(command, oxlint.OxlintRequest()) as configured:
         argv = oxlint.with_options(configured.argv, "-f", "json", "--type-aware")
-        # The rollout runner owns the environment, so pass the typed-lint binary in argv.
         variables = (f"{key}={value}" for key, value in environment.items())
         completed = run(lifecycle.Command(command.label, ("env", *variables, *argv), command.cwd))
     result = oxlint.read_oxlint(
@@ -380,8 +371,6 @@ def _closing_reports(
     *,
     run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
 ) -> list[UnusedDirective]:
-    # Oxlint 1.93 anchors unused block disables at the opening comment. Preserve
-    # the paired edit, using parser-confirmed comments rather than source regexes.
     openings = [item for report in reports if (item := _reported(source, report)).directive.kind == "disable"]
     if not openings:
         return reports
@@ -464,8 +453,6 @@ def _formatted(
     runtimes: dict[Path, directive_formatter.RuntimeProof],
     run: Callable[[lifecycle.Command], subprocess.CompletedProcess[str]],
 ) -> SourcePostimage:
-    # Format directive postimages only when the original matches project formatting; preexisting formatter debt belongs
-    # to its own change.
     if not directive_formatter.configured(root, relative):
         return postimage
     owner = directive_formatter.select(

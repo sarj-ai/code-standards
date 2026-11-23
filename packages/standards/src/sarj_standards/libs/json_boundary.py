@@ -32,7 +32,6 @@ def parse_jsonc(text: str) -> JsonValue:
         previous = match.start() - 1
         while previous >= 0 and stripped[previous] in " \t\r\n":
             previous -= 1
-        # A trailing comma must follow a value, not supply a missing one.
         return "," if previous < 0 or stripped[previous] in "[{,:" else ""
 
     return json.loads(  # pyright: ignore[reportAny] -- stdlib validates the transformed JSON grammar; comments preserve token boundaries and quoted strings.

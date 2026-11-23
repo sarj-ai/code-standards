@@ -31,7 +31,6 @@ _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
         "sarj-library-policy": "python",
         "ruff": "ruff",
         "basedpyright": "basedpyright",
-        # Baselines and suppressions written for ESLint name the same Oxlint findings.
         oxlint_ids.LEGACY_SOURCE: oxlint_ids.SOURCE,
         oxlint_ids.SOURCE: oxlint_ids.SOURCE,
     }
@@ -90,7 +89,6 @@ class Policy:
         matched = self.excluded_paths.check_file(self.relative(path) + "/")
         if matched.include is not True or matched.index is None:
             return False
-        # A later negation may reinclude an unreadable descendant.
         return not any(pattern.include is False for pattern in self.excluded_paths.patterns[matched.index + 1 :])
 
     def allows_rule(self, diagnostic: Diagnostic) -> bool:

@@ -17,7 +17,6 @@ _TEST_SUPPORT_DIR_NAMES = frozenset(
 )
 _TEST_SUPPORT_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|testing)(?:$|_)")
 
-# A marker must claim ownership of the file/code, not merely describe a value.
 _GENERATED_RE = re.compile(
     r"(?:^@generated\b|^auto(?:-|matically )?generated(?:[.!]?|\s+file\b.*|\s+by\b.*)$|"
     r"(?:this\s+)?file\s+(?:is|was|has been)\s+(?:auto(?:-|matically )?)?generated\b|"
@@ -28,7 +27,6 @@ _GENERATED_RE = re.compile(
 )
 _DO_NOT_EDIT_RE = re.compile(r"^do not edit[.!]?$", re.IGNORECASE)
 
-# AI attribution is not evidence that a reproducible generator owns the file.
 _AI_ATTRIBUTION_RE = re.compile(
     r"\b(?:@?generated|authored|written)(?:\s+\w+){0,2}\s+(?:by|with|using|via)\s+(?:an?\s+)?"
     r"(?:ai|llm|openai|anthropic|chatgpt|claude|codex|(?:github\s+)?copilot|gemini|"
@@ -40,7 +38,6 @@ _GENERATED_HEADER_LINES = 5
 
 _GENERATED_DIR_NAMES = frozenset({".venv", "generated", "site-packages", "vendor", "vendored", "venv"})
 
-# Marker files identify generator roots whose banner-less output cannot self-identify as generated.
 _CODEGEN_MARKER_NAMES = (
     ".openapi-generator",
     ".openapi-generator-ignore",
@@ -55,10 +52,8 @@ _CODEGEN_MARKER_NAMES = (
     "buf.gen.yml",
 )
 
-# Ancestor walks stop at the repository root.
 _REPO_ROOT_MARKERS = (".git",)
 
-# Bound ancestor scans so pathological paths or symlink loops cannot stall linting.
 _MAX_ANCESTOR_DEPTH = 40
 
 
@@ -103,8 +98,6 @@ def is_generated_path(path: Path) -> bool:
     for depth, ancestor in enumerate(path.parents):
         if depth >= _MAX_ANCESTOR_DEPTH:
             break
-        # `depth == 0` is the file's own directory: a generator config sitting
-        # next to the file makes the file the generator, not its output.
         if _is_repo_root(ancestor):
             break
         if depth and _is_codegen_root(ancestor):

@@ -130,8 +130,6 @@ def _policy_mask(source: str, tokens: Sequence[Token]) -> str:
         ):
             chunks.append(text)
         else:
-            # Opaque tokens still separate keywords: DISTINCT 'value' FROM is not
-            # IS DISTINCT FROM. A non-word marker also preserves adjacent [quotes].
             chunks.append(re.sub(r"[^\r\n]", "?", text))
         start = token.end + 1
     chunks.append(re.sub(r"[^\r\n]", " ", source[start:]))

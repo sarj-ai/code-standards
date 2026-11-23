@@ -1217,7 +1217,6 @@ def shell_dialect(path: Path) -> str | None:
     if not path.suffix or path.suffix.casefold() in _SHELL_DIALECT_BY_SUFFIX:
         for line in shell_header_comments(header.decode("utf-8", errors="replace")):
             if (dialect := _shell_directive_dialect(line)) is not None:
-                # Bash analysis also describes Bats' additional test syntax.
                 if dialect == "bash" and path.suffix.casefold() == ".bats":
                     return "bats"
                 return dialect
@@ -1261,7 +1260,6 @@ def check_paths(
 
 
 class TextChecker:
-    # One repository policy and shell parser for many independent per-file checks.
     def __init__(
         self,
         *,
@@ -1290,7 +1288,6 @@ class TextChecker:
         if any(fnmatch(relative, pattern) for pattern in self._excluded_patterns):
             return []
         if path.suffix.casefold() == ".tf":
-            # HCL comments and other attributes belong to the IaC analyzer.
             path_findings = []
             if enabled_codes is None or "SARJ309" in enabled_codes:
                 path_findings = _terraform_deployment_findings(path, source)

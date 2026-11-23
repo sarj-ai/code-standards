@@ -65,8 +65,6 @@ _MAX_FILES_PER_ROOT = 10_000
 _MAX_FILE_BYTES = 500_000
 _MAX_SOURCE_CHARS_PER_ROOT = 50_000_000
 _MAX_VALUE_ORIGIN_STATES = 4_096
-# Whole-project facts that are pure functions of the source graph. Type-provider
-# facts are keyed by AST identity, so workers recompute them when needed.
 _TRANSFERABLE_FACTS = (
     "_escaped_nominal_classes",
     "_runtime_origins",
@@ -170,14 +168,12 @@ class ClassSummary:
 
 @dataclass(frozen=True, slots=True)
 class SourceUnit:
-    # Indexes borrow tree and imports; callers must keep them unchanged for each index's lifetime.
     path: Path
     module: str | None
     source: str
     tree: ast.Module | None
     imports: Mapping[str, SymbolRef]
     captured: CapturedSource | None = None
-    # Owns the shared node index of `tree`, so every rule reuses one traversal.
     _shared: SharedModule | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -235,7 +231,6 @@ class _ImportNamespaceWrites:
 
 
 def parsed_tree(project: ProjectIndexSet, path: Path, source: str) -> ast.Module | None:
-    # Never raises, even when sealed: callers fall back to parsing `source` themselves.
     unit: SourceUnit | None = None
     with suppress(NeedsSerialSourceError):
         unit = project.unit(path)
@@ -309,7 +304,6 @@ class ImportNamespaceMutations:
         return result
 
 
-# Memoized whole-project facts, in a picklable form, for an identical index.
 @dataclass(frozen=True, slots=True)
 class ProjectFacts:
     cached: tuple[tuple[str, object], ...]
@@ -321,7 +315,6 @@ class ProjectFacts:
 
 
 def _plain(value: object) -> object:
-    # Read-only mapping views do not pickle; workers restore the same views.
     if _is_proxy(value):
         return {key: _plain(item) for key, item in value.items()}
     return value
@@ -339,8 +332,6 @@ def _proxied(value: object) -> object:
 
 @final  # ruff: ignore[too-many-public-methods] -- one index owns the whole-project fact caches that spawned workers restore and check.
 class ProjectIndexSet:
-    # Borrowed ASTs and imports remain immutable for the index lifetime. Replace units or rebuild snapshots after
-    # changes to avoid stale facts.
     def __init__(
         self,
         units: Mapping[Path, SourceUnit],
@@ -351,7 +342,6 @@ class ProjectIndexSet:
         reuse_symbols: Mapping[Path, tuple[SourceUnit, _UnitSymbols | None]] | None = None,
     ) -> None:
         self._units = MappingProxyType(dict(units))
-        # Borrow the prepared graph without filesystem discovery or reparsing.
         self.source_units: tuple[SourceUnit, ...] = tuple(self._units.values())
         self._roots = tuple(roots)
         self._aliases = MappingProxyType({} if aliases is None else dict(aliases))
@@ -376,7 +366,6 @@ class ProjectIndexSet:
         )
         classes: dict[SymbolRef, ClassSummary] = {}
         nominals: dict[str, set[SymbolRef]] = {}
-        # Unit symbols depend only on the unit, so `with_unit` reuses every unchanged one.
         unit_symbols: dict[Path, tuple[SourceUnit, _UnitSymbols | None]] = {}
         for key, unit in units.items():
             previous = reuse_symbols.get(key) if reuse_symbols is not None else None
@@ -393,12 +382,9 @@ class ProjectIndexSet:
 
     @property
     def value_origins_complete(self) -> bool:
-        # Once a value-origin trace exceeds its budget, later answers depend on query order.
         return not self._value_origins_incomplete
 
     def source_snapshot(self, *, with_facts: bool = False) -> ProjectSourceSnapshot:
-        # Rebuild memoized facts without rescanning roots or changing the module identities/order of the complete
-        # prepared source graph. with_facts also carries facts this index has already computed.
         return ProjectSourceSnapshot(
             self._roots,
             tuple(
@@ -674,7 +660,6 @@ class ProjectIndexSet:
         remaining = _MAX_VALUE_ORIGIN_STATES
         while pending:
             if remaining == 0:
-                # An incomplete escape inventory cannot prove any owned class closed.
                 self._value_origins_incomplete = True
                 return
             remaining -= 1
@@ -708,7 +693,6 @@ class ProjectIndexSet:
         escaped = set(already_escaped)
         imports = self._runtime_origins[unit.module] if unit.module is not None else _runtime_import_origins(unit)
         roots = self._unit_value_roots(unit, imports, namespaces, already_escaped=escaped)
-        # Every class value use is rooted at a name in the tree.
         if roots is not None and roots.isdisjoint(_tree_names(unit.tree)):
             return frozenset(escaped)
         for use in _runtime_class_value_uses(
@@ -1341,8 +1325,6 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
 
 
 def _project_module_name(resolved: Path, root: Path) -> str | None:
-    # PEP 420 namespace directories do not have __init__.py. The closest
-    # Python project boundary preserves their complete importable path.
     project = next(
         (ancestor for ancestor in resolved.parents if (ancestor / "pyproject.toml").is_file()),
         None,
@@ -1452,7 +1434,6 @@ def _direct_base_symbol(unit: SourceUnit, expression: ast.expr) -> SymbolRef | N
     resolved = _resolve(unit, expression)
     if resolved is not None or not isinstance(expression, ast.Name) or unit.tree is None:
         return resolved
-    # Absolute imports can establish base identity even for unpackaged test-support files.
     for statement in _module_import_statements(unit.tree):
         if not isinstance(statement, ast.ImportFrom) or statement.level or statement.module is None:
             continue
@@ -1814,7 +1795,6 @@ _UNITTEST_MOCK = SymbolRef("unittest", "mock")
 
 
 def _imports_unittest_mock(unit: SourceUnit) -> bool:
-    # `_mock_function_name` only resolves names bound to `unittest.mock` or its members.
     if unit.tree is None:
         return False
     return any(
@@ -1857,7 +1837,6 @@ _ABSOLUTE_IMPORT_SYMBOLS: WeakKeyDictionary[ast.Module, Mapping[str, SymbolRef]]
 
 
 def _absolute_import_symbols(tree: ast.Module) -> Mapping[str, SymbolRef]:
-    # The first absolute import binding each local name, in statement and alias order.
     symbols = _ABSOLUTE_IMPORT_SYMBOLS.get(tree)
     if symbols is not None:
         return symbols

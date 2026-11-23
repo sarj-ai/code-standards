@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
-# Name tails that mark a class as a service in this codebase's own vocabulary.
 _SERVICE_NAME_RE = re.compile(r"(?:Service|Store|DAO|Dao|Gateway|Provider)$")
 _SERVICE_CLASS_RE = re.compile(r"\bclass\s+\w+(?:Service|Store|DAO|Dao|Gateway|Provider)\b")
 
@@ -53,10 +52,8 @@ class _FactoryClassFacts:
     excluded_collaborators: frozenset[str]
 
 
-# Classes named as the base of a family are the port being asked for, not a missing one.
 _BASE_NAME_RE = re.compile(r"^(?:Base|Abstract)[A-Z_]")
 
-# Annotations that name a value rather than a collaborator.
 _PRIMITIVE_ANNOTATIONS = frozenset(
     {
         "str",
@@ -75,7 +72,6 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
         "frozenset",
         "tuple",
         "type",
-        # The capitalised `typing` aliases are the same builtins.
         "List",
         "Dict",
         "Set",
@@ -106,11 +102,8 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
     }
 )
 
-# Injected types that are configuration, measurements, or ambient runtime, not a
-# substitutable collaborator: nobody swaps `ServerSettings` or `ViewportSize` in a test.
 _WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context|Size)$")
 
-# Adapter driver handles are implementation details rather than consumer substitution ports.
 _DRIVER_HANDLE_ANNOTATIONS = frozenset(
     {
         "AsyncClient",
@@ -129,11 +122,8 @@ _DRIVER_HANDLE_ANNOTATIONS = frozenset(
     }
 )
 
-# Annotation wrappers that are transparent — the collaborator is inside them.
 _TRANSPARENT_GENERICS = frozenset({"Optional", "Union", "Annotated", "Awaitable", "Coroutine", "Final", "ClassVar"})
 
-# Bases that make a same-module class a data type, so a parameter annotated with it is
-# a value being passed, not a port being injected.
 _DATA_BASES = frozenset(
     {
         "BaseModel",
@@ -151,37 +141,25 @@ _DATA_BASES = frozenset(
     }
 )
 
-# Decorators that turn a class into a record.
 _DATA_DECORATORS = frozenset({"dataclass", "dataclasses", "define", "frozen", "mutable", "attrs", "attr", "s"})
 
-# Descriptors, factories and namespaced helpers are not consumer-facing instance methods.
 _NON_METHOD_DECORATORS = frozenset({"property", "cached_property", "staticmethod", "classmethod"})
 
-# Method decorators that declare the class is already an interface without an ABC base.
 _INTERFACE_DECORATORS = frozenset({"abstractmethod", "abstractproperty"})
 
-# Class decorators that bind the class to a declared interface.
 _IMPLEMENTS_DECORATORS = frozenset({"implementer", "implementer_only", "provider", "runtime_checkable", "register"})
 
-# Parameter types that only appear on an HTTP route handler.
 _HTTP_PARAM_TYPES = frozenset({"Request", "Response", "BackgroundTasks", "WebSocket", "UploadFile"})
 
-# Callables used as FastAPI/Starlette parameter markers, either inside an `Annotated[...]`
 _HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "Form", "File", "Cookie", "Security"})
 
-# Directory segments that hold programs rather than importable library code.
 _TOP_LEVEL_SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools"})
 _MIGRATION_DIR_NAMES = frozenset({"migrations", "alembic"})
 
-# A one-method service needs concrete substitution evidence before suggesting a port.
 _MIN_PUBLIC_METHODS = 2
 
-# A store/repository-backed application service is ordinary layering, not
-# evidence that consumers also need a second abstraction over the service.
 _PERSISTENCE_DEPENDENCY_RE = re.compile(r"(?:Store|Repository|Repo)$")
 
-# A collaborator must drive more than one operation before a service-level
-# substitution boundary is worth suggesting.
 _MIN_COLLABORATOR_METHODS = 2
 _MIN_PROJECT_CONSUMERS = 2
 
@@ -715,8 +693,6 @@ def _has_base(
             continue
         if name == "Generic":
             continue
-        # `class TTS(tts.TTS)` is an adapter extending an external framework
-        # class whose tail happens to equal the local implementation name.
         if name == node.name:
             return True
         if name in local_class_names:

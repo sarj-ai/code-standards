@@ -41,6 +41,7 @@ _AUTHORED_EXAMPLES = tuple(
 _PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
     ("prefer-match-value-dispatch", "finite-format-partition"): Severity.WARNING,
     ("prefer-match-type-dispatch", "reuse-or-construct-normalization"): Severity.WARNING,
+    ("prefer-match-type-dispatch", "single-type-checks"): Severity.WARNING,
 }
 
 _RENAMED_RULES = {

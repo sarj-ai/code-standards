@@ -102,8 +102,6 @@ def _run(args: _Options) -> int:
         return 2
 
     if args.update:
-        # A first seed has nothing to raise: every ceiling is 0 only because no baseline exists yet, and refusing that
-        # would make the tool unusable on the run that adopts it.
         return _update(
             measurement,
             baseline,
@@ -153,8 +151,6 @@ def _ruff_selector_aliases() -> dict[str, str]:
         code = raw_item.get("code")
         name = raw_item.get("name")
         if code is None and isinstance(name, str):
-            # Ruff accepts the name as the stable selector until it allocates a code, so preserve that suppression
-            # identity rather than rejecting a valid Ruff directive.
             canonical = name.lower()
             aliases[canonical] = canonical
             continue

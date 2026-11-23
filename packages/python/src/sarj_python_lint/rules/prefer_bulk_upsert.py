@@ -583,7 +583,6 @@ def _gather_import_references(node: ast.Name | ast.Attribute, owners: StoreOwner
     provenance = owners.provenance
     bindings = provenance.runtime_bindings.lookup(provenance.scope(root), root.id)
     if bindings is None:
-        # Ambiguous/global writes must not conceal a possible imported-module mutation.
         bindings = tuple(binding for names in provenance.bindings.values() for binding in names.get(root.id, ()))
     return tuple(
         qualified

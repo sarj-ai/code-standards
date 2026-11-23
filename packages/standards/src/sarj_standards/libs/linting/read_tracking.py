@@ -10,8 +10,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A rule that reads a file other than the one it checks records that path here
-# before touching the filesystem, so a per-file result cache can key on it.
 _READS: ContextVar[list[Path] | None] = ContextVar("sarj_standards_tracked_reads", default=None)
 
 

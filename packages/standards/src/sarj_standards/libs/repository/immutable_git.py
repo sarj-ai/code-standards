@@ -71,7 +71,6 @@ class ImmutableGit:
             try:
                 self.modules[path] = self.text(path)
             except _PythonSourceEncodingError as error:
-                # Keep import identity; the existing closure check rejects this recorded error.
                 self.modules[path] = ""
                 self.encoding_errors[path] = str(error)
 

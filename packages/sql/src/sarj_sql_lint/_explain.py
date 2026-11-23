@@ -25,7 +25,6 @@ _MIN_EXPLAIN_TOKENS = 3
 
 @final
 class _ExplainTokenizer(Postgres.Tokenizer):
-    # Keep the native PostgreSQL lexer while exposing EXPLAIN's query tokens.
     COMMANDS: ClassVar[set[TokenType]] = Postgres.Tokenizer.COMMANDS - {TokenType.COMMAND}
 
 

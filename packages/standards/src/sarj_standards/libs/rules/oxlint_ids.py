@@ -23,7 +23,6 @@ _EVERY_RULE: Final = "*"
 
 @dataclass(frozen=True, slots=True)
 class OxlintRuleMap:
-    # ESLint rule ID -> the Oxlint rule IDs that report its findings now; empty when Oxlint dropped it.
     oxlint_ids: Mapping[str, tuple[str, ...]]
 
     @classmethod
@@ -37,7 +36,6 @@ class OxlintRuleMap:
         )
 
     def rule_ids(self, eslint_id: str) -> tuple[str, ...]:
-        # An ID outside the table (a catalog key, an unmanaged rule) keeps its name.
         return self.oxlint_ids.get(eslint_id, (eslint_id,))
 
     def eslint_ids(self, oxlint_id: str) -> tuple[str, ...]:
@@ -62,8 +60,6 @@ def bundled() -> OxlintRuleMap:
 
 
 def canonical_selectors(selector: str, rule_map: OxlintRuleMap | None = None) -> tuple[str, ...]:
-    # `eslint:` stays accepted forever: registries, manifests and baselines written for ESLint keep
-    # selecting the same findings. Empty when the selector named a rule Oxlint does not run.
     source, separator, rule_id = selector.partition(":")
     if not separator or source != LEGACY_SOURCE:
         return (selector,)
@@ -73,7 +69,6 @@ def canonical_selectors(selector: str, rule_map: OxlintRuleMap | None = None) ->
 
 
 def legacy_selectors(selector: str, rule_map: OxlintRuleMap | None = None) -> tuple[str, ...]:
-    # Baselines recorded before Oxlint name the same findings with these spellings.
     source, separator, rule_id = selector.partition(":")
     if not separator or source != SOURCE:
         return ()

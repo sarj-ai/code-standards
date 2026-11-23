@@ -224,7 +224,6 @@ class SourceDocument:
 
 
 def _content_length(line: str) -> int:
-    # Indexed lines have at most one protocol terminator; avoid copying long lines.
     if line.endswith("\r\n"):
         return len(line) - 2
     return len(line) - int(line.endswith(("\r", "\n")))

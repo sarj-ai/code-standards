@@ -523,8 +523,6 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
         typescript_dest=legacy.typescript_dest,
         profile=legacy.profile,
         hook_manager=legacy.hook_manager,
-        # A schema-three manifest already made an explicit TypeScript authority choice. Preserve unrelated nested
-        # projects during its one-way schema migration; the subsequent upgrade diagnoses the selected authority.
         allow_existing_nested_oxlint=True,
     )
     if migration.scaffold.errors or migration.sync is None:
@@ -656,8 +654,6 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
             )
             return None
         try:
-            # Legacy repair establishes manifest and wiring first; normal upgrade must refresh age exemptions before
-            # installing dependencies.
             _repair_legacy_manifest(root, install=False)
             migrated_legacy = True
         except (OSError, TypeError, ValueError) as migration_error:
@@ -2051,7 +2047,6 @@ def _prepare_report_parent(root: Path, output: Path) -> None:
 
 
 def _write_report(root: Path, output: Path, payload: str, *, output_format: str) -> None:
-    # Recheck the parent path immediately before writing to prevent replacement races.
     destination = _report_destination(root, output, output_format=output_format)
     parent = destination.parent
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=parent)
@@ -2170,7 +2165,7 @@ def staged_file_names(
     except FileNotFoundError:
         return names
     if len(merge_heads) != 1 or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", merge_heads[0]) is None:
-        return names  # Octopus merges retain the ordinary, conservative selection.
+        return names
 
     merge_head = merge_heads[0]
     unmerged = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
@@ -2181,7 +2176,7 @@ def staged_file_names(
         env=selected_environment,
     )
     if unmerged.stdout:
-        return names  # Do not filter an index that has unresolved conflict stages.
+        return names
     base = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
         [git, "merge-base", "--all", "HEAD", merge_head],
         cwd=root,
@@ -2191,7 +2186,7 @@ def staged_file_names(
     )
     bases = base.stdout.decode("ascii").splitlines()
     if base.returncode != 0 or len(bases) != 1:
-        return names  # Unrelated or ambiguous merge ancestry retains every staged path.
+        return names
 
     def changed_names(*arguments: str) -> set[str]:
         result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
@@ -2283,7 +2278,6 @@ def _unstaged_versions(
     selected = set(_repository_relative_names(root, staged_paths))
     if not selected:
         return ()
-    # Keep the index byte-exact; compare text content and refine opaque binary records internally.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
         [
             git,
@@ -2357,7 +2351,6 @@ def _numstat_entries(output: bytes) -> dict[str, bool]:
 
 
 def _binary_worktree_differs(root: Path, git: str, path: str, *, environment: Mapping[str, str]) -> bool:
-    # Binary numstat records can be stat-only. Internal patch generation compares canonical content and mode.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and literal selected path, no shell.
         [
             git,
@@ -2690,8 +2683,6 @@ def cmd_baseline(args: _Args) -> int:
         )
         return 2
     try:
-        # `analyze` rejects anything outside the repository, so normalize the paths a
-        # caller naturally types (absolute, or relative to the shell) before handing over.
         selected = _baseline_selected_paths(
             root,
             args.files,
@@ -2778,7 +2769,6 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
         operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
     if args.jobs == 1 or len(operations) <= 1:
         return [operation() for operation in operations]
-    # Inner analyzers run serially under this shared worker budget.
     with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
         pending = [workers.submit(operation) for operation in operations]
         return [result.result() for result in pending]
@@ -2794,7 +2784,6 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     upstream_typescript = bool(_upstream_typescript_rules_for_baseline(args.baseline_rules))
     if upstream_typescript and scoped_rules is not None:
-        # Validate selectors before combining their upstream and custom scans.
         for selector in scoped_rules:
             if (
                 selector.startswith("oxlint:")
@@ -2982,7 +2971,6 @@ def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
         for selector in catalog.equivalents(requested)
         for spelling in _baseline_selector_spellings(selector, catalog)
     ]
-    # Baselines recorded before Oxlint name the same findings with ESLint sources and IDs.
     legacy = (spelling for selector in resolved for spelling in oxlint_ids.legacy_selectors(selector))
     return tuple(dict.fromkeys((*resolved, *legacy)))
 
@@ -3052,7 +3040,6 @@ def cmd_commit_message(args: _Args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Compatibility ordering preserves the complete argv for typed Typer.
     raw_argv = _root_option_first(
         sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
     )
@@ -3143,7 +3130,7 @@ def _dispatch(args: _Args) -> int:
             return cmd_baseline(args)
         case "maintain":
             return _cmd_repo(args)
-        case _:  # Typer requires a registered command before dispatch.
+        case _:
             return 2
 
 

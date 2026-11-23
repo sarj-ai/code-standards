@@ -23,13 +23,10 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# A run must contain at least this many arms before merging buys anything.
 _MIN_RUN = 2
 
-# Preview complete suggested syntax only when it fits comfortably in one line.
 _MAX_RENDERED_PREVIEW = 96
 
-# Statement shapes that make an arm body empty.
 _EMPTY_BODY_NODES = (ast.Pass,)
 
 
@@ -216,7 +213,6 @@ def _arms_merge(
         comments, second.pattern.lineno, _arm_end(second)
     ):
         return False
-    # A comment in the gap groups the arms deliberately.
     return not _comments_in(comments, _arm_end(first) + 1, second.pattern.lineno - 1)
 
 

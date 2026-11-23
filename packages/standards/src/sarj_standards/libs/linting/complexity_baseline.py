@@ -67,7 +67,6 @@ def _matching_owner(current: tuple[_Owner, ...], original: tuple[_Owner, ...], p
     if len(owners) != 1:
         return None
     owner = owners[0]
-    # Repeated definitions with the same qualified identity are ambiguous, even when equal.
     if sum(item.identity == owner.identity for item in current) != 1:
         return None
     matches = [item for item in original if item.identity == owner.identity]
@@ -76,7 +75,6 @@ def _matching_owner(current: tuple[_Owner, ...], original: tuple[_Owner, ...], p
 
 @lru_cache(maxsize=32)
 def _provenance_findings(source: bytes, path: str, _engine_version: str, _catalog_digest: str) -> _ProvenanceFindings:
-    # Version and policy are part of the immutable cache key, even when the source repeats.
     owners = _owners(source)
     with TemporaryDirectory(prefix="sarj-complexity-") as directory:
         root = Path(directory)
@@ -85,7 +83,6 @@ def _provenance_findings(source: bytes, path: str, _engine_version: str, _catalo
         target.write_bytes(source)
         report = analyze([path], root=root, rule_selection=RuleSelection.from_values((f"python:{_RULE}",)))
     if report.issues or report.completion is not Completion.COMPLETE:
-        # Failed executions are not immutable results and must not enter the cache.
         issues = report.issues or (
             ExecutionIssue(
                 "sarj-standards", "baseline-compatibility-incomplete", "provenance analysis did not complete"

@@ -142,7 +142,7 @@ def test_native_comment_findings_with_unresolved_meaning_remain_manual(rule_id: 
 def test_accumulation_without_exact_ownership_has_only_a_manual_budget_finding(old: str, new: str) -> None:
     rule_id = "excessive-commentary"
     source = _example(RuleId(rule_id)).focus_file.source.replace(old, new)
-    path = Path("app/service.py")
+    path = Path("tests/support/service.py")
     findings = REGISTRY[rule_id]().check(path, source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ434"
@@ -293,7 +293,7 @@ def test_shared_narration_proof_expands_exact_comment_fixes(
 def test_action_narration_fix_preserves_near_misses(old: str, new: str) -> None:
     source = _FLAT_ACTION_NARRATION
     source = source.replace(old, new)
-    path = Path("app/service.py")
+    path = Path("tests/support/service.py")
     assert REGISTRY["excessive-commentary"]().check(path, source) == []
     assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
 

@@ -99,7 +99,7 @@ def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]
         "--no-config",
         "--isolated",
         "--python",
-        "3.14",  # Dependency-free bootstrap provisions the final core runtime.
+        "3.14",
         "--from",
         BOOTSTRAP_PACKAGE,
         COMMAND,
@@ -183,8 +183,6 @@ def rewrite_native_bootstrap_pin(source: bytes, *, version: str) -> bytes | None
         if words is None:
             return None
         arguments = tuple(word[0] for word in words)
-        # Earlier source/eval/alias/function definitions could replace uv.
-        # Only this literal native shell-options prelude precedes the proven call.
         if arguments == ("set", "-euo", "pipefail"):
             continue
         prefix = ("uv", "run", "--no-config", "--no-project", "--python", TOOL_PYTHON, "--with")

@@ -24,18 +24,14 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Block
 
-# Irreplaceable storage, secret, and registry resource types across GCP, AWS, and Azure.
 IRREPLACEABLE_TYPES = frozenset(
     {
-        # GCP
         "google_storage_bucket",
         "google_secret_manager_secret",
         "google_artifact_registry_repository",
-        # AWS
         "aws_s3_bucket",
         "aws_secretsmanager_secret",
         "aws_ecr_repository",
-        # Azure
         "azurerm_storage_account",
         "azurerm_key_vault",
         "azurerm_container_registry",

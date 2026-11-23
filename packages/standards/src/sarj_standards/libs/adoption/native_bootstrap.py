@@ -16,11 +16,9 @@ from urllib.request import Request, urlopen
 
 
 VERSION: Final = "2026.10.8"
-# Each round tries the mirror, then GitHub; later rounds wait with full jitter.
 _ROUNDS: Final = 3
 _BACKOFF_SECONDS: Final = 2.0
 _TRANSIENT_STATUSES: Final = frozenset({HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS})
-# Official raw-asset digests: https://api.github.com/repos/jdx/mise/releases/tags/v2026.10.8
 _DIGESTS: Final = {
     "linux-x64": "c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428",
     "linux-arm64": "6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5",
@@ -70,8 +68,6 @@ def _matches(path: Path, expected: str) -> bool:
 
 
 def _download(destination: Path, *, target: str, expected: str) -> None:
-    # Transient failures retry every remaining source; a permanent HTTP status or a
-    # checksum mismatch retires that source. Only a verified binary is installed.
     headers = {"User-Agent": "code-standards-native-bootstrap/1"}
     sources = [
         Request(f"https://mise.jdx.dev/v{VERSION}/mise-v{VERSION}-{target}", headers=headers),
@@ -99,7 +95,6 @@ def _download(destination: Path, *, target: str, expected: str) -> None:
     raise failure
 
 
-# A permanent HTTP status or a checksum mismatch: retrying that source cannot help.
 class _RetiredSourceError(OSError):
     pass
 

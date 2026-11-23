@@ -144,7 +144,7 @@ class NoCopiedInheritedDocstring(Rule):
             if child.decorator_list or base_method.decorator_list:
                 continue
             if len(child.body) == 1:
-                continue  # the docstring IS the body; deleting it leaves a syntax error
+                continue
             docstring = _normalized_docstring(child)
             if not docstring or docstring != _normalized_docstring(base_method):
                 continue

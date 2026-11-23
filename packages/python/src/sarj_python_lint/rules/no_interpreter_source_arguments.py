@@ -179,7 +179,7 @@ def _interpreter_source_channels(
 def _literal_python_stdin(call: ast.Call, sink: str, argv: tuple[str, ...]) -> bool:
     if sink not in {"subprocess.run", "subprocess.check_output"}:
         return False
-    arguments = unwrap_command(argv)  # The shared classifier already proved these wrappers.
+    arguments = unwrap_command(argv)
     if not arguments or not is_python_executable(arguments[0]):
         return False
     literal = _argument(call, "input", len(call.args))
@@ -230,7 +230,7 @@ def _text_input_valid(payload: str, encoding: str | None, errors: str | None) ->
 
 def _literal_argv(call: ast.Call, sink: str) -> tuple[str, ...] | None:
     if any(keyword.arg is None for keyword in call.keywords):
-        return None  # Expanded options can replace the executable or enable shell=True.
+        return None
     projected = _process_arguments(call, sink)
     if projected is None:
         return None

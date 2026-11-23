@@ -227,7 +227,6 @@ def _merge_field_options(call: ast.Call, at: ast.expr, options: dict[str, ast.ex
     if "alias" in supplied:
         options["validation_alias"] = supplied["alias"]
     validation_alias = supplied.get("validation_alias")
-    # Field maps None to its own alias; without one, the earlier input alias remains.
     if validation_alias is not None and not _is_none(validation_alias):
         options["validation_alias"] = validation_alias
     return True

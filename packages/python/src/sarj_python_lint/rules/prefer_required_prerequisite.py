@@ -448,8 +448,6 @@ def _non_none_defaults(arguments: ast.arguments) -> set[str]:
 
 
 def _observed_escape(function: ast.FunctionDef | ast.AsyncFunctionDef, facts: AnnotationOrigins) -> bool:
-    # Class suites can read a module name before assigning the same class attribute.
-    # Without ordered class lookup, conservatively treat their non-call reads as escapes.
     return any(
         not (isinstance(parent := facts.context.parents.get(read), ast.Call) and parent.func is read)
         for read in facts.provenance.reads.get(function.name, ())

@@ -49,27 +49,19 @@ _TFVARS_JSON_SUFFIX = ".tfvars.json"
 _AUTO_STEM_SUFFIX = ".auto"
 _ENVS_MANIFEST = "envs.json"
 
-# Directories that never hold a root's own inputs; `.terraform` carries vendored
-# module copies whose tfvars belong to other repositories entirely.
 _SKIP_DIR_NAMES = frozenset({".terraform", ".git", "node_modules", "__pycache__", ".venv", "venv"})
 _FIXTURE_DIR_NAMES = frozenset({"fixture", "fixtures", "testdata"})
 
-# A tfvars file sits at most two directories below its root (`env/<name>/x.tfvars`),
-# so root resolution never needs to climb further than three levels.
 _MAX_ANCESTOR_HOPS = 3
 
-# Cross-environment findings need at least two environments to compare.
 _MIN_ENVIRONMENTS = 2
 
 _MAX_VALUE_DISPLAY = 48
 _MAX_NUMBER_STRING_DIGITS = 10_000
 _MAX_FIX_NUMBER_EXPONENT = 308
 
-# Never print quoted tfvars values: quotes can hide secrets or account IDs, even when canonicalized as numeric tags.
 _PRINTABLE_TAGS = frozenset({"bool", "num", "null"})
 
-# Backup and specimen tfvars are copies, not environments; comparing a deployment against its copy falsely proves
-# constancy.
 _NON_ENVIRONMENT_STEMS = frozenset(
     {
         "backup",
@@ -85,8 +77,6 @@ _NON_ENVIRONMENT_STEMS = frozenset(
     }
 )
 
-# Terraform's own filename: it names no environment, so it takes the name of the
-# directory that holds it.
 _CONVENTIONAL_STEM = "terraform"
 
 
@@ -96,8 +86,6 @@ class _ScalarType(StrEnum):
     STRING = "string"
 
 
-# Every auto-loaded root var-file belongs to one plan, so they share one label
-# rather than each inventing an environment named after its file.
 _AUTO_ENVIRONMENT = "(auto-loaded)"
 
 _NUMBER_RE = re.compile(r"-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?")
@@ -105,8 +93,6 @@ _IDENT_RE = re.compile(r"[A-Za-z_][\w-]*")
 _GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
 
 
-# One comparable value: a tagged record so `"false"` and `false` canonicalize
-# identically while `true` and `1` stay distinct, mirroring HCL's conversions.
 @dataclass(frozen=True, slots=True)
 class _Canon:
     tag: str
@@ -540,8 +526,6 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _
         canon is not None
         and declaration.default is not None
         and canon == declaration.default
-        # A blind root cannot rule out a sibling override: the environment it
-        # cannot read is exactly the one whose value would keep this line.
         and not analysis.blind
         and not _varies_elsewhere(analysis, name)
     ):
@@ -572,8 +556,6 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _
 
 def _varies_elsewhere(analysis: _RootAnalysis, name: str) -> bool:
     canons = {value.canon for value in analysis.values.get(name, {}).values()}
-    # An opaque sibling (heredoc or interpolation) counts as variation, not as agreement: `None` joins the set on its
-    # own. Advising deletion of a line a sibling may override is the costly direction to be wrong in.
     return len(canons) > 1
 
 
@@ -719,7 +701,7 @@ def _validated_json_assignments(source: str) -> tuple[_InputAssignment, ...] | N
         name, cursor = decoded_key
         if not isinstance(name, str):
             return None
-        cursor = _skip_json_ws(source, cursor) + 1  # The validated object has a colon here.
+        cursor = _skip_json_ws(source, cursor) + 1
         value_start = _skip_json_ws(source, cursor)
         decoded_value: tuple[object, int] = _JSON_DECODER.raw_decode(source, value_start)
         native, cursor = decoded_value
@@ -858,7 +840,6 @@ def _environment_files(root: Path, inputs: _InputFiles) -> dict[str, list[Path]]
 def _candidate_environments(root: Path, inputs: _InputFiles) -> Iterator[tuple[Path, str]]:
     for suffix in (_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX):
         for file in inputs.glob(root, f"*{suffix}"):
-            # All auto-loaded files feed one plan, including JSON counterparts.
             yield file, _AUTO_ENVIRONMENT if _is_auto_loaded(file.name) else _stem_environment(file.name)
         for file, env_dir in _nested_tfvars(root, suffix, inputs):
             stem = _stem_environment(file.name)
@@ -911,7 +892,7 @@ def _only_excluded_inputs(directory: Path, files: _InputFiles) -> bool:
     try:
         inputs = tuple(path for path in (*files.glob(directory, "*.tfvars"), *files.glob(directory, "*.tfvars.json")))
     except OSError:
-        return False  # An unreadable sibling remains an unknown environment.
+        return False
     return bool(inputs) and all(_excluded_input(path, files.read(path) or "") for path in inputs)
 
 
@@ -1139,7 +1120,6 @@ def _collect_environment_values(
         )
         previous = values.setdefault(attr.name, {}).get(env)
         if previous is not None and env not in conflicted:
-            # Duplicate keys or ordering-dependent disagreements make an environment's effective inputs unknowable.
             same_file = previous.file == file
             if same_file or previous.canon != assignment.canon:
                 conflicted.add(env)
@@ -1179,7 +1159,6 @@ def _environment_containers(root: Path, files: dict[str, list[Path]]) -> set[Pat
 
 
 def remove_stale_assignments(sources: Mapping[Path, str], *, selected: Collection[Path]) -> dict[Path, str]:
-    # Only the Core transaction supplies complete tracked-source provenance.
     files = _InputFiles(sources)
     changes: dict[Path, str] = {}
     for path in sorted(set(selected) & sources.keys()):
@@ -1234,7 +1213,6 @@ def _pure_input_project(parsed: Mapping[Path, tuple[Block, ...]]) -> bool:
 def _stale_names(
     assignments: Collection[_InputAssignment], analysis: _RootAnalysis, lines: Collection[int]
 ) -> set[str]:
-    # String inputs may contain secret material; ordinary fixes retain them.
     return {
         assignment.name
         for assignment in assignments
@@ -1322,7 +1300,6 @@ def _json_edits(source: str, names: Collection[str]) -> list[TextEdit]:
         start = members[first][1]
         end = members[index][1] if index < len(members) else members[index - 1][2]
         if index == len(members) and first:
-            # Include the preceding separator, retaining its preceding value.
             start = source.index(",", members[first - 1][2], start)
         edits.append(TextEdit(start, end, ""))
     return edits

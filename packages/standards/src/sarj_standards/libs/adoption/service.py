@@ -115,7 +115,6 @@ class InitSucceeded:
     failure: ClassVar[None] = None
     error: ClassVar[None] = None
     sync: SyncResult
-    #: What the post-install TypeScript steps (oxfmt seeding and formatting) did.
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:

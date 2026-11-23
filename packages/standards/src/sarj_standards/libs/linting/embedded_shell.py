@@ -178,8 +178,6 @@ def analyze_sources(
             )
         return tuple(reports)
 
-    # Each file's result depends only on its path and bytes, the manifest policy,
-    # the selected tools and the environment they run in.
     shared = (
         f"manifest={file_identity(root / manifest.MANIFEST_NAME)}",
         *environment_parts(analysis_environment()),
@@ -218,8 +216,6 @@ def analyze_sources(
 
 
 class AttestedExecutables:
-    # Attest each tool once per analysis. Failures stay uncached, so every file
-    # still reports its own provisioning issue exactly as the serial loop did.
     def __init__(self, resolve: Callable[[str], Path]) -> None:
         self._resolve = resolve
         self._resolved: dict[str, Path] = {}
@@ -352,7 +348,6 @@ class _ShellSourceMap:
                     )
                 start, end = self._literal_bounds
                 if mapped.byte_offset > end:
-                    # Native EOF belongs to the scalar boundary, before the next YAML field.
                     return self.document.region(start_byte=end, end_byte=end).start
                 if mapped.byte_offset >= start:
                     return mapped

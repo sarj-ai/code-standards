@@ -150,7 +150,6 @@ class NoTerraformComments(Rule):
 
 
 def _json_comments(path: Path, source: str, code: str) -> list[Diagnostic]:
-    # Whole expressions retain ordinary object "//" keys that a block projection ignores.
     return [
         Diagnostic(
             path,

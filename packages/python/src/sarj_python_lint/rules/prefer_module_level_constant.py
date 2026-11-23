@@ -33,12 +33,9 @@ if TYPE_CHECKING:
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
 
-#: Small displays rarely justify expanding a module's public lifetime and naming surface. A display in a loop has a
-#: lower threshold because the allocation repeats within one call as well as across calls.
 _MIN_ELEMENTS = 8
 _MIN_LOOP_ELEMENTS = 3
 
-#: `re.compile(pattern[, flags])` — anything longer is not the shape we model.
 _COMPILE_MAX_ARGS = 2
 
 _REGEX_KIND = "regex"
@@ -46,7 +43,6 @@ _FROZENSET_KIND = "frozenset"
 
 _RE_SOURCES = frozenset({"re"})
 
-#: These calls return fresh values without retaining or mutating their arguments.
 _SAFE_BUILTIN_CALLEES = frozenset(
     {
         "all",
@@ -73,7 +69,6 @@ _SAFE_COLLECTION_METHODS = MappingProxyType(
     }
 )
 
-#: The `re.Pattern` API.
 _SAFE_REGEX_METHODS = frozenset(
     {
         "findall",
@@ -89,7 +84,6 @@ _SAFE_REGEX_METHODS = frozenset(
 
 _FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
-#: Nodes that open a scope of their own.
 _INNER_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
@@ -472,7 +466,6 @@ def _is_safely_hoistable(
             reads += 1
         else:
             return False
-    # Unread bindings may be dead or reflectively observed; hoisting serves no use site and changes locals().
     return reads > 0
 
 
@@ -521,8 +514,6 @@ def _is_safe_read(
         case ast.Attribute():
             return _is_safe_method_call(parent, parents, _safe_methods_for(candidate))
         case ast.Subscript(value=value, slice=index, ctx=ctx):
-            # `x[k]` reads; `x[k] = v` / `del x[k]` mutate. A binding used as `frame[x]` is not representation-neutral:
-            # pandas and other selector APIs distinguish a list from a tuple.
             return (
                 candidate.kind in {"dict", "list"}
                 and value is node

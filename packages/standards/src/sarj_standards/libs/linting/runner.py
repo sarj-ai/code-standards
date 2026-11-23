@@ -81,8 +81,6 @@ _SUFFIX_TO_TOOL = MappingProxyType(
         ".yml": _Tool.IAC,
     }
 )
-# Package-manager lockfiles are generated dependency graphs, not infrastructure: no sarj-iac-lint rule
-# reads them, and a large pnpm-lock.yaml exceeds its 500,000-byte input limit.
 _LOCKFILE_NAMES = frozenset(
     {"bun.lock", "bun.lockb", "npm-shrinkwrap.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"}
 )
@@ -579,7 +577,6 @@ def _route_unique_path(grouped: GroupedPaths, path: Path, raw_path: str, seen: s
 
 
 def _path_key(path: Path) -> Path:
-    # resolve() performs a filesystem lookup for every discovered file.
     return Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath] -- normalize dot segments without resolving symlinks before routing source paths.
 
 
@@ -590,7 +587,6 @@ def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
         else _SUFFIX_TO_TOOL.get(path.suffix.lower())
     )
     if path.name in _LOCKFILE_NAMES and (".github", "workflows") not in pairwise(_path_key(path).parts):
-        # Package managers own lockfiles; retain text and hook metadata below.
         tool = None
     _append_path(grouped, tool, raw_path)
     shell = textlint.shell_dialect(path)

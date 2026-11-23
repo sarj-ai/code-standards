@@ -182,6 +182,7 @@
       "prefer-module-level-constant",
       "prefer-monkeypatch-for-process-state-in-test",
       "prefer-monotonic-for-elapsed-time",
+      "prefer-named-literal-alias",
       "prefer-native-string-check",
       "prefer-nominal-id-types",
       "prefer-nominal-mapping-keys",
@@ -221,6 +222,7 @@
       "psycopg-sql-format-field-mismatch",
       "pytest-fixture-returns-bare-tuple",
       "pytest-fixture-returns-closed-resource",
+      "pytest-test-size-budget",
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
@@ -753,7 +755,9 @@
       "SARJ582",
       "SARJ583",
       "SARJ584",
-      "SARJ585"
+      "SARJ585",
+      "SARJ586",
+      "SARJ587"
     ],
     "sql": [
       "SARJ101",

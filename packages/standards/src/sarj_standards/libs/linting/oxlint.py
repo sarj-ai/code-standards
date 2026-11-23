@@ -1,6 +1,3 @@
-# Oxlint 1.91 coverage requires explicit files and nearest configs. Only full runs retire suppressions; required rules
-# and parser failures remain enforced.
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -55,11 +52,8 @@ UNUSED_DIRECTIVE: Final = "oxlint/unused-directive"
 UNUSED_SUPPRESSION: Final = "oxlint/unused-suppression"
 TSCONFIG_ERROR: Final = "tsc/tsconfig-error"
 REQUIRED_TAGS: Final = ("non-baselineable", "required-source-policy")
-# Variables an Oxlint process needs on top of the caller's environment.
 type OxlintEnvironment = Mapping[str, str]
 
-# Namespaces Oxlint accepts in configs and directives or reports in `code`,
-# mapped to the namespace Standards configs use ("" is a bare core rule).
 PLUGIN_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "eslint": "",
@@ -73,8 +67,6 @@ PLUGIN_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 _DIRECTIVES = "@sarj/directive-"
-# The @sarj directive rules read both `eslint-*` and `oxlint-*` directives. @eslint-community/eslint-comments' own
-# no-unlimited-disable is replaced by the native unicorn rule, which also covers both prefixes.
 _PROTECTED_RULES: Final = (
     *(
         f"{_DIRECTIVES}{name}"
@@ -98,7 +90,6 @@ _PROTECTED_RULES: Final = (
     "typescript/ban-ts-comment",
     "@typescript-eslint/ban-ts-comment",
 )
-# The full gate's non-waivable floor, forced on after every consumer override.
 REQUIRED_RULES: Final[Mapping[str, JsonValue]] = MappingProxyType(
     {
         f"{_DIRECTIVES}require-description": ["error", {"ignore": []}],
@@ -135,11 +126,8 @@ REQUIRED_RULES: Final[Mapping[str, JsonValue]] = MappingProxyType(
         ],
     }
 )
-# Specifiers for JS plugin namespaces that forced rules may need.
 JS_PLUGINS: Final[Mapping[str, str]] = MappingProxyType({"@sarj": "@sarj/eslint-plugin"})
 
-# The rest of this block mirrors `ignorePatterns` in configs/oxlint.strict.mts: Oxlint never
-# lints these paths, so selecting them would only report missing coverage.
 _UNLINTED_NAMES: Final = frozenset(
     {
         *OXLINT_CONFIG_NAMES,
@@ -181,21 +169,16 @@ _LOCK_NAMES: Final = tuple(name for name, _client in packagemanager.LOCKFILES)
 _SELECTED_CONFIG: Final = Path(__file__).parents[2] / "configs" / "oxlint-selected-config.mts"
 _CODE_RE: Final = re.compile(r"(?P<namespace>[^()]+)\((?P<rule>[^()]+)\)")
 _TYPE_CHECK_RE: Final = re.compile(r"TS[0-9]+")
-# `--type-check` codes; a tsconfig tsrs rejects arrives as `typescript(tsconfig-error)`.
 _TYPE_CHECK_CODE: Final = re.compile(r"typescript\((TS[1-9]\d*|tsconfig-error)\)")
 _TSCONFIG_NOTE: Final = "Oxlint type-checks no file of this project until its tsconfig loads."
 _JSON_START_RE: Final = re.compile(r"^\{", re.MULTILINE)
-# Oxlint prints the first when the config does not load and the second when a rule it names is unknown.
 _CONFIGURATION_FAILURES: Final = ("Failed to parse oxlint configuration file.", "Failed to build configuration.")
 _MISSING_TSGOLINT: Final = "Failed to find tsgolint executable"
 _PLUGIN_CRASH: Final = "Error running JS plugin."
 _STALE_SUPPRESSIONS: Final = "There are suppressions that do not occur anymore."
 _NEW_SUPPRESSIONS: Final = "There are new violations not covered by the suppressions file."
 _MISSING_FILE_LIMIT: Final = 5
-# The @sarj plugin prints this when tsrs fails and its type-aware rules fall back to their untyped path.
 TSRS_FAILURE: Final = "@sarj: tsrs request failed"
-# Oxlint reports unused directives without a `code`. A whole-directive span covers the comment (for an unused block
-# pair, the closing `*-enable`); a `from`/`for` rule span covers that rule name inside the comment.
 UNUSED_DIRECTIVE_RE: Final = re.compile(
     r"Unused (?P<tool>eslint|oxlint)-(?P<kind>disable|enable) directive \("
     r"(?:no problems were reported(?: from (?P<disabled>.+))?"
@@ -219,7 +202,6 @@ class _Label(_Wire):
 
 class _Record(_Wire):
     message: str
-    # Codeless records are parse errors, plugin crashes, unused directives and suppression summaries.
     code: str | None = None
     severity: Literal["error", "warning"]
     filename: str
@@ -254,10 +236,8 @@ class OxlintSelection(NamedTuple):
 
 @dataclass(frozen=True, slots=True)
 class OxlintRequest:
-    # Canonical rule IDs to run; None runs every configured rule.
     rules: frozenset[str] | None = None
     forced: Mapping[str, JsonValue] = REQUIRED_RULES
-    # (file globs relative to the config, canonical rule IDs) turned off.
     disabled: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = ()
 
 
@@ -286,12 +266,10 @@ def canonical_rule_id(name: str) -> str:
     return f"{target}/{rule}" if target else rule
 
 
-# Oxlint reports these rules, and keys their bulk suppressions, outside their config namespace.
 _REACT_HOOK_RULES: Final = frozenset({"react/exhaustive-deps", "react/rules-of-hooks"})
 
 
 def reported_rule_id(name: str) -> str:
-    # The inverse of `canonical_rule_id` for Oxlint's report and `oxlint-suppressions.json` keys.
     canonical = canonical_rule_id(name)
     if canonical in _REACT_HOOK_RULES:
         return f"react-hooks/{canonical.removeprefix('react/')}"
@@ -304,7 +282,6 @@ def oxlint_rule_id(code: str) -> str:
         msg = f"unsupported Oxlint diagnostic code: {code!r}"
         raise ValueError(msg)
     namespace, rule = match["namespace"], match["rule"]
-    # `--type-check` reports `typescript(TS2322)`; the parser reports `TS(1036)`.
     if namespace == "typescript" and _TYPE_CHECK_RE.fullmatch(rule):
         return f"tsc/{rule}"
     if namespace == "TS" and rule.isdigit():
@@ -360,7 +337,6 @@ def select_oxlint_commands(
     owners: dict[Path, Path | None] = {}
     unowned = 0
     for candidate in candidates:
-        # Candidates are files; their directory decides the owner.
         directory = candidate.parent
         if directory not in owners:
             owners[directory] = _owning_project(directory, repository, fallback=fallback)
@@ -397,8 +373,6 @@ def _oxlint_argv(
     adopted: Path | None,
     arguments: Sequence[str],
 ) -> tuple[str, ...]:
-    # The package manager only finds Oxlint installed at or above the project, so a project
-    # without an install runs the adopted project's Oxlint by path.
     if adopted is not None and _nearest_binary("oxlint", cwd, repository) is None:
         binary = _nearest_binary("oxlint", adopted, repository)
         if binary is not None:
@@ -412,8 +386,6 @@ def command_files(command: Command) -> frozenset[Path]:
 
 
 def local_binary(name: str, cwd: Path, root: Path) -> Path | None:
-    # Projects without an install of their own, such as CI helper scripts or tool configs, run
-    # the tools the adopted TypeScript project installs.
     repository = root.resolve()
     nearest = _nearest_binary(name, cwd.resolve(), repository)
     if nearest is not None:
@@ -447,7 +419,6 @@ def oxlint_environment(cwd: Path, root: Path) -> OxlintEnvironment:
     binary = local_binary("tsrs-lint", cwd, root)
     if binary is None:
         raise FileNotFoundError(missing_binary_message("tsrs-lint", cwd, root))
-    # Type-aware rules are always on in Standards runs; `SARJ_TYPE_AWARE=0` is an editor opt-out.
     return {"OXLINT_TSGOLINT_PATH": str(binary), "SARJ_TYPE_AWARE": "1"}
 
 
@@ -463,8 +434,6 @@ def selected_config(command: Command, request: OxlintRequest, *, discover_ignore
         "jsPlugins": _js_plugins(argv),
         "aliases": dict(PLUGIN_ALIASES),
     }
-    # The overlay sits next to the config so relative patterns and plugin
-    # specifiers resolve exactly as in a native run.
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -488,8 +457,6 @@ def selected_config(command: Command, request: OxlintRequest, *, discover_ignore
 
 
 def _js_plugins(argv: Sequence[str]) -> dict[str, str]:
-    # A project without an install of its own runs the adopted project's Oxlint by path, and its
-    # config cannot resolve the plugins the floor forces on; load them from that same install.
     executable = Path(argv[_executable_index(argv)])
     bin_directory = executable.parent
     install = (
@@ -503,13 +470,10 @@ def _js_plugins(argv: Sequence[str]) -> dict[str, str]:
 def _installed_package(install: Path | None, package: str) -> str | None:
     if install is None:
         return None
-    # The plugin's own repository installs its tools next to the plugin itself.
     for directory in (install / "node_modules" / package, install):
         manifest = directory / "package.json"
         if manifest.is_file():
             metadata = _Package.model_validate_json(manifest.read_bytes())
-            # Oxlint imports plugins as ES modules, which cannot import a directory: name the
-            # entry file. The @sarj plugin declares `main`.
             if metadata.name == package and metadata.main is not None:
                 return str(directory / metadata.main)
     return None
@@ -622,8 +586,6 @@ def _coverage_exclusions(
             "Native file discovery disagrees with the analyzed file count or selected input ownership",
         )
         return _CoverageExclusions((issue,))
-    # --no-ignore alone leaves config ignorePatterns active in Oxlint 1.91.
-    # Reuse the existing trusted loader, removing only selection ignores.
     with selected_config(command, request, discover_ignored=True) as unignored:
         proof = discover(unignored, "--no-ignore")
     eligible = _discovery_files(proof, root=root, cwd=command.cwd)
@@ -658,7 +620,6 @@ def read_oxlint(output: ProcessOutput, *, root: Path, cwd: Path, selected: bool)
     if output.returncode not in {0, 1}:
         message = _redact(output.stderr.strip() or output.stdout.strip() or f"oxlint exited {output.returncode}", root)
         return OxlintResult((), (ExecutionIssue("oxlint", "tool-failure", message, output.returncode),))
-    # Oxlint may print a plain-text notice (e.g. "No files found to lint.") before the report.
     start = _JSON_START_RE.search(output.stdout)
     if start is None:
         return OxlintResult((), (_text_failure(output, root),))
@@ -681,7 +642,6 @@ def _run_issues(output: ProcessOutput, report: _Report, root: Path) -> list[Exec
     if output.returncode == 1 and not report.diagnostics and report.number_of_files > 0:
         message = _redact(output.stderr.strip() or "oxlint exited 1 but reported no diagnostics", root)
         issues.append(ExecutionIssue("oxlint", "protocol-mismatch", message, output.returncode))
-    # Typed rules that silently ran untyped would pass a run they should fail.
     tsrs_failure = next((line for line in output.stderr.splitlines() if line.startswith(TSRS_FAILURE)), None)
     if tsrs_failure is not None:
         issues.append(ExecutionIssue("oxlint", "tool-failure", _redact(tsrs_failure, root), output.returncode))
@@ -725,7 +685,6 @@ def _classify(
     if message == _STALE_SUPPRESSIONS:
         return None if selected else _stale_suppressions(message, root=root, cwd=cwd)
     if message.startswith(_PLUGIN_CRASH):
-        # Oxlint prints the message, the file path, then the JS error.
         lines = [*message.splitlines(), message, message][:_ERROR_PREVIEW_LINES]
         failure = f"Oxlint JS plugin failed on {record.filename}: {lines[2]}"
         return ExecutionIssue("oxlint", "tool-failure", _redact(failure, root))
@@ -753,14 +712,12 @@ def type_check_diagnostic(code: str, message: str, location: Location, *, help_t
     tsconfig = rule_id == TSCONFIG_ERROR
     return Diagnostic(
         rule,
-        # "Invalid tsconfig" carries the compiler's message in its help.
         (help_text or message).partition("\n")[0] if tsconfig else message,
         Severity.ERROR,
         "oxlint",
         location,
         rule_id=rule_id,
         notes=(_TSCONFIG_NOTE,) if tsconfig else (),
-        # A baselined tsconfig error would silently switch type checking off for the project.
         tags=("type-check", "non-baselineable") if tsconfig else ("type-check",),
     )
 
@@ -805,7 +762,6 @@ def _stale_suppressions(message: str, *, root: Path, cwd: Path) -> Diagnostic:
         Location(_relative(cwd / OXLINT_SUPPRESSIONS, root)),
         rule_id=UNUSED_SUPPRESSION,
         help="Run `oxlint --prune-suppressions` to remove unused suppressions.",
-        # Its fingerprint never changes, so a baselined entry would hide every later stale count.
         tags=("non-baselineable",),
     )
 
@@ -837,7 +793,6 @@ def _executable_index(argv: Sequence[str]) -> int:
 
 
 def _operand(path: Path, cwd: Path) -> str:
-    # Oxlint rejects `..` operands but accepts absolute paths outside its cwd.
     return path.relative_to(cwd).as_posix() if path.is_relative_to(cwd) else str(path)
 
 

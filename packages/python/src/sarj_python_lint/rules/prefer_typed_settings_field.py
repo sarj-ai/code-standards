@@ -289,7 +289,6 @@ def _field_calls(field: ast.AnnAssign, facts: AnnotationOrigins, context: Python
 def _annotated_field_calls(
     annotation: ast.expr, at: ast.expr, facts: AnnotationOrigins, context: PythonFileContext
 ) -> Iterator[ast.Call]:
-    # Pydantic reads Field only as direct Annotated metadata; nested Annotated flattens inner-first.
     current = context.annotation_semantics.parse(annotation)
     if isinstance(current, ast.BinOp) and isinstance(current.op, ast.BitOr):
         yield from _annotated_field_calls(current.left, at, facts, context)

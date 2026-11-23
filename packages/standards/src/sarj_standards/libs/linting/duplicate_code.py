@@ -35,7 +35,6 @@ SOURCE: Final = "jscpd"
 RULE: Final = "duplicate-code"
 MIN_TOKENS: Final = 50
 FORMATS: Final = ("python", "typescript", "tsx", "swift", "kotlin")
-# Tests repeat arrange-act-assert shapes by design; the duplicate-test-body rules own them.
 TEST_GLOBS: Final = (
     "**/test/**",
     "**/tests/**",
@@ -128,7 +127,6 @@ def analyze_duplicates(
 
 def _run(tool: NativeTool, *, root: Path, paths: Sequence[str], runner: ProcessExecutor) -> str:
     with tempfile.TemporaryDirectory(prefix="code-standards-jscpd-") as directory:
-        # An explicit config stops jscpd from merging the repository's .jscpd.json or package.json settings.
         config = Path(directory) / "config.json"
         config.write_text("{}", encoding="utf-8")
         invoke(tool, (*_arguments(directory, config), "--", *paths), root=root, runner=runner)
@@ -206,6 +204,5 @@ def _diagnostic(block: _Block, others: Sequence[_Block], source: Callable[[str],
         help=_HELP,
         related=tuple(RelatedLocation("copy", location(other)) for other in others),
     )
-    # Anchor on the block's own text so moving or reindenting it, or changing where its copies live, keeps its baseline identity.
     anchor = " ".join(" ".join(source(block.path).lines_of(block)).split())
     return replace(diagnostic, fingerprint=diagnostic_fingerprint(diagnostic, anchor=anchor))

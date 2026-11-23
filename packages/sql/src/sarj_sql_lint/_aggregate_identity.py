@@ -155,7 +155,6 @@ class _SourceCall:
 
 
 def contains_aggregate_spelling(sql: str) -> bool:
-    # A lexical precheck may overmatch values/comments; parsed native identity still decides.
     return not _AGGREGATE_NAMES.isdisjoint(_SQL_WORDS.findall(sql.upper()))
 
 
@@ -281,8 +280,6 @@ def _source_ordered_functions(root: exp.Expr) -> list[exp.Func]:
         if isinstance(current, exp.Func):
             functions.append(current)
         children = list(current.iter_expressions())
-        # WITH is attached after the main query; SELECT stores LIMIT before FROM.
-        # Keep all functions, including quoted and schema-owned calls, as alignment slots.
         order = {"with_": -1, "limit": 1, "offset": 2, "locks": 3} if isinstance(current, exp.Select) else {"with_": -1}
         children.sort(key=lambda child: order.get(child.arg_key or "", 0))
         pending.extend(reversed(children))

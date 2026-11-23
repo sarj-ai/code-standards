@@ -85,7 +85,6 @@ class ResourceProvenance:
         self.import_contract_cache: dict[str, bool] = {}
         self.runtime_import_cache: dict[ast.alias, bool] = {}
         self.wildcard = self.inventory.wildcard
-        # Some analyses refine mutation ownership for their own policy.
         self.mutated = set(self.inventory.mutated)
         self.external_bindings = self.inventory.external_bindings
 

@@ -108,7 +108,6 @@ def _cross_relation_join(statement: exp.Expr) -> bool:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- normalize a private parsed-query copy.
     from sqlglot.optimizer.scope import traverse_scope  # ruff: ignore[import-outside-top-level] -- resolve CTE references per native query scope.
 
-    # Fold ASCII before resolving aliases and CTEs without changing the shared cached query.
     normalized = statement.copy()
     for identifier in normalized.find_all(exp.Identifier):
         if isinstance(identifier.parent, exp.Table | exp.TableAlias):
@@ -120,7 +119,6 @@ def _cross_relation_join(statement: exp.Expr) -> bool:
         if not identifier.args.get("quoted"):
             identifier.set("this", identifier.name.translate(_IDENTIFIER_FOLD))
     for scope in traverse_scope(normalized):
-        # Mixed qualification cannot prove whether search_path resolves one spelling to the other.
         by_qualification: dict[int, tuple[str, ...]] = {}
         for relation in _direct_relations(scope):
             previous = by_qualification.setdefault(len(relation), relation)

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True, order=True)
 class TextEdit:
-    # Half-open offsets count Unicode code points in the original source.
     start: int
     end: int
     replacement: str

@@ -354,8 +354,6 @@ def _compatible_write_pairs(owner: ast.ClassDef) -> list[_MethodPair]:
     if status_bulks:
         return _status_write_pairs(methods, status_bulks)
 
-    # Before a parameterized status primitive exists, still catch the common
-    # inverted shape where set_many_to_failed loops over set_to_failed.
     return _specialized_status_pairs(methods)
 
 

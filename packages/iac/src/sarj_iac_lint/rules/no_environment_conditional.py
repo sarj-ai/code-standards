@@ -27,12 +27,8 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Attribute, Block
 
-# Names that directly identify an environment. More ambiguous deployment terms
-# require corroboration from an environment-shaped literal.
 ENVIRONMENT_SEGMENTS = frozenset({"environment", "env"})
 
-# Segments that are also ordinary product words. These count only when every other segment is a neutral qualifier, so
-# `var.project` and `var.gcp_project_id` match while `var.langfuse_ui_project_id` (a third-party resource id) does not.
 QUALIFIED_SEGMENTS = frozenset(
     {
         "project",
@@ -69,8 +65,6 @@ _NEUTRAL_QUALIFIERS = frozenset(
     }
 )
 
-# Weak identity names need corroboration from the compared literal. These are exact segments rather than substrings:
-# `product` and `developmental` are not deployment labels, while `platform-prod` and `preview_us` are.
 _ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
     {
         "dev",
@@ -100,18 +94,14 @@ _CONTAINS_ARGS = 2
 _OPEN = frozenset({"(", "[", "{"})
 _CLOSE = frozenset({")", "]", "}"})
 
-# Words that read like identifiers but head expressions: `if (x)` groups, `foo(x)` calls.
 _EXPRESSION_KEYWORDS = frozenset({"if", "for", "in"})
 _OPERAND_BOUNDARIES = _COMPARISONS | _EXPRESSION_KEYWORDS | frozenset({"&&", "||", "?", ":", ",", "="})
 _REFERENCE_PART_RE = re.compile(r"[A-Za-z_][\w-]*")
 
-# Checked first to avoid duplicate diagnostics: SARJ206 categorically owns these files.
 _TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
 _LIST_TOKENS = 3
-# A parenthesized group is at least its two parens around one token.
 _GROUP_TOKENS = 3
-# A string literal is at least its two quotes.
 _MIN_QUOTED_LENGTH = 2
 _GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
 
@@ -697,7 +687,6 @@ def _is_environment_identity(tok: str, *, literal: str | None = None) -> bool:
 
 
 def _template_identity(tok: str, *, literal: str | None) -> bool:
-    # Inspect only an already-lexed operand, never strings elsewhere in the source.
     if len(tok) < _MIN_QUOTED_LENGTH or not tok.endswith('"'):
         return False
     if literal is not None and "%{" in literal.replace("%%{", ""):
@@ -754,8 +743,6 @@ def _is_literal_string(tok: str) -> bool:
 
 
 def _message(owner: Block, attr: Attribute, use: _Use) -> str:
-    # The synthetic root block has no type: its attributes sit at the file's top
-    # level, which is where Terragrunt keeps `inputs`.
     labelled = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])
     where = labelled if owner.type else "the file root"
     if use.severity is DefaultLevel.WARNING:

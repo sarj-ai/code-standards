@@ -74,8 +74,6 @@ def _prefixed_ignore(prefix: str, pattern: str) -> str:
 
 
 def finish(root: Path, typescript_root: Path, files: FileTransaction, *, written: Collection[Path]) -> tuple[str, ...]:
-    # Format once with the shared policy, then trim converted bulk suppressions.
-    # Every touched file belongs to the transaction so a failed update rolls it back.
     from sarj_standards.libs.linting import oxfmt  # ruff: ignore[import-outside-top-level] -- oxfmt imports adoption.lifecycle.
 
     notes: list[str] = []
@@ -91,7 +89,6 @@ def finish(root: Path, typescript_root: Path, files: FileTransaction, *, written
         notes.append(f"oxfmt formatted {reformatted} file(s) once with the seeded {OXFMT_ENTRYPOINT}")
     elif typescript_root / OXLINT_ENTRYPOINT in written:
         _format(root, typescript_root, files, (typescript_root / OXLINT_ENTRYPOINT,))
-    # Suppressions converted from ESLint carry upper-bound counts until Oxlint trims them.
     if any(path.name == OXLINT_SUPPRESSIONS for path in written):
         notes.extend(_prune_suppressions(root, typescript_root, files))
     return tuple(notes)
@@ -138,7 +135,6 @@ def _prune_suppressions(root: Path, typescript_root: Path, files: FileTransactio
             )
             environment = {**request.environment, **oxlint.oxlint_environment(command.cwd, root)}
             output = external.DEFAULT_EXECUTOR.run(replace(request, environment=environment))
-        # Exit 1 only reports findings the ledger does not cover; Oxlint still rewrote it.
         if output.returncode not in {0, 1} or not output.stdout.lstrip().startswith("{"):
             detail = output.stderr.strip() or output.stdout.strip()
             msg = f"oxlint --prune-suppressions failed in {command.cwd}: {detail}"

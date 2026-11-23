@@ -106,7 +106,6 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         context = initial_import.load(root, staged=staged)
     except ValueError:
         return UnavailableChangedLines()
-    # The validated index equals source; immutable endpoints keep both patch reads on that exact delta.
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
     if context is not None:
         comparison = (context.parent, context.source)
@@ -154,7 +153,6 @@ def _read_changed_scope(
         )
         changes = _changed_paths(names.stdout)
         if changes.renamed:
-            # A scoped patch can hide a rename/copy source and mark every destination line new.
             selected = ()
         patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--", *selected),
@@ -214,8 +212,6 @@ def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
             continue
         start = int(match.group(1))
         count = 1 if match.group(2) is None else int(match.group(2))
-        # A deletion hunk names the gap after `start`; its two boundaries
-        # remain affected even though the new-side hunk contains no lines.
         affected = range(start, start + count) if count else (max(1, start), start + 1)
         parsed[current].update(affected)
     return {path: frozenset(lines) for path, lines in parsed.items()}
@@ -231,7 +227,6 @@ def _patch_path(value: str) -> str:
             return ""
         value = decoded.decode("utf-8", errors="surrogateescape")
     else:
-        # Git terminates an unquoted space-containing path with a tab.
         value = value.removesuffix("\t")
     return value[2:] if value.startswith("b/") else ""
 
@@ -245,7 +240,7 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
     if path not in scope.paths:
         return False
     if diagnostic.source == "shfmt" and diagnostic.rule_id == "format":
-        return True  # Formatting owns the entire selected file, regardless of the changed hunk.
+        return True
     changed = scope.lines.get(path)
     if not changed:
         return True
@@ -266,14 +261,12 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 def is_baselineable(diagnostic: Diagnostic) -> bool:
     if "non-baselineable" in diagnostic.tags:
         return False
-    # Formatter findings cover whole files: a baselined one would stop formatting the file.
     if (
         diagnostic.source in {"shfmt", "oxfmt"}
         and diagnostic.rule_id == "format"
         and diagnostic.severity.value == "error"
     ):
         return False
-    # A baselined tsconfig error would switch type checking off for the whole project.
     if diagnostic.rule_id == "tsc/tsconfig-error":
         return False
     return not (
@@ -585,7 +578,6 @@ def provenance_only_change(before: bytes, after: bytes) -> bool:
 
 
 def _without_provenance(document: dict[str, JsonValue]) -> str:
-    # Canonical text keeps entry values exact: `true` and `1` stay distinct.
     return json.dumps({key: value for key, value in document.items() if key != "provenance"}, sort_keys=True)
 
 
@@ -619,8 +611,6 @@ def repository_base_sha(root: Path) -> str:
     )
     candidate = result.stdout.strip()
     if _GIT_SHA.fullmatch(candidate) is None:
-        # Before the first commit, an all-zero base is explicit absence.
-        # Rollout replaces that sentinel with the captured immutable SHA.
         return "0" * _GIT_SHA1_HEX_CHARS
     return candidate
 

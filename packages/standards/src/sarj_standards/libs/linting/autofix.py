@@ -213,7 +213,6 @@ def fix_paths(
     mutation = transaction.FileTransaction.capture(
         repository, tuple(change.path for change in changes), mode=transaction.CaptureMode.SOURCE
     )
-    # Validate every captured preimage before the first source write.
     for change in changes:
         if mutation.before[change.path].contents != change.original:
             msg = f"planned mutation target changed concurrently: {change.path}; rerun the command"
@@ -316,8 +315,6 @@ def _environment_inputs(root: Path, *, staged: bool) -> _ModuleInputs | None:
     ):
         message = "Terraform context differs from the staged index; no stale inputs were fixed"
         raise ValueError(message)
-    # The ordinary transaction validates every contextual source before and after
-    # writes. It also rolls back the whole plan if any precondition changes.
     return _ModuleInputs(inputs, directories, index)
 
 

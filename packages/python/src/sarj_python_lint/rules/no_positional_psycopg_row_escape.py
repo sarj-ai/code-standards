@@ -763,7 +763,6 @@ def _flow_bindings(statement: ast.stmt, cursor: str, state: dict[str, _OriginSet
             for target in targets:
                 _invalidate_origin_group(state, _mutation_root(target))
         case ast.Try() | ast.TryStar():
-            # A finally block can replace a pending return. Avoid path claims across this construct.
             for name in _same_scope_bindings(statement):
                 state[name] = frozenset({None})
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():

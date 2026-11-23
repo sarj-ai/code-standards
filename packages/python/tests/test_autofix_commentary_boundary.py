@@ -16,6 +16,7 @@ from sarj_python_lint.rules import REGISTRY
 
 _RULE = "excessive-commentary"
 _PATH = Path("app/service.py")
+_BUDGETED_PATH = Path("tests/support/service.py")
 _SUBJECTS = ("account", "endpoint", "profile", "action")
 
 
@@ -39,17 +40,17 @@ def _paragraph(kind: str) -> str:
 @pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=("lf", "crlf"))
 def test_meaning_beyond_action_names_requires_manual_budget_repair(kind: str, newline: str) -> None:
     source = _paragraph(kind).replace("\n", newline)
-    findings = REGISTRY[_RULE]().check(_PATH, source)
+    findings = REGISTRY[_RULE]().check(_BUDGETED_PATH, source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ434"
     assert findings[0].severity is Severity.ERROR
     assert "two comment lines" in findings[0].message
-    context = PythonFileContext(_PATH, source)
+    context = PythonFileContext(_BUDGETED_PATH, source)
     assert CommentFixes(context).fixes(findings[0]) == []
-    forced_error = Diagnostic(_PATH, 2, 5, "SARJ434", "duplicate narration", severity=Severity.ERROR)
+    forced_error = Diagnostic(_BUDGETED_PATH, 2, 5, "SARJ434", "duplicate narration", severity=Severity.ERROR)
     assert CommentFixes(context).fixes(forced_error) == []
-    assert fix_source(_PATH, source, rule_ids=[_RULE]) == source
-    assert fix_source(_PATH, source, rule_ids=[]) == source
+    assert fix_source(_BUDGETED_PATH, source, rule_ids=[_RULE]) == source
+    assert fix_source(_BUDGETED_PATH, source, rule_ids=[]) == source
 
 
 def test_warning_diagnostic_refuses_the_otherwise_safe_shape() -> None:
@@ -74,26 +75,26 @@ def test_original_error_fix_still_converges_beside_preserved_technical_prose() -
     example = next(item for item in documentation.examples if item.example_id == "safe-autofix-subset")
     warning = _paragraph("rationale").replace("def reasons():", "def guarded_reasons():")
     source = example.focus_file.source + "\n" + warning
-    findings = REGISTRY[_RULE]().check(_PATH, source)
+    findings = REGISTRY[_RULE]().check(_BUDGETED_PATH, source)
     assert [finding.severity for finding in findings] == [Severity.ERROR, Severity.ERROR]
-    fixed = fix_source(_PATH, source, rule_ids=[_RULE])
+    fixed = fix_source(_BUDGETED_PATH, source, rule_ids=[_RULE])
     assert fixed == example.fixed_files[0].source + "\n" + warning
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
     assert (
         compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
-            fixed, str(_PATH), "exec", dont_inherit=True
+            fixed, str(_BUDGETED_PATH), "exec", dont_inherit=True
         )
         == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
-            source, str(_PATH), "exec", dont_inherit=True
+            source, str(_BUDGETED_PATH), "exec", dont_inherit=True
         )
     )
-    remaining = REGISTRY[_RULE]().check(_PATH, fixed)
+    remaining = REGISTRY[_RULE]().check(_BUDGETED_PATH, fixed)
     assert len(remaining) == 1
     assert remaining[0].code == "SARJ434"
     assert remaining[0].severity is Severity.ERROR
     assert "two comment lines" in remaining[0].message
-    assert CommentFixes(PythonFileContext(_PATH, fixed)).fixes(remaining[0]) == []
-    assert fix_source(_PATH, fixed, rule_ids=[_RULE]) == fixed
+    assert CommentFixes(PythonFileContext(_BUDGETED_PATH, fixed)).fixes(remaining[0]) == []
+    assert fix_source(_BUDGETED_PATH, fixed, rule_ids=[_RULE]) == fixed
 
 
 _TEST_RULE = "no-test-comments"

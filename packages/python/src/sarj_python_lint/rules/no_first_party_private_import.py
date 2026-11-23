@@ -109,9 +109,7 @@ class _PrivateImport:
     col: int
     module: str
     name: str
-    #: The private thing is a segment of the module path, not an imported name.
     is_segment: bool
-    #: Every name this statement imports is public (vacuously true for `import x._y`).
     names_public: bool
 
 
@@ -231,7 +229,6 @@ def _non_import_bindings(tree: ast.Module, *, node_index: NodeIndex | None = Non
 
 
 def _from_import_hits(node: ast.ImportFrom) -> list[_PrivateImport]:
-    # `node.level` > 0 is a relative import: inside its own package by construction.
     if node.level or not node.module:
         return []
     private_segment = _private_segment(node.module)
@@ -283,7 +280,6 @@ def _private_segment(module: str) -> str | None:
 
 
 def _is_private_name(name: str) -> bool:
-    # `__version__` / `__all__` are module metadata by convention, not internals.
     return name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
 
 

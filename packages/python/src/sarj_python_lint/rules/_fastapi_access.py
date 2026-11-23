@@ -30,7 +30,6 @@ class FastapiAccessFacts:
         if project is None:
             return FastapiAccessGraph((context,), None)
         if self.project is not project or self.graph is None:
-            # Reuse the prepared graph; never rediscover files for individual routes.
             from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- file contexts own this session's lazy facts.
 
             contexts = tuple(

@@ -33,7 +33,6 @@ class YarnVariant(StrEnum):
 type OverrideValue = str | dict[str, OverrideValue]
 
 
-#: Lockfiles in deterministic package-manager precedence order.
 LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
     ("pnpm-lock.yaml", PackageManager.PNPM),
     ("yarn.lock", PackageManager.YARN),
@@ -43,9 +42,7 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 )
 AGE_GATE_POLICY_NAMES: Final = frozenset({".npmrc", ".yarnrc.yml", ".yarnrc.yaml", "pnpm-workspace.yaml"})
 
-#: pnpm policy lists that take exact `name@version` exemptions.
 _PNPM_EXEMPTION_SETTINGS: Final = ("minimumReleaseAgeExclude", "trustPolicyExclude")
-#: Yarn Berry's exact-version exemptions from `npmMinimalAgeGate`, and the variable that sets them inline.
 _YARN_PREAPPROVALS: Final = "npmPreapprovedPackages"
 _YARN_PREAPPROVALS_VARIABLE: Final = "YARN_NPM_PREAPPROVED_PACKAGES"
 _YARN_BERRY_MINIMUM_MAJOR: Final = 2
@@ -142,7 +139,6 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
 
 @dataclass(frozen=True)
 class Overrides:
-    #: The package-manager policy document key path, outermost first.
     key_path: tuple[str, ...]
     entries: dict[str, OverrideValue]
 
@@ -163,7 +159,6 @@ def overrides_for(client: PackageManager) -> Overrides:
         case PackageManager.YARN:
             return Overrides(("resolutions",), dict(_flatten(npm_entries, "/")))
         case PackageManager.BUN:
-            # Bun supports root overrides, but ignores npm's nested selectors.
             return Overrides(
                 ("overrides",),
                 {name: _resolved_tree(value) for name, value in npm_entries.items() if isinstance(value, str)},
@@ -241,15 +236,12 @@ def install_argv(
     return tuple(install_command(client, workspace=workspace, yarn=yarn).split())
 
 
-# Install-time settings that exempt exactly the managed versions from release-age and trust policies.
 @dataclass(frozen=True)
 class PolicyExemption:
     arguments: tuple[str, ...] = ()
     environment: tuple[tuple[str, str], ...] = ()
 
 
-# Exempts the managed versions for one install at `root` and leaves the repository's policy files unchanged. An inline
-# list replaces the configured one instead of extending it, so the repository's own entries are repeated.
 def policy_exemption(client: PackageManager, root: Path, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> PolicyExemption:
     managed = manifest.typescript_installed_versions()
     if client is PackageManager.PNPM:
@@ -300,8 +292,6 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
         case PackageManager.NPM:
             return ("npm", "exec", "--offline", "--", *command)
         case PackageManager.PNPM:
-            # `pnpm exec` only resolves binaries from the installed dependency tree. Unlike `pnpm dlx`, it never
-            # downloads a missing package, so an `--offline` flag is both unnecessary and invalid on pnpm 11.
             return ("pnpm", "exec", *command)
         case PackageManager.YARN:
             return ("yarn", "exec", *command)

@@ -72,7 +72,6 @@ class LocalSourceFacts:
         return module
 
     def saturated_resolutions(self) -> tuple[tuple[tuple[Path, str | None, int], Path | None], ...] | None:
-        # A full resolution cache is immutable for the rest of the session.
         if len(self._resolutions) < LOCAL_SOURCE_CACHE_LIMIT:
             return None
         return tuple(self._resolutions.items())
@@ -81,7 +80,6 @@ class LocalSourceFacts:
         self._resolutions = dict(resolutions)
 
     def cache_keys(self) -> LocalSourceKeys:
-        # Failed lookups consume the same semantic budgets as successful ones.
         return LocalSourceKeys(frozenset(self._resolutions), frozenset(self._modules))
 
 

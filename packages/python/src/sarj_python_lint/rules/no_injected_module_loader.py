@@ -270,7 +270,6 @@ def _shadowed(default: ast.expr, function: ast.AST, context: PythonFileContext) 
 
 
 def _in_scope_body(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda, child: ast.AST) -> bool:
-    # Defaults and class headers execute outside the scope being defined.
     return scope.body is child if isinstance(scope, ast.Lambda) else child in scope.body
 
 

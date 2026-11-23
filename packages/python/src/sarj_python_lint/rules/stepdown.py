@@ -34,10 +34,8 @@ _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
 type _AliasCallLine = Callable[[ast.FunctionDef | ast.AsyncFunctionDef, str, int], int | None]
 
-# These decorators preserve definitions without registration; unknown decorators remain movement barriers.
 _ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
 
-#: A repeated singledispatch implementation name cannot identify one movable target.
 _DISCARD_NAME = "_"
 
 
@@ -570,8 +568,6 @@ def _transparent_builtin_decorators(tree: ast.Module, nodes: Sequence[ast.AST]) 
                     target = _builtin_decorator_target(decorator, visible)
                     if target in _ORDER_TRANSPARENT_DECORATORS and target not in mutated:
                         resolved[id(decorator)] = target
-            # A method's body closes over the enclosing function/module,
-            # never over its containing class's namespace.
             visit(child, enclosing if isinstance(scope, ast.ClassDef) else visible)
 
     visit(tree, {name: name for name in _ORDER_TRANSPARENT_DECORATORS})
@@ -665,7 +661,6 @@ def _safe_movement(
 
 
 def _definition_executes_code(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    # Definition-time calls can reach a caller before its moved helper is initialized.
     return any(
         isinstance(child, (ast.Call, ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr))
         for part in _definition_expressions(node)
@@ -1017,8 +1012,6 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
                 stack.extend(node.args.defaults)
                 stack.extend(d for d in node.args.kw_defaults if d is not None)
             case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords):
-                # A nested class owns a separate receiver namespace. Its method
-                # bodies are not calls made by the enclosing function/method.
                 stack.extend(decorators)
                 stack.extend(bases)
                 stack.extend(keyword.value for keyword in keywords)
@@ -1035,7 +1028,6 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
 
 
 def _nested_class_name_loads(definition: _Def) -> set[str]:
-    # Nested class closures count as references in a distinct caller namespace.
     return {
         name
         for child in _walk(definition)
@@ -1110,7 +1102,6 @@ def _local_alias_call_line(
         call = parents.get(id(use))
         if not isinstance(call, ast.Call) or call.func is not use or use.lineno <= assigned_line:
             return None
-        # Nested closures may escape; only direct calls in this lexical function prove a nonescaping alias.
         current: ast.AST = use
         while id(current) in parents:
             current = parents[id(current)]
@@ -1281,7 +1272,6 @@ def _resolved_node_loads(node: ast.AST, candidates: frozenset[str], blocked: set
             if value is not None:
                 yield from _resolved_loads((value,), candidates, blocked)
         case ast.ClassDef():
-            # Class namespaces and method closures have distinct lookup rules.
             yield from _resolved_loads(
                 (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)),
                 candidates,

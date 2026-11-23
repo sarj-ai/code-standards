@@ -14,11 +14,7 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
 
-# The repository's tsconfig graph as tsrs sees it: Oxlint type-checks tsconfig.json projects and the
-# projects their `references` reach.
-
 TSCONFIG_JSON: Final = "tsconfig.json"
-#: What `can_reference` checks, for the fix of a reference `update` could not add.
 REFERENCE_RULE: Final = (
     "unless that tsconfig.json is solution-style, with `files: []` and no `include`, the referenced project "
     "needs `composite: true` and must emit"
@@ -27,7 +23,6 @@ _TSCONFIG_NAME: Final = re.compile(r"tsconfig(?:\.[\w.-]+)?\.json")
 
 
 def read(paths: Iterable[Path]) -> dict[Path, dict[str, JsonValue]]:
-    # The tsconfig files among `paths` that parse as JSONC objects; tsrs reports the rest itself.
     return {
         path: document
         for path in paths
@@ -36,7 +31,6 @@ def read(paths: Iterable[Path]) -> dict[Path, dict[str, JsonValue]]:
 
 
 def parents(path: Path, document: Mapping[str, JsonValue]) -> Iterator[Path]:
-    # Package specifiers resolve from node_modules and never name a repository tsconfig.
     value = document.get("extends")
     for item in value if isinstance(value, list) else [value]:
         if isinstance(item, str) and item.startswith("."):
@@ -49,7 +43,6 @@ def is_project(document: Mapping[str, JsonValue]) -> bool:
 
 
 def unreferenced_projects(documents: Mapping[Path, Mapping[str, JsonValue]]) -> Iterator[Path]:
-    # The projects `update` would add to a tsconfig.json's `references`: tsrs skips them today.
     extended = {target for path, document in documents.items() for target in parents(path, document)}
     reached = _referenced(documents)
     return (
@@ -60,8 +53,6 @@ def unreferenced_projects(documents: Mapping[Path, Mapping[str, JsonValue]]) -> 
 
 
 def can_reference(owner: Mapping[str, JsonValue], project: Mapping[str, JsonValue]) -> bool:
-    # A solution-style tsconfig (`files: []`, no `include`) may reference any project; one that compiles
-    # files of its own may only reference a composite project that emits (TS6306, TS6310).
     if owner.get("files") == [] and "include" not in owner:
         return True
     options = project.get("compilerOptions")
@@ -69,12 +60,10 @@ def can_reference(owner: Mapping[str, JsonValue], project: Mapping[str, JsonValu
 
 
 def normalized(path: Path) -> Path:
-    # Lexical, like the paths callers plan mutations with; resolving would leave a symlinked root.
     return Path(os.path.normpath(path))
 
 
 def _referenced(documents: Mapping[Path, Mapping[str, JsonValue]]) -> frozenset[Path]:
-    # Every project the tsconfig.json files reach through `references`, which is what tsrs type-checks.
     pending = [path for path in documents if path.name == TSCONFIG_JSON]
     reached: set[Path] = set()
     while pending:
@@ -93,7 +82,6 @@ def _referenced(documents: Mapping[Path, Mapping[str, JsonValue]]) -> frozenset[
 
 
 def _is_separate_project(path: Path, document: Mapping[str, JsonValue]) -> bool:
-    # A variant of a tsconfig.json project (tsconfig.build.json) covers files that project already has.
     return (
         path.name != TSCONFIG_JSON
         and is_project(document)

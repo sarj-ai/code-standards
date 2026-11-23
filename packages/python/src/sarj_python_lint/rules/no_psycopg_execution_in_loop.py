@@ -120,7 +120,6 @@ def _comprehension_repeats(parent: ast.comprehension, child: ast.AST, context: P
     if not isinstance(owner, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
         return False
     index = owner.generators.index(parent)
-    # Filters run per combination through this generator; an inner iterable per earlier combination.
     if child in parent.ifs:
         return not _at_most_once(owner.generators[: index + 1])
     return child is parent.iter and index > 0 and not _at_most_once(owner.generators[:index])

@@ -100,7 +100,6 @@ class DecodedSource:
         digest = self._text_sha256
         if digest is not None:
             return digest
-        # This identifies decoded characters, including lossless surrogateescape views.
         digest = TextDigest(sha256(self.text.encode("utf-8", "surrogatepass")).hexdigest())
         object.__setattr__(self, "_text_sha256", digest)  # ruff: ignore[unnecessary-dunder-call] -- memoize a digest without making the decoded source mutable.
         return digest

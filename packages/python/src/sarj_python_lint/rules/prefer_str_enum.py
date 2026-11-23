@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-#: Per-variable accumulator containing location and literals grouped by comparison operator.
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str], bool]
 
 _MIN_CAST_ARGS = 2
@@ -71,13 +70,10 @@ class _TypingNamespaceOrigins:
     handles: frozenset[str]
 
 
-#: Sibling class attributes whose presence marks all raw-str fields as choice-like.
 CHOICES_ATTR_NAMES = frozenset({"choices", "states", "statuses", "values", "allowed"})
 
 CHOICE_COLLECTION_FIELDS = MappingProxyType({"statuses": "status", "states": "state"})
 
-#: Reserved multi-character vocabulary is external. Single characters use scanner evidence so genuine two-way
-#: application dispatch still reports.
 EXTERNAL_VOCAB = frozenset(
     {
         "is",
@@ -116,11 +112,8 @@ EXTERNAL_VOCAB = frozenset(
     }
 )
 
-#: Variable keys whose single-character comparisons are a tokenizer scan, not an enum dispatch (`last_char == "g"`), so
-#: single-character clusters on them are not flagged.
 _SCANNER_KEY_SEGMENTS = frozenset({"c", "ch", "chr", "char", "token", "tok", "letter", "digit", "glyph"})
 
-#: Variable names whose external vocabulary is open-ended rather than an application enum.
 OPEN_DOMAIN_CODE_NAMES = frozenset(
     {
         "attr",
@@ -154,25 +147,18 @@ OPEN_DOMAIN_CODE_NAMES = frozenset(
 
 _OPEN_DOMAIN_SUFFIXES = ("_encoding", "_ext", "_protocol", "_username")
 
-#: A "short lowercase token" — the shape enum member values take.
 _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
 
-#: The stdlib `open()` mode vocabulary: 1-3 characters drawn from `rwxab+t`.
 _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
 
-#: Variable names that hold an `open()` mode.
 _FILE_MODE_KEYS = frozenset({"filemode", "mode", "open_mode", "openmode"})
 
-#: How many distinct literals one operator must enumerate before firing.
 _MIN_CLUSTER_SIZE = 2
 
-#: Comparison-operator buckets a cluster accumulates literals into.
 _EQ = "=="
 _NE = "!="
 _MEMBERSHIP = "in"
 
-#: Call names that read a value out of a payload / stream / environment the
-#: module does not own, so the vocabulary of the result is not the module's.
 _WIRE_CALL_NAMES = frozenset(
     {
         "get",
@@ -189,15 +175,10 @@ _WIRE_CALL_NAMES = frozenset(
     }
 )
 
-#: Calls that wrap an iterable without changing where its elements came from.
 _ITERABLE_WRAPPERS = frozenset({"enumerate", "iter", "list", "reversed", "set", "sorted", "tuple", "zip"})
 
-#: Attribute roots the module owns; `self.mode` is this class's own field, while
-#: `token.type` / `expr.arg_names` belong to somebody else's object.
 _OWNED_ROOTS = frozenset({"self", "cls"})
 
-#: Depth at which an attribute chain has left the object the module owns:
-#: `self._config_wrapper.extra` reads a collaborator's field, not `self`'s.
 _FOREIGN_CHAIN_DEPTH = 2
 _ENUM_BASE_NAMES = frozenset({"Enum", "Flag", "IntEnum", "IntFlag", "ReprEnum", "StrEnum"})
 _ENUM_BASE_SUFFIXES = ("Enum", "Flag")
@@ -501,7 +482,6 @@ class PreferStrEnum(Rule):
             node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
             active: dict[str, _ClusterEntry] | None,
         ) -> dict[str, _ClusterEntry] | None:
-            # Comprehension targets have separate scopes; same-named comparisons cannot be merged across them.
             if active is None:
                 return None
             child_active: dict[str, _ClusterEntry] = {}
@@ -694,7 +674,6 @@ class PreferStrEnum(Rule):
 
 
 def _has_class_choice_signal(source: str) -> bool:
-    # Decoded string annotations can spell str through escapes or adjacent literals.
     return ("str" in source or '"' in source or "'" in source) and any(
         name in source.lower() for name in CHOICES_ATTR_NAMES
     )
@@ -801,17 +780,15 @@ def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
     if not closed or (not eq_literals and not in_literals):
         return False
     domain_literals = eq_literals | in_literals
-    # One operator must enumerate multiple alternatives before the vocabulary is demonstrably closed.
     enumerated = len(domain_literals)
     if enumerated < _MIN_CLUSTER_SIZE:
         return False
     if not all(_LOWER_TOKEN_RE.fullmatch(lit) for lit in domain_literals):
         return False
     if all(lit in EXTERNAL_VOCAB for lit in domain_literals):
-        return False  # URL schemes, language keywords, HTTP methods, reflection args
+        return False
     if _is_file_mode_key(key) and all(_FILE_MODE_RE.fullmatch(lit) for lit in domain_literals):
-        return False  # `mode not in {"r", "rt", "rb"}` — the stdlib open() vocabulary
-    # A single-character cluster on a char/token variable is a tokenizer scan.
+        return False
     return not (_is_scanner_key(key) and all(len(lit) == 1 for lit in domain_literals))
 
 
@@ -1591,8 +1568,6 @@ def _propagate_collection_alias_uses(
     tree: ast.AST, unsafe: dict[str, set[str]], *, node_index: NodeIndex | None = None
 ) -> None:
     aliases = _collection_owner_aliases(tree, node_index=node_index)
-    # Exposure invalidates proof even when an alias has other possible bindings.
-    # The finite owner/attribute sets converge without following runtime values.
     for _round in range(len(aliases)):
         changed = False
         for alias, original in aliases:
@@ -1626,8 +1601,6 @@ def _string_collection_values(node: ast.AST | None) -> set[str] | None:
             if isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == _CHOICE_PAIR_ARITY
             else element
         )
-        # Ignore Django's `(None, "---")` blank sentinel while preserving the
-        # closed string vocabulary alongside it.
         if _is_none_annotation(candidate):
             continue
         value = _str_const(candidate)
@@ -1779,7 +1752,6 @@ def _closed_domain_node_ids(
     closed_collections: dict[str, list[str]],
 ) -> frozenset[int]:
     closed: set[int] = set()
-    # Only whole-function rejection proves closure; nested rejection may be skipped, repeated or caught.
     for node in function.body:
         if isinstance(node, ast.If):
             _record_rejecting_membership_guard(node, imports, closed, closed_collections)

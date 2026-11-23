@@ -33,18 +33,14 @@ class _UnspeccedCall(NamedTuple):
     label: str
 
 
-# Constructors whose default is an attribute-permissive double.
 _UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"})
 
-# `patch`/`patch.object` install a MagicMock unless told otherwise.
 _PATCHERS = frozenset({"patch"})
 
-# Mock constructor keywords are arbitrary attributes; patch-only controls do not constrain them.
 _CONSTRUCTOR_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "wraps"})
 _PATCH_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "wraps"})
 
 
-# Positional arity reveals when each mock constructor already received its spec or replacement.
 _REPLACEMENT_ARITY = MappingProxyType(
     {
         "Mock": 1,
@@ -57,7 +53,6 @@ _REPLACEMENT_ARITY = MappingProxyType(
     }
 )
 
-# Attributes every mock answers regardless of what it stands in for.
 _MOCK_API_ATTRS = frozenset(
     {
         "assert_any_await",
@@ -93,10 +88,8 @@ _MOCK_API_ATTRS = frozenset(
     }
 )
 
-# An import that failed leaves nothing importable to spec against.
 _IMPORT_FAILURES = frozenset({"ImportError", "ModuleNotFoundError"})
 
-# Keywords that canned-answer a *call*.
 _CANNED_RESULT_KEYWORDS = frozenset({"return_value", "side_effect"})
 
 _PYTEST_MOCK_FIXTURES = frozenset({"mocker", "class_mocker", "module_mocker", "package_mocker", "session_mocker"})
@@ -283,19 +276,16 @@ class _MockNames:
         return found
 
     def _add_plain_import(self, node: ast.Import) -> None:
-        # `import unittest.mock` binds `unittest`; `import unittest.mock as m` binds `m`.
         for alias in node.names:
             if alias.name == _MOCK_MODULE:
                 self.modules.add(alias.asname or "unittest")
 
     def _add_from_import(self, node: ast.ImportFrom) -> None:
         if node.module == "unittest":
-            # `from unittest import mock [as m]`
             for alias in node.names:
                 if alias.name == "mock":
                     self.modules.add(alias.asname or "mock")
         elif node.module == _MOCK_MODULE:
-            # `from unittest.mock import Mock [as m], patch`
             for alias in node.names:
                 if alias.name in _UNSPECCED_FACTORIES or alias.name in _PATCHERS:
                     self.factories[alias.asname or alias.name] = alias.name
@@ -309,7 +299,6 @@ class _MockNames:
             return self.factories.get(func.id)
         if not isinstance(func, ast.Attribute):
             return None
-        # `patch.object(...)` / `mock.patch.object(...)` — the patcher is the parent.
         if func.attr == "object":
             parent = self.resolve(func.value)
             return parent if parent in _PATCHERS else None
@@ -440,7 +429,6 @@ class _FileFacts:
             self.constructor_argument_uses.setdefault((scope, argument.id), []).append(argument)
 
     def _record_path_read(self, scope: int, node: ast.Attribute) -> None:
-        # Load context only.
         if not isinstance(node.ctx, ast.Load):
             return
         path = _dotted_path(node.value)
@@ -761,8 +749,6 @@ def _unspecced_calls(
 
 
 def _has_contract_argument(node: ast.Call, names: _MockNames, symbol: str) -> bool:
-    # `**kwargs` forwarding could smuggle a spec in; treat it as specced rather
-    # than guess, since the call site no longer states its own contract.
     return any(_keyword_supplies_contract(keyword, names, symbol) for keyword in node.keywords)
 
 
@@ -776,12 +762,10 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
     if keyword.arg == "create":
         return not isinstance(keyword.value, ast.Constant) or keyword.value.value is True
     if keyword.arg == "new":
-        # Only DEFAULT requests a generated mock; None and all other values are concrete replacements.
         return not names.is_default(keyword.value)
     if keyword.arg == "autospec":
         return not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False})
     if keyword.arg == "new_callable":
-        # Mock subclasses change callability, not collaborator contracts; unknown factories remain unproven.
         if isinstance(keyword.value, ast.Constant) and keyword.value.value is None:
             return False
         return names.resolve(keyword.value) not in _UNSPECCED_FACTORIES
@@ -791,10 +775,7 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
 
 
 def _has_positional_replacement(node: ast.Call, label: str, names: _MockNames) -> bool:
-    # `spec` / `new` are positional parameters of these signatures, and that is how they are nearly always spelled —
-    # `patch("mod.fn", replacement)` is `new=replacement`, `Mock(Process)` is `spec=Process`.
     if any(isinstance(arg, ast.Starred) for arg in node.args):
-        # `*args` forwarding: the arity is unknown, so decline to guess.
         return True
     arity = _REPLACEMENT_ARITY[label]
     if len(node.args) < arity:

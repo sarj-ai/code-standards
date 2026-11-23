@@ -174,8 +174,6 @@ def _direct_imported_collection(
     if isinstance(node, ast.Name) and node.id in imported and node.id not in blocked and not _is_registry(node.id):
         return node
     if isinstance(node, ast.Call) and _is_imported_collection_wrapper(node, imported, builtin_wrappers):
-        # `list(Enum)` / `tuple(Enum)` is an intentional exhaustiveness sweep;
-        # only set/sorted/tuple over an ALL_CAPS collection is the risky shape.
         candidate = node.args[0]
         return (
             candidate

@@ -39,7 +39,6 @@ def parse_toml_string_lines(source: str) -> TomlSource:
         if not match.group().startswith("#"):
             spans[f"{prefix}{len(spans)}__"] = (match.start(), match.end())
     try:
-        # Native parsing classifies candidates as keys or values; keys stay untouched in the final projection.
         all_marked: Mapping[str, object] = tomllib.loads(_replace_literals(source, spans, set(spans)))
         selected = _value_markers(all_marked, spans)
         marked: Mapping[str, object] = tomllib.loads(_replace_literals(source, spans, selected))

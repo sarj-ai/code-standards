@@ -21,14 +21,12 @@ SECRET_WORDS = frozenset(
         "digest",
         "hash",
         "apikey",
-        # Keep this vocabulary aligned with the TypeScript helper.
         "bearer",
     }
 )
 
 _SECRET_WORDS = SECRET_WORDS
 
-# A trailing word in this set makes the identifier metadata, not a credential.
 _INNOCUOUS_WORDS = frozenset(
     {
         "count",
@@ -56,10 +54,8 @@ _INNOCUOUS_WORDS = frozenset(
     }
 )
 
-# A leading predicate makes the identifier a boolean flag, not a credential.
 _FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
 
-# Split camel case, capitals, and digit runs within each underscore-delimited component.
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
 

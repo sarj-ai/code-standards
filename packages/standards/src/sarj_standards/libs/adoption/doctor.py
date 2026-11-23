@@ -97,7 +97,6 @@ class _PackagePluginPinRewrite(NamedTuple):
     changed: bool
 
 
-#: `sarj-python-lint==0.25.0`, `"code-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
     r"(?<![A-Za-z0-9_.-])(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj|repo)-standards)\s*"
     r"(?P<op>==|>=|~=)\s*"
@@ -133,28 +132,21 @@ _PACKAGE_PLUGIN_PIN = re.compile(
 )
 _WARNINGS_FAIL = re.compile(r"(?:^|\s)(?:--max-warnings(?:=|\s+)0|--deny-warnings)(?:\s|$)")
 _OXLINT_INVOCATION = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*/)?oxlint(?:\s|$)")
-#: `tsc`, `tsc6` and `node node_modules/@typescript/native/bin/tsc`; framework checkers (`vue-tsc`) do not match.
 _TSC_INVOCATION = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*/)?tsc6?(?:\s|$)")
 _TSC_TYPE_CHECK = re.compile(r"(?:^|\s)--noEmit(?:\s|$)")
 _TSC_BUILD = re.compile(
     r"(?:^|\s)(?:-b|--build|--declaration|--emitDeclarationOnly|--outDir|--init|-v|--version)(?:\s|=|$)"
 )
 _NEXT_CONFIG_NAMES: Final = frozenset(f"next.config.{suffix}" for suffix in ("js", "mjs", "cjs", "ts", "mts"))
-# The first pnpm major that verifies age and trust gates on frozen installs unless `trustLockfile` is set.
 _PNPM_LOCKFILE_VERIFYING_MAJOR: Final = 11
 _NEXT_IGNORES_TYPE_ERRORS = re.compile(r"\bignoreBuildErrors\s*:\s*true\b")
 
-#: Standards must not inherit a consumer repository's ``uv.toml`` policy. In particular, ``exclude-newer`` can make a
-#: just-published exact bundle appear unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
 _UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+(?:code|sarj)-standards(?:==[^\s]+)?)")
 _PERSISTED_CREDENTIALS_OFF = re.compile(r"(?m)^(?P<indent>[ \t]*)persist-credentials:\s*false\s*$")
 
-#: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.  Raw commit pins can silently become stale,
-#: so report them as unverifiable.
 _REV = re.compile(r"""rev:\s*['"]?(?P<rev>[a-z-]+-v[0-9][0-9A-Za-z.\-]*|[0-9a-f]{7,40})['"]?""")
 _HOOK_ID = re.compile(r"(?m)^\s*-\s+id:\s*(?P<id>[^\s#]+)")
 
-#: A `rev:` that is a raw commit, not a release tag.
 _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
 _COMMIT_POLICY_CONTEXT: Final = "commit-policy-v1"
@@ -192,8 +184,6 @@ _CONFIG_TARGETS: Final = MappingProxyType(
     }
 )
 
-#: Retired rule identifiers remain invalid in source suppressions as well as configs; unused-directive checks enforce
-#: those references.
 _REFERENCE_SUFFIXES: Final = (
     ".cjs",
     ".cts",
@@ -521,7 +511,6 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
-        # Manifest/pin diagnostics explain invalid configuration; hook selection cannot proceed.
         return
     if adopted is None or adopted.hook_manager == "none":
         return
@@ -988,8 +977,6 @@ def _ruff_extend_reaches_canonical(root: Path, source: Path, extended: str) -> b
     while True:
         requested = current.parent / value
         target = requested.resolve()
-        # The installed config is commonly a symlink, so resolving it changes
-        # the basename from `.ruff-strict.toml` to `ruff.strict.toml`.
         if requested.name == ".ruff-strict.toml" or target == canonical:
             try:
                 target.relative_to(root.resolve())
@@ -1305,7 +1292,6 @@ def _rewrite_age_gate_preapprovals(
 
     def npm_replacement(match: re.Match[str]) -> str:
         existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
-        # npm exclusions match names; preserve authored policy while updating exact dependency pins.
         retained = [item for item in existing if item not in approvals]
         values = ",".join((*retained, *sorted(approvals)))
         prefix, suffix = match.group("prefix", "suffix")
@@ -1434,7 +1420,7 @@ def _rewrite_repo_standards_actions(source: str) -> VersionPinRewrite:
         start, end = node.start_mark.index, node.end_mark.index
         quote = node.style or ""
         if source[start:end] != f"{quote}{value}{quote}":
-            continue  # Preserve anchors, tags, escaped scalars, and other noncanonical YAML syntax.
+            continue
         replacement = f"{quote}{match['action']}@{manifest.REPO_STANDARDS_REVISION}{quote}"
         if comment := _ACTION_VERSION_COMMENT.match(source, end):
             end = comment.end()
@@ -1466,7 +1452,6 @@ def _workflow_action_nodes(source: str) -> Iterator[ScalarNode]:
             continue
         for step in sequence_items(steps):
             uses = _yaml_field(step, "uses")
-            # Aliases can point into env/run data; only edit uses scalars authored in these steps.
             if (
                 isinstance(uses, ScalarNode)
                 and isinstance(step, MappingNode)
@@ -1509,7 +1494,6 @@ def _rewrite_package_plugin_pins(text: str, version: str) -> _PackagePluginPinRe
 
 
 def _check_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
-    # A missing peer manifest is a packaging defect and must fail loudly.
     floor = manifest.typescript_peers()[_SARJ_PLUGIN]
     for path in _candidate_files(files, (".json",)):
         yield from _check_plugin_package(root, path, floor)
@@ -1713,7 +1697,6 @@ def _check_node_linker(root: Path, typescript_root: Path) -> Iterator[Finding]:
         return
     yarnrc = package_root / ".yarnrc.yml"
     settings = manifest.as_table(parse_yaml(_read(yarnrc))) if yarnrc.is_file() else {}
-    # Yarn Berry links with Plug'n'Play unless `nodeLinker` says otherwise.
     if settings.get("nodeLinker", "pnp") != "pnp":
         return
     yield Finding(
@@ -1741,7 +1724,6 @@ def _check_pnpm_trust_lockfile(root: Path, typescript_root: Path) -> Iterator[Fi
         policy = _PnpmPolicy.model_validate(manifest.as_table(parse_yaml(_read(workspace))))
     except ValueError, yaml.YAMLError:
         return
-    # Standards' own install exempts the managed versions inline; a frozen CI install does not.
     if version is None or int(version.partition(".")[0]) < _PNPM_LOCKFILE_VERIFYING_MAJOR or policy.trust_lockfile:
         return
     if policy.minimum_release_age <= 0 and policy.trust_policy == "off":
@@ -1812,7 +1794,6 @@ def _pyright_chain(boundary: Path, current: Path, target: Path) -> bool:
         parent = _pyright_parent(current)
         if parent is None:
             return False
-        # Normalize relative paths without changing a symlinked owner's directory.
         current = Path(os.path.normpath(current.parent / parent.replace("\\", "/")))
     return False
 
@@ -1941,7 +1922,7 @@ def _check_typescript_scripts(root: Path, packages: Sequence[Path]) -> Iterator[
         try:
             scripts = _PackageScripts.model_validate_json(_read(path)).scripts
         except RecursionError, ValidationError:
-            continue  # The package-json validator owns malformed documents.
+            continue
         for name, command in sorted(scripts.items()):
             where = f"{path.relative_to(root)}: scripts.{name}"
             if _OXLINT_INVOCATION.search(command) and _WARNINGS_FAIL.search(command):
@@ -1991,7 +1972,7 @@ def _check_tsconfigs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
     }
     for path, document in sorted(documents.items()):
         if path not in options:
-            continue  # tsrs reports a tsconfig it cannot read as tsc/tsconfig-error.
+            continue
         where = str(path.relative_to(root))
         if options[path].base_url is not None:
             yield Finding(
@@ -2001,7 +1982,6 @@ def _check_tsconfigs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
                 "doctor.typescript.tsconfig",
                 'remove `baseUrl` and write each `paths` target relative to the tsconfig, such as "./src/*"',
             )
-        # A config another one extends is a base, not a project; its options only count once inherited.
         if path in extended or not (path.name == tsconfigs.TSCONFIG_JSON or tsconfigs.is_project(document)):
             continue
         if _imports_ts_extensions_with_emit(path, documents, options):
@@ -2059,7 +2039,6 @@ def _imports_ts_extensions_with_emit(
 def _tsconfig_chain(
     path: Path, documents: Mapping[Path, Mapping[str, JsonValue]], seen: frozenset[Path]
 ) -> tuple[Path, ...]:
-    # The project first, then what it extends; later entries are overridden by earlier ones.
     document = documents.get(path)
     if document is None or path in seen:
         return ()
@@ -2088,8 +2067,6 @@ def _manifest_destination(root: Path, value: str) -> Path | None:
     except OSError, ValueError:
         destination = None
     if destination is None or not destination.is_dir():
-        # This helper cannot yield, so the caller gets the finding through a
-        # sentinel file check below; keep the path invalid rather than escaping.
         return None
     return destination
 

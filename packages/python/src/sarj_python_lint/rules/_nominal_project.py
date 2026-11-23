@@ -36,7 +36,6 @@ _SKIP = frozenset({"node_modules", "vendor", "vendored", "build", "dist", "__pyc
 class NominalSource:
     path: Path
     text: str
-    # The project's tree for this exact text, when it already parsed the file.
     parsed: ast.Module | None = field(default=None, compare=False, repr=False)
 
     @cached_property
@@ -107,7 +106,6 @@ class _Distribution:
 
 @final
 class NominalProjectFacts:
-    # One request owns these caches; subsequent requests see source changes.
     def __init__(self) -> None:
         self._distributions: dict[Path, tuple[_Distribution, ...]] = {}
         self._sources: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
@@ -139,8 +137,6 @@ class NominalProjectFacts:
         target = distribution_root(source, facts=first_party)
         if owner is None or root is None or target is None:
             return False
-        # Source ownership also applies to generated wrappers; nominal inventories
-        # deliberately keep their separate generated-source exclusion.
         return any(distribution.root == target for distribution in self._accessible_distributions(owner, root))
 
     def _accessible_distributions(self, owner: Path, root: Path) -> tuple[_Distribution, ...]:
@@ -267,7 +263,6 @@ def _files(root: Path, pattern: str) -> list[Path]:
     try:
         for count, (directory, directories, filenames) in enumerate(root.walk(on_error=_raise_walk_error)):
             if count >= _MAX_DIRECTORIES or len(found) >= _MAX_FILES:
-                # A partial inventory cannot establish uniqueness.
                 return []
             directories[:] = sorted(name for name in directories if not name.startswith(".") and name not in _SKIP)
             found.extend(directory / name for name in sorted(filenames) if Path(name).match(pattern))
@@ -304,7 +299,6 @@ def _sources(
 
 
 def _module_name(root: Path, path: Path) -> str | None:
-    # A nested manifest owns its sources even when it uses the same namespace.
     if any(
         (parent / "pyproject.toml").is_file() for parent in path.parents if parent != root and root in parent.parents
     ):

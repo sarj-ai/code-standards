@@ -24,19 +24,13 @@ if TYPE_CHECKING:
 
 _MAX_KEYWORDS = 6
 
-# A builder only pays for itself once the same callee is built more than once.
 _MIN_CONSTRUCTIONS = 2
 _MIN_SHARED_KEYWORDS = 7
 
-# `dict(a=1, b=2, ...)` is a mapping literal, not a domain object.
 _DATA_CALLABLES = frozenset({"dict"})
 
-# `<mapping>.update(a=1, b=2, ...)` spreads mapping entries — data again, and no
-# object a builder could construct.
 _DATA_METHODS = frozenset({"update"})
 
-# `mock.assert_called_once_with(a=1, ...)` builds nothing: it pins the exact call
-# the code under test made, so defaulting its keywords away deletes the assertion.
 _MOCK_ASSERTION_PREFIX = "assert_"
 _PYTEST_SOURCES = frozenset({"pytest", "pytest_asyncio"})
 _SIMPLE_NAMESPACE_SOURCES = frozenset({"types"})

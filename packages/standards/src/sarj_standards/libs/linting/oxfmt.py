@@ -42,12 +42,10 @@ if TYPE_CHECKING:
 
 SOURCE: Final = "oxfmt"
 RULE_ID: Final = "format"
-# Mirrors `formatExtensions` in configs/oxfmt.strict.mts.
 FORMAT_EXTENSIONS: Final = frozenset({
     "cjs", "css", "cts", "gql", "graphql", "gs", "handlebars", "hbs", "htm", "html", "js", "json", "json5", "jsonc",
     "jsx", "less", "markdown", "md", "mdx", "mjs", "mts", "pcss", "scss", "toml", "ts", "tsx", "vue", "yaml", "yml",
 })  # fmt: skip
-# Prettier has no TOML or Apps Script parser without plugins.
 _PRETTIER_EXTENSIONS: Final = FORMAT_EXTENSIONS - {"gs", "toml"}
 _BIOME_LANGUAGES: Final = {
     "javascript": frozenset({"cjs", "cts", "js", "jsx", "mjs", "mts", "ts", "tsx"}),
@@ -55,9 +53,7 @@ _BIOME_LANGUAGES: Final = {
     "css": frozenset({"css"}),
     "graphql": frozenset({"gql", "graphql"}),
 }
-# Biome formats HTML only when `html.formatter.enabled` is true.
 _BIOME_HTML: Final = frozenset({"htm", "html"})
-# oxfmt's own config discovery order.
 CONFIG_NAMES: Final = (".oxfmtrc.json", ".oxfmtrc.jsonc", "oxfmt.config.ts", "oxfmt.config.mts")
 PRETTIER_CONFIG_NAMES: Final = (
     ".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml", ".prettierrc.json5", ".prettierrc.js",
@@ -179,9 +175,7 @@ def reports(
     runner: ProcessExecutor,
     trust: TrustMode,
 ) -> list[ToolReport]:
-    # `projects` are the selected Oxlint projects; each needs an oxfmt config.
     results: list[ToolReport] = []
-    # Directories stay directories: oxfmt walks them faster than thousands of operands.
     operands: dict[Path, set[Path]] = {}
     for path in (Path(item).resolve() for item in inputs):
         if (owner := project_for(path, root)) is not None:
@@ -191,10 +185,8 @@ def reports(
         if owner is None:
             results.append(_missing_config(project, root))
         elif not _overlaps_selection(project, operands):
-            # A selected ancestor directory outside every oxfmt project still covers this one.
             operands.setdefault(owner, set()).add(owner)
     for owner, paths in sorted(operands.items()):
-        # oxfmt applies nested configs itself, so a selected ancestor directory covers nested projects.
         scoped = sorted(path for path in paths if not _covered_by_other_owner(path, owner, operands))
         if scoped:
             results.append(_report(scoped, owner, root=root, runner=runner, trust=trust))
@@ -237,7 +229,6 @@ def config_path(project: Path) -> Path | None:
 
 
 def project_for(path: Path, root: Path) -> Path | None:
-    # The nearest directory holding an oxfmt config owns a path, as `oxfmt` run there would.
     repository = root.resolve()
     absolute = (path if path.is_absolute() else repository / path).resolve()
     start = absolute if absolute.is_dir() else absolute.parent
@@ -269,7 +260,6 @@ def seed_config(
     *,
     runner: ProcessExecutor | None = None,  # ruff: ignore[unused-function-argument] -- Retained for callers of the former formatter migration API.
 ) -> OxfmtSeed:
-    # Adoption shares style; preserve file coverage and required parser activation.
     root = root.resolve()
     inherited = _existing_coverage(root)
     biome = _biome_config(root)
@@ -305,8 +295,6 @@ def _existing_coverage(root: Path) -> dict[str, JsonValue]:
         if not isinstance(raw, dict):
             msg = "shared oxfmt options must be a literal object"
             raise ValueError(msg)
-        # Already adopted: these options belong to the repository. Reseeding
-        # would erase behavioral exceptions and required Tailwind configuration.
         inherited = raw
         existing = []
     if existing == [".oxfmtrc.json"]:
@@ -341,8 +329,6 @@ def matches_shared_config(root: Path, seed: OxfmtSeed) -> bool:
 
 
 def _static_options(text: str) -> JsonValue:
-    # Accept only a literal object, including the keys and trailing commas oxfmt emits.
-    # Match strings first so URL/comment tokens and escaped glob brackets stay data.
     comments = re.compile(
         r""""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?P<comment>//[^\r\n\u2028\u2029]*|/\*.*?\*/)""", re.DOTALL
     )
@@ -471,7 +457,6 @@ def _biome_seed(biome: _BiomeConfig, migrated: OxfmtSeed) -> OxfmtSeed:
         for override in biome.overrides
         if override.sets_formatter_options()
     )
-    # Biome never sorts package.json; oxfmt does unless told otherwise.
     options |= {"sortPackageJson": False, "extensions": _sorted(extensions)}
     return OxfmtSeed("biome", options, tuple(notes))
 

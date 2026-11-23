@@ -66,7 +66,6 @@ def _mapping(  # ruff: ignore[too-many-positional-arguments] - compact declarati
     return LibraryMapping(id_, ecosystem, category, import_names, packages, replacement, message)
 
 
-# Adapters and the manifest scanner derive from this sole policy source.
 CATALOG: Final[tuple[LibraryMapping, ...]] = (
     _mapping(
         "LIB001",
@@ -796,7 +795,6 @@ def _requirements_dependencies(
             continue
         if editable.startswith((".", "/", "http://", "https://", "git+", "hg+", "svn+", "bzr+")):
             continue
-        # Strip pip-only hash/options while retaining PEP 508 markers and URLs.
         spec = re.split(r"\s+(?:--hash|--config-settings|--global-option)\b", editable, maxsplit=1)[0]
         result.append((path, "python", _requirement_name(spec, str(path))))
     return tuple(result)

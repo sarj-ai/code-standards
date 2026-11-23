@@ -35,14 +35,12 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
-# The two attributes that *configure* what a mock does when called.
 _CONFIG_ATTRS = frozenset({"return_value", "side_effect"})
 _BUILTIN_NAMESPACE = MappingProxyType[str, object](vars(builtins))
 _EXCEPTION_TYPES = frozenset(
     name for name, value in _BUILTIN_NAMESPACE.items() if isinstance(value, type) and issubclass(value, BaseException)
 )
 
-# Constructor keywords configure these doubles; resolve imports, and recognize mocker only as a test parameter.
 _MOCK_CONSTRUCTORS = frozenset(
     {
         "AsyncMock",
@@ -58,10 +56,8 @@ _UNITTEST_MOCK = frozenset({"unittest.mock"})
 _MOCKER = "mocker"
 _PATCH_OBJECT_POSITIONAL_ARGUMENTS = 2
 
-# Assertions that the mock was never reached.
 _NOT_CALLED_ASSERTIONS = frozenset({"assert_not_called", "assert_not_awaited"})
 
-# Reads of the call record.
 _INTROSPECTION_ATTRS = frozenset(
     {
         "await_args",
@@ -212,7 +208,6 @@ class UnusedMockSetup(Rule):
 
 
 def _has_mock_origin_candidate(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    # Every accepted origin is a direct assignment of a call; extra candidate targets are harmless.
     return any(
         isinstance(statement, ast.Assign | ast.AnnAssign) and isinstance(statement.value, ast.Call)
         for statement in fn.body
@@ -434,7 +429,6 @@ def _is_safe_value(node: ast.expr, provenance: ResourceProvenance, *, hash_key: 
                 return node.id in _EXCEPTION_TYPES and provenance.context.imports.builtin_is_unshadowed(node.id)
             if not isinstance(binding, ast.Name) or provenance.scope(binding) is not provenance.scope(node):
                 return False
-            # Stable, already executed scalar assignments prove both initialization and native hashing.
             return isinstance(provenance.assignment_value(binding, node), ast.Constant)
         case ast.List() | ast.Tuple():
             return (not hash_key or isinstance(node, ast.Tuple)) and all(
@@ -647,7 +641,6 @@ def _is_inert(stmt: ast.stmt, provenance: ResourceProvenance) -> bool:
     if not isinstance(stmt, ast.Assign):
         return False
     if not all(isinstance(target, ast.Name) for target in stmt.targets):
-        # `obj.attr = 1` can hit a property setter, `d[k] = 1` a `__setitem__`.
         return False
     return _is_safe_value(stmt.value, provenance)
 

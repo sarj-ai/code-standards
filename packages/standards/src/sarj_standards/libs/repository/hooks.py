@@ -111,7 +111,6 @@ def _configured_hooks(root: Path, binary: Path) -> frozenset[str]:
         msg = "Lefthook resolved configuration must be a JSON object"
         raise ValueError(msg)
     configured = frozenset(name for name in configuration if isinstance(name, str))
-    # Native install refreshes remotes, so only local post hooks have stable ownership before installation.
     return configured.difference(_LFS_POST_HOOKS) if configuration.get("remotes") else configured
 
 
@@ -167,7 +166,6 @@ def _hook_transaction_targets(hooks_dir: Path, configured: frozenset[str]) -> tu
 
 def run(argv: list[str] | None = None) -> int:
     try:
-        # The native hook manager owns this protocol rather than domain CLI fields.
         return _run(
             list(sys.argv[1:] if argv is None else argv)  # sarj-noqa: SARJ533 -- native hook forwarding
         )

@@ -284,7 +284,6 @@ def _json_tool(
         tool = checked_tool(name, root=root, runner=runner) if tool is None else tool
         output = invoke(tool, args, root=root, runner=runner)
         payload = output.stdout
-        # actionlint does not render its error template on a clean invocation.
         if not payload.strip() and name == "actionlint" and output.returncode == 0:
             payload = "[]"
         findings = parser(payload, root)
@@ -426,7 +425,6 @@ def _project_inputs(paths: tuple[Path, ...]) -> tuple[tuple[Path, tuple[Path, ..
 def _per_project[T](
     projects: Sequence[tuple[Path, tuple[Path, ...]]], analyze: Callable[[Path, tuple[Path, ...]], T]
 ) -> tuple[T, ...]:
-    # Each Terraform root runs its own process; keep project order in the report.
     if len(projects) <= 1:
         return tuple(starmap(analyze, projects))
     with ThreadPoolExecutor(

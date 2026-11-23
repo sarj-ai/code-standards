@@ -152,7 +152,7 @@ def build_config(resource: Mapping[str, object]) -> KubeConfig:
     projection = _pod_spec(resource)
     spec = projection.spec
     if spec is not None:
-        _containers(spec)  # Validate unique attribution before native execution.
+        _containers(spec)
     if spec is not None and _windows(spec):
         return {"checks": {"doNotAutoAddDefaults": True, "include": ["duplicate-env-var"]}}
     config: KubeConfig = {"checks": {"doNotAutoAddDefaults": True, "include": list(NATIVE_CHECKS)}}

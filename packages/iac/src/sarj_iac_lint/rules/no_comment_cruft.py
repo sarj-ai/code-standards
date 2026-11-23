@@ -61,12 +61,11 @@ _BLOCK_COMMENT_START_RE = re.compile(r"^(\s*)/\*(.*)$")
 
 _HCL_CODE_RE = re.compile(
     r'^[A-Za-z_][\w-]*(?:\s+(?:"(?:\\.|[^"\\])*"|[A-Za-z_][\w.-]*)){0,3}\s*\{\s*$'
-    # Matches attribute assignments whose right-hand side represents a literal HCL value.
     r'|^[A-Za-z_][\w-]*\s*=(?!=)\s*(?:["\'\[{]|true\b|false\b|null\b'
     r"|var\.|local\.|module\.|data\.|[A-Za-z_][\w]*\.|[a-z_][\w]*\("
     r"|\d+(?:\.\d+)?\s*,?\s*$)"
-    r"|^[A-Za-z_][\w-]*\s*\{$"  # block opener
-    r"|^\}\s*$"  # block closer
+    r"|^[A-Za-z_][\w-]*\s*\{$"
+    r"|^\}\s*$"
 )
 _ATTRIBUTE_VALUE_RE = re.compile(r"^(?P<name>[A-Za-z_][\w-]*)\s*=(?!=)\s*(?P<value>.*)$")
 

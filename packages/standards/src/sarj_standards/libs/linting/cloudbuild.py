@@ -75,8 +75,6 @@ def compose_documents(source: str) -> list[Node | None]:
 
 
 def _check_expansion(node: Node | None, remaining: int) -> int:
-    # Shared aliases remain small in memory, but constructors/validators still
-    # visit each occurrence. Bound that expanded work before either runs.
     pending = [(node, 0)]
     while pending:
         current, depth = pending.pop()
@@ -158,7 +156,6 @@ def _looks_like_build(document: MappingNode) -> bool:
             for step in sequence_items(steps)
         )
     except CloudBuildParseError:
-        # Invalid mappings without a proven Build shape belong to YAML validation.
         return False
 
 
@@ -261,7 +258,7 @@ def _shell_source_index(entrypoint: str, args: list[str]) -> int | None:
     try:
         unwrapped = unwrap_command(words, allow_shell_builtins=False, allowed_wrappers=_ENV_WRAPPERS)
     except UnprovableCommandError:
-        return None  # Unknown option/quoting grammars cannot prove shell-source use.
+        return None
     if not unwrapped or unwrapped[0].rsplit("/", 1)[-1] not in _SHELLS:
         return None
     command_index = _command_index(list(unwrapped[1:]))

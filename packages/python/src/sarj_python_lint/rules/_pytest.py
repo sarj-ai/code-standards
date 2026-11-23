@@ -21,7 +21,6 @@ def collected_tests(statements: list[ast.stmt]) -> Iterator[ast.FunctionDef | as
                 pass
 
 
-# The pytest-benchmark fixture: the test measures time, it does not verify.
 _BENCHMARK = "benchmark"
 
 
@@ -39,8 +38,6 @@ def _decorator_attr(dec: ast.expr) -> str | None:
     target = dec.func if isinstance(dec, ast.Call) else dec
     if not isinstance(target, ast.Attribute):
         return None
-    # Only `*.mark.<name>`, so a `@benchmark.something` helper is not mistaken
-    # for a pytest marker.
     parent = target.value
     if isinstance(parent, ast.Attribute) and parent.attr == "mark":
         return target.attr

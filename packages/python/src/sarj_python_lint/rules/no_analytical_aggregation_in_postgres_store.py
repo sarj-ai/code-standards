@@ -25,8 +25,6 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# Keep the historical standalone SARJ437 overlap stable. Combined runs give the
-# broader SARJ020 error precedence only when it actually emits a diagnostic.
 _TIME_BUCKET = re.compile(r"\b(?:DATE_TRUNC|TIME_BUCKET)\s*\(", re.IGNORECASE)
 _GROUP_BY = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 _COMMON_AGGREGATE = re.compile(

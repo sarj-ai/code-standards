@@ -373,5 +373,7 @@
   "SARJ582": "prefer-pydantic-field-bounds",
   "SARJ583": "prefer-single-parametrize-contract",
   "SARJ584": "prefer-required-prerequisite",
-  "SARJ585": "prefer-exception-propagation"
+  "SARJ585": "prefer-exception-propagation",
+  "SARJ586": "prefer-named-literal-alias",
+  "SARJ587": "pytest-test-size-budget"
 }

@@ -340,7 +340,6 @@ class FileTransaction:
         snapshot = previous.snapshot
         expected = previous.receipt if isinstance(previous, _PublishedFile) else snapshot.contents
         assert_expected(self.root, path, expected)
-        # A pending attempt does not claim untouched state, but survives interruption after replacement.
         if isinstance(snapshot, SourceFile) and not isinstance(expected, bytes):
             msg = "source transactions require an owned existing-file write"
             raise OSError(msg)
@@ -349,7 +348,6 @@ class FileTransaction:
             try:
                 _write_source(self.root, path, contents, expected=expected, snapshot=snapshot)
             except SourceChangedError:
-                # This attempt never replaced the source; retain any earlier successful receipt.
                 self._files[path] = previous
                 raise
         else:
@@ -433,10 +431,7 @@ class FileTransaction:
         for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
             try:
                 parent.rmdir()
-            except FileNotFoundError:
-                continue
             except OSError:
-                # A non-empty directory contains state the transaction does not own.
                 continue
         report = RollbackReport(tuple(issues))
         if report.ok:

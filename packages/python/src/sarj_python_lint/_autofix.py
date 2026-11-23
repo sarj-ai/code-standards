@@ -83,7 +83,6 @@ _JWT_POSITIONAL_PREFIX_ARGUMENTS = 3
 _STREAM_MIN_BODY_LENGTH = 3
 _CONSTANT_TRUE_DEPTH_LIMIT = 32
 _INERT_DEFAULT_NODE_LIMIT: Final = 128
-# Bound accepted revisions; each rule still owns its work and replacement size.
 _MAX_FIX_PASSES: Final = 256
 _TRIPLE_QUOTE_LENGTH: Final = 3
 _PURE_STRING_TRANSFORMS: Final[dict[str, str]] = {
@@ -1517,7 +1516,6 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     if any(character in source for character in "\v\f\x1c\x1d\x1e\x85\u2028\u2029") or "\r" in source.replace(
         "\r\n", ""
     ):
-        # These contract-backed builders use aligned physical-line buffers and token coordinates.
         rules = [rule for rule in rules if rule.code in {"SARJ531", "SARJ567"}]
     seen: set[bytes] = set()
     applied_codes: set[str] = set()
@@ -1530,7 +1528,6 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         candidates = _candidate_edits(context, diagnostics)
         if not candidates:
             return current
-        # Batch independent candidates; overlapping candidates get fresh offsets on the next pass.
         selected_pass = _coherent_edits(candidates)
         updated = _apply_validated_edits(path, current, selected_pass.edits)
         if updated == current:

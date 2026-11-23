@@ -34,8 +34,6 @@ class _WorkerState:
     needs_serial: bool = False
 
 
-# A full resolution cache never admits another key, so every later file
-# observes exactly these entries in any order. Module keys keep their own limit.
 @dataclass(frozen=True, slots=True)
 class FrozenResolutions:
     resolutions: tuple[tuple[_ResolutionKey, Path | None], ...]
@@ -68,7 +66,6 @@ def _initialize(
     )
     session = AnalysisSession() if source_inputs is None else AnalysisSession(source_inputs=source_inputs)
     if frozen is not None:
-        # The parent's preparation lookups are already part of this full cache.
         session.local_source.restore_resolutions(frozen.resolutions)
     _state = _WorkerState(rules, session, resolutions=session.local_source.cache_keys().resolutions)
     try:
@@ -140,8 +137,6 @@ def check_parallel(
     source_inputs: PreparedSourceInputs | None = None,
     frozen: FrozenResolutions | None = None,
 ) -> list[Diagnostic] | None:
-    # Workers share the complete immutable snapshot. Choose serial fallback before replay exhausts resolution quota;
-    # frozen caches need only module-quota checks.
     if frozen is None and len(loaded) >= LOCAL_SOURCE_CACHE_LIMIT:
         return None
     source_snapshot = None if source_inputs is None else source_inputs.source_snapshot()
@@ -158,7 +153,6 @@ def check_parallel(
         initializer=_initialize,
         initargs=(
             rule_types,
-            # A frozen handoff also carries the parent's memoized whole-project facts.
             project.source_snapshot(with_facts=frozen is not None) if project is not None else None,
             source_snapshot,
             frozen,
@@ -169,7 +163,6 @@ def check_parallel(
     modules: set[Path] = set() if frozen is None else set(frozen.modules)
     needs_serial = False
     try:
-        # Keep workers busy while an earlier file delays ordered results.
         items = (
             (
                 path,
@@ -182,14 +175,10 @@ def check_parallel(
             for path, source in loaded.items()
         )
         for result in pool.map(_check_file, items, chunksize=1, buffersize=workers * _BUFFERED_ITEMS_PER_WORKER):
-            # Drain actual results after either replay signal so a later worker
-            # failure cannot be disguised as a clean serial replay.
             if needs_serial:
                 continue
             resolutions.update(result.resolutions)
             modules.update(result.modules)
-            # A worker cannot hit either order-dependent limit when the whole
-            # union stays strictly below it. At the boundary, discard all output.
             if (
                 result.needs_serial
                 or len(resolutions) >= LOCAL_SOURCE_CACHE_LIMIT
@@ -203,6 +192,4 @@ def check_parallel(
             diagnostics.extend(result.diagnostics)
         return None if needs_serial else diagnostics
     finally:
-        # Bound queued work and reap before fallback/error return. Running file
-        # checks finish normally; group cancellation belongs to the supervisor.
         pool.shutdown(wait=True, cancel_futures=True)

@@ -69,8 +69,6 @@ ZIZMOR_RULES: Final = frozenset(
         "use-trusted-publishing",
     }
 )
-# These v1.31.1 audits return AuditLoadError::Skip when no_online_audits is set.
-# https://github.com/zizmorcore/zizmor/tree/v1.31.1/crates/zizmor/src/audit
 ZIZMOR_ONLINE_ONLY: Final = frozenset(
     {"impostor-commit", "known-vulnerable-actions", "ref-confusion", "ref-version-mismatch", "stale-action-refs"}
 )
@@ -421,8 +419,6 @@ def _contained_path(raw_path: str, root: Path) -> Path:
 
 
 def _has_kubernetes_ownership(path: Path) -> bool:
-    # Discover ownership before applying the source limit: unrelated datasets are
-    # not security inputs. Keep this prefilter byte-based and parse candidates.
     matched: set[int] = set()
     with path.open("rb") as source:
         for line in source:

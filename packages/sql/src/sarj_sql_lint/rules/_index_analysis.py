@@ -221,8 +221,6 @@ def _index_source(source: str, *, include_executable_bodies: bool) -> str:
 def _mask_dollar_quoted_bodies(source: str, masked: str) -> str:
     output = list(masked)
     for start, end in dollar_quoted_spans(source):
-        # PostgreSQL identifiers can contain dollar signs; restore identifier text that would otherwise resemble a
-        # dollar-quoted literal.
         if start > 0 and _is_identifier_character(source[start - 1]):
             output[start:end] = source[start:end]
             continue

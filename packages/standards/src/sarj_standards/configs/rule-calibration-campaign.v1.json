@@ -3817,6 +3817,22 @@
       "outcome": "Currently enforce SARJ585 at ERROR without autofix for the proven message-only wrapper boundary. Preserve cleanup, public/privacy exception contracts and exact explained exceptions; Ruff TRY201/TRY203 still own bare rethrows. Core preserves the published warning fingerprint across message changes, with file/staged accepted-debt and new-error controls. Broader field calibration remains pending; this record does not claim completed consumer adoption."
     },
     {
+      "task": "rule-audit/python/prefer-named-literal-alias",
+      "family": "python",
+      "ruleId": "prefer-named-literal-alias",
+      "state": "pending",
+      "evidence": "Executable cases cover inline multi-member Literal annotations in parameters, returns, variables and nested unions, and accept type aliases, single-member discriminator tags, runtime casts, foreign Literal names and exact suppressions. A bounded isolated corpus sample found only inspected true positives; fleet-wide precision is not established.",
+      "outcome": "Stage SARJ586 at WARNING without autofix: name each multi-member Literal domain once with a type alias and reuse it. Promotion requires a separate change after a warning release."
+    },
+    {
+      "task": "rule-audit/python/pytest-test-size-budget",
+      "family": "python",
+      "ruleId": "pytest-test-size-budget",
+      "state": "pending",
+      "evidence": "Executable cases cover the own-scope statement budget, branching through if, match and try/except, verifying loops, and accepted try/finally, with blocks, comprehensions, ternaries, nested helpers, conftest and generated files. A bounded isolated corpus distribution set the budget near the 90th percentile; integration tests legitimately exceed it, so precision is not established.",
+      "outcome": "Stage SARJ587 at WARNING without autofix: split long or branching collected tests and parametrize per-case logic. Promotion requires a separate change and an integration-test exemption decision."
+    },
+    {
       "task": "rule-audit/sql/no-redundant-nullability",
       "family": "sql",
       "ruleId": "no-redundant-nullability",

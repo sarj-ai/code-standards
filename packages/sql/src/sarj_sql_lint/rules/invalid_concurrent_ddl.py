@@ -192,8 +192,6 @@ class InvalidConcurrentDdl(Rule):
             elif (ended := _END.fullmatch(text)) is not None:
                 transactional = transactional and ended.group("chain") is not None and ended.group("no") is None
             elif _PREPARE.match(text) is not None:
-                # PREPARE TRANSACTION ends the current transaction. Its transaction
-                # identifier and externally prepared transactions need no inference.
                 transactional = False
             elif reasons := _invalid_reasons(text, transactional=transactional):
                 location = source_location(source, statement.start)

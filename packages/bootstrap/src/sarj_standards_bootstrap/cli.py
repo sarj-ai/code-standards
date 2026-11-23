@@ -184,7 +184,6 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
 
 def main(argv: Sequence[str] | None = None) -> int:
     try:
-        # Bundle selection must precede installation of its typed Typer CLI.
         run(sys.argv[1:] if argv is None else argv, cwd=Path.cwd())  # sarj-noqa: SARJ533 -- pinned CLI forwarding
     except BootstrapError as exc:
         sys.stderr.write(f"code-standards bootstrap: {exc}\n")

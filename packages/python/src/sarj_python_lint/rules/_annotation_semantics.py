@@ -156,7 +156,6 @@ _BOUND_NAMES: WeakKeyDictionary[ast.stmt, frozenset[str]] = WeakKeyDictionary()
 
 
 def _bound_names(statement: ast.stmt) -> frozenset[str]:
-    # Statements are immutable once parsed, and rules ask about the same scopes repeatedly.
     names = _BOUND_NAMES.get(statement)
     if names is None:
         collector = _ScopeBindings()

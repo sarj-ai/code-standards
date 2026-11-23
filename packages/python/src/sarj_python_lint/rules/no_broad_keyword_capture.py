@@ -240,7 +240,6 @@ def _signature_end_suppressed(
     header = context.source_lines[function.lineno - 1 : first_statement.lineno]
     if not any("sarj-noqa" in line.lower() for line in header):
         return False
-    # AST columns count UTF-8 bytes, and a continued inline body can share the header's logical line.
     header[-1] = header[-1].encode("utf-8")[: first_statement.col_offset].decode("utf-8")
     try:
         line = _signature_end_line(header, function.lineno)

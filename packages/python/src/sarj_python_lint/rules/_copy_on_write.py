@@ -67,7 +67,6 @@ class _Value:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _OwnershipSummary:
-    # Equal ownership facts do not prove that alternative objects alias.
     members: tuple[_Value, ...]
 
 
@@ -76,8 +75,6 @@ type _ProfilePair = tuple[_ProfileNode, _ProfileNode]
 
 
 def _same_profile(left: _ProfileNode, right: _ProfileNode, *, memo: dict[tuple[int, int], bool]) -> bool:
-    # Ownership profiles ignore summary identity/origin. Exact aliases still use
-    # is/id, and this memo lives only while both operand graphs remain reachable.
     pending: list[tuple[_ProfileNode, _ProfileNode, tuple[_ProfilePair, ...] | None]] = [(left, right, None)]
     while pending:
         first, second, children = pending.pop()
@@ -159,8 +156,6 @@ def _value_children(value: _Value | _OwnershipSummary, *, summaries: bool) -> tu
 
 
 def _summary_value(summary: _OwnershipSummary, *, origin: _OwnershipSummary | None = None) -> _Value:
-    # Detach each lookup from the contributing objects and other lookups.
-    # Aliases assigned from this one lookup still share its returned value.
     owner = summary if origin is None else origin
     copies: dict[int, _Value] = {}
     for value in _value_order([summary.members[0]], summaries=False):
@@ -177,8 +172,6 @@ def _replace_owned_value(bindings: dict[str, _Value], owner: _Value, updated: _V
     replacements: dict[int, _Value] = {}
     summary_changes: dict[int, bool] = {}
     if owner.origin is not None:
-        # An abstract value may designate any contributing object. Keep the
-        # explicitly updated alias, but do not retain stale concrete alternatives.
         for possible in _value_order(list(owner.origin.members)):
             if not possible.borrowed:
                 replacements[id(possible)] = _Value(_Shape())
@@ -214,7 +207,6 @@ def _rebuild_owned_parent(
 
 
 def _summary_changed(summary: _OwnershipSummary, replacements: dict[int, _Value], changes: dict[int, bool]) -> bool:
-    # Member dependencies precede each summary view in the transfer order.
     if id(summary) not in changes:
         changes[id(summary)] = any(id(member) in replacements for member in summary.members)
     return changes[id(summary)]
@@ -969,8 +961,6 @@ class CopyOnWriteAnalysis:
             if value.borrowed or all(alternative is value for alternative in alternatives):
                 bindings[name] = value
                 continue
-            # Equal branch facts preserve ownership, not a concrete alias to
-            # whichever alternative happened to be scanned first.
             key = tuple(id(alternative) for alternative in alternatives)
             if key not in summaries:
                 summaries[key] = _summary_value(_OwnershipSummary(alternatives))

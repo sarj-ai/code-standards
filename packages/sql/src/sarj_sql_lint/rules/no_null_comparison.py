@@ -158,7 +158,6 @@ def _statements(source: str) -> Iterator[tuple[int, exp.Expr]]:
 
 def _candidate_ranges(source: str) -> Iterator[tuple[int, int]]:
     if any(opener in source for opener in ("{{", "{%", "{#")):
-        # The shared mask hides template syntax, so retain native boundaries for these inputs.
         yield from _native_ranges(source)
         return
     masked = mask_sql(source, mask_dollar_literals=True)
@@ -178,7 +177,6 @@ def _candidate_ranges(source: str) -> Iterator[tuple[int, int]]:
             _COMPARISON.search(masked, start, end) is not None
             or (_NOT.search(masked, start, end) is not None and _IN.search(masked, start, end) is not None)
         ):
-            # Presence alone is conservative across unary wrappers and parser normalization.
             yield start, end
         start = end + 1
 

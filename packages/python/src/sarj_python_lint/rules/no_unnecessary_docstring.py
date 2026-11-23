@@ -1434,8 +1434,6 @@ def _metadata_class_global_fallback(
     *,
     class_namespace: bool,
 ) -> bool:
-    # A later class-local declaration makes LOAD_NAME fall back to globals,
-    # rather than capture a same-named enclosing function cell.
     return (
         isinstance(scope, ast.ClassDef)
         and class_namespace
@@ -1467,8 +1465,6 @@ def _metadata_class_prefix(scope: ast.ClassDef, node: ast.AST, bindings: _Metada
 
 
 def _metadata_current_bindings(statement: ast.AST) -> frozenset[str]:
-    # Headers and RHS expressions run before their target is bound.
-    # Unknown assignment expressions still invalidate provenance.
     match statement:
         case ast.Assign(value=value) | ast.AnnAssign(value=value):
             return _metadata_bound_names((value,)) if value is not None else frozenset()

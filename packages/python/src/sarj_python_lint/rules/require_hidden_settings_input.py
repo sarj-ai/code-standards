@@ -199,7 +199,6 @@ class _SettingsResolver:
         declaration = model.declaration
         if declaration in self._facts:
             return self._facts[declaration]
-        # Seeding the cache makes a cyclic ancestry resolve as opaque.
         self._facts[declaration] = None
         facts = self._resolve(model)
         self._facts[declaration] = facts

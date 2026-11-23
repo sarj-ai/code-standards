@@ -96,7 +96,6 @@ class RuntimeBindings:
             if table.get_type() is symtable.SymbolTableType.MODULE:
                 break
             if table.get_type() is symtable.SymbolTableType.CLASS and symbol.get_name() == "__class__":
-                # The compiler binds this cell to the lexically defined class.
                 return None
             if table.get_type() is not symtable.SymbolTableType.CLASS:
                 ancestor = _symbol(table, symbol.get_name())

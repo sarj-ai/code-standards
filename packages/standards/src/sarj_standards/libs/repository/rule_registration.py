@@ -74,7 +74,6 @@ def plan(
     return tuple(edits)
 
 
-# Add one rule to a generated TypeScript index; `generate-index.ts` later restores its order.
 def _typescript_entry(registry: Path, anchor: str, slug: str, binding: str, statement: str) -> FileEdit:
     before = registry.read_bytes() if registry.is_file() else None
     source = before.decode() if before is not None else f"{anchor}}};\n"
