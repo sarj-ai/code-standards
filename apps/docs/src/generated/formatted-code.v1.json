@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7f00def3a2e92e1aaf4210f545ccc6818d5648afc1cff66b017c9e2681c284dc",
-  "cliSha256": "e3ea4ef3246328b1e622905d42616297740adbb11cf426c25670fee75e7fcb91",
+  "catalogSha256": "98211015acf3a464915335b01914f2f53ddf72ad0d74e8f1c3571ca8a8b1b173",
+  "cliSha256": "87795ffa58b714a8d8e63a3c2a48a19ff91f6cfb0d108875f490ff1d81263be8",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -12387,6 +12387,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:exit-stack-requires-lifecycle-owner": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/lifespan.py",
+              "source": "from collections.abc import AsyncIterator\nfrom contextlib import AsyncExitStack, asynccontextmanager\n\n\n@asynccontextmanager\nasync def lifespan(app) -> AsyncIterator[None]:\n    async with AsyncExitStack() as resources:\n        app.state.client = await resources.enter_async_context(open_client())\n        yield\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/lifespan.py",
+          "id": "lifespan-owns-resources",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The application lifespan owns resource closing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/uploader.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nclass Uploader:\n    def __init__(self, client):\n        self._client = client\n\n    async def upload(self, items):\n        async with AsyncExitStack() as cleanup:\n            cleanup.push_async_callback(self._client.discard, items)\n            await self._client.publish(items)\n            cleanup.pop_all()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/uploader.py",
+          "id": "service-ownership-guard",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A service method hides cleanup in an exit stack with pop_all"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:failed-probe-zero-threshold": {
       "examples": [
         {
@@ -12743,6 +12778,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not prove Terraform behavior with a substring"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:inline-single-use-local": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "async def store(objects, path, audio):\n    await objects.upload(path=path, data=encode(audio))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "inlined-expression",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The expression is written at its single use"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "async def store(objects, path, audio):\n    payload = encode(audio)\n    await objects.upload(path=path, data=payload)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "single-use-temporary",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A temporary only feeds the next call"
         }
       ],
       "optionsSchemaSource": null
@@ -20340,6 +20410,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-next-over-search-loop": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def find_admin(users):\n    for user in users:\n        if user.is_admin:\n            return user\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "first-match-loop",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A loop returns the first matching item with a fallback"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def find_admin(users):\n    return next((user for user in users if user.is_admin), None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "next-over-generator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "next() states the search and its fallback together"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-nominal-id-types": {
       "examples": [
         {
@@ -21398,6 +21503,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-result-over-nullable-exception": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/rows.py",
+              "source": "class ParsingError(Exception):\n    pass\n\n\ndef validate(row: dict[str, str]) -> ParsingError | None:\n    return None if row else ParsingError(\"empty row\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/rows.py",
+          "id": "nullable-exception-return",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Success is encoded as a missing exception"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/rows.py",
+              "source": "from dataclasses import dataclass\n\n\nclass ParsingError(Exception):\n    pass\n\n\n@dataclass(frozen=True, slots=True)\nclass Success[T]:\n    value: T\n\n\n@dataclass(frozen=True, slots=True)\nclass Failure[E: BaseException]:\n    error: E\n\n\ntype Result[T, E: BaseException] = Success[T] | Failure[E]\n\n\ndef validate(row: dict[str, str]) -> Result[dict[str, str], ParsingError]:\n    return Success(row) if row else Failure(ParsingError(\"empty row\"))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/rows.py",
+          "id": "tagged-result-return",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Success and failure are explicit variants"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-runtime-validation": {
       "examples": [
         {
@@ -22329,6 +22469,46 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Comprehension evaluates one call twice"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-walrus-none-guard": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def label(labels, key):\n    if (found := labels.get(key)) is None:\n        return \"unknown\"\n    return found.title()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "guard-bound-lookup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The lookup is bound in its absence guard"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def label(labels, key):\n    found = labels.get(key)\n    if found is None:\n        return \"unknown\"\n    return found.title()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "service.py",
+              "source": "def label(labels, key):\n    if (found := labels.get(key)) is None:\n        return \"unknown\"\n    return found.title()\n"
+            }
+          ],
+          "focusPath": "service.py",
+          "id": "split-optional-lookup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A synchronous lookup is split from its absence guard"
         }
       ],
       "optionsSchemaSource": null

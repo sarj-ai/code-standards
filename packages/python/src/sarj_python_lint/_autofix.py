@@ -78,7 +78,7 @@ def _type_parameter_reference(node: ast.AST, context: PythonFileContext) -> bool
 
 
 _COMMENT_CODES = frozenset({"SARJ016", "SARJ089"})
-_WALRUS_CODES = frozenset({"SARJ081", "SARJ432"})
+_WALRUS_CODES = frozenset({"SARJ081", "SARJ432", "SARJ589"})
 _JWT_POSITIONAL_PREFIX_ARGUMENTS = 3
 _STREAM_MIN_BODY_LENGTH = 3
 _CONSTANT_TRUE_DEPTH_LIMIT = 32
@@ -206,8 +206,7 @@ def _at(node: _Located, diagnostic: Diagnostic) -> bool:
 
 
 def _comment_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
-    token = source.comments.get(diagnostic.line)
-    if token is None:
+    if (token := source.comments.get(diagnostic.line)) is None:
         return []
     body = token.string.removeprefix("#").strip()
     if (
@@ -421,8 +420,7 @@ def _regex_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
             continue
         if _SIMPLE_VALIDATION_PATTERN.fullmatch(pattern.value) is None or not _literal_without_newline(subject):
             continue
-        replacement = _strict_end_literal(source.segment(pattern))
-        if replacement is not None:
+        if (replacement := _strict_end_literal(source.segment(pattern))) is not None:
             return [source.replace(pattern, replacement)]
     return []
 
@@ -995,8 +993,7 @@ def _self_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
         if source.comments_between(annotation.lineno, _last_line(annotation)):
             continue
         shadowed = _type_parameter_names(method, source.context)
-        alias = next((name for name in aliases if name not in shadowed), None)
-        if alias is not None:
+        if (alias := next((name for name in aliases if name not in shadowed), None)) is not None:
             return [source.replace(annotation, alias)]
     return []
 
@@ -1009,8 +1006,7 @@ def _jwt_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
         qualified = source.context.imports.resolved_qualified_name(call.func)
         if qualified is None or not provenance.imported(call.func, qualified):
             continue
-        option = next((keyword for keyword in call.keywords if keyword.arg == "options"), None)
-        if option is None:
+        if (option := next((keyword for keyword in call.keywords if keyword.arg == "options"), None)) is None:
             added = ast.keyword(
                 arg="options",
                 value=ast.Dict(
@@ -1045,14 +1041,12 @@ def _jwt_options(options: ast.expr) -> ast.Dict | None:
         names.append(key.value)
     if len(names) != len(set(names)):
         return None
-    required_index = next((index for index, name in enumerate(names) if name == "require"), None)
-    if required_index is None:
+    if (required_index := next((index for index, name in enumerate(names) if name == "require"), None)) is None:
         return ast.Dict(
             keys=[*options.keys, ast.Constant(value="require")],
             values=[*options.values, ast.List(elts=[ast.Constant(value="exp")], ctx=ast.Load())],
         )
-    sequence = _jwt_required_sequence(options.values[required_index])
-    if sequence is None:
+    if (sequence := _jwt_required_sequence(options.values[required_index])) is None:
         return None
     values = list(options.values)
     values[required_index] = sequence
@@ -1129,8 +1123,7 @@ def _printf_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
             continue
         if source.comments_between(message.lineno, _last_line(message)):
             continue
-        template = _printf_template(message.value, call.args[index + 1 :], source.context)
-        if template is not None:
+        if (template := _printf_template(message.value, call.args[index + 1 :], source.context)) is not None:
             return [source.replace(message, repr(template))]
     return []
 
@@ -1222,8 +1215,7 @@ def _literal_collection_scope(
                 return False
             if not isinstance(loop.iter, (ast.List, ast.Tuple)) or len(loop.body) != 1 or loop.orelse:
                 return False
-            names = _literal_iteration_names(loop.target, loop.iter.elts)
-            if names is None:
+            if (names := _literal_iteration_names(loop.target, loop.iter.elts)) is None:
                 return False
             return _literal_collection_mutation(name, value, loop.body[0], names, source)
         case _:
@@ -1252,8 +1244,7 @@ def _literal_iteration_names(target: ast.expr, values: list[ast.expr]) -> frozen
         sequences.append(value)
     names: set[str] = set()
     for index, item in enumerate(target.elts):
-        bound = _literal_iteration_names(item, [sequence.elts[index] for sequence in sequences])
-        if bound is None:
+        if (bound := _literal_iteration_names(item, [sequence.elts[index] for sequence in sequences])) is None:
             return None
         names.update(bound)
     return frozenset(names)

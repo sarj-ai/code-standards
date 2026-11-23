@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from itertools import pairwise
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, final, override
 
@@ -28,13 +27,21 @@ if TYPE_CHECKING:
 
 
 _MAX_COMBINED_LINE_LENGTH = 120
+_REGEX_MATCH_METHODS = frozenset({"search", "match", "fullmatch"})
 type _NameFlow = Literal["ambiguous", "loaded", "none", "rebound", "terminal"]
 
 
 class _WalrusCandidate(NamedTuple):
     name: str
-    awaited: ast.Await
+    value: ast.expr
     is_not_none: bool
+
+
+@dataclass(frozen=True)
+class NoneGuardCandidate:
+    assignment: ast.Assign
+    name: str
+    binding: str
 
 
 @dataclass(frozen=True)
@@ -153,47 +160,29 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         tree = context.tree
         if tree is None:
             return []
-        source_lines = context.source_lines
         comment_lines = comment_line_numbers(source)
         diagnostics: list[Diagnostic] = []
 
-        def collect_body_candidates(body: list[ast.stmt]) -> None:
-            for index, (assignment, guard) in enumerate(pairwise(body)):
-                if (scoped := self._context_diagnostic(body, index, context, comment_lines)) is not None:
-                    diagnostics.append(scoped)
-                candidate = _candidate(assignment, guard, source, source_lines, comment_lines)
-                if candidate is None:
-                    continue
-                name, awaited, is_not_none = candidate
-                later_flow = _name_flow(body[index + 2 :], name)
-                if (is_not_none and later_flow in {"ambiguous", "loaded"}) or (
-                    not is_not_none and later_flow != "loaded"
-                ):
-                    continue
-                if is_suppressed(source_lines, assignment.lineno, self.code) or is_suppressed(
-                    source_lines, guard.lineno, self.code
-                ):
-                    continue
-                expression = ast.get_source_segment(source, awaited)
-                if expression is None:
-                    continue
-                diagnostics.append(
-                    Diagnostic(
-                        path=path,
-                        line=assignment.lineno,
-                        col=assignment.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.ERROR,
-                        message=(
-                            f"`{name}` only separates an awaited lookup from its terminal None guard; "
-                            f"bind it as `if ({name} := {expression.strip()}) "
-                            f"is {'not ' if is_not_none else ''}None:`"
-                        ),
-                    )
-                )
-
         for body in _statement_lists(tree, node_index=context.node_index):
-            collect_body_candidates(body)
+            diagnostics.extend(
+                scoped
+                for index in range(len(body) - 1)
+                if (scoped := self._context_diagnostic(body, index, context, comment_lines)) is not None
+            )
+        diagnostics.extend(
+            Diagnostic(
+                path=path,
+                line=candidate.assignment.lineno,
+                col=candidate.assignment.col_offset + 1,
+                code=self.code,
+                severity=Severity.ERROR,
+                message=(
+                    f"`{candidate.name}` only separates an awaited lookup from its terminal None guard; "
+                    f"bind it as `{candidate.binding}`"
+                ),
+            )
+            for candidate in none_guard_candidates(context, self.code, comment_lines, awaited=True)
+        )
         if diagnostics and context.session.python_target.has_declared_support_before(path, (3, 8)):
             return []
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
@@ -202,8 +191,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         self, body: list[ast.stmt], index: int, context: PythonFileContext, comment_lines: frozenset[int]
     ) -> Diagnostic | None:
         statement, guard = body[index : index + 2]
-        candidate = _context_guard(statement, guard, context.source, context.source_lines, comment_lines)
-        if candidate is None:
+        if (candidate := _context_guard(statement, guard, context.source, context.source_lines, comment_lines)) is None:
             return None
         flow = _name_flow(body[index + 2 :], candidate.name)
         if (candidate.is_not_none and flow in {"ambiguous", "loaded"}) or (
@@ -220,6 +208,44 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             f"Review binding `{candidate.name}` in its None guard inside the resource context. Keep the await inside that context and preserve context-manager exit and exception/return behavior; this form has no automatic fix.",
             severity=Severity.WARNING,
         )
+
+
+def none_guard_candidates(
+    context: PythonFileContext, code: str, comment_lines: frozenset[int], *, awaited: bool
+) -> list[NoneGuardCandidate]:
+    if context.tree is None:
+        return []
+    return [
+        candidate
+        for body in _statement_lists(context.tree, node_index=context.node_index)
+        for index in range(len(body) - 1)
+        if (candidate := _guard_candidate(body, index, context, code, comment_lines, awaited=awaited)) is not None
+    ]
+
+
+def _guard_candidate(
+    body: list[ast.stmt],
+    index: int,
+    context: PythonFileContext,
+    code: str,
+    comment_lines: frozenset[int],
+    *,
+    awaited: bool,
+) -> NoneGuardCandidate | None:
+    assignment, guard = body[index], body[index + 1]
+    candidate = _candidate(assignment, guard, context.source, context.source_lines, comment_lines, awaited=awaited)
+    if candidate is None or not isinstance(assignment, ast.Assign):
+        return None
+    name, value, is_not_none = candidate
+    later_flow = _name_flow(body[index + 2 :], name)
+    if (is_not_none and later_flow in {"ambiguous", "loaded"}) or (not is_not_none and later_flow != "loaded"):
+        return None
+    if any(is_suppressed(context.source_lines, node.lineno, code) for node in (assignment, guard)):
+        return None
+    if (expression := ast.get_source_segment(context.source, value)) is None:
+        return None
+    binding = f"if ({name} := {expression.strip()}) is {'not ' if is_not_none else ''}None:"
+    return NoneGuardCandidate(assignment, name, binding)
 
 
 def _context_guard(
@@ -280,13 +306,14 @@ def _candidate(
     source: str,
     source_lines: list[str],
     comment_lines: frozenset[int],
+    *,
+    awaited: bool,
 ) -> _WalrusCandidate | None:
     if not (
         isinstance(assignment, ast.Assign)
         and len(assignment.targets) == 1
         and isinstance(assignment.targets[0], ast.Name)
-        and isinstance(assignment.value, ast.Await)
-        and isinstance(assignment.value.value, ast.Call)
+        and _lookup_value(assignment.value, awaited=awaited)
         and assignment.end_lineno is not None
         and assignment.lineno == assignment.end_lineno
         and isinstance(guard, ast.If)
@@ -312,20 +339,26 @@ def _candidate(
     terminal_end = terminal.end_lineno or terminal.lineno
     if comment_lines.intersection(range(assignment.lineno, terminal_end + 1)):
         return None
-    expression = ast.get_source_segment(source, assignment.value)
-    if expression is None:
+    if (expression := ast.get_source_segment(source, assignment.value)) is None:
         return None
     original_line = source_lines[assignment.lineno - 1]
     indentation = original_line[: len(original_line) - len(original_line.lstrip())].expandtabs(8)
     combined = f"{indentation}if ({name} := {expression.strip()}) is {'not ' if is_not_none else ''}None:"
     if terminal.lineno == guard.lineno:
-        terminal_source = ast.get_source_segment(source, terminal)
-        if terminal_source is None:
+        if (terminal_source := ast.get_source_segment(source, terminal)) is None:
             return None
         combined = f"{combined} {terminal_source.strip()}"
     if len(combined) > _MAX_COMBINED_LINE_LENGTH:
         return None
     return _WalrusCandidate(name, assignment.value, is_not_none)
+
+
+def _lookup_value(value: ast.expr, *, awaited: bool) -> bool:
+    if awaited:
+        return isinstance(value, ast.Await) and isinstance(value.value, ast.Call)
+    return isinstance(value, ast.Call) and not (
+        isinstance(value.func, ast.Attribute) and value.func.attr in _REGEX_MATCH_METHODS
+    )
 
 
 def _none_guard_kind(test: ast.expr, name: str) -> bool | None:

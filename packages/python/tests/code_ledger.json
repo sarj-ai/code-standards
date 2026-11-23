@@ -375,5 +375,10 @@
   "SARJ584": "prefer-required-prerequisite",
   "SARJ585": "prefer-exception-propagation",
   "SARJ586": "prefer-named-literal-alias",
-  "SARJ587": "pytest-test-size-budget"
+  "SARJ587": "pytest-test-size-budget",
+  "SARJ588": "exit-stack-requires-lifecycle-owner",
+  "SARJ589": "prefer-walrus-none-guard",
+  "SARJ590": "prefer-next-over-search-loop",
+  "SARJ591": "prefer-result-over-nullable-exception",
+  "SARJ592": "inline-single-use-local"
 }

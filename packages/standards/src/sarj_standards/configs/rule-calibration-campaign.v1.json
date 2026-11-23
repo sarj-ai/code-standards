@@ -3839,6 +3839,46 @@
       "state": "pending",
       "evidence": "Executable examples and regressions cover parsed PostgreSQL declarations, named and conflicting constraints, serial/identity/generated columns, malformed and opaque SQL, exact suppressions, physical line endings and convergence with existing DDL fixes. Immutable isolated calibration of 346 migrations found four inspected true positives, no inspected false positives, no removed existing findings and two safely rewritten files with preserved comments and convergent fixes. Three alternating full-registry pairs measured baseline/candidate cold medians of 1.947/2.044 seconds, warm medians of 1.726/1.814 seconds and process peaks of 52,068/51,556 KiB. Private sources, paths and identifying revisions remain local. This bounded sample does not establish fleet precision or recall; broader field calibration remains pending.",
       "outcome": "SARJ132: Introduce WARNING with safe autofix only for unnamed plain NULL declarations on the column's physical line. Redundant unnamed NOT NULL beside an inline PRIMARY KEY remains manual because catalog constraints and dependencies may be intentional. Preserve unsupported, named, conflicting and generated contracts. No severity promotion or consumer activation is included."
+    },
+    {
+      "task": "rule-audit/python/prefer-result-over-nullable-exception",
+      "family": "python",
+      "ruleId": "prefer-result-over-nullable-exception",
+      "state": "complete",
+      "evidence": "Warning calibration on a 2026-11 application corpus (2,591 Python files): one source finding, manually confirmed (a private reload helper returning a first-party exception or None). Pydantic error models, third-party exceptions, parameters, locals and record fields produced no findings by construction.",
+      "outcome": "Warn on return annotations whose union carries None and a proven exception class at top level or in a tuple, container or alias slot. Exception proof uses builtins, same-module classes or the first-party project index. Tests, dunders and inherited public contracts are excluded. No autofix."
+    },
+    {
+      "task": "rule-audit/python/inline-single-use-local",
+      "family": "python",
+      "ruleId": "inline-single-use-local",
+      "state": "complete",
+      "evidence": "Five calibration passes on a 2026-11 application corpus reduced source findings from 732 to 231; about 150 findings were reviewed across passes and a final 40-finding sample had about 36 clear true positives and four borderline name-documents-value cases, with no rejected false positives. Tests are excluded.",
+      "outcome": "Warn when a single-store local feeds only the immediately following statement: inline a single read, or bind with a walrus at the first direct argument when two or three reads sit in that statement's top call. Evaluation order, explanatory values, comprehensions, lambdas, raise messages, return-name, blank-line breaks, 80-character values and 120-column lines are guarded. No autofix."
+    },
+    {
+      "task": "rule-audit/python/exit-stack-requires-lifecycle-owner",
+      "family": "python",
+      "ruleId": "exit-stack-requires-lifecycle-owner",
+      "state": "complete",
+      "evidence": "Warning calibration on a 2026-11 application corpus: 37 files mention exit stacks; seven source findings, all reviewed as true positives (ownership-transfer pop_all guards, fixed client sets and per-call stacks). Lifespans, entry-point scripts, yield dependencies and owner classes produced no findings.",
+      "outcome": "Warn on proven contextlib ExitStack or AsyncExitStack construction outside yielding generators, same-module entry points and resource-owner setup methods. Recommend injected clients closed by the composition root, multi-item with statements, or a returned context manager instead of pop_all. No autofix."
+    },
+    {
+      "task": "rule-audit/python/prefer-walrus-none-guard",
+      "family": "python",
+      "ruleId": "prefer-walrus-none-guard",
+      "state": "complete",
+      "evidence": "Warning calibration on a 2026-11 application corpus: 92 source and 18 test findings; a sample of about 35 was reviewed with no false positives. The shared safe walrus fix was applied to all 79 affected corpus files with zero syntax errors and zero residual findings.",
+      "outcome": "Warn on a one-line synchronous call immediately followed by an exact terminal is None or is not None guard, reusing SARJ432 flow, comment and 120-column conditions. Awaited calls stay with SARJ432 and regex matches with SARJ081. Safe autofix."
+    },
+    {
+      "task": "rule-audit/python/prefer-next-over-search-loop",
+      "family": "python",
+      "ruleId": "prefer-next-over-search-loop",
+      "state": "complete",
+      "evidence": "Warning calibration on a 2026-11 application corpus: three source findings, all true positives; about 13 loops have the exact shape and the remainder are skipped for the 120-column cap, comments or boolean pairs owned by ruff SIM110/SIM111.",
+      "outcome": "Warn on a synchronous first-match for/if/return loop followed by a side-effect-free default return and suggest next over a generator expression. Async loops, yield, walrus, awaited conditions, constant results and non-name targets are excluded. No autofix."
     }
   ]
 }
