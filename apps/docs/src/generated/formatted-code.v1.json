@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "365642a72d6253141cf5d2dba3b4b3a788872785c6923e8b759f3848a038afc0",
-  "cliSha256": "e69cbaa89c4c1746267b4c316228bfe0254b6d82a77ff899dd020f9ddf4b5219",
+  "catalogSha256": "839b2f0e34021ce640ab917369bfbef047b198949c9bcfdd09f8e593f20cb648",
+  "cliSha256": "036663334a2822dc61cdb4436d5841ca0788e1556a137db47f8c64cbacc8be9b",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -15109,6 +15109,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Before-validator normalizes the input value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-gather-first-exception-reraise": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import asyncio\n\n\nasync def delete_all(paths: list[str]) -> None:\n    results = await asyncio.gather(\n        *(delete(path) for path in paths), return_exceptions=True\n    )\n    failures = [result for result in results if isinstance(result, Exception)]\n    if failures:\n        raise ExceptionGroup(\"cleanup failed\", failures)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "every-cleanup-failure",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Every cleanup failure is raised together"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import asyncio\n\n\nasync def delete_all(paths: list[str]) -> None:\n    results = await asyncio.gather(\n        *(delete(path) for path in paths), return_exceptions=True\n    )\n    for result in results:\n        if isinstance(result, BaseException):\n            raise result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "first-cleanup-failure",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Only the first cleanup failure is raised"
         }
       ],
       "optionsSchemaSource": null

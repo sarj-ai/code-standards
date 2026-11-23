@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-gather-first-exception-reraise"),
+        module="sarj_python_lint.rules.no_gather_first_exception_reraise",
+        class_name="NoGatherFirstExceptionReraise",
+        code="SARJ598",
+        description="Raise every gathered failure instead of only the first.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-swallowed-exception"),
         module="sarj_python_lint.rules.no_swallowed_exception",
         class_name="NoSwallowedException",

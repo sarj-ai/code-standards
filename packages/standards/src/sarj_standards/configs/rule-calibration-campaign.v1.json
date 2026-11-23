@@ -3841,6 +3841,14 @@
       "outcome": "SARJ597: Introduce WARNING without autofix for narrow handlers whose whole body only records the failure at debug or trace level and continues. Pass-only, continue-only and info-level handlers stay out of scope because sampled platform hits were deliberate control flow. No consumer activation or severity promotion is included."
     },
     {
+      "task": "rule-audit/python/no-gather-first-exception-reraise",
+      "family": "python",
+      "ruleId": "no-gather-first-exception-reraise",
+      "state": "pending",
+      "evidence": "Executable cases cover direct, zip and enumerate loops over awaited import-proven asyncio.gather results with literal return_exceptions=True, BaseException/Exception tuple and union checks, raise-from, nested suites and unpacked first-wins sequences, plus negative boundaries for exception groups, collected failures, individually handled results, specific or cancellation-only checks, translated errors, missing or dynamic return_exceptions, unresolved gather, shadowed builtins, single results, suppressions, tests and generated files. The private platform consumer corpus produced four findings, all true positives on inspection.",
+      "outcome": "SARJ598: Introduce WARNING without autofix, one diagnostic per gather at its first raise. Remediation is asyncio.TaskGroup for fail-fast fan-out or an ExceptionGroup of every failure when all operations must finish. No consumer activation or severity promotion is included."
+    },
+    {
       "task": "rule-audit/sql/no-redundant-nullability",
       "family": "sql",
       "ruleId": "no-redundant-nullability",
