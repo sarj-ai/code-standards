@@ -3887,6 +3887,22 @@
       "state": "pending",
       "evidence": "Thirteen focused tests cover five matching parameter shapes, qualified and aliased imports, four near misses and test/generated exclusions; four executable documentation examples pass. The bundled corpus evaluation scanned 1,328 Python files with zero findings. Four maintained service repositories (4,525 Python files) produced seven findings, all inspected as true route-level file uploads, with zero known false positives; one route registered on an app received as a function parameter was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
       "outcome": "Introduce SARJ593 at WARNING without autofix. Recommend short-lived pre-signed object-storage uploads with server-chosen keys, bounded size and fixed content type, and accept only the upload id. Raw request-body reads, Starlette and add_api_route routes, parameter-received apps and other frameworks remain limits; broader field calibration remains pending before any error promotion."
+    },
+    {
+      "task": "rule-audit/python/route-mutation-requires-organization-scope",
+      "family": "python",
+      "ruleId": "route-mutation-requires-organization-scope",
+      "state": "pending",
+      "evidence": "Eighteen focused tests cover five unscoped store mutations across delete, post, put and patch routes and eleven near misses: organization_id passed positionally, by keyword or as an attribute, subject, a local request built from organization_id, routes without organization_id, GET routes, non-store receivers and non-mutation methods, plus test exclusion; three executable documentation examples pass. The bundled corpus evaluation scanned 1,346 Python files with zero findings. Motivated by an automation delete keyed only by merchant and event type that ignored the route's organization_id.",
+      "outcome": "Introduce SARJ595 at WARNING without autofix. Ask write routes with an organization_id parameter to pass it to store mutations. Scoping inside the store, aliases other than direct local assignments and non-FastAPI-style decorators remain limits; field calibration on application corpora remains pending before any error promotion."
+    },
+    {
+      "task": "rule-audit/python/no-side-effect-before-noop-guard",
+      "family": "python",
+      "ruleId": "no-side-effect-before-noop-guard",
+      "state": "pending",
+      "evidence": "Nineteen focused tests cover four matching effect-before-guard shapes, including guards inside a top-level try body, and twelve near misses: guard first, calling or walrus guards, guards without a parameter, else branches, non-return bodies, != and boolean tests, logger receivers, read-only calls, nested definitions and effects on a bare local or parameter collection, plus test exclusion; three executable documentation examples pass. A first bundled corpus evaluation over 1,346 Python files found four intentional hits, all adding to a local or parameter collection the guard relies on; the rule now ignores bare-name receivers. Recall on the motivating corpus: the pre-fix language-switch tool flags and the fixed version is quiet.",
+      "outcome": "Introduce SARJ596 at WARNING without autofix. Ask functions to move a parameter-based no-op guard above the first side-effecting method call. Effects on bare-name receivers such as injected stores are not detected; field calibration remains pending before any error promotion."
     }
   ]
 }

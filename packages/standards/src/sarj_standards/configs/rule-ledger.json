@@ -133,6 +133,7 @@
       "no-shallow-container-type-guard",
       "no-shallow-record-type-guard",
       "no-shared-mutable-default",
+      "no-side-effect-before-noop-guard",
       "no-slash-collection-root-under-prefix",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
@@ -254,6 +255,7 @@
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "route-mutation-requires-organization-scope",
       "server-proxied-file-upload",
       "service-singleton-delegates-to-bulk",
       "shared-mutable-pydantic-factory",
@@ -769,7 +771,9 @@
       "SARJ590",
       "SARJ591",
       "SARJ592",
-      "SARJ593"
+      "SARJ593",
+      "SARJ595",
+      "SARJ596"
     ],
     "sql": [
       "SARJ101",
