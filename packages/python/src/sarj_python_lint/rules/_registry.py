@@ -263,6 +263,7 @@ from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
+from sarj_python_lint.rules.no_swallowed_exception import NoSwallowedException
 from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.no_unobserved_task_exception import NoUnobservedTaskException
@@ -319,6 +320,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoSwallowedException.id: NoSwallowedException,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,

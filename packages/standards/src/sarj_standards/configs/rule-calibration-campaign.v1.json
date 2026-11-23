@@ -3833,6 +3833,14 @@
       "outcome": "Stage SARJ587 at WARNING without autofix: split long or branching collected tests and parametrize per-case logic. Promotion requires a separate change and an integration-test exemption decision."
     },
     {
+      "task": "rule-audit/python/no-swallowed-exception",
+      "family": "python",
+      "ruleId": "no-swallowed-exception",
+      "state": "pending",
+      "evidence": "Executable cases cover debug and trace logging through stdlib, loguru and bound loggers, bare and None returns, loops, async handlers, and negative boundaries for warning or info levels, attached exceptions, re-raise, translation, observable returns, broad handlers owned by Ruff BLE001/S110/S112, CancelledError owned by SARJ458, import probes, expected lookups, module-local exception classes, aliases, suppressions, tests and generated files. The private platform consumer corpus produced no findings; the motivating unmerged cleanup change produced two true positives.",
+      "outcome": "SARJ597: Introduce WARNING without autofix for narrow handlers whose whole body only records the failure at debug or trace level and continues. Pass-only, continue-only and info-level handlers stay out of scope because sampled platform hits were deliberate control flow. No consumer activation or severity promotion is included."
+    },
+    {
       "task": "rule-audit/sql/no-redundant-nullability",
       "family": "sql",
       "ruleId": "no-redundant-nullability",

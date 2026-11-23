@@ -137,6 +137,7 @@
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
+      "no-swallowed-exception",
       "no-sys-path-mutation",
       "no-test-comments",
       "no-test-method-grafting",
@@ -769,7 +770,8 @@
       "SARJ590",
       "SARJ591",
       "SARJ592",
-      "SARJ593"
+      "SARJ593",
+      "SARJ597"
     ],
     "sql": [
       "SARJ101",

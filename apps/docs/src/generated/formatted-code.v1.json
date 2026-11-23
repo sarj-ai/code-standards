@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1a20d85682441e1c03508de9d98b95ba4a6ea07578bcb522674e8262708fa35",
-  "cliSha256": "55da59d642730e70d89bab3dbe00f581296daec372fcd426e89415b51cc210f6",
+  "catalogSha256": "365642a72d6253141cf5d2dba3b4b3a788872785c6923e8b759f3848a038afc0",
+  "cliSha256": "e69cbaa89c4c1746267b4c316228bfe0254b6d82a77ff899dd020f9ddf4b5219",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -17588,6 +17588,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-swallowed-exception": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import logging\n\nfrom google.api_core.exceptions import GoogleAPIError\n\nlogger = logging.getLogger(__name__)\n\n\ndef delete_object(store, path: str) -> None:\n    try:\n        store.delete(path=path)\n    except (GoogleAPIError, OSError) as error:\n        logger.debug(\"cleanup unavailable\", extra={\"error\": type(error).__name__})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "debug-only-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A cleanup failure is visible only at debug level"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import logging\n\nfrom google.api_core.exceptions import GoogleAPIError\n\nlogger = logging.getLogger(__name__)\n\n\ndef delete_object(store, path: str) -> None:\n    try:\n        store.delete(path=path)\n    except (GoogleAPIError, OSError) as error:\n        logger.warning(\"cleanup failed\", exc_info=error)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "warning-with-traceback",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Best-effort cleanup is recorded with the exception attached"
         }
       ],
       "optionsSchemaSource": null
