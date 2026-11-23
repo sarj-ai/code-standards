@@ -122,7 +122,7 @@ wheels = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.8.2"
+version = "0.8.3"
 source = { editable = "." }
 
 [package.dev-dependencies]
