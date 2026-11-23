@@ -381,5 +381,8 @@
   "SARJ590": "prefer-next-over-search-loop",
   "SARJ591": "prefer-result-over-nullable-exception",
   "SARJ592": "inline-single-use-local",
-  "SARJ593": "server-proxied-file-upload"
+  "SARJ593": "server-proxied-file-upload",
+  "SARJ597": "no-swallowed-exception",
+  "SARJ598": "no-gather-first-exception-reraise",
+  "SARJ599": "no-injected-dependency-close"
 }

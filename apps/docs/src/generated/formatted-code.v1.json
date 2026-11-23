@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1a20d85682441e1c03508de9d98b95ba4a6ea07578bcb522674e8262708fa35",
-  "cliSha256": "55da59d642730e70d89bab3dbe00f581296daec372fcd426e89415b51cc210f6",
+  "catalogSha256": "cef400d8c816be3664d19ed2e7e84c6fa71988d9903dc7f44f32cbdb3cd83642",
+  "cliSha256": "44407b1bf098fe69915a985dd4993dd92e07b383b4a76356cd8b8d5f34073908",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -15113,6 +15113,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-gather-first-exception-reraise": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import asyncio\n\n\nasync def delete_all(paths: list[str]) -> None:\n    results = await asyncio.gather(\n        *(delete(path) for path in paths), return_exceptions=True\n    )\n    failures = [result for result in results if isinstance(result, Exception)]\n    if failures:\n        raise ExceptionGroup(\"cleanup failed\", failures)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "every-cleanup-failure",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Every cleanup failure is raised together"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import asyncio\n\n\nasync def delete_all(paths: list[str]) -> None:\n    results = await asyncio.gather(\n        *(delete(path) for path in paths), return_exceptions=True\n    )\n    for result in results:\n        if isinstance(result, BaseException):\n            raise result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "first-cleanup-failure",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Only the first cleanup failure is raised"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-generic-json-parser": {
       "examples": [
         {
@@ -15308,6 +15343,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Zero is admitted by the interval"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-injected-dependency-close": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "speech/synthesizer.py",
+              "source": "from contextlib import AsyncExitStack\n\nfrom openai import AsyncOpenAI\n\n\nclass Synthesizer:\n    def __init__(self, *, client: AsyncOpenAI) -> None:\n        self._client = client\n\n    async def aclose(self) -> None:\n        async with AsyncExitStack() as cleanup:\n            cleanup.push_async_callback(self._client.close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "speech/synthesizer.py",
+          "id": "consumer-closes-injected-client",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A consumer closes the client it was given"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "speech/synthesizer.py",
+              "source": "from contextlib import AsyncExitStack\n\nfrom openai import AsyncOpenAI\n\n\nclass Synthesizer:\n    def __init__(self, *, client: AsyncOpenAI) -> None:\n        self._client = client\n\n\nasync def serve(stack: AsyncExitStack) -> Synthesizer:\n    client = await stack.enter_async_context(AsyncOpenAI())\n    return Synthesizer(client=client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "speech/synthesizer.py",
+          "id": "owner-closes-client",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The owner that constructs the client registers its cleanup"
         }
       ],
       "optionsSchemaSource": null
@@ -17588,6 +17658,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-swallowed-exception": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import logging\n\nfrom google.api_core.exceptions import GoogleAPIError\n\nlogger = logging.getLogger(__name__)\n\n\ndef delete_object(store, path: str) -> None:\n    try:\n        store.delete(path=path)\n    except (GoogleAPIError, OSError) as error:\n        logger.debug(\"cleanup unavailable\", extra={\"error\": type(error).__name__})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "debug-only-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A cleanup failure is visible only at debug level"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "storage/cleanup.py",
+              "source": "import logging\n\nfrom google.api_core.exceptions import GoogleAPIError\n\nlogger = logging.getLogger(__name__)\n\n\ndef delete_object(store, path: str) -> None:\n    try:\n        store.delete(path=path)\n    except (GoogleAPIError, OSError) as error:\n        logger.warning(\"cleanup failed\", exc_info=error)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage/cleanup.py",
+          "id": "warning-with-traceback",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Best-effort cleanup is recorded with the exception attached"
         }
       ],
       "optionsSchemaSource": null

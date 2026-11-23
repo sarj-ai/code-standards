@@ -8,6 +8,33 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-injected-dependency-close"),
+        module="sarj_python_lint.rules.no_injected_dependency_close",
+        class_name="NoInjectedDependencyClose",
+        code="SARJ599",
+        description="Leave closing an injected dependency to the owner that constructed it.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("no-gather-first-exception-reraise"),
+        module="sarj_python_lint.rules.no_gather_first_exception_reraise",
+        class_name="NoGatherFirstExceptionReraise",
+        code="SARJ598",
+        description="Raise every gathered failure instead of only the first.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("no-swallowed-exception"),
+        module="sarj_python_lint.rules.no_swallowed_exception",
+        class_name="NoSwallowedException",
+        code="SARJ597",
+        description="Surface caught operational failures instead of recording them only at debug level.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("server-proxied-file-upload"),
         module="sarj_python_lint.rules.server_proxied_file_upload",
         class_name="ServerProxiedFileUpload",

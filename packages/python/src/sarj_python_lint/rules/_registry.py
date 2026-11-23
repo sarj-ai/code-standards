@@ -249,8 +249,10 @@ from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicate
 from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
+from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
 from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
+from sarj_python_lint.rules.no_injected_dependency_close import NoInjectedDependencyClose
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_magic_arithmetic import NoMagicArithmetic
@@ -263,6 +265,7 @@ from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
+from sarj_python_lint.rules.no_swallowed_exception import NoSwallowedException
 from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.no_unobserved_task_exception import NoUnobservedTaskException
@@ -319,6 +322,9 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoInjectedDependencyClose.id: NoInjectedDependencyClose,
+        NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
+        NoSwallowedException.id: NoSwallowedException,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,

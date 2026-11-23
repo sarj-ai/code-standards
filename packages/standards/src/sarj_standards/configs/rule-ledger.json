@@ -87,11 +87,13 @@
       "no-fixed-sleep-in-loop",
       "no-folded-bad-request-not-found",
       "no-frozen-after-validator-field-write",
+      "no-gather-first-exception-reraise",
       "no-generic-json-parser",
       "no-generic-single-export-module",
       "no-hasattr",
       "no-hidden-constructor-fallback",
       "no-impossible-pydantic-field-bounds",
+      "no-injected-dependency-close",
       "no-injected-module-loader",
       "no-input-model-mutation",
       "no-interpreter-source-arguments",
@@ -137,6 +139,7 @@
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
+      "no-swallowed-exception",
       "no-sys-path-mutation",
       "no-test-comments",
       "no-test-method-grafting",
@@ -769,7 +772,10 @@
       "SARJ590",
       "SARJ591",
       "SARJ592",
-      "SARJ593"
+      "SARJ593",
+      "SARJ597",
+      "SARJ598",
+      "SARJ599"
     ],
     "sql": [
       "SARJ101",
