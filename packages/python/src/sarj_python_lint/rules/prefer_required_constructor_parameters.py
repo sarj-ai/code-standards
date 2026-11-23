@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import builtins
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -9,26 +11,59 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
     Severity,
 )
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
-from sarj_python_lint.rules._imports import TYPING_SOURCES
+from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._project_index import SymbolRef
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
+_CONTRACT_BASES = frozenset(
+    {
+        *(SymbolRef(source, "Protocol") for source in TYPING_SOURCES),
+        *(SymbolRef(source, "ABC") for source in ABC_SOURCES),
+    }
+)
+_BUILTIN_NAMES = frozenset(dir(builtins))
+_VALUE_MODULES = frozenset({"builtins", "collections.abc", "datetime", "decimal", "pathlib", "typing", "uuid"})
+_NESTED_SCOPES = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ClassDef,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Fallback:
+    name: str
+    value: ast.expr
+
+
+@dataclass(frozen=True, slots=True)
+class _Guard:
+    fallback: _Fallback
+    target: ast.Name
+
+
 @final
-class PreferRequiredConstructorParameters(Rule):
+class PreferRequiredConstructorParameters(ProjectRule):
     id = "prefer-required-constructor-parameters"
     code = "SARJ468"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -37,11 +72,14 @@ class PreferRequiredConstructorParameters(Rule):
         rationale=(
             "Defaulted constructor parameters hide choices at the composition boundary. Replacing None with an empty "
             "string, a constant, or a factory still permits an implicit choice. A required nullable parameter makes "
-            "a meaningful absent value explicit without inventing a sentinel."
+            "a meaningful absent value explicit without inventing a sentinel. None is not meaningful when the "
+            "constructor immediately replaces it with a constructed fallback, or when it stands for a disabled "
+            "service that every consumer must re-check instead of receiving a disabled implementation."
         ),
         remediation=(
             "Require the parameter and update callers to pass their choice explicitly; preserve meaningful None values. "
-            "Suppress intentional framework or public-library defaults with a compatibility reason."
+            "Pass the fallback from the composition root, and model a disabled service as an implementation of its "
+            "interface. Suppress intentional framework or public-library defaults with a compatibility reason."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -51,6 +89,7 @@ class PreferRequiredConstructorParameters(Rule):
             "Only directly defined __init__ signatures are checked, including class-suite branches and static/class methods; assigned or generated constructors and dataclass fields are not inferred.",
             "Tests, generated files, stubs, and proven overload declarations are excluded. Ambiguous imports, namespace mutation, or escaped overload handles retain the advisory conservatively.",
             "Dynamic decorator replacement and cross-function mutation timing are not inferred.",
+            "Required `T | None` parameters warn only when __init__ replaces None with a call-built fallback, or with a class or function reference retained on self and called, or when T is a project-indexed first-party ABC or Protocol declaring a method. Builtin, typing, collections.abc, datetime, decimal, pathlib and uuid value types, rebound parameters, nested-scope fallbacks, Optional/Union spellings and fallbacks outside __init__ are not inferred.",
             "Removing defaults can break callers, so the rule does not autofix signatures.",
         ),
         examples=(
@@ -82,6 +121,38 @@ class PreferRequiredConstructorParameters(Rule):
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="nullable-constructed-fallback",
+                title="Constructor accepts None only to build its own dependency",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "class Service:\n    def __init__(self, timing: Timing | None) -> None:\n"
+                        "        self.timing = timing or Timing()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="nullable-fallback",
+            ),
+            RuleExample(
+                example_id="nullable-derived-value",
+                title="None selects a value derived from the runtime",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "import os\n\nclass Service:\n    def __init__(self, workers: int | None) -> None:\n"
+                        "        self.workers = workers or os.cpu_count()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="nullable-fallback",
             ),
         ),
     )
@@ -115,7 +186,197 @@ class PreferRequiredConstructorParameters(Rule):
                 )
                 for parameter in _defaulted_parameters(method.args)
             )
+            findings.extend(_nullable_findings(context, method, self.code))
         return findings
+
+
+def _nullable_findings(
+    context: PythonFileContext, method: ast.FunctionDef | ast.AsyncFunctionDef, code: str
+) -> Iterator[Diagnostic]:
+    members = {
+        parameter.arg: (parameter, member)
+        for parameter in _required_parameters(method.args)
+        if (member := _nullable_member(parameter.annotation)) is not None
+    }
+    if not members:
+        return
+    constructed = _constructed_fallbacks(context, method, set(members))
+    for name, (parameter, member) in members.items():
+        if name in constructed and not _value_type(context, member):
+            message = (
+                f"Constructor parameter `{name}` accepts None only to construct a fallback; "
+                "require callers to pass the dependency explicitly."
+            )
+        elif (interface := _interface(context, member)) is not None:
+            message = (
+                f"Constructor dependency `{name}` is nullable; require a `{interface}` and represent "
+                "absence with a disabled implementation of that interface."
+            )
+        else:
+            continue
+        yield Diagnostic(
+            path=context.path,
+            line=parameter.lineno,
+            col=parameter.col_offset + 1,
+            code=code,
+            severity=Severity.WARNING,
+            message=message,
+        )
+
+
+def _required_parameters(arguments: ast.arguments) -> list[ast.arg]:
+    positional = arguments.posonlyargs + arguments.args
+    return positional[: len(positional) - len(arguments.defaults)] + [
+        parameter
+        for parameter, default in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True)
+        if default is None
+    ]
+
+
+def _nullable_member(annotation: ast.expr | None) -> ast.expr | None:
+    match annotation:
+        case ast.Constant(value=str() as text):
+            try:
+                return _nullable_member(ast.parse(text, mode="eval").body)
+            except SyntaxError:
+                return None
+        case (
+            ast.BinOp(left=ast.Constant(value=None), op=ast.BitOr(), right=member)
+            | ast.BinOp(left=member, op=ast.BitOr(), right=ast.Constant(value=None))
+        ):
+            return member
+        case _:
+            return None
+
+
+def _reference(member: ast.expr) -> ast.expr:
+    match member:
+        case ast.Subscript(value=value):
+            return value
+        case _:
+            return member
+
+
+def _value_type(context: PythonFileContext, member: ast.expr) -> bool:
+    match _reference(member):
+        case ast.Name(id=name) if name in _BUILTIN_NAMES and context.imports.builtin_is_unshadowed(name):
+            return name != "type"
+        case reference:
+            module, _, name = (context.imports.resolved_qualified_name(reference) or "").rpartition(".")
+            return module in _VALUE_MODULES and name != "Callable"
+
+
+def _interface(context: PythonFileContext, member: ast.expr) -> str | None:
+    project = context.session.project
+    unit = project.unit(context.path) if project is not None else None
+    if project is None or unit is None:
+        return None
+    summary = project.class_for(unit, _reference(member))
+    if summary is None or _CONTRACT_BASES.isdisjoint(summary.bases):
+        return None
+    source = project.source_unit(summary.symbol.module)
+    declaration = next(
+        (
+            item
+            for item in (source.tree.body if source is not None and source.tree is not None else ())
+            if isinstance(item, ast.ClassDef) and item.name == summary.symbol.name
+        ),
+        None,
+    )
+    if declaration is None or not any(
+        isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef) for item in declaration.body
+    ):
+        return None
+    return summary.symbol.name
+
+
+def _constructed_fallbacks(
+    context: PythonFileContext, method: ast.FunctionDef | ast.AsyncFunctionDef, names: set[str]
+) -> set[str]:
+    nodes = [node for statement in method.body for node in _local_nodes(statement)]
+    called = _called_self_attributes(context, method)
+    guards = [guard for node in nodes if (guard := _guard(node, names)) is not None]
+    targets = {guard.target for guard in guards}
+    found = {guard.fallback.name for guard in guards if _constructs(guard.fallback.value)}
+    found.update(name for node in nodes if (name := _constructed_name(node, names, called)) is not None)
+    rebound = {
+        node.id
+        for node in nodes
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del) and node not in targets
+    }
+    return found - rebound
+
+
+def _guard(node: ast.AST, names: set[str]) -> _Guard | None:
+    match node:
+        case ast.If(
+            test=ast.Compare(left=ast.Name(id=name), ops=[ast.Is()], comparators=[ast.Constant(value=None)]),
+            body=[ast.Assign(targets=[ast.Name(id=target) as stored], value=value)],
+            orelse=[],
+        ) if name == target and name in names:
+            return _Guard(_Fallback(name, value), stored)
+        case _:
+            return None
+
+
+def _constructed_name(node: ast.AST, names: set[str], called: set[str]) -> str | None:
+    match node:
+        case (
+            ast.Assign(targets=[ast.Attribute(value=ast.Name(id="self"), attr=attr)], value=value)
+            | ast.AnnAssign(target=ast.Attribute(value=ast.Name(id="self"), attr=attr), value=ast.expr() as value)
+        ) if (fallback := _fallback(value, names)) is not None and attr in called:
+            return fallback.name
+        case _ if (fallback := _fallback(node, names)) is not None and _constructs(fallback.value):
+            return fallback.name
+        case _:
+            return None
+
+
+def _local_nodes(node: ast.AST) -> Iterator[ast.AST]:
+    yield node
+    for child in ast.iter_child_nodes(node):
+        if not isinstance(child, _NESTED_SCOPES):
+            yield from _local_nodes(child)
+
+
+def _fallback(node: ast.AST, names: set[str]) -> _Fallback | None:
+    match node:
+        case ast.BoolOp(op=ast.Or(), values=[ast.Name(id=name), fallback]) if name in names:
+            return _Fallback(name, fallback)
+        case ast.IfExp(
+            test=ast.Compare(left=ast.Name(id=name), ops=[ast.Is()], comparators=[ast.Constant(value=None)]),
+            body=fallback,
+            orelse=ast.Name(id=value),
+        ) if name in names and value == name:
+            return _Fallback(name, fallback)
+        case ast.IfExp(
+            test=ast.Compare(left=ast.Name(id=name), ops=[ast.IsNot()], comparators=[ast.Constant(value=None)]),
+            body=ast.Name(id=value),
+            orelse=fallback,
+        ) if name in names and value == name:
+            return _Fallback(name, fallback)
+        case _:
+            return None
+
+
+def _constructs(node: ast.expr) -> bool:
+    while isinstance(node, ast.Attribute | ast.Subscript):
+        node = node.value
+    return isinstance(node, ast.Call)
+
+
+def _called_self_attributes(context: PythonFileContext, method: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    owner = _scope(context, method)
+    if not isinstance(owner, ast.ClassDef):
+        return set()
+    return {
+        node.func.attr
+        for node in ast.walk(owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+    }
 
 
 def _defaulted_parameters(arguments: ast.arguments) -> list[ast.arg]:
