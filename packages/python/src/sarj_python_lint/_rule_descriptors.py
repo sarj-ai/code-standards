@@ -8,6 +8,24 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-side-effect-before-noop-guard"),
+        module="sarj_python_lint.rules.no_side_effect_before_noop_guard",
+        class_name="NoSideEffectBeforeNoopGuard",
+        code="SARJ596",
+        description="Check no-op guards before performing side effects",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("route-mutation-requires-organization-scope"),
+        module="sarj_python_lint.rules.route_mutation_requires_organization_scope",
+        class_name="RouteMutationRequiresOrganizationScope",
+        code="SARJ595",
+        description="Scope store mutations in FastAPI write routes to the route's organization_id",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("server-proxied-file-upload"),
         module="sarj_python_lint.rules.server_proxied_file_upload",
         class_name="ServerProxiedFileUpload",

@@ -262,6 +262,7 @@ from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlia
 from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
+from sarj_python_lint.rules.no_side_effect_before_noop_guard import NoSideEffectBeforeNoopGuard
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
 from sarj_python_lint.rules.no_sys_path_mutation import NoSysPathMutation
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
@@ -307,6 +308,7 @@ from sarj_python_lint.rules.redundant_test_constructor_forwarder import Redundan
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
 from sarj_python_lint.rules.require_hidden_settings_input import RequireHiddenSettingsInput
+from sarj_python_lint.rules.route_mutation_requires_organization_scope import RouteMutationRequiresOrganizationScope
 from sarj_python_lint.rules.server_proxied_file_upload import ServerProxiedFileUpload
 from sarj_python_lint.rules.service_singleton_delegates_to_bulk import ServiceSingletonDelegatesToBulk
 from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
@@ -319,6 +321,8 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoSideEffectBeforeNoopGuard.id: NoSideEffectBeforeNoopGuard,
+        RouteMutationRequiresOrganizationScope.id: RouteMutationRequiresOrganizationScope,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,

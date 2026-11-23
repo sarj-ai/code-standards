@@ -381,5 +381,7 @@
   "SARJ590": "prefer-next-over-search-loop",
   "SARJ591": "prefer-result-over-nullable-exception",
   "SARJ592": "inline-single-use-local",
-  "SARJ593": "server-proxied-file-upload"
+  "SARJ593": "server-proxied-file-upload",
+  "SARJ595": "route-mutation-requires-organization-scope",
+  "SARJ596": "no-side-effect-before-noop-guard"
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1a20d85682441e1c03508de9d98b95ba4a6ea07578bcb522674e8262708fa35",
-  "cliSha256": "55da59d642730e70d89bab3dbe00f581296daec372fcd426e89415b51cc210f6",
+  "catalogSha256": "17f9b41dca962aa486f814d96879d1fb40189dc5bc5d16d8501be51c2dd8fe86",
+  "cliSha256": "036663334a2822dc61cdb4436d5841ca0788e1556a137db47f8c64cbacc8be9b",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -17362,6 +17362,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-side-effect-before-noop-guard": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/agent.py",
+              "source": "async def switch_language(self, target: Language) -> str:\n    self.history.insert(make_tool_call(target))\n    try:\n        if target == self.current_language:\n            return \"Already speaking it\"\n        return await self.switch(target)\n    finally:\n        self.flush()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/agent.py",
+          "id": "effect-before-guard",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "History is recorded before the repeated-language guard returns"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/agent.py",
+              "source": "async def switch_language(self, target: Language) -> str:\n    if target == self.current_language:\n        return \"Already speaking it\"\n    self.history.insert(make_tool_call(target))\n    return await self.switch(target)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/agent.py",
+          "id": "guard-before-effect",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The guard returns before history is recorded"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-slash-collection-root-under-prefix": {
       "examples": [
         {
@@ -24115,6 +24150,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:route-mutation-requires-organization-scope": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "@router.delete(\"/automations/{merchant_id}/{event_type}\")\nasync def delete_automation(\n    merchant_id: str, event_type: str, organization_id: str\n) -> None:\n    if not await automation_store.delete(merchant_id, event_type, organization_id):\n        raise HTTPException(status_code=404)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "scoped-store-delete",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The store mutation receives the route's organization_id"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "@router.delete(\"/automations/{merchant_id}/{event_type}\")\nasync def delete_automation(\n    merchant_id: str, event_type: str, organization_id: str\n) -> None:\n    if not await automation_store.delete(merchant_id, event_type):\n        raise HTTPException(status_code=404)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "unscoped-store-delete",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A delete route ignores the organization_id it receives"
         }
       ],
       "optionsSchemaSource": null
