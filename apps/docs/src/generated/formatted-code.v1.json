@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1a20d85682441e1c03508de9d98b95ba4a6ea07578bcb522674e8262708fa35",
-  "cliSha256": "55da59d642730e70d89bab3dbe00f581296daec372fcd426e89415b51cc210f6",
+  "catalogSha256": "ef43b0c2838ccabb1069ff8205929fd65f142cccc97f0ef51a0cceb7aebffbc3",
+  "cliSha256": "44407b1bf098fe69915a985dd4993dd92e07b383b4a76356cd8b8d5f34073908",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -12878,6 +12878,87 @@
           "outcome": "accept",
           "scenarioId": "nullability",
           "title": "Declare None when it is an allowed default"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:lifecycle-update-requires-state-guard": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.lifecycle-update-requires-state-guard]\nlifecycle_columns = [\"task.status\"]\n"
+            },
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass TaskStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def set_many_to_status(self, task_ids, status):\n        await self.cursor.execute(\n            \"UPDATE task SET status = %s, updated_at = NOW() WHERE id = ANY(%s) AND updated_at = %s\",\n            (status, task_ids),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "compare-and-set-guard",
+          "outcome": "accept",
+          "scenarioId": "compare-and-set",
+          "title": "Compare a column the UPDATE also sets"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.lifecycle-update-requires-state-guard]\nlifecycle_columns = [\"task.status\"]\n"
+            },
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass TaskStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def set_many_to_status(self, task_ids, status):\n        await self.cursor.execute(\n            \"UPDATE task SET status = %s, updated_at = NOW() WHERE id = ANY(%s) AND (%s::text IS NULL OR status = %s)\",\n            (status, task_ids),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "optional-state-guard",
+          "outcome": "reject",
+          "scenarioId": "compare-and-set",
+          "title": "A guard skipped by a NULL parameter does not constrain state"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.lifecycle-update-requires-state-guard]\nlifecycle_columns = [\"task.status\"]\n"
+            },
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass TaskStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def set_many_to_status(self, task_ids, status):\n        await self.cursor.execute(\n            \"UPDATE task SET status = %s, updated_at = NOW() WHERE id = ANY(%s) AND status <> ALL(%s)\",\n            (status, task_ids),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "terminal-state-guard",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Exclude terminal states in WHERE"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.lifecycle-update-requires-state-guard]\nlifecycle_columns = [\"task.status\"]\n"
+            },
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass TaskStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def set_many_to_status(self, task_ids, status):\n        await self.cursor.execute(\n            \"UPDATE task SET status = %s, updated_at = NOW() WHERE id = ANY(%s)\",\n            (status, task_ids),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "unguarded-status-update",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A keyed status write can regress a finished row"
         }
       ],
       "optionsSchemaSource": null

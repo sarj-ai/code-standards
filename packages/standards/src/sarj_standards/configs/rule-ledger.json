@@ -47,6 +47,7 @@
       "iac-source-coupled-test",
       "inline-single-use-local",
       "invalid-pydantic-field-default",
+      "lifecycle-update-requires-state-guard",
       "mock-without-spec",
       "named-record-at-boundaries",
       "nan-hidden-by-builtin-min",
@@ -769,7 +770,8 @@
       "SARJ590",
       "SARJ591",
       "SARJ592",
-      "SARJ593"
+      "SARJ593",
+      "SARJ598"
     ],
     "sql": [
       "SARJ101",

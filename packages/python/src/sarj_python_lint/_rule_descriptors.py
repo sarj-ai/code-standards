@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("lifecycle-update-requires-state-guard"),
+        module="sarj_python_lint.rules.lifecycle_update_requires_state_guard",
+        class_name="LifecycleUpdateRequiresStateGuard",
+        code="SARJ598",
+        description="An UPDATE that sets a configured lifecycle column must constrain that column or a compare-and-set column in its WHERE clause.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("server-proxied-file-upload"),
         module="sarj_python_lint.rules.server_proxied_file_upload",
         class_name="ServerProxiedFileUpload",

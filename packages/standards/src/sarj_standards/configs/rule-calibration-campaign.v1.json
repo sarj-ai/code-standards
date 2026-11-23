@@ -3887,6 +3887,14 @@
       "state": "pending",
       "evidence": "Thirteen focused tests cover five matching parameter shapes, qualified and aliased imports, four near misses and test/generated exclusions; four executable documentation examples pass. The bundled corpus evaluation scanned 1,328 Python files with zero findings. Four maintained service repositories (4,525 Python files) produced seven findings, all inspected as true route-level file uploads, with zero known false positives; one route registered on an app received as a function parameter was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
       "outcome": "Introduce SARJ593 at WARNING without autofix. Recommend short-lived pre-signed object-storage uploads with server-chosen keys, bounded size and fixed content type, and accept only the upload id. Raw request-body reads, Starlette and add_api_route routes, parameter-received apps and other frameworks remain limits; broader field calibration remains pending before any error promotion."
+    },
+    {
+      "task": "rule-audit/python/lifecycle-update-requires-state-guard",
+      "family": "python",
+      "ruleId": "lifecycle-update-requires-state-guard",
+      "state": "pending",
+      "evidence": "Thirty focused tests cover eight unguarded shapes (keyed write, unrelated predicate, optional NULL-escaped guard, SET-side CASE overwrite, missing WHERE, other-relation column, subquery-only reference, data-modifying CTE), ten accepted shapes (terminal and observed-state guards, WHERE and SET-side compare-and-set, guarded OR branches, a locking same-relation subquery, non-lifecycle and unconfigured columns, unresolved WHERE, reads), five earlier-locking-read cases, test exclusion, exact suppression, absent and malformed configuration; four executable documentation examples pass. One configured service repository (2,795 Python files, lifecycle columns task.status, call.status and batch.status) produced three findings: two inspected true positives matching reproduced redelivery and retry regressions, and one intentional overwrite of freshly seeded rows in a local seed script. The applied fix clears its finding. One known regression path was missed because shared Psycopg SQL recovery abstains on that module. Private source, paths and identifying hashes remain local.",
+      "outcome": "Introduce SARJ598 at WARNING without autofix. Lifecycle columns come only from explicit [python.lifecycle-update-requires-state-guard].lifecycle_columns repository configuration; names never establish intent. Python checks after locking reads, transition legality and modules the shared SQL recovery cannot prove remain limits; broader field calibration remains pending before any error promotion."
     }
   ]
 }

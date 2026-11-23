@@ -91,6 +91,7 @@ PYTHON_MARKER_NAMES: Final = frozenset(
         ".gitignore",
         ".openapi-generator",
         ".openapi-generator-ignore",
+        ".sarj-standards.toml",
         ".sqlfluff",
         ".swagger-codegen-ignore",
         "buf.gen.yaml",
@@ -149,8 +150,7 @@ def cached_analysis(
     keep: int = _KEEP_PER_ANALYZER,
     outcomes: list[bool] | None = None,
 ) -> CachedResult:
-    cache = ResultCache.from_environment()
-    if cache is None:
+    if (cache := ResultCache.from_environment()) is None:
         return compute()
     try:
         fingerprint = _fingerprint(analyzer, inputs())
@@ -194,8 +194,7 @@ def cached_tracked_analysis(
     keep: int = _KEEP_PER_ANALYZER,
     outcomes: list[bool] | None = None,
 ) -> CachedResult:
-    cache = ResultCache.from_environment()
-    if cache is None:
+    if (cache := ResultCache.from_environment()) is None:
         return compute().result
     try:
         fingerprint = _fingerprint(analyzer, inputs())

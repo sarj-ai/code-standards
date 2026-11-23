@@ -237,6 +237,7 @@ from sarj_python_lint.rules.exit_stack_requires_lifecycle_owner import ExitStack
 from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
 from sarj_python_lint.rules.fastapi_route_declares_security import FastapiRouteDeclaresSecurity
 from sarj_python_lint.rules.inline_single_use_local import InlineSingleUseLocal
+from sarj_python_lint.rules.lifecycle_update_requires_state_guard import LifecycleUpdateRequiresStateGuard
 from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
 from sarj_python_lint.rules.no_async_client_in_constructor import NoAsyncClientInConstructor
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
@@ -319,6 +320,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        LifecycleUpdateRequiresStateGuard.id: LifecycleUpdateRequiresStateGuard,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,
