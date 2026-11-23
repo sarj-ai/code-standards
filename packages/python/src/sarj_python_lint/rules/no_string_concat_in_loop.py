@@ -248,7 +248,6 @@ class _ConcatVisitor(ast.NodeVisitor):
         target_src = _src(self._accumulation_target(node))
         if any(target_src in names for names in self._while_probe_names):
             return True
-        # Only innermost-loop reads consume growth per iteration; outer reads see the completed accumulation.
         return bool(self._loop_reads) and target_src in self._loop_reads[-1]
 
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:
@@ -482,7 +481,6 @@ def _schedule_accumulation_reads(node: ast.AST, stack: list[ast.AST]) -> bool:
         if _schedule_formatted_reads(node, target, stack):
             return True
         if _is_accumulation_assign(target, node.value) and isinstance(node.value, ast.BinOp):
-            # Skip the self-read operand; still record reads in the other one.
             other = _other_add_operand(target, node.value)
             if other is not None:
                 stack.append(other)
@@ -523,17 +521,15 @@ def _annotation_is_str(annotation: ast.expr | None) -> bool:
 
 def _looks_like_string(node: ast.AST) -> bool:
     match node:
-        case ast.Constant(value=str()):
+        case ast.Constant(value=str()) | ast.JoinedStr():
             return True
-        case ast.JoinedStr():  # f-string
-            return True
-        case ast.NamedExpr(value=value):  # walrus `(y := <str>)`
+        case ast.NamedExpr(value=value):
             return _looks_like_string(value)
-        case ast.IfExp(body=body, orelse=orelse):  # ternary — string only if both branches are
+        case ast.IfExp(body=body, orelse=orelse):
             return _looks_like_string(body) and _looks_like_string(orelse)
         case ast.BinOp(left=left, op=ast.Add(), right=right):
             return _looks_like_string(left) or _looks_like_string(right)
-        case ast.BinOp(left=left, op=ast.Mod()):  # `"row %s" % x` — left operand decides
+        case ast.BinOp(left=left, op=ast.Mod()):
             return _looks_like_string(left)
         case _:
             return False

@@ -32,7 +32,6 @@ _THRESHOLD = 5
 _MOCK_MODULE = "unittest.mock"
 _MOCK_BACKPORT = "mock"
 
-# Constructors that mint a stand-in for a collaborator.
 _MOCK_FACTORIES = frozenset(
     {"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "create_autospec"}
 )
@@ -41,25 +40,17 @@ type _PatchSubform = Literal["patch", "object", "multiple", "dict"]
 
 _PATCH: Final = "patch"
 
-# `patch.object` / `patch.multiple` / `patch.dict` — the sub-forms of `patch`.
 _PATCH_SUBFORMS: Final[frozenset[_PatchSubform]] = frozenset({"object", "multiple", "dict"})
 
-# `patch.multiple(target, spec=..., a=Mock())`: everything that is NOT one of
-# these keywords names an attribute being replaced.
 _PATCH_CONFIG_KWARGS = frozenset(
     {"target", "spec", "spec_set", "autospec", "new_callable", "create", "instance", "unsafe"}
 )
 
-# `patch(target, new)` supplies the replacement itself and injects no parameter;
-# `patch.object(target, attribute, new)` needs one more positional to say so.
 _PATCH_REPLACEMENT_ARITY = 2
 _PATCH_OBJECT_REPLACEMENT_ARITY = 3
 
-# `monkeypatch.setattr(target, name, value)` names the attribute separately;
-# the two-argument form spells it into the dotted target instead.
 _SETATTR_SPLIT_ARITY = 3
 
-# pytest-mock's fixture.
 _MOCKER = "mocker"
 
 _MONKEYPATCH = "monkeypatch"
@@ -68,18 +59,14 @@ _PYTEST = "pytest"
 
 _PARAMETRIZE = "parametrize"
 
-# `monkeypatch.setenv`/`delenv` are environment, not substitution; `setitem`/
-# `delitem` edit a config dict; `syspath_prepend`/`chdir` are process state.
 _MONKEYPATCH_SUBSTITUTION = "setattr"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 _TEST_PREFIX = "test"
 
-# The receiver of an attribute chain that is the test case rather than a double.
 _TEST_CASE_RECEIVERS = frozenset({"self", "cls"})
 
-# `self.client` is a collaborator hung off the test case; `self` alone is not.
 _TEST_CASE_DEPTH = 2
 
 
@@ -98,8 +85,6 @@ class _OverMockedFunction(NamedTuple):
     substitution_count: int
 
 
-# Tokens naming test-infrastructure knobs rather than collaborators: the
-# environment, configuration, logging, the clock, and the retry/timeout dials.
 _INFRA_TOKENS = frozenset(
     {
         "argv",
@@ -152,7 +137,6 @@ _INFRA_TOKENS = frozenset(
     }
 )
 
-# Composition-root tests intentionally stub every adapter.
 _SEAM_TOKENS = frozenset(
     {
         "bootstrap",
@@ -166,11 +150,8 @@ _SEAM_TOKENS = frozenset(
     }
 )
 
-# Both docs and examples tokens distinguish a published-example harness from ordinary rendering tests.
 _DOCUMENTATION_HARNESS_TOKENS = frozenset({"docs", "examples"})
 
-# Words inside a name, however it is cased: `MAX_RETRIES`, `RequestTimeout`,
-# `test_main_wiring.py` and `TestAppStartup` all have to yield their words.
 _TOKEN_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
 
 
@@ -336,7 +317,6 @@ def _parameter_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[
     return frozenset(names)
 
 
-# The directory a test suite is rooted at.
 _TEST_ROOT_NAMES = frozenset({"t", "test", "tests"})
 
 
@@ -384,7 +364,6 @@ class _MockNames:
 
     def _add_plain_import(self, node: ast.Import) -> None:
         for alias in node.names:
-            # `import unittest.mock` binds `unittest`; `import mock` is the backport.
             if alias.name == _MOCK_MODULE:
                 self.modules.add(alias.asname or "unittest")
             elif alias.name == _MOCK_BACKPORT:
@@ -396,7 +375,6 @@ class _MockNames:
 
     def _add_from_import(self, node: ast.ImportFrom) -> None:
         self._add_mock_symbols(node)
-        # A relative import has no absolute path to resolve a bare name onto.
         if node.module is not None and node.level == 0:
             for alias in node.names:
                 self.qualified[alias.asname or alias.name] = f"{node.module}.{alias.name}"
@@ -524,7 +502,6 @@ def _substitutions(
             if subform is not None:
                 subs.update(_patch_keys(dec, subform, names))
                 injected += _injected_owners(dec, subform, names)
-    # Count class-level patch decorators once as shared TestCase fixtures.
     injected += _class_injected_owners(owner, names)
 
     scan = _body_substitutions(func, names)
@@ -571,8 +548,6 @@ def _injected_owners(call: ast.Call, subform: _PatchSubform, names: _MockNames) 
 
 
 def _has_replacement(call: ast.Call, subform: _PatchSubform) -> bool:
-    # `patch(target, new)` / `patch.object(target, attr, new)` supply the
-    # replacement themselves, so nothing is injected into the signature.
     positional = _PATCH_REPLACEMENT_ARITY if subform == _PATCH else _PATCH_OBJECT_REPLACEMENT_ARITY
     return len(call.args) >= positional or any(kw.arg == "new" for kw in call.keywords)
 
@@ -684,7 +659,6 @@ def _binding_keys(target: ast.expr, value: ast.expr, names: _MockNames) -> list[
 def _bound_name(target: ast.expr, names: _MockNames) -> str | None:
     if isinstance(target, ast.Name):
         return target.id
-    # `self.client = MagicMock()` inside a unittest method.
     return _object_of(target, names) if isinstance(target, ast.Attribute) else None
 
 
@@ -759,8 +733,6 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[_SubstitutionKe
     if not call.args:
         return []
     receiver = _receiver(call.args[0], names)
-    # `monkeypatch.setattr(mod, "attr", value)` vs `setattr("mod.attr", value)`: in the two-argument form the second
-    # argument is the replacement, and reading it as an attribute name would key the target off the stub.
     if len(call.args) >= _SETATTR_SPLIT_ARITY:
         return [_SubstitutionKey(f"{receiver.target}.{_target_text(call.args[1])}", receiver.owner)]
     return [_SubstitutionKey(receiver.target, _owner_of(receiver.target))]
@@ -791,8 +763,6 @@ def _mock_parameters(
 
 
 def _is_mock_fixture(name: str) -> bool:
-    # `mocker` itself is pytest-mock's handle, not a collaborator: what it
-    # patches is counted at the `mocker.patch(...)` call site.
     return name.startswith("mock_") or name.endswith(("_mock", "_mocks"))
 
 

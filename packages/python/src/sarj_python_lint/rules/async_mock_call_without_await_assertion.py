@@ -494,8 +494,6 @@ def _asserted_states(condition: ast.expr, states: frozenset[str], *, builtin_len
                 result.update(_comparison_states(first, operator, second, states, builtin_len=builtin_len))
             return result
         case _:
-            # Preserve acceptance of unresolved await-state assertions, such as
-            # len(mock.await_args_list) == expected, without value propagation.
             return _unresolved_await_states(condition, states)
 
 

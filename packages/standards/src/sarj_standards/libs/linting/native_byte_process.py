@@ -171,7 +171,6 @@ def _require(*, condition: bool, message: str) -> None:
 
 
 def load_json(data: str | bytes) -> JsonValue:
-    # The configured stdlib decoder produces only JSON values before schema validation.
     try:
         return json.loads(data, object_pairs_hook=_pairs, parse_constant=_constant)  # pyright: ignore[reportAny] -- stdlib JSON decoder boundary; every field is validated before use.
     except json.JSONDecodeError, UnicodeDecodeError:
@@ -529,7 +528,6 @@ def _stdin_path(value: str, cwd: Path) -> None:
         condition=path.is_relative_to(cwd) and path != cwd and ".git" not in path.relative_to(cwd).parts,
         message="stdin filename is outside its canonical project",
     )
-    # A virtual filename is valid. No source path is ever opened for writing.
     _require(condition=path.resolve() == path, message="stdin filename traverses a link")
 
 
@@ -710,7 +708,6 @@ def main(arguments: list[str] | None = None) -> int:
     )
     validated = validate_request(load_json(raw))
     invocation = _invocation(_invocation_json(validated.request["invocation"]))
-    # BaseWatch owns the enclosing budget/process group; no detached timeout.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- validated local package bin, fixed stdin-only argv and a filtered child environment; shell execution is disabled.
         (str(invocation.node), str(invocation.entrypoint), *invocation.args),
         cwd=invocation.cwd,

@@ -30,11 +30,8 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._imports import ImportIndex
 
 
-# Dict-conversion protocol methods: returning a raw dict is the declared
-# contract (and inherited, for pydantic's `model_dump`/`dict`).
 _DICT_CONVERSION_NAMES = frozenset({"asdict", "as_dict", "dict", "model_dump", "to_data", "to_dict"})
 _DICT_CONVERSION_RE = re.compile(r"^(?:to|as)_[a-z0-9_]*(?:dict|data)$")
-# `dict[K, V]` subscript carries exactly two type arguments.
 _DICT_ARG_COUNT = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 
@@ -111,24 +108,16 @@ class NamedRecordAtBoundaries(Rule):
         def collect_boundary(node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             if _is_overload(node, imports):
                 return
-            # Private/internal functions are not public boundaries — their
-            # return shape is an implementation detail, not a data contract.
             if node.name.startswith("_"):
                 return
-            # A closure cannot be imported, so it is not a boundary either.
             if id(node) in local or id(node) in private_class_methods:
                 return
             if id(node) in class_shadowed_annotations:
                 return
-            # `model_dump`/`asdict`/`to_dict`-style converters declare "this
-            # returns a dict" as their contract — that is not a missing model.
             if _is_dict_conversion_name(node.name):
                 return
-            # Pydantic validator hooks (`@model_validator`/`@field_validator`) take and return raw dict/values by
-            # contract — that's the API, not a missing model.
             if _is_framework_hook(node, imports):
                 return
-            # SARJ094 owns visible routes; hidden routes retain ordinary Python contract checks.
             routes = fastapi.routes(node)
             if any(not route.is_hidden for route in routes) or any(
                 _has_named_response_model(route.keywords.get("response_model"), semantics) for route in routes
@@ -265,12 +254,11 @@ def _classify_return(
     node = semantics.parse(node) or node
     if isinstance(node, ast.Name) and node.id in semantics.aliases:
         return None
-    # Look through `X | None` / Optional[X] / Union[...] members.
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return _classify_return(node.left, semantics, seen=seen) or _classify_return(node.right, semantics, seen=seen)
 
     if _is_type(node, imports, builtin="dict", typing_symbol="Dict"):
-        return "dict"  # bare `dict` / `Dict`
+        return "dict"
 
     if not isinstance(node, ast.Subscript):
         return None
@@ -287,19 +275,16 @@ def _classify_subscript_return(
     imports = semantics.imports
 
     if _is_typing_type(node.value, imports, "Annotated"):
-        # Annotated carries its runtime value type in the first argument.
         return _classify_return(_first_type_argument(node.slice), semantics, seen=seen)
     if _is_typing_type(node.value, imports, "Optional"):
         return _classify_return(node.slice, semantics, seen=seen)
     if _is_typing_type(node.value, imports, "Union"):
         return _classify_union_return(node, semantics, seen=seen)
     if _is_type(node.value, imports, builtin="list", typing_symbol="List"):
-        # Fixed lists of unnamed records need one named element contract.
         inner = _classify_return(node.slice, semantics, seen=seen)
         return "dict" if inner == "dict" else None
     if _is_type(node.value, imports, builtin="dict", typing_symbol="Dict"):
         return "dict" if _is_named_record_dict_args(node.slice, imports) else None
-    # Heterogeneous multiple return values are ordinary Python, outside this record policy.
     return None
 
 

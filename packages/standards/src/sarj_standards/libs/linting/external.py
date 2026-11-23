@@ -122,7 +122,6 @@ _NO_UPSTREAM_RULES = UpstreamRules()
 
 
 _TIMEOUT = timedelta(minutes=15)
-# Serialize Oxlint suppression ledger access between baseline workers.
 _SUPPRESSIONS_LOCK = threading.Lock()
 _DETEKT_FINDINGS = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
@@ -181,8 +180,6 @@ _REACT_RUNTIME_PACKAGES = frozenset(
         "react-native",
     }
 )
-# Files whose change can move React Doctor's findings; `is_react_doctor_metadata` adds the
-# config prefixes. PR scoping and analysis share this one list.
 _REACT_DOCTOR_METADATA_NAMES = frozenset(
     {
         *OXLINT_CONFIG_NAMES,
@@ -215,7 +212,6 @@ _JAVASCRIPT_SCAN_SKIP_DIRS = frozenset(
 )
 _SAFE_ENVIRONMENT_KEYS = frozenset(
     {
-        # Native supervisors' scalar worker budgets must reach their analyzers.
         "GOMAXPROCS",
         "HOME",
         "LANG",
@@ -288,8 +284,6 @@ class _BasedPyrightDiagnostic(BaseModel):
     severity: str = Field(min_length=1)
     message: str = Field(min_length=1)
     rule: str | None = None
-    # BasedPyright omits the range for project-level diagnostics such as
-    # reportImportCycles. Preserve those findings with a file-only location.
     range: _BasedPyrightRange | None = None
 
 
@@ -534,7 +528,6 @@ def _staged_react_runner(root: Path, *, runner: ProcessExecutor | None) -> Proce
 def _oxlint_request(rule_ids: frozenset[str] | None, upstream: UpstreamRules) -> oxlint.OxlintRequest:
     if rule_ids is None and not upstream.ids:
         return oxlint.OxlintRequest()
-    # Advisories run at error so bulk suppressions still apply; the report downgrades them to warnings.
     advisories = dict.fromkeys(upstream.ids, "error") if upstream.warning_only else {}
     return oxlint.OxlintRequest(
         rules=frozenset({*(f"@sarj/{rule}" for rule in rule_ids or ()), *upstream.ids}),
@@ -730,7 +723,6 @@ def _quality_reports(
 
     allows_path: Callable[[str], bool] = (lambda _path: True) if policy is None else policy.allows_path
     reports: list[ToolReport] = []
-    # Both adapters require unchanged source, so neither uses the changed-file selection.
     if "jscpd" in capabilities:
         adopted = manifest.load(root)
         reports.append(
@@ -1334,8 +1326,6 @@ def _invoke_react_doctor(
     include_compiler: bool = True,
     trust_repository_code: bool = False,
 ) -> ToolReport:
-    # Project discovery and staged execution stay in Standards. The adapter invokes
-    # only the official native plugin and its public project-security callbacks.
     adopted = manifest.load(root)
     config = next(
         (
@@ -1366,8 +1356,6 @@ def _invoke_react_doctor(
             for item in projects
         ],
     }
-    # Yarn supplies the loader for its virtual dependency tree. A bare Node
-    # process cannot resolve managed peers in a Plug'n'Play installation.
     node = ("yarn", "node") if _uses_plug_n_play(project, root) else ("node",)
     return _invoke(
         "react-doctor",
@@ -1504,7 +1492,6 @@ def _local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root:
             return tuple(argv)
         msg = f"local {name} disappeared before execution"
         raise OSError(msg)
-    # A command for a project without its own install already names the binary by path.
     position = next((index for index, part in enumerate(argv) if part in {name, str(binary)}), None)
     if position is None:
         msg = f"analyzer command does not contain {name!r}"
@@ -1644,7 +1631,6 @@ def _ruff_required_files(files: Sequence[str]) -> tuple[str, ...]:
     selected: list[str] = []
     for raw_path in files:
         try:
-            # Native Ruff owns binding and suppression syntax; retain every comment-bearing source.
             source = Path(raw_path).read_bytes()
             if source.isascii() and b"cast" not in source and b"typing" not in source and b"#" not in source:
                 continue
@@ -1859,8 +1845,6 @@ def _shell_source_reports(
         return CachedResult(tuple(reports))
 
     def shell_file_inputs() -> Iterator[str]:
-        # ShellCheck follows sources only among its inputs (no -x) and shfmt ignores EditorConfig when given printer
-        # flags, so these files are all either tool reads.
         if executor_capabilities(runner).tool_resolution is not ToolResolution.LOCAL:
             msg = "only locally resolved shell tools have a provable identity"
             raise UnknownInputsError(msg)
@@ -2348,7 +2332,6 @@ def _run_process(request: ProcessRequest) -> ProcessOutput:
             stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            # Deliver available bytes so a held-open pipe cannot hide an overflow.
             bufsize=0,
             start_new_session=os.name == "posix",
             env=request.environment,
@@ -2381,8 +2364,6 @@ def _run_process(request: ProcessRequest) -> ProcessOutput:
         returncode = _wait_for_process(process, threads, exceeded, request)
     except BaseException as error:
         try:
-            # A completed leader wait follows stream closure. Its numeric group
-            # must not be signaled again after reaping releases leader ownership.
             if process.returncode is None:
                 _terminate_process(process)
             process.wait(timeout=5)
@@ -2469,11 +2450,7 @@ def _leader_exited(process: subprocess.Popen[bytes]) -> bool | None:
             os, "WNOWAIT"
         )
     ):
-        # Keep the leader unreaped while descendants can own output streams.
-        # Its reserved PID makes later process-group cleanup safe from PID reuse.
         return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
-    # Without a non-reaping exit probe, preserve the child identity until both
-    # streams close or the request fails. The caller then waits with its deadline.
     return None
 
 
@@ -2832,8 +2809,6 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
         _validate_mobsfscan_coverage(report, root, expected_paths)
-    # Only Semgrep 1.177.0's warning-only Swift #Preview PartialParsing record is permitted with proven exact coverage;
-    # every other engine error remains fatal.
     tolerated_partial_parsing = expected_paths is not None and all(
         _is_tolerated_swift_partial_parsing(raw_error) for raw_error in errors
     )
@@ -3151,8 +3126,6 @@ def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
 
 
 def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
-    # DEP002 compares project dependencies with its complete import graph. A selected maintenance script must also scan
-    # the package sources explicitly owned by this wheel, even when those sources have a nested pyproject.
     packages = _deptry_declared_packages(project)
     roots = {package.path.relative_to(project).as_posix() for package in packages}
     for raw_file in scoped_files:

@@ -178,7 +178,6 @@ class _RegistryState:
         except ModuleNotFoundError as exc:
             if exc.name != "sarj_python_lint._rule_descriptors":
                 raise
-            # Source maintenance can bootstrap the writer before the generated file exists.
             self.complete[False] = dict(_AUTHORING_REGISTRY)
             self.complete[True] = dict(_AUTHORING_DEFAULT_REGISTRY)
             self.bootstrap = True

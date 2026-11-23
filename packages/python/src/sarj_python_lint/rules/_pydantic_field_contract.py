@@ -307,7 +307,6 @@ def _escaped_imports(
 
 def _escape_in_scope(node: ast.expr, context: PythonFileContext, symbols: frozenset[str]) -> bool:
     qualified = context.module_imports.resolved_qualified_name(node)
-    # A whole module stays a namespace capability even when named symbols are narrowed.
     return qualified is None or any(qualified == symbol or symbol.startswith(f"{qualified}.") for symbol in symbols)
 
 

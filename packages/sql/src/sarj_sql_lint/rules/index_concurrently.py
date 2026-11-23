@@ -28,15 +28,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `CONCURRENTLY` must come right after `INDEX` (before any `IF NOT EXISTS`).
 PATTERN = re.compile(
     r"\bCREATE\s+(?:UNIQUE\s+)?INDEX(?>\s+)(?!CONCURRENTLY\b)",
     re.IGNORECASE,
 )
 
-# Match table-name patterns against raw source to preserve quoted identifiers, gating on live code in masked text.
 
-# Search for target table forward from CREATE INDEX up to statement semicolon boundary.
 _QUALIFIED_IDENTIFIER = (
     rf"{POSTGRES_IDENTIFIER_PART}(?:\s*\.\s*{POSTGRES_IDENTIFIER_PART})*(?![A-Za-z0-9_$\u0080-\U0010ffff]|\s*\.)"
 )
@@ -159,7 +156,6 @@ class IndexConcurrently(Rule):
                     if len(target) == 1
                     else min(created.get(target, pos), created.get(target[-1:], pos))
                 )
-                # A newly created table has no concurrent writers; CONCURRENTLY would make this migration nontransactional.
                 if created_at < pos:
                     continue
             location = source_location(source, pos)

@@ -162,8 +162,6 @@ def _supersession_violations(
                 capture_output=True,
             ).stdout
         except ProcessFailureError:
-            # An initial publication has no previous manifest to supersede. Confirm absence in a valid tree; transport
-            # or invalid-ref errors must still fail rather than masquerade as a new package.
             previous = runner(
                 ("git", "ls-tree", "--name-only", before, "--", target.manifest.as_posix()),
                 cwd=root,

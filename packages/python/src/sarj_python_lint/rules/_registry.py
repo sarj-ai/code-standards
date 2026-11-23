@@ -278,6 +278,7 @@ from sarj_python_lint.rules.prefer_exception_propagation import PreferExceptionP
 from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
 from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
+from sarj_python_lint.rules.prefer_named_literal_alias import PreferNamedLiteralAlias
 from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMappingKeys
 from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
 from sarj_python_lint.rules.prefer_outcome_variants import PreferOutcomeVariants
@@ -296,6 +297,7 @@ from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGe
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
 from sarj_python_lint.rules.prefer_validated_uuid_comparison import PreferValidatedUuidComparison
 from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
+from sarj_python_lint.rules.pytest_test_size_budget import PytestTestSizeBudget
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
@@ -311,6 +313,8 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PytestTestSizeBudget.id: PytestTestSizeBudget,
+        PreferNamedLiteralAlias.id: PreferNamedLiteralAlias,
         PreferExceptionPropagation.id: PreferExceptionPropagation,
         PreferRequiredPrerequisite.id: PreferRequiredPrerequisite,
         PreferSingleParametrizeContract.id: PreferSingleParametrizeContract,

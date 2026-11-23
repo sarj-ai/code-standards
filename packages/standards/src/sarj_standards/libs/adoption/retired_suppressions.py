@@ -30,7 +30,6 @@ _REASON: Final = re.compile(r"(?P<rules>.*?)(?P<reason>\s+(?:--|[–—])\s+.*)?
 _LINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
 _LINT_RULE_ID: Final = re.compile(rf"^(?:{_LINT_SEGMENT}|@?{_LINT_SEGMENT}(?:/{_LINT_SEGMENT})+)$")
 _SARJ_CODE: Final = re.compile(r"^SARJ\d+$")
-#: Oxlint keeps ESLint's bulk-suppression shape; repositories not yet migrated still carry the ESLint file.
 _LINT_SUPPRESSIONS: Final = frozenset({LEGACY_ESLINT_SUPPRESSIONS, OXLINT_SUPPRESSIONS})
 _RATCHET_SUPPRESSIONS: Final = "suppression-baseline.json"
 _LINT_CONFIG_NAMES: Final = re.compile(r"^(?:eslint|oxlint)\.config\.(?:[cm]?[jt]s)$")
@@ -147,7 +146,6 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
 
 
 def retired_lint_targets() -> dict[str, tuple[str, ...]]:
-    # Retired lint rule -> its replacement; empty when the rule was removed outright.
     return _targets(_replacements(ledger.load(), ledger.OXLINT))
 
 
@@ -184,7 +182,6 @@ def reference_counts(path: Path, text: str, *, retired: tuple[ledger.Retired, ..
             case _:
                 assert_never(directive)
 
-    # Mask comments to avoid counting directives twice when scanning config and fixture references.
     uncomments = _mask_spans(text, spans)
     for line in uncomments.splitlines():
         if not _looks_like_ambiguous_reference(line):
@@ -335,7 +332,6 @@ def _suppression_count(value: object) -> int | None:
 
 
 def rewrite_directives(path: Path, text: str, targets: Mapping[str, tuple[str, ...]]) -> str:
-    # Each directive rule in `targets` becomes its target rules; one left with no rule is deleted.
     if "sarj-noqa:" not in text and "eslint-" not in text and "oxlint-" not in text:
         return text
     rewritten = text
@@ -350,8 +346,6 @@ def rewrite_directives(path: Path, text: str, targets: Mapping[str, tuple[str, .
         elif not _is_jsx_comment_wrapper(path, text, span, comment):
             rewritten = _remove_directive_line(rewritten, span, span.start)
         elif (line := _jsx_comment_line(text, span)) is not None:
-            # Deleting only the comment would leave an empty `{}` expression; a line holding
-            # nothing but the wrapped comment goes whole. Inline wrappers stay.
             rewritten = f"{rewritten[: line[0]]}{rewritten[line[1] :]}"
     return rewritten
 

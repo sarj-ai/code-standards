@@ -34,5 +34,4 @@ def python_source_lines(source: str) -> list[str]:
 
 
 def symbol_prefilter_source(source: str) -> str:
-    # Only necessary symbol gates may use this view; parse and locate original source.
     return source if source.isascii() else unicodedata.normalize("NFKC", source)

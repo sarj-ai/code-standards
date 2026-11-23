@@ -69,8 +69,6 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("repo-standards", "invalid-input", str(exc))
         return ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
-    # A committed-tree check has no repository snapshot before the first commit.
-    # The staged pre-commit path still analyzes the exact index for an initial commit.
     if (staged and not is_git_worktree(root, environment=environment)) or (
         not staged and not has_committed_tree(root, environment=environment)
     ):
@@ -162,7 +160,6 @@ def _baseline_includes_warnings(root: Path, *, staged: bool) -> bool:
     try:
         return parse_baseline_bytes(selected[0].content).include_warnings
     except TypeError, ValueError:
-        # The native analyzer owns invalid-baseline diagnostics and fails closed.
         return False
 
 
@@ -258,7 +255,6 @@ def _comparison_base(root: Path) -> str | None:
         selected = read_tracked_blob_contents(root, (_MANIFEST.as_posix(),))
         configured = parse_manifest_bytes(selected[0].content)
     except OSError, TypeError, ValueError:
-        # The engine reports missing or invalid selected manifests itself.
         return None
     if _COMPARISON_RULES.isdisjoint(configured.enabled_rules):
         return None

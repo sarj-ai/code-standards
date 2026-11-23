@@ -11,7 +11,6 @@ _COMMIT_MESSAGE_ARGUMENT_COUNT = 2
 
 
 def main(argv: list[str] | None = None) -> int:
-    # The launcher probes the exact version before typed Typer dispatch.
     arguments = sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
     if arguments == ["--version"] or (
         len(arguments) == _ROOTED_VERSION_ARGUMENT_COUNT

@@ -74,8 +74,6 @@ def fresh_create_table(tokens: list[Token]) -> TableKey | None:
     table, cursor = parsed
     if any(token.text.upper() == "AS" for token in top_level_tokens(tokens[cursor:])):
         return None
-    # A regular CREATE TABLE must contain a definition list. Requiring it also
-    # keeps malformed or partial statements from manufacturing an exemption.
     return table if cursor < len(tokens) and tokens[cursor].text == "(" else None
 
 

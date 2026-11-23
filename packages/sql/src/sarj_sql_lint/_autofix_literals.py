@@ -430,5 +430,4 @@ def _owns_expression(owner: exp.Expr, start: int) -> bool:
     operand = _arguments(owner).get("this")
     if isinstance(owner, exp.Dot):
         return isinstance(operand, exp.Identifier) and _metadata(operand).get("start") == start
-    # The AT TIME ZONE form starts at CAST, before its literal/type leaves.
     return isinstance(owner, exp.AtTimeZone) and isinstance(operand, exp.Cast)

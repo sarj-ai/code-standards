@@ -339,7 +339,6 @@ def _sarif_path_uri(path: str) -> str:
     try:
         return quote(path, safe="/")
     except UnicodeEncodeError:
-        # POSIX surrogateescaped filenames retain the original filesystem bytes.
         return quote_from_bytes(os.fsencode(path), safe="/")
 
 

@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._imports import ImportIndex
 
 
-# A dispatch needs at least this many real (non-wildcard) arms to be flagged.
 _MIN_ARMS = 2
 
 _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "ReprEnum"})

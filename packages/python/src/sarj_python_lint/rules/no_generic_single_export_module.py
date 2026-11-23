@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# Generic module stems that describe no responsibility.
 _JUNK_DRAWER_STEMS = frozenset(
     {
         "common",

@@ -253,7 +253,6 @@ class _Analysis:
                 case ast.Pass():
                     result = state
                 case _:
-                    # Unsupported control flow can rebind names or terminate; do not guess across it.
                     result = _State(transactions=state.transactions.copy())
             if result is None:
                 return None

@@ -332,7 +332,6 @@ def _setup_call(
         return None
     bindings = _scope_bindings(function)
     available = helpers - bindings.keys()
-    # Looking through nested scopes here conservatively excludes captures and callable escapes.
     uses = [node for node in ast.walk(function) if isinstance(node, ast.Name) and node.id in available]
     if len(uses) != 1:
         return None

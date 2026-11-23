@@ -57,9 +57,7 @@ _EXAMPLE_OVERRIDE: Final = """    // Example: your router generates bracketed fi
 """
 _ESLINT_TSCONFIG: Final = "tsconfig.eslint.json"
 _CONSUMER_BIOME_CONFIG: Final = "biome.lint.json"
-#: Sources whose imports keep an ESLint-era package in use.
 _IMPORTING_SUFFIXES: Final = frozenset({*TYPESCRIPT_SOURCE_SUFFIXES, ".astro", ".mdx", ".svelte", ".vue"})
-#: ESLint-era packages Standards pinned (eslint.peers.json); the ones the TypeScript peers keep are excluded.
 _LEGACY_PEERS: Final = frozenset(
     {
         "@eslint-community/eslint-plugin-eslint-comments",
@@ -124,7 +122,6 @@ _SPECIFIER: Final = re.compile(
 _SHELL_OPERATOR: Final = re.compile(r"[;&|<>`$()]")
 _WARNING_BUDGET: Final = re.compile(r"(?:^|\s)--max-warnings(?:=|\s+)\d+(?=\s|$)")
 _RUNNER: Final = re.compile(r"^\s*(?:(?:npx|bunx)\s+|(?:pnpm|npm|yarn|bun)\s+(?:exec|run)\s+)?")
-#: The formatter flag a `format` script runs with -> the oxfmt command doing the same.
 _FORMATTER_MODES: Final[Mapping[tuple[str, ...], str]] = {
     ("prettier", "--write"): "oxfmt",
     ("prettier", "-w"): "oxfmt",
@@ -145,9 +142,7 @@ class Migration:
     deletes: tuple[Path, ...] = ()
     notes: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
-    #: ESLint-era packages Standards added that nothing in the repository uses any more.
     retired_dependencies: frozenset[str] = field(default_factory=frozenset)
-    #: Whether a repository-owned ESLint config stays because it could not be translated.
     keeps_eslint: bool = False
 
 
@@ -239,8 +234,6 @@ def _validate_package_commands(root: Path, source: Path, changes: _Changes) -> N
 
 
 def _consumer_biome_lint(command: str) -> bool:
-    # A separately owned linter may cover CSS/Astro policy Oxlint cannot replace.
-    # Never retain a formatter, a compound shell program or an unsafe fix mode.
     if _SHELL_OPERATOR.search(command):
         return False
     try:
@@ -303,7 +296,6 @@ class _Changes:
 
 
 def _plan_entrypoint(typescript_root: Path, sources: Sequence[Path], changes: _Changes) -> bool:
-    # Returns whether an ESLint config stays in the repository.
     configs = [typescript_root / name for name in LEGACY_ESLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
     if len(configs) > 1:
         names = ", ".join(path.name for path in configs)
@@ -333,7 +325,6 @@ def _reexports_deleted_config(path: Path, changes: _Changes) -> bool:
 
 
 def _plan_root_config(typescript_root: Path, config: Path | None, changes: _Changes) -> bool:
-    # Writes the Oxlint entrypoint, translated from `config` when it can be; returns whether `config` stays.
     if any((typescript_root / name).is_file() for name in OXLINT_CONFIG_NAMES):
         if config is not None:
             changes.errors.append(_kept_note(config, "Oxlint already exists; merge these overrides before update"))
@@ -376,7 +367,6 @@ def _plan_presets(typescript_root: Path, kept: Sequence[Path], changes: _Changes
         for target in _local_imports(path):
             importers.setdefault(target, []).append(_relative(path, typescript_root))
     for preset in presets:
-        # The declaration describes eslint.strict.mjs and goes with it.
         imported = preset.with_name("eslint.strict.mjs") if preset.name == "eslint.strict.d.mts" else preset
         if users := importers.get(imported):
             changes.notes.append(f"kept {preset.name}: {', '.join(users)} imports it")
@@ -418,7 +408,6 @@ def _plan_suppressions(directory: Path, changes: _Changes, *, keeps_eslint: bool
         targets = dict(converted.get(file, {}))
         for rule, count in rules.items():
             for key in map(_suppression_key, rule_map.rule_ids(rule)):
-                # Summing is an upper bound; pruning after install trims it to what Oxlint reports.
                 targets[key] = {"count": targets.get(key, {"count": 0})["count"] + count}
         if targets:
             converted[file] = targets
@@ -429,7 +418,6 @@ def _plan_suppressions(directory: Path, changes: _Changes, *, keeps_eslint: bool
 
 
 def _suppression_key(rule_id: str) -> str:
-    # Oxlint keys bulk suppressions by the namespace it reports, not the config one.
     from sarj_standards.libs.linting import oxlint  # ruff: ignore[import-outside-top-level] -- oxlint imports adoption.lifecycle.
 
     return oxlint.reported_rule_id(rule_id)
@@ -458,7 +446,6 @@ def _suppressions(path: Path) -> dict[str, dict[str, int]]:
 
 def _plan_directives(kept: Sequence[Path], changes: _Changes) -> None:
     targets = {**_renamed_rules(), **retired_suppressions.retired_lint_targets()}
-    # These proven aliases already suppress the same native rules; retain source identity.
     targets.pop("@typescript-eslint/no-deprecated", None)
     targets.pop("@typescript-eslint/no-unnecessary-type-parameters", None)
     targets.pop("@typescript-eslint/no-unnecessary-condition", None)
@@ -534,12 +521,9 @@ def _with_references(owner: Path, names: Sequence[str]) -> str | None:
 def _retired_dependencies(
     sources: Sequence[Path], deletes: Collection[Path], *, replace_eslint: bool
 ) -> frozenset[str]:
-    # Static imports cannot prove native-config plugin dependencies unused. Retire the compiler alias independently
-    # while preserving demonstrated consumers.
     candidates = _dependency_candidates(sources)
     if any(path.name in OXLINT_CONFIG_NAMES and path not in deletes for path in sources):
         candidates.intersection_update({"@typescript/native"})
-    # ESLint loads a kept TypeScript config through jiti.
     used: set[str] = set() if replace_eslint else {"jiti"}
     for path in sources:
         if path in deletes:
@@ -667,7 +651,6 @@ def _note_eslint_invocations(typescript_root: Path, sources: Sequence[Path], cha
 
 
 def _commands(path: Path, typescript_root: Path) -> str:
-    # What a hook, CI file or package.json runs once migrated; the root package.json's scripts are rewritten.
     if path.name == "package.json":
         scripts = _scripts(path)
         if path.parent == typescript_root:
@@ -679,8 +662,6 @@ def _commands(path: Path, typescript_root: Path) -> str:
 
 
 def _migrated_script(command: JsonValue, *, lint: str, replace_eslint: bool) -> JsonValue:
-    # Migrate only plain known linter/formatter invocations and their warning budgets; preserve additional arguments and
-    # report remaining ESLint calls.
     if not isinstance(command, str):
         return command
     if _consumer_biome_lint(command):
@@ -722,8 +703,6 @@ def _simple_arguments(words: Sequence[str], *, binary: str, check: bool) -> tupl
         elif word in {"--check", "-c"}:
             check = True
         elif word in {"--config-path", "--config"} or word.startswith(("--config-path=", "--config=")):
-            # A selected configuration changes policy and scope. Only the separately
-            # validated consumer lint mode can retain it without translating it.
             return None
         elif binary == "oxlint" and word in {
             "--type-aware",
@@ -741,7 +720,6 @@ def _simple_arguments(words: Sequence[str], *, binary: str, check: bool) -> tupl
 
 
 def _type_checked_with_tsrs(command: str) -> str:
-    # DECISIONS #16: tsrs does all type checking; emitting builds keep their compiler.
     return _TYPE_CHECK.sub(
         lambda match: (
             f"{match.group('prefix')}tsrs{match.group('arguments')}"

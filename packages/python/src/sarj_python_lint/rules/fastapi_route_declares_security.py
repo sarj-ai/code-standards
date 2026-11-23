@@ -204,7 +204,6 @@ def _routes_without_security(
     context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef, graph: FastapiAccessGraph
 ) -> list[list[Route]]:
     index = context.fastapi
-    # One decorator can register several methods; it is judged once, as a group.
     by_decorator: dict[int, list[Route]] = {}
     for route in index.routes(function):
         if not route.has_unpack and not route.inherited_has_unpack:

@@ -349,7 +349,6 @@ def _eager_node_binds_test(node: ast.AST) -> bool:
 def _eager_scope_children(node: ast.AST) -> list[ast.AST]:
     match node:
         case ast.FunctionDef() | ast.AsyncFunctionDef():
-            # Headers run now; annotations and the body are deferred.
             return [*node.decorator_list, *_eager_argument_defaults(node.args)]
         case ast.ClassDef():
             return [*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)]
@@ -372,7 +371,6 @@ def _eager_argument_defaults(arguments: ast.arguments) -> list[ast.AST]:
 
 
 def _comprehension_eager_children(node: ast.ListComp | ast.SetComp | ast.DictComp) -> list[ast.AST]:
-    # Iteration targets stay local; walrus bindings use the enclosing scope.
     children: list[ast.AST] = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
     children.extend(generator.iter for generator in node.generators)
     children.extend(condition for generator in node.generators for condition in generator.ifs)

@@ -120,7 +120,6 @@ def target_requirements(root: Path, target_name: str) -> tuple[RegistryRequireme
 
 def publication_exists(requirement: RegistryRequirement) -> bool:
     if requirement.registry == "pypi":
-        # uv and pip resolve through the Simple API, so version JSON visibility alone does not make a wheel resolvable.
         url = f"https://pypi.org/simple/{quote(requirement.name, safe='')}/"
         accept = "application/vnd.pypi.simple.v1+json"
     else:
@@ -143,7 +142,6 @@ def _request_publication(request: Request, requirement: RegistryRequirement) -> 
     except (TimeoutError, URLError) as error:
         if isinstance(error, URLError) and not isinstance(error.reason, TimeoutError):
             raise
-        # Repeat one read after a socket/TLS timeout; exhausted reads remain errors, never absence.
         return _read_publication(request, requirement)
 
 

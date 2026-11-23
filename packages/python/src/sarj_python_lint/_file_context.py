@@ -65,7 +65,6 @@ class PythonFileContext:
 
     @cached_property
     def _shared_module(self) -> SharedModule:
-        # Registering the tree lets every `walk`/`nodes` call on it reuse this index.
         return share_module(self._valid_tree())
 
     @cached_property
@@ -157,7 +156,6 @@ class PythonFileContext:
     def resource_provenance(self) -> ResourceProvenance:
         from sarj_python_lint.rules._resource_provenance import ResourceProvenance  # ruff: ignore[import-outside-top-level] -- file-owned binding facts are lazy.
 
-        # The owner caches this analysis; borrowing prevents a reference cycle.
         return ResourceProvenance(self, borrow_context=True)
 
     @cached_property

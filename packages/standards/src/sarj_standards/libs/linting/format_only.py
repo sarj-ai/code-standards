@@ -150,7 +150,7 @@ def _batches(
 ) -> Iterator[tuple[_FormatterInputs, bytes]]:
     batch = _FormatterInputs([], [])
     encoded: list[bytes] = []
-    size = 2  # JSON array brackets; each subsequent item also needs a comma.
+    size = 2
     for owner, request in requests:
         item = json.dumps(asdict(request), ensure_ascii=True, separators=(",", ":")).encode("ascii")
         if len(item) + 2 >= _MAX_INPUT_BYTES:
@@ -172,8 +172,6 @@ def _batches(
 def _shared_owner(
     owner: directive_formatter.FormatterOwner, proofs: dict[Path, directive_formatter.InputProof]
 ) -> directive_formatter.FormatterOwner:
-    # Many directories share a large lockfile. Retain its bytes only once, while
-    # rejecting ownership drift between directory selections.
     shared: list[directive_formatter.InputProof] = []
     for proof in owner.inputs:
         previous = proofs.setdefault(proof.path, proof)
@@ -233,7 +231,7 @@ def _request(
         original = _blob(root, environment, f"{revisions.before}:{path}")
         current = _blob(root, environment, f"{revisions.after}:{path}")
     except subprocess.CalledProcessError:
-        return None  # Added and renamed files do not have the same immutable source identity.
+        return None
     if original is None or current is None:
         return None
     with (root / path).open("rb") as stream:

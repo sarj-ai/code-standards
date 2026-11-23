@@ -31,7 +31,6 @@ class ImportIndex:
 
     @classmethod
     def from_tree(cls, tree: ast.Module, *, module_scope_only: bool = False) -> Self:
-        # Rules ask for the same (immutable) module's imports many times per file.
         cache = _MODULE_SCOPE_INDEXES if module_scope_only else _INDEXES
         hit = cache.get(tree)
         if type(hit) is cls:
@@ -128,7 +127,6 @@ def _non_import_bindings(tree: ast.Module) -> set[str]:
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
                 names.add(node.name)
             case ast.alias():
-                # Imports are the candidate bindings, not shadows of themselves.
                 continue
             case _:
                 pass
@@ -151,7 +149,6 @@ def _module_non_import_bindings(tree: ast.Module) -> set[str]:
             case ast.Import() | ast.ImportFrom():
                 continue
             case _:
-                # Module control flow can still bind names in the module namespace.
                 _collect_module_bindings(statement, names)
     return names
 

@@ -60,7 +60,5 @@ def _change(root: Path, kind: ExclusionKind, value: str, *, add_value: bool) -> 
     )
     transaction.assert_expected(resolved, target, expected)
     transaction.atomic_write_text(resolved, target, updated.render())
-    # Treat serialization as a trust boundary too: a successful mutation must
-    # always leave a schema-valid manifest behind.
     read(resolved)
     return Change(kind, normalized, add_value, changed=True)

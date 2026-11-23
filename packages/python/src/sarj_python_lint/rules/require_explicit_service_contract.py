@@ -61,7 +61,7 @@ class RequireExplicitServiceContract(ProjectRule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Module-level service, store, and provider roles qualify when a public operation invokes a directly retained constructor collaborator. Classes that dispatch retained callbacks through asyncio or issue requests through locally constructed httpx clients also qualify without a role name or directory.",
+            "Module-level service, store, and provider roles qualify when a public operation invokes a directly retained constructor collaborator. A class also takes a service role, whatever its name or a final decorator, when its constructor retains a parameter annotated with a project-indexed first-party service, store, or provider type; classes with a nominal base, and third-party or unindexed annotations, do not establish it. Classes that dispatch retained callbacks through asyncio or issue requests through locally constructed httpx clients also qualify without a role name or directory.",
             "Resolvable inherited ABC and Protocol operations, including private and generic contracts, satisfy this policy; unresolved ancestry is not treated as a missing contract.",
             "Generated code, tests, data values, abstract declarations, descriptors, static/class helpers, and unknown rewriting decorators are excluded.",
             "The bounded analysis follows directly retained constructor parameters and private instance helpers; dynamic field aliases and structurally implemented Protocols declared only by external consumers are not inferred.",
@@ -88,6 +88,60 @@ class RequireExplicitServiceContract(ProjectRule):
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="retained-first-party-store-without-contract",
+                scenario="first-party-boundary",
+                title="Retaining a first-party store makes a final class a service",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python("app/__init__.py", "# package\n"),
+                    ExampleFile.python("app/stores/__init__.py", "# package\n"),
+                    ExampleFile.python("app/stores/task_store.py", "class TaskStore: ...\n"),
+                    ExampleFile.python(
+                        "app/audio_cache.py",
+                        "from typing import final\n"
+                        "from app.stores.task_store import TaskStore\n"
+                        "@final\n"
+                        "class AudioCache:\n"
+                        "    def __init__(self, tasks: TaskStore) -> None:\n"
+                        "        self._tasks = tasks\n"
+                        "    async def preload(self, text: str) -> None:\n"
+                        "        await self._tasks.create(text)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/audio_cache.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="retained-first-party-store-with-contract",
+                scenario="first-party-boundary",
+                title="The store-backed service implements its ABC",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/__init__.py", "# package\n"),
+                    ExampleFile.python("app/stores/__init__.py", "# package\n"),
+                    ExampleFile.python("app/stores/task_store.py", "class TaskStore: ...\n"),
+                    ExampleFile.python(
+                        "app/audio_cache.py",
+                        "from abc import ABC, abstractmethod\n"
+                        "from typing import final\n"
+                        "from app.stores.task_store import TaskStore\n"
+                        "class AudioPreloader(ABC):\n"
+                        "    @abstractmethod\n"
+                        "    async def preload(self, text: str) -> None: ...\n"
+                        "@final\n"
+                        "class AudioCache(AudioPreloader):\n"
+                        "    def __init__(self, tasks: TaskStore) -> None:\n"
+                        "        self._tasks = tasks\n"
+                        "    async def preload(self, text: str) -> None:\n"
+                        "        await self._tasks.create(text)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/audio_cache.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
@@ -214,7 +268,6 @@ class RequireExplicitServiceContract(ProjectRule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                        # Existing baselines fingerprint the diagnostic message.
                         f"`{node.name}` invokes a retained collaborator from "
                         f"{', '.join(sorted(operations))} without a declared ABC or Protocol covering its service operations."
                     ),
@@ -335,11 +388,29 @@ def _is_service_role(node: ast.ClassDef, context: PythonFileContext) -> bool:
     return (
         not BOUNDARY_DIRECTORIES.isdisjoint(parts)
         or node.name.endswith(BOUNDARY_SUFFIXES)
+        or _retains_first_party_boundary(node, context)
         or (
             any(marker in context.source for marker in ("run_in_executor", "to_thread", "httpx", "Callable"))
             and bool(_collaborator_operations(node, context, boundary_only=True))
         )
     )
+
+
+def _retains_first_party_boundary(node: ast.ClassDef, context: PythonFileContext) -> bool:
+    constructor = next((method for method in class_methods(node) if method.name == "__init__"), None)
+    project = context.session.project
+    if constructor is None or project is None or not all(_neutral_base(base, context.imports) for base in node.bases):
+        return False
+    stored = self_stored_parameters(constructor, context.imports).fields_by_parameter
+    for parameter in (*constructor.args.posonlyargs, *constructor.args.args, *constructor.args.kwonlyargs):
+        if parameter.annotation is None or not stored.get(parameter.arg):
+            continue
+        module, _, name = (context.module_imports.resolved_qualified_name(parameter.annotation) or "").rpartition(".")
+        if (
+            name.endswith(BOUNDARY_SUFFIXES) or not BOUNDARY_DIRECTORIES.isdisjoint(module.split("."))
+        ) and project.source_unit(module) is not None:
+            return True
+    return False
 
 
 def _collaborator_operations(
@@ -572,7 +643,6 @@ class _CollaboratorCalls(ast.NodeVisitor):
         self.visit_statements(node.finalbody)
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        # Creation evaluates the first iterable, while the generator body is deferred.
         self.visit(node.generators[0].iter)
 
 

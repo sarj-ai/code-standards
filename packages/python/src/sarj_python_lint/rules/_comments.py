@@ -27,7 +27,6 @@ def has_legal_notice(body: str) -> bool:
     return bool(_LICENSE_RE.search(body))
 
 
-# S1 — external references: URLs, tickets, RFCs, PEPs, CVEs, issues, and handles.
 _REF_RE = re.compile(
     r"https?://|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|"
     r"\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|"
@@ -35,20 +34,17 @@ _REF_RE = re.compile(
     r"@[a-z][\w.-]*\.(?:us|com|ai|io|net|org|dev)\b",
 )
 
-# S2 — version pin or comparison: ">= 0.137", "v5.0", "since Python 3.11".
 _VERSION_RE = re.compile(
     r"(?:>=|<=|==|<|>)\s*v?\d+\.\d+|\bv\d+\.\d+|\b(?:since|until|as of)\s+(?:v?\d+\.\d+|Python\s*\d)",
     re.IGNORECASE,
 )
 
-# S3 — numbers carrying units or HTTP status codes.
 _UNITS_RE = re.compile(
     r"[~<>]?\d+(?:\.\d+)?\s?(?:ms|s\b|sec\b|seconds?\b|min\b|minutes?\b|hours?\b|days?\b|"
     r"KB|MB|MiB|GiB|kHz|Hz|bytes?\b|bit\b|-bit\b|%|px\b|rps\b|qps\b)|"
     r"\b[1-5]xx\b|\b(?:301|302|304|307|308|400|401|403|404|405|409|410|412|422|425|429|500|501|502|503|504)\b",
 )
 
-# S4 — a causal connective tying behaviour to a consequence.
 _CAUSAL_RE = re.compile(
     r"\b(?:because|otherwise|so that|or else|would (?:break|fail|race|deadlock|leak|clobber|loop|crash|page|stall)|"
     r"breaks?\b|so we don'?t|to avoid\b|caused\b|causes\b|gets? clobbered|"
@@ -60,15 +56,12 @@ _CAUSAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S5 — negation of the obvious, or a flagged deliberate deviation. "NOT a typo",
-# "deliberately re-raises", "instead of the documented order".
 _NEGATION_RE = re.compile(
     r"\b(?:must not|must never|do(?:es)? not\b|don'?t\b.{0,30}\b(?:leak|log|cache|retry|block|steal|wipe)|"
     r"never\b|deliberately|intentionally|counterintuitiv|NOT\b)|(?<!based )\bon purpose\b|"
     r"\(not\s|\binstead of\b|\brather than\b",
 )
 
-# S6 — upstream/vendor quirk, workaround provenance, or an external contract.
 _UPSTREAM_RE = re.compile(
     r"\b(?:upstream|workaround|quirk|backport|vendored|regression|fixed upstream|"
     r"require[sd]?\b|convention\b|rate.?limit|deprecat|opts? in(?:to)?\b|"
@@ -80,7 +73,6 @@ _UPSTREAM_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S7 — concurrency, ordering, or invariant vocabulary.
 _INVARIANT_RE = re.compile(
     r"\b(?:invariant|idempotent|race\b|deadlock|re-?entran|atomic|thread-?safe|signal-?safe|"
     r"(?:at[ -](?:most|least)|exactly)[ -]once|"
@@ -92,14 +84,12 @@ _INVARIANT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# S8 — security reasoning.
 _SECURITY_RE = re.compile(
     r"\b(?:timing attack|constant-?time|replay|PII\b|redact|secret|injection|spoof|"
     r"fail-?closed|fail-?open|auth bypass|early-?exit timing)\b",
     re.IGNORECASE,
 )
 
-# S9 — vendor names only when paired with ascribed behavior, not mere narration.
 _VENDOR_RE = re.compile(
     r"\b(?:GitHub|Slack|Twilio|LiveKit|Kamailio|Groq|OpenAI|Anthropic|Cloudflare|FastAPI|"
     r"Starlette|Sentry|Zoho|Salla|Ashby|Linear|BigQuery|Postgres|Neon|Drizzle|Vertex|Gemini|"
@@ -123,8 +113,6 @@ _SIGNALS = MappingProxyType(
         "vendor": _VENDOR_RE,
     }
 )
-
-# These measured high-precision signals are exemption-only; their absence never licenses deletion.
 
 
 def is_protected(body: str) -> bool:
@@ -161,14 +149,12 @@ def has_narration_qualifier(body: str) -> bool:
     )
 
 
-# Below this length an inflection strip would eat the word itself.
 _MIN_STEM_LENGTH = 3
 _NO_CODE_LINE = 1 << 30
 
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+")
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 
-# Words that say nothing about *which* code a comment describes.
 STOPWORDS: frozenset[str] = frozenset(
     [
         "a",
@@ -336,7 +322,6 @@ def code_tokens(text: str) -> set[str]:
 
 
 def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
-    # Prefix matching is intentionally absent because it made unrelated identifiers look equivalent.
     present = set(code)
     stems = {stem(token) for token in present}
     return all(token in present or stem(token) in stems for token in comment_tokens)
@@ -496,7 +481,6 @@ def comment_runs(standalone: Sequence[PositionedComment]) -> list[list[Positione
     return runs
 
 
-# A comment wall is judged as a block, not as an isolated sentence.
 _WALL_MIN_STATEMENTS = 4
 _WALL_MIN_COMMENTS = 3
 _WALL_MIN_COMMENTED_RATIO = 0.6
@@ -625,7 +609,6 @@ def _weak_walkthrough_comment(body: str, statement: str) -> bool:
     words = content_tokens(body)
     if len(words) < _WALL_MIN_CONTENT_WORDS or not _WALL_NARRATION_RE.match(body):
         return False
-    # The opener names the operation; the remaining words must mostly match the statement.
     known = code_tokens(statement)
     described = words[1:]
     if not described:

@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 _IDENT = r'(?:[A-Za-z_][\w$]*|"(?:""|[^"\n])+")(?:\s*\.\s*(?:[A-Za-z_][\w$]*|"(?:""|[^"\n])+"))*'
 
-# A real insert write pattern matching INSERT INTO with optional column list and write verb.
 INSERT_PATTERN = re.compile(
     rf"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:{_IDENT}|[\w.`?$:@-]+)\s*"
     rf"(?:AS\s+{_IDENT}\s*)?(?:\([^)]*\)\s*)?"
@@ -42,8 +41,6 @@ INSERT_PATTERN = re.compile(
 _WRITE_EVENTS = re.compile(r"\bINSERT\b|\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|[()]", re.IGNORECASE)
 _INSERT_OR_POLICY = re.compile(r"^INSERT\s+OR\s+(?:IGNORE|REPLACE)\b", re.IGNORECASE)
 
-# A procedural replay guard inside a `DO $$ ... $$` seed block: the block checks
-# for the row itself and skips, so `ON CONFLICT` would be dead code.
 REPLAY_GUARD_PATTERN = re.compile(r"\bIF\s+(?:NOT\s+)?EXISTS\s*\(", re.IGNORECASE)
 INSERT_SELECT_TARGET_PATTERN = re.compile(
     rf"\bINSERT\s+INTO\s+(?P<target>{_IDENT})(?=\s|\()[\s\S]*?\bSELECT\b",

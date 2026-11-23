@@ -136,7 +136,6 @@ def _simple_constructor(methods: list[ast.FunctionDef | ast.AsyncFunctionDef]) -
                 continue
             case _:
                 pass
-        # Validation or registration at construction already owns this boundary.
         return None
     return constructor
 

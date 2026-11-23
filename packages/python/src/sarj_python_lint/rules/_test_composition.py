@@ -37,8 +37,6 @@ class WiringScope:
 
 
 def direct_nodes(node: ast.AST) -> Iterator[ast.AST]:
-    # Depth-first pre-order without entering nested scopes; an explicit stack
-    # avoids one generator frame per tree level.
     pending = children(node)
     pending.reverse()
     while pending:

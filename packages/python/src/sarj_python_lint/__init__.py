@@ -23,8 +23,6 @@ def __getattr__(name: str) -> object:
     globals(  # sarj-noqa: SARJ557 -- Preserve the lazy public module namespace and historical star-import exports.
     )["AnalysisSession"] = _AnalysisSession
     if name == "__all__":
-        # Star imports previously exposed the complete post-session public namespace.
-        # Discover it on demand instead of freezing a narrower list of exports.
         return tuple(
             public
             for public in globals(  # sarj-noqa: SARJ557 -- Preserve the lazy public module namespace and historical star-import exports.

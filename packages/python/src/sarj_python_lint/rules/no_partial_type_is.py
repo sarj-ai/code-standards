@@ -371,7 +371,6 @@ def _comparison(left: int | str | bytes, op: ast.cmpop, right: int | str | bytes
             return None
         case _:
             pass
-    # Callers prove the operands have the same builtin kind, excluding user code.
     match left, right:
         case int(), int():
             return _ordered_comparison(left, op, right)

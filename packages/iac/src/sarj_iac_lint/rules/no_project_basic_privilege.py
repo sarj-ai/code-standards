@@ -132,8 +132,6 @@ def _jsonencode_roles(value: str) -> frozenset[str]:
     parts = tokens(value)
     if parts[:_JSONENCODE_PREFIX_TOKENS] != ("jsonencode", "(", "{") or parts[-2:] != ("}", ")"):
         return frozenset()
-    # Match only literal role attributes of direct objects in the bindings list.
-    # Strings in members, metadata, nested conditions or unknown expressions never prove a grant.
     roles: set[str] = set()
     stack: list[str] = []
     bindings_depth: int | None = None

@@ -24,7 +24,6 @@ _RUNTIME_DOC_DECORATORS = (
 )
 _OVERLOAD_MODULES = frozenset({"typing", "typing_extensions"})
 
-# Docstring filler that says nothing about *which* thing is being described.
 _BASE_STOPWORDS = frozenset(
     {
         "a",
@@ -94,7 +93,6 @@ _BASE_STOPWORDS = frozenset(
     }
 )
 
-# Qualifiers that NARROW NOTHING.
 FILLER_QUALIFIERS = frozenset(
     {
         "actual",
@@ -137,7 +135,6 @@ WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
 
 _IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-# Content the signature cannot carry, so the docstring is earning its place.
 VALUE_MARKER_RE = re.compile(
     r"https?://|\bRFC\s?\d|:raises|\bRaises:|>>>|\bExamples?:|^\s*\.\. |"
     r"\b(?:ms|msec|milliseconds?|seconds?|secs?|minutes?|hours?|days?|bytes?|kb|mb|gb|hz|khz|"
@@ -145,7 +142,6 @@ VALUE_MARKER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Decorators that consume docstrings at runtime, where deleting prose would change behavior.
 PROMPT_DECORATOR_MARKERS = frozenset(
     {
         "agent",
@@ -174,8 +170,6 @@ PROMPT_DECORATOR_MARKERS = frozenset(
     }
 )
 
-# Class docstrings consumed as schema descriptions rather than reader-only prose. Final dotted names are intentional:
-# imports can alias packages, while the runtime base/decorator still has one of these stable framework surfaces.
 SCHEMA_BASE_NAMES = frozenset(
     {
         "BaseModel",
@@ -194,13 +188,10 @@ SCHEMA_BASE_NAMES = frozenset(
 
 SCHEMA_DECORATOR_MARKERS = frozenset({"graphene", "msgspec", "pydantic", "strawberry"})
 
-# Python/framework constructs that visibly publish or copy the decorated function's docstring. Generic decorators are
-# not exempt merely because they exist.
 FRAMEWORK_DOCSTRING_DECORATOR_MARKERS = PROMPT_DECORATOR_MARKERS | frozenset(
     {"cached_property", "fixture", "property", "wraps"}
 )
 
-# Google-style section headers, each alone on its line.
 _SECTION_RE = re.compile(
     r"^[ \t]*(?P<name>Args|Arguments|Parameters|Params|Keyword Args|Keyword Arguments|"
     r"Returns|Return|Yields|Yield|Raises|Attributes|Example|Examples|Note|Notes|"
@@ -208,7 +199,6 @@ _SECTION_RE = re.compile(
     re.MULTILINE,
 )
 
-# Parse one Google-style Args entry with an optional parenthesized type.
 _ARG_ENTRY_RE = re.compile(r"^[ \t]+(?P<name>\*{0,2}[A-Za-z_]\w*)[ \t]*(?:\((?P<type>[^)]*)\))?[ \t]*:(?P<desc>.*)$")
 
 ARG_SECTIONS = ("Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments")

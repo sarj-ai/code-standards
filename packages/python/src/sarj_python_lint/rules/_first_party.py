@@ -1,5 +1,3 @@
-# Ownership resolution is conservative because a missed finding is safer than advising an impossible dependency edit.
-
 from __future__ import annotations
 
 import sys
@@ -10,16 +8,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# `.git` is a file, not a directory, inside a linked worktree — test existence,
-# never `is_dir()`.
 _GIT_MARKER = ".git"
 _PROJECT_MARKER = "pyproject.toml"
 
-# A distribution is what one packaging manifest builds and versions.
 _DISTRIBUTION_MARKERS = ("pyproject.toml", "setup.py", "setup.cfg")
 
-# Never descend into these: a virtualenv or vendored tree holds *third-party*
-# packages, and collecting their names would classify every dependency as ours.
 _SKIP_DIR_NAMES = frozenset(
     {
         ".git",
@@ -40,15 +33,10 @@ _SKIP_DIR_NAMES = frozenset(
     }
 )
 
-# Deep enough for a uv/pnpm-style monorepo (`<root>/packages/python/src/<pkg>`),
-# shallow enough that the scan stays a few hundred `iterdir()` calls.
 _MAX_SCAN_DEPTH = 5
 
-# Hard stop so a pathological tree (a huge monorepo, a symlink loop) degrades to
-# "nothing is first-party" — under-flagging — rather than hanging the linter.
 _MAX_DIRS_SCANNED = 3000
 
-# Walking up forever from a relative path is how a linter ends up scanning $HOME.
 _MAX_ANCESTORS = 24
 
 
@@ -71,8 +59,6 @@ class FirstPartyFacts:
             if (ancestor / _GIT_MARKER).exists():
                 self._project_roots[path] = ancestor
                 return ancestor
-        # No VCS boundary: take the OUTERMOST directory of the unbroken run of
-        # pyproject.toml ancestors, which is the workspace root in a uv workspace.
         outermost: Path | None = None
         for ancestor in ancestors:
             if not (ancestor / _PROJECT_MARKER).exists():
@@ -101,8 +87,6 @@ class FirstPartyFacts:
 
 
 def _fresh_facts(facts: FirstPartyFacts | None) -> FirstPartyFacts:
-    # Compatibility helper calls are independent requests. The CLI supplies one
-    # explicit instance so scans are still shared within a full analysis.
     return facts if facts is not None else FirstPartyFacts()
 
 
@@ -113,7 +97,6 @@ def is_first_party_module(module: str, path: Path, *, facts: FirstPartyFacts | N
         return False
     root = facts.project_root(path)
     if root is None:
-        # Unresolved ownership biases to third-party to avoid unfixable findings.
         return False
     return top in facts.first_party_roots(root)
 

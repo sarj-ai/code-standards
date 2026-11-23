@@ -6,8 +6,6 @@ import re
 import tokenize
 
 
-# Only existing coded, inline directives have a description boundary. Preserve
-# the prefix byte for byte, including family, spelling, whitespace and code order.
 _PREFIX = re.compile(
     r"(?:#[ ]*type:[ ]*ignore\[[a-zA-Z][a-zA-Z0-9_-]*(?:[ ]*,[ ]*[a-zA-Z][a-zA-Z0-9_-]*)*\]"
     r"|#[ ]*noqa:[ ]*[A-Za-z][A-Za-z0-9_-]*(?:[ ]*,[ ]*[A-Za-z][A-Za-z0-9_-]*)*)"
@@ -24,8 +22,6 @@ def equivalent(before: str, after: str) -> bool:
     if before == after:
         return False
     try:
-        # Validate both sources, including actual type comments. TypeIgnore.tag
-        # contains trailing prose, so comparing or erasing arbitrary tags is unsafe.
         ast.parse(before, type_comments=True)
         ast.parse(after, type_comments=True)
         return _without_descriptions(before) == _without_descriptions(after)
@@ -47,7 +43,6 @@ def _without_descriptions(source: str) -> str:
         reason = token.string[match.end() :]
         if reason and not _description(reason):
             continue
-        # Token positions identify real comments, never string/docstring lookalikes.
         line = lines[row - 1]
         lines[row - 1] = line[:column] + match.group() + line[token.end[1] :]
     return "".join(lines)

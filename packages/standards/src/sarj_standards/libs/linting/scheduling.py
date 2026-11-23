@@ -55,7 +55,6 @@ def analyze_groups(
         try:
             workers.shutdown(wait=True, cancel_futures=True)
         except (KeyboardInterrupt, SystemExit) as interruption:
-            # This is a first caller interruption, even though a peer failed earlier.
             _finish_interruption(workers, submitted, cancellation, interruption, root)
             raise
         try:
@@ -87,7 +86,6 @@ def _finish_interruption(
     interruption: BaseException,
     root: Path,
 ) -> None:
-    # Signal before joining; queued callbacks and running waits share this token.
     cancellation.set()
     try:
         workers.shutdown(wait=True, cancel_futures=True)
@@ -119,8 +117,6 @@ def _attach_worker_outcomes(
 def _attach_worker_error(interruption: BaseException, error: BaseException, label: str, root: Path) -> None:
     pending = [(label, error)]
     seen = {id(interruption)}
-    # Preserve actual exception chains as notes without changing the caller's cause.
-    # The bound also handles arbitrarily long or cyclic custom exception chains.
     while pending and len(seen) <= _MAX_WORKER_EXCEPTION_DETAILS:
         current_label, current = pending.pop()
         if id(current) in seen:
@@ -149,8 +145,6 @@ def _run_group(task: GroupTask, root: Path) -> tuple[ToolReport, ...]:
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         cancellation = current_cancellation()
         if cancellation is not None and cancellation.is_set():
-            # During caller cancellation, retain replacement cleanup failures and
-            # their original exception chains for the caller's interruption notes.
             raise
         message = f"{type(exc).__name__}: {exc}".replace(str(root), ".")
         issue = ExecutionIssue(task.kind.value, "execution-failure", message)

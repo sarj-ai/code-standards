@@ -1079,3 +1079,45 @@ def test_literal_branches_and_protected_blocks_require_actual_invocation(operati
         )
         == expected
     )
+
+
+_AUDIO_CACHE = (
+    "from typing import TYPE_CHECKING, final\n"
+    "if TYPE_CHECKING:\n"
+    "    from app.stores.task_store import Tasks\n"
+    "@final\n"
+    "class AudioCache:\n"
+    "    def __init__(self, *, tasks: Tasks) -> None:\n"
+    "        self._tasks = tasks\n"
+    "    async def preload(self, text: str) -> None:\n"
+    "        await self._load(text)\n"
+    "    async def _load(self, text: str) -> None:\n"
+    "        await self._tasks.create(text)\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("dependency", "declaration", "expected"),
+    [
+        ("from app.stores.task_store import Tasks", "class AudioCache:", ["SARJ465"]),
+        ("from app.task_store import TaskStore as Tasks", "class AudioCache:", ["SARJ465"]),
+        ("from app.task_queue import Tasks", "class AudioCache:", []),
+        ("from httpx import AsyncClient as Tasks", "class AudioCache:", []),
+        ("from app.stores.task_store import Tasks, TaskStore", "class AudioCache(TaskStore):", []),
+    ],
+)
+def test_retained_first_party_boundary_establishes_a_service_role(
+    tmp_path: Path, dependency: str, declaration: str, expected: list[str]
+) -> None:
+    package = tmp_path / "project" / "app"
+    (package / "stores").mkdir(parents=True)
+    (package.parent / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    for module in ("stores/task_store", "task_store", "task_queue"):
+        (package / f"{module}.py").write_text("class Tasks: ...\nclass TaskStore: ...\n")
+    cache = package / "audio_cache.py"
+    cache.write_text(
+        _AUDIO_CACHE.replace("from app.stores.task_store import Tasks", dependency).replace(
+            "class AudioCache:", declaration
+        )
+    )
+    assert [finding.code for finding in analyze(["require-explicit-service-contract"], [cache])] == expected

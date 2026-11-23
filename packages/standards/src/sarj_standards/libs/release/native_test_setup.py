@@ -20,8 +20,6 @@ def main(root: Annotated[Path, typer.Option("--root")]) -> None:
 
 
 def setup(root: Path) -> int:
-    # Native workflow/shell, prepared Helm/Kubernetes, and application graph tests
-    # exercise their tools regardless of the repository's consumer opt-outs.
     fixture_files = (
         root / "packages/standards/tests/fixtures/compose-project/compose.yaml",
         root / "packages/standards/tests/fixtures/prepared-native/main.tf",

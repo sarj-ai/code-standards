@@ -16,10 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-# Only static ESLint configuration is translated, without executing repository code. Retained createConfig options
-# exclude ESLint-only settings.
 _PRESET_OPTIONS: Final = frozenset({"bunTestFiles", "playwrightTestFiles", "syntaxOnlyConfigFiles", "testFrameworks"})
-#: Spreads of upstream ESLint config objects whose purpose Oxlint covers on its own.
 _DROPPED_SPREADS: Final[Mapping[tuple[str, str], str]] = {
     ("typescript-eslint", "configs.disableTypeChecked"): (
         "Oxlint type-checks through tsrs, which gives files outside a tsconfig an inferred program"
@@ -56,7 +53,7 @@ class _Token:
 @dataclass(frozen=True, slots=True)
 class _Binding:
     module: str
-    name: str  # "default", "*" or the imported name
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +245,6 @@ class _Parser:
         if self._accept("["):
             entries = self._entries("]")
         elif self._token(1).value not in {"(", "."}:
-            # `export default strict;` exports the preset itself.
             spread = self._spread()
             entries: list[_Strict | dict[str, JsonValue]] = [] if spread is None else [spread]
         else:
@@ -313,7 +309,6 @@ class _Parser:
         self.notes.append(f"dropped {binding.module if binding else name} {'.'.join(path)}: {reason}")
 
     def _entry(self) -> dict[str, JsonValue]:
-        # A spread upstream config is dropped; the entry's own `files` and `rules` still translate.
         self._expect("{")
         entry: dict[str, JsonValue] = {}
         while not self._accept("}"):

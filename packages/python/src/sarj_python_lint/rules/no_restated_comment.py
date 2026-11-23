@@ -43,15 +43,10 @@ if TYPE_CHECKING:
 
 _MAX_WORDS = 8
 _MAX_ASCII = 127
-# A single content word labels a statement rather than restating it.
 _MIN_CONTENT_TOKENS = 2
 
-# Three same-indent lines form a labelled region; two remain eligible because
-# they commonly represent an action followed by its assertion.
 _SECTION_REGION_LINES = 3
 
-# Directive comments, in the broad spelling — this rule sees Python only, but the
-# list is kept in step with the TypeScript twin so the two cannot drift.
 _DIRECTIVE_RE = re.compile(
     r"^\s*(?:todo|fixme|hack\b|xxx|note:|nb:|warning:|important:|"
     r"noqa|sarj-noqa|type:|pragma|pyright|mypy|fmt:|isort|ruff|pylint|flake8|nosec|nosemgrep|"
@@ -59,36 +54,28 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Commented-out code and section banners belong to SARJ016.
 _CODEY_RE = re.compile(r"^[\w.\[\]'\"]+\s*[:=]\s*\S|^[\w.]+\(")
 _CODE_KEYWORD_RE = re.compile(r"^(?:assert|return|raise|await|yield|del|import|from|print|global|nonlocal)\b")
 _CODE_SIGNAL_RE = re.compile(r"[=()\[\]{}]")
 _BANNERISH_RE = re.compile(r"[=\-─-╿*#~_.]{3,}|^[A-Z0-9 _:-]+$")
 
-# A positive comment can usefully translate negatively expressed code.
 _CODE_NEGATION_RE = re.compile(r"\bnot\b|!=|\bis None\b|\.empty\(|assert(?:Not|False)")
 
-# A statement whose head a comment could be restating.
 _SIMPLE_STMT_RE = re.compile(
     r"^\s*(?:return\b|yield\b|raise\b|await |del |assert |"
     r"[\w.\[\]\"'()]+\s*(?:[:+\-*/|&]?=)\s*\S|[\w.]+\(|await\s+[\w.]+\()"
 )
-# Plain data declarations are labels; eligible statements perform an action.
 _ACTION_STMT_RE = re.compile(r"[\w.\]\)]\s*\(|^\s*(?:return|raise|yield|await|del)\b")
 
-# Anything whose *body* the comment could be labelling instead.
 _BLOCK_OPENER_RE = re.compile(
     r"^\s*(?:def |class |async def|if |elif |else\s*:|for |while |with |try\s*:|except|finally\s*:|match |case |@)"
 )
 
-# Statement "shapes" used only to spot a group label: a comment whose statement
-# is followed by a same-indent sibling of the same shape heads a run.
 _IMPORT_SHAPE_RE = re.compile(r"^\s*(?:import\b|from\b)")
 _KV_SHAPE_RE = re.compile(r"""^\s*["'][^"']+["']\s*:""")
 _ASSIGN_SHAPE_RE = re.compile(r"^\s*[\w.\[\]]+\s*(?::[^=]+)?=[^=]|^\s*[\w.\[\]]+\s*:\s*\S+,?\s*$")
 _UNPACK_ASSIGN_SHAPE_RE = re.compile(r"^\s*(?:\([^)]*,[^)]*\)|\[[^\]]*,[^\]]*\]|[\w.]+(?:\s*,\s*[\w.]+)+)\s*=")
 _ELEMENT_SHAPE_RE = re.compile(r"""^\s*["'\[{(].*,?\s*$|^\s*[\w.'"]+,\s*$""")
-# Calls and assertions can form labelled sibling groups too.
 _CALL_SHAPE_RE = re.compile(r"^\s*(?:await\s+)?[\w.]+\s*\(")
 _ASSERT_SHAPE_RE = re.compile(r"^\s*assert\b")
 _NUMBERED_WALKTHROUGH_RE = re.compile(r"^(\d+)[.)]\s+\S")
@@ -360,7 +347,7 @@ class NoRestatedComment(Rule):
         tokens = content_tokens(body)
         if len(tokens) < _MIN_CONTENT_TOKENS:
             return False
-        index = line  # `line` is 1-based, so this indexes the row BELOW it
+        index = line
         if index >= len(lines):
             return False
         code = lines[index]

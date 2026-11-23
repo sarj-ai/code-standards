@@ -203,7 +203,6 @@ def _recover_queries(context: PythonFileContext) -> Iterator[_RecoveredQuery]:
         sql = _query_text(node)
         if sql is None:
             continue
-        # Examine a recoverable composition once, including its static children.
         if isinstance(node, ast.BinOp | ast.JoinedStr):
             consumed.update(id(child) for child in walk(node))
         if _SELECT.search(sql) is None:
@@ -244,7 +243,6 @@ def _has_analytical_wrapper(context: PythonFileContext) -> bool:
         qualified.update(_annotation_references(declaration.annotation, context))
     if not qualified:
         return False
-    # Distribution ownership also covers namespaces shared by workspace members.
     sources = context.session.nominal_project.sources(
         context.path, context.session.first_party, include_generated=True, project=context.session.project
     )

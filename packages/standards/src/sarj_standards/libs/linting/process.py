@@ -26,8 +26,6 @@ class ProcessCancelledError(BaseException):
     pass
 
 
-# A pool initializer binds one analysis token for the lifetime of its owned worker.
-# Existing no-argument callbacks and executor.run(request) interfaces stay intact.
 _PROCESS_CANCELLATION: ContextVar[Event | None] = ContextVar("analysis_process_cancellation", default=None)
 
 
@@ -40,7 +38,6 @@ def initialize_process_cancellation(cancellation: Event | None) -> None:
 
 
 def raise_if_cancelled(cancellation: Event | None) -> None:
-    # A request prepared before dispatch must still observe its worker's analysis.
     active = current_cancellation()
     if (cancellation is not None and cancellation.is_set()) or (active is not None and active.is_set()):
         message = "analysis process cancelled"

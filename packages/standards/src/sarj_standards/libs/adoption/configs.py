@@ -101,7 +101,6 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {name: (spec.source_name, spec.destination_name) for name, spec in CONFIG_SPECS.items()}
 )
 
-# TypeScript consumers also receive the managed formatter and quality-tool presets.
 TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         "oxfmt": ("oxfmt.strict.mts", "oxfmt.strict.mts"),
@@ -111,11 +110,7 @@ TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProx
 )
 PYTHON_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
-        # BasedPyright's source and synchronized forms use the same relative
-        # parent name, keeping both inheritance graphs independently valid.
         "pyright-base": ("pyright.strict.json", "pyright.strict.json"),
-        # Keep the upstream-Pyright policy warning-free while shipping the
-        # stricter active BasedPyright layer beside it.
         "basedpyright": ("basedpyright.strict.json", ".basedpyright-strict.json"),
     }
 )
@@ -136,8 +131,6 @@ KOTLIN_CONFIGS: Final = frozenset({"detekt", "ktlint"})
 MOBILE_CONFIGS: Final = frozenset({"mobile-security"})
 
 
-#: Directories a detection walk must not descend into: an installed dependency carries thousands of `package.json` files
-#: and a vendored tree carries the pyproject of something this repo did not write.
 CONFIG_SKIP_DIRECTORIES: Final = frozenset(
     {
         ".git",
@@ -176,16 +169,12 @@ CONFIG_SKIP_DIRECTORIES: Final = frozenset(
 )
 
 OXLINT_PRESET: Final = "oxlint.strict.mts"
-#: The repository-owned entrypoint `setup` scaffolds once; it extends the synced preset.
 OXLINT_ENTRYPOINT: Final = "oxlint.config.mts"
-#: Every config file Oxlint discovers on its own, in its precedence order.
 OXLINT_CONFIG_NAMES: Final = (".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.mts")
 OXFMT_ENTRYPOINT: Final = "oxfmt.config.mts"
 OXLINT_SUPPRESSIONS: Final = "oxlint-suppressions.json"
-#: JavaScript and TypeScript source suffixes Oxlint lints.
 TYPESCRIPT_SOURCE_SUFFIXES: Final = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 BIOME_CONFIG_NAMES: Final = ("biome.json", "biome.jsonc")
-#: ESLint-era files `update` migrates away from.
 LEGACY_ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
     "eslint.config.mjs",
@@ -205,7 +194,6 @@ _LOCAL_MODULE = re.compile(
 def oxlint_wiring_reaches_strict(
     path: Path, root: Path, seen: set[Path] | None = None, *, planned: bool = False
 ) -> bool:
-    # `planned`: setup syncs the preset after planning, so an import of a missing one still counts.
     visited: set[Path] = set() if seen is None else seen
     resolved = path.resolve()
     if resolved in visited or not resolved.is_file() or not resolved.is_relative_to(root.resolve()):

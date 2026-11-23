@@ -24,10 +24,8 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Block
 
-# Stateful resources exposing deletion_protection[_enabled].
 PROTECTED_TYPES = frozenset(
     {
-        # GCP
         "google_sql_database_instance",
         "google_sql_database",
         "google_container_cluster",
@@ -38,7 +36,6 @@ PROTECTED_TYPES = frozenset(
         "google_bigtable_instance",
         "google_redis_instance",
         "google_filestore_instance",
-        # AWS
         "aws_db_instance",
         "aws_rds_cluster",
         "aws_rds_global_cluster",
@@ -48,7 +45,6 @@ PROTECTED_TYPES = frozenset(
         "aws_elasticache_cluster",
         "aws_docdb_cluster",
         "aws_neptune_cluster",
-        # Azure
         "azurerm_postgresql_flexible_server",
         "azurerm_postgresql_server",
         "azurerm_mysql_flexible_server",
@@ -63,8 +59,6 @@ _RESOURCE = "resource"
 _LIFECYCLE = "lifecycle"
 _PREVENT_DESTROY = "prevent_destroy"
 
-# A `google_bigquery_table` carrying one of these children is a view, not a table: it stores no rows, and the provider
-# requires `deletion_protection = false` for a view whose query can be updated, since the update is a replace.
 _BIGQUERY_TABLE = "google_bigquery_table"
 _VIEW_CHILDREN = ("view", "materialized_view")
 

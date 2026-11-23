@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-# Strict keyword adjacency distinguishes SQL writes from prose.
 _INSERT_WRITE = re.compile(
     r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*"
     r"(?:AS\s+(?:[A-Za-z_][\w$]*|\"(?:\"\"|[^\"])+\")\s*)?(?:\([^)]*\)\s*)?"
@@ -36,7 +35,6 @@ _INSERT_WRITE = re.compile(
     re.IGNORECASE,
 )
 
-# Replay-safe conflict handling supported across the repository's SQL dialects.
 _CONFLICT_HANDLED = re.compile(
     r"\bON\s+CONFLICT\b[\s\S]*?\bDO\s+(?:NOTHING|UPDATE)\b"
     r"|\bON\s+DUPLICATE\s+KEY\s+UPDATE\b"

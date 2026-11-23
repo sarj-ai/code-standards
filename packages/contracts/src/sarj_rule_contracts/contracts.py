@@ -51,7 +51,6 @@ class RuleEngine(StrEnum):
         cls,
         value: object,  # sarj-noqa: SARJ528 -- Enum lookup hands every unmatched raw value to this hook.
     ) -> RuleEngine | None:
-        # Selectors and baselines written for the ESLint engine stay valid input.
         return cls.OXLINT if value == "eslint" else None
 
 

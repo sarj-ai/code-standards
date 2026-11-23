@@ -75,7 +75,6 @@ class CoreIAC:
         manifest = load(self.root)
         option = None if manifest is None else manifest.terraform_guard_contracts
         exists = (self.root / CONTRACT_PATH).exists()
-        # Non-Git consumers without this option retain the established rule.
         if option is None and not exists and not (self.root / ".git").exists():
             return None
         introductions = self._introductions()
@@ -107,8 +106,6 @@ class CoreIAC:
         if self._git("show", f"{introduced}:{CONTRACT_PATH}") != current:
             message = "immutable guard contract manifest was changed"
             raise ValueError(message)
-        # An integration commit may be the first addition on this branch. Its parent independently proves these guards
-        # already existed here, without depending on feature-branch commit IDs that squash/rebase can discard.
         return self._git("rev-parse", "--verify", f"{introduced}^1").strip()
 
     def _original_sources(self, introductions: tuple[str, ...], current: str, paths: Sequence[str]) -> dict[str, str]:
@@ -135,8 +132,6 @@ class CoreIAC:
         if not mode or mode[0] != "100644" or self._git("show", f"{source}:{CONTRACT_PATH}") != current:
             message = "promoted guard contract differs from its immutable source"
             raise ValueError(message)
-        # Existing target files still use the target's original guards. Only
-        # files absent there inherit the already-adopted source's provenance.
         return source
 
     def _preserve_relocated_guards(

@@ -1,5 +1,3 @@
-# Breadth-first order and isinstance semantics intentionally match ast.walk because rules rely on first-match order.
-
 from __future__ import annotations
 
 import ast
@@ -16,7 +14,6 @@ if TYPE_CHECKING:
 _AST = ast.AST
 
 
-# A child lookup: `children`, or a file's `NodeIndex.children` when nodes are reused.
 type ChildNodes = Callable[[ast.AST], Sequence[ast.AST]]
 
 
@@ -105,8 +102,6 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
         yield current
 
 
-# SourceUnit owns a weakly registered SharedModule, indexing its immutable AST once. Unowned synthetic modules use
-# direct walks.
 @final
 class SharedModule:
     def __init__(self, tree: ast.Module) -> None:
@@ -143,7 +138,6 @@ class NodeIndex:
         self.tree = tree
         buckets: dict[type[ast.AST], list[ast.AST]] = {}
         flat: list[ast.AST] = [tree]
-        # `flat[i]`'s children are `flat[ends[i - 1]:ends[i]]` (the first starts at 1).
         ends: list[int] = []
         i = 0
         while i < len(flat):
@@ -178,7 +172,6 @@ class NodeIndex:
         return self._parents
 
     def children(self, node: ast.AST) -> Sequence[ast.AST]:
-        # Equal to `children(node)` without re-reading fields; callers must not mutate the result.
         lists = self._children
         if lists is None:
             flat = self._flat
@@ -197,11 +190,8 @@ class NodeIndex:
             return hit
         matched = frozenset(cls for cls in self._buckets if issubclass(cls, types))
         if len(matched) == 1:
-            # The single bucket is already the answer, in breadth-first order.
             result = self._buckets[next(iter(matched))]
         elif len(matched) == len(self._buckets):
-            # Every class present matches — e.g. `nodes(tree, ast.AST)`, asked by
-            # a rule whose loop body inspects every node rather than a few types.
             result = self._flat
         elif matched:
             result = [node for node in self._flat if node.__class__ in matched]

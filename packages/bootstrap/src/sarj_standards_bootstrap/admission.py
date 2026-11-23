@@ -92,8 +92,6 @@ def _wait_for_slot(
                     environment["SARJ_LOCAL_CHECK_JOBS"] = str(capacity)
                     environment[LEASE_ENV] = marker
                     environment["SARJ_LOCAL_CHECK_STATE_DIR"] = str(directory)
-                    # The exec replacement owns this lock, while metadata is
-                    # released before execution or any admission polling.
                     flags = fcntl.fcntl(handle, fcntl.F_GETFD)
                     fcntl.fcntl(handle, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
                     break
@@ -147,8 +145,6 @@ def _registered_waiter(directory: Path, wait: Wait) -> Generator[Path]:
 
 
 def default_slots(cpus: int, memory_bytes: int) -> int:
-    # Must match sarj-ai/platform scripts/dev/run-local-check.py _default_slots,
-    # which documents the sizing; both launchers share this queue directory.
     return max(1, min(MAX_DEFAULT_SLOTS, cpus // CPUS_PER_SLOT, memory_bytes // _BYTES_PER_GIB // MEMORY_GIB_PER_SLOT))
 
 
@@ -173,8 +169,6 @@ def _capacity(directory: Path, slots: int) -> int:
 def _occupied_slots(directory: Path) -> int:
     import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
 
-    # Owners above a reduced limit still consume capacity until their checks exit.
-    # The caller holds queue.lock across these probes and the next reservation.
     occupied = 0
     for path in directory.glob("slot-*.lock"):
         with path.open("r+", encoding="utf-8") as handle:
@@ -234,7 +228,6 @@ def _held_ancestor(directory: Path, marker: str, wait: Wait) -> bool:
         return False
     if not _is_ancestor(pid):
         return False
-    # A free-slot probe must not make an expired marker look like a held lease.
     with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
         _lock_queue(registration, wait)
         with path.open("r+", encoding="utf-8") as handle:

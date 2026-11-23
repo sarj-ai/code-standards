@@ -180,8 +180,6 @@ def _native_subresources(
         and "dependencies" in content
         and validator in {Draft4Validator, Draft6Validator, Draft7Validator}
     ):
-        # referencing 0.37.0 classifies every dependency from the first entry.
-        # Traverse that mixed keyword separately; retain upstream ownership of others.
         resource = _resource({key: value for key, value in content.items() if key != "dependencies"}, default=validator)
     return resource.subresources()
 
@@ -258,7 +256,7 @@ def _pointer(
 ) -> object:  # sarj-noqa: SARJ528 -- JSON Pointer traversal preserves in-memory schema object identity.
     pointer = unquote(fragment)
     if not pointer.startswith("/"):
-        return value  # Named anchors are covered by upstream semantic subresources.
+        return value
     current = value
     for part in pointer[1:].split("/"):
         key = part.replace("~1", "/").replace("~0", "~")

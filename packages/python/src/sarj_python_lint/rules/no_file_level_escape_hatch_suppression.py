@@ -22,11 +22,8 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# These selectors require inline, reasoned suppressions rather than file-wide escape hatches. Ruff's preview suppression
-# syntax prefers rule names, while its legacy noqa syntax accepts the code.
 ESCAPE_HATCH_SELECTORS = frozenset({"TID251", "BANNED-API"})
 
-# Ruff requires a scoped code after the case-insensitive directive head; PGH004 owns code-less forms.
 _RUFF_FILE_SUPPRESSION_RE = re.compile(
     r"^ruff:\s*(?:"
     r"noqa\s*:\s*(?P<noqa>[A-Za-z][A-Za-z0-9]*(?:\s*,\s*[A-Za-z][A-Za-z0-9]*)*)"

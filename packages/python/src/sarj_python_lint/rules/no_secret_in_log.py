@@ -27,8 +27,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
-# A whole redaction token (`token_prefix`, `password_hash`, `secret_masked`, `api_key_tag`) means the identifier names a
-# masked/derived value. Whole-token matching avoids treating unrelated substrings as redaction evidence.
 _REDACTION_TOKENS = frozenset(
     {"prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hint", "len", "length", "tag"}
 )

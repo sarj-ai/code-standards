@@ -93,7 +93,6 @@ class NoUnusedModuleOutputs(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        # One module's source cannot establish its callers or external contracts.
         return []
 
     @classmethod

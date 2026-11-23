@@ -53,8 +53,6 @@ _RESULT_SEMANTIC_RE = re.compile(
 _GENERATOR_TYPES = frozenset({"AsyncGenerator", "AsyncIterable", "AsyncIterator", "Generator", "Iterable", "Iterator"})
 _BROAD_RETURN_TYPES = frozenset({"Any", "object"})
 
-# Fresh-versus-self return identity is absent from annotations; its signal words would otherwise disappear as tokenizer
-# stopwords.
 _IDENTITY_RE = re.compile(
     r"\b(?:new|copy|copies|copied|clone[ds]?|fresh|same|itself|self|shallow|deep|"
     r"in[- ]place|unchanged|original)\b",
@@ -87,8 +85,6 @@ def _names_fixed_tuple_positions(block: str, annotation: ast.expr | None) -> boo
         names = tuple(part.strip() for part in match.group("names").split(","))
         if len(names) != len(elements):
             continue
-        # `(int, str)` merely repeats `tuple[int, str]`; at least one name must
-        # add a positional role that the corresponding element type cannot say.
         if any(
             re.sub(r"\W", "", name).casefold() != rendered
             for name, rendered in zip(names, rendered_elements, strict=True)
@@ -268,7 +264,6 @@ class DocstringReturnsRestateSignature(Rule):
         if _names_fixed_tuple_positions(block, annotation):
             return
         stems = _result_stems(node, class_name, annotation)
-        # SARJ050 owns whole-docstring restatements, avoiding duplicate deletion findings.
         if restates(docstring, stems):
             return
         if not restates(block, stems):

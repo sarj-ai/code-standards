@@ -63,7 +63,6 @@ def with_embedded_sql(
 
 
 def embedded_sql_result(root: Path, *, files: Sequence[str], adopted: Manifest | None) -> CachedResult | None:
-    # Reads only the selected Python sources, so it may run beside the analysis groups.
     if adopted is None or "sqlfluff" not in adopted.enabled_capabilities or not files:
         return None
 
@@ -79,8 +78,6 @@ def analyze_embedded_sql(root: Path, files: Sequence[str], adopted: Manifest | N
 
 
 class EmbeddedSQLPass:
-    # Runs the SQL pass beside the analysis groups and merges it after both, so
-    # the report and any failure match running it after the groups.
     def __init__(
         self,
         root: Path,
@@ -108,7 +105,6 @@ class EmbeddedSQLPass:
     def merge(self, report: AnalysisReport, *, policy: Policy) -> AnalysisReport:
         if not self._enabled:
             return report
-        # A failed external group never reached the pass; run it now, as before.
         self.run()
         [outcome] = self._outcome
         if isinstance(outcome, Exception):

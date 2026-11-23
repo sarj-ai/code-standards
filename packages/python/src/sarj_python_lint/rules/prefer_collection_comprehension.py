@@ -881,7 +881,6 @@ def _namespace_observer_calls(context: PythonFileContext) -> frozenset[int]:
         "inspect": {"currentframe", "stack", "trace", "getouterframes", "getinnerframes", "getargvalues"},
         "sys": {"_getframe"},
     }
-    # Explicit aliases remain conservative exclusions even when another scope shadows them.
     modules: defaultdict[str, set[str]] = defaultdict(set)
     symbols = observers["builtins"].copy()
     for node in context.nodes(ast.Import):
@@ -898,7 +897,6 @@ def _namespace_observer_calls(context: PythonFileContext) -> frozenset[int]:
 def _observer_import_symbols(node: ast.ImportFrom, observers: dict[str, set[str]]) -> set[str]:
     if node.level or node.module not in observers:
         return set()
-    # These inspect observers are public wildcard exports; sys._getframe is not.
     if node.module == "inspect" and any(alias.name == "*" for alias in node.names):
         return observers["inspect"]
     return {alias.asname or alias.name for alias in node.names if alias.name in observers[node.module]}
@@ -946,11 +944,9 @@ def _comprehension_local_nodes(nodes: Iterable[ast.AST], names: frozenset[str]) 
     for node in nodes:
         if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             continue
-        # Only first-generator bindings are local before every later generator expression.
         bound = _bound_names(node.generators[0].target) & names
         if not bound:
             continue
-        # The first iterable runs in the surrounding scope; targets and remaining expressions are local.
         scoped: list[ast.AST] = [node.generators[0].target, *node.generators[0].ifs, *node.generators[1:]]
         scoped.extend((node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,))
         local_nodes.update(

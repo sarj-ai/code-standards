@@ -26,9 +26,6 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-# Method names that make a logger-receiver call a logging call.
-
-# An uppercase SQL suffix marks a query fragment whose concatenation is intentional.
 _SQL_RE = re.compile(
     r"^\s*(?:(?i:(?:select\b.+\bfrom|insert\s+into|update\s+\S+\s+set|delete\s+from|merge\s+into)\b|"
     r"with\s+\w+\s+as\s*\(|(?:create|alter|drop)\s+(?:table|index|view|schema|type|database)\b|"
@@ -49,7 +46,6 @@ _CONFIG_FRAGMENT_RE = re.compile(
 _MAPPING_FIELD_RE = re.compile(r"(?m)^[ \t]*[A-Za-z_][\w.-]*:[ \t]*(?:\S|$)")
 _MIN_CONFIG_FIELDS = 2
 
-# Calls returning a lazy translation proxy or an escape-aware SafeString.
 _LAZY_CALLS = frozenset(
     {
         "_",
@@ -70,23 +66,16 @@ _LAZY_CALLS = frozenset(
     }
 )
 
-# Preserve percent-format templates instead of mixing formatting styles.
 _PCT_FORMAT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})(?:\([^)]*\))?[-#0+]?[0-9*.]*[hlL]?[diouxXeEfFgGcrsa%]")
 
-# Constructors that build an ORM / SQL *expression object*, not a string.
 _ORM_CALLS = frozenset({"F", "Value", "literal", "literal_column", "Concat", "RawSQL", "bindparam"})
 
-# Roots whose attribute calls are SQLAlchemy expression constructors
-# (`func.coalesce(...)`, `expression.cast(...)`, `sa.func.lower(...)`).
 _ORM_ROOTS = frozenset({"func", "expression", "sa", "sqla", "sqlalchemy"})
 
 _MAX_LITERAL_CHARACTERS = 160
 
-# A `<expr> + "<whitespace>"` pair is a terminator, not string building.
 _TERMINATOR_OPERANDS = 2
 
-# Calls whose Python contract guarantees a concrete ``str`` result.  Keep the list deliberately small: user functions
-# named ``render``/``serialize`` may return expression objects with an overloaded ``+``.
 _STRING_CALLS = frozenset({"ascii", "bin", "chr", "format", "hex", "oct", "repr", "str"})
 _STRING_METHODS = frozenset(
     {
@@ -250,8 +239,6 @@ class PreferFstringOverConcat(Rule):
         if tree is None:
             return []
 
-        # One walk collects everything: the candidate chains, the inner links of each chain (so a 4-operand chain
-        # reports once), and the chains sitting in a context whose rewrite would be wrong.
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
@@ -302,14 +289,12 @@ def _classify_concat_context(
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         _collect_add_chain(node, adds, inner)
     elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
-        # `("%0" + width + "d") % args` builds a format template.
         excluded.add(id(node.left))
     elif isinstance(node, ast.Call) and _is_logging_call(node):
         _exclude_call_chains(node, excluded)
     elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings, context):
         _exclude_regex_chains(node, excluded, context)
     elif isinstance(node, ast.JoinedStr):
-        # Nested f-strings would merely replace one existing interpolation expression with another.
         excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
 
 
@@ -449,8 +434,6 @@ def _interpolation_parts(
         if literal is not None:
             literals.append(literal)
         elif isinstance(operand, ast.Constant):
-            # A bytes/int/float literal is positive evidence this `+` is not
-            # string concatenation at all.
             return None
         else:
             dynamic.append(operand)
@@ -532,8 +515,6 @@ def _flatten(node: ast.expr) -> list[ast.expr]:
     while stack:
         current = stack.pop()
         if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
-            # Push right first so the left spine is popped first and the
-            # operands come out in source order.
             stack.extend((current.right, current.left))
         else:
             operands.append(current)
@@ -547,8 +528,6 @@ def _unsupported_interpolation_operands(
         return True
     if sum(len(text) for text in literals) > _MAX_LITERAL_CHARACTERS:
         return True
-    # A literal is not sufficient type proof: libraries such as pandas and SQLAlchemy overload reflected ``+`` on their
-    # expression objects.  Only recommend an f-string when every runtime operand is provably a string.
     if not all(_is_string_expr(expr, evidence) for expr in dynamic):
         return True
     if any("{" in text or "}" in text for text in literals):
@@ -703,8 +682,6 @@ def _is_string_expr(expr: ast.expr, evidence: _StringEvidence) -> bool:
         case _:
             return False
 
-    # Indexing/slicing a proven string preserves ``str`` only for integer positions and slices; a mapping subscript does
-    # not inherit its container's annotation.
     integer_index = (
         isinstance(index, ast.Constant) and isinstance(index.value, int) and not isinstance(index.value, bool)
     )

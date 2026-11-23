@@ -112,7 +112,6 @@ def _imports(source: Path, module: str = "") -> set[str]:
     imports: set[str] = set()
     package = module if source.name == "__init__.py" else module.rpartition(".")[0]
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-    # Deferred dispatcher imports belong to the release cohort, not unrelated CLI commands.
     nodes = _dispatcher_import_nodes(tree) if module == "sarj_standards.cli.main" else ast.walk(tree)
     for node in nodes:
         match node:

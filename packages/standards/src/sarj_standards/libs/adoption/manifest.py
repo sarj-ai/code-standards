@@ -41,7 +41,7 @@ _OXLINT_RULE_KEY: Final = re.compile(
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
 _RUNNER_LABEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
-_TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
+_TOML_COLUMN_WIDTH: Final = 80
 
 
 class _UpstreamRuleEngine(StrEnum):
@@ -55,12 +55,10 @@ class _UpstreamRuleEngine(StrEnum):
     ZIZMOR = "zizmor"
 
 
-#: Sibling distributions pinned exactly by `code-standards`.
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
 REPO_STANDARDS_VERSION: Final = "8.6.0"
-# Actions can receive delivery fixes independently of the consumer topology policy.
 REPO_STANDARDS_ACTION_VERSION: Final = "8.6.0"
 REPO_STANDARDS_REVISION: Final = "f96de5270ed10b577d3821a174eb46d6cdac2441"
 
@@ -87,11 +85,9 @@ def typescript_age_gate_preapprovals() -> dict[str, str]:
     return {name: value for name, value in versions.items() if isinstance(value, str)}
 
 
-#: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 PYTHON_ANALYZERS: Final = ("deptry",)
 TYPESCRIPT_CONFIGS: Final = ("typescript",)
-#: Bundles before this one named the TypeScript capability `eslint`; their manifests still say so.
 _TYPESCRIPT_CAPABILITY_SINCE: Final = Version("9.0.0")
 _LEGACY_TYPESCRIPT_CAPABILITY: Final = "eslint"
 SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
@@ -110,7 +106,6 @@ ALL_CONFIGS: Final = (
     *SECURITY_CONFIGS,
 )
 DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema", "shfmt")
-# Opt-in analyzers: new manifests and upgrades from older bundles both record them as disabled.
 QUALITY_ANALYZERS: Final = ("jscpd", "knip")
 OPTIONAL_ANALYZERS: Final = (*QUALITY_ANALYZERS, "sqlfluff")
 _QUALITY_ANALYZERS_SINCE: Final = {"jscpd": Version("8.43.0"), "knip": Version("8.47.0")}
@@ -218,7 +213,6 @@ class _TerraformOutputOptions(BaseModel):
 
 
 class _IACOutputOptions(BaseModel):
-    # Other IaC options retain their own existing parsers.
     model_config = ConfigDict(extra="ignore", strict=True, hide_input_in_errors=True)
     unused_module_outputs: _TerraformOutputOptions = Field(
         default_factory=_TerraformOutputOptions, alias="no-unused-module-outputs"
@@ -598,7 +592,6 @@ def _bundle_configs(declared: str, path: Path, schema: int) -> tuple[str, ...]:
 
 
 def _renamed_capabilities(names: tuple[str, ...], declared: str | None) -> tuple[str, ...]:
-    # A manifest written before the rename keeps meaning what it said: `eslint` was the TypeScript capability.
     try:
         renamed = declared is not None and Version(declared) < _TYPESCRIPT_CAPABILITY_SINCE
     except InvalidVersion:
@@ -613,7 +606,6 @@ def _current_capability[T](name: T) -> T | str:
 
 
 def uses_legacy_typescript_names(text: str) -> bool:
-    # `update` rewrites these spellings so the manifest stays valid once its bundle passes the rename.
     data = as_table(tomllib.loads(text))
     exclude = table_field(data, "exclude")
     selectors = [
@@ -822,7 +814,6 @@ def _rule_selectors(
     )
 
     selectors = _string_list(table, key, label=f"manifest [exclude].{key}")
-    # `eslint:` selectors written before Oxlint keep excluding the same findings under their Oxlint IDs.
     return tuple(
         dict.fromkeys(
             _validate_canonical_rule(canonical)
@@ -931,7 +922,6 @@ def managed_oxlint_rules() -> frozenset[str]:
         oxlint_ids,
     )
 
-    # The rule map names where every ESLint-era rule went; the preset adds rules Oxlint brought with it.
     mapped = {target for targets in oxlint_ids.bundled().oxlint_ids.values() for target in targets}
     preset = (CONFIGS_DIR / "oxlint.strict.mts").read_text(encoding="utf-8")
     return frozenset({*mapped, *(match.group("rule") for match in _OXLINT_RULE_KEY.finditer(preset))})
@@ -1070,7 +1060,6 @@ def _pinned_peers(document: Mapping[str, object]) -> dict[str, str]:
     return {name: pin for name, pin in table.items() if isinstance(pin, str)}
 
 
-# Every exact `name@version` installing the peers resolves: each peer and its platform binaries.
 def typescript_installed_versions() -> tuple[str, ...]:
     document = _peers_document()
     platform = table_field(document, "platformPackages")
@@ -1078,7 +1067,6 @@ def typescript_installed_versions() -> tuple[str, ...]:
     for name, pin in _pinned_peers(document).items():
         package, exact = name, pin
         if pin.startswith("npm:"):
-            # An `npm:` alias installs the aliased package under the peer's name.
             package, _, exact = pin.removeprefix("npm:").rpartition("@")
         binaries = [entry for entry in list_field(platform, name) if isinstance(entry, str)]
         installed.extend(f"{entry}@{exact}" for entry in (package, *binaries))

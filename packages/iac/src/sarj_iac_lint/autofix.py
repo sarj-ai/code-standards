@@ -309,7 +309,6 @@ def _disabled_hcl_edit(lines: list[str], first: int) -> TextEdit | None:
     parsed = document(payload)
     if not parsed.attributes and not parsed.blocks:
         return None
-    # Requiring every nonempty line to be code avoids deleting adjacent rationale.
     if any(
         body.strip()
         and re.fullmatch(r"\s*(?:[A-Za-z_][\w-]*(?:\s+\"[^\"]+\")*\s*\{|[A-Za-z_][\w-]*\s*=.+|})\s*", body) is None

@@ -152,7 +152,6 @@ def groups(path: Path, source: str, *, tree: ast.Module | None = None) -> list[P
 def _extract_groups(path: Path, source: str, tree: ast.Module | None = None) -> list[ProseGroup]:
     if is_generated(path, source):
         return []
-    # Callers pass the file's shared tree; without one, parse (both fail the same way).
     if tree is None:
         tree = parse_or_none(path, source)
     if tree is None:

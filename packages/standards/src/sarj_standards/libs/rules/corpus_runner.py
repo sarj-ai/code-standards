@@ -316,8 +316,6 @@ def _wait_for_process(
     *,
     threads: tuple[threading.Thread, ...],
 ) -> int:
-    # Keep the session leader unreaped until its inherited pipes close, so its
-    # numeric process-group identity cannot be reused before descendant cleanup.
     while any(thread.is_alive() for thread in threads) and not exceeded.is_set():
         remaining = deadline - time.monotonic()
         if remaining <= 0:

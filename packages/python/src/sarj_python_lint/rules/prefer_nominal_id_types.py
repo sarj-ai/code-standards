@@ -742,7 +742,6 @@ def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts)
             else _role(name, statement.annotation, imports, facts, allow_bare_id=True)
         )
         previous = roles.get(name)
-        # Equivalent redeclarations preserve the diagnostic anchor and its exact local suppression.
         if role is not None and previous is not None and role.carrier == previous.carrier:
             continue
         roles[name] = role
@@ -897,8 +896,6 @@ def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _
 def _carrier_shadowed_names(
     tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
 ) -> frozenset[str]:
-    # Match ImportIndex's conservative whole-file treatment of ambiguous bindings.
-    # PEP 695 parameters and mutations of imported namespaces also defeat identity.
     shadowed = _escaped_provider_names(tree, imports, node_index=node_index)
     for node in nodes(tree, ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple, ast.Attribute, ast.Call, index=node_index):
         match node:
@@ -1177,8 +1174,6 @@ def _unambiguous_exports(
     for statement in tree.body:
         if (assignment := _alias_assignment(statement)) is not None:
             assignments.setdefault(assignment.target, []).append(assignment)
-    # Imports are re-exports only when their binding is unambiguous; local
-    # aliases must have exactly one top-level assignment and no other writes.
     bindings: Counter[str] = _binding_counts(tree, node_index=node_index) if assignments else Counter()
     unique = {name for name, values in assignments.items() if len(values) == 1 and bindings.get(name, 0) == 1}
     allowed = unique | set(imports.bindings)
@@ -1336,7 +1331,6 @@ def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
             "reuse that domain type and propagate it through this boundary."
         )
     if established:
-        # Existing baselines fingerprint this message; expanded coverage must not invalidate them.
         return (
             f"{names} are swappable ID-shaped roles with the same carrier; introduce or reuse "
             "`typing.NewType` or nominal value-object identifiers and propagate them through this boundary."

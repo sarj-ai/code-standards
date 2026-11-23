@@ -27,7 +27,6 @@ def metadata_only_rollout(
     try:
         return _metadata_only_candidate(repo, runner, base_sha=base_sha, version=version, baseline_path=baseline_path)
     except OSError, ValueError, subprocess.SubprocessError:
-        # An unavailable base, malformed document or unknown shape uses the full gate.
         return False
 
 

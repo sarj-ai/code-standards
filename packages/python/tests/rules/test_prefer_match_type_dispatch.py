@@ -19,8 +19,15 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-def _check(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
+_SINGLE_CHECK = "instead of this isinstance check"
+
+
+def _check_all(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
     return PreferMatchTypeDispatch().check(Path(path), source)
+
+
+def _check(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
+    return [finding for finding in _check_all(source, path) if _SINGLE_CHECK not in finding.message]
 
 
 _MIXED_PROBLEM = RuleProblem(
@@ -263,7 +270,7 @@ def test_context_manager_branch_can_fall_through(body: str) -> None:
         "    if isinstance(value, str):\n        return 'str'\n"
         "    return 'fallback'\n"
     )
-    (finding,) = PreferMatchTypeDispatch().check(Path("app/classify.py"), source)
+    (finding,) = _check(source, "app/classify.py")
     assert finding.line == source.splitlines().index("    if isinstance(value, int):") + 1
     assert "2-branch" in finding.message
 
@@ -277,7 +284,7 @@ def test_async_context_manager_branch_can_fall_through(terminal: str) -> None:
         "    if isinstance(value, str):\n        return 'str'\n"
         "    return 'fallback'\n"
     )
-    (finding,) = PreferMatchTypeDispatch().check(Path("app/classify.py"), source)
+    (finding,) = _check(source, "app/classify.py")
     assert finding.line == source.splitlines().index("    if isinstance(value, int):") + 1
     assert "2-branch" in finding.message
 
@@ -301,7 +308,7 @@ _PUBLIC_EXAMPLES = PreferMatchTypeDispatch.public_examples()
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(_check(focus.source, str(focus.path))) == example.expected_count
+    assert len(_check_all(focus.source, str(focus.path))) == example.expected_count
 
 
 def test_flags_three_branch_isinstance_ladder_as_error() -> None:
@@ -1447,7 +1454,7 @@ _REVIEW_PATH = Path("app/models.py")
 
 
 def _review_check(source: str) -> list[Diagnostic]:
-    return PreferMatchTypeDispatch().check(_REVIEW_PATH, source)
+    return _check(source, str(_REVIEW_PATH))
 
 
 @pytest.mark.parametrize(
@@ -2051,7 +2058,11 @@ _REUSE_CONSTRUCTION_ERROR_CASES = frozenset(
     "case", _REUSE_CONSTRUCTION_CASES, ids=tuple(case.case_id for case in _REUSE_CONSTRUCTION_CASES)
 )
 def test_reuse_or_construction_normalization_cases(case: EvaluationCase) -> None:
-    findings = check_source([PreferMatchTypeDispatch()], Path("app/normalization.py"), case.source)
+    findings = [
+        finding
+        for finding in check_source([PreferMatchTypeDispatch()], Path("app/normalization.py"), case.source)
+        if _SINGLE_CHECK not in finding.message
+    ]
     expected_count = 1 if case.expected is ExpectedOutcome.MATCH else 0
     assert len(findings) == expected_count
     expected_severity = Severity.ERROR if case.case_id in _REUSE_CONSTRUCTION_ERROR_CASES else Severity.WARNING
@@ -2254,3 +2265,81 @@ def test_equality_none_is_not_a_none_pattern_arm() -> None:
 def test_guarded_run_ending_in_reported_elif_ladder_has_one_finding() -> None:
     source = "import ast\ndef f(x, p):\n    if isinstance(x, ast.Name) and p(x):\n        return 1\n    if isinstance(x, ast.Call):\n        a = 1\n    elif isinstance(x, ast.Attribute):\n        a = 2\n    return a\n"
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    renderer = session.tts\n    return isinstance(renderer, Adapter) and renderer.index is None\n",
+        "    if isinstance(session.tts, Adapter):\n        index = session.tts.index\n    return None\n",
+        "    return session if isinstance(session, (Adapter, Other)) else None\n",
+        "    value: object = 1 if not isinstance(session, Adapter) else 2\n    return value\n",
+        "    if session is None or isinstance(session, Adapter):\n        return 1\n    return 2\n",
+        "    if isinstance(session, mod.Thing) and session.ready:\n        return 1\n    return 2\n",
+        "    if not isinstance(session, Exception):\n        a = 1\n    else:\n        a = 2\n    return a\n",
+        "    if session is None:\n        return 0\n    elif isinstance(session, Local):\n        return 1\n    return 2\n",
+    ],
+    ids=[
+        "return-conjunct",
+        "attribute-subject",
+        "ternary-tuple",
+        "negated-ternary",
+        "none-or",
+        "module-class",
+        "negated-else",
+        "elif",
+    ],
+)
+def test_flags_single_statement_type_check_as_warning(body: str) -> None:
+    source = f"from pkg import Adapter, Other, mod\nclass Local:\n    pass\ndef f(session):\n{body}"
+    [finding] = _check_all(source)
+    assert finding.severity == Severity.WARNING
+    assert _SINGLE_CHECK in finding.message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    if not isinstance(value, Adapter):\n        raise TypeError(value)\n",
+        "    assert isinstance(value, Adapter)\n",
+        "    return [item for item in value if isinstance(item, Adapter)]\n",
+        "    return any(isinstance(item, Adapter) for item in value)\n",
+        "    return isinstance(value, Adapter)\n",
+        "    return call(1 if isinstance(value, Adapter) else 2)\n",
+        "    while isinstance(value, Adapter):\n        value = value.parent\n",
+        "    if value.ready and isinstance(value, Adapter):\n        return 1\n",
+        "    if isinstance(load(value), Adapter):\n        return 1\n",
+        "    if isinstance(value, Mapping):\n        return 1\n",
+        "    if isinstance(value, TYPE_GROUP):\n        return 1\n",
+        "    if isinstance(value, kind):\n        return 1\n",
+        "    if isinstance(value, Adapter) or value.ready:\n        return 1\n",
+    ],
+    ids=[
+        "negated-guard",
+        "assert",
+        "comprehension",
+        "any",
+        "bare-predicate",
+        "nested-ternary",
+        "while",
+        "non-leading-conjunct",
+        "call-subject",
+        "typing-alias",
+        "constant-tuple",
+        "variable-type",
+        "foreign-disjunct",
+    ],
+)
+def test_allows_type_checks_without_clean_match_statement(body: str) -> None:
+    source = f"from typing import Mapping\nfrom pkg import Adapter, TYPE_GROUP\ndef f(value, kind, call, load):\n{body}"
+    assert _check_all(source) == []
+
+
+def test_terminating_same_subject_sequence_reports_first_check_once() -> None:
+    source = "from pkg import A, B\ndef f(value):\n    if isinstance(value, A):\n        return 1\n    if isinstance(value, B):\n        return 2\n    if isinstance(value, A):\n        consume(value)\n"
+    assert [finding.line for finding in _check_all(source)] == [3]
+
+
+def test_nonterminating_same_subject_checks_report_separately() -> None:
+    source = "from pkg import A, B\ndef f(value):\n    if isinstance(value, A):\n        consume(value)\n    if isinstance(value, B):\n        consume(value)\n"
+    assert [finding.line for finding in _check_all(source)] == [3, 5]

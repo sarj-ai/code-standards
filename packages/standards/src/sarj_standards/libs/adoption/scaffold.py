@@ -158,7 +158,6 @@ class Plan:
     skips: list[tuple[Path, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    #: The one-time ESLint-to-Oxlint migration's notes, which `update` also prints, and the paths it changes.
     migration_notes: list[str] = field(default_factory=list)
     migration_paths: set[Path] = field(default_factory=set)
 
@@ -167,8 +166,6 @@ DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
 _BLACKSMITH_X64_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-(?P<release>\d{4})")
 _BLACKSMITH_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-\d{4}(?:-arm)?")
 _ACTIONS_CHECKOUT: Final = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
-# Blacksmith's checkout reuses a per-repository bare mirror on a sticky disk and falls back to the
-# upstream checkout, so full-history reads cost seconds instead of a complete clone per job.
 _BLACKSMITH_CHECKOUT: Final = "useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1"
 
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
@@ -284,7 +281,6 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
     typescript = not set(manifest.TYPESCRIPT_CONFIGS).isdisjoint(adopted.configs)
     swift = not {"swiftformat", "swiftlint"}.isdisjoint(adopted.configs)
     kotlin = not {"ktlint", "detekt"}.isdisjoint(adopted.configs)
-    # The adopted manifest owns ecosystem selection; discovery can introduce unrelated legacy projects.
     python_root = _override(root, adopted.python_dest) if python else None
     typescript_root = _override(root, adopted.typescript_dest) if typescript else None
     swift_root = _validated_swift_override(root, adopted.swift_dest) if swift else None
@@ -668,7 +664,6 @@ def build_plan(
     _plan_review_attributes(root, plan)
     _plan_retired_repository_launcher(root, plan)
     _plan_language_configs(root, plan, force=force, allow_existing_nested_oxlint=allow_existing_nested_oxlint)
-    # After the language configs: the Repo Standards manifest and baseline follow what the migration deletes.
     _plan_repo_commit_message_policy(root, plan, enable_rules=enable_repository_rules)
     match plan.hook_manager:
         case "pre-commit":
@@ -802,8 +797,6 @@ def _plan_language_configs(root: Path, plan: Plan, *, force: bool, allow_existin
         and any(name in selected for name in manifest.TYPESCRIPT_CONFIGS)
     ):
         _plan_typescript(root, ecosystems.typescript_root, plan)
-        # At this point oxlint.strict.mts is either present or a target in the
-        # config sync plan built by ``plan_init``.
         if not allow_existing_nested_oxlint:
             _report_unwired_nested_oxlint_configs(root, ecosystems.typescript_root, plan)
 
@@ -878,8 +871,6 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan, *, enable_rules: Se
 
 
 def _plan_repository_scope(root: Path, plan: Plan, previous: bytes, configured: bytes) -> bytes:
-    # Oxlint migration deletes stale JavaScript artifact entries and accepted findings on those deleted files; neither
-    # may remain in the migrated manifest.
     gone = {target.relative_to(root).as_posix() for target in plan.deletes if target in plan.migration_paths}
     if not gone:
         _plan_repository_baseline(root, plan, configured)
@@ -948,7 +939,6 @@ def _with_reviewed_repository_rules(contents: bytes, requested: Sequence[str]) -
     entry = re.search(r"""(?m)^[ \t]*(?:enabled_rules|"enabled_rules"|'enabled_rules')[ \t]*=[ \t]*\[""", header)
     values = ", ".join(json.dumps(rule_id) for rule_id in missing)
     if entry is not None:
-        # Prepending entries preserves array comments and capped Makefile exceptions.
         separator = ", " if configured.enabled_rules else ""
         if source[entry.end() :].startswith(("\n", "\r")):
             separator = separator.rstrip()
@@ -1100,8 +1090,6 @@ def _report_independent_roots(
 
 
 def _report_unwired_nested_oxlint_configs(repository: Path, selected: Path, plan: Plan) -> None:
-    # A selected TypeScript destination is an authority boundary. Oxlint roots in sibling workspaces cannot shadow that
-    # project. Below it, Oxlint lints each file with its nearest config, so a nested config must extend the policy.
     for config_root in _all_roots(selected, _OXLINT_CONFIG_NAMES):
         if config_root == selected:
             continue
@@ -1288,7 +1276,7 @@ def _render_manifest_preserving_extensions(  # ruff: ignore[too-many-locals] -- 
 
 def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
     version_line = _SCHEMA_LESS_VERSION_LINE.search(text)
-    if version_line is None:  # The legacy loader proves this before planning.
+    if version_line is None:
         return text
     prefix = f'schema = {manifest.MANIFEST_SCHEMA}\nbundle = "{desired.version}"\nrule_profile = "all"\n'
     migrated = f"{text[: version_line.start()]}{prefix}{text[version_line.end() :]}"
@@ -1656,8 +1644,6 @@ def _plan_typescript(repository: Path, root: Path, plan: Plan) -> None:
         _plan_yarn_workspace_peers(root, plan, package)
     elif not same_package:
         _plan_package_scripts(root, plan, package)
-    # pnpm 11 reads overrides from pnpm-workspace.yaml even for a standalone package. Setup creates that policy file
-    # below, so the ensuing install is always a workspace install for pnpm.
     is_workspace = (
         client is PackageManager.PNPM or install_root != root or (install_root / "pnpm-workspace.yaml").is_file()
     )
@@ -1846,7 +1832,6 @@ def _pinned_peers(runtime: Mapping[str, _PackageValue], development: Mapping[str
     updated_runtime = dict(runtime)
     updated_development = dict(development)
     for name, peer_version in manifest.typescript_peers().items():
-        # Preserve dependency-section ownership while repairing duplicate peers.
         if name not in runtime:
             updated_development[name] = peer_version
             continue
@@ -1887,7 +1872,6 @@ def _merge_override_entries(data: dict[str, _PackageValue], overrides: Overrides
     existing = _package_table(container.get(final))
     updated = dict(existing)
     for name, value in overrides.entries.items():
-        # Merge nested overrides to preserve a consumer's independent package policy.
         current_value = updated.get(name)
         current_entry = _package_table(updated.get(name))
         new_entry = _package_table(value)
@@ -2540,8 +2524,6 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     return "\n".join(lines) + "\n"
 
 
-# Cache analysis only for identical inputs. Default-branch pushes write; other events read, misses rerun, and
-# STANDARDS_RESULT_CACHE=off disables reuse.
 _RESULT_CACHE_PATH: Final = "${{ runner.temp }}/standards-results"
 _RESULT_CACHE_PREFIX: Final = (
     "standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-"
@@ -2621,8 +2603,6 @@ def _append_javascript_ci(
 ) -> None:
     if ecosystems.client is PackageManager.BUN:
         lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0")
-    # Bun projects rely on the runner image's Node for Node-based analyzers. GitHub's image ships a current
-    # Node; other runner images may not, so a configured runner gets the same pinned Node as npm projects.
     if ecosystems.client is not PackageManager.BUN or configured_runner:
         lines.extend(
             (
@@ -2631,7 +2611,6 @@ def _append_javascript_ci(
                 "          node-version: 24",
             )
         )
-        # Resolve the newest Node 24 release to satisfy npm engines across runner images.
         if configured_runner:
             lines.append("          check-latest: true")
     if (
@@ -2799,8 +2778,6 @@ def _configured_runner(adopted: manifest.Manifest | None) -> str:
 
 
 def _harden_runner_supported(runner: str) -> bool:
-    # On Blacksmith, Harden Runner installs its agent only for StepSecurity organizations with TLS inspection
-    # enabled. Without it the job gets no monitoring, yet the post step still polls 10 seconds for the agent.
     return not runner.startswith("blacksmith-")
 
 
@@ -2886,8 +2863,6 @@ jobs:
 
 
 def _commit_policy_runner(runner: str) -> str:
-    # Commit policy reads Git history in under a minute, so it never needs more than the smallest runner, and
-    # Blacksmith bills ARM minutes at 0.625 of x64.
     match = _BLACKSMITH_X64_UBUNTU_RUNNER.fullmatch(runner)
     return f"blacksmith-2vcpu-ubuntu-{match['release']}-arm" if match else runner
 

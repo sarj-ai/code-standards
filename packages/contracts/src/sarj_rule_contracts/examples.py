@@ -93,7 +93,6 @@ def _verify_fixes(example: RuleExample, root: Path, analyze: ExampleAnalyzer, fi
 
 def _verify_findings(example: RuleExample, findings: Sequence[ExampleFinding], expected_code: str | None) -> None:
     lines = example.focus_file.source.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    # UTF-8 byte width bounds the native byte, codepoint and UTF-16 column conventions.
     if any(
         not 1 <= finding.line <= len(lines)
         or not 1 <= finding.col <= len(lines[finding.line - 1].encode("utf-8")) + 1

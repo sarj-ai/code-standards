@@ -24,8 +24,6 @@ def normalize_group_comments(source: str, tokens: Sequence[Token]) -> str:
         gap = source[left.end + 1 : right.start]
         if not gap.strip():
             continue
-        # Native adjacent unquoted tokens prove this gap contains only comments/space.
-        # Blanking just that gap preserves values, quoted identifiers and source spans.
         chunks.extend((source[start : left.end + 1], re.sub(r"[^\r\n]", " ", gap)))
         start = right.start
     chunks.append(source[start:])

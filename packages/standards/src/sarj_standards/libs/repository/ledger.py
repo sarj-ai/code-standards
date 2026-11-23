@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 
 LEDGER_JSON: Final = CONFIGS_DIR / "rule-ledger.json"
 
-#: The `kind` values that name an `@sarj/<name>` Oxlint plugin rule and a bare `SARJnnn`
-#: code; the rest (`python`, `sql`, `iac`) are rule ids, which double as pre-commit hook ids.
 OXLINT: Final = "oxlint"
 CODE: Final = "code"
 

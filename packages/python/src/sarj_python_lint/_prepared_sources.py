@@ -19,15 +19,12 @@ LOCAL_MODULE_MAX_BYTES = 256_000
 type ResolutionKey = tuple[Path, str | None, int]
 
 
-# The sealed worker needs an observation available only to the parent.
 class NeedsSerialSourceError(Exception):  # sarj-noqa: SARJ542 -- Request serial source capture from the parent.
     pass
 
 
 @dataclass(frozen=True, slots=True)
 class CapturedSource:
-    # Larger project units keep their text and actual byte size on the wire;
-    # local analysis must decline them without a second full raw body.
     path: Path
     raw_size: int
     snapshot: SourceSnapshot | None = field(default=None, repr=False)
@@ -132,7 +129,6 @@ class PreparedSourceInputs:
                 return None
         if self.sealed:
             raise NeedsSerialSourceError
-        # Unknown/conflicting byte views retain the parent's legacy bounded read.
         with path.open("rb") as stream:
             raw = stream.read(LOCAL_MODULE_MAX_BYTES + 1)
         if len(raw) > LOCAL_MODULE_MAX_BYTES:
@@ -140,7 +136,6 @@ class PreparedSourceInputs:
         return SourceSnapshot(path, raw)
 
     def remember_module(self, path: Path, snapshot: SourceSnapshot) -> None:
-        # Called only after the local decoder and parser have admitted a module.
         if not self.sealed and path not in self._conflicts:
             self.remember(path, CapturedSource.from_snapshot(snapshot))
 
@@ -153,7 +148,6 @@ class PreparedSourceInputs:
             return self._resolutions[key]
         if not self.resolves_unrecorded:
             raise NeedsSerialSourceError
-        # The parent resolves an unrecorded key from the same filesystem; bytes stay sealed.
         return resolve()
 
     def record_resolution(self, key: ResolutionKey, result: Path | None) -> None:

@@ -604,8 +604,6 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
 
 @lru_cache(maxsize=1)
 def _git_local_environment_names(executable: str) -> tuple[str, ...]:
-    # Git's variable names are fixed for this executable; environment values
-    # must still be copied and stripped for every invocation, including hooks.
     return tuple(
         subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git metadata query with shell execution disabled.
             [executable, "rev-parse", "--local-env-vars"],

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from typing import IO
 
 
-# Provisional per-command bound for combined stdout and stderr raw bytes.
 _DEFAULT_MAX_CAPTURE_BYTES: Final = 64 * 1024 * 1024
 _READ_CHUNK_BYTES: Final = 64 * 1024
 _POLL_SECONDS: Final = 0.25
@@ -151,8 +150,6 @@ class _Capture:
         self.stderr.data.clear()
 
     def read_ready(self, timeout: float) -> None:
-        # At most one bounded read per ready pipe returns control to the caller's
-        # cancellation/deadline checks, even if a child writes continuously.
         for key, _events in self._selector.select(timeout):
             pipe, stream = self._pending[key.fd]
             try:
@@ -317,8 +314,6 @@ class BaseWatch:
     def _watch(self) -> None:
         while not self._stop.is_set():
             current = self.read_base()
-            # Unavailable evidence cannot establish movement. The controller
-            # still requires its independent exact-base check before pushing.
             if current is not None and current != self.expected_base:
                 self._base = _MovedBase(current)
                 self.cancelled.set()
@@ -334,8 +329,6 @@ def _owned_capture(process: subprocess.Popen[bytes], capture: _Capture) -> Gener
         with capture:
             yield
     except BaseException as error:
-        # Never enter Popen.__exit__'s unbounded wait after capture failure.
-        # A reaped leader no longer owns its numeric process-group identity.
         if process.returncode is None:
             _abort_capture_setup(process, error)
         raise
@@ -348,8 +341,6 @@ def _abort_capture_setup(process: subprocess.Popen[bytes], error: BaseException)
                 pipe.close()
             except OSError as cleanup_error:
                 error.add_note(f"closing a capture pipe failed: {cleanup_error}")
-    # Without a usable collector, abort the group before reaping its leader.
-    # Ordinary observed interruptions retain their TERM/KILL grace periods below.
     for number in (signal.SIGTERM, signal.SIGKILL):
         try:
             _signal_group(process, number)
@@ -375,7 +366,6 @@ def _interrupt(
     if not capture.drain(process, _CLEANUP_SECONDS):
         _signal_group(process, signal.SIGKILL)
         if not capture.drain(process, _CLEANUP_SECONDS):
-            # A detached descendant may retain a pipe; close descriptors after the timeout.
             capture.close_pipes()
             process.kill()
             process.wait(timeout=_CLEANUP_SECONDS)

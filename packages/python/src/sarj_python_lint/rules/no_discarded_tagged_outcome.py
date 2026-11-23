@@ -630,8 +630,6 @@ def _literal_reference(reference: _Reference) -> _Reference | None:
             return None
         seen.add(name)
         reference = _Reference(owner, value)
-    # Keep the original AST lookup scope. Quoted field tags do not provide an
-    # original class-scope expression and remain outside this narrow proof.
     return reference if not isinstance(reference.expression, ast.Constant) else None
 
 

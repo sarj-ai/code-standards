@@ -43,7 +43,7 @@ def test_original_activation_rationale_is_not_mechanically_proven_noise_requires
         ("generated/client.py", "\n".join(f"# Narrative implementation sentence number {i}." for i in range(8))),
         ("app.py", "# noqa: explanation one two three four five six seven eight\nvalue = 1\n"),
         (
-            "app.py",
+            "tests/test_app.py",
             "# First constraint.\n# Keep the fallback mode until the upstream migration completes.\nvalue = 1\n",
         ),
     ],
@@ -124,9 +124,10 @@ def test_protocol_shape_and_rejection_contract_is_not_proven_noise_requires_a_co
     assert len(ExcessiveCommentary().check(Path("app.py"), source)) == 1
 
 
-def test_concise_protocol_constraint_remains_allowed() -> None:
+def test_concise_protocol_constraint_is_reported_in_production_but_budgeted_in_tests() -> None:
     source = '# RFC 8176 defines these method identifiers.\n# Keep unknown identifiers opaque at this boundary.\nmethods = payload["methods"]\n'
-    assert ExcessiveCommentary().check(Path("app.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("app.py"), source)) == 1
+    assert ExcessiveCommentary().check(Path("tests/support.py"), source) == []
 
 
 def test_constraint_before_accumulation_is_preserved_requires_a_concise_contract() -> None:
@@ -167,7 +168,7 @@ _COMMENT_BLOCKS = (
     (
         "directive",
         "pragma: no cover\nThis branch represents an integration failure during application startup.\nThe integration harness owns this externally triggered recovery path.",
-        0,
+        1,
     ),
 )
 _COMMENT_CONTEXTS = (
@@ -221,10 +222,10 @@ def test_accumulation_proof_depends_on_the_actual_collection_binding(
         "    result.extend(collect_current_endpoint_profile_activation_reasons())\n"
         "    return result\n"
     )
-    assert len(commentary_rule.check(Path("app.py"), source)) == expected
+    assert len(commentary_rule.check(Path("tests/support.py"), source)) == expected
 
 
-def test_two_line_generic_walkthrough_does_not_establish_exact_ownership() -> None:
+def test_two_line_generic_walkthrough_is_reported_without_a_fix() -> None:
     source = (
         "def prepare():\n"
         "    # The sequence selects the allowed values from the supplied input.\n"
@@ -232,17 +233,31 @@ def test_two_line_generic_walkthrough_does_not_establish_exact_ownership() -> No
         "    values = selected_values()\n"
         "    return build_response(values)\n"
     )
-    assert ExcessiveCommentary().check(Path("service.py"), source) == []
+    assert len(ExcessiveCommentary().check(Path("service.py"), source)) == 1
+    assert fix_source(Path("service.py"), source, rule_ids=["excessive-commentary"]) == source
 
 
-def test_two_line_hidden_constraint_is_preserved() -> None:
+def test_two_line_hidden_constraint_is_reported_in_production_and_budgeted_in_tests() -> None:
     source = (
         "# Preserve this ordering because the receiver retains the first reference.\n"
         "# Otherwise a subsequent mutation changes the pending request after validation.\n"
         "send_request()\n"
     )
-    findings = ExcessiveCommentary().check(Path("service.py"), source)
-    assert findings == []
+    assert len(ExcessiveCommentary().check(Path("service.py"), source)) == 1
+    assert ExcessiveCommentary().check(Path("tests/support.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("# None means the miss was already enqueued.\nvalue = 1\n", id="concise-standalone"),
+        pytest.param("# TODO(API-812): remove the adapter.\nvalue = 1\n", id="tracked-todo"),
+        pytest.param("value = 1  # Seconds.\n", id="concise-inline"),
+        pytest.param("value = 1  # see noqa: E501\n", id="prose-before-directive"),
+    ],
+)
+def test_every_ordinary_production_comment_is_reported(source: str) -> None:
+    assert len(ExcessiveCommentary().check(Path("app/service.py"), source)) == 1
 
 
 _CASES = (
@@ -536,11 +551,11 @@ _CASES = (
 
 
 @pytest.mark.parametrize("source", _CASES)
-def test_technical_facts_do_not_become_errors_or_advisories_from_wrapping(source: str) -> None:
+def test_technical_facts_are_reported_without_a_fix(source: str) -> None:
     source = dedent(source)
     ast.parse(source)
     path = Path("app/service.py")
-    assert ExcessiveCommentary().check(path, source) == []
+    assert len(ExcessiveCommentary().check(path, source)) == 1
     assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
 
 
@@ -575,7 +590,14 @@ def test_explicit_comment_budget_rejects_long_prose_without_deleting_it(source: 
 @pytest.mark.parametrize(
     "source",
     [
-        "# A short hidden constraint stays local.\nvalue = 1\n",
+        "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\nvalue = 1\n",
+        "value = vendor.value  # type: ignore[attr-defined] -- vendor 2.1 stubs omit value\n",
+        "value = vendor.value  # basedpyright: ignore[reportAttributeAccessIssue] -- vendor 2.1 stubs omit value\n",
+        "value = 1  # sarj-noqa: SARJ434 -- generated wire constant\n",
+        "# fmt: off\nmatrix = [1, 0,\n          0, 1]\n# fmt: on\n",
+        "if ready:  # pragma: no cover\n    run()\n",
+        'context.add("exten")  # codespell:ignore exten\n',
+        "#\nvalue = 1\n",
         "# /// script\n# requires-python = '>=3.14'\n# dependencies = []\n# [tool.config]\n# enabled = true\n# ///\nvalue = 1\n",
         'text = "# first\\n# second\\n# third"\n',
         "# SPDX-License-Identifier: MIT\n# Copyright Example\n# Licensed under the MIT license.\nvalue = 1\n",

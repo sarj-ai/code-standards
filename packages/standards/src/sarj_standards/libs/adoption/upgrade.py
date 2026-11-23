@@ -105,7 +105,6 @@ class UpgradePlan:
     preconditions: dict[Path, bytes | None]
     preexisting_drift: frozenset[tuple[str, str]]
     preflight_findings: tuple[doctor.Finding, ...] = ()
-    #: What the TypeScript migration did or left for the repository; printed with the update.
     notes: list[str] = field(default_factory=list)
 
 
@@ -125,7 +124,6 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
 
     installed = manifest.installed_versions()
     pin_updates = doctor.plan_version_pin_updates(root, installed)
-    # Compose pin migrations into scaffold rewrites of the same file.
     scaffold_plan.writes = [
         (
             path,
@@ -409,7 +407,6 @@ def _updated_manifest_text(path: Path, current_text: str, adopted: manifest.Mani
         set(manifest.ALL_CAPABILITIES) - set(adopted.enabled_capabilities) - set(adopted.disabled_capabilities)
     )
     if implicit_disabled or manifest.uses_legacy_typescript_names(current_text):
-        # Serialize capability gates before a bundle bump can activate tools outside this plan.
         updated = replace(
             adopted,
             version=manifest.adopted_version(),
@@ -440,7 +437,6 @@ def _identical_config_mirrors(root: Path, target: Path) -> tuple[Path, ...]:
 
 
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
-    # Mutation always reads the current repository, even if its plan is older.
     return unmigrated_retired_findings(plan, doctor.diagnose(plan.root))
 
 
@@ -493,9 +489,7 @@ def baseline_and_suppression_changes(plan: UpgradePlan) -> tuple[Path, ...]:
         path
         for path, contents in writes
         if (before := plan.preconditions.get(path)) != (after := contents.encode("utf-8"))
-        # A bundle bump rewrites only the diagnostic baseline's provenance; its accepted entries stay put.
         and not (path == diagnostic and before is not None and baseline.provenance_only_change(before, after))
-        # Reuse the reviewed policy transitions; the exact migration retains every other baseline byte.
         and not (
             path == repository
             and before is not None
@@ -606,7 +600,6 @@ def _apply_and_validate(
 ) -> int:
     _write_plan(plan, file_transaction)
     if install:
-        # Keep PNPM's approved lockfile versions until installation finishes.
         policies = age_transition.retain_previous_approvals(file_transaction, plan.preconditions)
         status = lifecycle.execute(_upgrade_install_commands(plan))
         _mark_installer_writes(file_transaction)

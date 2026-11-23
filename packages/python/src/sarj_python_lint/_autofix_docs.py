@@ -310,7 +310,6 @@ class DocstringFixes:
             else frozenset({"Returns", "Return", "Yields", "Yield"})
         )
         ranges = [(start, end) for name, start, end in section_ranges(value.value) if name in wanted]
-        # Other section headings may carry independent contracts; only the detector-owned heading can be removed.
         if len(ranges) != 1:
             return []
         document = value.value

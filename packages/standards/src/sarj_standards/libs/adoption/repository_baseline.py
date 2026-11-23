@@ -22,8 +22,6 @@ if TYPE_CHECKING:
 
 
 PATH = ".repo-standards/baseline.json"
-# Only explicitly reviewed policy transitions preserve baseline identities, scope and warning choices. Fingerprint
-# changes or accepted debt require separate review unless the encoded compatibility proof permits migration.
 _COMPATIBLE_TRANSITIONS = frozenset(
     {
         (18, 19),
@@ -69,7 +67,6 @@ def compatible_policy_change(root: Path, before: bytes, after: bytes) -> bool:
         return False
 
 
-# Retire only findings on migration-deleted files; absent or incomplete baselines authorize no retirement.
 def retired_fingerprints(root: Path, deleted: Collection[str]) -> frozenset[str]:
     if not deleted or not (root / PATH).is_file():
         return frozenset()
@@ -79,8 +76,6 @@ def retired_fingerprints(root: Path, deleted: Collection[str]) -> frozenset[str]
     return frozenset(item.fingerprint for item in report.diagnostics if item.path in deleted)
 
 
-# Oxlint migration drops only deleted JavaScript artifacts and their accepted fingerprints; surviving findings retain
-# valid identities.
 def rescope(contents: bytes, previous: bytes, manifest: bytes, retired: Collection[str] = frozenset()) -> bytes:
     contents = _without_fingerprints(contents, frozenset(retired) & set(parse_baseline_bytes(contents).fingerprints))
     baseline = parse_baseline_bytes(contents)
@@ -118,7 +113,6 @@ def _without_fingerprints(contents: bytes, removed: frozenset[str]) -> bytes:
 def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> bytes:
     baseline = parse_baseline_bytes(contents)
     configured = parse_manifest_bytes(manifest)
-    # Reject duplicate JSON keys before making a textual, metadata-only edit.
     parse_unique_json(contents.decode("utf-8"))
     if baseline.repository_id != configured.repository_id:
         msg = "repository baseline repository_id does not match the planned manifest"

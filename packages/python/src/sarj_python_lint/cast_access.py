@@ -114,7 +114,6 @@ def _lexical_scopes(node: ast.AST, provenance: ResourceProvenance) -> Iterator[a
     scope = _evaluation_scope(node, provenance)
     immediate = True
     while scope is not None:
-        # Ordinary nested code blocks do not capture class locals.
         if immediate or not isinstance(scope, ast.ClassDef):
             yield scope
         immediate = False
@@ -131,7 +130,6 @@ def _evaluation_scope(node: ast.AST, provenance: ResourceProvenance) -> ast.AST 
         iterable = scope.generators[0].iter
         if iterable is not node and not provenance.contains(iterable, node):
             break
-        # A comprehension's first iterable is evaluated in the enclosing scope.
         node, scope = scope, provenance.scope(scope)
     return scope
 
@@ -185,7 +183,6 @@ def _outside_parameter_scope(
     if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef):
         outside.extend(owner.args.defaults)
         outside.extend(value for value in owner.args.kw_defaults if value is not None)
-    # Defaults and decorators evaluate in the enclosing scope.
     return any(value is node or provenance.contains(value, node) for value in outside)
 
 
@@ -199,13 +196,11 @@ def _local_binding_overrides(name: str, node: ast.AST, owner: ast.AST, provenanc
 
 
 def _static_text(node: ast.expr, depth: int = 0) -> str | None:
-    # Evaluate only bounded, side-effect-free string syntax, never runtime code.
     if depth > _MAX_LITERAL_DEPTH:
         return None
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value if len(node.value) <= _CAST_LENGTH else None
     if isinstance(node, ast.JoinedStr):
-        # Parsing adjacent static f-strings folds them into one Constant.
         return _static_text(node.values[0], depth + 1) if len(node.values) == 1 else None
     if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Add):
         return None

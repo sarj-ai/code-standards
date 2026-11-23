@@ -787,7 +787,6 @@ def _fixed_message_initializer(node: ast.FunctionDef) -> bool:
 
 
 def _builtin_namespace_safe(context: PythonFileContext) -> bool:
-    # Direct exception imports expose immutable class objects.
     for node in context.nodes(ast.Import, ast.ImportFrom, ast.Name):
         match node:
             case ast.Import() if any(alias.name == "builtins" for alias in node.names):

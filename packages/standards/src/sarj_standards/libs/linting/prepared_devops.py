@@ -626,7 +626,6 @@ def _closed_schema(
         if ":" in name or "?" in name or "%" in name or "\\" in name or name.startswith("/"):
             msg = f"schemas must not resolve network or absolute references: {reference}"
             raise ValueError(msg)
-        # URI dot segments are lexical; retain symlink checks on the destination.
         artifact = posixpath.normpath((path.parent / name).relative_to(directory).as_posix())
         hashes = _table(target.get("artifacts"), "artifact hashes")
         child = contained_file(directory, artifact)

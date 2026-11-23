@@ -240,8 +240,6 @@ def _body(
         attributes.append(
             _hcl.Attribute(name, _attribute(kind, name, value, literal=literal), point.line, point.col, point.line)
         )
-        # Provider schemas decide object versus nested-block meaning. Retain the expression and a structural projection;
-        # rules must select known schema paths before interpreting a projection as a provider block.
         if _project_body(kind, name, value):
             label_count = _label_count(kind, name, value)
             for nested_labels, body, nested_path in _declarations(value, label_count, location):

@@ -27,8 +27,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Matched at statement level (DOTALL) so a `CREATE TYPE` whose `AS ENUM` lands on
-# a later line is still caught.
 _CREATE_ENUM_RE = re.compile(r"\bCREATE\s+TYPE\b.*?\bAS\s+ENUM\b", re.IGNORECASE | re.DOTALL)
 _ALTER_ADD_VALUE_RE = re.compile(r"\bALTER\s+TYPE\b.*?\bADD\s+VALUE\b", re.IGNORECASE | re.DOTALL)
 

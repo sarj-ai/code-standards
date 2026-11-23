@@ -256,7 +256,6 @@ def _has_output_preconditions(block: _hcl.Block) -> bool:
     if block.child("precondition") is not None:
         return True
     attribute = block.attribute("precondition")
-    # JSON nested blocks were canonically encoded by _json_blocks.
     return attribute is not None and attribute.value not in {"null", "[]"}
 
 

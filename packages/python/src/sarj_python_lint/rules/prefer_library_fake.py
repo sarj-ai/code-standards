@@ -34,7 +34,6 @@ class _Service(NamedTuple):
     advice: str
 
 
-# Ordered most-specific first; the first match wins.
 _SERVICES: tuple[_Service, ...] = (
     _Service(
         subject="AWS S3",
@@ -157,8 +156,6 @@ _SERVICES: tuple[_Service, ...] = (
     ),
 )
 
-# Provider names do not establish wire semantics. Require distinctive raw envelopes before diagnosing domain ports or
-# query seams.
 _WIRE_GATED_SUBJECTS = frozenset({"Google BigQuery", "an LLM provider's HTTP API"})
 _LLM_WIRE_KEY_SETS = (
     frozenset({"choices", "usage"}),
@@ -256,7 +253,6 @@ _PROTOCOL_METHODS: dict[str, tuple[frozenset[str], int]] = {
 _STATE_PRODUCERS = frozenset({"add", "append", "extend", "insert", "setdefault", "update"})
 _BOOKKEEPING_FIELDS = frozenset({"calls", "invocations", "outcomes", "sideeffects"})
 
-# Words / infixes that mark a class as a test double.
 _MARKER_INFIXES = ("mock", "fake", "stub", "dummy", "inmemory", "scripted", "recording")
 _MARKER_WORDS = frozenset({"spy"})
 _SERVICE_SUFFIXES = (
@@ -285,11 +281,8 @@ _SERVICE_SUFFIXES = (
     "transport",
 )
 
-# pytest's own collection prefix, in both spellings the corpora use
-# (`TestGeminiNullResults` in a first-party repo, `test_MongoBackend_no_mock` in celery).
 _COLLECTED_PREFIX = "test"
 
-# Bases that mean "canned value object" or "test case", never "protocol implementation".
 _DATA_HOLDER_BASES = frozenset(
     {
         "ABC",
@@ -309,24 +302,18 @@ _DATA_HOLDER_BASES = frozenset(
     }
 )
 
-# Base-class name shapes that say "this is the framework's declared extension point".
 _EXTENSION_POINT_PREFIXES = ("Base", "Abstract")
 _EXTENSION_POINT_SUFFIXES = ("ABC", "Base", "Interface", "Protocol", "Mixin")
 
-# Splits CamelCase (and screaming acronyms) into words.
 _CAMEL_RE = re.compile(r"[A-Z][a-z0-9]+|[A-Z]+(?![a-z])|[a-z0-9]+")
 
-# A double this small is not worth a diagnostic, let alone a new dependency.
 _MIN_METHODS = 3
 _MIN_LINES = 25
 
-# A long class needs a second entry point to distinguish a protocol implementation from a data factory.
 _MIN_ENTRY_POINTS = 2
 
-# Directory segments that hold shared test doubles but are not `tests/`.
 _DOUBLE_DIR_NAMES = frozenset({"testing", "test_fakes", "testfixtures", "test_doubles"})
 
-# Module stems that hold shared test doubles.
 _DOUBLE_STEMS = frozenset({"fakes", "mocks", "stubs", "doubles"})
 _DOUBLE_STEM_SUFFIXES = ("_fakes", "_mocks", "_stubs", "_fake", "_mock", "_stub")
 

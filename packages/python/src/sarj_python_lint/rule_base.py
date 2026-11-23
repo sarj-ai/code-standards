@@ -33,12 +33,10 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
-# Each rule points directly to its executable examples.
 REPO_BLOB: Final = "https://github.com/sarj-ai/code-standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
 
 
-# Keep SARJ suppressions separate because Ruff removes unknown `noqa` codes.
 _SARJ_NOQA_RE = re.compile(
     r"#\s*sarj-noqa\b(?::\s*([A-Za-z0-9_, ]+))?",
     re.IGNORECASE,
@@ -96,7 +94,6 @@ class DiagnosticSubject(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TextEdit:
-    # Coordinates are one-based UTF-8 bytes after BOM removal; end positions are exclusive.
     start_line: int
     start_col: int
     end_line: int

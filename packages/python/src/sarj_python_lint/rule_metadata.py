@@ -131,7 +131,6 @@ def _authored_descriptor(rule_id: RuleId, rule: type[Rule]) -> RuleDescriptor:
 
 def render_authored_descriptors() -> str:
     lines = [
-        "# Generated from the eager source registry; use maintain rules sync to update.",
         "from __future__ import annotations",
         "",
         "from sarj_rule_contracts import RuleId",

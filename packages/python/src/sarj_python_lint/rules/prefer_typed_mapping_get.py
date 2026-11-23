@@ -360,7 +360,6 @@ class _ReturnProofKey:
 class _ReturnContracts:
     def __init__(self, facts: MappingShapeFacts) -> None:
         self.owners = {facts.context.path: facts}
-        # Return lookups must leave other rules enough budget to resolve their validators.
         self.local_source = LocalSourceFacts(source_inputs=facts.context.session.source_inputs)
         self._return_proofs: dict[_ReturnProofKey, bool] = {}
         self._return_nodes: dict[Path, dict[ast.FunctionDef | ast.AsyncFunctionDef, tuple[ast.Return, ...]]] = {}

@@ -52,7 +52,6 @@ _POLICY_FIELDS: Final = frozenset({"defaultLevel", "optionsSchema"})
 _INVENTORY_ENTRY_FIELDS: Final = frozenset({"code", "family", "id", "source", "test"})
 _GIT_SHA_LENGTH: Final = 40
 
-# Explicitly approved error-first rules; all other new judgment rules start as warnings.
 _ERROR_FIRST_APPROVALS: Final = frozenset(
     {
         "python:no-excessive-cognitive-complexity",
@@ -62,55 +61,25 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "oxlint:prefer-typed-reflection",
         "oxlint:no-conditional-empty-object-spread",
         "oxlint:no-reduce-accumulator-copy",
-        # Explicit strict DevOps admission: proven persistent private-key creation.
         "iac:no-managed-service-account-key",
-        # Explicit strict DevOps admission: proven broad project Owner/Editor grants.
         "iac:no-project-basic-privilege",
-        # User-requested blocking placement-input policy, qualified with paired
-        # native fixtures and inspected immutable Terraform corpus evidence.
         "iac:no-hardcoded-deployment-location",
-        # User-requested ban on proven-unused exports; the published semantic
-        # analyzer is qualified with native consumers and immutable corpus evidence.
         "iac:no-unused-module-outputs",
-        # Invalid build ordering or substitution into executable shell syntax.
         "text:cloudbuild-contract",
-        # Explicit user-requested shell-prose ban, qualified with paired native
-        # cases and immutable corpus controls for data, directives and required contracts.
         "text:concise-shell-prose",
-        # User-approved architecture policy: literal/import-proven interpreter source
-        # bypasses the requested independently linted file/module boundary.
         "python:no-interpreter-source-arguments",
-        # User-requested blocking CLI policy: require typed Typer command contracts instead of raw argv parsing;
-        # qualified with paired native fixtures, inspected adapter exceptions and pinned corpus evidence.
         "python:prefer-typed-cli",
-        # User-approved blocking suppression integrity, qualified with native
-        # checker repros, labeled cases, and pinned-corpus/performance evidence.
         "python:no-blanket-suppression",
-        # User-approved blocking datastore architecture policy, qualified with
-        # native paired-engine labels and pinned consumer/performance evidence.
         "sql:no-analytical-queries-in-transactional-db",
-        # User-approved strict new-table constraints; preserve separate PostgreSQL
-        # partial/expression indexes and existing-table migration contracts.
         "sql:new-table-inline-constraints",
-        # Explicit user-approved blocking policy for compatible adjacent ALTER
-        # actions; preserve transaction, section, identity and command boundaries.
         "sql:combine-alter-table",
-        # User-requested blocking migration policies: syntactically proven no-op
-        # rollbacks and comments that replace executable constraints or waive bans.
         "sql:no-noop-migration-down",
         "sql:no-migration-comments",
-        # User-approved constructor ownership policy: inject import-proven HTTPX
-        # clients and retain scoped composition ownership and async cleanup.
         "python:no-async-client-in-constructor",
-        # Explicit user-requested blocking bulk-first service CRUD policy.
         "python:service-singleton-delegates-to-bulk",
-        # Explicit user-requested strict Python runtime bans, qualified with native
-        # ownership controls, inspected exceptions and immutable corpus evidence.
         "python:no-dynamic-builtins",
         "python:no-shared-mutable-default",
         "python:no-sys-path-mutation",
-        # User-requested Python keyword ban, qualified with native Ruff ownership,
-        # labeled syntax fixtures and an immutable corpus; existing uses migrated.
         "python:no-nonlocal-statement",
     }
 )
@@ -378,7 +347,6 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
 def _catalog_entry(entry: dict[str, JsonValue], *, index: int) -> dict[str, JsonValue]:
     published_engine = _string(entry, "engine")
     rule_id = _string(entry, "id")
-    # Catalogs published before Oxlint name the TypeScript engine `eslint`.
     engine = RuleEngine.OXLINT.value if published_engine == oxlint_ids.LEGACY_SOURCE else published_engine
     if _string(entry, "key") != f"{published_engine}:{rule_id}" or engine not in _RELEASE_TARGET_BY_ENGINE:
         msg = f"rule catalog entry {index} has inconsistent key/engine/id"

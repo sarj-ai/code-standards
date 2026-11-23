@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Match TIMESTAMP unless followed by WITH TIME ZONE, allowing an optional (n) precision modifier.
 PATTERN = re.compile(
     r"\bTIMESTAMP\b(?!\s*(?:\(\s*\d+\s*\)\s*)?WITH\s+TIME\s+ZONE\b)",
     re.IGNORECASE,
@@ -63,7 +62,6 @@ def _identifier_spans(source: str) -> tuple[tuple[int, int], ...] | None:
     try:
         statements = parse_postgres(source)
     except SqlglotError, RecursionError:
-        # Fragments and unsupported procedural syntax retain lexical checks.
         return None
     if any(statement is not None and statement.find(exp.Command) is not None for statement in statements):
         return None

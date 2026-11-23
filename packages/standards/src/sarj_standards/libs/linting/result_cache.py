@@ -52,16 +52,11 @@ if TYPE_CHECKING:
 type _Field = bool | int | str | StrEnum | tuple[_Field, ...] | DataclassInstance | None
 
 
-# Reuse an analyzer's complete normalized result only when every input it can
-# observe is unchanged. Any missing, unreadable or ambiguous input runs it.
 _CACHE_ENV: Final = "SARJ_STANDARDS_RESULT_CACHE"
 _WRITE_ENV: Final = "SARJ_STANDARDS_RESULT_CACHE_WRITE"
 _SCHEMA: Final = 1
 _KEEP_PER_ANALYZER: Final = 8
-# Per-file and per-project analyzers keep one entry per input unit.
 KEEP_PER_UNIT: Final = 4096
-# These only locate executables, and every executable an analyzer runs is keyed
-# by its own identity. PATH also names each run's temporary tool environment.
 _LOCATION_ENVIRONMENT: Final = frozenset({"PATH"})
 _ENGINE_DISTRIBUTIONS: Final = (
     "code-standards",
@@ -70,7 +65,6 @@ _ENGINE_DISTRIBUTIONS: Final = (
     "sarj-iac-lint",
     "sarj-rule-contracts",
 )
-# Native Python never selects, loads or resolves modules below these names.
 _PRUNED_DIRECTORIES: Final = frozenset(
     {
         ".git",
@@ -90,9 +84,7 @@ _PRUNED_DIRECTORIES: Final = frozenset(
         "venv",
     }
 )
-# Content read by Python analysis, Ruff configuration and SQL extraction.
 _PYTHON_SUFFIXES: Final = frozenset({".py", ".pyi", ".toml", ".cfg", ".ini"})
-# Names whose presence native Python probes: codegen and repository markers.
 PYTHON_MARKER_NAMES: Final = frozenset(
     {
         ".git",
@@ -134,7 +126,6 @@ class ResultCache:
         return cls(Path(value), writable)
 
 
-# An analyzer may read inputs that cannot be enumerated, so it always runs.
 class UnknownInputsError(ValueError):  # sarj-noqa: SARJ542 -- Abort reuse when cache inputs cannot be proven.
     pass
 
@@ -158,8 +149,6 @@ def cached_analysis(
     keep: int = _KEEP_PER_ANALYZER,
     outcomes: list[bool] | None = None,
 ) -> CachedResult:
-    # `inputs` must name every input the analyzer can observe; any error runs it.
-    # With `outcomes`, per-unit hits are recorded instead of one notice per unit.
     cache = ResultCache.from_environment()
     if cache is None:
         return compute()
@@ -193,7 +182,6 @@ def cached_analysis(
 @dataclass(frozen=True, slots=True)
 class TrackedResult:
     result: CachedResult
-    # Repository-relative paths the analysis read beyond its keyed inputs.
     reads: tuple[str, ...] = ()
 
 
@@ -206,8 +194,6 @@ def cached_tracked_analysis(
     keep: int = _KEEP_PER_ANALYZER,
     outcomes: list[bool] | None = None,
 ) -> CachedResult:
-    # The entry records every extra path the analysis read with its identity;
-    # it is reused only while each of them is unchanged.
     cache = ResultCache.from_environment()
     if cache is None:
         return compute().result
@@ -241,7 +227,6 @@ def notice_outcomes(analyzer: str, outcomes: Sequence[bool]) -> None:
 
 
 def file_identity(path: Path) -> str:
-    # Missing and directory inputs are part of what an analyzer can observe.
     if not path.exists() and not path.is_symlink():
         return "missing"
     if path.is_symlink():
@@ -252,7 +237,6 @@ def file_identity(path: Path) -> str:
 def executable_identity(path: Path) -> str:
     resolved = path.resolve(strict=True)
     status = resolved.stat()
-    # A replaced binary has a new stat identity, so its digest is recomputed.
     return _executable_digest(_ExecutableStat(str(resolved), status.st_size, status.st_mtime_ns, status.st_ino))
 
 
@@ -278,7 +262,6 @@ def _executable_digest(executable: _ExecutableStat) -> str:
 
 
 def python_inputs_digest(root: Path) -> str:
-    # Never memoize: one process may analyze, fix and analyze the tree again.
     return _walk_digest(root.resolve())
 
 
@@ -317,7 +300,6 @@ def _python_inputs(root: Path, selected: Sequence[str], parameters: Iterable[str
     yield from (f"parameter={item}" for item in parameters)
     resolved = root.resolve()
     for name in selected:
-        # Selection order is part of native Python semantics.
         path = (resolved / name).resolve()
         if resolved not in path.parents and path != resolved:
             msg = f"selected input escapes the repository: {name}"
@@ -328,7 +310,6 @@ def _python_inputs(root: Path, selected: Sequence[str], parameters: Iterable[str
 
 @cache
 def _engine_identity() -> str:
-    # Installed distributions cannot change within one analysis process.
     digest = sha256()
     installed = sorted(
         f"{dist.metadata['Name']}=={dist.version}".lower() for dist in metadata.distributions() if dist.metadata["Name"]
@@ -339,7 +320,6 @@ def _engine_identity() -> str:
         distribution = metadata.distribution(name)
         record = distribution.read_text("RECORD")
         if record is None or editable_distribution(distribution.read_text("direct_url.json")):
-            # Editable source can change without a version or record change.
             msg = f"{name} has no immutable installed record"
             raise ValueError(msg)
         _feed(digest, f"{name}:{record}")
@@ -371,7 +351,6 @@ def _walk_digest(root: Path) -> str:
 
 
 def _feed_directory(digest: _Digest, relative: str, directories: Sequence[str]) -> None:
-    # Import resolution can probe any visible directory; dot directories only carry markers.
     if not any(part.startswith(".") for part in Path(relative).parts):
         _feed(digest, f"directory={relative}")
     for name in sorted(PYTHON_MARKER_NAMES.intersection(directories)):
@@ -393,7 +372,6 @@ class _Digest(Protocol):
 
 
 def _feed(digest: _Digest, text: str) -> None:
-    # Length prefixes keep adjacent parts from colliding.
     data = text.encode("utf-8", "surrogateescape")
     digest.update(len(data).to_bytes(8, "big"))
     digest.update(data)
@@ -453,7 +431,6 @@ def _entry_result(payload: JsonValue, analyzer: str, fingerprint: str) -> Cached
 
 
 def _storable(result: CachedResult) -> bool:
-    # Execution failures are not findings; they must run again.
     return all(report.completion is Completion.COMPLETE and not report.issues for report in result.reports)
 
 
@@ -492,7 +469,6 @@ _PRUNED_LOCK = threading.Lock()
 
 
 def _prune_once(directory: Path, keep: int) -> None:
-    # Units are stored many times per analysis; one pass per directory suffices.
     with _PRUNED_LOCK:
         if directory in _PRUNED:
             return

@@ -167,7 +167,6 @@ def _hidden_dependencies(
         bindings.visit(statement)
         bindings.names.update(name for node in _scope_nodes(statement) for name in _binding_names(node))
         bindings.names.update(node.target.id for node in ast.walk(statement) if isinstance(node, ast.NamedExpr))
-        # Branch/loop bindings are conservatively local; do not infer data flow.
         if not isinstance(statement, (ast.Assign, ast.AnnAssign)) and guard is None:
             candidates.difference_update(bindings.names)
         hidden.update(

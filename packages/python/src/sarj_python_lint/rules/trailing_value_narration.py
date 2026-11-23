@@ -33,14 +33,12 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-# A number that is not part of an identifier or a dotted attribute path.
 _NUMBER_RE = re.compile(
     r"(?<![\w.])(?:0[xob][0-9a-f_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:e[+-]?\d+)?)(?![\d_.])",
     re.IGNORECASE,
 )
 _WORD_RE = re.compile(r"[A-Za-z]+(?:'[a-z]+)?|\d[\d_]*(?:\.\d[\d_]*)?")
 
-# Unit words belong in names; the unnamed quantity cannot be recovered from a number alone.
 UNIT_WORDS = frozenset(
     {
         "bytes",

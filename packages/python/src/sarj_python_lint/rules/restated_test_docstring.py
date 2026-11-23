@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-# The vocabulary a test docstring spends on *being a test*.
 _TEST_CEREMONY = (
     "assert",
     "asserted",
@@ -95,7 +94,6 @@ _TEST_CEREMONY = (
 
 _CEREMONY_STEMS = frozenset(stem(word) for word in _TEST_CEREMONY)
 
-# Sections other than the summary are SARJ086/087's subject.
 _SUMMARY_ONLY = frozenset({"summary"})
 _GETATTR_MIN_ARGS = 2
 _PYTEST = frozenset({"pytest"})
@@ -105,7 +103,6 @@ _MESSAGE = (
 )
 
 
-# The keyword singletons.
 _SINGLETONS = MappingProxyType({None: "none", True: "true", False: "false"})
 
 

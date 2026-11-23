@@ -32,7 +32,6 @@ _RANDOM_UUID_RE = re.compile(
 _SQL_IDENTIFIER = re.compile(POSTGRES_UNQUOTED_IDENTIFIER)
 
 
-# Require SQL structure so prose that merely names the function stays valid.
 _SQL_SHAPE_RE = re.compile(
     r"\b(?:CREATE|ALTER|INSERT|UPDATE|SELECT|DEFAULT|VALUES)\b",
     re.IGNORECASE,

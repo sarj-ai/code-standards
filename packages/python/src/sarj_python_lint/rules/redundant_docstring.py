@@ -167,7 +167,7 @@ class RedundantDocstring(Rule):
         if not docstring or VALUE_MARKER_RE.search(docstring) or is_protected(docstring):
             return
         if len(node.body) == 1:
-            return  # the docstring IS the body; deleting it leaves a syntax error
+            return
         if node.decorator_list or node.name in context.consumed_docstrings:
             return
         known_stems = signature_stems(node, None)

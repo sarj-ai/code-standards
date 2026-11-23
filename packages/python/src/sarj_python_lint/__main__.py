@@ -73,9 +73,7 @@ SKIP_DIR_NAMES = frozenset(
     }
 )
 
-# Bound resource use, but never turn an unanalyzed selected file into success.
 _MAX_FILE_BYTES = 500_000
-# Spawned workers rebuild the project index; small remainders stay serial.
 FROZEN_HANDOFF_MIN_FILES = 64
 
 
@@ -162,7 +160,6 @@ def _check(
         resolutions = session.local_source.saturated_resolutions()
         if resolutions is None:
             continue
-        # A refused handoff leaves this session untouched; finish serially.
         handoff = False
         frozen = _frozen_diagnostics(
             rules, dict(pending[index + 1 :]), session, resolutions, jobs=jobs, source_inputs=source_inputs
@@ -238,8 +235,6 @@ def _frozen_diagnostics(
     jobs: int,
     source_inputs: PreparedSourceInputs | None,
 ) -> list[Diagnostic] | None:
-    # Serial order fills the resolution cache once. Afterwards each file sees the
-    # same full cache whatever ran before it, so workers can check the rest.
     from sarj_python_lint._parallel import FrozenResolutions, check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
 
     if session.project is not None and not session.project.value_origins_complete:
@@ -309,16 +304,10 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ089": frozenset({"SARJ551"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
-        # Visible FastAPI operations have a route-aware contract diagnostic. Keep the annotation diagnostics when
-        # SARJ094 is absent, including when a concrete response_model makes the route contract complete.
         "SARJ094": frozenset({"SARJ008", "SARJ447", "SARJ568"}),
         "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
-        # A proven external or nested request boundary already requires schema validation at this field read. Retain
-        # standalone shape advice when that more specific rule is unselected or locally suppressed.
         "SARJ411": frozenset({"SARJ521", "SARJ535"}),
-        # Any-valued mappings are the stronger correctness failure. SARJ008 still owns every fixed dictionary return
-        # when selected alone, while an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
         "SARJ450": frozenset({"SARJ521", "SARJ535"}),
         "SARJ521": frozenset({"SARJ535"}),
@@ -513,7 +502,6 @@ def _suppressed_diagnostics(
 
 def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
     suppressed = _precedence_suppressions(codes)
-    # SARJ094 warning staging owns the overlapping return failure; its blocking twin would defeat that policy.
     if "SARJ094" in codes:
         suppressed.update(_route_contract_suppressions(codes))
     if _typed_docstring_warning_is_superseded(codes):
@@ -656,8 +644,6 @@ def _apply_baseline(
         path_key = normalize_path(d.path)
         key = (path_key, d.code)
         seen[key] += 1
-        # The raw lookup preserves compatibility with baselines written before
-        # repository-relative keys were introduced.
         allowance = max(
             baseline.get(path_key, {}).get(d.code, 0),
             baseline.get(str(d.path), {}).get(d.code, 0),

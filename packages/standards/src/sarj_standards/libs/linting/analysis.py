@@ -54,11 +54,8 @@ from .runner import GroupedPaths, group_paths
 _MILLISECONDS_PER_SECOND = 1_000
 
 
-# Native Python reaches its 512-entry module-resolution quota only on large
-# selections; workers then check the files after that quota is spent.
 _PARALLEL_PYTHON_FILES = 512
 _IAC_OUTPUTS_TOOL = "sarj-iac-lint/module-outputs"
-# Keep accepted debt stable after correcting the HTTP rationale in this message.
 _POST_CREATE_FINGERPRINT_ANCHOR = (
     "POST already means create; name the collection (POST /tickets) instead of a create, add or new segment, "
     "and use PUT for an upsert."
@@ -431,7 +428,6 @@ def _run_native(
             paths,
             baseline=python_baseline,
             root=root,
-            # Smaller selections keep the established serial path and its startup cost.
             jobs=python_jobs if len(paths) >= _PARALLEL_PYTHON_FILES else 1,
             sources=sources,
         )
@@ -578,7 +574,6 @@ class PythonSourceDocument:
             return replace(position, byte_offset=position.byte_offset + 3)
         prefix = self.utf8_source[: position.byte_offset].decode("utf-8")
         encoded = prefix.encode(self.encoding)
-        # Never invent a physical offset for a codec whose prefix does not round-trip.
         return replace(position, byte_offset=len(encoded)) if self.raw.startswith(encoded) else None
 
 
@@ -638,7 +633,6 @@ def _native_document(snapshot: SourceSnapshot, source: str) -> SourceDocument | 
     if source == "sarj-python-lint":
         return PythonSourceDocument.from_snapshot(snapshot)
     if source in {"sarj-sql-lint", "sarj-iac-lint"}:
-        # Replacement decoding can collapse invalid byte sequences; only strict UTF-8 proves this coordinate view.
         return SourceDocument(snapshot.path, snapshot.decode("utf-8").text)
     return SourceDocument.from_snapshot(snapshot)
 
@@ -756,8 +750,6 @@ def _cached_text_diagnostics(
     sources: SourceCatalog,
     normalized: Callable[[Iterable[textlint.Finding]], tuple[Diagnostic, ...]],
 ) -> tuple[Diagnostic, ...]:
-    # Each file's findings depend on its bytes, the manifest's text policy, the
-    # selected rules, the shell parser, and any file a rule reads by reference.
     resolved = root.resolve()
     checker = textlint.TextChecker(root=root, rule_ids=rule_ids, sources=sources)
     shared: list[str] = []

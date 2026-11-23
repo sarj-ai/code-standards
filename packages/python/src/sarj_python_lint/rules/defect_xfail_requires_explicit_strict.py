@@ -28,20 +28,15 @@ if TYPE_CHECKING:
 
 _XFAIL = "xfail"
 
-# Reason text that identifies a pinned defect rather than an environment gate.
 _DEFECT_RE = re.compile(r"\b(bug|broken|defect|regression|incorrect|wrong|fixme)\b", re.IGNORECASE)
 _SHOULD_CONTRAST_RE = re.compile(r"\bshould\b.+\b(but|instead)\b", re.IGNORECASE)
 
-# Only canonical GitHub issue URLs prove a pinned defect; other URLs may document requirements.
 _GITHUB_ISSUE_RE = re.compile(r"https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+\b", re.IGNORECASE)
 
-# Reason text conceding the outcome genuinely varies run to run.
 _NONDETERMINISM_RE = re.compile(r"intermittent|flak|sometimes|non-?deterministic|varies", re.IGNORECASE)
 
-# Sibling markers that declare a nondeterministic dependency.
 _NONDETERMINISTIC_MARKERS = frozenset({"real_llm", "flaky", "network"})
 
-# schemathesis binds `.parametrize()` on a schema object.
 _PARAMETRIZE_ATTR = "parametrize"
 _PYTEST_MARK = "mark"
 _PYTEST = frozenset({"pytest"})
@@ -257,7 +252,6 @@ def _is_property_based(dec: ast.expr, imports: ImportIndex) -> bool:
         return True
     if not isinstance(target, ast.Attribute) or target.attr != _PARAMETRIZE_ATTR:
         return False
-    # Exclude pytest.mark.parametrize because its fixed table is not property-based generation.
     return _pytest_marker_name(dec, imports) != _PARAMETRIZE_ATTR
 
 
@@ -310,7 +304,6 @@ def _unique_xfail_alias(statement: ast.stmt, stores: Counter[str], imports: Impo
     return target.id if _pytest_marker_name(value, imports) == _XFAIL else None
 
 
-# Imported probes that identify interpreter, operating-system, or runtime capabilities.
 _ENV_PROBE_SYMBOLS = (
     ("sys", frozenset({"implementation", "platform", "version", "version_info", "pypy_version_info"})),
     ("os", frozenset({"environ", "getenv", "name", "uname"})),
@@ -348,7 +341,6 @@ def _is_fixture(decorators: list[ast.expr], imports: ImportIndex) -> bool:
 def _is_strict(dec: ast.Call) -> bool:
     for kw in dec.keywords:
         if kw.arg is None:
-            # `**marker_kwargs` may carry strict; decline to guess.
             return True
         if kw.arg == "strict":
             return isinstance(kw.value, ast.Constant) and kw.value.value is True
@@ -391,8 +383,6 @@ def _literal_text(value: ast.expr) -> str | None:
     match value:
         case ast.Constant(value=str() as text):
             return text
-        # Reasons are routinely wrapped across lines as implicit concatenation
-        # or a parenthesised join; read the literal fragments so the match works.
         case ast.JoinedStr(values=parts):
             fragments: list[str] = []
             for part in parts:

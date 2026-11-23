@@ -110,7 +110,6 @@ class NoRedundantSqlAlias(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None:
             return []
-        # Both query recovery paths require an import-proven Psycopg symbol.
         if not context.nodes(ast.Import, ast.ImportFrom):
             return []
         candidates: dict[ast.expr, bool] = {}

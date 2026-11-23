@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7db9445341ca6cee3eb967899649184eff62af2c8958a11ceea006b61def24cb",
-  "cliSha256": "006b94844d62ed0aefcd84ad6f2e2db33dd2b7b942c6d5017314af73b95a1987",
+  "catalogSha256": "7f00def3a2e92e1aaf4210f545ccc6818d5648afc1cff66b017c9e2681c284dc",
+  "cliSha256": "e3ea4ef3246328b1e622905d42616297740adbb11cf426c25670fee75e7fcb91",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -12359,30 +12359,30 @@
           "files": [
             {
               "path": "app.py",
-              "source": "def activate():\n    # Load current account profile activation settings\n    # Build current account profile activation response\n    load_current_account_profile_activation_settings()\n    return build_current_account_profile_activation_response()\n"
+              "source": "def record(pool):\n    # Settle the row before cancellation can close the pool.\n    shield(insert_row(pool))\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app.py",
-          "id": "activation-narration",
+          "id": "constraint-comment",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A paragraph exactly repeats two flat action names"
+          "title": "A concise constraint comment still restates what the code should name"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app.py",
-              "source": "def activation_reasons():\n    # Returns all the reasons rather than the first failure.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
+              "source": "def record(pool):\n    shield(insert_row_before_pool_closes(pool))\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app.py",
-          "id": "activation-rationale",
+          "id": "named-constraint",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "A concise necessary constraint remains local"
+          "title": "The name carries the constraint"
         }
       ],
       "optionsSchemaSource": null
@@ -19853,6 +19853,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/voices.py",
+              "source": "from voices import Adapter, Primary, Secondary\n\n\ndef unavailable(session):\n    match session.tts:\n        case Adapter(index=None):\n            return True\n        case _:\n            return False\n\n\ndef current(session, settings):\n    match session.tts:\n        case Adapter():\n            settings = session.tts.settings\n    match settings:\n        case Primary() | Secondary():\n            return settings\n        case _:\n            return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/voices.py",
+          "id": "single-class-patterns",
+          "outcome": "accept",
+          "scenarioId": "single-type-check",
+          "title": "Class patterns absorb attribute tests and name the fallback"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/authorization.py",
               "source": "from pydantic import BaseModel\n\n\nclass Session(BaseModel):\n    allowed: bool\n\n\ndef authorize(subject):\n    match subject:\n        case Session():\n            if not subject.allowed:\n                raise PermissionError\n        case _:\n            return\n"
             }
@@ -19878,6 +19893,21 @@
           "outcome": "reject",
           "scenarioId": "single-model-type-dispatch",
           "title": "One model-specific branch still dispatches on runtime type"
+        },
+        {
+          "expectedCount": 3,
+          "files": [
+            {
+              "path": "app/voices.py",
+              "source": "from voices import Adapter, Primary, Secondary\n\n\ndef unavailable(session):\n    renderer = session.tts\n    return isinstance(renderer, Adapter) and renderer.index is None\n\n\ndef current(session, settings):\n    if isinstance(session.tts, Adapter):\n        settings = session.tts.settings\n    return settings if isinstance(settings, (Primary, Secondary)) else None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/voices.py",
+          "id": "single-type-checks",
+          "outcome": "reject",
+          "scenarioId": "single-type-check",
+          "title": "Single isinstance checks hide class patterns"
         },
         {
           "expectedCount": 1,
@@ -20206,6 +20236,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A local wall clock measures duration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-named-literal-alias": {
+      "examples": [
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from typing import Literal\n\n\nclass FallbackError(RuntimeError):\n    def __init__(self, reason: Literal[\"unavailable\", \"failed\"]) -> None:\n        super().__init__(reason)\n        self.reason: Literal[\"unavailable\", \"failed\"] = reason\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "inline-literal-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A parameter repeats an anonymous Literal domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from typing import Literal\n\ntype FallbackReason = Literal[\"unavailable\", \"failed\"]\n\n\nclass FallbackError(RuntimeError):\n    def __init__(self, reason: FallbackReason) -> None:\n        super().__init__(reason)\n        self.reason: FallbackReason = reason\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "named-literal-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Annotations share one named Literal alias"
         }
       ],
       "optionsSchemaSource": null
@@ -22580,6 +22645,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:pytest-test-size-budget": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_guard.py",
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"allowed\", [True, False])\ndef test_guard(allowed):\n    if allowed:\n        assert check(\"ok\")\n    else:\n        with pytest.raises(ValueError):\n            check(\"bad\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_guard.py",
+          "id": "branching-on-a-parameter",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Split or parametrize instead of branching"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_guard.py",
+              "source": "import pytest\n\n\ndef test_guard_accepts_ok():\n    assert check(\"ok\")\n\n\ndef test_guard_rejects_bad():\n    with pytest.raises(ValueError):\n        check(\"bad\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_guard.py",
+          "id": "one-test-per-outcome",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One straight-line test per outcome"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:redundant-class-docstring": {
       "examples": [
         {
@@ -23126,6 +23226,60 @@
           "outcome": "reject",
           "scenarioId": "executor-dispatch",
           "title": "Dispatching injected work establishes a service boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/audio_cache.py",
+              "source": "from abc import ABC, abstractmethod\nfrom typing import final\nfrom app.stores.task_store import TaskStore\n\n\nclass AudioPreloader(ABC):\n    @abstractmethod\n    async def preload(self, text: str) -> None: ...\n\n\n@final\nclass AudioCache(AudioPreloader):\n    def __init__(self, tasks: TaskStore) -> None:\n        self._tasks = tasks\n\n    async def preload(self, text: str) -> None:\n        await self._tasks.create(text)\n"
+            },
+            {
+              "path": "app/stores/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/stores/task_store.py",
+              "source": "class TaskStore: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/audio_cache.py",
+          "id": "retained-first-party-store-with-contract",
+          "outcome": "accept",
+          "scenarioId": "first-party-boundary",
+          "title": "The store-backed service implements its ABC"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/audio_cache.py",
+              "source": "from typing import final\nfrom app.stores.task_store import TaskStore\n\n\n@final\nclass AudioCache:\n    def __init__(self, tasks: TaskStore) -> None:\n        self._tasks = tasks\n\n    async def preload(self, text: str) -> None:\n        await self._tasks.create(text)\n"
+            },
+            {
+              "path": "app/stores/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/stores/task_store.py",
+              "source": "class TaskStore: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/audio_cache.py",
+          "id": "retained-first-party-store-without-contract",
+          "outcome": "reject",
+          "scenarioId": "first-party-boundary",
+          "title": "Retaining a first-party store makes a final class a service"
         },
         {
           "expectedCount": 1,

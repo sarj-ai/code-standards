@@ -207,7 +207,6 @@ def _existing_factory(profile: _Profile) -> bool:
     factory = profile.factory
     match factory.decorator_list, factory.body:
         case [ast.Attribute(value=ast.Name(id="pytest"), attr="fixture")], [ast.Return(value=ast.Name(id=returned))]:
-            # The canonical fixture decorator is the only permitted decoration.
             undecorated = ast.FunctionDef(
                 name=factory.name,
                 args=factory.args,

@@ -113,7 +113,7 @@ class RedundantClassDocstring(Rule):
         if not docstring or VALUE_MARKER_RE.search(docstring) or is_protected(docstring):
             return False
         if len(node.body) == 1:
-            return False  # the docstring IS the body; deleting it leaves a syntax error
+            return False
         if node.bases or node.keywords or node.decorator_list:
             return False
         known = identifier_stems(node.name)

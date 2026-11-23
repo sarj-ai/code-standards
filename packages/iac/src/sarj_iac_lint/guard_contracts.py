@@ -93,8 +93,6 @@ def _shape(block: Block) -> _GuardShape:
     ):
         message = "guard must own exactly condition and error_message"
         raise ValueError(message)
-    # Native tokens preserve strings, heredocs, operators, identifiers and order.
-    # Only insignificant whitespace/comments between tokens are normalized.
     attributes = tuple(sorted((attribute.name, tokens(attribute.value)) for attribute in block.attributes))
     if any(not value for _, value in attributes):
         message = "empty guard expression"

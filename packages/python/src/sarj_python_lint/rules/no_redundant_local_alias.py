@@ -266,14 +266,12 @@ class NoRedundantLocalAlias(Rule):
 def _excluded_file(context: PythonFileContext) -> bool:
     if context.path.suffix != ".py" or "=" not in context.source:
         return True
-    # This is only a necessary ASCII signal; Unicode identifiers use the AST.
     if context.source.isascii() and not _possible_alias(context.source):
         return True
     return context.tree is None
 
 
 def _possible_alias(source: str) -> bool:
-    # Comments may separate tokens; bypass the text gate instead of rescanning them.
     if "#" in source:
         return True
     forwarded: set[str] = set()
@@ -456,7 +454,6 @@ def _quoted_words(value: str) -> set[str]:
     words: set[str] = set()
     word: list[str] = []
     for character in normalized:
-        # A leading letter tests identifier continuation, including combining marks.
         if ("a" + character).isidentifier():
             word.append(character)
         elif word:
@@ -534,7 +531,6 @@ def _dominates(
         if parent is None:
             return False
         current = parent
-    # A with exit may suppress exceptions and skip assignments; only earlier dominating suites qualify.
     return isinstance(current, ast.stmt) and current in positions and positions[before] < positions[current]
 
 

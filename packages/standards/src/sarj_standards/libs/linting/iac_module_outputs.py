@@ -40,10 +40,8 @@ class ModuleOutputSources:
 
 
 def selected_sources(root: Path, *, staged: bool) -> ModuleOutputSources | None:
-    # Do not infer a consumer boundary from a parent checkout or one changed file.
     if not (root / ".git").exists():
         return None
-    # An unborn branch has no HEAD snapshot; its initial commit is checked through the exact staged index.
     if not staged and not has_committed_tree(root):
         if not is_git_worktree(root):
             message = "Complete Git source evidence requires a readable selected repository"

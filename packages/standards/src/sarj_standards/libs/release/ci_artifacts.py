@@ -164,8 +164,6 @@ def find_tested_artifact(
     identity = RunIdentity(run.run_id, run.run_attempt, run.head_repository.repository_id)
     status = _standards_job_status(root, repository, identity, runner)
     if status == "pending":
-        # A successful partial rerun can omit previously completed jobs.
-        # Fall back instead of waiting for a job that will never appear.
         return (
             FreshValidationRequired("successful partial rerun has no artifact job")
             if run.conclusion == "success"

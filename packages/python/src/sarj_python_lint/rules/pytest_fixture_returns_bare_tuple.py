@@ -248,7 +248,6 @@ def _decorators_before(
         names.difference_update(rebound)
         roots = {name: provider for name, provider in roots.items() if name not in rebound and provider not in modified}
         if isinstance(statement, ast.Delete):
-            # Deleting a class binding restores lookup in the module namespace.
             names.update(rebound & inherited.names)
             roots.update(
                 (name, provider)
@@ -261,7 +260,6 @@ def _decorators_before(
 
 def _provider_modifications(statement: ast.stmt, state: _FixtureDecorators) -> frozenset[str]:
     if isinstance(statement, ast.ClassDef):
-        # Class bodies execute immediately; writes to imported providers affect subsequent decorators.
         return _decorators_before(
             statement.body,
             before_line=(statement.end_lineno or statement.lineno) + 1,
@@ -324,7 +322,6 @@ def _fixture_name(
 
 
 def _names_fixture(dec: ast.expr, fixture_names: frozenset[str], fixture_roots: dict[str, str]) -> bool:
-    # `@pytest.fixture`, `@pytest.fixture(scope=...)`, `@fixture`, `@pytest_asyncio.fixture`.
     target = dec.func if isinstance(dec, ast.Call) else dec
     if isinstance(target, ast.Attribute):
         return target.attr == _FIXTURE and isinstance(target.value, ast.Name) and target.value.id in fixture_roots
@@ -515,8 +512,6 @@ def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef, *, has_yi
 
 
 def _scan_for_results(node: ast.AST, *, has_yield: bool) -> list[_TupleResult]:
-    # Descend through control flow but never into a nested function: a tuple returned by a closure the fixture builds
-    # crosses the closure's boundary, not the fixture's, so it is a different (and legitimate) shape.
     if isinstance(node, (*_FUNC_NODES, ast.Lambda)):
         return []
     found: list[_TupleResult] = []
