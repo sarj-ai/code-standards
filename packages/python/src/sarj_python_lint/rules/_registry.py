@@ -252,6 +252,7 @@ from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRe
 from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
 from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
+from sarj_python_lint.rules.no_injected_dependency_close import NoInjectedDependencyClose
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_magic_arithmetic import NoMagicArithmetic
@@ -321,6 +322,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
         NoSwallowedException.id: NoSwallowedException,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
