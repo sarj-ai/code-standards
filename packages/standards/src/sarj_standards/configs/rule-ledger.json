@@ -87,6 +87,7 @@
       "no-fixed-sleep-in-loop",
       "no-folded-bad-request-not-found",
       "no-frozen-after-validator-field-write",
+      "no-gather-first-exception-reraise",
       "no-generic-json-parser",
       "no-generic-single-export-module",
       "no-hasattr",
@@ -771,7 +772,8 @@
       "SARJ591",
       "SARJ592",
       "SARJ593",
-      "SARJ597"
+      "SARJ597",
+      "SARJ598"
     ],
     "sql": [
       "SARJ101",

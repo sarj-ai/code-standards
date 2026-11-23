@@ -249,6 +249,7 @@ from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicate
 from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
+from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
 from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
@@ -320,6 +321,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
         NoSwallowedException.id: NoSwallowedException,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
