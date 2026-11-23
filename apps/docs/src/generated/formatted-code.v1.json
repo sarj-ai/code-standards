@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "839b2f0e34021ce640ab917369bfbef047b198949c9bcfdd09f8e593f20cb648",
-  "cliSha256": "036663334a2822dc61cdb4436d5841ca0788e1556a137db47f8c64cbacc8be9b",
+  "catalogSha256": "cef400d8c816be3664d19ed2e7e84c6fa71988d9903dc7f44f32cbdb3cd83642",
+  "cliSha256": "44407b1bf098fe69915a985dd4993dd92e07b383b4a76356cd8b8d5f34073908",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -15343,6 +15343,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Zero is admitted by the interval"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-injected-dependency-close": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "speech/synthesizer.py",
+              "source": "from contextlib import AsyncExitStack\n\nfrom openai import AsyncOpenAI\n\n\nclass Synthesizer:\n    def __init__(self, *, client: AsyncOpenAI) -> None:\n        self._client = client\n\n    async def aclose(self) -> None:\n        async with AsyncExitStack() as cleanup:\n            cleanup.push_async_callback(self._client.close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "speech/synthesizer.py",
+          "id": "consumer-closes-injected-client",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A consumer closes the client it was given"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "speech/synthesizer.py",
+              "source": "from contextlib import AsyncExitStack\n\nfrom openai import AsyncOpenAI\n\n\nclass Synthesizer:\n    def __init__(self, *, client: AsyncOpenAI) -> None:\n        self._client = client\n\n\nasync def serve(stack: AsyncExitStack) -> Synthesizer:\n    client = await stack.enter_async_context(AsyncOpenAI())\n    return Synthesizer(client=client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "speech/synthesizer.py",
+          "id": "owner-closes-client",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The owner that constructs the client registers its cleanup"
         }
       ],
       "optionsSchemaSource": null

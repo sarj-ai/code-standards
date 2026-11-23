@@ -3849,6 +3849,14 @@
       "outcome": "SARJ598: Introduce WARNING without autofix, one diagnostic per gather at its first raise. Remediation is asyncio.TaskGroup for fail-fast fan-out or an ExceptionGroup of every failure when all operations must finish. No consumer activation or severity promotion is included."
     },
     {
+      "task": "rule-audit/python/no-injected-dependency-close",
+      "family": "python",
+      "ruleId": "no-injected-dependency-close",
+      "state": "pending",
+      "evidence": "Executable cases cover direct close, aclose, shutdown, __exit__ and __aexit__ calls in cleanup methods, ExitStack callback and push_async_exit registrations, positional, keyword-only and annotated assignments, renamed receivers and guarded closes, plus negative boundaries for constructed or fallback-constructed resources, non-cleanup methods, non-closing calls, helper methods, reassigned attributes, classmethod factories, entered contexts, conditional assignment, local aliases, static methods, nested functions, suppressions, tests and generated files. The private platform consumer corpus produced three findings in two classes, both true positives; one already has an open platform fix.",
+      "outcome": "SARJ599: Introduce WARNING without autofix for classes that clean up an attribute assigned directly from an __init__ parameter. Remediation is registering cleanup where the resource is constructed, such as the composition root or lifespan exit stack. No consumer activation or severity promotion is included."
+    },
+    {
       "task": "rule-audit/sql/no-redundant-nullability",
       "family": "sql",
       "ruleId": "no-redundant-nullability",

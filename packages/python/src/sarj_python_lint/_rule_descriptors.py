@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-injected-dependency-close"),
+        module="sarj_python_lint.rules.no_injected_dependency_close",
+        class_name="NoInjectedDependencyClose",
+        code="SARJ599",
+        description="Leave closing an injected dependency to the owner that constructed it.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-gather-first-exception-reraise"),
         module="sarj_python_lint.rules.no_gather_first_exception_reraise",
         class_name="NoGatherFirstExceptionReraise",
