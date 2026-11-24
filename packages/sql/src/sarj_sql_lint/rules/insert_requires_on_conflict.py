@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from bisect import bisect_left
+from itertools import islice
+from operator import itemgetter
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -67,23 +70,18 @@ def _insert_writes(text: str) -> list[_InsertWrite]:
     writes: list[_InsertWrite] = []
     for match in inserts:
         owner_depth = depths.get(match.start(), 0)
-        end = next(
-            (
-                event.offset
-                for event in events
-                if event.offset >= match.end()
-                and (
-                    (event.lexeme == ")" and event.depth < owner_depth)
-                    or (event.lexeme == "INSERT" and event.depth <= owner_depth)
-                )
-            ),
-            len(text),
-        )
+        end = len(text)
+        conflict = False
+        first = bisect_left(events, match.end(), key=itemgetter(0))
+        for event in islice(events, first, None):
+            if (event.lexeme == ")" and event.depth < owner_depth) or (
+                event.lexeme == "INSERT" and event.depth <= owner_depth
+            ):
+                end = event.offset
+                break
+            conflict |= event.lexeme.startswith("ON") and event.depth == owner_depth
         body = text[match.start() : end]
-        conflict = _INSERT_OR_POLICY.match(body) is not None or any(
-            event.lexeme.startswith("ON") and event.depth == owner_depth and match.end() <= event.offset < end
-            for event in events
-        )
+        conflict |= _INSERT_OR_POLICY.match(body) is not None
         writes.append(_InsertWrite(match.start(), body, conflict))
     return writes
 

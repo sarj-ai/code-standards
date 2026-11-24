@@ -4,7 +4,14 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import literal_string
+from sarj_iac_lint._hcl import (
+    call_arguments,
+    conditional_branches,
+    literal_string,
+    strip_outer_parentheses,
+    template_expressions,
+    tokens,
+)
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -29,6 +36,7 @@ if TYPE_CHECKING:
 _NON_SECRET_LITERAL = re.compile(r"true|false", re.IGNORECASE)
 _SECRET_NAME_REFERENCE = re.compile(r"google_secret_manager_secret\.\w+\.(?:secret_id|name|id)\b")
 _SECRET_NAME = re.compile(r"^(?:[A-Z0-9]+_)*(?:SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY)$")
+_MAX_METADATA_DEPTH = 32
 
 
 @final
@@ -55,6 +63,7 @@ class NoPlaintextSecretEnv(Rule):
                 "password interpolated into a connection string, are not recognized."
             ),
             "Empty literal values are not reported.",
+            "Public Secret Manager names, homogeneous metadata branches, metadata-only templates and format calls are allowed; a metadata reference does not exempt other dynamic values in the same expression.",
         ),
         examples=tuple(
             RuleExample(
@@ -65,6 +74,11 @@ class NoPlaintextSecretEnv(Rule):
                 focus_path=PurePosixPath("main.tf"),
                 expected_count=count,
                 public=True,
+                scenario=(
+                    "metadata-composition"
+                    if example_id in {"metadata-does-not-exempt-secret", "public-metadata-composition"}
+                    else "primary"
+                ),
             )
             for example_id, title, outcome, source, count in (
                 (
@@ -86,6 +100,30 @@ class NoPlaintextSecretEnv(Rule):
                         '      env {\n        name = "API_KEY"\n        value_source {\n          secret_key_ref {\n'
                         "            secret  = google_secret_manager_secret.api_key.secret_id\n"
                         '            version = "latest"\n          }\n        }\n      }\n    }\n  }\n}\n'
+                    ),
+                    0,
+                ),
+                (
+                    "metadata-does-not-exempt-secret",
+                    "A public secret name does not hide a secret value",
+                    ExampleOutcome.MATCH,
+                    (
+                        'resource "google_cloud_run_v2_service" "api" {\n  template {\n    containers {\n'
+                        '      env {\n        name = "API_KEY"\n'
+                        '        value = format("%s/%s", google_secret_manager_secret.api.name, var.api_key)\n'
+                        "      }\n    }\n  }\n}\n"
+                    ),
+                    1,
+                ),
+                (
+                    "public-metadata-composition",
+                    "A composed secret name contains only public metadata",
+                    ExampleOutcome.NO_MATCH,
+                    (
+                        'resource "google_cloud_run_v2_service" "api" {\n  template {\n    containers {\n'
+                        '      env {\n        name = "API_KEY"\n'
+                        '        value = format("projects/%s", google_secret_manager_secret.api.name)\n'
+                        "      }\n    }\n  }\n}\n"
                     ),
                     0,
                 ),
@@ -137,8 +175,25 @@ def _env_blocks(block: Block) -> Iterator[Block]:
         yield from _env_blocks(child)
 
 
-def _is_inert_value(raw: str) -> bool:
-    value = literal_string(raw.strip())
+def _is_inert_value(raw: str, depth: int = 0) -> bool:
+    if depth >= _MAX_METADATA_DEPTH:
+        return False
+    parts = strip_outer_parentheses(tokens(raw))
+    expression = " ".join(parts)
+    value = literal_string(expression)
     if value is not None and (not value or _NON_SECRET_LITERAL.fullmatch(value)):
         return True
-    return _SECRET_NAME_REFERENCE.search(raw) is not None and "secret_data" not in raw
+    if len(parts) == 1 and _SECRET_NAME_REFERENCE.fullmatch(parts[0]):
+        return True
+    if branches := conditional_branches(parts):
+        return all(_is_inert_value(" ".join(branch), depth + 1) for branch in branches)
+    if parts[:1] == ("format",) and (arguments := call_arguments(parts)) is not None:
+        return (
+            len(arguments) > 1
+            and literal_string(" ".join(arguments[0])) is not None
+            and all(_is_inert_value(" ".join(argument), depth + 1) for argument in arguments[1:])
+        )
+    if len(parts) == 1 and parts[0].startswith('"') and "%{" not in parts[0]:
+        expressions = template_expressions(parts[0])
+        return bool(expressions) and all(_is_inert_value(item, depth + 1) for item in expressions)
+    return False

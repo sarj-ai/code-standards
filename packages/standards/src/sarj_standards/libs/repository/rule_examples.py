@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from sarj_rule_contracts.examples import ExampleAnalyzer, ExampleFinding, ExampleFixer, verify_examples
 
 from sarj_standards.libs.adoption.manifest import terraform_internal_modules
-from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.repository import rule_catalog_artifact, rule_maintenance
 from sarj_standards.libs.rules import Language, RuleEngine, RuleSelector, RuleSpec
 
 
@@ -203,22 +203,26 @@ def run_focused_tests(root: Path, selector: RuleSelector) -> None:
             else selector.engine.value
         )
     )
-    slug = str(selector.rule_id)
+    family = "typescript" if selector.engine is RuleEngine.OXLINT else selector.engine.value
+    entry = next(
+        (
+            item
+            for item in rule_maintenance.inventory(root)
+            if item["family"] == family and item["id"] == str(selector.rule_id)
+        ),
+        None,
+    )
+    if entry is None:
+        msg = f"unknown live rule selector: {selector}"
+        raise ValueError(msg)
+    test = root / entry["test"]
     if selector.engine is RuleEngine.OXLINT:
-        test = package / "tests/rules" / f"{slug}.test.ts"
         npm = shutil.which("npm")
         if npm is None:
             msg = "cannot execute selected tests: npm is not installed"
             raise RuntimeError(msg)
         command = (npm, "run", "test", "--", str(test))
     else:
-        test = (
-            package
-            / ("tests/text_rules" if selector.engine is RuleEngine.TEXT else "tests/rules")
-            / f"test_{slug.replace('-', '_')}.py"
-        )
-        if selector.engine is RuleEngine.TEXT and not test.is_file():
-            test = package / "tests/test_textlint.py"
         command = (sys.executable, "-m", "pytest", str(test), "-q", "-o", "addopts=")
     if not test.is_file():
         msg = f"missing selected-rule test: {test.relative_to(root)}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from bisect import bisect_left
 from operator import itemgetter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, TypeGuard, final, override
@@ -16,6 +17,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._runtime_names import RuntimeNames
 
 
 if TYPE_CHECKING:
@@ -60,6 +62,7 @@ class NoStringConcatInLoop(Rule):
             "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "The rule requires syntax that establishes string-like growth and excludes generated files.",
             "Subscript targets, per-iteration reinitialization, and intermediate values consumed by the loop are excluded.",
+            "Single-iteration range exemptions require a proven native range callable and literal signed integer bounds; shadowed callables do not prove an iteration count.",
         ),
         examples=(
             RuleExample(
@@ -154,7 +157,7 @@ class NoStringConcatInLoop(Rule):
         tree = context.tree
         if tree is None:
             return []
-        visitor = _ConcatVisitor()
+        visitor = _ConcatVisitor(context)
         visitor.visit(tree)
         return [
             Diagnostic(
@@ -172,7 +175,8 @@ class NoStringConcatInLoop(Rule):
 
 
 class _ConcatVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, context: PythonFileContext) -> None:
+        self._context = context
         self._loop_depth: int = 0
         self._loop_reassigns: list[dict[str, list[int]]] = []
         self._loop_reads: list[frozenset[str]] = []
@@ -180,6 +184,7 @@ class _ConcatVisitor(ast.NodeVisitor):
         self._while_probe_names: list[frozenset[str]] = []
         self._class_string_attrs: list[frozenset[str]] = [frozenset()]
         self._functions: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda] = []
+        self._assignment_events: dict[ast.FunctionDef | ast.AsyncFunctionDef, dict[str, list[_StringStateEvent]]] = {}
         self.hits: list[ast.AugAssign | ast.Assign] = []
 
     @override
@@ -224,7 +229,7 @@ class _ConcatVisitor(ast.NodeVisitor):
     def _visit_loop(self, node: ast.For | ast.AsyncFor | ast.While) -> None:
         for expression in _loop_header_expressions(node):
             self.visit(expression)
-        bounded = _loop_runs_at_most_once(node)
+        bounded = _loop_runs_at_most_once(node, self._context)
         if not bounded:
             self._loop_depth += 1
             self._loop_reassigns.append(_loop_local_reassignments(node))
@@ -292,7 +297,20 @@ class _ConcatVisitor(ast.NodeVisitor):
         target_name = _src(target)
         if target_name in self._class_string_attrs[-1]:
             return True
-        return bool(self._functions) and _target_is_string_before(self._functions[-1], target_name, target.lineno)
+        return self._target_is_string_before(target_name, target.lineno)
+
+    def _target_is_string_before(self, target_name: str, line: int) -> bool:
+        if not self._functions or isinstance(func := self._functions[-1], ast.Lambda):
+            return False
+        events: dict[str, list[_StringStateEvent]] | None = self._assignment_events.get(func)
+        if events is None:
+            events = {}
+            for event in sorted(_assignment_states(func), key=itemgetter(0)):
+                events.setdefault(event.target, []).append(event)
+            self._assignment_events[func] = events
+        assignments = events.get(target_name, ())
+        position = bisect_left(assignments, line, key=itemgetter(0))
+        return assignments[position - 1].is_string if position else _parameter_string_state(func, target_name)
 
 
 def _is_definitely_non_string(value: ast.expr) -> bool:
@@ -311,12 +329,12 @@ def _loop_header_expressions(node: ast.For | ast.AsyncFor | ast.While) -> tuple[
     return (node.test,)
 
 
-def _loop_runs_at_most_once(node: ast.For | ast.AsyncFor | ast.While) -> bool:
+def _loop_runs_at_most_once(node: ast.For | ast.AsyncFor | ast.While, context: PythonFileContext) -> bool:
     if isinstance(node, (ast.For, ast.AsyncFor)):
         if isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)):
-            return len(node.iter.elts) <= 1
-        if isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range":
-            return _range_cardinality_at_most_one(node.iter)
+            return len(node.iter.elts) <= 1 and not any(isinstance(item, ast.Starred) for item in node.iter.elts)
+        if isinstance(node.iter, ast.Call) and _range_cardinality_at_most_one(node.iter):
+            return RuntimeNames(context).qualified(node.iter.func) == "builtins.range"
     return (
         bool(node.body)
         and isinstance(node.body[-1], ast.Break)
@@ -327,30 +345,23 @@ def _loop_runs_at_most_once(node: ast.For | ast.AsyncFor | ast.While) -> bool:
 def _range_cardinality_at_most_one(call: ast.Call) -> bool:
     if call.keywords or not 1 <= len(call.args) <= _RANGE_MAX_ARGS:
         return False
-    values = [
-        argument.value
-        for argument in call.args
-        if isinstance(argument, ast.Constant) and isinstance(argument.value, int)
-    ]
-    if len(values) != len(call.args):
+    values: list[int] = []
+    for argument in call.args:
+        match argument:
+            case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=int() as value)):
+                values.append(-value)
+            case (
+                ast.UnaryOp(op=ast.UAdd(), operand=ast.Constant(value=int() as value))
+                | ast.Constant(value=int() as value)
+            ):
+                values.append(value)
+            case _:
+                return False
+    try:
+        sequence = range(*values)
+    except ValueError:
         return False
-    return len(range(*values)) <= 1
-
-
-def _target_is_string_before(
-    func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
-    target_name: str,
-    line: int,
-) -> bool:
-    if isinstance(func, ast.Lambda):
-        return False
-    state = _parameter_string_state(func, target_name)
-    for event_line, event_name, event_state in sorted(_assignment_states(func), key=itemgetter(0)):
-        if event_line >= line:
-            break
-        if event_name == target_name:
-            state = event_state
-    return state
+    return sequence.start + sequence.step not in sequence
 
 
 def _parameter_string_state(func: ast.FunctionDef | ast.AsyncFunctionDef, target_name: str) -> bool:

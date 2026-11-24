@@ -59,11 +59,43 @@ def test_non_decimal_data_and_exclusions(source: str) -> None:
     assert NumericLiteralSeparators().check(Path("app/audio.py"), source) == []
 
 
-def test_debug_fstring_is_review_only() -> None:
-    source = 'message = f"{1000000=}"\n'
+@pytest.mark.parametrize(
+    "source",
+    [
+        'message = f"{1000000=}"\n',
+        'message = f"{1000000 + 1 = :>20}"\n',
+        "message = f\"{f'{1000000}'=}\"\n",
+        'message = t"{1000000}"\n',
+    ],
+)
+def test_observable_interpolation_text_is_review_only(source: str) -> None:
     findings = NumericLiteralSeparators().check(Path("app/audio.py"), source)
     assert len(findings) == 1
     assert findings[0].fixes == ()
+    assert fix_source(Path("app/audio.py"), source, rule_ids=["numeric-literal-separators"]) == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'message = f"{1000000}"\n',
+        'message = f"é {1000000:,} units"\n',
+        'message = f"{1000000 + 1!r}"\n',
+        'message = f"{1:{1000000}}"\n',
+        'message = f"{{1000000}} {1000000}"\n',
+        "message = f\"{f'{1000000}'}\"\n",
+        'message = f"""value {\n    1000000\n}"""\n',
+    ],
+)
+def test_ordinary_fstring_numeric_fix_preserves_ast(source: str) -> None:
+    path = Path("app/audio.py")
+    findings = NumericLiteralSeparators().check(path, source)
+    assert len(findings) == 1
+    fixed = apply_fixes(source, findings[0].fixes)
+    assert fixed != source
+    assert ast.dump(ast.parse(fixed)) == ast.dump(ast.parse(source))
+    assert NumericLiteralSeparators().check(path, fixed) == []
+    assert fix_source(path, source, rule_ids=["numeric-literal-separators"]) == fixed
 
 
 def test_each_numeric_token_has_one_fix() -> None:

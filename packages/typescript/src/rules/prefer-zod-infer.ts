@@ -348,7 +348,7 @@ function leafAgrees(field: SchemaField, annotation: TypeNode | null): boolean | 
   const { leaf } = field;
   if (leaf !== null && NON_LEAF_COLLECTIONS.has(leaf)) return false;
   if (leaf === null || annotation === null) return null;
-  const expected = LEAF_NODE_TYPES[leaf];
+  const expected = Object.hasOwn(LEAF_NODE_TYPES, leaf) ? LEAF_NODE_TYPES[leaf] : undefined;
   if (expected === undefined) return null;
   const { core } = unwrapNullish(annotation);
   if (core === null) return null;

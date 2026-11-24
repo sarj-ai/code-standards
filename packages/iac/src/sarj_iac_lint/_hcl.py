@@ -389,6 +389,7 @@ def _token_spans(text: str) -> tuple[_Span, ...]:
     return tuple(result)
 
 
+@lru_cache(maxsize=32)
 def tokens(text: str) -> tuple[str, ...]:
     return tuple(text[span.start : span.end] for span in _token_spans(text))
 

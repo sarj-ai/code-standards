@@ -40,6 +40,29 @@ def render(items):
     assert _count(source) == 1
 
 
+@pytest.mark.parametrize("arguments", ["1000000000000000000000000000000", "0, 1, 0"])
+def test_range_cardinality_never_crashes_analysis(arguments: str) -> None:
+    source = (
+        'def render():\n    result = ""\n'
+        f'    for item in range({arguments}):\n        result += "x"\n'
+        "    return result\n"
+    )
+    assert _count(source) == 1
+
+
+def test_assignment_facts_keep_function_and_accumulator_boundaries() -> None:
+    source = (
+        "def render(items):\n    text = ''\n    count = 0\n"
+        "    for item in items:\n        text += str(item)\n        count += 1\n"
+        "    text = []\n    for item in items:\n        text += [item]\n"
+        "    return text\n\n"
+        "def collect(items):\n    text = []\n"
+        "    for item in items:\n        text += [item]\n    return text\n"
+    )
+    findings = _check(source)
+    assert [finding.line for finding in findings] == [5]
+
+
 # Positive — obviously-string RHS accumulated with `+=` fires exactly once.    #
 
 
@@ -1008,7 +1031,9 @@ def render(items):
     assert _count(src) == 1
 
 
-@pytest.mark.parametrize("iterable", ["range(0)", "range(1)", "[]", "[item]"])
+@pytest.mark.parametrize(
+    "iterable", ["range(0)", "range(1)", "range(1, 0, -1)", "range(+0, +1)", "range(10, 10, -1)", "[]", "[item]"]
+)
 def test_statically_single_iteration_loops_are_allowed(iterable: str) -> None:
     src = f"""
 def render(item):
@@ -1017,6 +1042,35 @@ def render(item):
         result += str(value)
 """
     assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("prefix", "callable_name", "count"),
+    [
+        ("", "range", 0),
+        ("from builtins import range as native_range\n", "native_range", 0),
+        ("import builtins\n", "builtins.range", 0),
+        ("def range(count):\n    return [1, 2, 3]\n", "range", 1),
+        ("from custom import range\n", "range", 1),
+    ],
+)
+def test_single_iteration_range_proof_follows_callable_identity(prefix: str, callable_name: str, count: int) -> None:
+    source = (
+        prefix + 'def render():\n    result = ""\n'
+        f"    for item in {callable_name}(1):\n        result += str(item)\n"
+        "    return result\n"
+    )
+    assert _count(source) == count
+
+
+@pytest.mark.parametrize("iterable", ["[*items]", "(*items,)", "{*items}"])
+def test_starred_collection_does_not_prove_a_single_iteration(iterable: str) -> None:
+    source = (
+        'def render(items):\n    result = ""\n'
+        f"    for item in {iterable}:\n        result += str(item)\n"
+        "    return result\n"
+    )
+    assert _count(source) == 1
 
 
 def test_known_numeric_rhs_is_not_string_growth() -> None:

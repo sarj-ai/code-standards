@@ -8,6 +8,8 @@ import { ruleTester } from "./_tester.js";
 
 ruleTester({ lang: "tsx" }).run("jsx-no-forbidden-nesting", rule, {
   valid: [
+    "<constructor><span>text</span></constructor>",
+    "<hasOwnProperty><div /></hasOwnProperty>",
     "<p><span>text</span><a href='/x'>link</a></p>",
     "<div><p>one</p><p>two</p></div>",
     "<ul><li>one</li></ul>",

@@ -102,7 +102,6 @@ class NamedRecordAtBoundaries(Rule):
         private_class_methods = _private_class_function_ids(tree)
         semantics = context.annotation_semantics
         imports = semantics.imports
-        fastapi = context.fastapi
         class_shadowed_annotations = _class_shadowed_annotation_ids(tree, semantics, node_index=context.node_index)
 
         def collect_boundary(node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
@@ -118,20 +117,18 @@ class NamedRecordAtBoundaries(Rule):
                 return
             if _is_framework_hook(node, imports):
                 return
-            routes = fastapi.routes(node)
-            if any(not route.is_hidden for route in routes) or any(
-                _has_named_response_model(route.keywords.get("response_model"), semantics) for route in routes
-            ):
-                return
             returns = semantics.parse(node.returns)
             if returns is None:
                 return
             kind = _classify_return(returns, semantics)
-            if (
-                kind is None
-                or not builds_fixed_record(node, imports=imports)
-                or is_suppressed(source_lines, node.lineno, self.code)
+            if kind is None:
+                return
+            routes = context.fastapi.routes(node) if node.decorator_list else ()
+            if any(not route.is_hidden for route in routes) or any(
+                _has_named_response_model(route.keywords.get("response_model"), semantics) for route in routes
             ):
+                return
+            if not builds_fixed_record(node, imports=imports) or is_suppressed(source_lines, node.lineno, self.code):
                 return
             ann_text = ast.unparse(returns)
             diags.append(
@@ -339,8 +336,7 @@ def _classify_union_return(
 ) -> str | None:
     if isinstance(node.slice, ast.Tuple):
         for elt in node.slice.elts:
-            kind = _classify_return(elt, semantics, seen=seen)
-            if kind is not None:
+            if (kind := _classify_return(elt, semantics, seen=seen)) is not None:
                 return kind
         return None
     return _classify_return(node.slice, semantics, seen=seen)

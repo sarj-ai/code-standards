@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
@@ -83,3 +84,47 @@ def test_native_multifile_example_uses_canonical_temporary_workspace(
     selector = RuleSelector.parse("python:prefer-pytest-fixture-injection")
     assert rule_examples.verify(tmp_path, selector) == 4
     assert not list(storage.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("selector", "relative"),
+    [
+        ("sql:insert-requires-replay-policy", "packages/sql/tests/rules/test_insert_requires_on_conflict.py"),
+        ("sql:no-database-triggers", "packages/sql/tests/rules/test_no_create_trigger.py"),
+        ("python:no-bare-test-phase-comments", "packages/python/tests/rules/test_phase_label_comment.py"),
+        ("iac:require-prevent-destroy-on-irreplaceable", "packages/iac/tests/rules/test_require_prevent_destroy.py"),
+        ("text:commented-out-config", "packages/standards/tests/test_textlint.py"),
+    ],
+)
+def test_selected_tests_follow_registered_source_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, selector: str, relative: str
+) -> None:
+    test = tmp_path / relative
+    test.parent.mkdir(parents=True)
+    test.touch()
+    invoked: list[tuple[str, ...]] = []
+
+    def run(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        check: bool,
+        capture_output: bool,
+        text: bool,
+        timeout: float,
+    ) -> subprocess.CompletedProcess[str]:
+        assert cwd == tmp_path / "packages" / relative.split("/")[1]
+        assert "PYTHONPATH" in env
+        assert not check
+        assert capture_output
+        assert text
+        assert timeout > 0
+        invoked.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Capture the external runner while preserving live registry lookup and source-owned test selection.
+        subprocess, "run", run
+    )
+    rule_examples.run_focused_tests(tmp_path, RuleSelector.parse(selector))
+    assert invoked == [(sys.executable, "-m", "pytest", str(test), "-q", "-o", "addopts=")]

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e9046f553fb9cb38f126181f42aa1f91405698501ff1dc7b5f2e800586936d3e",
-  "cliSha256": "3ef70b7573b68f65523cd10b698d96a9d554ec264e5017274fd7a3637232ae2e",
+  "catalogSha256": "8e6fd1d3789a4e6b6f802dffe21e9a86ee84137771675066247dee728b0feac4",
+  "cliSha256": "69bd4cb89606b4916b3f4ed2631f101957357ef067277b2125c019e02432e647",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -1088,6 +1088,21 @@
           "files": [
             {
               "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name  = \"API_KEY\"\n        value = format(\"%s/%s\", google_secret_manager_secret.api.name, var.api_key)\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "metadata-does-not-exempt-secret",
+          "outcome": "reject",
+          "scenarioId": "metadata-composition",
+          "title": "A public secret name does not hide a secret value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
               "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name  = \"API_KEY\"\n        value = var.api_key\n      }\n    }\n  }\n}\n"
             }
           ],
@@ -1097,6 +1112,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An API key is injected as a plain value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name  = \"API_KEY\"\n        value = format(\"projects/%s\", google_secret_manager_secret.api.name)\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "public-metadata-composition",
+          "outcome": "accept",
+          "scenarioId": "metadata-composition",
+          "title": "A composed secret name contains only public metadata"
         },
         {
           "expectedCount": 0,

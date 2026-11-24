@@ -85,7 +85,7 @@ export function nestingViolation(
 }
 
 function isValidChild(tag: string, parent: string): boolean {
-  const allowed = PARENT_CONTENT[parent];
+  const allowed = Object.hasOwn(PARENT_CONTENT, parent) ? PARENT_CONTENT[parent] : undefined;
   if (allowed !== undefined) return allowed.has(tag);
   if (HEADINGS.has(tag)) return !HEADINGS.has(parent);
   if (tag === "rp" || tag === "rt") return !IMPLIED_END_TAGS.has(parent);

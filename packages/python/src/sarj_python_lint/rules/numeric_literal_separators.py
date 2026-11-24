@@ -43,7 +43,7 @@ class NumericLiteralSeparators(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Decimal integer parts with at least five digits are checked; four-digit years, base-prefixed numbers, exponents, imaginary numbers, fractional digits, comments and strings are left alone.",
-            "Safe fixes change numeric token spelling only and preserve the parsed AST. Interpolated strings are review-only because changing a debug expression also changes its displayed label.",
+            "Safe fixes change numeric token spelling only and preserve the parsed AST, including ordinary f-string expressions. Debug expression labels and template-string expression text are preserved without autofix.",
             "Generated files and exact-code suppressions are respected. No constant names or numeric domains are invented.",
         ),
         examples=(
@@ -65,6 +65,15 @@ class NumericLiteralSeparators(Rule):
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="ordinary-fstring-expression",
+                title="Group digits without changing formatted output",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", 'message = f"Rate: {16000:,}"\n'),),
+                fixed_files=(ExampleFile.python("app/service.py", 'message = f"Rate: {16_000:,}"\n'),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )
@@ -117,7 +126,7 @@ def _grouped_literal(node: ast.Constant, source_lines: tuple[bytes, ...]) -> str
 
 
 def _literal_fixes(node: ast.Constant, replacement: str, digest: str, context: PythonFileContext) -> tuple[Fix, ...]:
-    if node.end_lineno is None or node.end_col_offset is None or _interpolated(node, context):
+    if node.end_lineno is None or node.end_col_offset is None or _observable_interpolation_text(node, context):
         return ()
     return (
         Fix(
@@ -129,10 +138,19 @@ def _literal_fixes(node: ast.Constant, replacement: str, digest: str, context: P
     )
 
 
-def _interpolated(node: ast.AST, context: PythonFileContext) -> bool:
+def _observable_interpolation_text(node: ast.Constant, context: PythonFileContext) -> bool:
     current = context.parents.get(node)
     while current is not None:
-        if isinstance(current, ast.JoinedStr | ast.TemplateStr):
+        if isinstance(current, ast.TemplateStr):
+            return True
+        if isinstance(current, ast.JoinedStr) and any(
+            isinstance(part, ast.Constant)
+            and isinstance(part.value, str)
+            and (part.lineno, part.col_offset) <= (node.lineno, node.col_offset)
+            and (part.end_lineno or part.lineno, part.end_col_offset or 0)
+            >= (node.end_lineno or node.lineno, node.end_col_offset or 0)
+            for part in current.values
+        ):
             return True
         current = context.parents.get(current)
     return False
