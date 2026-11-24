@@ -5,7 +5,7 @@
  * untyped, so the port covers all of it.
  */
 
-import { defineRule } from "../types.js";
+import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { attributeText } from "../utils/jsx-accessibility.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
@@ -59,7 +59,7 @@ function replacementFor(token: string, checkInsets: boolean): string | null {
   const signed = raw.slice(prefix.length, suffix === "" ? undefined : -1);
   const sign = signed.startsWith("-") ? "-" : "";
   const base = signed.slice(sign.length);
-  let logical = EXACT[base];
+  let logical = Object.hasOwn(EXACT, base) ? EXACT[base] : undefined;
   for (const [physical, replacement] of checkInsets ? INSET_PREFIX_ENTRIES : PREFIX_ENTRIES) {
     if (base === physical || base.startsWith(`${physical}-`)) {
       logical = replacement + base.slice(physical.length);
@@ -71,10 +71,20 @@ function replacementFor(token: string, checkInsets: boolean): string | null {
     : variant + prefix + sign + logical + suffix;
 }
 
+function classLiteral(attribute: ESTree.JSXAttribute, value: string, source: SourceCode): Node | null {
+  if (attribute.value?.type === "Literal" && /&(?:#(?:[xX][\dA-Fa-f]+|\d+)|[A-Za-z][\dA-Za-z]*);/u.test(value)) return null;
+  let node: Node | null | undefined = attribute.value;
+  if (node?.type === "JSXExpressionContainer") node = node.expression;
+  if (node?.type !== "Literal" && node?.type !== "TemplateLiteral") return null;
+  const raw = source.getText(node);
+  return ["'", '"', "`"].includes(raw[0] ?? "") && raw.slice(1, -1) === value ? node : null;
+}
+
 export default defineRule({
   meta: {
     defaultOptions: [{ enabled: true, checkInsets: false, allowUtilities: [] }],
     type: "suggestion",
+    hasSuggestions: true,
     docs: {
       description: "Prefer logical Tailwind utilities in explicitly opted-in bidirectional interfaces.",
       url: docsUrl(NAME),
@@ -97,6 +107,7 @@ export default defineRule({
     messages: {
       physicalUtility:
         "Use '{{replacement}}' instead of '{{utility}}' in this bidirectional UI, or explicitly allow intentional physical placement.",
+      replaceWithLogical: "Replace these physical utilities with logical utilities after reviewing the intended layout.",
     },
   },
   createOnce(context) {
@@ -122,7 +133,7 @@ export default defineRule({
             entry.name.type === "JSXIdentifier" &&
             entry.name.name === "className",
         );
-        if (attribute === undefined) return;
+        if (attribute?.type !== "JSXAttribute") return;
         const utilities: string[] = [];
         const replacements: string[] = [];
         for (const utility of new Set(classTokens(value))) {
@@ -137,7 +148,9 @@ export default defineRule({
             replacements.push(replacement);
           }
         }
-        if (utilities.length > 0)
+        if (utilities.length > 0) {
+          const literal = classLiteral(attribute, value, context.sourceCode);
+          const changes = new Map(utilities.map((utility, index) => [utility, replacements[index]]));
           context.report({
             node: attribute,
             messageId: "physicalUtility",
@@ -145,7 +158,16 @@ export default defineRule({
               utility: utilities.join(" "),
               replacement: replacements.join(" "),
             },
+            suggest: literal === null ? [] : [{
+              messageId: "replaceWithLogical",
+              fix(fixer) {
+                const raw = context.sourceCode.getText(literal);
+                const logical = value.replace(/\S+/gu, (utility) => changes.get(utility) ?? utility);
+                return fixer.replaceText(literal, `${raw.slice(0, 1)}${logical}${raw.slice(-1)}`);
+              },
+            }],
           });
+        }
       },
     };
   },

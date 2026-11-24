@@ -10,8 +10,9 @@ export const PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION = {
   remediation:
     "Use the suggested logical utility; retain intentional physical geometry through allowUtilities or a scoped rule override.",
   category: "correctness",
+  autofix: "suggestion",
   limitations: [
-    "Shared presets set enabled:false. Enable this rule only in scopes that support bidirectional layout. Standalone rule activation opts in. Insets require checkInsets:true; explicit rtl:/ltr: variants are exempt. No autofix changes physical coordinates.",
+    "Shared presets set enabled:false. Enable this rule only in scopes that support bidirectional layout. Standalone rule activation opts in. Insets require checkInsets:true; explicit rtl:/ltr: variants are exempt. Reviewed suggestions replace complete unescaped string values and preserve variants, whitespace and important markers; no automatic fix changes physical coordinates.",
     "Only effective complete static JSX className values are inspected. Dynamic compositions, CSS, class factories and identifier references are not inferred. Tests, stories, fixtures and generated files are excluded.",
   ],
   examples: [

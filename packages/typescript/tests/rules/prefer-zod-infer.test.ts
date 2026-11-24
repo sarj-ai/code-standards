@@ -14,6 +14,9 @@ const IMPORT = 'import { z } from "zod";\n';
 
 RULE_TESTER.run("prefer-zod-infer", rule, {
   valid: [
+    {
+      code: "import { z } from 'zod'; type Payload = { value: string }; const payloadSchema = z.object({ value: z.constructor() });",
+    },
 {"name":"explicit-widening-generic","code":"import {z} from 'zod'; const StateSchema=z.enum<string[]>(['ran','failed']); type State='ran'|'failed';"},
 {"name":"cast-factory-callee","code":"import {z} from 'zod'; const StateSchema=(z.enum as (values: string[])=>z.ZodType<string>)(['ran','failed']); type State='ran'|'failed';"},
 {"name":"cast-namespace-receiver","code":"import {z} from 'zod'; const StateSchema=(z as {enum(values: string[]):z.ZodType<string>}).enum(['ran','failed']); type State='ran'|'failed';"},

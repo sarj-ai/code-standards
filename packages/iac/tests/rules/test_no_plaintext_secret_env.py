@@ -94,3 +94,35 @@ def test_allows_secret_names_and_non_secret_literals(name: str, value: str) -> N
 def test_composed_public_metadata_remains_inert(value: str) -> None:
     env = f'      env {{\n        name = "API_KEY"\n        value = {value}\n      }}\n'
     assert _lines(_service(env)) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        'format("%s/%s", google_secret_manager_secret.api.name, var.api_key)',
+        "var.use_name ? google_secret_manager_secret.api.name : var.api_key",
+        '"${google_secret_manager_secret.api.name}/${var.api_key}"',
+        '"google_secret_manager_secret.api.name"',
+        '"$${google_secret_manager_secret.api.name}"',
+        "var.api_key /* google_secret_manager_secret.api.name */",
+        'format("google_secret_manager_secret.api.name:%s", var.api_key)',
+        "google_secret_manager_secret.api.name_suffix",
+    ],
+)
+def test_metadata_cannot_hide_secret_material(value: str) -> None:
+    env = f'      env {{\n        name = "API_KEY"\n        value = {value}\n      }}\n'
+    assert _lines(_service(env)) == [6]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "((google_secret_manager_secret.api.id))",
+        '"projects/${google_secret_manager_secret.api.name}"',
+        '"${google_secret_manager_secret.api.name}/${google_secret_manager_secret.api.secret_id}"',
+        'format("%s", var.use_name ? google_secret_manager_secret.api.id : google_secret_manager_secret.api.name)',
+    ],
+)
+def test_public_metadata_composition_is_not_secret_material(value: str) -> None:
+    env = f'      env {{\n        name = "API_KEY"\n        value = {value}\n      }}\n'
+    assert _lines(_service(env)) == []

@@ -82,6 +82,16 @@ INSERT INTO plan (name) VALUES ('pro');
     assert len(_check(src)) == 2
 
 
+def test_large_cte_statement_keeps_each_writes_conflict_policy() -> None:
+    protected = " ON CONFLICT DO NOTHING"
+    writes = [
+        f"seed_{index} AS (INSERT INTO plan (name) VALUES ({index}){protected if index % 2 else ''} RETURNING name)"  # ruff: ignore[hardcoded-sql-expression] -- Fixed local lint input; never executed as SQL.
+        for index in range(200)
+    ]
+    source = "WITH\n" + ",\n".join(writes) + "\nSELECT * FROM seed_0;"
+    assert [finding.line for finding in _check(source)] == list(range(2, 202, 2))
+
+
 def test_on_conflict_in_trailing_comment_does_not_count():
     src = "INSERT INTO plan (name) VALUES ('free'); -- TODO add ON CONFLICT"
     assert len(_check(src)) == 1
