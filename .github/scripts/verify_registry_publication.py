@@ -1,7 +1,8 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["typer==0.27.3", "pydantic==2.14.1"]
+# dependencies = ["typer==0.29.2", "pydantic==2.14.4"]
 # ///
+
 
 from __future__ import annotations
 
@@ -40,10 +41,8 @@ REPOSITORY = "sarj-ai/code-standards"
 REPOSITORY_URL = f"https://github.com/{REPOSITORY}"
 WORKFLOW = "release.yml"
 REF = "refs/heads/main"
-PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
+PYPI_ATTESTATIONS = "pypi-attestations==0.0.32"
 PYPI_FILE_TIMEOUT = timedelta(minutes=3)
-# Give npm metadata, provenance and package-spec installability separate
-# convergence budgets so delay in one stage cannot starve the next.
 NPM_METADATA_TIMEOUT = timedelta(minutes=15)
 NPM_PROVENANCE_TIMEOUT = timedelta(minutes=10)
 NPM_INSTALL_TIMEOUT = timedelta(minutes=10)

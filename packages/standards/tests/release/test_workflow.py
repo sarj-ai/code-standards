@@ -466,7 +466,7 @@ def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
         "--project code-standards --project sarj-standards" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the publisher contract
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
-        "pypi-attestations==0.0.30"
+        "pypi-attestations==0.0.32"
         in (REPO_ROOT / ".github/scripts/verify_registry_publication.py").read_text(encoding="utf-8")
     )
 
