@@ -24,7 +24,7 @@ _HASH_CHUNK_KIB = 64
 _BYTES_PER_KIB = 1024
 
 
-_VERSION: Final = "2.2.2"
+_VERSION: Final = "2.2.3"
 _CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
 _LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
 _DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
@@ -53,8 +53,7 @@ def install(root: Path) -> int:
     try:
         _install_managed_hooks(root, binary, native_binary, durable_binary, Path(uvx))
     except BaseException as exc:
-        rollback_error = hook_transaction.rollback().render()
-        if rollback_error is not None:
+        if (rollback_error := hook_transaction.rollback().render()) is not None:
             msg = f"hook installation failed and rollback was incomplete: {rollback_error}"
             raise OSError(msg) from exc
         raise

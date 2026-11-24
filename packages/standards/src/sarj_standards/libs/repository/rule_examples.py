@@ -109,7 +109,7 @@ def _declaration_fix(root: Path, path: Path, source: str) -> str:
     from sarj_iac_lint.declaration_fixes import consolidate_declarations  # ruff: ignore[import-outside-top-level] -- only project declaration examples need the module planner.
 
     sources = {
-        item: item.read_text(encoding="utf-8")
+        item: item.read_text(encoding="utf-8", newline="")
         for item in root.rglob("*")
         if item.is_file() and item.name.endswith((".tf", ".tf.json"))
     }
@@ -120,7 +120,7 @@ def _environment_input_fix(root: Path, path: Path, source: str) -> str:
     from sarj_iac_lint.rules.no_dead_environment_input import remove_stale_assignments  # ruff: ignore[import-outside-top-level] -- the example's complete authored source set supplies the project proof boundary.
 
     sources = {
-        item: item.read_text(encoding="utf-8")
+        item: item.read_text(encoding="utf-8", newline="")
         for item in root.rglob("*")
         if item.is_file() and item.name.endswith((".tf", ".tf.json", ".tfvars", ".tfvars.json"))
     }

@@ -145,8 +145,8 @@ jobs:
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install the pinned mise bootstrap
         env:
-          MISE_VERSION: '2026.10.8'
-          MISE_SHA256: c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428
+          MISE_VERSION: '2026.11.14'
+          MISE_SHA256: 6fa596291e9758106f761fea4f8e7fac6c3e7ff4714d5c0b9a76e16068db14f6
         shell: bash
         run: bash .github/scripts/rollout-bootstrap.sh
       - name: Select the consumer token repository

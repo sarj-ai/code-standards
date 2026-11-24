@@ -128,3 +128,13 @@ def test_selected_tests_follow_registered_source_ownership(
     )
     rule_examples.run_focused_tests(tmp_path, RuleSelector.parse(selector))
     assert invoked == [(sys.executable, "-m", "pytest", str(test), "-q", "-o", "addopts=")]
+
+
+def test_environment_input_example_fix_preserves_physical_lines(tmp_path: Path) -> None:
+    (tmp_path / "variables.tf").write_text('variable "region" { type = string }\n', encoding="utf-8")
+    path = tmp_path / "terraform.tfvars"
+    source = 'retired = true\r\nregion = "west"\r\n'
+    path.write_bytes(source.encode())
+    selected = rule_examples.selected(RuleSelector.parse("iac:no-dead-environment-input"))
+    assert selected.fix is not None
+    assert selected.fix(tmp_path, path, source) == 'region = "west"\r\n'

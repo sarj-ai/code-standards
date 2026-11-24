@@ -16,7 +16,7 @@ _PROTO_INT32_VALUE_BITS = 31
 app = typer.Typer(help="Project pinned Google discovery into the bundled Build-only field schema")
 
 
-_SHA256 = "5dda7ec6030b1dfec239653bc9006548d5db520ee79b339b25e5465e2013a069"
+_SHA256 = "25ac557ee1c49ad46d089156a85357d0aa006ebd117b837b2b72302f7f7a9d42"
 _REQUIRED: Final = {"Build": ["steps"], "BuildStep": ["name"]}
 type JsonSchema = dict[str, JsonValue]
 

@@ -34,6 +34,8 @@ def _reports(tmp_path: Path, source: str, name: str = "cloudbuild.yaml") -> tupl
         "steps:\n- name: builder\noptions:\n  diskSizeGb: '1e3'\n",
         "steps:\n- name: builder\n  allowExitCodes: ['1.0']\n",
         "steps:\n- name: builder\ntimeout: 315576000000.999999999s\n",
+        "steps: [{name: builder}]\noptions: {rankedMachineSeries: [MACHINE_SERIES_N, MACHINE_SERIES_C]}\n",
+        "steps: [{name: builder}]\noptions: {ranked_machine_series: [1]}\n",
     ],
     ids=(
         "integer-and-enum",
@@ -47,6 +49,8 @@ def _reports(tmp_path: Path, source: str, name: str = "cloudbuild.yaml") -> tupl
         "quoted-exponent",
         "whole-decimal-integer",
         "duration-wire-boundary",
+        "ranked-machine-series",
+        "ranked-machine-series-wire-alias",
     ),
 )
 def test_upstream_build_fields_accept_supported_source_forms(tmp_path: Path, source: str) -> None:
@@ -77,6 +81,7 @@ def test_upstream_build_fields_accept_supported_source_forms(tmp_path: Path, sou
         "steps:\n- name: builder\noptions:\n  logging: 2147483648\n",
         "steps:\n- name: builder\n  allowExitCodes: ['1.5']\n",
         "steps:\n- name: builder\ntimeout: 315576000001s\n",
+        "steps: [{name: builder}]\noptions: {rankedMachineSeries: [UNKNOWN_SERIES]}\n",
     ],
     ids=(
         "steps-type",
@@ -96,6 +101,7 @@ def test_upstream_build_fields_accept_supported_source_forms(tmp_path: Path, sou
         "enum-wire-overflow",
         "fractional-integer",
         "duration-wire-overflow",
+        "unknown-ranked-machine-series",
     ),
 )
 def test_invalid_field_contracts_cannot_pass_as_valid_yaml(tmp_path: Path, source: str) -> None:
