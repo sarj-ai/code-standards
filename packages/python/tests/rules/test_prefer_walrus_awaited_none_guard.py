@@ -40,7 +40,7 @@ def test_flags_compact_awaited_none_guard() -> None:
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "SARJ432"
     assert diagnostics[0].severity is Severity.ERROR
-    assert "if (call_detail := await store.get_detail(call_id)) is None:" in diagnostics[0].message
+    assert "`match call_detail := await store.get_detail(call_id):`" in diagnostics[0].message
 
 
 def test_flags_awaited_none_guard_that_raises() -> None:
@@ -55,7 +55,7 @@ def test_flags_awaited_none_guard_that_raises() -> None:
     )
 
     assert len(diagnostics) == 1
-    assert "is None:" in diagnostics[0].message
+    assert "`case None:`" in diagnostics[0].message
 
 
 def test_flags_awaited_none_guard_with_message_assignment_before_raise() -> None:
@@ -71,7 +71,7 @@ def test_flags_awaited_none_guard_with_message_assignment_before_raise() -> None
     )
 
     assert len(diagnostics) == 1
-    assert "if (stored := await cursor.fetchone()) is None:" in diagnostics[0].message
+    assert "`match stored := await cursor.fetchone():`" in diagnostics[0].message
 
 
 @pytest.mark.parametrize(

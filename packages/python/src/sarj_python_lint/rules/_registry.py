@@ -284,6 +284,7 @@ from sarj_python_lint.rules.prefer_exception_propagation import PreferExceptionP
 from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
 from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
+from sarj_python_lint.rules.prefer_match_none_check import PreferMatchNoneCheck
 from sarj_python_lint.rules.prefer_named_literal_alias import PreferNamedLiteralAlias
 from sarj_python_lint.rules.prefer_next_over_search_loop import PreferNextOverSearchLoop
 from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMappingKeys
@@ -304,7 +305,6 @@ from sarj_python_lint.rules.prefer_typed_cli import PreferTypedCli
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
 from sarj_python_lint.rules.prefer_validated_uuid_comparison import PreferValidatedUuidComparison
-from sarj_python_lint.rules.prefer_walrus_none_guard import PreferWalrusNoneGuard
 from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
 from sarj_python_lint.rules.pytest_test_size_budget import PytestTestSizeBudget
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -331,7 +331,7 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,
         PreferNextOverSearchLoop.id: PreferNextOverSearchLoop,
-        PreferWalrusNoneGuard.id: PreferWalrusNoneGuard,
+        PreferMatchNoneCheck.id: PreferMatchNoneCheck,
         ExitStackRequiresLifecycleOwner.id: ExitStackRequiresLifecycleOwner,
         PytestTestSizeBudget.id: PytestTestSizeBudget,
         PreferNamedLiteralAlias.id: PreferNamedLiteralAlias,

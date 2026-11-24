@@ -183,6 +183,7 @@
       "prefer-library-fake",
       "prefer-match-assert-never",
       "prefer-match-exception-dispatch",
+      "prefer-match-none-check",
       "prefer-match-type-dispatch",
       "prefer-match-value-dispatch",
       "prefer-module-level-constant",
@@ -224,7 +225,6 @@
       "prefer-validated-uuid-comparison",
       "prefer-walrus-awaited-none-guard",
       "prefer-walrus-comprehension-filter",
-      "prefer-walrus-none-guard",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
       "production-derived-test-cases",
@@ -1750,6 +1750,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
+    },
+    {
+      "id": "prefer-walrus-none-guard",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "prefer-match-none-check",
+      "note": "Replace sarj-prefer-walrus-none-guard with sarj-prefer-match-none-check before upgrading."
     },
     {
       "id": "preserve-declared-nominal-id",

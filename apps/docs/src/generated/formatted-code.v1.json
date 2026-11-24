@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "81f97f35165f034b507c52e33df6d9d80438a06085b2a5a87801fc016802648e",
-  "cliSha256": "be48460304ca13ffd621db10c6d934c26b05e358798047f4f35a8e85a06072fd",
+  "catalogSha256": "e9046f553fb9cb38f126181f42aa1f91405698501ff1dc7b5f2e800586936d3e",
+  "cliSha256": "3ef70b7573b68f65523cd10b698d96a9d554ec264e5017274fd7a3637232ae2e",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19945,6 +19945,106 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-match-none-check": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "audio.py",
+              "source": "class Audio:\n    def frames(self, key):\n        match pcm := self._pcm.get(key):\n            case None:\n                return None\n            case _:\n                return self._frames(pcm)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "audio.py",
+          "id": "conditional-none-match",
+          "outcome": "accept",
+          "scenarioId": "conditional-expression",
+          "title": "Both outcomes are match arms"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "audio.py",
+              "source": "class Audio:\n    def frames(self, key):\n        pcm = self._pcm.get(key)\n        return self._frames(pcm) if pcm is not None else None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "audio.py",
+          "id": "conditional-none-return",
+          "outcome": "reject",
+          "scenarioId": "conditional-expression",
+          "title": "A returned conditional expression hides the None decision in an operator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def label(labels, key):\n    found = labels.get(key)\n    if found is not None:\n        return found.title()\n    return \"unknown\"\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "service.py",
+              "source": "def label(labels, key):\n    if (found := labels.get(key)) is not None:\n        return found.title()\n    return \"unknown\"\n"
+            }
+          ],
+          "focusPath": "service.py",
+          "id": "consumed-lookup-binding",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A lookup returned under `is not None` is bound in its guard"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "client.py",
+              "source": "def connect(timeout=None, retries=None):\n    timeout = timeout if timeout is not None else 30\n    return open_client(retries=retries if retries is not None else 3, timeout=timeout)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client.py",
+          "id": "default-value-idioms",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Default-value idioms and call arguments stay inline"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "voice.py",
+              "source": "def voice_settings(session):\n    models = session.userdata.model_config\n    if models is None:\n        return None\n    return models.tts\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "voice.py",
+          "id": "none-guard-before-use",
+          "outcome": "reject",
+          "scenarioId": "none-guard",
+          "title": "An early None exit guards the code that uses the name"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "voice.py",
+              "source": "def voice_settings(session):\n    match models := session.userdata.model_config:\n        case None:\n            return None\n        case _:\n            return models.tts\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "voice.py",
+          "id": "none-guard-match",
+          "outcome": "accept",
+          "scenarioId": "none-guard",
+          "title": "The guarded name is the match subject"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-match-type-dispatch": {
       "examples": [
         {
@@ -22603,7 +22703,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "async def load(store, item_id):\n    if (item := await store.get(item_id)) is None:\n        return\n    return item.name\n"
+              "source": "async def load(store, item_id):\n    match item := await store.get(item_id):\n        case None:\n            return\n        case _:\n            return item.name\n"
             }
           ],
           "fixedFiles": [],
@@ -22611,7 +22711,7 @@
           "id": "guard-bound-lookup",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "The awaited lookup is bound in its absence guard"
+          "title": "The awaited lookup is the match subject"
         }
       ],
       "optionsSchemaSource": null
@@ -22647,46 +22747,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Comprehension evaluates one call twice"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-walrus-none-guard": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def label(labels, key):\n    if (found := labels.get(key)) is None:\n        return \"unknown\"\n    return found.title()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "guard-bound-lookup",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "The lookup is bound in its absence guard"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def label(labels, key):\n    found = labels.get(key)\n    if found is None:\n        return \"unknown\"\n    return found.title()\n"
-            }
-          ],
-          "fixedFiles": [
-            {
-              "path": "service.py",
-              "source": "def label(labels, key):\n    if (found := labels.get(key)) is None:\n        return \"unknown\"\n    return found.title()\n"
-            }
-          ],
-          "focusPath": "service.py",
-          "id": "split-optional-lookup",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A synchronous lookup is split from its absence guard"
         }
       ],
       "optionsSchemaSource": null

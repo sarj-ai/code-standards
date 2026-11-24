@@ -80,12 +80,12 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
-        rule_id=RuleId("prefer-walrus-none-guard"),
-        module="sarj_python_lint.rules.prefer_walrus_none_guard",
-        class_name="PreferWalrusNoneGuard",
+        rule_id=RuleId("prefer-match-none-check"),
+        module="sarj_python_lint.rules.prefer_match_none_check",
+        class_name="PreferMatchNoneCheck",
         code="SARJ589",
-        description="Bind a compact synchronous lookup in its immediately following terminal None guard.",
-        aliases=(),
+        description="Prefer match/case for a None check that selects a value or guards later use of a name.",
+        aliases=("prefer-walrus-none-guard",),
         enabled_by_default=True,
     ),
     RuleDescriptor(

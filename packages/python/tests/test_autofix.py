@@ -89,8 +89,8 @@ _CASES = (
     _Case(
         "prefer-walrus-awaited-none-guard",
         "app/service.py",
-        "async def load(store):\n    item = await store.get()\n    if item is None:\n        return\n    return item.name\n",
-        "async def load(store):\n    if (item := await store.get()) is None:\n        return\n    return item.name\n",
+        "async def load(store):\n    item = await store.get()\n    if item is not None:\n        return item.name\n    return None\n",
+        "async def load(store):\n    if (item := await store.get()) is not None:\n        return item.name\n    return None\n",
     ),
     _Case(
         "prefer-walrus-stream-loop",

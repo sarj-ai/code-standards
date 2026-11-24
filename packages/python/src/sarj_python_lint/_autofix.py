@@ -538,6 +538,8 @@ def _statement_pairs(context: PythonFileContext) -> Iterator[tuple[ast.stmt, ast
 def _walrus_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     for assignment, condition in _statement_pairs(source.context):
         match assignment, condition:
+            case _, ast.If(test=ast.Compare(ops=[ast.Is()])):
+                continue
             case ast.Assign(targets=[ast.Name() as target]), ast.If():
                 pass
             case _:

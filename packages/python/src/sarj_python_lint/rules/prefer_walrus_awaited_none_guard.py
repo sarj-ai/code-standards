@@ -40,8 +40,10 @@ class _WalrusCandidate(NamedTuple):
 @dataclass(frozen=True)
 class NoneGuardCandidate:
     assignment: ast.Assign
+    guard: ast.If
     name: str
     binding: str
+    is_not_none: bool
 
 
 @dataclass(frozen=True)
@@ -59,20 +61,21 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         default_level=Severity.ERROR,
         summary="Bind a compact awaited lookup in its immediately following terminal None guard.",
         rationale=(
-            "When an awaited lookup and its terminal None guard are adjacent, binding in the condition keeps "
-            "the operation, branch decision, and temporary name in one compact expression."
+            "When an awaited lookup and its terminal None guard are adjacent, binding it where it is tested keeps "
+            "the operation, branch decision, and temporary name together."
         ),
         remediation=(
-            "Rewrite `value = await lookup(); if value is None: return` as "
-            "`if (value := await lookup()) is None: return`. Preserve `is not None` when the terminal branch "
-            "returns or raises with the bound value. A short message assignment may remain inside the guard before "
-            "the terminal statement. Keep two statements when the awaited assignment is an intentional debugging "
-            "or tracing boundary."
+            "Rewrite `value = await lookup(); if value is None: return` as `match value := await lookup():` with "
+            "`case None: return` and the code that uses `value` under `case _:`, as SARJ589 recommends for every "
+            "None guard. When the terminal branch returns or raises with the bound value, use "
+            "`if (value := await lookup()) is not None:`. A short message assignment may remain inside the guard "
+            "before the terminal statement. Keep two statements when the awaited assignment is an intentional "
+            "debugging or tracing boundary."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes reuse the proven assignment/guard candidate and preserve the original condition, awaited expression, body and sentinel.",
+            "Safe fixes cover only the `is not None` form; they reuse the proven assignment/guard candidate and preserve the original condition, awaited expression, body and sentinel. The `is None` form moves later statements under `case _:` and has no automatic fix.",
             "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard ending in return or raise are checked.",
             "Statements before the terminal operation must be simple assignments; expressions and compound control flow are excluded.",
             "An `is None` guard requires a later use on the surviving path and must not use or rebind the name inside the guard; an `is not None` guard must consume the binding inside the terminal branch and leave no later use before rebinding.",
@@ -100,15 +103,17 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             ),
             RuleExample(
                 example_id="guard-bound-lookup",
-                title="The awaited lookup is bound in its absence guard",
+                title="The awaited lookup is the match subject",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "service.py",
                         "async def load(store, item_id):\n"
-                        "    if (item := await store.get(item_id)) is None:\n"
-                        "        return\n"
-                        "    return item.name\n",
+                        "    match item := await store.get(item_id):\n"
+                        "        case None:\n"
+                        "            return\n"
+                        "        case _:\n"
+                        "            return item.name\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -125,9 +130,9 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                         (
                             "async def load(store):\n"
                             "    item = await store.get()\n"
-                            "    if item is None:\n"
-                            "        return\n"
-                            "    return item.name\n"
+                            "    if item is not None:\n"
+                            "        return item.name\n"
+                            "    return 'missing'\n"
                         ),
                     ),
                 ),
@@ -136,9 +141,9 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                         "app/service.py",
                         (
                             "async def load(store):\n"
-                            "    if (item := await store.get()) is None:\n"
-                            "        return\n"
-                            "    return item.name\n"
+                            "    if (item := await store.get()) is not None:\n"
+                            "        return item.name\n"
+                            "    return 'missing'\n"
                         ),
                     ),
                 ),
@@ -176,10 +181,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                 col=candidate.assignment.col_offset + 1,
                 code=self.code,
                 severity=Severity.ERROR,
-                message=(
-                    f"`{candidate.name}` only separates an awaited lookup from its terminal None guard; "
-                    f"bind it as `{candidate.binding}`"
-                ),
+                message=none_guard_message(candidate, "an awaited lookup"),
             )
             for candidate in none_guard_candidates(context, self.code, comment_lines, awaited=True)
         )
@@ -193,7 +195,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         statement, guard = body[index : index + 2]
         if (candidate := _context_guard(statement, guard, context.source, context.source_lines, comment_lines)) is None:
             return None
-        flow = _name_flow(body[index + 2 :], candidate.name)
+        flow = name_flow(body[index + 2 :], candidate.name)
         if (candidate.is_not_none and flow in {"ambiguous", "loaded"}) or (
             not candidate.is_not_none and flow != "loaded"
         ):
@@ -208,6 +210,16 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             f"Review binding `{candidate.name}` in its None guard inside the resource context. Keep the await inside that context and preserve context-manager exit and exception/return behavior; this form has no automatic fix.",
             severity=Severity.WARNING,
         )
+
+
+def none_guard_message(candidate: NoneGuardCandidate, lookup: str) -> str:
+    prefix = f"`{candidate.name}` only separates {lookup} from its terminal None guard"
+    if candidate.is_not_none:
+        return f"{prefix}; bind it as `{candidate.binding}`"
+    return (
+        f"{prefix}; bind it as the match subject `{candidate.binding}` with `case None:` for the guard "
+        f"and `case _:` for the code that uses `{candidate.name}`"
+    )
 
 
 def none_guard_candidates(
@@ -234,18 +246,19 @@ def _guard_candidate(
 ) -> NoneGuardCandidate | None:
     assignment, guard = body[index], body[index + 1]
     candidate = _candidate(assignment, guard, context.source, context.source_lines, comment_lines, awaited=awaited)
-    if candidate is None or not isinstance(assignment, ast.Assign):
+    if candidate is None or not isinstance(assignment, ast.Assign) or not isinstance(guard, ast.If):
         return None
     name, value, is_not_none = candidate
-    later_flow = _name_flow(body[index + 2 :], name)
+    later_flow = name_flow(body[index + 2 :], name)
     if (is_not_none and later_flow in {"ambiguous", "loaded"}) or (not is_not_none and later_flow != "loaded"):
         return None
     if any(is_suppressed(context.source_lines, node.lineno, code) for node in (assignment, guard)):
         return None
     if (expression := ast.get_source_segment(context.source, value)) is None:
         return None
-    binding = f"if ({name} := {expression.strip()}) is {'not ' if is_not_none else ''}None:"
-    return NoneGuardCandidate(assignment, name, binding)
+    lookup = expression.strip()
+    binding = f"if ({name} := {lookup}) is not None:" if is_not_none else f"match {name} := {lookup}:"
+    return NoneGuardCandidate(assignment, guard, name, binding, is_not_none)
 
 
 def _context_guard(
@@ -382,7 +395,7 @@ def _loads_name(node: ast.AST, name: str) -> bool:
     )
 
 
-def _name_flow(statements: list[ast.stmt], name: str) -> _NameFlow:
+def name_flow(statements: list[ast.stmt], name: str) -> _NameFlow:
     for statement in statements:
         usage = _NameUsage(name)
         usage.visit(statement)

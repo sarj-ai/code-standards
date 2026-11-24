@@ -3889,12 +3889,12 @@
       "outcome": "Warn on proven contextlib ExitStack or AsyncExitStack construction outside yielding generators, same-module entry points and resource-owner setup methods. Recommend injected clients closed by the composition root, multi-item with statements, or a returned context manager instead of pop_all. No autofix."
     },
     {
-      "task": "rule-audit/python/prefer-walrus-none-guard",
+      "task": "rule-audit/python/prefer-match-none-check",
       "family": "python",
-      "ruleId": "prefer-walrus-none-guard",
-      "state": "complete",
-      "evidence": "Warning calibration on a 2026-11 application corpus: 92 source and 18 test findings; a sample of about 35 was reviewed with no false positives. The shared safe walrus fix was applied to all 79 affected corpus files with zero syntax errors and zero residual findings.",
-      "outcome": "Warn on a one-line synchronous call immediately followed by an exact terminal is None or is not None guard, reusing SARJ432 flow, comment and 120-column conditions. Awaited calls stay with SARJ432 and regex matches with SARJ081. Safe autofix."
+      "ruleId": "prefer-match-none-check",
+      "state": "pending",
+      "evidence": "Executable cases cover returned, annotated and walrus-subject None conditional expressions; walrus, split-assignment, parameter and loop-continue None guards followed by a use; awaited walrus guards; and negative boundaries for default-value idioms, call arguments, comprehensions, lambdas, containers, f-strings, default arguments, yields, subscript and call subjects, equality and truthiness tests, compound conditions, else branches, attribute subjects, guards without later use, awaited split guards owned by SARJ432, isinstance conditionals owned by SARJ080, suppressions, stub files and pre-3.10 targets. A 2026-11 application corpus of 2,322 tracked Python files produced 596 warnings (404 guards, 176 conditional expressions, 16 consumed lookup bindings; 67 under test directories); a 12-finding sample matched the requested scope with no misparsed shapes. The prior walrus calibration still covers the retained is-not-None subset and its safe fix.",
+      "outcome": "SARJ589 is renamed from prefer-walrus-none-guard (kept as an alias) and expanded to recommend match/case for None conditional expressions and is-None guards followed by a use, replacing its walrus recommendation for is-None guards. The is-not-None consumed-lookup subset keeps its walrus recommendation and safe fix. WARNING; match findings have no autofix."
     },
     {
       "task": "rule-audit/python/prefer-next-over-search-loop",
