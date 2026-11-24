@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 import tarfile
 from typing import TYPE_CHECKING
+import zipfile
 
 from pydantic import RootModel
 import pytest
@@ -33,6 +34,7 @@ def test_managed_mobile_tool_pins_match_the_shipped_version_manifest() -> None:
         "detekt": versions["detekt"],
         "ktlint": versions["ktlint"],
         "mint": versions["mint"],
+        "swiftlint": versions["swiftlint"],
     }
     assert mobile_tools._MOBSF_RULES.version == versions["mobsfscan"]  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _MOBSF_RULES contract directly with controlled fixture data.
     assert versions["semgrep"] == mobile_tools.SEMGREP_VERSION
@@ -58,6 +60,39 @@ def test_cached_tool_is_checksum_verified_without_network(tmp_path: Path, monkey
 
     assert mobile_tools._provision(artifact) == cached  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _provision contract directly with controlled fixture data.
     assert cached.stat().st_mode & 0o100
+
+
+@pytest.mark.parametrize("extra", [None, "unexpected", "../outside"])
+def test_portable_swiftlint_checks_archive_members_and_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: str | None
+) -> None:
+    payload = b"fixture universal executable"
+    archive = tmp_path / "swiftlint-test.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("swiftlint", payload)
+        bundle.writestr("LICENSE", b"fixture license")
+        if extra is not None:
+            bundle.writestr(extra, b"untrusted")
+    artifact = mobile_tools._Artifact(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercises the existing pinned archive boundary.
+        "swiftlint",
+        "test",
+        "https://github.com/fixture/swiftlint.zip",
+        hashlib.sha256(archive.read_bytes()).hexdigest(),
+        extracted_sha256=hashlib.sha256(payload).hexdigest(),
+        archive_member="swiftlint",
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fixture cache isolates native provisioning from network and user state.
+        mobile_tools, "_cache_root", lambda: tmp_path
+    )
+    if extra is not None:
+        with pytest.raises(OSError, match="unexpected members"):
+            mobile_tools._provision(artifact)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- negative archive ownership contract.
+        return
+    binary = mobile_tools._provision(artifact)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- checks verified extraction through the shared provisioner.
+    assert binary.read_bytes() == payload
+    assert binary.stat().st_mode & 0o100
+    binary.write_bytes(b"corrupted cached binary")
+    assert mobile_tools._provision(artifact).read_bytes() == payload  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- corrupted cache must be revalidated and repaired.
 
 
 def test_detekt_uses_the_pinned_jar_through_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

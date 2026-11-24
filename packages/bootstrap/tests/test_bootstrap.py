@@ -84,7 +84,7 @@ def test_accepts_supported_manifest_schemas(tmp_path: Path, schema: int) -> None
 
 @pytest.mark.parametrize(
     ("bundle", "python"),
-    [("5.16.5", "3.14"), ("8.39.0", "3.14"), ("8.40.0", "3.15.0"), ("8.100.0", "3.15.0")],
+    [("5.16.5", "3.14"), ("8.39.0", "3.14"), ("8.40.0", "3.15.2"), ("8.100.0", "3.15.2")],
 )
 def test_execs_exact_bundle_and_preserves_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bundle: str, python: str
@@ -133,10 +133,10 @@ def test_execs_exact_bundle_and_preserves_environment(
     )
     captured_environment = captured["environment"]
     assert isinstance(captured_environment, dict)
-    if python == "3.15.0":
+    if python == "3.15.2":
         assert (
             captured_environment["UV_PYTHON_DOWNLOADS_JSON_URL"]
-            == "https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json"
+            == "https://raw.githubusercontent.com/astral-sh/uv/6b2d39dcc390293d51c9c0d2bbcd650f4bcbfdce/crates/uv-python-managed/download-metadata.json"
         )
     assert captured_environment["UV_OFFLINE"] == "1"
     assert captured_environment["UV_INDEX_URL"] == "https://packages.example/simple"

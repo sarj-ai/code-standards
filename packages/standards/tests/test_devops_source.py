@@ -240,7 +240,7 @@ def test_untrusted_terraform_only_formats_and_never_initializes(tmp_path: Path) 
         assert cwd == tmp_path
         calls.append(tuple(argv))
         if "version" in argv:
-            return ProcessOutput(0, "Terraform v1.17.0", "")
+            return ProcessOutput(0, "Terraform v1.17.2", "")
         return ProcessOutput(0, "", "")
 
     reports = analyze_sources(
@@ -292,7 +292,7 @@ def test_json_terraform_is_never_passed_to_native_formatter(tmp_path: Path) -> N
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, "Terraform v1.17.0", "")
+        return ProcessOutput(0, "Terraform v1.17.2", "")
 
     reports = analyze_sources(
         root=tmp_path, paths=("main.tf.json",), selected=frozenset({"terraform"}), runner=FakeProcessExecutor(runner)
@@ -311,7 +311,7 @@ def test_terraform_formats_variables_and_tests_without_validating_them_as_module
         assert cwd == tmp_path
         calls.append(tuple(argv))
         if "version" in argv:
-            return ProcessOutput(0, "Terraform v1.17.0", "")
+            return ProcessOutput(0, "Terraform v1.17.2", "")
         assert tuple(argv) == ("terraform", "fmt", "-check", "-list=true", *map(str, paths[:2]))
         return ProcessOutput(3, f"{paths[0]}\n{paths[1]}\n", "")
 

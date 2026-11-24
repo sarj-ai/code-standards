@@ -39,9 +39,9 @@ def test_native_project_reports_count_only_selected_project_inputs(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path or cwd in {path.parent for path in tmp_path.rglob("*.tf")}
         if "version" in argv:
-            return ProcessOutput(0, "Terraform v1.17.0", "")
+            return ProcessOutput(0, "Terraform v1.17.2", "")
         if "--version" in argv:
-            return ProcessOutput(0, "TFLint version 0.65.0\nruleset.google (0.40.0)", "")
+            return ProcessOutput(0, "TFLint version 0.66.0\nruleset.google (0.40.0)", "")
         if "fmt" in argv:
             return ProcessOutput(0, "", "")
         if mode == "malformed":
@@ -88,7 +88,7 @@ def test_terraform_formatter_failure_counts_only_submitted_hcl_inputs(tmp_path: 
         assert cwd == tmp_path
         calls.append(tuple(argv))
         if "version" in argv:
-            return ProcessOutput(0, "Terraform v1.17.0", "")
+            return ProcessOutput(0, "Terraform v1.17.2", "")
         assert tuple(argv) == ("terraform", "fmt", "-check", "-list=true", str(hcl))
         return ProcessOutput(9, "", "formatter failed")
 

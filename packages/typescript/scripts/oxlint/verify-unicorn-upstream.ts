@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 
 import { PACKAGE_DIR } from "./lib.ts";
 
@@ -16,11 +17,11 @@ assert.deepEqual(
 const bundled = (await import(join(PACKAGE_DIR, "dist/unicorn-js.js"))) as {
   default: { rules: Record<string, unknown> };
 };
-const extras = ["prefer-https", "prefer-switch"];
+const extras = ["no-async-promise-finally", "prefer-https", "prefer-switch"];
 const managed = Object.keys(bundled.default.rules)
   .filter((id) => !extras.includes(id))
   .sort();
-assert.equal(managed.length, 80);
+assert.equal(managed.length, 82);
 const root = await mkdtemp(join(tmpdir(), "sarj-unicorn-parity-"));
 const fixture = join(root, "fixture.ts");
 const originalSource = `
@@ -61,7 +62,7 @@ function lint(config: string, fix: boolean): Finding[] {
 }
 try {
   for (const [label, ids, options] of [
-    ["existing80", managed, {}],
+    ["managed82", managed, {}],
     ["extras-defaults", extras, {}],
     [
       "extras-options",
@@ -84,7 +85,7 @@ try {
               name: "unicorn-policy",
               specifier:
                 kind === "original"
-                  ? join(source, "node_modules/eslint-plugin-unicorn/index.js")
+                  ? createRequire(join(source, "package.json")).resolve("eslint-plugin-unicorn")
                   : join(PACKAGE_DIR, "dist/unicorn-js.js"),
             },
           ],

@@ -391,7 +391,7 @@ def test_directive_plan_formats_postimages_with_the_projects_oxfmt(tmp_path: Pat
     (root / "node_modules/oxfmt").unlink()
     shutil.copytree(MODULES / "oxfmt", root / "node_modules/oxfmt", symlinks=True)
     (root / "package.json").write_text(
-        '{"type":"module","private":true,"devDependencies":{"oxfmt":"0.78.0"}}\n', encoding="utf-8"
+        '{"type":"module","private":true,"devDependencies":{"oxfmt":"0.80.0"}}\n', encoding="utf-8"
     )
     (root / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (root / ".oxfmtrc.json").write_text('{"semi": true}\n', encoding="utf-8")

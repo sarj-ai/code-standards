@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -456,9 +457,6 @@ def test_short_metadata_contentions_share_the_report_cadence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     clock = [0.0]
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify production reads the native monotonic clock rather than another time source.
-        time, "monotonic", lambda: clock[0]
-    )
     with (
         (tmp_path / "queue.lock").open("a+", encoding="utf-8") as held,
         (tmp_path / "slot-0.lock").open("a+", encoding="utf-8") as occupied,
@@ -474,8 +472,10 @@ def test_short_metadata_contentions_share_the_report_cadence(
             if clock[0] >= 1:
                 fcntl.flock(occupied, fcntl.LOCK_UN)
 
-        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Native polling releases real lock contention at each sleep boundary.
-            time, "sleep", release_after_poll
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Isolate native polling while releasing real lock contention.
+            admission,
+            "time",
+            SimpleNamespace(monotonic=lambda: clock[0], sleep=release_after_poll, time_ns=time.time_ns),
         )
         with check_slot(
             {
@@ -503,8 +503,8 @@ def test_expired_positive_budget_does_not_admit_even_when_metadata_is_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = iter([0.0, 1.0])
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Native clock expiry before registration must reject the real admission path.
-        time, "monotonic", lambda: next(clock, 1.0)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Isolate the consumer's clock while exercising real admission locks.
+        admission, "time", SimpleNamespace(monotonic=lambda: next(clock, 1.0), sleep=time.sleep, time_ns=time.time_ns)
     )
     with (
         pytest.raises(TimeoutError, match=r"within 0\.5s"),
@@ -518,8 +518,8 @@ def test_budget_expiring_during_metadata_scan_does_not_acquire_a_free_slot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = [0.0]
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify admission reads native elapsed time after metadata inspection.
-        time, "monotonic", lambda: clock[0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Isolate the consumer's clock while exercising real admission locks.
+        admission, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep, time_ns=time.time_ns)
     )
     original = fcntl.flock
 
@@ -543,8 +543,8 @@ def test_budget_expiring_at_an_occupied_slot_does_not_acquire_a_later_free_slot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = [0.0]
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify native deadline reads occur between real slot-lock probes.
-        time, "monotonic", lambda: clock[0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Isolate the consumer's clock while exercising real admission locks.
+        admission, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep, time_ns=time.time_ns)
     )
     original = fcntl.flock
 

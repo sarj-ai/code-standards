@@ -77,6 +77,30 @@ class NoRedundantNullability(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="primary-key-nullability",
+                scenario="primary-key-nullability",
+                title="An inline primary key already enforces NOT NULL",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_item.sql", "CREATE TABLE item (id INTEGER PRIMARY KEY NOT NULL);\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_item.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="primary-key-only",
+                scenario="primary-key-nullability",
+                title="Keep the primary key without an extra nullability declaration",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001_item.sql", "CREATE TABLE item (id INTEGER PRIMARY KEY);\n"),),
+                focus_path=PurePosixPath("migrations/001_item.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="implicit-nullability",
                 title="Keep only constraints that change nullability",
                 outcome=ExampleOutcome.NO_MATCH,
@@ -188,7 +212,11 @@ def _column_constraints(column: exp.ColumnDef) -> Iterator[exp.NotNullColumnCons
     if len(nullable) != 1:
         return
     constraint, kind = nullable[0]
-    if _child(constraint, "this") is not None or not kind.args.keys() <= {"allow_null"}:
+    if (
+        _child(constraint, "this") is not None
+        or kind.args.get("on_conflict") is not None
+        or not kind.args.keys() <= {"allow_null", "on_conflict"}
+    ):
         return
     primary = any(isinstance(item.kind, exp.PrimaryKeyColumnConstraint) for item in column.constraints)
     if bool(kind.args.get("allow_null")) != primary:

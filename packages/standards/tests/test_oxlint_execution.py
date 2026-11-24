@@ -16,7 +16,7 @@ from sarj_standards.libs.diagnostics import Completion, Severity
 from sarj_standards.libs.linting import oxlint
 from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR
 from sarj_standards.libs.linting.process import ProcessOutput, ProcessRequest
-from tests.oxlint_project import OXLINT, analyze, environment, local, project
+from tests.oxlint_project import OXLINT, analyze, environment, local, project, run_native
 from tests.process_fakes import FakeProcessExecutor
 
 
@@ -331,7 +331,7 @@ def test_full_run_type_checks_and_reports_files_the_config_excludes(tmp_path: Pa
     assert not list(root.glob(".sarj-oxlint-*"))
 
 
-def test_full_run_type_checks_project_files_outside_the_lint_selection(tmp_path: Path) -> None:
+def test_lint_selection_and_whole_project_type_check_keep_their_native_scopes(tmp_path: Path) -> None:
     root = project(
         tmp_path / "repo",
         {
@@ -343,7 +343,19 @@ def test_full_run_type_checks_project_files_outside_the_lint_selection(tmp_path:
     report = analyze(root, oxlint.OxlintRequest(), "src/selected.ts")
 
     assert report.issues == ()
-    assert {(item.rule_id, item.location.path) for item in report.diagnostics} == {("tsc/TS2322", "src/sibling.ts")}
+    assert report.diagnostics == ()
+    selected_error = analyze(root, oxlint.OxlintRequest(), "src/sibling.ts")
+    assert selected_error.issues == ()
+    assert {(item.rule_id, item.location.path) for item in selected_error.diagnostics} == {
+        ("tsc/TS2322", "src/sibling.ts")
+    }
+    # tsrs-lint checks linted files; the managed typecheck script owns the whole program.
+    complete = run_native(
+        Command("TypeScript project check", (str(OXLINT.with_name("tsrs")), "--noEmit", "--pretty", "false"), root)
+    )
+    assert complete.returncode in {1, 2}, complete.stdout + complete.stderr
+    assert "src/sibling.ts" in complete.stdout
+    assert "TS2322" in complete.stdout
 
 
 def test_explicit_config_disables_nested_config_lookup(tmp_path: Path) -> None:

@@ -8585,8 +8585,8 @@
     }
   },
   "unicorn/no-async-promise-finally": {
-    "kind": "js-alias",
-    "oxlintId": "unicorn-js/no-async-promise-finally",
+    "kind": "dropped",
+    "oxlintId": null,
     "contexts": {
       "source-ts": "error",
       "source-tsx": "error",
@@ -8597,7 +8597,8 @@
       "test-playwright-ts": "error",
       "config-ts": "error",
       "design-system-tsx": "error"
-    }
+    },
+    "reason": "Unicorn 80 removes this rule from its default presets because async cleanup in finally is valid. The standalone export remains available for explicit opt-in."
   },
   "unicorn/no-await-expression-member": {
     "kind": "native",

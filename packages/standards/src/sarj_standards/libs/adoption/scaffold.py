@@ -2065,8 +2065,7 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
     if not official:
         return _NoOfficialHook()
     for block in official:
-        error = _official_hook_error(block)
-        if error is not None:
+        if (error := _official_hook_error(block)) is not None:
             return _RejectedHookMigration(error)
     first = official[0].start
     removed = text
@@ -2440,7 +2439,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         lines.extend(
             (
                 "      - name: Harden the runner",
-                "        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4",
+                "        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0",
                 "        with:",
                 "          egress-policy: audit",
             )
@@ -2464,7 +2463,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3",
+            "      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2636,7 +2635,7 @@ def _append_javascript_ci(
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.13.5'"
+        return "          version: '0.13.9'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
@@ -2785,7 +2784,7 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     harden = (
         """\
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
 """

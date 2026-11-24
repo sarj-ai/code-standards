@@ -9,8 +9,8 @@ from sarj_standards.libs.linting import shell_ast
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
-TOOL_PYTHON: Final = "3.15.0"
-PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json"
+TOOL_PYTHON: Final = "3.15.2"
+PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/6b2d39dcc390293d51c9c0d2bbcd650f4bcbfdce/crates/uv-python-managed/download-metadata.json"
 PACKAGE: Final = "code-standards"
 COMMAND: Final = "code-standards"
 BOOTSTRAP_PACKAGE: Final = "sarj-standards-bootstrap"
@@ -268,7 +268,7 @@ import tomllib
 
 PROTOCOL = {RETIRED_LAUNCHER_PROTOCOL}
 TOOL_PYTHON = {TOOL_PYTHON!r}
-PYTHON_DOWNLOADS = "https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json"
+PYTHON_DOWNLOADS = "https://raw.githubusercontent.com/astral-sh/uv/6b2d39dcc390293d51c9c0d2bbcd650f4bcbfdce/crates/uv-python-managed/download-metadata.json"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\Z")
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / ".sarj-standards.toml"

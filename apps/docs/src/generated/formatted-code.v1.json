@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8e6fd1d3789a4e6b6f802dffe21e9a86ee84137771675066247dee728b0feac4",
-  "cliSha256": "69bd4cb89606b4916b3f4ed2631f101957357ef067277b2125c019e02432e647",
+  "catalogSha256": "fa2f4192cf7ef34ec5cd15c80a9ce7c9e1d72fcdc0c347191025d2c011f93a4a",
+  "cliSha256": "98fa7bf177ea607004ccecb67fe3c2606e8674da1f76c7995556ffc1262dfab9",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
     "prettierPluginToml": "4.1.0",
-    "ruff": "0.17.5",
-    "sqlFormatter": "15.9.0",
-    "terraform": "1.17.0"
+    "ruff": "0.17.6",
+    "sqlFormatter": "15.10.0",
+    "terraform": "1.17.2"
   },
   "rules": {
     "iac:canonical-terraform-declarations": {
@@ -25808,6 +25808,21 @@
           "files": [
             {
               "path": "queries/events.sql",
+              "source": "SELECT\n  team_id\nFROM\n  event GROUP /* rollup */ BY team_id;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "commented-grouping",
+          "outcome": "reject",
+          "scenarioId": "commented-grouping",
+          "title": "Comments between GROUP and BY preserve the grouping operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
               "source": "SELECT\n  COUNT(*)\nFROM\n  event\nWHERE\n  id = $1;\n"
             }
           ],
@@ -25832,6 +25847,21 @@
           "outcome": "accept",
           "scenarioId": "operational-read",
           "title": "A transactional existence check uses an indexed predicate"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT\n  \"GROUP/* rollup */BY\"\nFROM\n  event;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "quoted-grouping-spelling",
+          "outcome": "accept",
+          "scenarioId": "commented-grouping",
+          "title": "Quoted grouping text remains an ordinary identifier"
         },
         {
           "expectedCount": 1,
@@ -26517,6 +26547,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Keep only constraints that change nullability"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_item.sql",
+              "source": "CREATE TABLE item (id INTEGER PRIMARY KEY NOT NULL);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_item.sql",
+          "id": "primary-key-nullability",
+          "outcome": "reject",
+          "scenarioId": "primary-key-nullability",
+          "title": "An inline primary key already enforces NOT NULL"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_item.sql",
+              "source": "CREATE TABLE item (id INTEGER PRIMARY KEY);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_item.sql",
+          "id": "primary-key-only",
+          "outcome": "accept",
+          "scenarioId": "primary-key-nullability",
+          "title": "Keep the primary key without an extra nullability declaration"
         },
         {
           "expectedCount": 1,
@@ -27716,8 +27776,8 @@
     }
   },
   "static": {
-    "quickSetup": "uv tool install --python 3.15.0 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
-    "runOnce": "uvx --no-config --isolated --python 3.15.0 --from code-standards code-standards setup\n",
+    "quickSetup": "uv tool install --python 3.15.2 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
+    "runOnce": "uvx --no-config --isolated --python 3.15.2 --from code-standards code-standards setup\n",
     "bootstrap": "[ci]\nbootstrap = [\"yarn generate\", \"uv run --project python generate-api\"]\n",
     "usage": {
       "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",

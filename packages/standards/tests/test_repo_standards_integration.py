@@ -791,7 +791,7 @@ def test_staged_native_errors_keep_commit_retry_guidance(
 @pytest.mark.parametrize("filename", ["cache.pyc", ".eslintcache", ".coverage"])
 @pytest.mark.parametrize("staged", [False, True])
 @pytest.mark.parametrize("include_warnings", [False, True])
-def test_local_residue_warning_survives_canonical_routing_for_non_source_extensions(
+def test_local_residue_error_survives_canonical_routing_for_non_source_extensions(
     tmp_path: Path, filename: str, capsys: pytest.CaptureFixture[str], *, staged: bool, include_warnings: bool
 ) -> None:
     baseline = _typed_policy_repository(tmp_path, include_warnings=include_warnings, rule_id=_LOCAL_RESIDUE_RULE)
@@ -804,27 +804,27 @@ def test_local_residue_warning_survives_canonical_routing_for_non_source_extensi
 
     report = api.Standards(tmp_path).analyze((), staged=staged)
 
-    assert report.exit_code == int(include_warnings)
+    assert report.exit_code == 1
     assert report.completion.value == "complete"
     assert report.issues == ()
     assert [(item.rule_id, item.location.path, item.severity.value) for item in report.diagnostics] == [
-        (_LOCAL_RESIDUE_RULE, filename, "warning")
+        (_LOCAL_RESIDUE_RULE, filename, "error")
     ]
     native = next(tool for tool in report.tools if tool.name == "repo-standards")
-    assert native.policy_failed is include_warnings
+    assert native.policy_failed is False
     arguments = ["--root", str(tmp_path), "check", "--format", "json", filename]
     if staged:
         arguments.append("--staged")
     capsys.readouterr()
     # Explicit unsupported files still fail coverage; native findings remain visible.
-    expected_exit = int(include_warnings) if staged else 2
+    expected_exit = 1 if staged else 2
     assert main(arguments) == expected_exit
     payload = adoption_manifest.as_table(parse_json(capsys.readouterr().out))
     assert payload["completion"] == ("complete" if staged else "partial")
     diagnostics = tuple(
         adoption_manifest.as_table(item) for item in adoption_manifest.list_field(payload, "diagnostics")
     )
-    assert [(item["code"], item["severity"]) for item in diagnostics] == [(_LOCAL_RESIDUE_RULE, "warning")]
+    assert [(item["code"], item["severity"]) for item in diagnostics] == [(_LOCAL_RESIDUE_RULE, "error")]
     if not staged:
         coverage = adoption_manifest.list_field(payload, "coverage")
         assert len(coverage) == 1

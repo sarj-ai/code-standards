@@ -194,7 +194,7 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert len(steps) == 3
     harden = steps[0]
     assert _is_object(harden)
-    assert harden.get("uses") == "step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a"
+    assert harden.get("uses") == "step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c"
     checkout = steps[1]
     assert _is_object(checkout)
     assert checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -423,7 +423,7 @@ def _recorded_commands(path: Path) -> list[list[str]]:
         ("bad; command", "workflow_dispatch", "", 2),
     ],
 )
-@pytest.mark.parametrize("runtime", ["3.14", "3.15.0"])
+@pytest.mark.parametrize("runtime", ["3.14", "3.15.2"])
 def test_rollout_version_executes_only_the_schedule_lookup(
     tmp_path: Path, requested: str, event: str, expected: str, status: int, *, runtime: str
 ) -> None:

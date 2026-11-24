@@ -12,7 +12,9 @@ Version 19 is an Oxlint JS plugin. Load it as `jsPlugins: [{ name: "@sarj", spec
 
 The `unicorn` entrypoint additionally exports upstream `prefer-https` and `prefer-switch` for explicit consumer opt-in; neither is enabled by managed defaults.
 
-The opt-in `next` entrypoint exports the official `no-location-assign-relative-destination` rule for existing consumer policies; it does not enable extra Next policies in the managed profile. The Next 16.4.1 prefix resolver has a narrow cycle guard: cyclic aliases return unknown instead of overflowing the stack; resolvable relative prefixes still report. Managed subpath entrypoints retain the selected upstream rules without installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript JavaScript API peer; the managed toolchain supplies TypeScript 6.
+The opt-in `next` entrypoint exports the official `no-location-assign-relative-destination` rule for existing consumer policies; it does not enable extra Next policies in the managed profile. The Next 16.4.6 prefix resolver has a narrow cycle guard: cyclic aliases return unknown instead of overflowing the stack; resolvable relative prefixes still report. Managed subpath entrypoints retain the selected upstream rules without installing ESLint. The `react-correctness` entrypoint also needs the optional TypeScript JavaScript API peer; the managed toolchain supplies TypeScript 6.
+
+Oxlint `--type-check` reports compiler errors for linted files. Keep the managed `tsrs --noEmit` typecheck script in the quality gate to check the whole tsconfig program.
 
 Rules and configuration are documented in the generated rule directory.
 

@@ -98,7 +98,7 @@ console.log(JSON.stringify(loaded));`,
       expect(loaded[name]).toEqual(
         [
           ...selected(name),
-          ...(name === "unicorn-js" ? ["prefer-https", "prefer-switch"] : []),
+          ...(name === "unicorn-js" ? ["no-async-promise-finally", "prefer-https", "prefer-switch"] : []),
         ].sort(),
       );
     else expect(loaded[name]).toEqual(expect.arrayContaining(selected(name)));
@@ -256,4 +256,30 @@ function short(value: number) { if(value === 1) return 1; else if(value === 2) r
     "unicorn.config.mjs",
     "unicorn.ts",
   ]);
+});
+
+it("converges spread and regexp autofixes with the managed formatter", async () => {
+  await writeFile(
+    join(ROOT, "new-fixes.config.mjs"),
+    `${GUARD}
+export default {
+  categories: {correctness: "off"},
+  jsPlugins: [{name: "unicorn-policy", specifier: "@sarj/eslint-plugin/unicorn"}],
+  rules: {"unicorn-policy/require-spread-parentheses": "error", "unicorn-policy/prefer-regexp-exec": "error"}
+};`,
+  );
+  await writeFile(
+    join(ROOT, "new-fixes.ts"),
+    'export function combine(enabled: boolean, overrides: Record<string, string>) { return { ...enabled && overrides }; }\nexport const match = "abc".match(/b/);\n',
+  );
+  const fix = ["--import=./guard.mjs", "node_modules/oxlint/bin/oxlint", "-c", "new-fixes.config.mjs", "--fix", "new-fixes.ts"];
+  command(process.execPath, fix);
+  command(process.execPath, ["node_modules/oxfmt/bin/oxfmt", "new-fixes.ts"]);
+  const fixed = await readFile(join(ROOT, "new-fixes.ts"), "utf8");
+  expect(fixed).toContain("...(enabled && overrides)");
+  expect(fixed).toContain('/b/.exec("abc")');
+  command(process.execPath, fix);
+  expect(await readFile(join(ROOT, "new-fixes.ts"), "utf8")).toBe(fixed);
+  command(process.execPath, ["node_modules/oxfmt/bin/oxfmt", "new-fixes.ts"]);
+  expect(await readFile(join(ROOT, "new-fixes.ts"), "utf8")).toBe(fixed);
 });

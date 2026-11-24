@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, Protocol, TypedDict, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Final, Literal, TypedDict, TypeGuard
 
 from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
 from typer.main import get_command
@@ -14,8 +14,6 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     import typer
 
 
@@ -251,14 +249,8 @@ def _command(
     }
 
 
-@runtime_checkable
-class _ChoiceType(Protocol):
-    @property
-    def choices(self) -> Iterable[object]: ...
-
-
 def _argument(action: TyperArgument | TyperOption) -> ReferenceArgument:
-    choices = action.type.choices if isinstance(action.type, _ChoiceType) else ()
+    choices = action.type_descriptor.choices or ()
     positional = isinstance(action, TyperArgument)
     flag = isinstance(action, TyperOption) and action.is_flag
     return {
@@ -266,7 +258,7 @@ def _argument(action: TyperArgument | TyperOption) -> ReferenceArgument:
         "names": [action.name or ""] if positional else [*action.opts, *action.secondary_opts],
         "metavar": None if flag else action.metavar or (action.name or "").upper(),
         "summary": action.help or "",
-        "choices": [str(choice) for choice in choices],
+        "choices": list(map(str, choices)),
         "required": action.required,
         "repeatable": action.nargs == -1 or action.multiple,
     }

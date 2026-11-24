@@ -251,6 +251,7 @@
   "typescript/no-unsafe-argument": "Disallow calling a function with a value with type `any`",
   "typescript/no-unsafe-assignment": "Disallow assigning a value with type `any` to variables and properties",
   "typescript/no-unsafe-call": "Disallow calling a value with type `any`",
+  "typescript/no-unsafe-class-instance-assignment": "Disallow structurally compatible values that bypass class construction where a class instance is expected",
   "typescript/no-unsafe-declaration-merging": "Disallow unsafe declaration merging",
   "typescript/no-unsafe-enum-assignment": "Disallow assigning non-enum values to enum typed locations",
   "typescript/no-unsafe-enum-comparison": "Disallow comparing an enum value with a non-enum value",

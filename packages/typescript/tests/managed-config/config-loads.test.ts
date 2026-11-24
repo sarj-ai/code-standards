@@ -133,6 +133,12 @@ const FILES: Readonly<Record<string, string>> = {
   ].join("\n"),
   "src/promise-params.js": "export const value = Promise.resolve(1, 2).then();\n",
   "src/promise-params-valid.js": "export const value = Promise.resolve(1).then((result) => result);\n",
+  "src/new-upstream-rules.ts": "class Session { constructor(readonly id: string) {} }\nexport const session: Session = { id: \"guest\" };\nexport function run(input: string, verbose = false, options = { retries: 1 }) { return { input, verbose, options }; }\nexport function combine(enabled: boolean, overrides: Record<string, string>) { return { ...enabled && overrides }; }\n",
+  "src/new-upstream-rules-valid.ts": "class Session { constructor(readonly id: string) {} }\nexport const session: Session = new Session(\"guest\");\nexport function run(input: string, { verbose = false, retries = 1 } = {}) { return { input, verbose, retries }; }\nexport function combine(enabled: boolean, overrides: Record<string, string>) { return { ...(enabled && overrides) }; }\n",
+  "src/regexp-match.js": "export const match = \"abc\".match(/b/);\n",
+  "src/regexp-exec.js": "export const match = /b/.exec(\"abc\");\n",
+  "src/async-cleanup.ts": "export async function settle(cleanup: () => Promise<void>): Promise<void> { await Promise.resolve().finally(async () => { await cleanup(); }); }\n",
+
 };
 
 interface Diagnostic {
@@ -186,6 +192,15 @@ afterAll(async () => {
 const codesOf = (path: string): readonly string[] => [...(codes.get(path) ?? [])].toSorted();
 
 describe("the managed Oxlint config in a consumer", () => {
+  it("runs the newly available native and upstream rules without rejecting valid boundaries", () => {
+    const expected = ["typescript(no-unsafe-class-instance-assignment)", "unicorn-js(prefer-options-parameter)", "unicorn-js(require-spread-parentheses)"];
+    expect(codesOf("src/new-upstream-rules.ts")).toEqual(expect.arrayContaining(expected));
+    expect(codesOf("src/new-upstream-rules-valid.ts").filter(code => expected.includes(code))).toEqual([]);
+    expect(codesOf("src/regexp-match.js")).toContain("unicorn-js(prefer-regexp-exec)");
+    expect(codesOf("src/regexp-exec.js")).not.toContain("unicorn-js(prefer-regexp-exec)");
+    expect(codesOf("src/async-cleanup.ts")).not.toContain("unicorn-js(no-async-promise-finally)");
+  });
+
   it("loads every plugin without a crash", () => {
     expect(problems).toEqual([]);
   });

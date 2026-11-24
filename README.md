@@ -18,7 +18,7 @@ Verify deployed applications with `code-standards web-security web-policy.json`.
 
 ## Contributing
 
-Install uv 0.13.5, Python 3.15, Node 24.22, and GNU Make. Then bootstrap a fresh checkout:
+Install uv 0.13.9, Python 3.15, Node 26.13, and GNU Make. Then bootstrap a fresh checkout:
 
 ```bash
 make setup

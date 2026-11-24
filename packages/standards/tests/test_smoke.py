@@ -482,7 +482,7 @@ def test_native_unused_helpers_preserve_test_and_framework_dispatch(tmp_path: Pa
 def test_native_fixture_audit_tracks_runtime_requests_and_exposes_incomplete_profile_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert importlib.metadata.version("pytest-unused-fixtures") == "0.3.1"
+    assert importlib.metadata.version("pytest-unused-fixtures") == "0.3.2"
     monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     (tmp_path / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n")
     (tmp_path / "conftest.py").write_text("import pytest\n@pytest.fixture\ndef root_support():\n    return True\n")
@@ -528,7 +528,10 @@ def test_native_fixture_audit_tracks_runtime_requests_and_exposes_incomplete_pro
 
     assert proc.returncode == 0, proc.stderr
     inactive = set(re.findall(r"^(\w+) -- (?:tests/)?conftest\.py:\d+$", proc.stdout, re.MULTILINE))
-    assert inactive == {"root_support", "_unrequested_private", "skipped_support"}
+    # Upstream 0.3.2 excludes root conftest fixtures with the same empty baseid as plugin fixtures.
+    # This remains advisory evidence: absence from the report does not prove a fixture is used.
+    assert inactive == {"_unrequested_private", "skipped_support"}
+    assert "root_support --" not in proc.stdout
     assert "1 passed, 1 skipped" in proc.stdout
 
 

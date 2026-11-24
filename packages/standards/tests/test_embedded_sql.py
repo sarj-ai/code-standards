@@ -164,20 +164,20 @@ def test_unparseable_sql_and_inline_configuration_are_coverage_gaps(tmp_path: Pa
     [
         ProcessOutput(1, "", "parser failed"),
         ProcessOutput(0, "not json", ""),
-        ProcessOutput(0, '{"version":"4.2.2","version":"4.2.2","results":[{}]}', ""),
+        ProcessOutput(0, '{"version":"4.5.0","version":"4.5.0","results":[{}]}', ""),
         ProcessOutput(0, '{"version":"4.2.1","results":[{}]}', ""),
-        ProcessOutput(0, '{"version":"4.2.2","results":[]}', ""),
+        ProcessOutput(0, '{"version":"4.5.0","results":[]}', ""),
         ProcessOutput(
             0,
-            '{"version":"4.2.2","results":[{"violations":[{"code":"AM99","description":"wrong rule","line":1,"column":1}]}]}',
+            '{"version":"4.5.0","results":[{"violations":[{"code":"AM99","description":"wrong rule","line":1,"column":1}]}]}',
             "",
         ),
         ProcessOutput(
             0,
-            '{"version":"4.2.2","results":[{"violations":[{"code":"AM07","description":"outside source","line":999,"column":1}]}]}',
+            '{"version":"4.5.0","results":[{"violations":[{"code":"AM07","description":"outside source","line":999,"column":1}]}]}',
             "",
         ),
-        ProcessOutput(0, '{"version":"4.2.2","results":[{}]}', "unexpected stderr"),
+        ProcessOutput(0, '{"version":"4.5.0","results":[{}]}', "unexpected stderr"),
     ],
     ids=[
         "failed-exit",

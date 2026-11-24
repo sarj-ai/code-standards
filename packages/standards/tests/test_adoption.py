@@ -3394,7 +3394,7 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
         "GITHUB_TOKEN": "${{ github.server_url == 'https://github.com' && github.token || '' }}"
     }
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in rendered.stdout
-    assert "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3" in rendered.stdout
+    assert "astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None

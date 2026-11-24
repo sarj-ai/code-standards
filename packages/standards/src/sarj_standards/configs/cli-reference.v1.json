@@ -3367,11 +3367,11 @@
     }
   ],
   "launcher": {
-    "install": "uv tool install --python 3.15.0 code-standards",
-    "runLatest": "uvx --no-config --isolated --python 3.15.0 --from code-standards code-standards"
+    "install": "uv tool install --python 3.15.2 code-standards",
+    "runLatest": "uvx --no-config --isolated --python 3.15.2 --from code-standards code-standards"
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.99.0).",
-  "version": "9.99.0"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v9.100.0).",
+  "version": "9.100.0"
 }
