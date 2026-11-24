@@ -76,7 +76,7 @@ def test_known_policy_migration_changes_only_the_version_bytes(
         (25, 26, ("a" * 64,), True),
         (35, 37, (), True),
         (36, 40, (), True),
-        (40, 41, (), False),
+        (40, 41, (), True),
     ],
 )
 def test_policy_change_classification_uses_reviewed_compatibility(
@@ -155,7 +155,8 @@ def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before
 
 @pytest.mark.parametrize("include_warnings", [None, False, True])
 @pytest.mark.parametrize(
-    ("before", "after"), [(27, 28), (35, 36), (36, 37), (37, 38), (38, 39), (36, 39), (35, 39), (39, 40), (36, 40)]
+    ("before", "after"),
+    [(27, 28), (35, 36), (36, 37), (37, 38), (38, 39), (36, 39), (35, 39), (39, 40), (36, 40), (40, 41)],
 )
 def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_warning_choice(
     before: int,
@@ -180,6 +181,19 @@ def test_new_markdown_and_template_policies_preserve_rejection_of_existing_debt(
         repository_baseline.migrate(_baseline(before, fingerprints=("a" * 64,)), _MANIFEST, target_policy_version=39)
 
 
+@pytest.mark.parametrize("before", [39, 40])
+@pytest.mark.parametrize("include_warnings", [False, True])
+def test_local_residue_error_policy_preserves_rejection_of_existing_debt(
+    before: int, *, include_warnings: bool
+) -> None:
+    original = _baseline(before, fingerprints=("a" * 64,)).replace(
+        b'"schema_version": 2',
+        b'"schema_version": 2, "include_warnings": ' + str(include_warnings).lower().encode(),
+    )
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=41)
+
+
 @pytest.mark.parametrize(
     ("before", "after"),
     [
@@ -194,7 +208,7 @@ def test_new_markdown_and_template_policies_preserve_rejection_of_existing_debt(
         (26, 29),
         (25, 30),
         (26, 30),
-        (40, 41),
+        (41, 42),
     ],
 )
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:

@@ -221,6 +221,28 @@ class NoAnalyticalQueriesInTransactionalDb(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="commented-grouping",
+                scenario="commented-grouping",
+                title="Comments between GROUP and BY preserve the grouping operation",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql("queries/events.sql", "SELECT team_id FROM event GROUP/* rollup */BY team_id;\n"),
+                ),
+                focus_path=PurePosixPath("queries/events.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="quoted-grouping-spelling",
+                scenario="commented-grouping",
+                title="Quoted grouping text remains an ordinary identifier",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("queries/events.sql", 'SELECT "GROUP/* rollup */BY" FROM event;\n'),),
+                focus_path=PurePosixPath("queries/events.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="temporary-table-deduplication",
                 scenario="temporary-table",
                 title="A temporary table does not exempt a transactional reporting query",

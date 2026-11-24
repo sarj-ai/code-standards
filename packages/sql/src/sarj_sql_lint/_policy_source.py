@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from itertools import pairwise
 import re
 from typing import TYPE_CHECKING
 
@@ -16,15 +15,22 @@ def normalize_group_comments(source: str, tokens: Sequence[Token]) -> str:
 
     chunks: list[str] = []
     start = 0
-    for left, right in pairwise(tokens):
-        if left.token_type is not TokenType.VAR or right.token_type is not TokenType.VAR:
+    for index, left in enumerate(tokens):
+        if left.token_type is TokenType.GROUP_BY:
+            gap_start = left.start + len("GROUP")
+            gap_end = left.end + 1 - len("BY")
+        elif left.token_type is TokenType.VAR and left.text.upper() == "GROUP" and index + 1 < len(tokens):
+            right = tokens[index + 1]
+            if right.token_type is not TokenType.VAR or right.text.upper() != "BY":
+                continue
+            gap_start = left.end + 1
+            gap_end = right.start
+        else:
             continue
-        if left.text.upper() != "GROUP" or right.text.upper() != "BY":
-            continue
-        gap = source[left.end + 1 : right.start]
+        gap = source[gap_start:gap_end]
         if not gap.strip():
             continue
-        chunks.extend((source[start : left.end + 1], re.sub(r"[^\r\n]", " ", gap)))
-        start = right.start
+        chunks.extend((source[start:gap_start], re.sub(r"[^\r\n]", " ", gap)))
+        start = gap_end
     chunks.append(source[start:])
     return "".join(chunks)

@@ -182,9 +182,9 @@ def test_nullability_fix_preserves_owned_or_distinct_validation(validation: str)
 @pytest.fixture(scope="session")
 def terraform_executable() -> str:
     executable = shutil.which("terraform")
-    assert executable is not None, "Terraform 1.17.0 is required for the mandatory IaC semantic contract"
+    assert executable is not None, "Terraform 1.17.2 is required for the mandatory IaC semantic contract"
     version = subprocess.run((executable, "version"), check=True, capture_output=True, text=True)
-    assert version.stdout.splitlines()[0] == "Terraform v1.17.0"
+    assert version.stdout.splitlines()[0] == "Terraform v1.17.2"
     return executable
 
 

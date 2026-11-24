@@ -5,7 +5,7 @@ from typing import ClassVar, Final, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-SQLFLUFF_VERSION: Final = "4.2.2"
+SQLFLUFF_VERSION: Final = "4.5.0"
 RULES: Final = frozenset({"AM07", "AM08"})
 MAX_INPUT_BYTES: Final = 1024 * 1024
 MAX_QUERIES: Final = 32

@@ -693,7 +693,7 @@ def _embedded_sql_projection() -> _ToolProjection:
             id=RuleId(rule),
             display_id=DisplayRuleId(rule),
             summary=summary,
-            docs_url=f"https://docs.sqlfluff.com/en/4.2.2/reference/rules/ambiguous#{rule.lower()}",
+            docs_url=f"https://docs.sqlfluff.com/en/{SQLFLUFF_VERSION}/reference/rules/ambiguous#{rule.lower()}",
             family="correctness",
             autofix="none",
             has_suggestions=False,

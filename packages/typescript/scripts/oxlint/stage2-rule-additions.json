@@ -89,7 +89,11 @@
     "@sarj/jsx-no-forbidden-nesting": {"level": "error", "findings": "Platform 0 (902 current files; 2,886 changed file versions)", "note": "HTML parser repairs React reports as hydration errors, plus content-model nesting in one visible JSX tree."},
     "promise/no-new-statics": {"level": "error", "note": "covers JS files the type check skips; TS7009 reports the same call in type-checked files"},
     "promise/no-return-in-finally": {"level": "error", "note": "covers JS, JSX, TSX and syntax-only config files, where typescript/strict-void-return is off or has no types"},
-    "promise/valid-params": {"level": "error", "note": "covers JS files the type check skips and zero-argument then(), catch() and finally() calls TypeScript accepts; reports those calls on any receiver"}
+    "promise/valid-params": {"level": "error", "note": "covers JS files the type check skips and zero-argument then(), catch() and finally() calls TypeScript accepts; reports those calls on any receiver"},
+    "typescript/no-unsafe-class-instance-assignment": {"level": "warn", "note": "Detect structurally compatible objects that bypass class construction; begin as a warning."},
+    "unicorn-js/prefer-options-parameter": {"level": "warn", "note": "Recommend consolidating optional positional arguments before an existing options object; no automatic API rewrite."},
+    "unicorn-js/require-spread-parentheses": {"level": "warn", "note": "Autofix complex spread arguments while preserving comments and formatter convergence."},
+    "unicorn-js/prefer-regexp-exec": {"level": "warn", "note": "Safely fix non-global regexp matches in JavaScript and syntax-only configuration; the native type-aware owner handles typed source."}
   },
   "later": {
     "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"

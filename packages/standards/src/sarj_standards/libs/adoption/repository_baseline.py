@@ -126,6 +126,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     predecessor = {
+        41: 40,
         40: 39,
         39: 38,
         38: 37,
@@ -155,6 +156,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
             (37, 38),
             (38, 39),
             (39, 40),
+            (40, 41),
         }
         and not baseline.fingerprints
     )

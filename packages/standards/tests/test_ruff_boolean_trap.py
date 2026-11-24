@@ -72,4 +72,4 @@ def test_shipped_ruff_policy_owns_boolean_traps(source: str, path: str, expected
     )
     assert result.returncode in {0, 1}, result.stderr
     diagnostics = RuffReport.model_validate_json(result.stdout)
-    assert [item.code for item in diagnostics.root if item.code.startswith("FBT")] == expected
+    assert sorted(item.code for item in diagnostics.root if item.code.startswith("FBT")) == expected
