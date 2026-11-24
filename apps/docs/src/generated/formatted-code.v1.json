@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "cef400d8c816be3664d19ed2e7e84c6fa71988d9903dc7f44f32cbdb3cd83642",
-  "cliSha256": "44407b1bf098fe69915a985dd4993dd92e07b383b4a76356cd8b8d5f34073908",
+  "catalogSha256": "e000e3f032476c23fd4fccd0f45b1de4a5de2b8222ccdf8e78191e249ee405c8",
+  "cliSha256": "ed7826795dbea7c362ef030b43c6f39807da85173fcca4945a5dd127b0ad9621",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -21539,6 +21539,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Caller explicitly chooses an absent configuration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, timing: Timing | None) -> None:\n        self.timing = timing or Timing()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-constructed-fallback",
+          "outcome": "reject",
+          "scenarioId": "nullable-fallback",
+          "title": "Constructor accepts None only to build its own dependency"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import os\n\n\nclass Service:\n    def __init__(self, workers: int | None) -> None:\n        self.workers = workers or os.cpu_count()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-derived-value",
+          "outcome": "accept",
+          "scenarioId": "nullable-fallback",
+          "title": "None selects a value derived from the runtime"
         }
       ],
       "optionsSchemaSource": null

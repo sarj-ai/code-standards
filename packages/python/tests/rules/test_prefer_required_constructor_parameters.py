@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import AutofixPolicy, Severity, is_suppressed
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_required_constructor_parameters import PreferRequiredConstructorParameters
 
 
@@ -538,6 +539,78 @@ _CASES = (
         'from __future__ import annotations\nimport typing\nclass Service:\n    @typing.overload\n    def __init__(self, value: getattr(typing, "Any")=None): ...\n',
     ),
     EvaluationCase("malformed-input", Language.PYTHON, "class Service:\n    def __init__("),
+    EvaluationCase(
+        "required-nullable-constructed-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, timing: Timing | None):\n        self.timing = timing or Timing()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "required-nullable-bound-method-fallback",
+        Language.PYTHON,
+        "from random import SystemRandom\nclass Service:\n    def __init__(self, draw: Callable[[], float] | None):\n"
+        "        self.draw = draw or SystemRandom().random\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "required-nullable-conditional-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, *, slots: Semaphore | None):\n"
+        "        self.slots = Semaphore(4) if slots is None else slots\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "required-nullable-guarded-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, client: Client | None):\n        if client is None:\n"
+        "            client = Client()\n        self.client = client\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "required-nullable-called-class-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, factory: PlayerFactory | None):\n"
+        "        self._factory = factory or Player\n    def start(self):\n        return self._factory()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "required-nullable-uncalled-reference-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, kinds: Kinds | None):\n        self.kinds = kinds or DEFAULT_KINDS\n",
+    ),
+    EvaluationCase(
+        "required-nullable-scalar-derived-fallback",
+        Language.PYTHON,
+        "import os\nclass Service:\n    def __init__(self, workers: int | None):\n        self.workers = workers or os.cpu_count()\n",
+    ),
+    EvaluationCase(
+        "required-nullable-collection-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, tags: list[str] | None):\n        self.tags = tags or list(DEFAULTS)\n",
+    ),
+    EvaluationCase(
+        "required-nullable-stdlib-value-fallback",
+        Language.PYTHON,
+        "from datetime import timedelta\nclass Service:\n    def __init__(self, timeout: timedelta | None):\n"
+        "        self.timeout = timeout or timedelta(seconds=5)\n",
+    ),
+    EvaluationCase(
+        "required-nullable-retained-absence",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, cache: Cache | None):\n        self.cache = cache\n",
+    ),
+    EvaluationCase(
+        "required-nullable-rebound-before-fallback",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, client: Client | None):\n        client = lookup(client)\n"
+        "        self.client = client or Client()\n",
+    ),
+    EvaluationCase(
+        "required-nullable-fallback-in-nested-scope",
+        Language.PYTHON,
+        "class Service:\n    def __init__(self, client: Client | None):\n"
+        "        self.make = lambda client=None: client or Client()\n",
+    ),
 )
 
 
@@ -657,6 +730,38 @@ def test_exact_suppression_and_manual_fix_policy() -> None:
     documentation = PreferRequiredConstructorParameters.documentation
     assert documentation is not None
     assert documentation.autofix is AutofixPolicy.NONE
+
+
+@pytest.mark.parametrize(
+    ("contract", "expected"),
+    [
+        ("from typing import Protocol\nclass Cache(Protocol):\n    def get(self, key: str) -> str: ...\n", 1),
+        ("import abc\nclass Cache(abc.ABC):\n    @abc.abstractmethod\n    def get(self, key: str) -> str: ...\n", 1),
+        ("from typing import Protocol\nclass Cache(Protocol):\n    size: int\n", 0),
+        ("class Cache:\n    def get(self, key: str) -> str:\n        return key\n", 0),
+        ("from pydantic import BaseModel\nclass Cache(BaseModel):\n    size: int\n", 0),
+    ],
+    ids=["protocol", "abc", "attribute-protocol", "concrete-class", "model"],
+)
+def test_nullable_interface_dependency(tmp_path: Path, contract: str, expected: int) -> None:
+    package = tmp_path / "project" / "app"
+    package.mkdir(parents=True)
+    (tmp_path / "project" / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    (package / "contracts.py").write_text(contract)
+    service = package / "service.py"
+    service.write_text(
+        "from app.contracts import Cache\n"
+        "class Service:\n"
+        "    def __init__(self, cache: Cache | None, label: str | None) -> None:\n"
+        "        self.cache = cache\n"
+    )
+    sources = {path: path.read_text() for path in (package / "contracts.py", service)}
+    rule = PreferRequiredConstructorParameters()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    findings = rule.check(service, sources[service])
+    assert len(findings) == expected
+    assert all("`cache` is nullable" in finding.message for finding in findings)
 
 
 def test_repeated_checks_are_stable() -> None:
