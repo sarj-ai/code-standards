@@ -74,7 +74,7 @@ if (mode !== "--check" && mode !== "--write" && mode !== "--format-json") {
 }
 
 const cache = new Map<string, string>();
-const ruffVersion = "0.17.5";
+const ruffVersion = "0.17.6";
 
 assert.equal(
   execFileSync(
@@ -87,8 +87,8 @@ assert.equal(
 );
 assert.match(
   execFileSync("terraform", ["version"], { encoding: "utf8" }),
-  /^Terraform v1\.17\.0\b/u,
-  "formatted code requires Terraform 1.17.0",
+  /^Terraform v1\.17\.2\b/u,
+  "formatted code requires Terraform 1.17.2",
 );
 
 function sha256(source: string) {
@@ -455,7 +455,7 @@ else {
       prettierPluginToml: await installedVersion("prettier-plugin-toml"),
       ruff: ruffVersion,
       sqlFormatter: await installedVersion("sql-formatter"),
-      terraform: "1.17.0",
+      terraform: "1.17.2",
     },
     rules,
     static: {

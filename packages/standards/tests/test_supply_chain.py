@@ -139,8 +139,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
             if workflow.name == "release-tags.yml" and "version-file: packages/standards/uv.toml" in following:
                 assert text.count("uses: astral-sh/setup-uv@") == 2
                 continue
-            if "version: '0.13.5'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.13.5 in {workflow}")
+            if "version: '0.13.9'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.13.9 in {workflow}")
     assert violations == []
 
 
@@ -624,7 +624,7 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
         "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
     )
     assert (
-        release.count("npm install --global npm@12.2.1 --ignore-scripts") == 2
+        release.count("npm install --global npm@12.2.3 --ignore-scripts") == 2
     )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
 
     def assert_dependency_free(job: str) -> None:

@@ -183,7 +183,7 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
         "--no-config",
         "--no-project",
         "--python",
-        "3.15.0",
+        "3.15.2",
         "--with",
         f"code-standards=={manifest.adopted_version()}",
         "python",

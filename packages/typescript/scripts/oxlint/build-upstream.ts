@@ -3,7 +3,9 @@
 // Normal builds verify and copy the reviewed rule bundles.
 // sources.lock.json is provenance, not an install input for this package.
 // To refresh, reconstruct a temporary package.json from that lock's packages[""]
-// entry, copy the lock there as package-lock.json, and run npm ci --ignore-scripts.
+// entry, copy the lock there as package-lock.json, and run
+// npm ci --ignore-scripts --legacy-peer-deps. React still declares ESLint 9 peers;
+// selected rules run through Oxlint and never bundle the isolated ESLint engine.
 // Then run this script with --refresh and SARJ_UPSTREAM_SOURCE set to that
 // temporary installation. Its upstream peers include ESLint; keep it isolated.
 import { readFile, readdir, writeFile, mkdir, copyFile } from "node:fs/promises";
@@ -72,6 +74,8 @@ const RULE_IDS: readonly string[] = [
       ),
     ].map((match) => match[1]!),
     // Existing authored policies can opt in without the full plugin's ESLint peer.
+    // Async cleanup in finally is valid; retain an explicit opt-in export.
+    "unicorn-js/no-async-promise-finally",
     "unicorn-js/prefer-https",
     "unicorn-js/prefer-switch",
   ]),
@@ -181,9 +185,11 @@ for (const [alias, name, subpath] of PLUGINS) {
   const root =
     alias === "next-js"
       ? join(packageRoot, "dist")
-      : directRules
-        ? dirname(resolveSource(name))
-        : packageRoot;
+      : alias === "unicorn-js"
+        ? packageRoot
+        : directRules
+          ? dirname(resolveSource(name))
+          : packageRoot;
   // Next is an opt-in compatibility export, never part of the default profile.
   const rules = (
     alias === "next-js" ? ["next-js/no-location-assign-relative-destination"] : RULE_IDS

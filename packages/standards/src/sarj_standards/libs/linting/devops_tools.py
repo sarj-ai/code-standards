@@ -41,7 +41,7 @@ class _ManagedToolSpec:
 
 _MANAGED_TOOL_SPECS: Final = (
     _ManagedToolSpec(
-        tool=NativeTool("helm", "4.3.1", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
+        tool=NativeTool("helm", "4.3.2", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
         mise_ref="aqua:helm/helm",
     ),
     _ManagedToolSpec(
@@ -69,21 +69,21 @@ _MANAGED_TOOL_SPECS: Final = (
         mise_ref="aqua:hadolint/hadolint",
     ),
     _ManagedToolSpec(
-        tool=NativeTool("jscpd", "5.4.2", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
+        tool=NativeTool("jscpd", "5.4.3", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
         mise_ref="github:kucherenko/jscpd",
     ),
     _ManagedToolSpec(
-        tool=NativeTool("knip", "6.42.1", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
+        tool=NativeTool("knip", "6.48.0", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
         mise_ref="npm:knip",
     ),
     _ManagedToolSpec(
-        tool=NativeTool("terraform", "1.17.0", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
+        tool=NativeTool("terraform", "1.17.2", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
         mise_ref="aqua:hashicorp/terraform",
     ),
     _ManagedToolSpec(
         tool=NativeTool(
             "tflint",
-            "0.65.0",
+            "0.66.0",
             ("--version", "--config", str(CONFIGS_DIR / "tflint.version.hcl")),
             r"TFLint version (?P<version>\d+\.\d+\.\d+)",
             frozenset({2}),
@@ -93,7 +93,7 @@ _MANAGED_TOOL_SPECS: Final = (
     _ManagedToolSpec(
         tool=NativeTool(
             "docker",
-            "5.6.1",
+            "5.8.0",
             ("compose", "version", "--format", "json"),
             r'"version"\s*:\s*"v?(?P<version>\d+\.\d+\.\d+)"',
         ),

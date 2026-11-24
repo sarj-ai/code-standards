@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards"
-version = "9.99.0"
+version = "9.100.0"
 description = "Compatibility bridge to the renamed code-standards distribution."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -8,7 +8,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "sarj-ai" }]
 dependencies = [
-    "code-standards==9.99.0",
+    "code-standards==9.100.0",
 ]
 
 [project.scripts]
@@ -21,7 +21,7 @@ Documentation = "https://code-standards.sarj.ai/cli/"
 Repository = "https://github.com/sarj-ai/code-standards"
 
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

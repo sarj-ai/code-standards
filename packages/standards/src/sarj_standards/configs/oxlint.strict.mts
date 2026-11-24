@@ -472,6 +472,7 @@ const RULES = {
   "typescript/no-unsafe-argument": "error",
   "typescript/no-unsafe-assignment": "error",
   "typescript/no-unsafe-call": "error",
+  "typescript/no-unsafe-class-instance-assignment": "warn",
   "typescript/no-unsafe-declaration-merging": "error",
   "typescript/no-unsafe-enum-assignment": "error",
   "typescript/no-unsafe-enum-comparison": "error",
@@ -742,7 +743,6 @@ const RULES = {
   "unicorn-js/no-array-from-fill": "error",
   "unicorn-js/no-array-sort-for-min-max": "error",
   "unicorn-js/no-async-iterator-callback": "error",
-  "unicorn-js/no-async-promise-finally": "error",
   "unicorn-js/no-blob-to-file": "error",
   "unicorn-js/no-canvas-to-image": "error",
   "unicorn-js/no-computed-property-existence-check": "warn",
@@ -811,6 +811,10 @@ const RULES = {
   "unicorn-js/prefer-iterator-to-array": "error",
   "unicorn-js/prefer-logical-operator-over-ternary": "error",
   "unicorn-js/prefer-single-object-destructuring": "error",
+  "unicorn-js/prefer-options-parameter": "warn",
+  // Native type-aware analysis owns typed source; this rule covers syntax-only files.
+  "unicorn-js/prefer-regexp-exec": "off",
+  "unicorn-js/require-spread-parentheses": "warn",
   "unicorn-js/prefer-top-level-await": "error",
   "unicorn-js/prefer-type-error": "error",
   "unicorn-js/require-css-escape": ["error", {"checkAllSelectors": false}],
@@ -1163,6 +1167,7 @@ const TYPE_AWARE_RULES = [
   "typescript/no-unsafe-argument",
   "typescript/no-unsafe-assignment",
   "typescript/no-unsafe-call",
+  "typescript/no-unsafe-class-instance-assignment",
   "typescript/no-unsafe-enum-assignment",
   "typescript/no-unsafe-enum-comparison",
   "typescript/no-unsafe-member-access",
@@ -1214,6 +1219,7 @@ export function createConfig(options: ConfigOptions = {}): OxlintConfig {
     {
       files: JS_FILES,
       rules: {
+        "unicorn-js/prefer-regexp-exec": "warn",
         "constructor-super": "error",
         "getter-return": ["error", {"allowImplicit": false}],
         "jsdoc-js/no-restricted-syntax": [
@@ -1297,6 +1303,7 @@ export function createConfig(options: ConfigOptions = {}): OxlintConfig {
       files: [...syntaxOnlyConfigFiles],
       rules: {
         ...Object.fromEntries(TYPE_AWARE_RULES.map((rule) => [rule, "off"])),
+        "unicorn-js/prefer-regexp-exec": "warn",
         "no-implied-eval": "error",
         "no-new-func": "error",
       },

@@ -1,7 +1,7 @@
 {
   "name": "@sarj-ai/code-standards-docs",
   "version": "0.1.0",
-  "packageManager": "npm@12.2.1",
+  "packageManager": "npm@12.2.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,38 +25,38 @@
   "dependencies": {
     "@astrojs/starlight": "0.43.1",
     "@sarj/design": "0.5.0",
-    "astro": "7.4.12",
+    "astro": "7.4.13",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
-    "@astrojs/sitemap": "3.7.5",
+    "@astrojs/sitemap": "3.7.6",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
-    "oxlint": "1.93.0",
+    "oxlint": "1.95.0",
     "prettier": "3.10.1",
     "prettier-plugin-sh": "0.20.2",
     "prettier-plugin-toml": "4.1.0",
     "oxlint-plugin-react-doctor": "0.9.23",
-    "sql-formatter": "15.9.0",
+    "sql-formatter": "15.10.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "tsrs": "0.23.0-ts7.1.0-beta",
-    "wrangler": "4.162.0",
+    "tsrs": "7.1.0-beta.tsrs5",
+    "wrangler": "4.167.0",
     "@types/node": "26.6.6"
   },
   "engines": {
     "node": "^22.22.2 || >=24.15.0"
   },
   "overrides": {
-    "minimatch": "11.0.1",
-    "postcss-selector-parser": "7.1.7",
+    "minimatch": "11.0.9",
+    "postcss-selector-parser": "7.2.1",
     "http-cache-semantics": "4.3.0",
     "sharp": "0.35.5",
     "miniflare": {
-      "undici": "8.12.3"
+      "undici": "8.13.1"
     },
     "@sarj/design": {
       "@astrojs/starlight": "$@astrojs/starlight"
     },
-    "minimatch@^10.0.0": "11.0.1"
+    "minimatch@^10.0.0": "11.0.9"
   }
 }

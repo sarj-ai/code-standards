@@ -211,7 +211,7 @@ def test_integration_installer_failure_preserves_consumer_optouts_and_stops_befo
             "--python",
             "3.12",
             "--from",
-            "zizmor==1.31.1",
+            "zizmor==1.33.1",
             "zizmor",
             "--version",
         ]

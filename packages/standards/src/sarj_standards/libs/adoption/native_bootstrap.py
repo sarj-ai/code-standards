@@ -15,15 +15,15 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
-VERSION: Final = "2026.10.8"
+VERSION: Final = "2026.11.13"
 _ROUNDS: Final = 3
 _BACKOFF_SECONDS: Final = 2.0
 _TRANSIENT_STATUSES: Final = frozenset({HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS})
 _DIGESTS: Final = {
-    "linux-x64": "c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428",
-    "linux-arm64": "6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5",
-    "macos-x64": "a122fd04db5f2da07d24528ed61109bc82142ca44e821d4faafa05650f6ba627",
-    "macos-arm64": "dd77de9a7574e38d8409fb06fa85e1581415896639d075987791d8c4e5a57b73",
+    "linux-x64": "9c8cc9e10886fe1b1ae2ff625f34905f3bd94e47ee5c9b0d3d597e6629d43d20",
+    "linux-arm64": "1d87e6bc2a069869d7f5fe4a6353429b83cd8cb9c12fea0782dae5f30b2a3683",
+    "macos-x64": "7e0b50348e00ad9a3ed9efe30012dd6e5f7fb29b4debac8edd93cc3efedded2d",
+    "macos-arm64": "973eb467ec9671f73a96a4c6c39f175703dde49523a5532157e659afcc5f2eca",
 }
 
 

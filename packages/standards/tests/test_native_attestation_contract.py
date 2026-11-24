@@ -78,9 +78,9 @@ def test_tflint_core_version_uses_packaged_config_with_injected_runner(*, tmp_pa
         assert config.is_absolute()
         assert config.is_file()
         assert not config.is_relative_to(tmp_path)
-        return ProcessOutput(0, "TFLint version 0.65.0", "")
+        return ProcessOutput(0, "TFLint version 0.66.0", "")
 
-    assert checked_tool("tflint", root=tmp_path, runner=FakeProcessExecutor(runner)).version == "0.65.0"
+    assert checked_tool("tflint", root=tmp_path, runner=FakeProcessExecutor(runner)).version == "0.66.0"
 
 
 @pytest.mark.parametrize("state", ["missing", "wrong-version", "deadline", "valid"])
@@ -178,8 +178,8 @@ def test_actual_tflint_core_version_never_starts_project_plugins(*, tmp_path: Pa
     try:
         tool = checked_tool("tflint", root=tmp_path)
     except NativeToolMissingError:
-        pytest.skip("optional actual pinned TFLint 0.65.0 is not installed in this test environment")
-    assert tool.version == "0.65.0"
+        pytest.skip("optional actual pinned TFLint 0.66.0 is not installed in this test environment")
+    assert tool.version == "0.66.0"
     (tmp_path / ".tflint.hcl").write_text('plugin "probe" {\n enabled = true\n}\n', encoding="utf-8")
     for name in ("probe", "terraform"):
         plugin = tmp_path / f".tflint.d/plugins/tflint-ruleset-{name}"

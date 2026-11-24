@@ -566,7 +566,7 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
             "--no-config",
             "--isolated",
             "--python",
-            "3.15.0",
+            "3.15.2",
             "--refresh",
             "--from",
             "code-standards",

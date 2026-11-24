@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "8e6fd1d3789a4e6b6f802dffe21e9a86ee84137771675066247dee728b0feac4",
-  "cliSha256": "69bd4cb89606b4916b3f4ed2631f101957357ef067277b2125c019e02432e647",
+  "cliSha256": "98fa7bf177ea607004ccecb67fe3c2606e8674da1f76c7995556ffc1262dfab9",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
     "prettierPluginToml": "4.1.0",
-    "ruff": "0.17.5",
-    "sqlFormatter": "15.9.0",
-    "terraform": "1.17.0"
+    "ruff": "0.17.6",
+    "sqlFormatter": "15.10.0",
+    "terraform": "1.17.2"
   },
   "rules": {
     "iac:canonical-terraform-declarations": {
@@ -27716,8 +27716,8 @@
     }
   },
   "static": {
-    "quickSetup": "uv tool install --python 3.15.0 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
-    "runOnce": "uvx --no-config --isolated --python 3.15.0 --from code-standards code-standards setup\n",
+    "quickSetup": "uv tool install --python 3.15.2 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
+    "runOnce": "uvx --no-config --isolated --python 3.15.2 --from code-standards code-standards setup\n",
     "bootstrap": "[ci]\nbootstrap = [\"yarn generate\", \"uv run --project python generate-api\"]\n",
     "usage": {
       "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",

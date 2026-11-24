@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "9.99.0"
+bundle = "9.100.0"
 rule_profile = "all"
 schema = 4
 
@@ -67,7 +67,7 @@ exclude = [
 ]
 
 [devops]
-compose_version = "5.6.1"
+compose_version = "5.8.0"
 
 [repository]
 canonical_config_dir = "packages/standards/src/sarj_standards/configs"

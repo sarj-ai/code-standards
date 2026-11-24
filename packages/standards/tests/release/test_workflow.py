@@ -375,8 +375,8 @@ def test_iac_release_installs_pinned_terraform_before_mandatory_semantic_tests()
 
     assert install_index < test_index
     assert install["env"] == {
-        "TERRAFORM_SHA256": "c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67",
-        "TERRAFORM_VERSION": "1.17.0",
+        "TERRAFORM_SHA256": "e6f16b2f0b137ee5729caa8c4e79a3bae4ee261acd198a1fcfa8584a6296605b",
+        "TERRAFORM_VERSION": "1.17.2",
     }
     assert install["run"] == "bash ../../.github/scripts/ci-install-terraform.sh"
     assert "if" not in install

@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 SUPPORTED: Final = frozenset({"actionlint", "hadolint", "terraform", "tflint", "compose"})
 _ACTION_FORMAT: Final = "{{json .}}"
 _CONFIGS: Final = Path(__file__).resolve().parents[2] / "configs"
-_GOOGLE_PLUGIN: Final = re.compile(r"ruleset.google \(0\.40\.0\)")
+_GOOGLE_PLUGIN: Final = re.compile(r"ruleset.google \(0\.41\.0\)")
 _MISSING_TERRAFORM_INPUTS: Final = frozenset(
     {"Missing required provider", "Module not installed", "Required plugins are not installed"}
 )
@@ -583,7 +583,7 @@ def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: P
         tool = checked_tool("tflint", root=project, runner=runner)
         version = invoke(tool, ("--config", config, "--version"), root=project, runner=runner)
         if version.returncode or _GOOGLE_PLUGIN.search(version.stdout) is None:
-            message = "TFLint requires the locally installed Google ruleset at exact version 0.40.0"
+            message = "TFLint requires the locally installed Google ruleset at exact version 0.41.0"
             raise NativeToolError(message)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         return _failed("tflint", error, len(paths))

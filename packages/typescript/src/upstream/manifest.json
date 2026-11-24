@@ -61,19 +61,19 @@
       "subpath": "next"
     }
   ],
-  "sourceLockSha256": "5f93fe9fd2df94ba577b24945979ab54365780216953721e921c6e9d5acd935e",
+  "sourceLockSha256": "3c59c58c50f9acc2d46b493f3daa38cc55150a0401b30883458cc35c51c8ba38",
   "files": {
-    "effects.js": "ce454255877d2d89f796aff020ec5b6c6133628030ff1bbb51b11a6b76f67b9f",
-    "jsdoc-js.js": "b6fc2b19cdcae9329a3884cde566b50d044c5a7d6f7d461d3f08f62d48dd7f71",
-    "next.js": "590fe0257708a6029d26e26d1e86c39586bb078fc80736ad3382e28fd038eb9e",
+    "effects.js": "f0bb79064fe855418b0a62ade683c905b06870b31eca8a486bb6bd99776d66f8",
+    "jsdoc-js.js": "da68bf742655164937becfc033f93907f9452009c5922eb24ec54aa07a338df1",
+    "next.js": "7692c991fafcf34b9e6616289de158f3614f2036e2ffcaa954fce379efc25e83",
     "node-test.js": "3336c85999e20dc0f8f3b491bfd92ee95d9bbdbfddfd9dcd131dc37c44f68f6e",
     "playwright.js": "5c6d2ec4149c324523807b8fcf5eaf6ebcfad3d6131c46a6cf0a8699854805f6",
-    "query.js": "305ec195f5be112a70cf2473d601c4553740c48af8df6f3cb116d8ab0aec610e",
-    "react-correctness.js": "fd8147bb94d14498ca11c47dfec9eba2488ca6e75d869d5a5958e4149257f173",
-    "react-js.js": "1bca6f4cdd0cb943a2e52168192c184a475a742bec372e317834caf8a5f0bd32",
-    "regexp.js": "350c19cc384c30e286931da26b2c02517cfd9cc106a61aa7743e59d2a222d989",
+    "query.js": "b46a13143454ea1056dd23771e89662043c852628b36f4edd53e30f56200c700",
+    "react-correctness.js": "f57c223ee81b757c367f022fb388e8831228ca04582b83858beb14a4f38a1482",
+    "react-js.js": "3b48c39f803313623f4c08f455eda06af0d73afe263ee01ae1f557c1b5bcdecf",
+    "regexp.js": "b3bb6fc83fa30e798c757172c540372a6be797456d8f54fd7040013abc26ecc0",
     "security.js": "c992ff825e072cc37be8047f14a04b8984fd3c8b076b166032f1a8f016562210",
-    "testing-library.js": "f76086be785a57e27bd6f8950661e238fdb8cb7090784f19f2e5aa8d7ba8f85e",
-    "unicorn-js.js": "38d8fcc9411b2e0115cef4cba8d05e868e3122275e1133cbf775e89a44b89d2b"
+    "testing-library.js": "48488f1c952ed4bb4bcaf0b61a7f14cce69bfd38a0dcd16bdb738517b4eae6b7",
+    "unicorn-js.js": "8632a1ee90924d6b7ba238f4606ea2fe626d02ec45613d197395ec6a73f096ad"
   }
 }

@@ -25,7 +25,7 @@ _MAX_ARTIFACT_BYTES: Final = 80 * 1024 * 1024
 _MAX_MOBSF_RULE_BYTES: Final = 16 * 1024 * 1024
 _READ_BYTES: Final = 1024 * 1024
 _USER_AGENT: Final = "code-standards-mobile-tools/1"
-SEMGREP_VERSION: Final = "1.182.1"
+SEMGREP_VERSION: Final = "1.186.0"
 
 
 def semgrep_command(*, offline: bool = True) -> tuple[str, ...]:
@@ -89,12 +89,11 @@ _ARTIFACTS: Final[Mapping[str, _Artifact]] = MappingProxyType(
 )
 
 _MOBSF_RULES: Final = _RulesArtifact(
-    "1.0.1",
-    "https://files.pythonhosted.org/packages/4d/20/8b30df8d239444fd265ad3ac132fb786f470139b28fc0d06e97422906ec1/"
-    "mobsfscan-1.0.1.tar.gz",
-    "f390df288e488126fbbdcf24b1635baea5e81b7fca02e0fe72358702c655ee88",
-    "7e88c1b9ab2658d60f5bc73f906562a132dd5bb35a92b037907ee5b1473f7df8",
-    51,
+    "1.2.0",
+    "https://files.pythonhosted.org/packages/96/c0/db4a87b50820056fb074e712aa7befd24b1b18c810a685af73a6df010460/mobsfscan-1.2.0.tar.gz",
+    "35652da134a9f66de10593d16b8b6980ef051e341ab2c2445902089e6390e2e9",
+    "8b262636f29c778c265f0d6759e1d0f5f7a4ebed1535ba9467fc9f8fa91f2c2c",
+    60,
 )
 
 

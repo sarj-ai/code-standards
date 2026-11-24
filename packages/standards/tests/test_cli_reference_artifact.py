@@ -55,8 +55,8 @@ def test_reference_contains_nested_commands_and_arguments() -> None:
     options = reference["globalOptions"]
     assert any(argument["names"] == ["--root"] for argument in options)
     assert reference["launcher"] == {
-        "install": "uv tool install --python 3.15.0 code-standards",
-        "runLatest": "uvx --no-config --isolated --python 3.15.0 --from code-standards code-standards",
+        "install": "uv tool install --python 3.15.2 code-standards",
+        "runLatest": "uvx --no-config --isolated --python 3.15.2 --from code-standards code-standards",
     }
 
 

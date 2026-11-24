@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Check out pull request
@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@f96de5270ed10b577d3821a174eb46d6cdac2441 # v8.6.0
+        uses: sarj-ai/repo-standards@0d7adb57a1f4eeeee946288524f90cc97f36b049 # v8.7.0
 
   changes:
     name: Detect affected checks
@@ -64,7 +64,7 @@ jobs:
       reviewed-ci: ${{ steps.reviewed.outputs.reviewed-ci }}
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,9 +80,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash .github/scripts/ci-select-scope.sh
       - if: github.event_name == 'push'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: false
       - name: Verify analysis of the identical reviewed tree
         if: github.event_name == 'push'
@@ -116,7 +116,7 @@ jobs:
         working-directory: packages/bootstrap
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -127,9 +127,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/bootstrap/uv.lock'
       - run: uv python install 3.15
@@ -157,7 +157,7 @@ jobs:
         working-directory: packages/bootstrap
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -168,9 +168,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/bootstrap/uv.lock'
       - run: uv python install 3.15
@@ -188,7 +188,7 @@ jobs:
         working-directory: packages/contracts
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -203,9 +203,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.15
@@ -228,7 +228,7 @@ jobs:
         working-directory: packages/python
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -243,9 +243,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.15
@@ -267,7 +267,7 @@ jobs:
         working-directory: packages/sql
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -284,9 +284,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.15
@@ -308,7 +308,7 @@ jobs:
         working-directory: packages/iac
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -325,9 +325,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.15
@@ -335,8 +335,8 @@ jobs:
       - run: uv audit --locked
       - name: Install pinned Terraform CLI
         env:
-          TERRAFORM_SHA256: c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67
-          TERRAFORM_VERSION: '1.17.0'
+          TERRAFORM_SHA256: e6f16b2f0b137ee5729caa8c4e79a3bae4ee261acd198a1fcfa8584a6296605b
+          TERRAFORM_VERSION: '1.17.2'
         run: bash ../../.github/scripts/ci-install-terraform.sh
       - run: uv run pytest -q
       - run: uv run ruff check src/ tests/
@@ -353,13 +353,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['22.22.2', '24', '26.11.1']
+        node: ['22.22.2', '24', '26.13.1']
     defaults:
       run:
         working-directory: packages/typescript
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -381,10 +381,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         if: needs.changes.outputs.typescript != 'false'
         with:
-          version: '0.13.5'
+          version: '0.13.9'
       - run: npm ci --ignore-scripts --no-audit --no-fund
         if: needs.changes.outputs.typescript != 'false'
       - run: npm --prefix ../standards/src/sarj_standards/configs/action-parser ci --ignore-scripts --no-audit --no-fund
@@ -414,7 +414,7 @@ jobs:
         working-directory: packages/tsconfig
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -445,7 +445,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -463,10 +463,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         if: needs.changes.outputs.reviewed-ci != 'true'
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14 3.15
@@ -494,7 +494,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -506,9 +506,9 @@ jobs:
           # Smoke projects are fresh fixtures; only the current tool sources are used.
           fetch-depth: 1
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
@@ -533,7 +533,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -545,9 +545,9 @@ jobs:
           # Smoke projects are fresh fixtures; only the current tool sources are used.
           fetch-depth: 1
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Identify Swift build toolchain
@@ -576,7 +576,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -589,9 +589,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - if: needs.changes.outputs.reviewed-static != 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - if: needs.changes.outputs.reviewed-static != 'true'
@@ -654,7 +654,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -672,9 +672,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - if: needs.changes.outputs.reviewed-wheels != 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - if: needs.changes.outputs.reviewed-wheels != 'true'
@@ -786,7 +786,7 @@ jobs:
         working-directory: packages/standards
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -803,10 +803,10 @@ jobs:
         if: needs.changes.outputs.reviewed-ci != 'true'
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         if: needs.changes.outputs.reviewed-ci != 'true'
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -856,7 +856,7 @@ jobs:
       STANDARDS_PYTHON: '3.14'
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Fail if check routing failed
@@ -873,10 +873,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         if: needs.changes.outputs.reviewed-ci != 'true'
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -947,7 +947,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Require routing, analysis, wheel tests, and adoption smoke to succeed
@@ -965,7 +965,7 @@ jobs:
         working-directory: apps/docs
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -984,16 +984,16 @@ jobs:
             apps/docs/package-lock.json
             packages/typescript/package-lock.json
       - if: needs.changes.outputs.reviewed-docs != 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: '0.13.5'
+          version: '0.13.9'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install pinned Terraform CLI
         if: needs.changes.outputs.reviewed-docs != 'true'
         env:
-          TERRAFORM_SHA256: c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67
-          TERRAFORM_VERSION: '1.17.0'
+          TERRAFORM_SHA256: e6f16b2f0b137ee5729caa8c4e79a3bae4ee261acd198a1fcfa8584a6296605b
+          TERRAFORM_VERSION: '1.17.2'
         run: bash ../../.github/scripts/ci-install-terraform.sh
       - name: Install locked documentation toolchains
         if: needs.changes.outputs.reviewed-docs != 'true'
@@ -1053,7 +1053,7 @@ jobs:
         working-directory: apps/docs
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1099,7 +1099,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1120,11 +1120,11 @@ jobs:
       contents: read
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject vulnerable dependency changes
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
           fail-on-severity: moderate
 
@@ -1139,7 +1139,7 @@ jobs:
         working-directory: apps/docs
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -1151,7 +1151,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.1'
           cache: npm
           cache-dependency-path: apps/docs/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
@@ -1174,7 +1174,7 @@ jobs:
         language: [javascript-typescript, python]
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Reject failed change routing
@@ -1187,13 +1187,13 @@ jobs:
           persist-credentials: false
       - name: Initialize CodeQL
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
-        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           languages: ${{ matrix.language }}
       - name: Analyze
         id: analyze
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
-        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
 
       - name: Download verified reviewed results
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
@@ -1203,7 +1203,7 @@ jobs:
           path: ${{ runner.temp }}/reviewed-analysis
       - name: Upload reviewed CodeQL results for this main commit
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: ${{ runner.temp }}/reviewed-analysis/codeql-${{ matrix.language }}
           ref: ${{ github.ref }}
@@ -1237,20 +1237,20 @@ jobs:
       id-token: write
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Run OpenSSF Scorecard
-        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        uses: ossf/scorecard-action@23f22cd43608bae7a1f1fa2603d7314dee9538a5 # v2.6.0
         with:
           results_file: scorecard.sarif
           results_format: sarif
           publish_results: false
       - name: Upload Scorecard findings
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: scorecard.sarif
 
@@ -1262,7 +1262,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Require every selected runtime, package and security check
@@ -1277,7 +1277,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Require all selected checks to succeed

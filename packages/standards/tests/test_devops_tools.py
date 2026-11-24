@@ -106,7 +106,7 @@ def test_native_version_timeout_has_an_owned_tool_error(tmp_path: Path) -> None:
     assert isinstance(caught.value.__cause__, subprocess.TimeoutExpired)
 
 
-@pytest.mark.parametrize("installed_version", ["4.3.1", "4.0.0"])
+@pytest.mark.parametrize("installed_version", ["4.3.2", "4.0.0"])
 def test_timed_out_path_tool_preserves_pinned_mise_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed_version: str
 ) -> None:
@@ -136,15 +136,15 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
         assert request.argv == (str(installed), "version", "--short")
         return ProcessOutput(0, f"v{installed_version}\n", "")
 
-    if installed_version == "4.3.1":
+    if installed_version == "4.3.2":
         assert (
             checked_tool("helm", root=tmp_path, runner=RequestExecutor(resolve, ProcessCapabilities())).executable
             == installed
         )
     else:
-        with pytest.raises(NativeToolError, match=r"exact version 4\.3\.1"):
+        with pytest.raises(NativeToolError, match=r"exact version 4\.3\.2"):
             checked_tool("helm", root=tmp_path, runner=RequestExecutor(resolve, ProcessCapabilities()))
-    reference = "aqua:helm/helm@4.3.1"
+    reference = "aqua:helm/helm@4.3.2"
     assert calls == [
         (str(stalled), "version", "--short"),
         (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
@@ -266,7 +266,7 @@ def test_tools_only_install_preserves_files_and_never_installs_hooks(
     assert commands[0].argv[:5] == ("mise", "--no-config", "--no-env", "--no-hooks", "install")
     assert [command.argv for command in commands[2:]] == [
         ("uvx", "--no-config", "--isolated", "--python", "3.12", "--from", f"{name}=={version}", name, "--version")
-        for name, version in (("zizmor", "1.31.1"), ("checkov", "3.3.30"))
+        for name, version in (("zizmor", "1.33.1"), ("checkov", "3.4.7"))
         if name in security
     ]
     assert attested == ([tmp_path] if install_status == 0 else [])
@@ -362,10 +362,10 @@ def test_mise_rejects_ambiguous_or_escaping_executable_paths(
 @pytest.mark.parametrize(
     ("name", "stdout", "elapsed", "error"),
     [
-        pytest.param("knip", "6.42.1\n", 6, None, id="six-second-exact-knip"),
-        pytest.param("knip", "6.42.0\n", 6, "exact version 6.42.1", id="slow-wrong-knip"),
-        pytest.param("knip", "6.42.1\n", 16, "timed out after 15", id="knip-exceeds-owned-bound"),
-        pytest.param("helm", "v4.3.1\n", 6, "timed out after 5", id="other-tool-keeps-short-bound"),
+        pytest.param("knip", "6.48.0\n", 6, None, id="six-second-exact-knip"),
+        pytest.param("knip", "6.42.0\n", 6, "exact version 6.48.0", id="slow-wrong-knip"),
+        pytest.param("knip", "6.48.0\n", 16, "timed out after 15", id="knip-exceeds-owned-bound"),
+        pytest.param("helm", "v4.3.2\n", 6, "timed out after 5", id="other-tool-keeps-short-bound"),
         pytest.param("docker", '{"version":"v5.6.1"}\n', 6, "timed out after 5", id="compose-keeps-short-bound"),
     ],
 )
@@ -413,7 +413,7 @@ def test_version_deadline_accepts_slow_knip_without_relaxing_other_native_contra
     if error is None:
         installed = attest()
         assert installed.executable == executable.resolve()
-        assert installed.version == "6.42.1"
+        assert installed.version == "6.48.0"
     else:
         with pytest.raises(NativeToolError, match=error):
             attest()
@@ -447,7 +447,7 @@ def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_v
             return ProcessOutput(0, f"{target}\n", "")
         if request.timeout_seconds < 6:
             raise subprocess.TimeoutExpired(request.argv, request.timeout_seconds)
-        return ProcessOutput(0, "6.42.1\n", "")
+        return ProcessOutput(0, "6.48.0\n", "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate managed executable lookup from the host environment.
         "shutil.which", which
@@ -457,7 +457,7 @@ def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_v
 
     assert result.executable == executable.resolve()
     assert calls == [
-        ((str(mise), "--no-config", "--no-env", "--no-hooks", "where", "npm:knip@6.42.1"), 5),
-        ((str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", "npm:knip@6.42.1", "knip"), 5),
+        ((str(mise), "--no-config", "--no-env", "--no-hooks", "where", "npm:knip@6.48.0"), 5),
+        ((str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", "npm:knip@6.48.0", "knip"), 5),
         ((str(executable), "--version"), 15),
     ]
