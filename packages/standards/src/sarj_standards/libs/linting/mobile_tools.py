@@ -77,6 +77,14 @@ _ARTIFACTS: Final[Mapping[str, _Artifact]] = MappingProxyType(
             "https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint",
             "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75",
         ),
+        "swiftlint": _Artifact(
+            "swiftlint",
+            "0.65.1",
+            "https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip",
+            "c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0",
+            extracted_sha256="52112ece2dfa99c2442a1367f9a365d43784714cf224c3675bf8bc2f18ebd7c8",
+            archive_member="swiftlint",
+        ),
         "mint": _Artifact(
             "mint",
             "0.18.0",
@@ -97,9 +105,9 @@ _MOBSF_RULES: Final = _RulesArtifact(
 )
 
 
-def command(name: Literal["detekt", "ktlint", "mint"]) -> tuple[str, ...]:
+def command(name: Literal["detekt", "ktlint", "mint", "swiftlint"]) -> tuple[str, ...]:
     artifact = _ARTIFACTS[name]
-    if name == "mint" and sys.platform != "darwin":
+    if name in {"mint", "swiftlint"} and sys.platform != "darwin":
         msg = "Swift mobile tools require macOS"
         raise OSError(msg)
     path = _provision(artifact)
@@ -221,7 +229,10 @@ def _provision(artifact: _Artifact) -> Path:
         _download(artifact, archive)
     with zipfile.ZipFile(archive) as bundle:
         names = bundle.namelist()
-        if names != [artifact.archive_member]:
+        expected_members = [artifact.archive_member]
+        if artifact.name == "swiftlint":
+            expected_members.append("LICENSE")
+        if names != expected_members:
             msg = f"{artifact.name} archive contains unexpected members"
             raise OSError(msg)
         payload = bundle.read(artifact.archive_member)

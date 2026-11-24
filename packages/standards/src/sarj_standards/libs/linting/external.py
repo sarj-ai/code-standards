@@ -1104,6 +1104,8 @@ def _read_mobile_config(path: Path) -> str:
 
 
 def _swift_command(root: Path, executable: Literal["swiftformat", "swiftlint"], *, managed: bool) -> tuple[str, ...]:
+    if managed and executable == "swiftlint":
+        return mobile_tools.command("swiftlint")
     mintfile = (
         _PACKAGED_MOBILE_CONFIGS / "Mintfile.mobile.strict"
         if managed

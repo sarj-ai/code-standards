@@ -26,7 +26,7 @@ case = os.environ["NATIVE_CASE"]
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 snapshot = "APT_CONFIG" in os.environ
-packages = ("nginx=1.24.0-2ubuntu7.19", "kamailio=5.7.4-1build7", "prometheus=2.45.3+ds-2ubuntu0.3")
+packages = ("nginx=1.24.0-2ubuntu7.21", "kamailio=5.7.4-1build7", "prometheus=2.45.3+ds-2ubuntu0.3")
 with (root / "events").open("a") as stream:
     stream.write(f"{name} {'snapshot' if snapshot else 'rolling'} {' '.join(args)}\n")
 if name == "dpkg-deb":
@@ -102,7 +102,7 @@ def test_native_services_preserve_exact_pins_and_verified_bytes(
     archives.mkdir()
     if case in {"cached", "corrupt-cache"}:
         for package in (
-            "nginx=1.24.0-2ubuntu7.19",
+            "nginx=1.24.0-2ubuntu7.21",
             "kamailio=5.7.4-1build7",
             "prometheus=2.45.3+ds-2ubuntu0.3",
         ):
@@ -127,7 +127,7 @@ def test_native_services_preserve_exact_pins_and_verified_bytes(
         assert not (root / "snapshot-config").exists()
     else:
         sources = (root / "snapshot-sources").read_text()
-        assert "URIs: https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/" in sources
+        assert "URIs: https://snapshot.ubuntu.com/ubuntu/20261124T000000Z/" in sources
         assert "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" in sources
         assert "Suites: noble noble-updates noble-security" in sources
         assert not Path((root / "snapshot-path").read_text()).exists()

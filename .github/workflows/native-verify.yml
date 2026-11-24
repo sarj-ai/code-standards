@@ -44,6 +44,9 @@ jobs:
           mise install "python@$UV_PYTHON"
           mise install
       - name: Prepare the canonical environment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MISE_GITHUB_TOKEN: ${{ github.token }}
         run: mise exec "python@$UV_PYTHON" -- make setup
       - name: Refresh signed native package metadata
         run: |

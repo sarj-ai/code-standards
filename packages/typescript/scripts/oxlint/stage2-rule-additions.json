@@ -93,7 +93,7 @@
     "typescript/no-unsafe-class-instance-assignment": {"level": "warn", "note": "Detect structurally compatible objects that bypass class construction; begin as a warning."},
     "unicorn-js/prefer-options-parameter": {"level": "warn", "note": "Recommend consolidating optional positional arguments before an existing options object; no automatic API rewrite."},
     "unicorn-js/require-spread-parentheses": {"level": "warn", "note": "Autofix complex spread arguments while preserving comments and formatter convergence."},
-    "unicorn-js/prefer-regexp-exec": {"level": "warn", "note": "Safely fix non-global regexp matches in JavaScript and syntax-only configuration; the native type-aware owner handles typed source."}
+    "unicorn-js/prefer-regexp-exec": {"level": "warn", "files": "JavaScript and syntax-only configuration", "note": "Safely fix non-global regexp matches in JavaScript and syntax-only configuration; the native type-aware owner handles typed source."}
   },
   "later": {
     "@sarj/zustand-require-selector": "port ashStack's zustand/require-selector into @sarj, detecting stores from the zustand create() call"

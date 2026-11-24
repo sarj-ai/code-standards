@@ -672,6 +672,19 @@ def test_managed_mobsf_config_cannot_weaken_the_strict_rule_floor(config: str, m
         external_module._mobsfscan_argv(Path("rules"), config=path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _mobsfscan_argv contract directly with controlled fixture data.
 
 
+def test_managed_swiftlint_uses_verified_portable_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "Mintfile.mobile.strict").write_text("attacker/tool@main\n", encoding="utf-8")
+
+    def managed_command(name: str) -> tuple[str, ...]:
+        assert name == "swiftlint"
+        return ("/managed/swiftlint",)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts native provisioning to verify managed command ownership.
+        external_module.mobile_tools, "command", managed_command
+    )
+    assert external_module._swift_command(tmp_path, "swiftlint", managed=True) == ("/managed/swiftlint",)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- managed SwiftLint must avoid repository Mintfiles and source builds.
+
+
 def test_managed_swift_commands_ignore_repository_mintfiles(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "Mintfile.mobile.strict").write_text("attacker/tool@main\n", encoding="utf-8")
 
@@ -684,7 +697,7 @@ def test_managed_swift_commands_ignore_repository_mintfiles(monkeypatch: pytest.
     )
 
     command = external_module._swift_command(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _swift_command contract directly with controlled fixture data.
-        tmp_path, "swiftlint", managed=True
+        tmp_path, "swiftformat", managed=True
     )
 
     mintfile = Path(command[command.index("--mintfile") + 1])
