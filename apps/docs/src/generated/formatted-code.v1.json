@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fa2f4192cf7ef34ec5cd15c80a9ce7c9e1d72fcdc0c347191025d2c011f93a4a",
-  "cliSha256": "14bd29ebebe988113e0618ec69a1acfc828e5f34312c39bcd1343dd850a5a3fa",
+  "catalogSha256": "501f759c5ed36bf3adb80f6c66ac136bddeeaf6f024aa6ae35159818878c5884",
+  "cliSha256": "dfb238493461bf389d820ae1e92965d198982c533e99f0e3a85aae0a164678e9",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -14066,6 +14066,36 @@
           "outcome": "accept",
           "scenarioId": "resource-boundary",
           "title": "A rejection under a resource protocol needs separate migration review"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "from fastapi import HTTPException\n\n\nclass Busy(RuntimeError):\n    pass\n\n\nclass Closed(RuntimeError):\n    pass\n\n\ndef acquire(active, ready):\n    if not active:\n        raise Closed\n    if not ready:\n        raise Busy\n    return 1\n\n\ndef read(active, ready):\n    try:\n        return acquire(active, ready)\n    except Closed:\n        raise HTTPException(410) from None\n    except Busy:\n        raise HTTPException(429) from None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "runtime-http-outcomes",
+          "outcome": "reject",
+          "scenarioId": "translated-runtime-outcomes",
+          "title": "Sibling exception handlers encode expected public response alternatives"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "from enum import Enum, auto\nfrom fastapi import HTTPException\n\n\nclass Failure(Enum):\n    CLOSED = auto()\n    BUSY = auto()\n\n\ndef acquire(active: bool, ready: bool) -> int | Failure:\n    if not active:\n        return Failure.CLOSED\n    if not ready:\n        return Failure.BUSY\n    return 1\n\n\ndef read(active: bool, ready: bool) -> int:\n    match acquire(active, ready):\n        case Failure.CLOSED:\n            raise HTTPException(410)\n        case Failure.BUSY:\n            raise HTTPException(429)\n        case value:\n            return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "runtime-http-typed-failure",
+          "outcome": "accept",
+          "scenarioId": "translated-runtime-outcomes",
+          "title": "The public adapter handles an explicit failure value"
         },
         {
           "expectedCount": 0,

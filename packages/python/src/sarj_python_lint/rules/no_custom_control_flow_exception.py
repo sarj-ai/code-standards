@@ -50,6 +50,9 @@ _FUNCTIONAL_VALIDATORS = frozenset(
     for module in ("pydantic", "pydantic.functional_validators")
     for name in ("AfterValidator", "BeforeValidator", "PlainValidator", "WrapValidator")
 )
+_RUNTIME_BASE = frozenset({"RuntimeError"})
+_MIN_DISTINCT_HTTP_OUTCOMES = 2
+_HTTP_ERRORS = range(400, 600)
 _MAX_VALIDATOR_DEPTH = 32
 _MAX_BASE_DEPTH = 8
 _MAX_IMPORTED_MODULES = 32
@@ -118,11 +121,52 @@ class NoCustomControlFlowException(Rule):
             "Direct module-level from-imports, including renamed and relative imports, are followed to stable first-party exception definitions using the existing bounded local-source resolver. An imported raise must be a simple guard in an explicitly annotated ordinary function, with source-proven Exception/ValueError ancestry and compatible constructor arguments. Import-proven typing.final/typing_extensions.final class decorators preserve this proof. The rule reports once per function and originating exception, at an unsuppressed raise. Source-definition suppressions are also respected.",
             "Imported discovery does not follow re-exports, module-attribute raises, local imports, aliases, unknown or inherited constructors, custom allocation or inherited subclass hooks (including assigned bindings), external source, generated/test/vendor definitions, registrations or namespace mutations. Source ancestry is bounded to eight classes and imported definition modules to 32 per file. A guarded raise is evidence to review, not proof of business expectedness. Preserve genuine infrastructure failure contracts even when a finding matches. Never convert a transaction rejection to a return without reviewing rollback, cleanup, logging, retries and side-effect order. Optional absence and independent outcomes remain valid.",
             "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Direct synchronous module callbacks used only as Annotated validator metadata on plain direct BaseModel fields, and stable nonescaping direct nested helpers, also preserve rejection; lexical helper ownership is bounded to 32 levels. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
+            "Distinct locally raised first-party RuntimeError markers translated by sibling handlers into distinct fixed FastAPI or Starlette error statuses expose an outcome contract. A single operational error, dynamic translations and handlers with cleanup abstain.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred. Only simple stable module assignment aliases and nongeneric annotation aliases consumed directly by model fields are followed. Explicit string annotations, custom model hooks, async/generator callbacks, escaped helpers and broader call graphs are not followed. Generic lexical resolution can miss a module marker shadowed only in a method's class namespace.",
             "Tests, generated and vendor code are excluded. Resolve the blocking review with a typed outcome or an exact-code suppression explaining the required exception protocol. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
             "The examples illustrate an existing project Result abstraction; do not introduce another Result library or require these class/tag names. SARJ510 owns explicit data discriminators and SARJ548 reviews discarded tagged outcomes; the native type checker owns exhaustive handling. A tag alone cannot guarantee JSON support for arbitrary T/E: qualify the concrete payloads with their codec. Keep established wire discriminators, legitimate absence and independent outcomes. This policy does not mechanically ban scalar unions or require every function to return Result.",
         ),
         examples=(
+            RuleExample(
+                example_id="runtime-http-outcomes",
+                scenario="translated-runtime-outcomes",
+                title="Sibling exception handlers encode expected public response alternatives",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/adapter.py",
+                        "from fastapi import HTTPException\nclass Busy(RuntimeError): pass\nclass Closed(RuntimeError): pass\n"
+                        "def acquire(active, ready):\n    if not active: raise Closed\n    if not ready: raise Busy\n    return 1\n"
+                        "def read(active, ready):\n    try: return acquire(active, ready)\n"
+                        "    except Closed: raise HTTPException(410) from None\n"
+                        "    except Busy: raise HTTPException(429) from None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/adapter.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="runtime-http-typed-failure",
+                scenario="translated-runtime-outcomes",
+                title="The public adapter handles an explicit failure value",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/adapter.py",
+                        "from enum import Enum, auto\nfrom fastapi import HTTPException\n"
+                        "class Failure(Enum):\n    CLOSED=auto()\n    BUSY=auto()\n"
+                        "def acquire(active: bool, ready: bool) -> int | Failure:\n"
+                        "    if not active: return Failure.CLOSED\n    if not ready: return Failure.BUSY\n    return 1\n"
+                        "def read(active: bool, ready: bool) -> int:\n    match acquire(active, ready):\n"
+                        "        case Failure.CLOSED: raise HTTPException(410)\n        case Failure.BUSY: raise HTTPException(429)\n"
+                        "        case value: return value\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/adapter.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="postconstruction-domain-rejection",
                 scenario="validated-construction",
@@ -413,9 +457,7 @@ class NoCustomControlFlowException(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if context.tree is None or context.generated or is_test_path(context.path):
-            return []
-        if not {"vendor", "vendored", "third_party"}.isdisjoint(context.path.parts):
+        if context.tree is None or not _owned_source(context):
             return []
         provenance = context.static_resource_provenance
         if (
@@ -462,7 +504,126 @@ class NoCustomControlFlowException(Rule):
                     severity=Severity.ERROR,
                 )
             )
-        return [*findings, *_builtin_domain_rejections(context)]
+        return [*findings, *_builtin_domain_rejections(context), *_http_rejections(context, contexts)]
+
+
+def _owned_source(context: PythonFileContext) -> bool:
+    return not (context.generated or is_test_path(context.path)) and {"vendor", "vendored", "third_party"}.isdisjoint(
+        context.path.parts
+    )
+
+
+def _http_rejections(context: PythonFileContext, contexts: dict[Path, PythonFileContext]) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    raised: dict[Path, set[ast.ClassDef]] = {}
+    for attempt in context.nodes(ast.Try):
+        if len(attempt.handlers) < _MIN_DISTINCT_HTTP_OUTCOMES:
+            continue
+        statuses: dict[ast.ClassDef, int] = {}
+        for handler in attempt.handlers:
+            status = _translated_status(handler, context)
+            if status is None or not isinstance(handler.type, ast.Name):
+                continue
+            marker = _runtime_marker(handler.type, context, contexts, raised)
+            if marker is not None:
+                statuses.setdefault(marker, status)
+        if len(set(statuses.values())) < _MIN_DISTINCT_HTTP_OUTCOMES or context.suppressions.is_suppressed(
+            attempt.lineno, NoCustomControlFlowException.code
+        ):
+            continue
+        names = ", ".join(sorted(marker.name for marker in statuses))
+        findings.append(
+            Diagnostic(
+                context.path,
+                attempt.lineno,
+                attempt.col_offset + 1,
+                NoCustomControlFlowException.code,
+                f"Review the return contract for HTTP failures ({names}): these first-party RuntimeError markers map to "
+                "distinct fixed response statuses. Return a typed success/failure union for expected outcomes "
+                "and translate the variants at this boundary; preserve cancellation and resource unwinding.",
+                severity=Severity.ERROR,
+            )
+        )
+    return findings
+
+
+def _translated_status(handler: ast.ExceptHandler, context: PythonFileContext) -> int | None:
+    match handler:
+        case ast.ExceptHandler(name=None, body=[ast.Raise(exc=ast.Call() as call, cause=cause) as raised]):
+            pass
+        case _:
+            return None
+    if (
+        (cause is not None and not (isinstance(cause, ast.Constant) and cause.value is None))
+        or context.suppressions.is_suppressed(handler.lineno, NoCustomControlFlowException.code)
+        or context.suppressions.is_suppressed(raised.lineno, NoCustomControlFlowException.code)
+        or context.static_resource_provenance.runtime_import_name(call.func)
+        not in {"fastapi.HTTPException", "fastapi.exceptions.HTTPException", "starlette.exceptions.HTTPException"}
+    ):
+        return None
+    statuses = [*call.args, *(item.value for item in call.keywords if item.arg == "status_code")]
+    if len(statuses) != 1 or any(not _static_http_argument(item) for item in call.keywords):
+        return None
+    status = context.fastapi.status_code(statuses[0])
+    return status if status in _HTTP_ERRORS else None
+
+
+def _static_http_argument(item: ast.keyword) -> bool:
+    match item:
+        case ast.keyword(arg="status_code") | ast.keyword(arg="detail", value=ast.Constant(value=str())):
+            return True
+        case ast.keyword(arg="headers", value=ast.Dict(keys=keys, values=values)):
+            return all(isinstance(node, ast.Constant) and isinstance(node.value, str) for node in (*keys, *values))
+        case _:
+            return False
+
+
+def _runtime_marker(
+    reference: ast.Name,
+    context: PythonFileContext,
+    contexts: dict[Path, PythonFileContext],
+    raised: dict[Path, set[ast.ClassDef]],
+) -> ast.ClassDef | None:
+    facts = context.static_resource_provenance
+    binding = facts.runtime_binding(reference.id, reference)
+    if binding is None or binding is not facts.binding(reference.id, reference):
+        return None
+    owner = context
+    if isinstance(binding, ast.alias):
+        if len(contexts) >= _MAX_IMPORTED_MODULES:
+            return None
+        if reference.id in facts.mutated | facts.external_bindings or _binding_escapes(
+            reference.id, binding, context, facts
+        ):
+            return None
+        if (module := _imported_base_context(binding, context, contexts)) is None or not _owned_source(module):
+            return None
+        owner = module
+        binding = _module_class(owner, binding.name)
+    if not isinstance(binding, ast.ClassDef) or owner.tree is None:
+        return None
+    if owner.path not in raised:
+        raised[owner.path] = _raised_runtime_markers(owner, contexts)
+    return binding if binding in raised[owner.path] else None
+
+
+def _raised_runtime_markers(context: PythonFileContext, contexts: dict[Path, PythonFileContext]) -> set[ast.ClassDef]:
+    if context.tree is None:
+        return set()
+    facts = context.static_resource_provenance
+    markers = {
+        node.name: node
+        for node in context.tree.body
+        if isinstance(node, ast.ClassDef)
+        and _marker_body(node, context)
+        and not any(isinstance(member, ast.FunctionDef) for member in node.body)
+        and _payload_exception_base(
+            node.bases[0], context, contexts, frozenset(), allow_initializer=False, allowed=_RUNTIME_BASE
+        )
+        and _stable_marker(node, context, facts)
+        and not context.suppressions.is_suppressed(node.lineno, NoCustomControlFlowException.code)
+    }
+    return _direct_raises(markers, context, facts)
 
 
 def _builtin_domain_rejections(context: PythonFileContext) -> list[Diagnostic]:
@@ -789,10 +950,10 @@ def _fixed_message_initializer(node: ast.FunctionDef) -> bool:
 def _builtin_namespace_safe(context: PythonFileContext) -> bool:
     for node in context.nodes(ast.Import, ast.ImportFrom, ast.Name):
         match node:
-            case ast.Import() if any(alias.name == "builtins" for alias in node.names):
+            case ast.Import() if not _safe_builtin_import(node, context):
                 return False
             case ast.ImportFrom() if node.module == "builtins" and (
-                node.level or any(alias.name not in _BUILTIN_BASES for alias in node.names)
+                node.level or any(alias.name not in _BUILTIN_BASES | _RUNTIME_BASE for alias in node.names)
             ):
                 return False
             case ast.Name() if node.id == "__builtins__":
@@ -800,6 +961,21 @@ def _builtin_namespace_safe(context: PythonFileContext) -> bool:
             case _:
                 pass
     return True
+
+
+def _safe_builtin_import(node: ast.Import, context: PythonFileContext) -> bool:
+    return all(alias.name != "builtins" or _runtime_base_import(alias, context) for alias in node.names)
+
+
+def _runtime_base_import(alias: ast.alias, context: PythonFileContext) -> bool:
+    reads = context.static_resource_provenance.binding_reads(alias.asname or alias.name, alias)
+    return bool(reads) and all(
+        isinstance(member := context.parents.get(read), ast.Attribute)
+        and member.attr == "RuntimeError"
+        and isinstance(owner := context.parents.get(member), ast.ClassDef)
+        and member in owner.bases
+        for read in reads
+    )
 
 
 def _builtin_base(
