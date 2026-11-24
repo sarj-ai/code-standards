@@ -1,0 +1,54 @@
+name: Observe npm registry attestations
+on:
+  push:
+    branches: [codex/npm-proof-observation-97439610]
+
+permissions:
+  contents: read
+
+jobs:
+  registry:
+    name: Public registry responses on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Harden the runner
+        if: runner.os == 'Linux'
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the advertised tsrs attestation document
+        run: >-
+          curl --silent --show-error --max-time 25 --proto '=https'
+          --header 'Accept: application/json' --output tsrs.json
+          --write-out 'tsrs HTTP %{http_code} %{content_type} %{size_download}\n'
+          'https://registry.npmjs.org/-/npm/v1/attestations/@tsrs%2flinux-x64-gnu@7.1.0-beta.tsrs5'
+      - name: Read the advertised Oxc attestation document
+        run: >-
+          curl --silent --show-error --max-time 25 --proto '=https'
+          --header 'Accept: application/json' --output oxc.json
+          --write-out 'oxc HTTP %{http_code} %{content_type} %{size_download}\n'
+          'https://registry.npmjs.org/-/npm/v1/attestations/@oxc-parser%2fbinding-linux-x64-gnu@0.160.0'
+      - name: Archive the unmodified public responses
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: registry-responses-${{ matrix.os }}
+          path: |
+            tsrs.json
+            oxc.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Check for signed envelopes in each response
+        run: |
+          jq -e -f .github/scripts/observe-npm-envelopes.jq tsrs.json
+          jq -e -f .github/scripts/observe-npm-envelopes.jq oxc.json
