@@ -358,6 +358,25 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     assert publish["permissions"] == {"contents": "read", "id-token": "write"}
 
 
+@pytest.mark.parametrize(
+    ("workflow", "job"),
+    [
+        ("ci.yml", "package-tests"),
+        ("ci.yml", "python-compatibility"),
+        ("native-verify.yml", "verify"),
+        ("release.yml", "build-standards"),
+    ],
+)
+def test_native_plugin_attestation_fetch_uses_the_workflow_token(workflow: str, job: str) -> None:
+    step = next(
+        step
+        for step in _steps(workflow, job)
+        if "sarj_standards.libs.release.native_test_setup" in str(step.get("run", ""))
+    )
+    assert is_object_mapping(environment := step.get("env"))
+    assert environment["GITHUB_TOKEN"] == "${{ github.token }}"
+
+
 def test_wheel_integration_installs_locked_documentation_formatters_before_testing() -> None:
     names = [step.get("name") for step in _steps("release.yml", "build-standards")]
     assert names.index("Install locked documentation formatters") < names.index("Test against the built wheel")

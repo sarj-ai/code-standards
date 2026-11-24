@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_SHA256 = "3ebb9f46d87276b72793722c86605ed3afdd90e9cf877536958682d71a00f979"
+_SHA256 = "4637fa29acc01760dc5f88cd637fd9e1a7dc3b27407bb8a25719fb0da2a80de0"
 _MAX_DURATION_SECONDS = 315_576_000_000
 FORMATS = FormatChecker()
 type JsonSchema = dict[str, JsonValue]

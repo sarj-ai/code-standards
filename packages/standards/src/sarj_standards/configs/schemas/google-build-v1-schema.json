@@ -806,6 +806,58 @@
             "type": "string"
           }
         },
+        "rankedMachineSeries": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "MACHINE_SERIES_UNSPECIFIED",
+                    "MACHINE_SERIES_E",
+                    "MACHINE_SERIES_N",
+                    "MACHINE_SERIES_C"
+                  ]
+                },
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                }
+              ]
+            }
+          }
+        },
+        "ranked_machine_series": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "MACHINE_SERIES_UNSPECIFIED",
+                    "MACHINE_SERIES_E",
+                    "MACHINE_SERIES_N",
+                    "MACHINE_SERIES_C"
+                  ]
+                },
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                }
+              ]
+            }
+          }
+        },
         "requestedVerifyOption": {
           "if": {
             "type": "null"

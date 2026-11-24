@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "9.100.0"
+version = "9.100.2"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -22,7 +22,7 @@ dependencies = [
   "basedpyright==1.40.2",
   "deptry==0.25.1",
   "http-sfv==0.9.9",
-  "lefthook==2.2.2",
+  "lefthook==2.2.3",
   "packaging==26.4",
   "pre-commit==4.7.0",
   "pydantic==2.14.4",

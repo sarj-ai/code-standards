@@ -69,20 +69,16 @@ def fix_staged(root: Path) -> int:
 
 
 def _selected_sources(root: Path, policy: Policy) -> tuple[str, ...]:
-    # Verify every staged path before selecting TypeScript: a partial Python
-    # input must stop this hook before either an Oxlint write or a build.
-    staged = cli.staged_fix_paths(root, ())
+    fully_staged = cli.staged_fix_paths(root, ())
     return tuple(
         name
-        for name in policy.filter_paths(staged)
+        for name in policy.filter_paths(fully_staged)
         if oxlint.is_oxlint_source(Path(name), include_config_sources=True)
         and runner.accepts_hook_path(Path(name), root=root)
     )
 
 
 def _loads_local_plugin(root: Path, command: lifecycle.Command) -> bool:
-    # This package's own config loads the built plugin, as does any project
-    # that depends on it through a `file:` specifier.
     package = (root / _PACKAGE).resolve()
     if command.cwd.resolve() == package:
         return True
@@ -112,7 +108,7 @@ def _fix_commands(root: Path, commands: Sequence[lifecycle.Command], policy: Pol
         local.append(
             lifecycle.Command(
                 command.label,
-                (str(binary), *argv),
+                (str(binary), "--no-error-on-unmatched-pattern", *argv),
                 command.cwd,
                 tuple(oxlint.oxlint_environment(command.cwd, root).items()),
                 prepare=partial(oxlint.selected_config, request=lifecycle.oxlint_exclusions(command, policy)),

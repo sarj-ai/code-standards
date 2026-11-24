@@ -40,7 +40,7 @@
     "sql-formatter": "15.10.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "tsrs": "7.1.0-beta.tsrs5",
-    "wrangler": "4.167.0",
+    "wrangler": "4.168.0",
     "@types/node": "26.6.6"
   },
   "engines": {

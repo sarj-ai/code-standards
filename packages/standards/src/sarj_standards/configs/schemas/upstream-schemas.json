@@ -1,20 +1,20 @@
 {
   "skaffold/v4beta7": {
-    "source": "https://raw.githubusercontent.com/GoogleCloudPlatform/skaffold/f386e6c552e83c3a9445fe34442aaed8dd381ab3/docs-v2/content/en/schemas/v4beta7.json",
-    "commit": "f386e6c552e83c3a9445fe34442aaed8dd381ab3",
+    "source": "https://raw.githubusercontent.com/GoogleContainerTools/skaffold/d915e113210eb7590ccbc8363aeab38053172ab3/docs-v2/content/en/schemas/v4beta7.json",
+    "commit": "d915e113210eb7590ccbc8363aeab38053172ab3",
     "sha256": "c391a01232cdbf2db42b92664f62fce3bd0e37bf8d0c1de77abacb81b82951bc",
     "license": "Apache-2.0",
     "schema": "skaffold-v4beta7.json"
   },
   "cloudbuild/v1": {
-    "source": "https://raw.githubusercontent.com/googleapis/google-api-go-client/abd2ce12ea3f12c9114e206e3607efcced76ba8a/cloudbuild/v1/cloudbuild-api.json",
-    "commit": "abd2ce12ea3f12c9114e206e3607efcced76ba8a",
-    "revision": "20261010",
-    "sha256": "3ebb9f46d87276b72793722c86605ed3afdd90e9cf877536958682d71a00f979",
+    "source": "https://raw.githubusercontent.com/googleapis/google-api-go-client/35ecdc15145627852c05bf9d5f4ee6161f356bc7/cloudbuild/v1/cloudbuild-api.json",
+    "commit": "35ecdc15145627852c05bf9d5f4ee6161f356bc7",
+    "revision": "20261109",
+    "sha256": "4637fa29acc01760dc5f88cd637fd9e1a7dc3b27407bb8a25719fb0da2a80de0",
     "license": "BSD-3-Clause",
     "schema": "google-build-v1-schema.json",
     "projection": "31 reachable Build definitions; closed fields, CLI aliases, optional unsets, enum names/int32 values and integer/duration/Base64 formats. Descriptive API documentation is omitted. Hosted admission remains external.",
-    "source_sha256": "5dda7ec6030b1dfec239653bc9006548d5db520ee79b339b25e5465e2013a069",
+    "source_sha256": "25ac557ee1c49ad46d089156a85357d0aa006ebd117b837b2b72302f7f7a9d42",
     "generator": "python -m sarj_standards.libs.repository.cloudbuild_schema_projection <digest-verified-discovery.json> <google-build-v1-schema.json>",
     "format_reference": "https://protobuf.dev/programming-guides/json/"
   }

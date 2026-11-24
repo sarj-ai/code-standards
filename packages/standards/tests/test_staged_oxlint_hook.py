@@ -81,6 +81,21 @@ def test_authored_hook_passes_a_clean_source_unchanged(tmp_path: Path) -> None:
     assert source.read_bytes() == b"const value = 1;\nexport { value };\n"
 
 
+def test_authored_hook_accepts_only_staged_source_ignored_by_its_project(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    project = _helpers_project(tmp_path, "export default { ignorePatterns: ['bundled.cjs'] };\n")
+    source = project / "bundled.cjs"
+    source.write_bytes(b"module.exports = 1;\n")
+    _git(tmp_path, "add", "--", str(source.relative_to(tmp_path)))
+    before = _git(tmp_path, "ls-files", "--stage", "-z")
+
+    result = _run(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert source.read_bytes() == b"module.exports = 1;\n"
+    assert _git(tmp_path, "ls-files", "--stage", "-z") == before
+
+
 def test_authored_hook_blocks_the_commit_when_the_config_fails_to_load(tmp_path: Path) -> None:
     _repository(tmp_path)
     source = _helpers_project(tmp_path, "throw new Error('deterministic fixture failure');\n") / "source.mts"

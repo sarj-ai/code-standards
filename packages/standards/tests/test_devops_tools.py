@@ -266,7 +266,7 @@ def test_tools_only_install_preserves_files_and_never_installs_hooks(
     assert commands[0].argv[:5] == ("mise", "--no-config", "--no-env", "--no-hooks", "install")
     assert [command.argv for command in commands[2:]] == [
         ("uvx", "--no-config", "--isolated", "--python", "3.12", "--from", f"{name}=={version}", name, "--version")
-        for name, version in (("zizmor", "1.33.1"), ("checkov", "3.4.7"))
+        for name, version in (("zizmor", "1.33.1"), ("checkov", "3.4.10"))
         if name in security
     ]
     assert attested == ([tmp_path] if install_status == 0 else [])

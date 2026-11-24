@@ -58,6 +58,7 @@ jobs:
             -o APT::Update::Error-Mode=any update
       - name: Install and attest native integration tools
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           MISE_GITHUB_TOKEN: ${{ github.token }}
         run: mise exec "python@$UV_PYTHON" -- uv run --project packages/standards --frozen python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Verify the complete candidate

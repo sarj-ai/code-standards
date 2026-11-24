@@ -721,6 +721,8 @@ jobs:
           key: native-config-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/scripts/setup-native-config-tests.sh') }}
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-wheels != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
           sudo timeout --kill-after=15s 180s apt-get \
@@ -917,6 +919,8 @@ jobs:
           key: native-config-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/scripts/setup-native-config-tests.sh') }}
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-ci != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
           sudo timeout --kill-after=15s 180s apt-get \
@@ -1187,13 +1191,13 @@ jobs:
           persist-credentials: false
       - name: Initialize CodeQL
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
-        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
           languages: ${{ matrix.language }}
       - name: Analyze
         id: analyze
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
-        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
 
       - name: Download verified reviewed results
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
@@ -1203,7 +1207,7 @@ jobs:
           path: ${{ runner.temp }}/reviewed-analysis
       - name: Upload reviewed CodeQL results for this main commit
         if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
-        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
           sarif_file: ${{ runner.temp }}/reviewed-analysis/codeql-${{ matrix.language }}
           ref: ${{ github.ref }}
@@ -1250,7 +1254,7 @@ jobs:
           results_format: sarif
           publish_results: false
       - name: Upload Scorecard findings
-        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
           sarif_file: scorecard.sarif
 

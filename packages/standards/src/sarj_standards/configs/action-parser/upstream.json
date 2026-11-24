@@ -4,10 +4,10 @@
   "parser": "@actions/workflow-parser@0.3.62",
   "expressions": "@actions/expressions@0.3.62",
   "license": "MIT",
-  "bundle_sha256": "d68d086e533015e88441373b2e0efed3d5942411bb89feaefca0ff3f3c7e753b",
+  "bundle_sha256": "bb9b08b76bd29f664cd6f4fec2c1e26452412a58b01d548f7112acee721bd634",
   "build": "npm ci --ignore-scripts --no-audit --no-fund && npm run build; dependency integrity is recorded in package-lock.json",
   "boundary": "GitHub native action-root runner schema and converter; syntax/contexts and runtime requirements. The strict Marketplace metadata root is not imposed on local actions. Runtime values/execution remain external.",
-  "runner_reference": "https://github.com/actions/runner/tree/fee24199cba8acf6c25da3a061c986066f42327a/src/Runner.Worker",
+  "runner_reference": "https://github.com/actions/runner/tree/d1eb12d4b115c301201de27d667284e1a80f2ab5/src/Runner.Worker",
   "yaml": "yaml@2.9.1",
   "yaml_source": "https://github.com/eemeli/yaml/tree/1440ecd3d1bff41e4ac399f8f6839e810328bd16",
   "dependency_advisory": "https://github.com/advisories/GHSA-48c2-rrv3-qjmp"
