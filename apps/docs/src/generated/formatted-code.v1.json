@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e000e3f032476c23fd4fccd0f45b1de4a5de2b8222ccdf8e78191e249ee405c8",
-  "cliSha256": "ed7826795dbea7c362ef030b43c6f39807da85173fcca4945a5dd127b0ad9621",
+  "catalogSha256": "81f97f35165f034b507c52e33df6d9d80438a06085b2a5a87801fc016802648e",
+  "cliSha256": "be48460304ca13ffd621db10c6d934c26b05e358798047f4f35a8e85a06072fd",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -17093,6 +17093,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Comment repeats the action"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-retained-feature-flag": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.no-retained-feature-flag]\nmodules = [\"app.flags\"]\nsnapshot_types = [\"FlagSnapshot\"]\nresolver_functions = [\"pinned_flags\"]\nresolver_methods = [\"evaluate\"]\nselector_methods = [\"for_\"]\nstartup_functions = [\"create_app\"]\nunit_of_work_types = [\"RequestFlags\"]\n"
+            },
+            {
+              "path": "app/checkout.py",
+              "source": "from app.flags import NEW_CHECKOUT, FlagSnapshot, Switch, pinned_flags\n\nCHECKOUT = Switch(NEW_CHECKOUT, on=new, off=old).for_(pinned_flags())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/checkout.py",
+          "id": "resolved-at-import",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A module constant fixes the flag when the process starts"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".sarj-standards.toml",
+              "source": "[python.no-retained-feature-flag]\nmodules = [\"app.flags\"]\nsnapshot_types = [\"FlagSnapshot\"]\nresolver_functions = [\"pinned_flags\"]\nresolver_methods = [\"evaluate\"]\nselector_methods = [\"for_\"]\nstartup_functions = [\"create_app\"]\nunit_of_work_types = [\"RequestFlags\"]\n"
+            },
+            {
+              "path": "app/checkout.py",
+              "source": "from app.flags import NEW_CHECKOUT, FlagSnapshot, Switch, pinned_flags\n\nCHECKOUT = Switch(NEW_CHECKOUT, on=new, off=old)\n\n\nclass CheckoutService:\n    def __init__(self, source: FlagSource) -> None:\n        self.source = source\n\n    async def pay(self, order: Order) -> Receipt:\n        flags = await self.source.evaluate(order.subject)\n        return await charge(order, CHECKOUT.for_(flags))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/checkout.py",
+          "id": "resolved-per-request",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The handler resolves a snapshot and the service receives what it selects"
         }
       ],
       "optionsSchemaSource": null

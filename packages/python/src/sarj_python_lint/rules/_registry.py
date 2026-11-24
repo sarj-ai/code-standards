@@ -262,6 +262,7 @@ from sarj_python_lint.rules.no_psycopg_execution_in_loop import NoPsycopgExecuti
 from sarj_python_lint.rules.no_recording_store import NoRecordingStore
 from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
 from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
+from sarj_python_lint.rules.no_retained_feature_flag import NoRetainedFeatureFlag
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_shared_mutable_default import NoSharedMutableDefault
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
@@ -325,6 +326,7 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
         NoSwallowedException.id: NoSwallowedException,
+        NoRetainedFeatureFlag.id: NoRetainedFeatureFlag,
         ServerProxiedFileUpload.id: ServerProxiedFileUpload,
         InlineSingleUseLocal.id: InlineSingleUseLocal,
         PreferResultOverNullableException.id: PreferResultOverNullableException,
