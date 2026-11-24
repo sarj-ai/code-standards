@@ -35,6 +35,15 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
+        rule_id=RuleId("no-retained-feature-flag"),
+        module="sarj_python_lint.rules.no_retained_feature_flag",
+        class_name="NoRetainedFeatureFlag",
+        code="SARJ594",
+        description="Resolve feature flags once per unit of work instead of retaining them in process-lifetime state",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("server-proxied-file-upload"),
         module="sarj_python_lint.rules.server_proxied_file_upload",
         class_name="ServerProxiedFileUpload",

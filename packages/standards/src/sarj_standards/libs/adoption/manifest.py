@@ -4,6 +4,7 @@ from dataclasses import dataclass, field as dataclass_field
 from enum import StrEnum
 from functools import cache
 from importlib.metadata import PackageNotFoundError, version
+from itertools import starmap
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from pydantic import JsonValue
+    from sarj_python_lint.feature_flag_options import FeatureFlagOptions  # ruff: ignore[runtime-import-in-type-checking-block] -- the deferred dataclass annotation keeps the Python engine off the CLI start path.
 
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
@@ -247,6 +249,7 @@ class Manifest:
     terraform_module_summaries: bool = False
     terraform_output_contracts: tuple[TerraformOutputContract, ...] = ()
     terraform_internal_modules: tuple[str, ...] = ()
+    retained_feature_flags: FeatureFlagOptions | None = None
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
@@ -301,6 +304,9 @@ class Manifest:
         if self.doctor_excluded_paths:
             sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         sections.extend(self._iac_sections())
+        if self.retained_feature_flags is not None:
+            fields = self.retained_feature_flags.manifest_fields()
+            sections.append("\n[python.no-retained-feature-flag]\n" + "".join(starmap(_array_field, fields.items())))
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
@@ -498,6 +504,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         terraform_module_summaries=_terraform_module_summaries(data),
         terraform_output_contracts=terraform_output_contracts(data),
         terraform_internal_modules=terraform_internal_modules(data),
+        retained_feature_flags=_retained_feature_flags(data),
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
@@ -534,7 +541,7 @@ def _compose_projects(root: Path, table: Mapping[str, object]) -> tuple[tuple[st
 
 
 def _compose_version(table: Mapping[str, object]) -> str | None:
-    value = table.get("compose_version")
+    value = table.get("compose_version")  # sarj-noqa: SARJ589 -- SARJ528 needs the separate None guard.
     if value is None:
         return None
     if not isinstance(value, str) or re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", value) is None:
@@ -629,7 +636,7 @@ def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_sche
 
 
 def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
-    value = data.get(key)
+    value = data.get(key)  # sarj-noqa: SARJ589 -- SARJ528 needs the separate None guard.
     if value is None:
         return {}
     if not is_object_mapping(value):
@@ -642,11 +649,9 @@ def load_for_setup(root: Path) -> Manifest | None:
     try:
         return _load_schema(root, MANIFEST_SCHEMA, discard_removed=True)
     except ValueError:
-        schema_three = _load_schema_three_manifest(root)
-        if schema_three is not None:
+        if (schema_three := _load_schema_three_manifest(root)) is not None:
             return schema_three
-        legacy = _load_schema_less_manifest(root)
-        if legacy is None:
+        if (legacy := _load_schema_less_manifest(root)) is None:
             raise
         return legacy
 
@@ -1125,6 +1130,15 @@ def _terraform_module_summaries(data: Mapping[str, object]) -> bool:
         case _:
             message = "manifest [iac.no-terraform-comments] supports only boolean module_summaries"
             raise ValueError(message)
+
+
+def _retained_feature_flags(data: Mapping[str, object]) -> FeatureFlagOptions | None:
+    table = _manifest_table(_manifest_table(data, "python"), "no-retained-feature-flag")
+    if not table:
+        return None
+    from sarj_python_lint.feature_flag_options import parse_feature_flag_options  # ruff: ignore[import-outside-top-level] -- manifests without these options do not load the Python engine.
+
+    return parse_feature_flag_options(table)
 
 
 def terraform_output_contracts(data: Mapping[str, object]) -> tuple[TerraformOutputContract, ...]:

@@ -129,6 +129,7 @@
       "no-repeated-unseeded-stdlib-random-in-test",
       "no-restated-closed-domain-description",
       "no-restated-comment",
+      "no-retained-feature-flag",
       "no-secret-in-log",
       "no-select-star",
       "no-service-behavior-in-settings",
@@ -773,6 +774,7 @@
       "SARJ591",
       "SARJ592",
       "SARJ593",
+      "SARJ594",
       "SARJ597",
       "SARJ598",
       "SARJ599"

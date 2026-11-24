@@ -3911,6 +3911,14 @@
       "state": "pending",
       "evidence": "Thirteen focused tests cover five matching parameter shapes, qualified and aliased imports, four near misses and test/generated exclusions; four executable documentation examples pass. The bundled corpus evaluation scanned 1,328 Python files with zero findings. Four maintained service repositories (4,525 Python files) produced seven findings, all inspected as true route-level file uploads, with zero known false positives; one route registered on an app received as a function parameter was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
       "outcome": "Introduce SARJ593 at WARNING without autofix. Recommend short-lived pre-signed object-storage uploads with server-chosen keys, bounded size and fixed content type, and accept only the upload id. Raw request-body reads, Starlette and add_api_route routes, parameter-received apps and other frameworks remain limits; broader field calibration remains pending before any error promotion."
+    },
+    {
+      "task": "rule-audit/python/no-retained-feature-flag",
+      "family": "python",
+      "ruleId": "no-retained-feature-flag",
+      "state": "pending",
+      "evidence": "Forty-six focused tests cover import-time and class-body resolution, twelve long-lived store shapes, five memoiser forms, configured startup functions, ten allowed shapes, inactive configurations and option validation; five executable documentation examples pass. Without a manifest table the rule reports nothing, so the bundled corpus and every current consumer are unaffected. One maintained service repository (2,790 Python files, 42 naming the configured modules) was checked with a matching table: two findings, both inspected as flag reads in configured process-start functions, with zero known false positives; four violations seeded into a scratch copy were reported and a fifth, a store through a subscripted application object, was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
+      "outcome": "Introduce SARJ594 at WARNING without autofix. The rule is opt-in through [python.no-retained-feature-flag] and reports nothing elsewhere. Resolver methods match by name, wrapped values and mutating calls are not modeled; broader field calibration remains pending before any error promotion."
     }
   ]
 }
