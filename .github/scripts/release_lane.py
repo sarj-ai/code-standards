@@ -1,7 +1,8 @@
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["typer==0.27.3", "pydantic==2.14.1"]
+# dependencies = ["typer==0.29.2", "pydantic==2.14.4"]
 # ///
+
 
 from __future__ import annotations
 
@@ -25,15 +26,11 @@ if TYPE_CHECKING:
 MAINTENANCE_REF = "refs/heads/maintenance/standards-8.101"
 LEGACY_COMMIT = "14270016f74006a1c8fe2765d5a4258c6b4d4cb8"
 LEGACY_VERSION = "8.101.1"
-# Reviewed candidate bytes; publication still requires successful native qualification
-# and exact-source release gates. Pinning this digest alone does not qualify a release.
 APPROVED_ADAPTER_SHA256 = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d1a2644d882c"
-# The paired scoped-scan backport is required from 8.101.5 onward.
 REACT_SCOPE_TESTS = "packages/standards/tests/test_react_doctor_scope.py"
 APPROVED_SCOPED_ADAPTER_SHA256 = "34a44e73a15dc8b3a50a7d8662cbe6471d7fbf2303d07e32e17338ce109a5f7c"
 APPROVED_SCOPED_TESTS_SHA256 = "0e62a69a71c7257de526619ef6cfda4cf824cfa5825edc961f7a28b8e014136b"
 APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
-# Historical 8.101.2/3 retain their exact lock; later patches must carry both reviewed dependency fixes.
 APPROVED_PATCHED_LOCK_SHA256 = "a7df5c1149f9b655cd587b49cc3e2bdc1c484e7bd5092aa43c6d6b8903c84698"
 APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
 SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})
@@ -78,7 +75,6 @@ BACKPORT_PATHS = frozenset(
         REACT_SCOPE_TESTS,
     }
 )
-# Exact whole-file projection of #1637 onto the reviewed 8.101.3 source; no other generator edits are approved.
 COMMIT_POLICY_BACKPORT_SHA256 = {
     f"{PACKAGE}/src/sarj_standards/libs/adoption/scaffold.py": (
         "8a656b177839655c9bc34c8dc7ed751e559cdc342f44fd608d38bf6b7efd9c3d"
@@ -86,7 +82,6 @@ COMMIT_POLICY_BACKPORT_SHA256 = {
     f"{PACKAGE}/tests/test_adoption.py": "20d9cee4883b50e9d6357548f10684084e69e265f704ab6d122963125efa483c",
     ".github/workflows/commit-policy.yml": "21a5f6293e41a052e032305d286b641e61aac2f668470bc1dee01ee2098761fb",
 }
-# Action delivery is independent of the retained 6.11 runtime policy.
 REPO_STANDARDS_ACTION_FIRST_PATCH: int | None = 6
 REPO_STANDARDS_ACTION_PROJECTIONS: Final[dict[str, str]] = {
     "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "1a413118794fa06d59cd98e098f2afbf005c16b5020d7df8781133e451dac723",
@@ -102,9 +97,6 @@ STANDARDS_8129_REACT_BUDGET_SHA256: Final[dict[str, str]] = {
     f"{PACKAGE}/src/sarj_standards/libs/linting/external.py": "544b53659ceb73a6dbd5b6e12fff7b7d38b1a4f9cc5ec5d287399e4f708f5709",
     f"{PACKAGE}/tests/test_external_diagnostics.py": "8eafe45b48bc86b9f507ee3e844c89f020291ee976e13e051feb932e98275d96",
 }
-# The #1840 repo-standards 6.13.0 adoption projected onto 8.129.9, plus the a5fe4cce nginx
-# pin that replaces the build Ubuntu removed. Digests cover the candidate bytes with its
-# version rewritten to 8.129.9, so later patches reuse the review.
 STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
     ".github/scripts/setup-native-config-tests.sh": "ba4bb12b004afc80782b1be2f66e6ce3026153974cfc88a07fbed20a649d5360",
     ".github/workflows/commit-policy.yml": "1eb42f3cd1a5f1531bdd1311105ad3f375541e5585c5bc384b1cec5d21fbfd33",
@@ -121,7 +113,6 @@ STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
 STANDARDS_8208_REF = "refs/heads/maintenance/standards-8.208"
 STANDARDS_8208_ANCHOR = "5e6e5623e5834ad2830c19b3c0e32096e86de7d0"
 STANDARDS_8208_ANCHOR_VERSION = "8.208.8"
-# Advice delivery only; runtime dependencies, engines and baseline policy stay at the anchor.
 STANDARDS_8208_APPROVED_SHA256: Final[dict[str, str]] = {
     "packages/standards/src/sarj_standards/__main__.py": "71a2f98187cc2d64cbab34209b1e94103daefa9a8190e84918fa7217701e846c",
     "packages/standards/src/sarj_standards/cli/main.py": "53dd90d7e662902a1c0f4e2bf07bbde0e5dc40b74b4b295cb29e6da80ccddd06",
@@ -292,7 +283,6 @@ def _validate_commit_policy_backport(
 
 
 def _validate_repo_standards_actions(root: Path, commit: str, version: str, changed: frozenset[str]) -> bool:
-    # Older candidates may inherit the complete reviewed action defaults after rebasing.
     default_changes = (
         changed.intersection(REPO_STANDARDS_ACTION_PROJECTIONS) - TOOLING_PATHS - COMMIT_POLICY_BACKPORT_SHA256.keys()
     )
