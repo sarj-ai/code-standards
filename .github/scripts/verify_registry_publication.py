@@ -17,6 +17,7 @@ from http import HTTPStatus
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- this workflow helper executes only fixed trusted tool argv.
 import sys
 import tarfile
@@ -487,13 +488,15 @@ def verify_npm(
         clock=clock,
         sleeper=sleeper,
     )
-    retry_npm_stage(
-        "package-spec installability and signature audit",
-        lambda: _verify_npm_installability(identity),
-        timeout=NPM_INSTALL_TIMEOUT,
-        clock=clock,
-        sleeper=sleeper,
-    )
+    with tempfile.TemporaryDirectory() as temporary:
+        consumer = Path(temporary) / "consumer"
+        retry_npm_stage(
+            "package-spec installability and signature audit",
+            lambda: _verify_npm_installability(identity, consumer),
+            timeout=NPM_INSTALL_TIMEOUT,
+            clock=clock,
+            sleeper=sleeper,
+        )
 
 
 def _npm_artifact(tarball: Path, identity: PackageIdentity) -> NpmArtifact:
@@ -550,31 +553,42 @@ def _verify_npm_provenance(artifact: NpmArtifact, *, commit: str, environment: s
         )
 
 
-def _verify_npm_installability(identity: PackageIdentity) -> None:
-    with tempfile.TemporaryDirectory() as temporary:
-        cache = str(Path(temporary) / ".npm-cache")
-        subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- package identity comes from the staged trusted tarball.
-            (  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
-                "npm",
-                "install",
-                "--ignore-scripts",
-                "--package-lock=false",
-                "--prefer-online",
-                "--cache",
-                cache,
-                f"{identity.name}@{identity.version}",
-            ),
-            cwd=temporary,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
-        )
-        subprocess.run(
-            ("npm", "audit", "signatures"),  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
-            cwd=temporary,
-            check=True,
-            timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
-        )
+def _verify_npm_installability(identity: PackageIdentity, consumer: Path) -> None:
+    if not consumer.exists():
+        consumer.mkdir()
+        try:
+            subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- package identity comes from the staged trusted tarball.
+                (  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
+                    "npm",
+                    "install",
+                    "--ignore-scripts",
+                    "--package-lock=false",
+                    "--prefer-online",
+                    "--cache",
+                    ".npm-cache",
+                    f"{identity.name}@{identity.version}",
+                ),
+                cwd=consumer,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
+            )
+        except OSError, subprocess.SubprocessError:
+            shutil.rmtree(consumer)
+            raise
+    subprocess.run(
+        (  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
+            "npm",
+            "audit",
+            "signatures",
+            "--cache",
+            ".npm-cache",
+            "--prefer-online",
+        ),
+        cwd=consumer,
+        check=True,
+        timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
+    )
 
 
 def publish_and_verify_npm(tarball: Path, *, commit: str, environment: str) -> None:

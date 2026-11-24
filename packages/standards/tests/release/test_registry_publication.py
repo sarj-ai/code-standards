@@ -324,7 +324,7 @@ def test_npm_verification_has_independent_stage_budgets(
     ) -> None:
         """Treat provenance as already verified while exercising publication timeouts."""
 
-    def verify_installability(_identity: PackageIdentity) -> None:
+    def verify_installability(_identity: PackageIdentity, _consumer: Path) -> None:
         return None
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records retry orchestration around remote npm stages
@@ -358,7 +358,7 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
 ) -> None:
     callback_state = _CallbackState(now=0.0)
     waits: list[float] = []
-    attempts = {"metadata": 0, "provenance": 0, "install": 0}
+    attempts = {"metadata": 0, "provenance": 0, "install": 0, "audit": 0}
     artifact = object()
 
     def clock() -> float:
@@ -389,8 +389,22 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     ) -> None:
         return delayed("provenance", None)
 
-    def delayed_install(_identity: PackageIdentity) -> None:
-        return delayed("install", None)
+    def run(argv: tuple[str, ...], *, cwd: Path, check: bool, timeout: int, stdout: int | None = None) -> None:
+        assert check
+        assert timeout == 120
+        assert argv[argv.index("--cache") + 1] == ".npm-cache"
+        assert "--prefer-online" in argv
+        marker = cwd / "installed"
+        if argv[1] == "install":
+            assert "--ignore-scripts" in argv
+            assert argv[-1] == "@example/plugin@1.2.3"
+            assert stdout == subprocess.DEVNULL
+            assert not marker.exists()
+            marker.touch()
+        else:
+            assert argv[:3] == ("npm", "audit", "signatures")
+            assert marker.is_file()
+        delayed(argv[1], None)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm registry metadata convergence
         verifier, "_npm_artifact", delayed_metadata
@@ -398,8 +412,8 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm provenance convergence
         verifier, "_verify_npm_provenance", delayed_provenance
     )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm installability convergence
-        verifier, "_verify_npm_installability", delayed_install
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept external npm calls to observe the real retry and cleanup sequence.
+        subprocess, "run", run
     )
 
     if metadata_ready_at > 900:
@@ -408,7 +422,7 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
                 Path("package.tgz"), commit="commit", environment="publisher", clock=clock, sleeper=sleep
             )
         assert callback_state.now == 900
-        assert attempts["provenance"] == attempts["install"] == 0
+        assert attempts["provenance"] == attempts["install"] == attempts["audit"] == 0
         return
 
     verifier.verify_npm(
@@ -420,8 +434,8 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     )
 
     assert attempts["metadata"] >= 2
-    assert attempts["provenance"] == attempts["install"] == 2
-    assert waits[-2:] == [5.0, 5.0]
+    assert attempts["provenance"] == attempts["install"] == attempts["audit"] == 2
+    assert waits[-3:] == [5.0, 5.0, 10.0]
     assert metadata_ready_at <= callback_state.now < metadata_ready_at + 40
 
 
