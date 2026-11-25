@@ -1702,7 +1702,7 @@ def _check_node_linker(root: Path, typescript_root: Path) -> Iterator[Finding]:
     yield Finding(
         Level.DRIFT,
         str(yarnrc.relative_to(root)),
-        "Yarn Plug'n'Play is not supported: Oxlint, oxfmt and tsrs-lint run from node_modules/.bin",
+        "Yarn Plug'n'Play is not supported: Oxlint, oxfmt and tsgolint run from node_modules/.bin",
         "doctor.typescript.node-linker",
         "set `nodeLinker: node-modules` in .yarnrc.yml and run `yarn install`",
     )

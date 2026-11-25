@@ -76,7 +76,7 @@ def _typescript_project(root: Path, *, oxfmt_config: str | None = ".oxfmtrc.json
         (root / oxfmt_config).write_text("{}\n", encoding="utf-8")
     binaries = root / "node_modules" / ".bin"
     binaries.mkdir(parents=True)
-    for name in ("oxlint", "oxfmt", "tsrs-lint"):
+    for name in ("oxlint", "oxfmt", "tsgolint"):
         (binaries / name).touch()
     source = root / "src" / "app.ts"
     source.parent.mkdir()
@@ -106,7 +106,7 @@ def test_full_analysis_runs_one_type_checked_oxlint_and_one_oxfmt_per_project(tm
             assert request.argv[-2:] == ("--", ".")
             return ProcessOutput(1, "src/app.ts\n", "")
         assert {"-f", "json", "--type-aware", "--type-check"} <= set(request.argv)
-        assert request.environment["OXLINT_TSGOLINT_PATH"] == str(root / "node_modules/.bin/tsrs-lint")
+        assert request.environment["OXLINT_TSGOLINT_PATH"] == str(root / "node_modules/.bin/tsgolint")
         assert request.environment["NODE_OPTIONS"].startswith("--max-old-space-size=")
         assert _overlay(request)["rules"] is None
         return _oxlint_output(request, _DEBUGGER)
@@ -321,7 +321,7 @@ def test_fix_commands_turn_excluded_rules_off_with_literal_route_globs(tmp_path:
     assert fix.argv[-4:] == ("--fix", "--", "src/app.ts", "src/app/[id]/page.tsx")
     assert "--report-unused-disable-directives-severity=off" in fix.argv
     assert dict(fix.environment) == {
-        "OXLINT_TSGOLINT_PATH": str(root / "node_modules/.bin/tsrs-lint"),
+        "OXLINT_TSGOLINT_PATH": str(root / "node_modules/.bin/tsgolint"),
         "SARJ_TYPE_AWARE": "1",
     }
     assert fix.prepare is not None

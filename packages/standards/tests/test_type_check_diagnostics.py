@@ -57,8 +57,8 @@ def test_lint_diagnostics_are_not_type_check_results(code: str) -> None:
 
 
 @pytest.mark.skipif(
-    not (BINARIES / "oxlint").is_file() or not (BINARIES / "tsrs-lint").is_file(),
-    reason="the pinned oxlint and tsrs-lint are not installed",
+    not (BINARIES / "oxlint").is_file() or not (BINARIES / "tsgolint").is_file(),
+    reason="the pinned oxlint and tsgolint are not installed",
 )
 def test_oxlint_type_check_reports_one_tsconfig_error_instead_of_the_rejected_projects_errors(tmp_path: Path) -> None:
     (tmp_path / ".oxlintrc.json").write_text("{}", encoding="utf-8")
@@ -72,7 +72,7 @@ def test_oxlint_type_check_reports_one_tsconfig_error_instead_of_the_rejected_pr
     environment = {
         "PATH": os.environ["PATH"],  # ruff: ignore[banned-api] -- keep the runner's tool path.
         "HOME": str(tmp_path),
-        "OXLINT_TSGOLINT_PATH": str(BINARIES / "tsrs-lint"),
+        "OXLINT_TSGOLINT_PATH": str(BINARIES / "tsgolint"),
     }
 
     completed = subprocess.run(

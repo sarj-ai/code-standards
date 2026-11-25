@@ -4,7 +4,7 @@ import { defineConfig, type OxlintConfig, type OxlintOverride } from "oxlint";
 // as the native Oxlint rule where one exists and otherwise as the rule from its
 // ESLint plugin, loaded under `jsPlugins`. oxlint.rule-map.json records where
 // each ESLint rule went (native, JS plugin alias, replaced or dropped) and why.
-// Type-aware rules and the type check run through tsrs (`tsrs-lint`).
+// Oxlint uses tsgolint for its native typed rules and per-file type diagnostics.
 //
 // A repository extends this from its own oxlint.config.mts:
 //
@@ -408,7 +408,7 @@ const RULES = {
   "use-isnan": ["error", {"enforceForIndexOf": false, "enforceForSwitchCase": true}],
   "valid-typeof": ["error", {"requireStringLiterals": false}],
 
-  // typescript-eslint (native; type-aware ones run through tsrs-lint).
+  // typescript-eslint (native; type-aware ones run through tsgolint).
   "typescript/adjacent-overload-signatures": "error",
   "typescript/array-type": "error",
   "typescript/await-thenable": "error",
