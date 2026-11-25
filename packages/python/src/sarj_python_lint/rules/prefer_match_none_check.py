@@ -15,14 +15,9 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import statement_blocks
 from sarj_python_lint.rules._comments import comment_line_numbers
-from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import (
-    PreferWalrusAwaitedNoneGuard,
-    name_flow,
-    none_guard_candidates,
-    none_guard_message,
-)
+from sarj_python_lint.rules.prefer_match_type_dispatch import none_disjoint_class_references
+from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import none_guard_candidates, none_guard_message
 
 
 if TYPE_CHECKING:
@@ -31,6 +26,7 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
+_BINARY_CASES = 2
 _MATCH_PYTHON = (3, 10)
 _WALRUS_PYTHON = (3, 8)
 
@@ -40,129 +36,104 @@ class PreferMatchNoneCheck(Rule):
     id = "prefer-match-none-check"
     code = "SARJ589"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
-        summary="Prefer match/case for a None check that selects a value or guards later use of a name.",
+        default_level=Severity.ERROR,
+        summary="Handle present values before an unconditional None arm in optional-value matches.",
         rationale=(
-            "A conditional expression or early-exit guard on `is None` hides a two-way decision in an operator or "
-            "splits it across statements. `match value: case None: ... case _: ...` names both outcomes, keeps "
-            "the absent case first and lets the type checker narrow `value` in each arm."
+            "A presence check expresses a binary choice directly. For structural dispatch, leading with the "
+            "concrete cases shows what each value does, and a later None arm handles absence."
         ),
         remediation=(
-            "Rewrite `return use(value) if value is not None else None` as `match value:` with `case None: return "
-            "None` and `case _: return use(value)`. Rewrite `if (value := lookup()) is None: return` (or a plain "
-            "`if value is None: return`) followed by code that uses `value` as `match value := lookup():` with the "
-            "early exit under `case None:` and the remaining code under `case _:`. When a split lookup is "
-            "immediately returned or raised under `is not None`, bind it in the guard as "
-            "`if (value := lookup()) is not None:`."
+            "Move the unconditional `case None:` below the concrete value cases while keeping a final catchall "
+            "last. For a two-way choice, prefer `if value is not None:` with an `else` for absence. Bind a lookup "
+            "once with `if (value := lookup()) is not None:` when the branch uses it. An existing guard clause "
+            "can keep its natural exit direction."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
         aliases=("prefer-walrus-none-guard",),
         limitations=(
-            "A conditional expression is reported only when it is the whole value of a return statement or an assignment and its test is exactly `subject is None` or `subject is not None`, where the subject is a name, an attribute chain or an assignment expression. Conditional expressions in call arguments, default arguments, comprehensions, lambdas, containers, f-strings, boolean operands and nested positions are excluded because no match statement fits there.",
-            "The default-value idiom `value if value is not None else default` (or `default if value is None else value`), where the non-None arm is the subject itself, is excluded.",
-            "A guard is reported when an `if` without else tests exactly `name is None` or `(name := expr) is None`, its body ends in return, raise or continue, and a later statement in the same block reads the name before rebinding it. Truthiness, `== None`, compound conditions, attribute or subscript subjects, guards with else branches and guards without a later use are excluded.",
-            "Awaited lookups split from their `is None` guard are reported by SARJ432 at the assignment, so this rule does not report the guard twice. `isinstance` conditional expressions and single-branch `isinstance` dispatch belong to SARJ080.",
-            "A one-line synchronous call assigned to a single name and immediately returned or raised under an `is not None` guard, with no later use, is reported at the assignment and safely fixed into `if (name := call()) is not None:`. Regex search/match/fullmatch lookups belong to SARJ081.",
-            "Match recommendations have no automatic fix because the code after a guard moves under `case _:`. Generated and stub files are excluded, and declared support for Python before 3.10 (3.8 for the inline binding) suppresses the corresponding findings.",
+            "Case order is an error only when the later patterns can be proved disjoint from None. Literal, sequence, mapping, unshadowed builtin, ordinary local class and standard AST node patterns are recognized. Unresolved class or value references, guarded None, overlapping alternatives and observable comparisons are excluded. A final unconditional wildcard or capture keeps its position.",
+            "A two-arm match that handles None then accepts the remaining values is a binary presence check. A bare capture or wildcard guarded by a direct identity check against the matched name also proves presence. Preserve any capture that is observed after the match or in its absence branch. Case ordering and capture preservation require manual changes.",
+            "A compact synchronous lookup immediately returned or raised under an is-not-None guard still receives a warning and a safe inline-binding fix. SARJ432 owns awaited lookups and SARJ081 owns regex lookups. Stubs, generated code and syntax unsupported by the declared Python target are excluded.",
         ),
         examples=(
             RuleExample(
-                example_id="conditional-none-return",
-                scenario="conditional-expression",
-                title="A returned conditional expression hides the None decision in an operator",
+                example_id="absence-before-concrete-case",
+                scenario="case-order",
+                title="An unconditional None case precedes a concrete variant",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "audio.py",
-                        "class Audio:\n"
-                        "    def frames(self, key):\n"
-                        "        pcm = self._pcm.get(key)\n"
-                        "        return self._frames(pcm) if pcm is not None else None\n",
+                        "service.py",
+                        "def render(value):\n"
+                        "    match value:\n"
+                        "        case None: return 'missing'\n"
+                        "        case str() as text: return text.upper()\n"
+                        "        case _: return 'other'\n",
                     ),
                 ),
-                focus_path=PurePosixPath("audio.py"),
+                focus_path=PurePosixPath("service.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="conditional-none-match",
-                scenario="conditional-expression",
-                title="Both outcomes are match arms",
+                example_id="concrete-before-absence",
+                scenario="case-order",
+                title="Concrete variants precede None and the fallback stays last",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
-                        "audio.py",
-                        "class Audio:\n"
-                        "    def frames(self, key):\n"
-                        "        match pcm := self._pcm.get(key):\n"
-                        "            case None:\n"
-                        "                return None\n"
-                        "            case _:\n"
-                        "                return self._frames(pcm)\n",
+                        "service.py",
+                        "def render(value):\n"
+                        "    match value:\n"
+                        "        case str() as text: return text.upper()\n"
+                        "        case None: return 'missing'\n"
+                        "        case _: return 'other'\n",
                     ),
                 ),
-                focus_path=PurePosixPath("audio.py"),
+                focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
             ),
             RuleExample(
-                example_id="none-guard-before-use",
-                scenario="none-guard",
-                title="An early None exit guards the code that uses the name",
+                example_id="binary-presence",
+                scenario="binary-presence",
+                title="A binary None match can use an explicit identity check",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "voice.py",
-                        "def voice_settings(session):\n"
-                        "    models = session.userdata.model_config\n"
-                        "    if models is None:\n"
-                        "        return None\n"
-                        "    return models.tts\n",
+                        "service.py",
+                        "def render(value):\n"
+                        "    match value:\n"
+                        "        case None: return 'missing'\n"
+                        "        case _: return str(value)\n",
                     ),
                 ),
-                focus_path=PurePosixPath("voice.py"),
+                focus_path=PurePosixPath("service.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="none-guard-match",
-                scenario="none-guard",
-                title="The guarded name is the match subject",
+                example_id="positive-identity-check",
+                scenario="binary-presence",
+                title="An explicit identity check handles present and absent values",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
-                        "voice.py",
-                        "def voice_settings(session):\n"
-                        "    match models := session.userdata.model_config:\n"
-                        "        case None:\n"
-                        "            return None\n"
-                        "        case _:\n"
-                        "            return models.tts\n",
+                        "service.py",
+                        "def render(value):\n"
+                        "    if value is not None:\n"
+                        "        return str(value)\n"
+                        "    return 'missing'\n",
                     ),
                 ),
-                focus_path=PurePosixPath("voice.py"),
-                expected_count=0,
-                public=True,
-            ),
-            RuleExample(
-                example_id="default-value-idioms",
-                title="Default-value idioms and call arguments stay inline",
-                outcome=ExampleOutcome.NO_MATCH,
-                files=(
-                    ExampleFile.python(
-                        "client.py",
-                        "def connect(timeout=None, retries=None):\n"
-                        "    timeout = timeout if timeout is not None else 30\n"
-                        "    return open_client(retries=retries if retries is not None else 3, timeout=timeout)\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("client.py"),
+                focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
             ),
             RuleExample(
                 example_id="consumed-lookup-binding",
+                scenario="lookup-binding",
                 title="A lookup returned under `is not None` is bound in its guard",
                 outcome=ExampleOutcome.MATCH,
                 files=(
@@ -186,6 +157,24 @@ class PreferMatchNoneCheck(Rule):
                 ),
                 focus_path=PurePosixPath("service.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="inline-lookup-binding",
+                scenario="lookup-binding",
+                title="A lookup is evaluated once in the guard that consumes it",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def label(labels, key):\n"
+                        "    if (found := labels.get(key)) is not None:\n"
+                        "        return found.title()\n"
+                        "    return 'unknown'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
                 public=True,
             ),
         ),
@@ -215,120 +204,107 @@ class PreferMatchNoneCheck(Rule):
                 )
                 if candidate.is_not_none
             )
-        if not target.has_declared_support_before(path, _MATCH_PYTHON):
-            diagnostics.extend(self._conditional_findings(context))
-            diagnostics.extend(self._guard_findings(context, tree))
+        if "match" in context.source and not target.has_declared_support_before(path, _MATCH_PYTHON):
+            diagnostics.extend(self._order_findings(context))
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
-    def _conditional_findings(self, context: PythonFileContext) -> Iterator[Diagnostic]:
-        for statement in context.nodes(ast.Return, ast.Assign, ast.AnnAssign):
-            value = statement.value
-            if isinstance(value, ast.IfExp) and (subject := _conditional_subject(value, context.source)) is not None:
-                yield self._diagnostic(
-                    context,
-                    value,
-                    f"Use `match {subject}:` with `case None:` and `case _:` arms instead of this None "
-                    "conditional expression",
-                )
-
-    def _guard_findings(self, context: PythonFileContext, tree: ast.Module) -> Iterator[Diagnostic]:
-        owned = {
-            candidate.guard
-            for candidate in none_guard_candidates(
-                context,
-                PreferWalrusAwaitedNoneGuard.code,
-                comment_line_numbers(context.source),
-                awaited=True,
-            )
-            if not candidate.is_not_none
-        }
-        owners = [tree, *context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)]
-        for block in (block for owner in owners for block in statement_blocks(owner.body)):
-            for index, guard in enumerate(block):
-                if guard in owned or (header := _used_guard_header(block, index, context.source)) is None:
-                    continue
-                name, subject = header
-                yield self._diagnostic(
-                    context,
-                    guard,
-                    f"Use `match {subject}:` with `case None:` for this early exit and `case _:` for the code "
-                    f"that uses `{name}`",
-                )
-
-    def _diagnostic(self, context: PythonFileContext, node: ast.expr | ast.stmt, message: str) -> Diagnostic:
-        return Diagnostic(
-            path=context.path,
-            line=node.lineno,
-            col=node.col_offset + 1,
-            code=self.code,
-            severity=Severity.WARNING,
-            message=message,
+    def _order_findings(self, context: PythonFileContext) -> Iterator[Diagnostic]:
+        candidates = [
+            (statement, cases) for statement in context.nodes(ast.Match) if (cases := _none_before_values(statement))
+        ]
+        proven = none_disjoint_class_references(
+            context,
+            {
+                atom.cls
+                for _, cases in candidates
+                for case in cases[1:]
+                for atom in _alternatives(case.pattern)
+                if isinstance(atom, ast.MatchClass)
+            },
         )
+        for statement, cases in candidates:
+            message = _order_message(statement, cases, proven)
+            if message is not None:
+                absent = cases[0].pattern
+                yield Diagnostic(context.path, absent.lineno, absent.col_offset + 1, self.code, message)
 
 
-def _is_none_test(test: ast.expr) -> tuple[ast.expr, bool] | None:
-    match test:
-        case ast.Compare(left=subject, ops=[ast.Is() | ast.IsNot() as operator], comparators=[ast.Constant(None)]):
-            return subject, isinstance(operator, ast.IsNot)
+def _none_before_values(statement: ast.Match) -> list[ast.match_case]:
+    for index, case in enumerate(statement.cases[:-1]):
+        if not (case.guard is None and isinstance(case.pattern, ast.MatchSingleton) and case.pattern.value is None):
+            continue
+        candidates = statement.cases[index:]
+        if len(statement.cases) > _BINARY_CASES and _catchall(candidates[-1]):
+            candidates = candidates[:-1]
+        if len(candidates) > 1:
+            return candidates
+    return []
+
+
+def _catchall(case: ast.match_case) -> bool:
+    return case.guard is None and isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None
+
+
+def _alternatives(pattern: ast.pattern) -> Iterator[ast.pattern]:
+    match pattern:
+        case ast.MatchOr(patterns=members):
+            for member in members:
+                yield from _alternatives(member)
+        case ast.MatchAs(pattern=ast.pattern() as inner):
+            yield from _alternatives(inner)
         case _:
-            return None
+            yield pattern
 
 
-def _conditional_subject(value: ast.IfExp, source: str) -> str | None:
-    if (test := _is_none_test(value.test)) is None:
-        return None
-    subject, is_not_none = test
-    present = value.body if is_not_none else value.orelse
+def _order_message(statement: ast.Match, cases: list[ast.match_case], proven: frozenset[ast.expr]) -> str | None:
+    absent, *following = cases
+    if len(statement.cases) == _BINARY_CASES and (
+        _catchall(following[0]) or _guards_presence(following[0], statement.subject, bind_on_present=True)
+    ):
+        message = (
+            "Use `if value is not None:` for the present case and `else:` for absence. "
+            "Bind a lookup once with a walrus when needed."
+        )
+        if isinstance(capture := following[0].pattern, ast.MatchAs) and capture.name is not None:
+            return f"{message} Preserve the binding of `{capture.name}` on the present path."
+        return message
+    if all(
+        (statement.cases[0] is absent and _guards_presence(case, statement.subject))
+        or all(_disjoint_from_none(atom, proven) for atom in _alternatives(case.pattern))
+        for case in following
+    ):
+        return "Place the present value arms before `case None:`. Keep their relative order, any capture bindings and the final catchall."
+    return None
+
+
+def _guards_presence(case: ast.match_case, subject: ast.expr, *, bind_on_present: bool = False) -> bool:
+    match case.pattern, case.guard:
+        case (
+            ast.MatchAs(pattern=None, name=captured),
+            ast.Compare(left=ast.Name(id=checked), ops=[ast.IsNot()], comparators=[ast.Constant(value=None)]),
+        ):
+            pass
+        case _:
+            return False
+    if bind_on_present and captured == checked:
+        return True
     match subject:
-        case ast.NamedExpr(target=ast.Name(id=name)):
-            if isinstance(present, ast.Name) and present.id == name:
-                return None
-        case ast.Name() | ast.Attribute() if _is_attribute_chain(subject):
-            if ast.dump(present) == ast.dump(subject):
-                return None
-        case _:
-            return None
-    return ast.get_source_segment(source, subject)
-
-
-def _is_attribute_chain(node: ast.expr) -> bool:
-    match node:
-        case ast.Name():
-            return True
-        case ast.Attribute(value=owner):
-            return _is_attribute_chain(owner)
+        case ast.Name(id=name):
+            return name == checked and captured in {None, checked}
         case _:
             return False
 
 
-def _used_guard_header(block: list[ast.stmt], index: int, source: str) -> tuple[str, str] | None:
-    guard = block[index]
-    if not isinstance(guard, ast.If):
-        return None
-    header = _guard_header(guard, block[index - 1] if index else None, source)
-    if header is None or name_flow(block[index + 1 :], header[0]) != "loaded":
-        return None
-    return header
-
-
-def _guard_header(guard: ast.If, previous: ast.stmt | None, source: str) -> tuple[str, str] | None:
-    if guard.orelse or not isinstance(guard.body[-1], ast.Return | ast.Raise | ast.Continue):
-        return None
-    match _is_none_test(guard.test):
-        case ast.NamedExpr(target=ast.Name(id=name), value=value), False:
-            return name, _binding(name, value, source)
-        case ast.Name(id=name), False:
-            match previous:
-                case ast.Assign(targets=[ast.Name(id=target)], value=value) if target == name:
-                    return name, _binding(name, value, source)
-                case _:
-                    return name, name
+def _disjoint_from_none(pattern: ast.pattern, proven: frozenset[ast.expr]) -> bool:
+    match pattern:
+        case (
+            ast.MatchSingleton(value=True | False)
+            | ast.MatchSequence()
+            | ast.MatchMapping()
+            | ast.MatchValue(value=ast.Constant() | ast.UnaryOp() | ast.BinOp())
+        ):
+            return True
+        case ast.MatchClass(cls=reference):
+            return reference in proven
         case _:
-            return None
-
-
-def _binding(name: str, value: ast.expr, source: str) -> str:
-    expression = ast.get_source_segment(source, value)
-    if expression is None or "\n" in expression:
-        return f"{name} := ..."
-    return f"{name} := {expression}"
+            return False

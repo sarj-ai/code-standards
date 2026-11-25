@@ -206,8 +206,6 @@ def _collaborator_fields(node: ast.ClassDef) -> frozenset[str]:
 
 def _is_collaborator_annotation(annotation: ast.expr | None) -> bool:
     match annotation:
-        case None:
-            return False
         case ast.BinOp() if isinstance(annotation.op, ast.BitOr):
             return _is_collaborator_annotation(annotation.left) or _is_collaborator_annotation(annotation.right)
         case ast.Subscript():
@@ -218,6 +216,8 @@ def _is_collaborator_annotation(annotation: ast.expr | None) -> bool:
             if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
                 return _is_collaborator_annotation(annotation.slice.elts[0])
             return _is_collaborator_annotation(annotation.value)
+        case None:
+            return False
         case _:
             pass
     return (

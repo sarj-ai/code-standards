@@ -1255,8 +1255,7 @@ def _is_foreign_annotation(
     if _is_literal_annotation(annotation, frozenset()):
         return True
     inner = _strip_optional(annotation)
-    wrapped = _transparent_annotation_members(inner, imports)
-    if wrapped is not None:
+    if (wrapped := _transparent_annotation_members(inner, imports)) is not None:
         return not wrapped or any(
             _is_foreign_annotation(member, raw_string_aliases, imports=imports) for member in wrapped
         )
@@ -1392,11 +1391,11 @@ def _trailing_name(node: ast.AST) -> str | None:
 
 def _is_literal_annotation(annotation: ast.expr | None, alias_names: frozenset[str]) -> bool:
     match annotation:
-        case None:
-            return False
         case ast.Constant(value=str() as value):
             parsed = _parse_string_annotation(value)
             return parsed is not None and _is_literal_annotation(parsed, alias_names)
+        case None:
+            return False
         case _:
             pass
     if _literal_string_values(annotation) is not None:

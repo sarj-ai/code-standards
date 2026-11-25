@@ -203,10 +203,10 @@ def _caught_names(
     expression: ast.expr | None, imports: ImportIndex, local_classes: frozenset[str]
 ) -> tuple[str, ...] | None:
     match expression:
-        case None:
-            return None
         case ast.Tuple():
             elements = expression.elts
+        case None:
+            return None
         case _:
             elements = [expression]
     names: list[str] = []

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9f85e73bf6ec1bf17bbc0e1c8eb7677bb94495c1c550865891acd02d0a2fff0d",
-  "cliSha256": "3eb5570687133caf34d1166588aca426ecd06f3fcd681b2a8f29e328b516137a",
+  "catalogSha256": "2f3d2699f40b5a0b60f55bdc826247bab6864bad3c32ca43096d2f07f18077e8",
+  "cliSha256": "e0aefc1f7811930a54a6427220ee7294779fa851a7ceec8caab3afb6e91d3e1d",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -16089,7 +16089,7 @@
           "files": [
             {
               "path": "app/service.py",
-              "source": "def run(factory: Factory):\n    return factory()\n"
+              "source": "def run(factory: Factory):\n    return factory()\n\n\ndef notify(sender: Sender | None, message: str):\n    if sender is not None:\n        sender.send(message)\n"
             }
           ],
           "fixedFiles": [],
@@ -16097,7 +16097,7 @@
           "id": "concrete-factory",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Caller supplies a concrete dependency"
+          "title": "The caller supplies a factory and can disable notifications"
         },
         {
           "expectedCount": 1,
@@ -20008,34 +20008,49 @@
     "python:prefer-match-none-check": {
       "examples": [
         {
-          "expectedCount": 0,
+          "expectedCount": 1,
           "files": [
             {
-              "path": "audio.py",
-              "source": "class Audio:\n    def frames(self, key):\n        match pcm := self._pcm.get(key):\n            case None:\n                return None\n            case _:\n                return self._frames(pcm)\n"
+              "path": "service.py",
+              "source": "def render(value):\n    match value:\n        case None:\n            return \"missing\"\n        case str() as text:\n            return text.upper()\n        case _:\n            return \"other\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "audio.py",
-          "id": "conditional-none-match",
-          "outcome": "accept",
-          "scenarioId": "conditional-expression",
-          "title": "Both outcomes are match arms"
+          "focusPath": "service.py",
+          "id": "absence-before-concrete-case",
+          "outcome": "reject",
+          "scenarioId": "case-order",
+          "title": "An unconditional None case precedes a concrete variant"
         },
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "audio.py",
-              "source": "class Audio:\n    def frames(self, key):\n        pcm = self._pcm.get(key)\n        return self._frames(pcm) if pcm is not None else None\n"
+              "path": "service.py",
+              "source": "def render(value):\n    match value:\n        case None:\n            return \"missing\"\n        case _:\n            return str(value)\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "audio.py",
-          "id": "conditional-none-return",
+          "focusPath": "service.py",
+          "id": "binary-presence",
           "outcome": "reject",
-          "scenarioId": "conditional-expression",
-          "title": "A returned conditional expression hides the None decision in an operator"
+          "scenarioId": "binary-presence",
+          "title": "A binary None match can use an explicit identity check"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def render(value):\n    match value:\n        case str() as text:\n            return text.upper()\n        case None:\n            return \"missing\"\n        case _:\n            return \"other\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "concrete-before-absence",
+          "outcome": "accept",
+          "scenarioId": "case-order",
+          "title": "Concrete variants precede None and the fallback stays last"
         },
         {
           "expectedCount": 1,
@@ -20054,53 +20069,38 @@
           "focusPath": "service.py",
           "id": "consumed-lookup-binding",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "lookup-binding",
           "title": "A lookup returned under `is not None` is bound in its guard"
         },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "client.py",
-              "source": "def connect(timeout=None, retries=None):\n    timeout = timeout if timeout is not None else 30\n    return open_client(retries=retries if retries is not None else 3, timeout=timeout)\n"
+              "path": "service.py",
+              "source": "def label(labels, key):\n    if (found := labels.get(key)) is not None:\n        return found.title()\n    return \"unknown\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "client.py",
-          "id": "default-value-idioms",
+          "focusPath": "service.py",
+          "id": "inline-lookup-binding",
           "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Default-value idioms and call arguments stay inline"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "voice.py",
-              "source": "def voice_settings(session):\n    models = session.userdata.model_config\n    if models is None:\n        return None\n    return models.tts\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "voice.py",
-          "id": "none-guard-before-use",
-          "outcome": "reject",
-          "scenarioId": "none-guard",
-          "title": "An early None exit guards the code that uses the name"
+          "scenarioId": "lookup-binding",
+          "title": "A lookup is evaluated once in the guard that consumes it"
         },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "voice.py",
-              "source": "def voice_settings(session):\n    match models := session.userdata.model_config:\n        case None:\n            return None\n        case _:\n            return models.tts\n"
+              "path": "service.py",
+              "source": "def render(value):\n    if value is not None:\n        return str(value)\n    return \"missing\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "voice.py",
-          "id": "none-guard-match",
+          "focusPath": "service.py",
+          "id": "positive-identity-check",
           "outcome": "accept",
-          "scenarioId": "none-guard",
-          "title": "The guarded name is the match subject"
+          "scenarioId": "binary-presence",
+          "title": "An explicit identity check handles present and absent values"
         }
       ],
       "optionsSchemaSource": null
@@ -20271,6 +20271,36 @@
           "outcome": "reject",
           "scenarioId": "single-model-type-dispatch",
           "title": "One model-specific branch still dispatches on runtime type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/playback.py",
+              "source": "from typing import NamedTuple\n\n\nclass Speaker:\n    prompt: str\n\n\nclass Snapshot(NamedTuple):\n    target: object\n    prompt: str | None\n\n    def restore(self):\n        if isinstance(self.target, Speaker) and (prompt := self.prompt) is not None:\n            self.target.prompt = prompt\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/playback.py",
+          "id": "single-optional-update-if",
+          "outcome": "accept",
+          "scenarioId": "optional-update",
+          "title": "A guarded update preserves an empty prompt"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/playback.py",
+              "source": "from typing import NamedTuple\n\n\nclass Speaker:\n    prompt: str\n\n\nclass Snapshot(NamedTuple):\n    target: object\n    prompt: str | None\n\n    def restore(self):\n        match self.target:\n            case Speaker() as speaker if self.prompt is not None:\n                speaker.prompt = self.prompt\n            case _:\n                pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/playback.py",
+          "id": "single-optional-update-match",
+          "outcome": "reject",
+          "scenarioId": "optional-update",
+          "title": "One class and a present value guard a single update"
         },
         {
           "expectedCount": 3,
@@ -22793,7 +22823,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "async def load(store, item_id):\n    match item := await store.get(item_id):\n        case None:\n            return\n        case _:\n            return item.name\n"
+              "source": "async def load(store, item_id):\n    if (item := await store.get(item_id)) is None:\n        return\n    return item.name\n"
             }
           ],
           "fixedFiles": [],
@@ -22801,7 +22831,7 @@
           "id": "guard-bound-lookup",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "The awaited lookup is the match subject"
+          "title": "An explicit identity guard binds the awaited lookup once"
         }
       ],
       "optionsSchemaSource": null

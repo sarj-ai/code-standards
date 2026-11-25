@@ -946,8 +946,7 @@ def _factory_falls_through(statement: ast.stmt) -> bool:
         return False
     if not isinstance(statement, ast.If):
         return True
-    truth = _static_truth(statement.test)
-    if truth is not None:
+    if (truth := _static_truth(statement.test)) is not None:
         return _factory_statements_fall_through(statement.body if truth else statement.orelse)
     return _factory_statements_fall_through(statement.body) or _factory_statements_fall_through(statement.orelse)
 
@@ -1182,8 +1181,6 @@ def _class_is_suppressed(node: ast.ClassDef, source_lines: list[str], code: str)
 
 def annotation_tail(annotation: ast.expr | None) -> str | None:
     match annotation:
-        case None:
-            return None
         case ast.Constant(value=str() as value):
             try:
                 parsed = ast.parse(value, mode="eval")
@@ -1205,6 +1202,8 @@ def annotation_tail(annotation: ast.expr | None) -> str | None:
             if isinstance(inner, ast.Tuple):
                 inner = inner.elts[0] if inner.elts else inner
             return annotation_tail(inner)
+        case None:
+            return None
         case _:
             return _dotted_tail(annotation)
 

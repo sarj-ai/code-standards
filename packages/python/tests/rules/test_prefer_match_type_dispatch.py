@@ -8,6 +8,7 @@ from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleP
 from sarj_python_lint.__main__ import check_source, main
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules.prefer_match_none_check import PreferMatchNoneCheck
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -2343,3 +2344,84 @@ def test_terminating_same_subject_sequence_reports_first_check_once() -> None:
 def test_nonterminating_same_subject_checks_report_separately() -> None:
     source = "from pkg import A, B\ndef f(value):\n    if isinstance(value, A):\n        consume(value)\n    if isinstance(value, B):\n        consume(value)\n"
     assert [finding.line for finding in _check_all(source)] == [3, 5]
+
+
+_OPTIONAL_MATCH = """\
+class Speaker:
+    pass
+def restore(state):
+    match state.target:
+        case Speaker() as speaker if state.prompt is not None:
+            speaker.prompt = state.prompt
+"""
+_PASS_ARM = "        case _:\n            pass\n"
+
+
+@pytest.mark.parametrize("fallback", ["", _PASS_ARM], ids=["implicit-fallback", "wildcard-pass"])
+def test_single_class_optional_update_is_one_manual_warning(fallback: str) -> None:
+    source = _OPTIONAL_MATCH + fallback
+    path = Path("app/playback.py")
+    [finding] = check_source([PreferMatchTypeDispatch(), PreferMatchNoneCheck()], path, source)
+    assert (finding.line, finding.code, finding.severity) == (4, "SARJ080", Severity.WARNING)
+    assert "isinstance first" in finding.message
+    assert fix_source(path, source, rule_ids=["prefer-match-type-dispatch"]) == source
+
+
+@pytest.mark.parametrize("read", ["(prompt := state.prompt)", "state.prompt", "known_prompt"])
+def test_single_optional_if_stays_clear_of_both_rules(read: str) -> None:
+    source = (
+        "class Speaker:\n    pass\ndef restore(state, known_prompt):\n"
+        f"    if isinstance(state.target, Speaker) and {read} is not None:\n"
+        "        use(state.target)\n"
+    )
+    assert check_source([PreferMatchTypeDispatch(), PreferMatchNoneCheck()], Path("app/playback.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("state.target:", "resolve(state):"),
+        ("Speaker()", "Speaker(prompt=value)"),
+        ("Speaker()", "Speaker() | Other()"),
+        ("state.prompt is not None", "state.prompt"),
+        ("state.prompt is not None", "state.prompt != None"),
+        ("state.prompt is not None", "state.prompt is not None and state.ready"),
+        ("state.prompt is not None", "fetch(state) is not None"),
+        ("speaker.prompt = state.prompt", "speaker.prompt = state.fallback"),
+        ("speaker.prompt = state.prompt", "reset(state)\n            speaker.prompt = state.prompt"),
+        ("speaker.prompt = state.prompt", "consume(lambda: state.prompt)"),
+        ("            pass", "            recover(state)"),
+        ("case _:", "case _ if state.ready:"),
+        ("case _:", "case Other():"),
+        ("def restore(state):", "def restore(state, isinstance):"),
+    ],
+)
+def test_optional_match_excludes_structural_dispatch_and_effects(old: str, new: str) -> None:
+    source = (_OPTIONAL_MATCH + _PASS_ARM).replace(old, new)
+    assert _check_all(source) == []
+
+
+@pytest.mark.parametrize("after", ["    return speaker\n", "    return locals()\n"])
+def test_optional_class_capture_cannot_escape_the_guard(after: str) -> None:
+    assert _check_all(_OPTIONAL_MATCH + after) == []
+
+
+def test_plain_class_optional_match_without_capture() -> None:
+    source = _OPTIONAL_MATCH.replace(" as speaker", "").replace("speaker.prompt = state.prompt", "emit(state.prompt)")
+    [finding] = _check_all(source)
+    assert finding.severity == Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "condition_and_body",
+    [
+        "and (prompt := state.prompt):\n        use(prompt)",
+        "and (prompt := state.prompt) is not None:\n        use(prompt)\n    else:\n        fallback()",
+        "and (prompt := state.prompt) is not None:\n        use(prompt)\n    elif isinstance(state.target, int):\n        fallback()",
+    ],
+    ids=["truthiness-drops-empty-values", "meaningful-fallback", "second-class-arm"],
+)
+def test_single_presence_exception_requires_identity_and_one_action(condition_and_body: str) -> None:
+    source = f"class Speaker:\n    pass\ndef restore(state):\n    if isinstance(state.target, Speaker) {condition_and_body}\n"
+    [finding] = _check_all(source)
+    assert _SINGLE_CHECK in finding.message

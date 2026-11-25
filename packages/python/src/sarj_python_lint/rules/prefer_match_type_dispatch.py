@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
+from sarj_python_lint.rules._ast_names import root_name
 from sarj_python_lint.rules._binding_inventory import binding_names
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredClass, DeclaredContracts
 from sarj_python_lint.rules._imports import ImportIndex
@@ -58,6 +59,11 @@ _BUILTIN_TYPES = frozenset(
 )
 _BUILTIN_CLASSES = frozenset(name for name, _ in inspect.getmembers(builtins, inspect.isclass))
 _STDLIB_AST_TYPES = frozenset(name for name, value in dict[str, object](vars(ast)).items() if isinstance(value, type))
+_ORDINARY_AST_NODES = frozenset(
+    f"ast.{name}"
+    for name, value in dict[str, object](vars(ast)).items()
+    if type(value) is type and issubclass(value, ast.AST)
+)
 
 
 class _TypeBranch(NamedTuple):
@@ -109,14 +115,16 @@ class PreferMatchTypeDispatch(ProjectRule):
         ),
         remediation=(
             "Replace the branches with `match subject` and one class-pattern arm per distinct type; combine types "
-            "that share behavior with an OR-pattern."
+            "that share behavior with an OR-pattern. For one class check followed by an optional-value guard, "
+            "use a single if. Bind a stable lookup with := when its value is reused."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch errors require two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior.",
-            "Every other statement-level isinstance check whose classes can be class patterns is a warning: an if/elif chain led by a positive check (optionally followed by `and` guards or OR-ed with `subject is None`), a negated check with a plain else, and a return or assignment of an isinstance-led `and` or of a conditional expression. Later checks of a terminating same-subject sequence join the first finding.",
+            "Other statement-level isinstance checks whose classes can be class patterns are warnings: an if/elif chain led by a positive check (optionally followed by `and` guards or OR-ed with `subject is None`), a negated check with a plain else, and a return or assignment of an isinstance-led `and` or of a conditional expression. Later checks of a terminating same-subject sequence join the first finding.",
+            "A single class test followed by an explicit is-not-None presence check can use an if when its fallback does nothing. A class-only match with that guard and one direct use of the optional value receives manual guidance. Preserve capture scope, short-circuit order and observable attribute reads. Structural patterns and meaningful fallbacks remain eligible for match.",
             "Asserts, comprehension and lambda filters, call arguments, nested conditional expressions, while tests, bare predicate returns, non-leading conjuncts, negated guards without else, and subjects other than names or attribute chains remain allowed because no match statement fits there cleanly. Classes must be builtins, file-local classes or non-typing imports; CONSTANT_STYLE names are presumed runtime type tuples. A keyword sub-pattern on a missing attribute falls through instead of raising AttributeError.",
             "Guarded dispatch over proven stdlib AST classes is an error; other proven classes retain a manual warning. Keep the type check first, preserve guard order and retain the fallback. Guards with assignment expressions, await or yield are excluded. Imported classes without source proof remain excluded; this extension has no automatic fix.",
             "Call-bearing guards, a guarded type repeated in a later arm, and a terminating prefix whose final arm falls through are warnings only for proven non-builtin classes on a function-local subject that no global or nonlocal declaration can rebind; an unguarded repeated type remains excluded as dead dispatch. A `subject is None` arm joins this dispatch as `case None` when at least two class arms remain; equality with None does not.",
@@ -250,6 +258,48 @@ class PreferMatchTypeDispatch(ProjectRule):
                     ),
                 ),
                 focus_path=PurePosixPath("app/voices.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="single-optional-update-match",
+                scenario="optional-update",
+                title="One class and a present value guard a single update",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/playback.py",
+                        "from typing import NamedTuple\n"
+                        "class Speaker:\n    prompt: str\n"
+                        "class Snapshot(NamedTuple):\n    target: object\n    prompt: str | None\n"
+                        "    def restore(self):\n"
+                        "        match self.target:\n"
+                        "            case Speaker() as speaker if self.prompt is not None:\n"
+                        "                speaker.prompt = self.prompt\n"
+                        "            case _:\n                pass\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/playback.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="single-optional-update-if",
+                scenario="optional-update",
+                title="A guarded update preserves an empty prompt",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/playback.py",
+                        "from typing import NamedTuple\n"
+                        "class Speaker:\n    prompt: str\n"
+                        "class Snapshot(NamedTuple):\n    target: object\n    prompt: str | None\n"
+                        "    def restore(self):\n"
+                        "        if isinstance(self.target, Speaker) and (prompt := self.prompt) is not None:\n"
+                        "            self.target.prompt = prompt\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/playback.py"),
                 expected_count=0,
                 public=True,
             ),
@@ -643,6 +693,8 @@ def _starts_if_check(
         branch.lineno in reported for branch in branches
     ):
         return False
+    if _single_presence_guard(node):
+        return False
     subject = next(filter(None, (checks.subject(branch.test) for branch in branches)), None)
     if subject is None and node.orelse and not isinstance(node.orelse[0], ast.If):
         subject = checks.subject(node.test, negated=True)
@@ -663,6 +715,28 @@ def _value_checks_type(value: ast.expr | None, checks: _CheckParser) -> bool:
             return checks.subject(first) is not None
         case ast.IfExp(test=test):
             return checks.subject(test) is not None or checks.subject(test, negated=True) is not None
+        case _:
+            return False
+
+
+def _present_value(test: ast.expr | None) -> ast.expr | None:
+    match test:
+        case ast.Compare(left=value, ops=[ast.IsNot()], comparators=[ast.Constant(value=None)]):
+            return value
+        case _:
+            return None
+
+
+def _single_presence_guard(node: ast.If) -> bool:
+    match node:
+        case ast.If(
+            test=ast.BoolOp(
+                op=ast.And(),
+                values=[ast.Call(func=ast.Name(id="isinstance"), args=[_, ast.Name() | ast.Attribute()]), guard],
+            ),
+            orelse=[] | [ast.Pass()],
+        ):
+            return isinstance(_present_value(guard), ast.Name | ast.Attribute | ast.NamedExpr)
         case _:
             return False
 
@@ -1053,7 +1127,19 @@ def _review_dispatch_findings(
 ) -> list[Diagnostic]:
     evidence = _ReviewEvidence(context.imports, DeclaredContracts(context), local_classes, unsafe_bindings, {})
     used = {item.line for item in existing}
-    findings: list[Diagnostic] = []
+    findings = [
+        Diagnostic(
+            context.path,
+            node.lineno,
+            node.col_offset + 1,
+            "SARJ080",
+            "Use one if with isinstance first and an explicit is not None guard. Preserve the subject binding "
+            "and evaluation order. Bind a stable optional read with := when its value is reused.",
+            severity=Severity.WARNING,
+        )
+        for node in context.nodes(ast.Match)
+        if _single_presence_match(node, context, evidence)
+    ]
     for candidates in _review_sequences(context, used):
         branches = _review_dispatch_proven(candidates, evidence)
         if branches is None:
@@ -1072,6 +1158,68 @@ def _review_dispatch_findings(
             )
         )
     return findings
+
+
+def _single_presence_match(node: ast.Match, context: PythonFileContext, evidence: _ReviewEvidence) -> bool:
+    match node.cases:
+        case [arm] | [arm, ast.match_case(pattern=ast.MatchAs(pattern=None, name=None), guard=None, body=[ast.Pass()])]:
+            pass
+        case _:
+            return False
+    value = _present_value(arm.guard)
+    if (
+        value is None
+        or _attribute_root(value) is None
+        or _attribute_root(node.subject) is None
+        or not _direct_optional_use(arm.body, value)
+    ):
+        return False
+    pattern = arm.pattern
+    match pattern:
+        case ast.MatchAs(pattern=inner):
+            if not _local_arm_capture(pattern, node, context):
+                return False
+            pattern = inner
+        case _:
+            pass
+    match pattern:
+        case ast.MatchClass(cls=kind, patterns=[], kwd_attrs=[], kwd_patterns=[]):
+            return (
+                _type_reference(kind, evidence.imports, evidence.local_classes, evidence.unsafe_bindings) is not None
+                or evidence.contracts.class_type(kind, at=node) is not None
+            )
+        case _:
+            return False
+
+
+def _direct_optional_use(body: list[ast.stmt], value: ast.expr) -> bool:
+    match body:
+        case [ast.Return(value=read) | ast.Assign(value=read) | ast.AnnAssign(value=read)]:
+            pass
+        case [ast.Expr(value=ast.Call(func=ast.Name(), args=[read], keywords=[]))]:
+            pass
+        case _:
+            return False
+    return read is not None and ast.dump(read) == ast.dump(value)
+
+
+def _local_arm_capture(capture: ast.MatchAs, node: ast.Match, context: PythonFileContext) -> bool:
+    inventory = context.binding_inventory
+    name = capture.name
+    scope = inventory.scope(node)
+    if (
+        name is None
+        or not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef)
+        or context.dynamic_namespace
+        or name in inventory.external_bindings
+        or inventory.bindings.get(scope, {}).get(name) != (capture,)
+    ):
+        return False
+    return all(
+        node.lineno <= read.lineno <= (node.end_lineno or node.lineno)
+        for read in inventory.reads.get(name, ())
+        if scope.lineno <= read.lineno <= (scope.end_lineno or scope.lineno)
+    )
 
 
 def _review_sequences(context: PythonFileContext, used: set[int]) -> Iterator[Iterator[ast.If]]:
@@ -1697,6 +1845,45 @@ def _type_references(
     if any(reference is None for reference in references):
         return None
     return frozenset(reference for reference in references if reference is not None)
+
+
+def none_disjoint_class_references(context: PythonFileContext, references: set[ast.expr]) -> frozenset[ast.expr]:
+    tree = context.tree
+    if not references or tree is None:
+        return frozenset()
+    all_nodes = tuple(context.nodes(ast.AST))
+    if any(isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes):
+        return frozenset()
+    imports = context.imports
+    unsafe = _unsafe_local_bound_names(tree, all_nodes, imports) | _namespace_mutations(all_nodes, imports)
+    local_classes = _unshadowed_module_classes(tree, all_nodes, imports, unsafe)
+    bound_at = _module_class_and_import_lines(tree)
+    return frozenset(
+        reference
+        for reference in references
+        if (name := root_name(reference)) is not None
+        and bound_at.get(name, 0) < reference.lineno
+        and _ordinary_present_type(_type_reference(reference, imports, local_classes, unsafe))
+    )
+
+
+def _module_class_and_import_lines(tree: ast.Module) -> dict[str, int]:
+    bound_at: dict[str, int] = {}
+    for statement in tree.body:
+        match statement:
+            case ast.ClassDef(name=name):
+                bound_at[name] = statement.end_lineno or statement.lineno
+            case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
+                bound_at.update((name, statement.lineno) for alias in aliases for name in binding_names(alias))
+            case _:
+                pass
+    return bound_at
+
+
+def _ordinary_present_type(symbol: str | None) -> bool:
+    return (
+        symbol is not None and symbol != "object" and (not symbol.startswith("ast.") or symbol in _ORDINARY_AST_NODES)
+    )
 
 
 def _type_reference(
