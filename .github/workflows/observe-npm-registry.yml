@@ -1,4 +1,4 @@
-name: Observe npm registry attestations
+name: Observe archived npm attestations
 on:
   push:
     branches: [codex/npm-proof-observation-97439610]
@@ -7,48 +7,45 @@ permissions:
   contents: read
 
 jobs:
-  registry:
-    name: Public registry responses on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  archive:
+    name: Inspect publisher cache ${{ matrix.period }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    defaults:
-      run:
-        shell: bash
+        include:
+          - period: original
+            digest: 4947bbad09623bc7844c0068123ba286967e312a1f9767e8b2c9a88e66c7db66
+          - period: current
+            digest: c79b1be3c4021786736e1831b81e31820b67fc056711ba4266821a5944cdf395
     steps:
       - name: Harden the runner
-        if: runner.os == 'Linux'
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Read the advertised tsrs attestation document
+      - name: Restore the exact npm release cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /home/runner/.npm
+          key: node-cache-Linux-x64-npm-${{ matrix.digest }}
+          fail-on-cache-miss: true
+      - name: Look up the original signed GNU binding document
         run: >-
-          curl --silent --show-error --max-time 25 --proto '=https'
-          --header 'Accept: application/json' --output tsrs.json
-          --write-out 'tsrs HTTP %{http_code} %{content_type} %{size_download}\n'
+          bash .github/scripts/read-cached-npm-proof.sh
+          /home/runner/.npm/_cacache
           'https://registry.npmjs.org/-/npm/v1/attestations/@tsrs%2flinux-x64-gnu@7.1.0-beta.tsrs5'
-      - name: Read the advertised Oxc attestation document
-        run: >-
-          curl --silent --show-error --max-time 25 --proto '=https'
-          --header 'Accept: application/json' --output oxc.json
-          --write-out 'oxc HTTP %{http_code} %{content_type} %{size_download}\n'
-          'https://registry.npmjs.org/-/npm/v1/attestations/@oxc-parser%2fbinding-linux-x64-gnu@0.160.0'
-      - name: Archive the unmodified public responses
+          'pkg:npm/%40tsrs/linux-x64-gnu@7.1.0-beta.tsrs5'
+          '87283bd1bb4209a313dd1bc5614d0a1226c5c908c55147ebaa4e334e5eeb7ffec6dc73cedd7eac12cf09fc01d852f241d1c03e757814fda7648997f55c923f5c'
+          tsrs.json
+      - name: Archive recovered public signatures
+        if: hashFiles('tsrs.json') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: registry-responses-${{ matrix.os }}
-          path: |
-            tsrs.json
-            oxc.json
-          retention-days: 7
+          name: original-tsrs-${{ matrix.period }}
+          path: tsrs.json
           if-no-files-found: error
-      - name: Check for signed envelopes in each response
-        run: |
-          jq -e -f .github/scripts/observe-npm-envelopes.jq tsrs.json
-          jq -e -f .github/scripts/observe-npm-envelopes.jq oxc.json
+          retention-days: 7
