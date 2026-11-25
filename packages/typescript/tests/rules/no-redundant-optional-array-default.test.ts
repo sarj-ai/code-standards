@@ -123,6 +123,20 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
   ],
   invalid: [
     {
+      name: "retains a regular file header when removing a private wrapper",
+      filename: PRODUCTION,
+      code: "/* Project license */\r\nimport { z } from 'zod/v3'; const Items = z.array(z.string()).optional().default([]);",
+      output: "/* Project license */\r\nimport { z } from 'zod/v3'; const Items = z.array(z.string()).default([]);",
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "preserves a legacy wrapper observed by a JSDoc type reference",
+      filename: PRODUCTION,
+      code: "/** @typedef {typeof Items} Schema */\nimport { z } from 'zod/v3'; const Items = z.array(z.string()).optional().default([]);",
+      output: null,
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
       name: "fixes an exclusively owned aliased legacy namespace",
       filename: PRODUCTION,
       code: "import * as schema from 'zod/v3'; const Items = schema.array(schema.string()).optional().default([]);",

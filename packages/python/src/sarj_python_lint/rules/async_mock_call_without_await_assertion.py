@@ -264,9 +264,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
         imports = context.module_imports
         builtin_len = builtin_namespace_untouched(context)
         writes = {
-            _reference(node)
-            for node in context.nodes(ast.AST)
-            if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
+            _reference(node) for node in context.nodes(ast.Attribute) if isinstance(node.ctx, (ast.Store, ast.Del))
         }
         return [
             finding

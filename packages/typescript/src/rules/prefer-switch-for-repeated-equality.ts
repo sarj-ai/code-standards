@@ -56,7 +56,8 @@ function switchText(chain: Chain, sourceCode: SourceCode): string {
     branch.type === "BlockStatement" ? sourceCode.getText(branch) : `{ ${sourceCode.getText(branch)} }`;
   const chunks = chain.cases.map(({ value, branch }) => `case ${sourceCode.getText(value)}: ${block(branch)}`);
   if (chain.fallback !== null) chunks.push(`default: ${block(chain.fallback)}`);
-  return `switch (${sourceCode.getText(chain.discriminant)}) {\n${chunks.join("\n")}\n}`;
+  const newline = sourceCode.text.includes("\r\n") ? "\r\n" : "\n";
+  return `switch (${sourceCode.getText(chain.discriminant)}) {${newline}${chunks.join(newline)}${newline}}`;
 }
 
 function switchCases(node: ESTree.IfStatement): Chain | null {

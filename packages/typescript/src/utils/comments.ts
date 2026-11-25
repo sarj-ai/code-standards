@@ -6,6 +6,26 @@
 
 import type { Comment, ESTree, SourceCode } from "@oxlint/plugins";
 
+const NON_RATIONALE = /^(?:(?:eslint|oxlint)-|@ts-|prettier-ignore|biome-ignore|[cv]8\s|istanbul\s|SPDX-License-Identifier:|@license\b|copyright\b)/iu;
+
+export function isCatchRationale(comment: Comment): boolean {
+  const body = comment.value.replace(/^[\s*]+/u, "").trimEnd();
+  return body.length > 0 && !NON_RATIONALE.test(body);
+}
+
+export function hasLeadingCatchRationale(node: ESTree.Node, sourceCode: SourceCode): boolean {
+  const before = sourceCode.getTokenBefore(node);
+  let nextLine = node.loc.start.line;
+  const comments = sourceCode.getCommentsBefore(node);
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const comment = comments[i];
+    if (comment === undefined || comment.loc.end.line < nextLine - 1 || before?.loc.end.line === comment.loc.start.line) break;
+    if (isCatchRationale(comment)) return true;
+    nextLine = comment.loc.start.line;
+  }
+  return false;
+}
+
 const REF_RE =
   /https?:\/\/|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|(?<![&\w])#\d{2,6}\b|@[a-z][\w.-]*\.(?:us|com|ai|io|net|org|dev)\b/;
 

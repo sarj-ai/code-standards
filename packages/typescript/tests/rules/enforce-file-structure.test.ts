@@ -169,6 +169,13 @@ RULE_TESTER.run("enforce-file-structure", rule, {
   ],
   invalid: [
     {
+      name: "keeps CRLF when moving type-only imports",
+      filename: NON_ACTION_FILENAME,
+      code: "export {};\r\nconst value = 1;\r\nimport type { Row } from './row.js';",
+      output: "export {};\r\nimport type { Row } from './row.js';\r\nconst value = 1;\r\n",
+      errors: [{ messageId: "importsFirst" }],
+    },
+    {
       name: "moves only erased imports while preserving the directive prologue",
       code: '"use client"; const value = 1; import type { Foo } from "foo"; type Bar = Foo; import type { Baz } from "baz";',
       output: '"use client"; import type { Foo } from "foo";\nimport type { Baz } from "baz";\nconst value = 1;  type Bar = Foo; ',

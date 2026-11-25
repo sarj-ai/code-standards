@@ -82,9 +82,7 @@ class RequirePydanticForStructuredPayload(Rule):
         imports = context.module_imports
         structured_fields = _structured_record_fields(tree, imports)
         findings: list[Diagnostic] = []
-        for function in (
-            node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ):
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             if not index.routes(function):
                 continue
             parameters = {

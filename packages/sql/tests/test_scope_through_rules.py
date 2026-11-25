@@ -67,6 +67,27 @@ def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId
     assert len(rule.check(path, f"{prefix}\n{signal}")) == 1
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_copy_records_cannot_change_column_diagnostics_on_either_side(newline: str) -> None:
+    statement = "CREATE TABLE event (details JSON);"
+    source = newline.join(
+        (statement, "COPY seed(body) FROM STDIN;", "'unclosed; -- dialect: mysql", statement, r"\.", statement)
+    )
+    path = Path("supabase/migrations/001_data.sql")
+    diagnostics = PreferJsonb().check(path, source)
+    assert [(item.line, item.col) for item in diagnostics] == [
+        (1, statement.index("JSON") + 1),
+        (6, statement.index("JSON") + 1),
+    ]
+
+
+def test_copy_data_cannot_supply_migration_checks_or_hide_later_indexes() -> None:
+    path = Path("supabase/migrations/001_indexes.sql")
+    statement = "CREATE INDEX item_key ON item (key);"
+    source = f"-- migrate:up\nCOPY seed FROM STDIN;\n{statement}\n-- PostgreSQL database dump\n\\.\n{statement}\n"
+    assert [item.line for item in REGISTRY[RuleId("index-concurrently")]().check(path, source)] == [6]
+
+
 # Each legacy migration rule must emit once; timeout-header rules are excluded from this fixture's contract.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');

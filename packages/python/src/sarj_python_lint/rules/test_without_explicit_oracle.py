@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._ast_names import assigned_values
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import uses_benchmark_fixture
 from sarj_python_lint.rules._test_assertions import names_verification, reads_as_verification
@@ -153,24 +154,12 @@ def _opts_out(statements: Sequence[ast.stmt]) -> bool:
         isinstance(target, ast.Name)
         and target.id == "__test__"
         and (not isinstance(value, ast.Constant) or value.value is not True)
-        for target, value in _assignments(statements)
+        for target, value in assigned_values(statements)
     )
 
 
-def _assignments(statements: Sequence[ast.stmt]) -> Iterator[tuple[ast.expr, ast.expr]]:
-    for statement in statements:
-        match statement:
-            case ast.Assign():
-                for target in statement.targets:
-                    yield target, statement.value
-            case ast.AnnAssign() if statement.value is not None:
-                yield statement.target, statement.value
-            case _:
-                pass
-
-
 def _scope_marks(statements: Sequence[ast.stmt], imports: ImportIndex) -> bool:
-    for target, value in _assignments(statements):
+    for target, value in assigned_values(statements):
         if isinstance(target, ast.Name) and target.id == "pytestmark":
             marks = value.elts if isinstance(value, (ast.List, ast.Tuple)) else [value]
             if not _safe_marks(marks, imports):
@@ -181,7 +170,7 @@ def _scope_marks(statements: Sequence[ast.stmt], imports: ImportIndex) -> bool:
 def _disabled_tests(statements: Sequence[ast.stmt]) -> frozenset[str]:
     return frozenset(
         ast.unparse(target.value)
-        for target, value in _assignments(statements)
+        for target, value in assigned_values(statements)
         if (
             isinstance(target, ast.Attribute)
             and target.attr == "__test__"

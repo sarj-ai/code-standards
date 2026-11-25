@@ -143,6 +143,9 @@ RULE_TESTER.run("no-log-only-catch", rule, {
     },
   ],
   invalid: [
+    { name: "keeps an unrelated trailing explanation with the preceding statement", code: "start(); // Startup is best effort.\ntry { read(); } catch (error) { console.error(error); }", errors: [{ messageId: "noLogOnlyCatch" }] },
+    { name: "a license header cannot explain a discarded failure", code: "/* SPDX-License-Identifier: MIT */\ntry { load(); } catch {}", errors: [{ messageId: "emptyCatch" }] },
+    { name: "a formatter directive cannot explain a discarded failure", code: "try { load(); } catch { /* prettier-ignore */ }", errors: [{ messageId: "emptyCatch" }] },
     {
       name: "recognizes a static computed console method as logging",
       code: "try { f(); } catch (e) { console['error'](e); }",

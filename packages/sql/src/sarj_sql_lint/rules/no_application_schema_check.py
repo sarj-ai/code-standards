@@ -4,6 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     POSTGRES_IDENTIFIER_CONTINUATION,
     AutofixPolicy,
@@ -129,6 +130,7 @@ class NoApplicationSchemaCheck(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         if "check" not in source.casefold() or is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)

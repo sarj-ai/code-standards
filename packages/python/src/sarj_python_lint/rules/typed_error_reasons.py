@@ -174,7 +174,7 @@ class TypedErrorReasons(Rule):
             return []
 
         diagnostics: list[Diagnostic] = []
-        for error_class in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for error_class in context.nodes(ast.ClassDef):
             if not _is_conventional_exception(error_class):
                 continue
             constructor = _error_constructor(error_class)

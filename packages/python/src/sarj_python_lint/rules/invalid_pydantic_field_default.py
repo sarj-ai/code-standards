@@ -234,7 +234,7 @@ class InvalidPydanticFieldDefault(Rule):
             return []
         imports = context.imports
         diagnostics: list[Diagnostic] = []
-        for class_node in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for class_node in context.nodes(ast.ClassDef):
             if not _is_direct_base_model(class_node, imports):
                 continue
             transformers = _default_transformers(class_node, imports)
@@ -289,10 +289,11 @@ def _resolve_annotation_contract(
             constraints=(),
             transforms_default=False,
         )
-    if isinstance(annotation, ast.Name):
-        resolved = _named_annotation_contract(path, tree, annotation, seen=seen, depth=depth)
-        if resolved is not None:
-            return resolved
+    if (
+        isinstance(annotation, ast.Name)
+        and (resolved := _named_annotation_contract(path, tree, annotation, seen=seen, depth=depth)) is not None
+    ):
+        return resolved
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"
     ):
@@ -459,8 +460,7 @@ def _invalid_default_message(
             "use one of the declared literal values."
         )
 
-    violation = _bound_violation(literal, container_length, constraints)
-    if violation is not None:
+    if (violation := _bound_violation(literal, container_length, constraints)) is not None:
         bound_name = violation.bound_name
         bound = violation.bound
         rendered_default = repr(literal) if literal is not _MISSING else ast.unparse(default)
@@ -679,8 +679,7 @@ def _literal_string_arguments(call: ast.Call) -> frozenset[str]:
 def _named_annotation_contract(
     path: Path, tree: ast.Module, annotation: ast.Name, *, seen: frozenset[tuple[Path, str]], depth: int
 ) -> _AnnotationContract | None:
-    local = _module_alias_expression(tree, annotation.id)
-    if local is not None:
+    if (local := _module_alias_expression(tree, annotation.id)) is not None:
         return _resolve_annotation_contract(path, tree, local, seen=seen, depth=depth + 1)
     imported = _imported_symbol(tree, annotation.id)
     target = _resolve_imported_module(path, imported) if imported is not None else None

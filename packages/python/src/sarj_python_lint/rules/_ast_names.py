@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
 
 
 def root_name(node: ast.expr) -> str | None:
@@ -61,3 +66,15 @@ def assignment_names(node: ast.AST) -> set[str]:
             return assignment_names(value)
         case _:
             return set()
+
+
+def assigned_values(statements: Sequence[ast.stmt]) -> Iterator[tuple[ast.expr, ast.expr]]:
+    for statement in statements:
+        match statement:
+            case ast.Assign():
+                for target in statement.targets:
+                    yield target, statement.value
+            case ast.AnnAssign() if statement.value is not None:
+                yield statement.target, statement.value
+            case _:
+                pass

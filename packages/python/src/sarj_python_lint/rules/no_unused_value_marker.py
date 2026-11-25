@@ -157,10 +157,8 @@ class NoUnusedValueMarker(Rule):
             return []
         markers = [
             node
-            for node in context.nodes(ast.AST)
-            if isinstance(node, (ast.Assign, ast.AnnAssign))
-            and _is_unused_value_marker(node)
-            and not _scope_reads_marker(context, node)
+            for node in context.nodes(ast.Assign, ast.AnnAssign)
+            if _is_unused_value_marker(node) and not _scope_reads_marker(context, node)
         ]
         if not markers:
             return []

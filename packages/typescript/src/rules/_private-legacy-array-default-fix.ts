@@ -44,19 +44,19 @@ export function privateLegacyArrayDefaultFix(
   return (fixer) => fixer.replaceText(optional, sourceCode.getText(array));
 }
 
-/** `import { z } from "zod/v3"` (or a namespace import) and one `const` declaration, in a comment-free module. */
+/** Ordinary headers can precede the import. JSDoc and triple-slash directives can introduce type dependencies. */
 function legacyZodSchema(
   sourceCode: SourceCode,
 ): { readonly specifier: Specifier; readonly declaration: ESTree.VariableDeclarator } | null {
   const [imported, statement] = sourceCode.ast.body;
   if (
     sourceCode.ast.body.length !== 2 ||
-    sourceCode.getAllComments().length !== 0 ||
     imported?.type !== "ImportDeclaration" ||
     imported.source.value !== "zod/v3" ||
     imported.importKind === "type" ||
     imported.specifiers.length !== 1 ||
-    statement?.type !== "VariableDeclaration"
+    statement?.type !== "VariableDeclaration" ||
+    sourceCode.getAllComments().some((comment) => comment.range[1] > imported.range[0] || /^[*/]/u.test(comment.value))
   )
     return null;
   const [specifier] = imported.specifiers;

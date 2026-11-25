@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._annotation_semantics import bit_or_members
+from sarj_python_lint.rules._ast_names import assigned_values, assignment_names
 from sarj_python_lint.rules._nullable_outcome import nullable_outcome_diagnostics
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -29,6 +30,7 @@ _SCALARS = frozenset({"str", "bytes", "int", "float", "complex", "bool"})
 type _MemberKind = Literal["raw", "failure", "variant"]
 _ENUM_TYPES = frozenset({"enum.Enum", "enum.IntEnum", "enum.StrEnum"})
 _ENUM_DECORATORS = frozenset({"enum.unique", "typing.final", "typing_extensions.final"})
+_DESCRIPTORS = frozenset({"classmethod", "staticmethod", "property"})
 _FAILURE_EXAMPLE = "from enum import Enum\nclass ReadFailure(Enum):\n    CLOSED = 1\n"
 _RAW_RESULT = _FAILURE_EXAMPLE + "type ReadResult = bytes | ReadFailure | None\ndef read() -> ReadResult: return None\n"
 _NAMED_RESULT = (
@@ -204,5 +206,65 @@ def _failure_enum(owner: ast.ClassDef, facts: AnnotationOrigins) -> bool:
         and len(owner.bases) == 1
         and facts.qualified(owner.bases[0], owner.bases[0]) in _ENUM_TYPES
         and all(facts.qualified(decorator, decorator) in _ENUM_DECORATORS for decorator in owner.decorator_list)
-        and any(isinstance(item, ast.Assign) for item in owner.body)
+        and _has_enum_member(owner, facts)
     )
+
+
+def _has_enum_member(owner: ast.ClassDef, facts: AnnotationOrigins) -> bool:
+    ignored: set[str] = set()
+    for target, value in assigned_values(owner.body):
+        names = assignment_names(target)
+        if "_ignore_" in names:
+            ignored_names = _enum_ignore_names(value)
+            if ignored_names is None:
+                return False
+            ignored.update(ignored_names)
+        if _nonmember_value(value, facts):
+            continue
+        if any(name not in ignored and _enum_value_name(name, owner.name) for name in names):
+            return True
+    return False
+
+
+def _enum_ignore_names(value: ast.expr) -> set[str] | None:
+    match value:
+        case ast.Constant(value=str() as words):
+            return set(words.replace(",", " ").split())
+        case ast.List(elts=items) | ast.Tuple(elts=items) | ast.Set(elts=items):
+            names: set[str] = set()
+            for item in items:
+                match item:
+                    case ast.Constant(value=str() as name):
+                        names.add(name)
+                    case _:
+                        return None
+            return names
+        case _:
+            return None
+
+
+def _enum_value_name(name: str, class_name: str) -> bool:
+    stem = name.strip("_")
+    if not stem:
+        return True
+    if name.startswith(("__", f"_{class_name}__")) and not name.endswith("__"):
+        return False
+    return name not in {f"_{stem}_", f"__{stem}__"}
+
+
+def _nonmember_value(value: ast.expr, facts: AnnotationOrigins) -> bool:
+    match value:
+        case ast.Lambda():
+            return True
+        case ast.Call(func=ast.Name(id=name) as func) if name in _DESCRIPTORS and facts.builtin(func, name, value):
+            return True
+        case ast.Call(func=func):
+            return facts.qualified(func, value) in {
+                "enum.nonmember",
+                "enum.property",
+                "builtins.classmethod",
+                "builtins.staticmethod",
+                "builtins.property",
+            }
+        case _:
+            return False

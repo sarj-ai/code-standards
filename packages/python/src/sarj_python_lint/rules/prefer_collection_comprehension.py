@@ -308,7 +308,7 @@ class PreferCollectionComprehension(Rule):
         diagnostics: list[Diagnostic] = []
         set_shadowed = _set_is_shadowed(tree, node_index=context.node_index)
         namespace_observers = _namespace_observer_calls(context)
-        for owner in (node for node in context.nodes(ast.AST) if isinstance(node, _Callable)):
+        for owner in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             for finding, loop in _owner_candidates(
                 owner, source_lines, comments, namespace_observers, set_shadowed=set_shadowed
             ):
@@ -589,10 +589,11 @@ def _loop_replacement(
 ) -> _LoopReplacement | None:
     if initialized_kind is _CollectionKind.DICT:
         return _dict_replacement(loop, name, bound_names)
-    if initialized_kind is _CollectionKind.LIST:
-        replacement = _list_replacement(loop, name, bound_names, bindings)
-        if replacement is not None:
-            return replacement
+    if (
+        initialized_kind is _CollectionKind.LIST
+        and (replacement := _list_replacement(loop, name, bound_names, bindings)) is not None
+    ):
+        return replacement
     if initialized_kind is _CollectionKind.SET:
         return _set_replacement(loop, name, bound_names)
     return None

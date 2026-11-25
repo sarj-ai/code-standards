@@ -194,6 +194,9 @@ ruleTester().run("no-silent-promise-catch", rule, {
     { name: "silent-rejection-dynamic-member", filename: "src/load.ts", code: "load()[auditDynamicMember](() => null);" },
   ],
   invalid: [
+    { name: "keeps a previous statement's trailing explanation with its owner", code: "start(); // Startup is best effort.\nload().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "reports a silent rejection after a detached comment", code: "// This module serves requests.\n\nload().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "an empty comment cannot explain a discarded failure", code: "load().catch(() => { /**/ });", errors: [{ messageId: "silentCatch" }] },
     {
       name: "deliberate suppression still reports (valid under ESLint; Oxlint's RuleTester does not apply disable directives)",
       code: [

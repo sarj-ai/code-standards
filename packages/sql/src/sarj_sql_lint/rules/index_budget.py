@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -89,6 +90,7 @@ class IndexBudget(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         indexes = authored_indexes(path, source)
         table_positions: Counter[str] = Counter()
         findings: list[Diagnostic] = []
