@@ -85,3 +85,49 @@ def test_numeric_uncertainty_is_not_a_failure_variant(error_type: str) -> None:
         "    value: float\n"
     )
     assert PreferOutcomeVariants().check(Path("app/models.py"), source) == []
+
+
+_READ_TYPES = (
+    "from enum import Enum as Enumeration\nfrom typing import TypeAlias, Union\n"
+    "class ReadFailure(Enumeration):\n    CLOSED = 1\n"
+    "class Chunk: pass\nclass End: pass\n"
+)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "type ReadResult = bytes | ReadFailure | None",
+        "type ReadResult = ReadFailure | Chunk | None",
+        "type ReadResult = End | ReadFailure | str",
+        "ReadResult: TypeAlias = Union[None, bytes, ReadFailure]",
+    ],
+)
+def test_return_alias_reports_once_at_its_declaration(declaration: str) -> None:
+    source = (
+        _READ_TYPES
+        + declaration
+        + "\nclass Reader:\n    async def read(self) -> 'ReadResult': ...\ndef other() -> ReadResult: ...\n"
+    )
+    [finding] = PreferOutcomeVariants().check(Path("app/reader.py"), source)
+    assert (finding.line, finding.severity) == (len(_READ_TYPES.splitlines()) + 1, Severity.WARNING)
+    assert "ReadResult" in finding.message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "type ReadResult = Chunk | End | ReadFailure\ndef read() -> ReadResult: ...",
+        "type ReadResult = str | None\ndef read() -> ReadResult: ...",
+        "type ReadResult = bytes | ReadFailure | None\ndef configure(value: ReadResult) -> None: ...",
+        "type ReadResult[T] = T | ReadFailure | None\ndef read() -> ReadResult[bytes]: ...",
+        "type ReadResult = list[bytes | ReadFailure | None]\ndef read() -> ReadResult: ...",
+        "type ReadResult = bytes | ReadFailure | None\ndef echo[ReadResult](value: ReadResult) -> ReadResult: ...",
+        "type ReadResult = bytes | ReadFailure | None  # sarj-noqa: SARJ571 -- A public consumer owns this return contract.\ndef read() -> ReadResult: ...",
+        "class ParseError: pass\ntype ReadResult = bytes | ParseError | None\ndef read() -> ReadResult: ...",
+        "class bytes: pass\ntype ReadResult = bytes | ReadFailure\ndef read() -> ReadResult: ...",
+        "from outside import Stream\ntype ReadResult = Stream | ReadFailure | None\ndef read() -> ReadResult: ...",
+    ],
+)
+def test_nominal_variants_and_ambiguous_return_contracts_are_left_alone(body: str) -> None:
+    assert not PreferOutcomeVariants().check(Path("app/reader.py"), _READ_TYPES + body + "\n")
