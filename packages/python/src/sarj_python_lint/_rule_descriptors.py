@@ -84,7 +84,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_match_none_check",
         class_name="PreferMatchNoneCheck",
         code="SARJ589",
-        description="Prefer match/case for a None check that selects a value or guards later use of a name.",
+        description="Handle present values before an unconditional None arm in optional-value matches.",
         aliases=("prefer-walrus-none-guard",),
         enabled_by_default=True,
     ),

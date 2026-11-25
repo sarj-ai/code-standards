@@ -61,7 +61,11 @@ class NoNullableDependencyFallback(Rule):
         default_level=Severity.WARNING,
         summary="Require concrete function dependencies instead of resolving a None default inside the function.",
         rationale="A None dependency silently selects another implementation or ambient configuration, hiding wiring mistakes and adding unnecessary branches.",
-        remediation="Resolve the dependency at the call site and pass it explicitly; a concrete callable default is also valid when its lifetime is appropriate.",
+        remediation=(
+            "Give a dependency a required type when production wiring always supplies it. Tests can supply an empty "
+            "implementation. Keep the type nullable when absence disables an operation. Resolve fallback implementations "
+            "at the call site, or use a concrete callable default when its lifetime is appropriate."
+        ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -87,9 +91,16 @@ class NoNullableDependencyFallback(Rule):
             ),
             RuleExample(
                 example_id="concrete-factory",
-                title="Caller supplies a concrete dependency",
+                title="The caller supplies a factory and can disable notifications",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(ExampleFile.python("app/service.py", "def run(factory: Factory):\n    return factory()\n"),),
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def run(factory: Factory):\n    return factory()\n\n"
+                        "def notify(sender: Sender | None, message: str):\n"
+                        "    if sender is not None:\n        sender.send(message)\n",
+                    ),
+                ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,

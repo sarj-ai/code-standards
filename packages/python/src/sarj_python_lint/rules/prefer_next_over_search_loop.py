@@ -179,12 +179,12 @@ def _has_deferred_effect(loop: ast.For, condition: ast.expr, found: ast.expr) ->
 
 def _default_source(default: ast.expr | None, target: ast.expr, source: str) -> str | None:
     match default:
-        case None:
-            return "None"
         case ast.Name(id=name) if name in _target_names(target):
             return None
         case ast.Constant() | ast.Name():
             return ast.get_source_segment(source, default)
+        case None:
+            return "None"
         case _:
             return None
 

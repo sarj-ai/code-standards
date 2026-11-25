@@ -438,14 +438,14 @@ class _Analysis:
 
     def _is_snapshot_type(self, annotation: ast.expr | None) -> bool:
         match annotation:
-            case None:
-                return False
             case ast.Constant(value=str() as text):
                 try:
                     parsed = ast.parse(text, mode="eval").body
                 except SyntaxError:
                     return False
                 return self._is_snapshot_type(parsed)
+            case None:
+                return False
             case _:
                 types = self._options.snapshot_types
                 return any(self._owned_symbol(node) in types for node in ast.walk(annotation))

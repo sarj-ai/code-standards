@@ -1,6 +1,7 @@
 from pathlib import Path
 import textwrap
 
+import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze, check_source
@@ -22,191 +23,183 @@ def test_documented_examples() -> None:
     verify_native_rule(PreferMatchNoneCheck, analyze)
 
 
-def test_flags_returned_and_assigned_none_conditional_expressions() -> None:
-    diagnostics = _check(
-        """
-        def frames(self, key):
-            pcm = self._pcm.get(key)
-            return self._frames(pcm) if pcm is not None else None
-
-        def label(user):
-            name: str = "anonymous" if user.profile is None else user.profile.name
-            return name
-
-        def size(cache, key):
-            total = 0 if (entry := cache.get(key)) is None else entry.size
-            return total
-        """
+@pytest.mark.parametrize(
+    "present",
+    [
+        "str()",
+        "False",
+        "0",
+        "-2",
+        "1+3j",
+        "''",
+        "[first, *rest]",
+        "{'key': name}",
+        "(str() | False) as result",
+        "int() if allow()",
+        "value if value is not None",
+        "_ if value is not None",
+        "First()",
+        "Second(field=value)",
+        "tree.Name(id=name)",
+        "Node()",
+        "Text()",
+    ],
+)
+def test_rejects_absence_before_provably_disjoint_values(present: str) -> None:
+    source = (
+        "import ast as tree\nfrom ast import Constant as Node\nfrom builtins import str as Text\n"
+        "class First: pass\nclass Second(First): pass\n"
+        "def decide(value):\n    match value:\n"
+        "        case None: return 'missing'\n"
+        f"        case {present}: return 'present'\n"
+        "        case _: return 'unknown'\n"
     )
-
-    assert [(diagnostic.line, diagnostic.severity) for diagnostic in diagnostics] == [
-        (4, Severity.WARNING),
-        (7, Severity.WARNING),
-        (11, Severity.WARNING),
-    ]
-    assert all(diagnostic.code == "SARJ589" for diagnostic in diagnostics)
-    assert "`match pcm:`" in diagnostics[0].message
-    assert "`match user.profile:`" in diagnostics[1].message
-    assert "`match entry := cache.get(key):`" in diagnostics[2].message
+    [finding] = _check(source)
+    assert (finding.line, finding.code, finding.severity) == (8, "SARJ589", Severity.ERROR)
+    assert "Keep their relative order" in finding.message
+    assert fix_source(Path("app/service.py"), source, rule_ids=["prefer-match-none-check"]) == source
 
 
-def test_skips_default_value_idioms_and_inline_positions() -> None:
+@pytest.mark.parametrize(
+    ("fallback", "captured"), [("_", False), ("selected", True), ("selected if selected is not None", True)]
+)
+def test_binary_match_prefers_an_identity_check(fallback: str, captured: bool) -> None:
+    source = (
+        "def render():\n    match read_once():\n"
+        "        case None: return 'missing'\n"
+        f"        case {fallback}: return 'present'\n"
+    )
+    [finding] = _check(source)
+    assert finding.severity is Severity.ERROR
+    assert "if value is not None" in finding.message
+    assert ("binding of `selected` on the present path" in finding.message) is captured
+    assert fix_source(Path("app/service.py"), source, rule_ids=["prefer-match-none-check"]) == source
+
+
+@pytest.mark.parametrize(
+    "arms",
+    [
+        ["case str(): pass", "case None: pass", "case _: pass"],
+        ["case str(): pass", "case None: pass", "case other: pass"],
+        ["case None if enabled(): pass", "case str(): pass", "case _: pass"],
+        ["case None as absent: pass", "case str(): pass"],
+        ["case None: pass", "case str() | None: pass"],
+        ["case None: pass", "case object(): pass", "case _: pass"],
+        ["case None: pass", "case Foreign(): pass"],
+        ["case None: pass", "case Markers.EMPTY: pass", "case str(): pass"],
+        ["case None: pass", "case candidate if ready(candidate): pass", "case str(): pass"],
+        ["case None: pass", "case candidate if unrelated is not None: pass"],
+        ["case None: pass", "case _ if other is not None: pass"],
+        ["case None: pass", "case _ if value.lookup is not None: pass"],
+        ["case None: pass", "case candidate if ready() and candidate is not None: pass"],
+        ["case None: pass"],
+    ],
+    ids=(
+        "present-first",
+        "final-capture",
+        "guarded-absence",
+        "bound-absence",
+        "overlapping-alternative",
+        "object-overlaps-none",
+        "unresolved-class",
+        "unresolved-value",
+        "observable-capture-guard",
+        "unrelated-capture-guard",
+        "unrelated-wildcard-guard",
+        "observed-attribute",
+        "compound-guard",
+        "absence-only",
+    ),
+)
+def test_preserves_present_first_guards_and_uncertain_matches(arms: list[str]) -> None:
+    assert _check("def decide(value):\n    match value:\n" + "".join(f"        {arm}\n" for arm in arms)) == []
+
+
+def test_guarded_wildcard_can_check_the_existing_plain_subject() -> None:
+    source = (
+        "def decide(value):\n    match value:\n        case None: pass\n        case _ if value is not None: pass\n"
+    )
+    [finding] = _check(source)
+    assert finding.severity is Severity.ERROR
+    assert "if value is not None" in finding.message
+    assert _check(source.replace("match value:", "match value.property:")) == []
+
+
+def test_reordering_preserves_captures_and_prior_changes_to_the_matched_name() -> None:
+    source = """
+        def keep_existing(value):
+            keep = 7
+            match value:
+                case None: return keep
+                case str(): return 2
+                case keep if keep is not None: return 3
+
+        def subject_rebound(value):
+            match value:
+                case _ if (value := 1) == 2: return 0
+                case None: return 7
+                case _ if value is not None: return 3
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("declarations", "pattern"),
+    [
+        ("class Meta(type): pass\nclass Thing(metaclass=Meta): pass", "Thing()"),
+        ("class Meta(type): pass\nclass Parent(metaclass=Meta): pass\nclass Child(Parent): pass", "Child()"),
+        ("@decorate\nclass Thing: pass", "Thing()"),
+        ("from typing import Protocol\nclass Reader(Protocol): pass", "Reader()"),
+        ("class Thing: pass\nThing = factory()", "Thing()"),
+        ("def other(int): pass", "int()"),
+        ("import ast\nast.Name = factory()", "ast.Name()"),
+        ("from external import *", "list()"),
+        ("from external import Thing", "Thing()"),
+    ],
+)
+def test_unresolved_and_observable_class_patterns_keep_their_order(declarations: str, pattern: str) -> None:
+    source = (
+        f"{declarations}\ndef decide(value):\n    match value:\n        case None: pass\n        case {pattern}: pass\n"
+    )
+    assert _check(source) == []
+
+
+def test_match_does_not_assume_future_class_or_import_bindings() -> None:
     assert (
-        _lines(
-            """
-            def connect(timeout=None, retries=None, items=()):
-                timeout = timeout if timeout is not None else 30
-                fallback = 30 if retries is None else retries
-                bound = entry if (entry := lookup()) is not None else default()
-                client = open_client(retries=retries if retries is not None else 3)
-                values = [item.value if item is not None else 0 for item in items]
-                pick = lambda item: item.value if item is not None else 0
-                pair = (timeout if timeout is None else 1, 2)
-                text = f"{retries if retries is not None else 'none'}"
-                both = timeout is None and retries is None
-                return client, values, pick, pair, text, both, fallback, bound
-
-            def defaults(value=None if FLAG is None else 1):
-                yield value if value is not None else 0
-            """
+        _check(
+            "match None:\n    case None: pass\n    case Later(): pass\nclass Later: pass\n"
+            "match None:\n    case None: pass\n    case node.Name(): pass\nimport ast as node\n"
         )
         == []
     )
 
 
-def test_skips_non_none_and_unsupported_conditional_subjects() -> None:
-    assert (
-        _lines(
-            """
-            def other(items, key, flag):
-                first = items[0].name if items[0] is not None else None
-                called = load().name if load() is not None else None
-                equal = flag.name if flag == None else None
-                truthy = flag.name if flag else None
-                return first, called, equal, truthy
-            """
-        )
-        == []
-    )
-
-
-def test_flags_walrus_split_and_plain_none_guards_followed_by_use() -> None:
-    diagnostics = _check(
-        """
-        def walrus(cache, key):
-            if (entry := cache.get(key)) is None:
+def test_keeps_explicit_none_checks_and_early_exits() -> None:
+    source = """
+        async def load(store, supplied):
+            if supplied is None:
                 return None
-            return entry.value
-
-        def split(session):
-            models = session.userdata.model_config
-            if models is None:
-                raise LookupError("models")
-            return models.tts
-
-        def parameter(index):
-            if index is None:
+            if (value := await store.get()) is None:
                 return None
-            return index + 1
-
-        def loop(items):
-            for item in items:
-                if (value := item.get()) is None:
-                    continue
-                consume(value)
-        """
-    )
-
-    assert [diagnostic.line for diagnostic in diagnostics] == [3, 9, 14, 20]
-    assert "`match entry := cache.get(key):`" in diagnostics[0].message
-    assert "`match models := session.userdata.model_config:`" in diagnostics[1].message
-    assert "`match index:`" in diagnostics[2].message
-    assert "`match value := item.get():`" in diagnostics[3].message
-
-
-def test_skips_guards_without_later_use_or_outside_the_guard_shape() -> None:
-    assert (
-        _lines(
-            """
-            def unused(cache, key):
-                if (entry := cache.get(key)) is None:
-                    return None
-                return key
-
-            def rebound(value):
-                if value is None:
-                    return None
-                value = 3
-                return value
-
-            def non_terminal(value):
-                if value is None:
-                    value = default()
-                return value
-
-            def with_else(value):
-                if value is None:
-                    return None
-                else:
-                    log()
-                return value
-
-            def compound(value, other):
-                if value is None or other is None:
-                    return None
-                if not value:
-                    return None
-                if value == None:
-                    return None
-                if value is not None:
-                    return value
-                return value
-
-            def attribute(self):
-                if self.value is None:
-                    return None
-                return self.value
-            """
-        )
-        == []
-    )
+            if isinstance(value, str) and (setting := supplied.optional) is not None:
+                use(setting)
+            return value.name if value is not None else supplied.name
+    """
+    assert _check(source) == []
+    assert PreferWalrusAwaitedNoneGuard().check(Path("service.py"), textwrap.dedent(source)) == []
 
 
 def test_awaited_split_guard_is_left_to_sarj432() -> None:
     source = """
-    async def load(store, key):
-        entry = await store.get(key)
-        if entry is None:
-            return
-        consume(entry)
+        async def load(store, key):
+            entry = await store.get(key)
+            if entry is None:
+                return
+            consume(entry)
     """
-
     assert _check(source) == []
     [owned] = PreferWalrusAwaitedNoneGuard().check(Path("service.py"), textwrap.dedent(source))
-    assert "`match entry := await store.get(key):`" in owned.message
-
-
-def test_flags_awaited_walrus_guard() -> None:
-    assert _lines(
-        """
-            async def load(store, key):
-                if (entry := await store.get(key)) is None:
-                    return
-                consume(entry)
-            """
-    ) == [3]
-
-
-def test_isinstance_conditionals_are_left_to_sarj080() -> None:
-    assert (
-        _lines(
-            """
-            def settings(value):
-                return value if isinstance(value, str) else None
-            """
-        )
-        == []
-    )
+    assert "`if (entry := await store.get(key)) is None:`" in owned.message
 
 
 def test_flags_split_lookup_consumed_under_is_not_none() -> None:
@@ -251,9 +244,11 @@ def test_respects_suppression_legacy_targets_and_stub_files(tmp_path: Path) -> N
     source = textwrap.dedent(
         """
         def load(value):
-            if value is None:  # sarj-noqa: SARJ589 -- keep the guard before the expensive branch
-                return None
-            return value.name
+            match value:
+                case None:  # sarj-noqa: SARJ589 -- preserve the audited branch ordering
+                    return None
+                case str():
+                    return value
         """
     )
     unsuppressed = source.replace("  # sarj-noqa", "  # x")

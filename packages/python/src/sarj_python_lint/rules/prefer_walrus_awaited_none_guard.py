@@ -65,9 +65,8 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             "the operation, branch decision, and temporary name together."
         ),
         remediation=(
-            "Rewrite `value = await lookup(); if value is None: return` as `match value := await lookup():` with "
-            "`case None: return` and the code that uses `value` under `case _:`, as SARJ589 recommends for every "
-            "None guard. When the terminal branch returns or raises with the bound value, use "
+            "Bind a compact lookup directly in its guard using `if (value := await lookup()) is None: return`. "
+            "When the terminal branch returns or raises with the bound value, use "
             "`if (value := await lookup()) is not None:`. A short message assignment may remain inside the guard "
             "before the terminal statement. Keep two statements when the awaited assignment is an intentional "
             "debugging or tracing boundary."
@@ -75,7 +74,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes cover only the `is not None` form; they reuse the proven assignment/guard candidate and preserve the original condition, awaited expression, body and sentinel. The `is None` form moves later statements under `case _:` and has no automatic fix.",
+            "Safe fixes cover only the `is not None` form; they reuse the proven assignment/guard candidate and preserve the original condition, awaited expression, body and sentinel. The `is None` form is a manual suggestion.",
             "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard ending in return or raise are checked.",
             "Statements before the terminal operation must be simple assignments; expressions and compound control flow are excluded.",
             "An `is None` guard requires a later use on the surviving path and must not use or rebind the name inside the guard; an `is not None` guard must consume the binding inside the terminal branch and leave no later use before rebinding.",
@@ -103,17 +102,15 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             ),
             RuleExample(
                 example_id="guard-bound-lookup",
-                title="The awaited lookup is the match subject",
+                title="An explicit identity guard binds the awaited lookup once",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "service.py",
                         "async def load(store, item_id):\n"
-                        "    match item := await store.get(item_id):\n"
-                        "        case None:\n"
-                        "            return\n"
-                        "        case _:\n"
-                        "            return item.name\n",
+                        "    if (item := await store.get(item_id)) is None:\n"
+                        "        return\n"
+                        "    return item.name\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -213,13 +210,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
 
 
 def none_guard_message(candidate: NoneGuardCandidate, lookup: str) -> str:
-    prefix = f"`{candidate.name}` only separates {lookup} from its terminal None guard"
-    if candidate.is_not_none:
-        return f"{prefix}; bind it as `{candidate.binding}`"
-    return (
-        f"{prefix}; bind it as the match subject `{candidate.binding}` with `case None:` for the guard "
-        f"and `case _:` for the code that uses `{candidate.name}`"
-    )
+    return f"Bind {lookup} in its terminal None guard as `{candidate.binding}`"
 
 
 def none_guard_candidates(
@@ -256,8 +247,7 @@ def _guard_candidate(
         return None
     if (expression := ast.get_source_segment(context.source, value)) is None:
         return None
-    lookup = expression.strip()
-    binding = f"if ({name} := {lookup}) is not None:" if is_not_none else f"match {name} := {lookup}:"
+    binding = f"if ({name} := {expression.strip()}) is {'not ' if is_not_none else ''}None:"
     return NoneGuardCandidate(assignment, guard, name, binding, is_not_none)
 
 
