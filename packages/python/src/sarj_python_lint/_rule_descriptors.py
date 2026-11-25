@@ -237,7 +237,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_outcome_variants",
         class_name="PreferOutcomeVariants",
         code="SARJ571",
-        description="Express nullable success and error state as tagged outcome variants.",
+        description="Represent distinct outcomes with named variants.",
         aliases=(),
         enabled_by_default=True,
     ),
