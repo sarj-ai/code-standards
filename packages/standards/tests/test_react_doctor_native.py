@@ -8,6 +8,7 @@ import sys
 from pydantic import BaseModel, JsonValue, RootModel
 import pytest
 
+from sarj_standards.libs.adoption.manifest import typescript_peers
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 
@@ -45,15 +46,12 @@ def execute(
 @pytest.fixture(scope="module")
 def installation(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = tmp_path_factory.mktemp("doctor-native")
+    peers = typescript_peers()
     (root / "package.json").write_text(
         json.dumps(
             {
                 "private": True,
-                "dependencies": {
-                    "oxlint": "1.93.0",
-                    "oxlint-plugin-react-doctor": "0.9.23",
-                    "parse5": "8.0.0",
-                },
+                "dependencies": {name: peers[name] for name in ("oxlint", "oxlint-plugin-react-doctor", "parse5")},
             }
         )
     )
