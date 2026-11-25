@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "501f759c5ed36bf3adb80f6c66ac136bddeeaf6f024aa6ae35159818878c5884",
-  "cliSha256": "dfb238493461bf389d820ae1e92965d198982c533e99f0e3a85aae0a164678e9",
+  "catalogSha256": "9f85e73bf6ec1bf17bbc0e1c8eb7677bb94495c1c550865891acd02d0a2fff0d",
+  "cliSha256": "2afd3faddb8c86f9c22bf3eb11ef585183f65566acd6aff49d312de246794202",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -21021,6 +21021,21 @@
     "python:prefer-outcome-variants": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/reader.py",
+              "source": "from dataclasses import dataclass\nfrom enum import Enum\n\n\nclass ReadFailure(Enum):\n    CLOSED = 1\n\n\n@dataclass(frozen=True)\nclass Chunk:\n    data: bytes\n\n\n@dataclass(frozen=True)\nclass EndOfStream:\n    pass\n\n\ntype ReadResult = Chunk | ReadFailure | EndOfStream\n\n\ndef read() -> ReadResult:\n    return EndOfStream()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/reader.py",
+          "id": "nominal-result-union",
+          "outcome": "accept",
+          "scenarioId": "nominal-result",
+          "title": "A chunk, end of stream and failure each have a distinct type"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -21034,6 +21049,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A nullable error and success flag admit contradictory outcomes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/reader.py",
+              "source": "from enum import Enum\n\n\nclass ReadFailure(Enum):\n    CLOSED = 1\n\n\ntype ReadResult = bytes | ReadFailure | None\n\n\ndef read() -> ReadResult:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/reader.py",
+          "id": "raw-result-union",
+          "outcome": "reject",
+          "scenarioId": "nominal-result",
+          "title": "A result uses bare bytes and None for two outcomes"
         },
         {
           "expectedCount": 0,
