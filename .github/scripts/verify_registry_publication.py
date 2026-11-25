@@ -573,7 +573,7 @@ def _verify_npm_installability(identity: PackageIdentity, consumer: Path) -> Non
                 stdout=subprocess.DEVNULL,
                 timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
             )
-        except OSError, subprocess.SubprocessError:
+        except RETRYABLE_EXCEPTIONS:
             shutil.rmtree(consumer)
             raise
     subprocess.run(
