@@ -55,7 +55,7 @@ def require_oxlint() -> None:
     if (
         shutil.which("node") is None
         or not OXLINT.is_file()
-        or not (MODULES / ".bin" / "tsrs-lint").is_file()
+        or not (MODULES / ".bin" / "tsgolint").is_file()
         or not PLUGIN.is_file()
     ):
         pytest.skip("requires the TypeScript package's built plugin and locked Oxlint toolchain")

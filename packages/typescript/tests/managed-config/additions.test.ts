@@ -35,8 +35,8 @@ describe("typescript.peers.json", () => {
     expect(specifiers.filter((specifier) => PEERS[specifier.replace(/^(@sarj\/eslint-plugin)\/.+$/u, "$1")] === undefined)).toEqual([]);
   });
 
-  it("pins tsrs and oxlint, and no TypeScript compiler pair", () => {
-    expect(Object.keys(PEERS)).toEqual(expect.arrayContaining(["oxlint", "oxlint-plugin-eslint", "tsrs", "oxfmt"]));
+  it("pins the project compiler and the Oxlint typed-rule backend", () => {
+    expect(Object.keys(PEERS)).toEqual(expect.arrayContaining(["oxlint", "oxlint-plugin-eslint", "oxlint-tsgolint", "tsrs", "oxfmt"]));
     expect(PEERS["@typescript/native"]).toBeUndefined();
   });
 });

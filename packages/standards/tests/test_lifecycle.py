@@ -78,17 +78,17 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     assert tmp_path in {command.cwd for command in commands}
 
 
-def test_verification_type_checks_with_the_local_tsrs_lint(tmp_path: Path) -> None:
+def test_verification_type_checks_with_the_local_tsgolint(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    tsrs_lint = tmp_path / "node_modules" / ".bin" / ("tsrs-lint.cmd" if os.name == "nt" else "tsrs-lint")
-    tsrs_lint.parent.mkdir(parents=True)
-    tsrs_lint.touch()
+    tsgolint = tmp_path / "node_modules" / ".bin" / ("tsgolint.cmd" if os.name == "nt" else "tsgolint")
+    tsgolint.parent.mkdir(parents=True)
+    tsgolint.touch()
     ecosystems = scaffold.Ecosystems(False, True, typescript_root=tmp_path)
 
     [command] = lifecycle.verification_commands(ecosystems)
 
     assert command.argv[-2:] == ("oxlint", "--type-check")
-    assert dict(command.environment) == {"OXLINT_TSGOLINT_PATH": str(tsrs_lint), "SARJ_TYPE_AWARE": "1"}
+    assert dict(command.environment) == {"OXLINT_TSGOLINT_PATH": str(tsgolint), "SARJ_TYPE_AWARE": "1"}
 
 
 def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_path: Path) -> None:

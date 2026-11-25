@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "19.32.0",
+  "version": "19.32.1",
   "packageManager": "npm@12.2.3",
   "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -70,7 +70,7 @@
   },
   "scripts": {
     "build": "tsup && node scripts/oxlint/build-upstream.ts",
-    "lint": "(test -f dist/index.js || tsup) && export SARJ_TYPE_AWARE=1 OXLINT_TSGOLINT_PATH=\"$PWD/node_modules/.bin/tsrs-lint\" && oxlint && cd ../standards && oxlint && cd ../../.github/scripts && oxlint",
+    "lint": "(test -f dist/index.js || tsup) && export SARJ_TYPE_AWARE=1 OXLINT_TSGOLINT_PATH=\"$PWD/node_modules/.bin/tsgolint\" && oxlint && cd ../standards && oxlint && cd ../../.github/scripts && oxlint",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
     "typecheck": "tsrs --noEmit && tsrs --project tsconfig.tools.json",
@@ -101,11 +101,12 @@
     "oxlint": "1.95.0",
     "oxlint-plugin-eslint": "1.95.0",
     "oxlint-plugin-react-doctor": "0.9.23",
+    "oxlint-tsgolint": "7.0.2008",
     "postcss": "8.5.33",
     "prettier": "3.10.1",
     "stylelint": "18.1.0",
     "syncpack": "15.3.4",
-    "tsrs": "7.1.0-beta.tsrs5",
+    "tsrs": "7.1.0-beta.tsrs3",
     "tsup": "9.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "uuid": "14.0.3",
@@ -114,7 +115,7 @@
   },
   "peerDependencies": {
     "stylelint": "^18.0.0",
-    "tsrs": ">=7.1.0-beta.tsrs5",
+    "tsrs": "7.1.0-beta.tsrs3",
     "typescript": ">=5.6.0 <7"
   },
   "engines": {

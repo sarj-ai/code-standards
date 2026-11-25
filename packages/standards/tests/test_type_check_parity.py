@@ -27,7 +27,7 @@ type Finding = tuple[str, int, str]
 
 def _environment_without_agent_variables() -> dict[str, str]:
     inherited = {name: os.environ[name] for name in ("PATH", "HOME")}  # ruff: ignore[banned-api] -- keep the runner's tool path.
-    return {**inherited, "OXLINT_TSGOLINT_PATH": str(BINARIES / "tsrs-lint")}
+    return {**inherited, "OXLINT_TSGOLINT_PATH": str(BINARIES / "tsgolint")}
 
 
 def _tsrs(repo: Path, tsconfig: Path) -> set[Finding]:

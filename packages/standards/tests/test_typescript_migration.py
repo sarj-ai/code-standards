@@ -997,7 +997,7 @@ def test_preserved_aliases_suppress_only_the_intended_native_typed_finding(
     completed = subprocess.run(
         [str(OXLINT), "--config", "oxlint.config.ts", "--type-aware", "--format", "json", "source.ts"],
         cwd=root,
-        env={**environment(), "OXLINT_TSGOLINT_PATH": str(MODULES / ".bin" / "tsrs-lint")},
+        env={**environment(), "OXLINT_TSGOLINT_PATH": str(MODULES / ".bin" / "tsgolint")},
         capture_output=True,
         text=True,
         check=False,

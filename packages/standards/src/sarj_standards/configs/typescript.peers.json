@@ -4,29 +4,30 @@
     "executes, at the exact versions this repo installs and tests: the binaries, the @sarj plugin",
     "the standalone upstream rule entrypoints, and the remaining plugins under `jsPlugins`.",
     "",
-    "tsrs does all type checking and supplies `tsrs-lint` for type-aware rules, so there is no",
-    "TypeScript compiler pair. `typescript` stays only because the React correctness rules import",
-    "the TypeScript JavaScript API when it loads.",
+    "tsrs type-checks projects and provides the type API for the Sarj plugin. Oxlint uses",
+    "oxlint-tsgolint for its native typed rules. The React correctness rules import the",
+    "TypeScript JavaScript API.",
     "",
     "`platformPackages` lists the platform binaries each peer ships as optionalDependencies at its own",
     "version. Installs exempt the peers and these exact versions from the repository's release-age and",
     "trust policies for that install only."
   ],
   "peers": {
-    "@sarj/eslint-plugin": "19.32.0",
+    "@sarj/eslint-plugin": "19.32.1",
     "eslint-plugin-zod": "5.3.0",
     "oxfmt": "0.80.0",
     "oxlint": "1.95.0",
     "oxlint-plugin-eslint": "1.95.0",
     "oxlint-plugin-react-doctor": "0.9.23",
+    "oxlint-tsgolint": "7.0.2008",
     "parse5": "8.1.1",
     "stylelint": "18.1.0",
     "syncpack": "15.3.4",
-    "tsrs": "7.1.0-beta.tsrs5",
+    "tsrs": "7.1.0-beta.tsrs3",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "19.32.0"
+    "@sarj/eslint-plugin": "19.32.1"
   },
   "platformPackages": {
     "oxfmt": [
@@ -70,6 +71,14 @@
       "@oxlint/binding-win32-arm64-msvc",
       "@oxlint/binding-win32-ia32-msvc",
       "@oxlint/binding-win32-x64-msvc"
+    ],
+    "oxlint-tsgolint": [
+      "@oxlint-tsgolint/darwin-arm64",
+      "@oxlint-tsgolint/darwin-x64",
+      "@oxlint-tsgolint/linux-arm64",
+      "@oxlint-tsgolint/linux-x64",
+      "@oxlint-tsgolint/win32-arm64",
+      "@oxlint-tsgolint/win32-x64"
     ],
     "syncpack": [
       "syncpack-darwin-arm64",

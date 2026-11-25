@@ -13,9 +13,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# tsrs does all type checking (DECISIONS #16); `typescript` stays only for the JS API a plugin imports.
 TYPE_CHECKER = {
-    "tsrs": "7.1.0-beta.tsrs5",
+    "tsrs": "7.1.0-beta.tsrs3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
 }
 

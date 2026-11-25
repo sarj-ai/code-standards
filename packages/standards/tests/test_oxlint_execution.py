@@ -255,7 +255,7 @@ def test_projects_without_an_install_run_the_adopted_projects_tools(tmp_path: Pa
         "web/package.json",
         "web/oxlint.config.mts",
         "web/node_modules/.bin/oxlint",
-        "web/node_modules/.bin/tsrs-lint",
+        "web/node_modules/.bin/tsgolint",
         "tools/oxlint.config.mts",
         "tools/fix.ts",
     )
@@ -268,7 +268,7 @@ def test_projects_without_an_install_run_the_adopted_projects_tools(tmp_path: Pa
     assert tuple(tools.argv) == (str(binaries / "oxlint"), "-c", "oxlint.config.mts", "--fix", "--", "fix.ts")
     # Standards runs force type-aware rules on; `SARJ_TYPE_AWARE=0` only opts editors out.
     assert oxlint.oxlint_environment(tools.cwd, tmp_path) == {
-        "OXLINT_TSGOLINT_PATH": str(binaries / "tsrs-lint"),
+        "OXLINT_TSGOLINT_PATH": str(binaries / "tsgolint"),
         "SARJ_TYPE_AWARE": "1",
     }
     # A project with its own install keeps the package manager's resolution.
@@ -300,7 +300,7 @@ def test_tsrs_lint_is_required_for_typed_analysis(tmp_path: Path) -> None:
 
     assert report.completion is Completion.FAILED
     assert [issue.kind for issue in report.issues] == ["missing-dependency"]
-    assert "node_modules/.bin/tsrs-lint is missing" in report.issues[0].message
+    assert "node_modules/.bin/tsgolint is missing" in report.issues[0].message
     assert executor.requests == []
 
 
@@ -349,7 +349,6 @@ def test_lint_selection_and_whole_project_type_check_keep_their_native_scopes(tm
     assert {(item.rule_id, item.location.path) for item in selected_error.diagnostics} == {
         ("tsc/TS2322", "src/sibling.ts")
     }
-    # tsrs-lint checks linted files; the managed typecheck script owns the whole program.
     complete = run_native(
         Command("TypeScript project check", (str(OXLINT.with_name("tsrs")), "--noEmit", "--pretty", "false"), root)
     )

@@ -373,10 +373,12 @@ def _oxlint_argv(
     adopted: Path | None,
     arguments: Sequence[str],
 ) -> tuple[str, ...]:
-    if adopted is not None and _nearest_binary("oxlint", cwd, repository) is None:
-        binary = _nearest_binary("oxlint", adopted, repository)
-        if binary is not None:
-            return (str(binary), *arguments)
+    if (
+        adopted is not None
+        and _nearest_binary("oxlint", cwd, repository) is None
+        and (binary := _nearest_binary("oxlint", adopted, repository)) is not None
+    ):
+        return (str(binary), *arguments)
     return tuple(packagemanager.exec_argv(client, "oxlint", *arguments))
 
 
@@ -387,8 +389,7 @@ def command_files(command: Command) -> frozenset[Path]:
 
 def local_binary(name: str, cwd: Path, root: Path) -> Path | None:
     repository = root.resolve()
-    nearest = _nearest_binary(name, cwd.resolve(), repository)
-    if nearest is not None:
+    if (nearest := _nearest_binary(name, cwd.resolve(), repository)) is not None:
         return nearest
     adopted = _adopted_root(repository)
     return None if adopted is None else _nearest_binary(name, adopted, repository)
@@ -416,9 +417,9 @@ def missing_binary_message(name: str, cwd: Path, root: Path) -> str:
 
 
 def oxlint_environment(cwd: Path, root: Path) -> OxlintEnvironment:
-    binary = local_binary("tsrs-lint", cwd, root)
+    binary = local_binary("tsgolint", cwd, root)
     if binary is None:
-        raise FileNotFoundError(missing_binary_message("tsrs-lint", cwd, root))
+        raise FileNotFoundError(missing_binary_message("tsgolint", cwd, root))
     return {"OXLINT_TSGOLINT_PATH": str(binary), "SARJ_TYPE_AWARE": "1"}
 
 
@@ -818,11 +819,9 @@ def _adopted_root(repository: Path) -> Path | None:
 
 def _owning_project(start: Path, repository: Path, *, fallback: Path | None) -> Path | None:
     bounded = (start, *(parent for parent in start.parents if parent == repository or repository in parent.parents))
-    configured = _nearest(bounded, lambda path: oxlint_config(path) is not None)
-    if configured is not None:
+    if (configured := _nearest(bounded, lambda path: oxlint_config(path) is not None)) is not None:
         return configured
-    locked = _nearest(bounded, lambda path: any((path / name).is_file() for name in _LOCK_NAMES))
-    if locked is not None:
+    if (locked := _nearest(bounded, lambda path: any((path / name).is_file() for name in _LOCK_NAMES))) is not None:
         return fallback if fallback is not None and locked == repository else locked
     packaged = _nearest(bounded, lambda path: (path / "package.json").is_file())
     if fallback is not None and (packaged is None or packaged == repository):

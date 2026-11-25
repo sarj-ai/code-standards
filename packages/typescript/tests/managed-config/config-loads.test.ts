@@ -169,7 +169,7 @@ beforeAll(async () => {
   const result = spawnSync(join(MODULES, ".bin/oxlint"), ["-f", "json"], {
     cwd: consumer,
     encoding: "utf8",
-    env: { HOME: process.env["HOME"], PATH: process.env["PATH"], OXLINT_TSGOLINT_PATH: join(MODULES, ".bin/tsrs-lint") },
+    env: { HOME: process.env["HOME"], PATH: process.env["PATH"], OXLINT_TSGOLINT_PATH: join(MODULES, ".bin/tsgolint") },
     maxBuffer: 1 << 26,
   });
   if ((result.status !== 0 && result.status !== 1) || !result.stdout.startsWith("{")) {

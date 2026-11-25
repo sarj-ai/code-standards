@@ -942,7 +942,7 @@ def test_standards_analysis_forwards_scoped_rules_and_suppression_policy_to_oxli
     (tmp_path / "oxlint.config.mts").write_text("export default {};\n", encoding="utf-8")
     binaries = tmp_path / "node_modules" / ".bin"
     binaries.mkdir(parents=True)
-    for name in ("oxlint", "tsrs-lint"):
+    for name in ("oxlint", "tsgolint"):
         (binaries / name).touch()
     overlays: list[str] = []
 
