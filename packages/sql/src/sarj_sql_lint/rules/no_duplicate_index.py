@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -92,6 +93,7 @@ class NoDuplicateIndex(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         indexes = _active_indexes(path, source)
         findings: list[Diagnostic] = []
         reported: set[int] = set()

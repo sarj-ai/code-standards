@@ -16,6 +16,20 @@ async function warnings(code: string): Promise<readonly string[]> {
 describe("managed CSS guidance", () => {
   it.each([
     ["timeline reset", ".a { animation-timeline: scroll(); animation: reveal linear both; }"],
+    ["escaped timeline", ".a { animation-\\74imeline: scroll(); animation: reveal 1s; }"],
+    [
+      "escaped transition",
+      ".a { transition-behavior: allow-discrete; tran\\73ition: display 1s; }",
+    ],
+    ["mixed timeline list", ".a { animation-timeline: auto, scroll(); animation: reveal 1s; }"],
+    [
+      "partially reset behaviors",
+      ".a { transition-behavior: allow-discrete, allow-discrete; transition: display 1s allow-discrete, visibility 1s; }",
+    ],
+    [
+      "repeating discrete behavior",
+      ".a { transition-behavior: allow-discrete; transition: display 1s allow-discrete, visibility 1s; }",
+    ],
     ["range reset", ".a { animation-range: entry 0% cover 50%; animation: reveal linear both; }"],
     [
       "discrete behavior reset",
@@ -27,6 +41,28 @@ describe("managed CSS guidance", () => {
 
   it.each([
     ["timeline restored", ".a { animation: reveal linear both; animation-timeline: scroll(); }"],
+    [
+      "escaped restoration",
+      ".a { animation-timeline: scroll(); animation: reveal 1s; animation-\\74imeline: view(); }",
+    ],
+    ["initial range with spaces", ".a { animation-range: normal   normal; animation: reveal 1s; }"],
+    [
+      "initial range with a comment",
+      ".a { animation-range: normal\t/* start */ normal; animation: reveal 1s; }",
+    ],
+    ["initial timeline list", ".a { animation-timeline: auto, auto; animation: reveal 1s; }"],
+    [
+      "initial behavior list",
+      ".a { transition-behavior: normal, normal; transition: display 1s; }",
+    ],
+    [
+      "restored behavior by index",
+      ".a { transition-behavior: normal, allow-discrete; transition: opacity 1s, display 1s allow-discrete; }",
+    ],
+    [
+      "unused discrete behavior",
+      ".a { transition-behavior: normal, allow-discrete; transition: opacity 1s; }",
+    ],
     [
       "range restored",
       ".a { animation-range: entry; animation: reveal linear both; animation-range: exit; }",
@@ -81,6 +117,12 @@ describe("managed CSS guidance", () => {
     ],
   ])("preserves %s", async (_label, css) => {
     expect(await warnings(css)).toEqual([]);
+  });
+
+  it("ignores an invalid transition behavior", async () => {
+    expect(
+      await warnings(".a { transition-behavior: sometimes; transition: display 1s; }"),
+    ).not.toContain("@sarj/no-modern-shorthand-reset");
   });
 
   it.each([

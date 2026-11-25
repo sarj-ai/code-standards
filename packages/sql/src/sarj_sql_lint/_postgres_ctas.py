@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from typing import TYPE_CHECKING
 
@@ -20,14 +21,14 @@ if TYPE_CHECKING:
 
 
 _COPY_WORD = re.compile(r"\bCOPY\b", re.IGNORECASE)
-_COPY_END = re.compile(r"(?m)^\\\.(?:\r?$)")
+_COPY_END = re.compile(r"(?:\A|(?<=[\r\n]))\\\.(?=[\r\n]|\Z)")
 _TEMP_TABLE = (TokenType.CREATE, TokenType.TEMPORARY, TokenType.TABLE)
 _ON_COMMIT_DROP = (TokenType.ON, TokenType.COMMIT, TokenType.DROP)
 _ON_COMMIT_ROWS_SIZE = 4
 
 
 def normalize_postgres_ctas(source: str) -> str:
-    source = _mask_copy_input(source)
+    source = mask_copy_input(source)
     try:
         tokens = sqlglot.tokenize(source, read="postgres")
     except SqlglotError, RecursionError:
@@ -44,7 +45,8 @@ def normalize_postgres_ctas(source: str) -> str:
     return "".join(output)
 
 
-def _mask_copy_input(source: str) -> str:
+@lru_cache(maxsize=1)
+def mask_copy_input(source: str) -> str:
     if not _may_have_copy_input(source):
         return source
     output = list(source)
@@ -63,7 +65,7 @@ def _mask_copy_input(source: str) -> str:
         if _copy_from_stdin(tokens):
             marker = _COPY_END.search(source, separator.end())
             end = marker.end() if marker is not None else len(source)
-            _blank(output, start, end)
+            _blank(output, start + tokens[0].start, end)
             start = end
         else:
             start = separator.end()

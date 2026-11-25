@@ -131,3 +131,27 @@ def test_return_alias_reports_once_at_its_declaration(declaration: str) -> None:
 )
 def test_nominal_variants_and_ambiguous_return_contracts_are_left_alone(body: str) -> None:
     assert not PreferOutcomeVariants().check(Path("app/reader.py"), _READ_TYPES + body + "\n")
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("CLOSED: int = 1", 1),
+        ("CLOSED: int", 0),
+        ('__doc__ = "subclass with protocol-specific codes"', 0),
+        ("__private = 1", 0),
+        ("_closed = 1", 1),
+        ("helper = nonmember(1)", 0),
+        ("reason = property(lambda self: 1)", 0),
+        ("label = lambda self: 'reader'", 0),
+        ('_ignore_ = "scratch, helper"\n    scratch = helper = 1', 0),
+        ('_ignore_ = ["scratch"]\n    scratch = 1\n    CLOSED: int = 2', 1),
+    ],
+)
+def test_failure_enum_requires_a_member(body: str, expected: int) -> None:
+    source = (
+        "from enum import Enum, nonmember\n"
+        f"class ReadFailure(Enum):\n    {body}\n"
+        "type ReadResult = bytes | ReadFailure\ndef read() -> ReadResult: ...\n"
+    )
+    assert len(PreferOutcomeVariants().check(Path("app/reader.py"), source)) == expected

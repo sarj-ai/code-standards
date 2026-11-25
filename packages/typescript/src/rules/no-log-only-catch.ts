@@ -8,6 +8,7 @@
 
 import { defineRule, type ESTree, type Node, type Scope, type SourceCode } from "../types.js";
 import { parentOf } from "../utils/ast.js";
+import { hasLeadingCatchRationale, isCatchRationale } from "../utils/comments.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { createLogMatcher, LOGGING_OPTION_PROPERTIES, type LoggingOptions, type LogMatcher } from "../utils/logging.js";
 import { isTestFile } from "../utils/paths.js";
@@ -225,7 +226,7 @@ export default defineRule({
      */
     function hasAdjacentRationale(node: ESTree.CatchClause): boolean {
       const tryStatement = parentOf(node) as ESTree.TryStatement;
-      if (hasCommentDirectlyAbove(tryStatement) || hasCommentDirectlyAbove(node)) return true;
+      if (hasLeadingCatchRationale(tryStatement, sourceCode) || hasLeadingCatchRationale(node, sourceCode)) return true;
       const block = parentOf(tryStatement);
       const host = block === null ? null : parentOf(block);
       if (
@@ -236,13 +237,7 @@ export default defineRule({
       ) {
         return false;
       }
-      return hasCommentDirectlyAbove(host);
-    }
-
-    /** True when a `//`/`/* *\/` run ends on the line directly above `node`. */
-    function hasCommentDirectlyAbove(node: Node): boolean {
-      const above = sourceCode.getCommentsBefore(node).at(-1);
-      return above !== undefined && above.loc.end.line === node.loc.start.line - 1;
+      return hasLeadingCatchRationale(host, sourceCode);
     }
 
     return {
@@ -268,7 +263,7 @@ export default defineRule({
         const tryStatement = parentOf(node) as ESTree.TryStatement;
         // A comment inside the block documents an intentional ignore — for a
         // silent swallow and for a log-and-continue alike.
-        if (sourceCode.getCommentsInside(node.body).length > 0 || hasAdjacentRationale(node) ||
+        if (sourceCode.getCommentsInside(node.body).some(isCatchRationale) || hasAdjacentRationale(node) ||
           hasCoercionValidation(node) || fallbackFollowsTry(tryStatement) ||
           seededFallbackHandled(tryStatement, sourceCode.getScope(node))) return;
         context.report({ node, messageId });

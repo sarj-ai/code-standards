@@ -110,7 +110,7 @@ class NoUniqueViolationMessageMatch(Rule):
         imports = _module_import_index(tree)
         parents = context.parents
         findings: list[tuple[ast.expr, _HandlerContext]] = []
-        for handler in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ExceptHandler)):
+        for handler in context.nodes(ast.ExceptHandler):
             driver = _caught_driver(handler.type, imports)
             if (
                 handler.name is None

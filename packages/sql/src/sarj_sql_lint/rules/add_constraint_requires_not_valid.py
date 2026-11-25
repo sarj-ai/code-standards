@@ -4,6 +4,7 @@ from bisect import bisect_right
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -173,6 +174,7 @@ class AddConstraintRequiresNotValid(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         if (
             is_dump_file(source, path)
             or is_generated_migration(path, source)

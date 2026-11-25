@@ -130,9 +130,7 @@ class FastapiClassRouterContract(Rule):
         index = context.fastapi
         parents = context.parents
         findings = _router_construction_findings(path, tree, index, parents, node_index=context.node_index)
-        for function in (
-            node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ):
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             routes = tuple(route for route in index.routes(function) if not route.is_hidden)
             findings.extend(_direct_app_route_findings(path, routes))
             for route in routes:

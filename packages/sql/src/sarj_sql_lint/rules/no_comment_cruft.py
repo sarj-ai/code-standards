@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -179,6 +180,7 @@ class NoCommentCruft(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         path_parts = frozenset(part.lower() for part in path.parts)
         if (
             not path_parts.isdisjoint(_TEST_PATH_PARTS)
@@ -202,8 +204,7 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
     if not effective:
         return None
 
-    banner = _banner_finding(effective)
-    if banner is not None:
+    if (banner := _banner_finding(effective)) is not None:
         return banner
 
     debt = next(
@@ -434,8 +435,7 @@ def _is_standalone_comment(source_lines: list[str], comment: SourceComment) -> b
 
 
 def _banner_finding(effective: list[_CommentLine]) -> _Finding | None:
-    banner = next((line for line in effective if is_decorative_banner(line.text)), None)
-    if banner is not None:
+    if (banner := next((line for line in effective if is_decorative_banner(line.text)), None)) is not None:
         return _Finding(
             banner.line,
             banner.column,

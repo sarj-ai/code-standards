@@ -64,10 +64,11 @@ function typeImportsFix(
   );
   const first = misplacedTypeImports[0];
   if (first === undefined) return null;
+  const newline = sourceCode.text.includes("\r\n") ? "\r\n" : "\n";
   return {
     first,
     fix: (fixer) => [
-      fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => sourceCode.getText(statement)).join("\n") + "\n"),
+      fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => sourceCode.getText(statement)).join(newline) + newline),
       ...misplacedTypeImports.map((statement) => fixer.remove(statement)),
     ],
   };

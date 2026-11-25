@@ -61,10 +61,10 @@
       "subpath": "next"
     }
   ],
-  "sourceLockSha256": "3c59c58c50f9acc2d46b493f3daa38cc55150a0401b30883458cc35c51c8ba38",
+  "sourceLockSha256": "d35577444817a77219633a1c731fd98f7eac477124938c00ca4ca71c906a5fd3",
   "files": {
-    "effects.js": "f0bb79064fe855418b0a62ade683c905b06870b31eca8a486bb6bd99776d66f8",
-    "jsdoc-js.js": "da68bf742655164937becfc033f93907f9452009c5922eb24ec54aa07a338df1",
+    "effects.js": "c8fc133f56df9a144d15c9d791e1e0b7602c028dd2222167dc87e409dba7074a",
+    "jsdoc-js.js": "2d66af1a28176d3a8916dff805f136bf7b2f2c3f1949625504c7031e8f070d03",
     "next.js": "7692c991fafcf34b9e6616289de158f3614f2036e2ffcaa954fce379efc25e83",
     "node-test.js": "3336c85999e20dc0f8f3b491bfd92ee95d9bbdbfddfd9dcd131dc37c44f68f6e",
     "playwright.js": "5c6d2ec4149c324523807b8fcf5eaf6ebcfad3d6131c46a6cf0a8699854805f6",

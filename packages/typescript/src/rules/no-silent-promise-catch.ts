@@ -7,10 +7,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import type { Comment } from "@oxlint/plugins";
-
 import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js";
 import { parentOf, unwrapExpression } from "../utils/ast.js";
+import { hasLeadingCatchRationale, isCatchRationale } from "../utils/comments.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isScriptFile, isTestFile } from "../utils/paths.js";
 import { findVariable, staticPropertyName } from "../utils/static-string.js";
@@ -52,11 +51,6 @@ const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
   "unlock",
   "disconnect",
 ]);
-
-const DIRECTIVE_COMMENT_RE =
-  /^\s*(eslint-|@ts-|prettier-ignore|biome-ignore|c8 |v8 |istanbul )/;
-
-const isExplanatory = (comment: Comment): boolean => !DIRECTIVE_COMMENT_RE.test(comment.value);
 
 function memberCallee(node: Node): ESTree.MemberExpression | null {
   if (node.type !== "CallExpression") return null;
@@ -247,7 +241,7 @@ export default defineRule({
   createOnce(context) {
     const hasExplanatoryComment = (call: ESTree.CallExpression, handler: Handler): boolean => {
       const sourceCode = context.sourceCode;
-      if (sourceCode.getCommentsInside(handler).some(isExplanatory)) return true;
+      if (sourceCode.getCommentsInside(handler).some(isCatchRationale)) return true;
       // Walk out to the enclosing statement so a comment above or beside
       // `lazyRoutePromise.catch(() => {});` is found rather than one sitting
       // between the receiver and `.catch`.
@@ -257,9 +251,9 @@ export default defineRule({
         parent = parentOf(statement)) {
         statement = parent;
       }
-      if (sourceCode.getCommentsBefore(statement).some(isExplanatory)) return true;
+      if (hasLeadingCatchRationale(statement, sourceCode)) return true;
       const endLine = statement.loc.end.line;
-      return sourceCode.getCommentsAfter(statement).some((c) => isExplanatory(c) && c.loc.start.line === endLine);
+      return sourceCode.getCommentsAfter(statement).some((c) => isCatchRationale(c) && c.loc.start.line === endLine);
     };
 
     return {

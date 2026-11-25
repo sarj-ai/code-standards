@@ -17,6 +17,12 @@ RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, untyped({
     "switch (kind) { case 'a': a(); break; case 'b': b(); break; case 'c': c(); break; }",
   ],
   invalid: [
+    {
+      name: "keeps CRLF throughout a rewritten equality chain",
+      code: "function pick(x: string) {\r\nif (x === 'a') return 1; else if (x === 'b') return 2; else if (x === 'c') return 3; else return 0;\r\n}",
+      output: "function pick(x: string) {\r\nswitch (x) {\r\ncase 'a': { return 1; }\r\ncase 'b': { return 2; }\r\ncase 'c': { return 3; }\r\ndefault: { return 0; }\r\n}\r\n}",
+      errors: [{ messageId: "preferSwitch" }],
+    },
     { name: "fixes terminating branches with an explicit final else", code: "function dispatch(kind: string): number { if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; else return 0; }", output: "function dispatch(kind: string): number { switch (kind) {\ncase 'a': { return 1; }\ncase 'b': { return 2; }\ncase 'c': { return 3; }\ndefault: { return 0; }\n} }", errors: [{ messageId: "preferSwitch" }] },
     { name: "does not add unreachable breaks after never-returning calls", code: "declare function fail(): never; function dispatch(kind: string) { if (kind === 'a') fail(); else if (kind === 'b') fail(); else if (kind === 'c') fail(); }", output: null, errors: [{ messageId: "preferSwitch" }] },
     { name: "does not add unreachable breaks after infinite loops", code: "function dispatch(kind: string) { if (kind === 'a') while (true) {} else if (kind === 'b') return 1; else if (kind === 'c') return 2; }", output: null, errors: [{ messageId: "preferSwitch" }] },

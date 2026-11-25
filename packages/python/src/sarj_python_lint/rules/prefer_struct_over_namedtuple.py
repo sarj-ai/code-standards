@@ -102,18 +102,14 @@ class PreferStructOverNamedtuple(Rule):
         if tree is None:
             return []
         parents = context.parents
-        scopes = [
-            node
-            for node in context.nodes(ast.AST)
-            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        ]
+        scopes = context.nodes(ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
         events = {id(scope): _scope_binding_events(scope) for scope in scopes}
         if _factory_identity_ambiguous(context, tree, events):
             return []
         return [
             self._diag(path, call)
             for call in sorted(
-                (node for node in context.nodes(ast.AST) if isinstance(node, ast.Call)),
+                context.nodes(ast.Call),
                 key=lambda node: (node.lineno, node.col_offset),
             )
             if _is_static_owned_declaration(call, tree, parents, node_index=context.node_index)
@@ -222,8 +218,7 @@ def _resolves_factory_binding(
             if crossed_function or left_class_body:
                 continue
             left_class_body = True
-        resolved = _scope_factory_resolution(scope, events, node.id, position, kind)
-        if resolved is not None:
+        if (resolved := _scope_factory_resolution(scope, events, node.id, position, kind)) is not None:
             return resolved
         crossed_function = crossed_function or isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef))
     return False
@@ -343,8 +338,7 @@ def _resolves_collections_namedtuple(
             if crossed_function or left_class_body:
                 continue
             left_class_body = True
-        resolution = _scope_factory_resolution(scope, events, root, position, expected)
-        if resolution is not None:
+        if (resolution := _scope_factory_resolution(scope, events, root, position, expected)) is not None:
             return resolution
         crossed_function = crossed_function or isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef))
     return False

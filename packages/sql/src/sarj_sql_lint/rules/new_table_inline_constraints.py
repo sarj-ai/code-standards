@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sarj_sql_lint._postgres_ctas import mask_copy_input
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -143,6 +144,7 @@ class NewTableInlineConstraints(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = mask_copy_input(source)
         if (
             not _NON_PRODUCTION.isdisjoint(part.casefold() for part in path.parts)
             or is_dump_file(source, path)

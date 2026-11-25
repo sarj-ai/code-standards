@@ -135,7 +135,7 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
                     for target in _declared_field_writes(statement, receiver, fields)
                 )
 
-        for class_node in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for class_node in context.nodes(ast.ClassDef):
             if not _is_frozen_direct_model(class_node, imports):
                 continue
             fields = _direct_public_fields(class_node, imports)

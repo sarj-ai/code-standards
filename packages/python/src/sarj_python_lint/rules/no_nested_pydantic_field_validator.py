@@ -135,7 +135,7 @@ class NoNestedPydanticFieldValidator(Rule):
                         )
                     )
 
-        for outer in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for outer in context.nodes(ast.ClassDef):
             if not _is_direct_model(outer, imports, parents):
                 continue
             outer_fields = _direct_fields(outer, imports)
