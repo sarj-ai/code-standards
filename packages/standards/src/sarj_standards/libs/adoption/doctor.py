@@ -170,6 +170,7 @@ _PYRIGHT_REPORT_DEPRECATED = re.compile(
 _RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "per-file-ignores", "select"})
+_RUFF_KEYS_RESOLVED_LOCALLY: Final = frozenset({"extend", "target-version"})
 _CONFIG_TARGETS: Final = MappingProxyType(
     {
         "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
@@ -924,14 +925,7 @@ def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None)
 def _check_ruff_file_policy(root: Path, path: Path) -> Iterator[Finding]:
     if path.name not in _RUFF_CONFIG_NAMES:
         return
-    try:
-        parsed: object = tomllib.loads(_read(path))
-    except tomllib.TOMLDecodeError:
-        return
-    document = manifest.as_table(parsed)
-    ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
-    if not ruff and path.name != "pyproject.toml":
-        ruff = document
+    ruff = _ruff_section(path)
     if not ruff:
         return
     extended = ruff.get("extend")
@@ -967,6 +961,40 @@ def _check_ruff_file_policy(root: Path, path: Path) -> Iterator[Finding]:
             "doctor.ruff.replaces-policy",
             "remove the local `banned-api` table after contributing any additional bans to Standards",
         )
+    if Path(extended).name == ".ruff-strict.toml":
+        prefix = "tool.ruff." if path.name == "pyproject.toml" else ""
+        for key in _restated_settings(ruff, _ruff_section(path.parent / extended), prefix):
+            yield Finding(
+                Level.WARN,
+                f"{path.relative_to(root)}: {key}",
+                "restates the value inherited from .ruff-strict.toml and goes stale when the preset changes",
+                "doctor.ruff.restated-setting",
+                f"remove `{key}`",
+            )
+
+
+def _ruff_section(
+    path: Path,
+) -> dict[str, object]:  # sarj-noqa: SARJ528 -- parsed TOML stays opaque until a caller reads a field.
+    try:
+        document = manifest.as_table(tomllib.loads(_read(path)))
+    except tomllib.TOMLDecodeError:
+        return {}
+    ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
+    return document if not ruff and path.name != "pyproject.toml" else ruff
+
+
+def _restated_settings(
+    local: Mapping[str, object],  # sarj-noqa: SARJ528 -- parsed TOML values are compared, never interpreted.
+    managed: Mapping[str, object],  # sarj-noqa: SARJ528 -- parsed TOML values are compared, never interpreted.
+    prefix: str,
+) -> Iterator[str]:
+    for key, value in local.items():
+        inherited = managed.get(key)
+        if _is_object_table(value) and _is_object_table(inherited):
+            yield from _restated_settings(value, inherited, f"{prefix}{key}.")
+        elif value == inherited and key not in _RUFF_KEYS_RESOLVED_LOCALLY:
+            yield prefix + key
 
 
 def _ruff_extend_reaches_canonical(root: Path, source: Path, extended: str) -> bool:
@@ -990,15 +1018,7 @@ def _ruff_extend_reaches_canonical(root: Path, source: Path, extended: str) -> b
         if target in seen or not target.is_file():
             return False
         seen.add(target)
-        try:
-            parsed: object = tomllib.loads(_read(target))
-        except tomllib.TOMLDecodeError:
-            return False
-        document = manifest.as_table(parsed)
-        ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
-        if not ruff and target.name != "pyproject.toml":
-            ruff = document
-        next_value = ruff.get("extend")
+        next_value = _ruff_section(target).get("extend")
         if not isinstance(next_value, str):
             return False
         current = target

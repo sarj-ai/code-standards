@@ -412,6 +412,25 @@ def test_doctor_accepts_additive_rule_policy_in_extending_ruff_config(tmp_path: 
     assert not list(check_ruff_policy_authority(tmp_path))
 
 
+def test_doctor_warns_on_ruff_settings_that_restate_the_managed_preset(tmp_path: Path) -> None:
+    (tmp_path / ".ruff-strict.toml").write_text(
+        'target-version = "py314"\nline-length = 120\n\n[lint]\npreview = true\n\n[lint.isort]\nlines-after-imports = 2\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\ntarget-version = "py314"\nline-length = 120\n\n'
+        "[tool.ruff.lint]\npreview = false\n\n[tool.ruff.lint.isort]\nlines-after-imports = 2\n",
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert [(finding.level, finding.where) for finding in findings] == [
+        (Level.WARN, "pyproject.toml: tool.ruff.line-length"),
+        (Level.WARN, "pyproject.toml: tool.ruff.lint.isort.lines-after-imports"),
+    ]
+
+
 def test_doctor_rejects_a_ruff_chain_that_never_reaches_strict(tmp_path: Path) -> None:
     root_config = tmp_path / "python" / "pyproject.toml"
     root_config.parent.mkdir()
