@@ -10,13 +10,16 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_origins import annotation_reference
 from sarj_python_lint.rules._data_union_discriminator import data_union_diagnostics
+from sarj_python_lint.rules._data_union_producers import ProducerCorrelations
+from sarj_python_lint.rules._declared_contracts import DeclaredContracts
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import (
     DECORATOR_SOURCES,
@@ -29,6 +32,7 @@ from sarj_python_lint.rules._pydantic_field_contract import (
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._project_index import ProjectIndexSet
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
@@ -82,7 +86,7 @@ class _Path:
 
 
 @final
-class PreferDiscriminatedModelUnion(Rule):
+class PreferDiscriminatedModelUnion(ProjectRule):
     id = "prefer-discriminated-model-union"
     code = "SARJ510"
     documentation = RuleDocumentation(
@@ -119,6 +123,8 @@ class PreferDiscriminatedModelUnion(Rule):
             "Unsupported Field validation constraints cannot prove non-null payload inhabitance; defaults, aliases and passive metadata remain eligible. Literal exception messages or local assignments of those messages are supported with import-proven builtin rejection types.",
             "Opaque helpers, effectful validators, inherited models, model mutation or escape, ambiguous namespaces, tests and generated files are excluded. The analyzer bounds validator nodes, Boolean depth, paths and rejection regions; complex forms abstain.",
             "This error requires explicit data modeling; it does not require absent payloads in other variants or change external compatibility automatically.",
+            "A separate warning checks direct record constructors with finite Literal, bool or source-resolved Enum/StrEnum tags. A nullable field with a None default (or an omittable TypedDict key) must be consistently supplied with visibly non-null expressions for some observed tags and omitted or passed None for the others.",
+            "Constructor evidence is limited to indexed first-party production code. Ambiguous references, class escapes, subclasses, alternative construction or replacement, positional arguments and keyword unpacking abstain. Only passive record definitions are eligible. Opaque expressions, including bare names and calls of unknown return type, do not establish presence. External callers, structural TypedDict writes and unobserved tag values are outside the proof.",
         ),
         examples=(
             RuleExample(
@@ -272,15 +278,63 @@ class PreferDiscriminatedModelUnion(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="producer-dependent-payload",
+                scenario="constructor-payload",
+                title="Constructor keywords reveal tag-dependent payloads",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from typing import Literal\nfrom pydantic import BaseModel\n"
+                        "class RecordingIssue(BaseModel):\n    reason: Literal['availability', 'download_limit']\n"
+                        "    unavailable_part: str | None = None\n    byte_limit: int | None = None\n"
+                        "RecordingIssue(reason='availability', unavailable_part='metadata')\n"
+                        "RecordingIssue(reason='download_limit', byte_limit=1024)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="producers-use-tagged-variants",
+                scenario="constructor-payload",
+                title="The recording variants declare their required payloads",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n"
+                        "class RecordingUnavailable(BaseModel):\n    reason: Literal['availability'] = 'availability'\n"
+                        "    unavailable_part: str\n"
+                        "class RecordingTooLarge(BaseModel):\n    reason: Literal['download_limit'] = 'download_limit'\n"
+                        "    byte_limit: int\n"
+                        "type RecordingIssue = Annotated[RecordingUnavailable | RecordingTooLarge, Field(discriminator='reason')]\n"
+                        "RecordingUnavailable(unavailable_part='metadata')\nRecordingTooLarge(byte_limit=1024)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
+
+    _producer_correlations: ProducerCorrelations | None = None
+
+    @override
+    def prepare(self, indexes: ProjectIndexSet) -> None:
+        super().prepare(indexes)
+        self._producer_correlations = ProducerCorrelations(indexes)
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if is_test_path(context.path):
             return []
         diagnostics = data_union_diagnostics(context, self.code)
+        diagnostics.extend(self._constructor_warnings(context))
         if "None" not in context.symbol_source or "model_validator" not in context.symbol_source:
             return diagnostics
         provenance = context.static_resource_provenance
@@ -306,6 +360,18 @@ class PreferDiscriminatedModelUnion(Rule):
                 )
             )
         return diagnostics
+
+    def _constructor_warnings(self, context: PythonFileContext) -> list[Diagnostic]:
+        tree = context.tree
+        if tree is None or not ("None" in context.symbol_source or "TypedDict" in context.symbol_source):
+            return []
+        if not any(isinstance(node, ast.ClassDef) for node in tree.body):
+            return []
+        if (prepared := self._producer_correlations) is not None:
+            unit = prepared.project.unit(context.path)
+            if len(prepared.project.source_units) > 1 or (unit is not None and unit.module is not None):
+                return prepared.diagnostics(context, self.code)
+        return ProducerCorrelations(DeclaredContracts(context).project).diagnostics(context, self.code)
 
 
 def _model_requirements(model: ast.ClassDef, context: PythonFileContext) -> list[_Requirement]:
@@ -373,18 +439,7 @@ def _stable_model_read(read: ast.Name, context: PythonFileContext) -> bool:
             return isinstance(call, ast.Call) and call.func is parent
         case _:
             pass
-    node: ast.AST = read
-    while isinstance(parent, (ast.Subscript, ast.BinOp, ast.Tuple)):
-        node = parent
-        parent = context.parents.get(parent)
-    match parent:
-        case ast.arg() | ast.AnnAssign():
-            return parent.annotation is node
-        case ast.FunctionDef() | ast.AsyncFunctionDef():
-            return parent.returns is node
-        case _:
-            pass
-    return isinstance(parent, ast.TypeAlias) and parent.value is node
+    return annotation_reference(read, context)
 
 
 def _variant_specific_requirements(

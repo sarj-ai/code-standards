@@ -75,7 +75,7 @@ def nullable_outcome_diagnostics(context: PythonFileContext, code: str) -> list[
     for model in context.tree.body:
         if not isinstance(model, ast.ClassDef) or not _record(model, facts):
             continue
-        first = _outcome_error(model, _record_fields(model, facts), facts)
+        first = nullable_outcome_field(model, record_fields(model, facts), facts)
         if first is None or context.suppressions.is_suppressed(first.lineno, code):
             continue
         findings.append(
@@ -93,7 +93,7 @@ def nullable_outcome_diagnostics(context: PythonFileContext, code: str) -> list[
     return findings
 
 
-def _outcome_error(
+def nullable_outcome_field(
     model: ast.ClassDef, fields: dict[str, ast.AnnAssign], facts: AnnotationOrigins
 ) -> ast.AnnAssign | None:
     errors = [field for name, field in fields.items() if _failure_field(name, field.annotation, facts)]
@@ -101,12 +101,14 @@ def _outcome_error(
         return None
     flags = any(name in _SUCCESS_FIELDS and _boolean(field.annotation, facts) for name, field in fields.items())
     finite_tag = any(_outcome_tag(field.annotation, facts) for field in fields.values())
-    payload = any(name in _PAYLOAD_FIELDS and _nullable(field.annotation, facts) for name, field in fields.items())
+    payload = any(
+        name in _PAYLOAD_FIELDS and nullable_annotation(field.annotation, facts) for name, field in fields.items()
+    )
     named_result = model.name.endswith(("Result", "Outcome")) and len(fields) > len(errors)
     return errors[0] if flags or finite_tag or payload or named_result else None
 
 
-def _record_fields(model: ast.ClassDef, facts: AnnotationOrigins) -> dict[str, ast.AnnAssign]:
+def record_fields(model: ast.ClassDef, facts: AnnotationOrigins) -> dict[str, ast.AnnAssign]:
     fields: dict[str, ast.AnnAssign] = {}
     unique = unique_members(model)
     for member in model.body:
@@ -139,7 +141,7 @@ def _metadata(annotation: ast.expr, facts: AnnotationOrigins) -> bool:
     )
 
 
-def _nullable(annotation: ast.expr, facts: AnnotationOrigins) -> bool:
+def nullable_annotation(annotation: ast.expr, facts: AnnotationOrigins) -> bool:
     pending = [(annotation, annotation)]
     for _ in range(_MAX_MEMBERS):
         if not pending:
@@ -194,7 +196,7 @@ def _outcome_tag(annotation: ast.expr, facts: AnnotationOrigins) -> bool:
 
 
 def _failure_field(name: str, annotation: ast.expr, facts: AnnotationOrigins) -> bool:
-    return name in _ERROR_FIELDS and _nullable(annotation, facts) and not _numeric_error(annotation, facts)
+    return name in _ERROR_FIELDS and nullable_annotation(annotation, facts) and not _numeric_error(annotation, facts)
 
 
 def _numeric_error(annotation: ast.expr, facts: AnnotationOrigins) -> bool:

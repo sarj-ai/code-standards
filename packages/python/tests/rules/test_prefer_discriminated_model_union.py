@@ -45,6 +45,156 @@ def _check(source: str, path: str = "app/models.py"):
     return PreferDiscriminatedModelUnion().check(Path(path), source)
 
 
+_CONSTRUCTOR_MODEL = """\
+from typing import Literal
+from pydantic import BaseModel
+class Batch(BaseModel):
+    phase: Literal['stopped', 'completed']
+    items: list[int] | None = None
+"""
+_CONSTRUCTORS = "Batch(phase='stopped')\nBatch(phase='completed', items=[1])\n"
+
+
+def test_constructor_warning_lists_each_correlated_payload() -> None:
+    source = next(
+        example.focus_file.source
+        for example in PreferDiscriminatedModelUnion.public_examples()
+        if example.example_id == "producer-dependent-payload"
+    )
+    [finding] = _check(source)
+    assert finding.line == 3
+    assert finding.severity is Severity.WARNING
+    assert "`unavailable_part` with `reason` in {'availability'}" in finding.message
+    assert "`byte_limit` with `reason` in {'download_limit'}" in finding.message
+
+
+@pytest.mark.parametrize("ambiguous", ["", "import models\nmodels.Check = alternate\n", "from models import *\n"])
+def test_constructor_warning_resolves_imported_enum_and_cross_module_producers(tmp_path: Path, ambiguous: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'app'\nversion = '0.0.0'\n")
+    (tmp_path / "status.py").write_text(
+        "from enum import StrEnum\nclass State(StrEnum):\n    READY = 'r'\n    WAITING = 'w'\n    PAUSED = 'p'\n"
+    )
+    model = tmp_path / "models.py"
+    model.write_text(
+        "from typing import ClassVar\nfrom status import State\nfrom pydantic import BaseModel, ConfigDict\n"
+        "class Check(BaseModel):\n    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)\n"
+        "    state: State\n    detail: str | None = None\n"
+        "def keep(other):\n    return other.model_copy(update={'unrelated': True})\n"
+    )
+    (tmp_path / "start.py").write_text(
+        "import models as models\nfrom status import State as Status\n"
+        "def start(name):\n    return models.Check(state=Status.WAITING, detail=f'Checking {name}')\n"
+    )
+    (tmp_path / "finish.py").write_text(
+        "from models import Check as Result\nfrom status import State\n"
+        "Result(state=State.READY, detail=None)\nResult(state=State.PAUSED, detail='Paused')\n"
+    )
+    (tmp_path / "other.py").write_text(ambiguous)
+    (tmp_path / "test_check.py").write_text("from models import Check\nCheck(state=some_state)\n")
+    findings = analyze([PreferDiscriminatedModelUnion.id], [model], root=tmp_path)
+    if ambiguous:
+        assert findings == []
+        return
+    [finding] = findings
+    assert finding.path == model
+    assert "`detail` with `state` in {State.PAUSED, State.WAITING}" in finding.message
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from dataclasses import dataclass, field\n@dataclass\nclass Batch:\n    phase: bool\n    items: list[int] | None = field(default=None)\n",
+        "from typing import NotRequired, Optional, TypedDict\nclass Batch(TypedDict):\n    phase: bool\n    items: NotRequired[Optional[list[int]]]\n",
+    ],
+    ids=("dataclass", "typed-dict"),
+)
+def test_boolean_tag_supports_dataclass_and_omittable_typed_dict_fields(declaration: str) -> None:
+    [finding] = _check(f"{declaration}Batch(phase=False)\nBatch(phase=True, items=[1])\n")
+    assert "`items` with `phase` in {True}" in finding.message
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "Batch(phase='completed')\n",
+        "Batch(phase=phase, items=[1])\n",
+        "Batch(phase='stopped', items=possibly_none)\n",
+        "Batch(phase='stopped', items=maybe_items())\n",
+        "Batch(**keywords)\n",
+        "Batch('stopped')\n",
+        "Batch.model_validate_json(data)\n",
+        "Batch.model_construct(phase='completed')\n",
+        "def update(b: Batch):\n    return b.model_copy(update={'phase': 'stopped'})\n",
+        "class Override(Batch):\n    pass\n",
+        "Alias = Batch\nAlias(phase='completed')\n",
+        "def construct(Batch):\n    return Batch(phase='completed')\n",
+    ],
+    ids=(
+        "independent-optional",
+        "dynamic-tag",
+        "unknown-name",
+        "opaque-call",
+        "unpacking",
+        "positional",
+        "validation",
+        "unchecked-construction",
+        "replacement",
+        "subclass",
+        "escaped-constructor",
+        "shadowed",
+    ),
+)
+def test_incomplete_constructor_evidence_abstains(extra: str) -> None:
+    assert _check(_CONSTRUCTOR_MODEL + _CONSTRUCTORS + extra) == []
+
+
+@pytest.mark.parametrize("calls", ["", "Batch(phase='completed', items=[1])\n", "Batch(phase=phase, items=[1])\n"])
+def test_requires_two_observed_tags(calls: str) -> None:
+    assert _check(_CONSTRUCTOR_MODEL + calls) == []
+
+
+def test_dataclass_replacement_abstains() -> None:
+    source = (
+        "from dataclasses import dataclass, replace as evolve\n"
+        "from typing import Literal\n@dataclass\nclass Batch:\n"
+        "    phase: Literal['stopped', 'completed']\n    items: list[int] | None = None\n"
+    )
+    assert _check(source + _CONSTRUCTORS + "batch = Batch(phase='stopped')\nevolve(batch, phase='completed')\n") == []
+
+
+@pytest.mark.parametrize("owner_first", [True, False])
+def test_outcome_owner_takes_precedence(*, owner_first: bool) -> None:
+    source = (
+        "from pydantic import BaseModel\nclass CanaryResult(BaseModel, frozen=True):\n"
+        "    passed: bool\n    error: str | None = None\n"
+        "CanaryResult(passed=True)\nCanaryResult(passed=False, error='stopped')\n"
+    )
+    names = ("prefer-outcome-variants", PreferDiscriminatedModelUnion.id)
+    rules = [REGISTRY[name]() for name in (names if owner_first else reversed(names))]
+    assert [finding.code for finding in check_source(rules, Path("app/canary.py"), source)] == ["SARJ571"]
+
+
+def test_validator_error_takes_precedence_over_constructor_warning() -> None:
+    source = _BASE + "Delivery(kind='email', address='person@example.com')\nDelivery(kind='pickup')\n"
+    [finding] = _check(source)
+    assert finding.severity is Severity.ERROR
+    assert finding.line == 8
+
+
+def test_constructor_warning_respects_suppression_on_record() -> None:
+    source = _CONSTRUCTOR_MODEL.replace(
+        "class Batch(BaseModel):", "class Batch(BaseModel):  # sarj-noqa: SARJ510 -- Public batch wire format."
+    )
+    assert _check(source + _CONSTRUCTORS) == []
+
+
+def test_constructor_proof_requires_resolvable_modules_in_a_multi_file_project(tmp_path: Path) -> None:
+    model, other = tmp_path / "model.py", tmp_path / "other.py"
+    model.write_text(_CONSTRUCTOR_MODEL + _CONSTRUCTORS)
+    other.write_text("import model\n")
+    assert analyze([PreferDiscriminatedModelUnion.id], [model, other], root=tmp_path) == []
+
+
 _GENERIC_OUTCOME = """from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 class Success[T](BaseModel):
@@ -331,7 +481,7 @@ def test_labeled_domain_states(label: str, source: str, *, matches: bool) -> Non
 
 def test_native_spec_and_public_examples() -> None:
     assert _PROBLEM.bad_examples == (_BASE,)
-    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 8
+    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 10
 
 
 def test_multiple_variant_requirements_produce_one_model_review() -> None:

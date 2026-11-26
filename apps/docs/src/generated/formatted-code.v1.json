@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fc733e2770d386ebe26ce0a613f4558467a165a7f1f42614ed92d688cc3ef687",
-  "cliSha256": "1428dda0610409d5a50a9688a67314843933fbfdae41cc001e06d444c1042748",
+  "catalogSha256": "72b804258835118f1dfc896ec98376bd6fd1684119770522cfe633aeb2d76d16",
+  "cliSha256": "61036b9f9f5a2e276173f7724b42e2f47622cea41390926348f3df65d42687f5",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19244,6 +19244,36 @@
           "outcome": "accept",
           "scenarioId": "explicit-data-discriminator",
           "title": "Explicit tags preserve positional constructor calls with init=False"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass RecordingIssue(BaseModel):\n    reason: Literal[\"availability\", \"download_limit\"]\n    unavailable_part: str | None = None\n    byte_limit: int | None = None\n\n\nRecordingIssue(reason=\"availability\", unavailable_part=\"metadata\")\nRecordingIssue(reason=\"download_limit\", byte_limit=1024)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "producer-dependent-payload",
+          "outcome": "reject",
+          "scenarioId": "constructor-payload",
+          "title": "Constructor keywords reveal tag-dependent payloads"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass RecordingUnavailable(BaseModel):\n    reason: Literal[\"availability\"] = \"availability\"\n    unavailable_part: str\n\n\nclass RecordingTooLarge(BaseModel):\n    reason: Literal[\"download_limit\"] = \"download_limit\"\n    byte_limit: int\n\n\ntype RecordingIssue = Annotated[\n    RecordingUnavailable | RecordingTooLarge, Field(discriminator=\"reason\")\n]\nRecordingUnavailable(unavailable_part=\"metadata\")\nRecordingTooLarge(byte_limit=1024)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "producers-use-tagged-variants",
+          "outcome": "accept",
+          "scenarioId": "constructor-payload",
+          "title": "The recording variants declare their required payloads"
         },
         {
           "expectedCount": 0,
