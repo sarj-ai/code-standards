@@ -30,12 +30,40 @@ def read(paths: Iterable[Path]) -> dict[Path, dict[str, JsonValue]]:
     }
 
 
-def parents(path: Path, document: Mapping[str, JsonValue]) -> Iterator[Path]:
+def inheritance(path: Path, document: Mapping[str, JsonValue]) -> Iterator[Path | str]:
     value = document.get("extends")
     for item in value if isinstance(value, list) else [value]:
-        if isinstance(item, str) and item.startswith("."):
+        if not isinstance(item, str):
+            continue
+        if item.startswith("."):
             target = normalized(path.parent / item)
-            yield target if target.suffix == ".json" else target.with_name(target.name + ".json")
+            yield target if target.suffix == ".json" else target.parent / f"{target.name}.json"
+        else:
+            yield item
+
+
+def parents(path: Path, document: Mapping[str, JsonValue]) -> Iterator[Path]:
+    return (target for target in inheritance(path, document) if isinstance(target, Path))
+
+
+def with_local_parents(documents: Mapping[Path, dict[str, JsonValue]], root: Path) -> dict[Path, dict[str, JsonValue]]:
+    all_documents = dict(documents)
+    pending = list(documents)
+    seen = set(documents)
+    while pending:
+        path = pending.pop()
+        for parent in parents(path, all_documents[path]):
+            if parent in seen:
+                continue
+            seen.add(parent)
+            try:
+                parent.resolve().relative_to(root)
+            except OSError, ValueError:
+                continue
+            if isinstance(document := _jsonc(parent), dict):
+                all_documents[parent] = document
+                pending.append(parent)
+    return all_documents
 
 
 def is_project(document: Mapping[str, JsonValue]) -> bool:

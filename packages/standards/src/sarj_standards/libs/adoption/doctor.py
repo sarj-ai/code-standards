@@ -15,7 +15,7 @@ import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, StrictBool, ValidationError
 from repo_standards.core.parser import load_manifest as load_repository_manifest
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -1984,13 +1984,14 @@ def _check_next_type_checks(root: Path, configs: Sequence[Path]) -> Iterator[Fin
 
 
 def _check_tsconfigs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
-    documents = tsconfigs.read(files)
+    projects = tsconfigs.read(files)
+    documents = tsconfigs.with_local_parents(projects, root.resolve())
     extended = {parent for path, document in documents.items() for parent in tsconfigs.parents(path, document)}
-    unreferenced = frozenset(tsconfigs.unreferenced_projects(documents))
+    unreferenced = frozenset(tsconfigs.unreferenced_projects(projects))
     options = {
         path: compiler for path, document in documents.items() if (compiler := _compiler_options(document)) is not None
     }
-    for path, document in sorted(documents.items()):
+    for path, document in sorted(projects.items()):
         if path not in options:
             continue
         where = str(path.relative_to(root))
@@ -2002,25 +2003,14 @@ def _check_tsconfigs(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
                 "doctor.typescript.tsconfig",
                 'remove `baseUrl` and write each `paths` target relative to the tsconfig, such as "./src/*"',
             )
-        if path in extended or not (path.name == tsconfigs.TSCONFIG_JSON or tsconfigs.is_project(document)):
+        if path.name != tsconfigs.TSCONFIG_JSON and (path in extended or not tsconfigs.is_project(document)):
             continue
-        if _imports_ts_extensions_with_emit(path, documents, options):
-            yield Finding(
-                Level.DRIFT,
-                where,
-                "`allowImportingTsExtensions` requires `noEmit` or `emitDeclarationOnly`; tsrs rejects this tsconfig",
-                "doctor.typescript.tsconfig",
-                "set `noEmit: true` (or `emitDeclarationOnly: true`) in compilerOptions",
-            )
-        if path in unreferenced:
-            yield Finding(
-                Level.WARN,
-                where,
-                "Oxlint type-checks tsconfig.json projects and their references only; this project's files are "
-                "checked with an inferred program instead",
-                "doctor.typescript.tsconfig",
-                f'add {{"path": "./{path.name}"}} to the `references` of the nearest tsconfig.json '
-                f"({tsconfigs.REFERENCE_RULE}), or delete it",
+        resolved = _merged_compiler_options(path, documents, options)
+        if document.get("files") != [] or "include" in document:
+            yield from _check_tsconfig_strictness(where, resolved)
+        if path not in extended:
+            yield from _check_tsconfig_project_wiring(
+                path.name, where, resolved.options, unreferenced=path in unreferenced
             )
 
 
@@ -2029,10 +2019,45 @@ class _CompilerOptions(BaseModel):
     allow_importing_ts_extensions: bool | None = Field(default=None, alias="allowImportingTsExtensions")
     no_emit: bool | None = Field(default=None, alias="noEmit")
     emit_declaration_only: bool | None = Field(default=None, alias="emitDeclarationOnly")
+    strict: StrictBool | None = None
+    forbid_implicit_any: StrictBool | None = Field(default=None, alias="noImplicitAny")
+    null_checks: StrictBool | None = Field(default=None, alias="strictNullChecks")
+    function_types: StrictBool | None = Field(default=None, alias="strictFunctionTypes")
+    bind_call_apply: StrictBool | None = Field(default=None, alias="strictBindCallApply")
+    property_initialization: StrictBool | None = Field(default=None, alias="strictPropertyInitialization")
+    unknown_catch_variables: StrictBool | None = Field(default=None, alias="useUnknownInCatchVariables")
+    check_indexed_access: StrictBool | None = Field(default=None, alias="noUncheckedIndexedAccess")
+    exact_optional_property_types: StrictBool | None = Field(default=None, alias="exactOptionalPropertyTypes")
+    require_override: StrictBool | None = Field(default=None, alias="noImplicitOverride")
+    enforce_index_signature_brackets: StrictBool | None = Field(
+        default=None, alias="noPropertyAccessFromIndexSignature"
+    )
+
+
+_TS_STRICT_FLAGS: Final = (
+    "strict",
+    "noImplicitAny",
+    "strictNullChecks",
+    "strictFunctionTypes",
+    "strictBindCallApply",
+    "strictPropertyInitialization",
+    "useUnknownInCatchVariables",
+    "noUncheckedIndexedAccess",
+    "exactOptionalPropertyTypes",
+    "noImplicitOverride",
+    "noPropertyAccessFromIndexSignature",
+)
+_MANAGED_TSCONFIGS: Final = frozenset({"@sarj/tsconfig/base.json", "@sarj/tsconfig/strict.json"})
 
 
 class _TsConfig(BaseModel):
     compiler_options: _CompilerOptions = Field(default_factory=_CompilerOptions, alias="compilerOptions")
+
+
+@dataclass(frozen=True)
+class _ResolvedCompilerOptions:
+    options: _CompilerOptions
+    strictness_resolved: bool
 
 
 def _compiler_options(document: Mapping[str, JsonValue]) -> _CompilerOptions | None:
@@ -2042,32 +2067,86 @@ def _compiler_options(document: Mapping[str, JsonValue]) -> _CompilerOptions | N
         return None
 
 
-def _imports_ts_extensions_with_emit(
+def _merged_compiler_options(
     path: Path, documents: Mapping[Path, Mapping[str, JsonValue]], options: Mapping[Path, _CompilerOptions]
-) -> bool:
-    merged = _CompilerOptions()
-    for current in reversed(_tsconfig_chain(path, documents, frozenset())):
-        if current in options:
-            merged = merged.model_copy(update=options[current].model_dump(exclude_unset=True))
-    return (
-        merged.allow_importing_ts_extensions is True
-        and merged.no_emit is not True
-        and merged.emit_declaration_only is not True
-    )
+) -> _ResolvedCompilerOptions:
+    merged: dict[str, JsonValue] = {}
+    strictness_resolved = True
+    for current in _tsconfig_chain(path, documents, frozenset()):
+        match current:
+            case Path() if current in options:
+                merged.update(options[current].model_dump(exclude_unset=True, by_alias=True))
+            case str() if current in _MANAGED_TSCONFIGS:
+                merged.update(dict.fromkeys(_TS_STRICT_FLAGS, True))
+            case _:
+                strictness_resolved = False
+                for flag in _TS_STRICT_FLAGS:
+                    merged.pop(flag, None)
+    return _ResolvedCompilerOptions(_CompilerOptions.model_validate(merged), strictness_resolved)
+
+
+def _check_tsconfig_strictness(where: str, resolved: _ResolvedCompilerOptions) -> Iterator[Finding]:
+    settings: Mapping[str, JsonValue] = resolved.options.model_dump(by_alias=True)
+    disabled = [f"`{flag}`" for flag in _TS_STRICT_FLAGS if settings[flag] is False]
+    if disabled:
+        yield Finding(
+            Level.DRIFT,
+            where,
+            f"tsconfig disables strict type checking via {', '.join(disabled)}",
+            "doctor.typescript.tsconfig",
+            "remove the false overrides or set the listed compiler options to true",
+        )
+    elif resolved.strictness_resolved and resolved.options.strict is not True:
+        yield Finding(
+            Level.DRIFT,
+            where,
+            "tsconfig does not explicitly enable strict type checking",
+            "doctor.typescript.tsconfig",
+            "set `strict: true` in compilerOptions or extend `@sarj/tsconfig/strict.json`",
+        )
+
+
+def _check_tsconfig_project_wiring(
+    filename: str, where: str, options: _CompilerOptions, *, unreferenced: bool
+) -> Iterator[Finding]:
+    if (
+        options.allow_importing_ts_extensions is True
+        and options.no_emit is not True
+        and options.emit_declaration_only is not True
+    ):
+        yield Finding(
+            Level.DRIFT,
+            where,
+            "`allowImportingTsExtensions` requires `noEmit` or `emitDeclarationOnly`; tsrs rejects this tsconfig",
+            "doctor.typescript.tsconfig",
+            "set `noEmit: true` (or `emitDeclarationOnly: true`) in compilerOptions",
+        )
+    if unreferenced:
+        yield Finding(
+            Level.WARN,
+            where,
+            "Oxlint type-checks tsconfig.json projects and their references only; this project's files are "
+            "checked with an inferred program instead",
+            "doctor.typescript.tsconfig",
+            f'add {{"path": "./{filename}"}} to the `references` of the nearest tsconfig.json '
+            f"({tsconfigs.REFERENCE_RULE}), or delete it",
+        )
 
 
 def _tsconfig_chain(
     path: Path, documents: Mapping[Path, Mapping[str, JsonValue]], seen: frozenset[Path]
-) -> tuple[Path, ...]:
+) -> Iterator[Path | str | None]:
     document = documents.get(path)
     if document is None or path in seen:
-        return ()
-    inherited = (
-        link
-        for parent in reversed(tuple(tsconfigs.parents(path, document)))
-        for link in _tsconfig_chain(parent, documents, seen | {path})
-    )
-    return (path, *inherited)
+        yield None
+        return
+    for parent in tsconfigs.inheritance(path, document):
+        match parent:
+            case Path():
+                yield from _tsconfig_chain(parent, documents, seen | {path})
+            case str():
+                yield parent
+    yield path
 
 
 def _nested_oxlint_configs(typescript_root: Path, active_entrypoint: Path, files: Sequence[Path]) -> tuple[Path, ...]:

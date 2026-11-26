@@ -181,14 +181,15 @@ def test_tsconfig_options_typescript_7_rejects_are_drift(tmp_path: Path) -> None
     _adopt(tmp_path)
     (tmp_path / "tsconfig.json").write_text(
         "{\n  // JSONC comments and trailing commas are valid tsconfig syntax.\n"
-        '  "compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["src/*"]},},\n'
+        '  "compilerOptions": {"strict": true, "baseUrl": ".", "paths": {"@/*": ["src/*"]},},\n'
         '  "references": [{"path": "./packages/catalog"}],\n}\n',
         encoding="utf-8",
     )
     catalog = tmp_path / "packages" / "catalog"
     catalog.mkdir(parents=True)
     (catalog / "tsconfig.json").write_text(
-        '{"compilerOptions": {"allowImportingTsExtensions": true}, "include": ["src"]}\n', encoding="utf-8"
+        '{"compilerOptions": {"strict": true, "allowImportingTsExtensions": true}, "include": ["src"]}\n',
+        encoding="utf-8",
     )
 
     findings = [
@@ -210,7 +211,7 @@ def test_tsconfig_options_typescript_7_rejects_are_drift(tmp_path: Path) -> None
 def test_inherited_no_emit_satisfies_ts_extension_imports(tmp_path: Path) -> None:
     _adopt(tmp_path)
     (tmp_path / "tsconfig.base.json").write_text(
-        '{"compilerOptions": {"noEmit": true, "allowImportingTsExtensions": true}}\n', encoding="utf-8"
+        '{"compilerOptions": {"strict": true, "noEmit": true, "allowImportingTsExtensions": true}}\n', encoding="utf-8"
     )
     (tmp_path / "tsconfig.json").write_text(
         '{"extends": "./tsconfig.base.json", "include": ["src"]}\n', encoding="utf-8"
@@ -224,11 +225,15 @@ def test_a_project_no_tsconfig_json_references_is_reported(tmp_path: Path) -> No
     (tmp_path / "tsconfig.json").write_text(
         '{"files": [], "references": [{"path": "./tsconfig.app.json"}]}\n', encoding="utf-8"
     )
-    (tmp_path / "tsconfig.app.json").write_text('{"include": ["src"]}\n', encoding="utf-8")
-    (tmp_path / "tsconfig.tooling.json").write_text('{"include": ["scripts"]}\n', encoding="utf-8")
+    (tmp_path / "tsconfig.app.json").write_text(
+        '{"compilerOptions": {"strict": true}, "include": ["src"]}\n', encoding="utf-8"
+    )
+    (tmp_path / "tsconfig.tooling.json").write_text(
+        '{"compilerOptions": {"strict": true}, "include": ["scripts"]}\n', encoding="utf-8"
+    )
     # A build variant covers files tsconfig.json already has; `update` leaves it unreferenced too.
     (tmp_path / "tsconfig.build.json").write_text(
-        '{"extends": "./tsconfig.json", "include": ["src"]}\n', encoding="utf-8"
+        '{"extends": "./tsconfig.json", "compilerOptions": {"strict": true}, "include": ["src"]}\n', encoding="utf-8"
     )
 
     assert _findings(tmp_path, "doctor.typescript.tsconfig") == [(doctor.Level.WARN, "tsconfig.tooling.json")]
@@ -236,12 +241,116 @@ def test_a_project_no_tsconfig_json_references_is_reported(tmp_path: Path) -> No
 
 def test_the_reference_fix_names_what_tsc_requires_of_a_referenced_project(tmp_path: Path) -> None:
     _adopt(tmp_path)
-    (tmp_path / "tsconfig.json").write_text('{"include": ["src"]}\n', encoding="utf-8")
-    (tmp_path / "tsconfig.tooling.json").write_text('{"include": ["scripts"]}\n', encoding="utf-8")
+    (tmp_path / "tsconfig.json").write_text(
+        '{"compilerOptions": {"strict": true}, "include": ["src"]}\n', encoding="utf-8"
+    )
+    (tmp_path / "tsconfig.tooling.json").write_text(
+        '{"compilerOptions": {"strict": true}, "include": ["scripts"]}\n', encoding="utf-8"
+    )
 
     (finding,) = (item for item in doctor.diagnose_adoption_health(tmp_path) if item.id == "doctor.typescript.tsconfig")
 
     assert "`composite: true`" in (finding.remediation or "")
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "strict",
+        "noImplicitAny",
+        "strictNullChecks",
+        "strictFunctionTypes",
+        "strictBindCallApply",
+        "strictPropertyInitialization",
+        "useUnknownInCatchVariables",
+        "noUncheckedIndexedAccess",
+        "exactOptionalPropertyTypes",
+        "noImplicitOverride",
+        "noPropertyAccessFromIndexSignature",
+    ],
+)
+def test_a_project_can_disable_a_managed_strict_option(tmp_path: Path, flag: str) -> None:
+    _adopt(tmp_path)
+    config = {"extends": "@sarj/tsconfig/strict.json", "compilerOptions": {flag: False}}
+    (tmp_path / "tsconfig.json").write_text(json.dumps(config), encoding="utf-8")
+
+    (finding,) = (item for item in doctor.diagnose_adoption_health(tmp_path) if item.id == "doctor.typescript.tsconfig")
+    assert (finding.level, finding.where) == (doctor.Level.DRIFT, "tsconfig.json")
+    assert f"`{flag}`" in finding.detail
+
+
+@pytest.mark.parametrize(
+    ("parent_options", "expected_detail"),
+    [
+        pytest.param({}, "does not explicitly enable strict type checking", id="missing-strict"),
+        pytest.param({"strict": True, "strictNullChecks": False}, "`strictNullChecks`", id="weak-local-parent"),
+    ],
+)
+def test_a_local_base_can_leave_a_project_without_strict_checking(
+    tmp_path: Path, parent_options: dict[str, bool], expected_detail: str
+) -> None:
+    _adopt(tmp_path)
+    (tmp_path / "tsconfig.json").write_text(
+        '{"files": [], "references": [{"path": "./tsconfig.app.json"}]}\n', encoding="utf-8"
+    )
+    (tmp_path / "tsconfig.app.json").write_text('{"extends": "./base.json", "include": ["src"]}\n', encoding="utf-8")
+    (tmp_path / "base.json").write_text(json.dumps({"compilerOptions": parent_options}), encoding="utf-8")
+
+    (finding,) = (item for item in doctor.diagnose_adoption_health(tmp_path) if item.id == "doctor.typescript.tsconfig")
+    assert (finding.level, finding.where) == (doctor.Level.DRIFT, "tsconfig.app.json")
+    assert expected_detail in finding.detail
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(
+            '{"extends": "@sarj/tsconfig/strict.json", "compilerOptions": '
+            '{"outDir": "./dist", "rootDir": "./src", "isolatedDeclarations": false}}',
+            id="managed-emit-overrides",
+        ),
+        pytest.param('{"extends": "astro/tsconfigs/strict"}', id="unknown-package"),
+        pytest.param('{"extends": "./absent.json"}', id="missing-relative-parent"),
+        pytest.param('{"extends": "./broken.json"}', id="malformed-relative-parent"),
+        pytest.param(r'{"extends": "./bad\u0000parent.json"}', id="invalid-parent-path"),
+        pytest.param('{"files": [], "references": [{"path": "./project"}]}', id="solution"),
+    ],
+)
+def test_strictness_findings_require_a_known_project_setting(tmp_path: Path, config: str) -> None:
+    _adopt(tmp_path)
+    (tmp_path / "broken.json").write_text("{", encoding="utf-8")
+    (tmp_path / "tsconfig.json").write_text(config, encoding="utf-8")
+
+    assert not _findings(tmp_path, "doctor.typescript.tsconfig")
+
+
+@pytest.mark.parametrize(
+    ("config", "reported"),
+    [
+        pytest.param(
+            '{"extends": ["./tsconfig.tools.json", "@sarj/tsconfig/base.json"]}', False, id="last-parent-wins"
+        ),
+        pytest.param(
+            '{"extends": ["@sarj/tsconfig/base.json", "./tsconfig.tools.json"]}', True, id="last-parent-weakens"
+        ),
+        pytest.param(
+            '{"extends": "./tsconfig.tools.json", "compilerOptions": {"strictNullChecks": true}}',
+            False,
+            id="child-override-wins",
+        ),
+        pytest.param('{"extends": ["./tsconfig.tools.json", "other/base"]}', False, id="unknown-last-parent"),
+    ],
+)
+def test_strictness_uses_resolved_options_on_the_project(tmp_path: Path, config: str, *, reported: bool) -> None:
+    _adopt(tmp_path)
+    (tmp_path / "tsconfig.tools.json").write_text(
+        '{"compilerOptions": {"strict": true, "strictNullChecks": false}, "include": ["tools"]}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "tsconfig.json").write_text(config, encoding="utf-8")
+
+    expected = [(doctor.Level.DRIFT, "tsconfig.json")] if reported else []
+    assert _findings(tmp_path, "doctor.typescript.tsconfig") == expected
 
 
 @pytest.mark.parametrize(
