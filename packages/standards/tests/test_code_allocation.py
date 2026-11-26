@@ -31,10 +31,9 @@ class _Coded(Protocol):
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HOOKS_PATH = _REPO_ROOT / ".pre-commit-hooks.yaml"
 
-#: Code allocations are immutable: Python overflow moved through SARJ0xx/4xx/5xx; retired codes remain reserved for
-#: stable suppressions.
+#: Python owns SARJ0xx, SARJ4xx, SARJ5xx, and SARJ6xx. Retired codes remain reserved for stable suppressions.
 _BANDS: Final[Mapping[str, tuple[Mapping[str, _Coded | type[_Coded]], frozenset[int]]]] = {
-    "sarj-python-lint": (PYTHON_REGISTRY, frozenset({0, 4, 5})),
+    "sarj-python-lint": (PYTHON_REGISTRY, frozenset({0, 4, 5, 6})),
     "sarj-sql-lint": (SQL_REGISTRY, frozenset({1})),
     "sarj-iac-lint": (IAC_REGISTRY, frozenset({2})),
     "sarj-standards:text": (TEXT_REGISTRY, frozenset({3})),

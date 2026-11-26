@@ -1312,6 +1312,7 @@ def _units(
 def _is_index_candidate(source: str) -> bool:
     return (
         "import" in source
+        or "def " in source
         or "pytest_plugins" in source
         or "pytest_generate_tests" in source
         or "NewType" in source
@@ -1890,6 +1891,15 @@ def _record_import(node: ast.stmt, package: str, result: dict[str, SymbolRef]) -
             local_name = alias.asname or alias.name.partition(".")[0]
             module = alias.name if alias.asname else local_name
             result[local_name] = SymbolRef(module, "")
+
+
+def import_binding_symbol(
+    unit: SourceUnit, statement: ast.Import | ast.ImportFrom, binding: ast.alias
+) -> SymbolRef | None:
+    module = unit.module or ""
+    package = module if unit.path.name == "__init__.py" else module.rpartition(".")[0]
+    local = binding.asname or binding.name.partition(".")[0]
+    return _statement_import_origins(statement, package).get(local)
 
 
 def _relative_module(package: str, level: int, module: str | None) -> str | None:

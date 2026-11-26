@@ -209,6 +209,7 @@
       "prefer-regex-fullmatch",
       "prefer-required-constructor-parameters",
       "prefer-required-prerequisite",
+      "prefer-result-for-caught-outcome",
       "prefer-result-over-nullable-exception",
       "prefer-runtime-validation",
       "prefer-self-documenting-constant",
@@ -778,7 +779,8 @@
       "SARJ594",
       "SARJ597",
       "SARJ598",
-      "SARJ599"
+      "SARJ599",
+      "SARJ604"
     ],
     "sql": [
       "SARJ101",

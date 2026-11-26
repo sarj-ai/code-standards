@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "dd87ea50eac24d2736da0237969cd722707c204d93459e257b5c7d8b863d3481",
-  "cliSha256": "e2197de345a9f1586a09c4620198437efec4da118e153a4a66fd5bc78cd714c8",
+  "catalogSha256": "12601339baeff50695ea3965df069532d868fed2c7c667a7251511d131368a95",
+  "cliSha256": "6eae757eb9101a9f8f67fc52b16465c0b34ee9ff46585d777837395f760cb6c2",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -21897,6 +21897,41 @@
           "outcome": "accept",
           "scenarioId": "sdk-dependency",
           "title": "The SDK client is required at construction"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-result-for-caught-outcome": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "filters/__init__.py",
+              "source": "class MissingField(RuntimeError):\n    pass\n\n\ndef evaluate(fields: set[str], field: str) -> None:\n    if field not in fields:\n        raise MissingField(field)\n\n\ndef keep(records: list[set[str]], field: str) -> list[set[str]]:\n    kept = []\n    for record in records:\n        try:\n            evaluate(record, field)\n        except MissingField:\n            continue\n        kept.append(record)\n    return kept\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "filters/__init__.py",
+          "id": "caught-filter-outcome",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A filter signals a routine rejection by raising"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "filters/__init__.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Met:\n    pass\n\n\n@dataclass(frozen=True)\nclass NotMet:\n    field: str\n\n\ntype Evaluation = Met | NotMet\n\n\ndef evaluate(fields: set[str], field: str) -> Evaluation:\n    if field not in fields:\n        return NotMet(field)\n    return Met()\n\n\ndef keep(records: list[set[str]], field: str) -> list[set[str]]:\n    return [record for record in records if isinstance(evaluate(record, field), Met)]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "filters/__init__.py",
+          "id": "typed-filter-outcome",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The filter returns an explicit evaluation outcome"
         }
       ],
       "optionsSchemaSource": null

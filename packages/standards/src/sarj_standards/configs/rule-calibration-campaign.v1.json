@@ -55,6 +55,12 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/prefer-result-for-caught-outcome",
+      "family": "python",
+      "ruleId": "prefer-result-for-caught-outcome",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/python/no-nonlocal-statement",
       "family": "python",
       "ruleId": "no-nonlocal-statement",

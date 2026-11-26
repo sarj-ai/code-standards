@@ -296,6 +296,7 @@ from sarj_python_lint.rules.prefer_pydantic_field_bounds import PreferPydanticFi
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
 from sarj_python_lint.rules.prefer_required_prerequisite import PreferRequiredPrerequisite
+from sarj_python_lint.rules.prefer_result_for_caught_outcome import PreferResultForCaughtOutcome
 from sarj_python_lint.rules.prefer_result_over_nullable_exception import PreferResultOverNullableException
 from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
 from sarj_python_lint.rules.prefer_semantic_temporal_types import PreferSemanticTemporalTypes
@@ -323,6 +324,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferResultForCaughtOutcome.id: PreferResultForCaughtOutcome,
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
         NoSwallowedException.id: NoSwallowedException,

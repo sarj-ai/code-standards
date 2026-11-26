@@ -20,6 +20,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -457,18 +458,12 @@ class NoCustomControlFlowException(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if context.tree is None or not _owned_source(context):
+        if not _reviewable_source(context):
             return []
         provenance = context.static_resource_provenance
-        if (
-            provenance.wildcard
-            or provenance.dynamic_namespace
-            or (not provenance.builtin_namespace_untouched and not _builtin_namespace_safe(context))
-        ):
-            return []
         contexts = {context.path: context}
         markers = _markers(context, provenance, contexts)
-        raised_markers = _direct_raises(markers, context, provenance)
+        raised_markers = {marker for _, marker in _direct_raises(markers, context, provenance)}
         findings: list[Diagnostic] = []
         for marker in markers.values():
             if marker not in raised_markers:
@@ -505,6 +500,29 @@ class NoCustomControlFlowException(Rule):
                 )
             )
         return [*findings, *_builtin_domain_rejections(context), *_http_rejections(context, contexts)]
+
+
+def covered_custom_raises(context: PythonFileContext) -> set[ast.Raise]:
+    if not _reviewable_source(context):
+        return set()
+    provenance = context.static_resource_provenance
+    contexts = {context.path: context}
+    markers = _markers(context, provenance, contexts)
+    code = NoCustomControlFlowException.code
+    return {
+        raised
+        for raised, marker in _direct_raises(markers, context, provenance)
+        if not context.suppressions.is_suppressed(marker.lineno, code)
+    } | {raised for raised, _ in _imported_raises(context, contexts)}
+
+
+def _reviewable_source(context: PythonFileContext) -> bool:
+    if context.tree is None or not _owned_source(context):
+        return False
+    provenance = context.static_resource_provenance
+    return not (provenance.wildcard or provenance.dynamic_namespace) and (
+        provenance.builtin_namespace_untouched or _builtin_namespace_safe(context)
+    )
 
 
 def _owned_source(context: PythonFileContext) -> bool:
@@ -623,7 +641,7 @@ def _raised_runtime_markers(context: PythonFileContext, contexts: dict[Path, Pyt
         and _stable_marker(node, context, facts)
         and not context.suppressions.is_suppressed(node.lineno, NoCustomControlFlowException.code)
     }
-    return _direct_raises(markers, context, facts)
+    return {marker for _, marker in _direct_raises(markers, context, facts)}
 
 
 def _builtin_domain_rejections(context: PythonFileContext) -> list[Diagnostic]:
@@ -992,9 +1010,8 @@ def _builtin_base(
 
 def _direct_raises(
     markers: dict[str, ast.ClassDef], context: PythonFileContext, provenance: ResourceProvenance
-) -> set[ast.ClassDef]:
+) -> Iterator[tuple[ast.Raise, ast.ClassDef]]:
     candidates = set(markers.values())
-    raised_markers: set[ast.ClassDef] = set()
     value_errors: dict[ast.ClassDef, bool] = {}
     validators: dict[ast.AST, bool] = {}
     for raised in context.nodes(ast.Raise):
@@ -1002,7 +1019,7 @@ def _direct_raises(
         if not isinstance(target, ast.Name):
             continue
         marker = provenance.binding(target.id, target)
-        if not isinstance(marker, ast.ClassDef) or marker not in candidates or marker in raised_markers:
+        if not isinstance(marker, ast.ClassDef) or marker not in candidates:
             continue
         constructor = _payload_constructor(marker)
         if constructor is not None and not _payload_guard(raised, constructor, context):
@@ -1010,8 +1027,7 @@ def _direct_raises(
         if marker not in value_errors:
             value_errors[marker] = _value_error_marker(marker, context, provenance)
         if not (value_errors[marker] and _validation_callback(raised, context, provenance, validators)):
-            raised_markers.add(marker)
-    return raised_markers
+            yield raised, marker
 
 
 def _payload_guard(raised: ast.Raise, constructor: ast.FunctionDef, context: PythonFileContext) -> bool:

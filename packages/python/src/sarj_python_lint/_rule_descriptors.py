@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-result-for-caught-outcome"),
+        module="sarj_python_lint.rules.prefer_result_for_caught_outcome",
+        class_name="PreferResultForCaughtOutcome",
+        code="SARJ604",
+        description="Return a typed outcome when every caller handles the same first-party exception.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-injected-dependency-close"),
         module="sarj_python_lint.rules.no_injected_dependency_close",
         class_name="NoInjectedDependencyClose",
