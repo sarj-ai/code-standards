@@ -18,12 +18,16 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._comments import split_identifier, stem
+from sarj_python_lint.rules._docstrings import WORD_RE
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._inert_model_annotation import inert_direct_model_body
 from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -40,6 +44,7 @@ _DOMAIN_CLAUSE = re.compile(
 )
 _QUOTED_VALUE = re.compile(r"(?P<quote>['\"`])(?P<value>.+?)(?P=quote)")
 _IDENTIFIER_VALUE = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+_NAME_FILLER = frozenset({"a", "an", "at", "for", "of", "the"})
 
 
 @final
@@ -48,13 +53,13 @@ class NoRedundantLiteralDescription(Rule):
     code = "SARJ423"
     documentation = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Do not restate a string Literal or local string Enum domain in its Pydantic description.",
+        summary="Do not restate a field's names or its string Literal or local string Enum domain in its Pydantic description.",
         rationale=(
-            "Pydantic already publishes literal and enum domains in JSON Schema; duplicate must-be prose can "
-            "contradict the generated contract after a value changes."
+            "Pydantic already publishes field names and literal and enum domains in JSON Schema; duplicate prose "
+            "adds no meaning and must-be lists can contradict the generated contract after a value changes."
         ),
         remediation=(
-            "Remove only the repeated value list. Preserve guidance about when to use each value, UX labels, "
+            "Remove a description that only repeats names, or only the repeated value list. Preserve guidance about when to use each value, UX labels, "
             "examples, deprecation, or rationale not encoded by the field type."
         ),
         category=RuleCategory.MAINTAINABILITY,
@@ -66,6 +71,7 @@ class NoRedundantLiteralDescription(Rule):
             "Domains are resolved only from direct string Literals and static Literal aliases or string-valued Enums in the same module.",
             "Descriptions are reported only when a narrow clause repeats the complete domain without mapping or rationale.",
             "ERROR requires an inert direct model with no json_schema_extra options; custom construction, schema metadata, local aliases and Enum annotations retain WARNING with schema-ownership review guidance.",
+            "Name restatement is a review-only warning: every word of a digit-free literal description, apart from articles and of/for/at, must match a field, model or annotation name part.",
             "Test and generated files are excluded.",
         ),
         examples=(
@@ -184,6 +190,7 @@ class NoRedundantLiteralDescription(Rule):
             for statement in model.body:
                 if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
                     continue
+                diagnostics.extend(_name_diagnostics(path, statement, statement.target.id, model.name, imports))
                 domain = _closed_domain(statement.annotation, imports, local_domains)
                 if domain is None or _has_schema_override(statement.annotation, imports):
                     continue
@@ -194,6 +201,58 @@ class NoRedundantLiteralDescription(Rule):
                     severity=severity,
                 )
         return diagnostics
+
+
+def _name_diagnostics(
+    path: Path, statement: ast.AnnAssign, field_name: str, model_name: str, imports: ImportIndex
+) -> list[Diagnostic]:
+    names = _declared_name_stems(statement, (field_name, model_name), imports)
+    return [
+        Diagnostic(
+            path=path,
+            line=keyword.value.lineno,
+            col=keyword.value.col_offset + 1,
+            code=NoRedundantLiteralDescription.code,
+            message=(
+                f"`{field_name}` description only repeats its field, model or type names; "
+                "remove it or state what the names cannot."
+            ),
+            severity=Severity.WARNING,
+        )
+        for field_call in _field_calls(statement, imports)
+        for keyword in field_call.keywords
+        if keyword.arg == "description"
+        and isinstance(keyword.value, ast.Constant)
+        and isinstance(keyword.value.value, str)
+        and _restates_names(keyword.value.value, names)
+    ]
+
+
+def _declared_name_stems(statement: ast.AnnAssign, owners: tuple[str, ...], imports: ImportIndex) -> frozenset[str]:
+    annotation = statement.annotation
+    match annotation:
+        case ast.Subscript(value=origin, slice=ast.Tuple(elts=[annotated, *_])) if imports.resolves(
+            origin, sources=_TYPING_SOURCES, symbol="Annotated"
+        ):
+            annotation = annotated
+        case _:
+            pass
+    names = list(owners)
+    for node in walk_ast(annotation):
+        match node:
+            case ast.Name(id=name) | ast.Attribute(attr=name):
+                names.append(name)
+            case _:
+                pass
+    return frozenset(stem(part) for name in names for part in split_identifier(name))
+
+
+def _restates_names(description: str, names: frozenset[str]) -> bool:
+    if re.search(r"\d", description):
+        return False
+    words = [match.group(0).lower() for match in WORD_RE.finditer(description)]
+    content = [word for word in words if word not in _NAME_FILLER]
+    return bool(content) and all(stem(word) in names for word in content)
 
 
 def _description_level(model: ast.ClassDef, context: PythonFileContext) -> DiagnosticSeverity:
