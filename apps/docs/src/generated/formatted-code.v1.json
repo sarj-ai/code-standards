@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "05b96d0f6c423db8d256eb1eb3161022fd2f4fef68a26d01c9e96118cefd83db",
-  "cliSha256": "224d20ed88c8ca9699e209f4a01f340e51f46a69d242ebb7d50011daec47fcda",
+  "catalogSha256": "5ef9af01dac0e13865edc7c615354c7899c9ea7abab8af0414f2918dc1a1c13e",
+  "cliSha256": "6eae757eb9101a9f8f67fc52b16465c0b34ee9ff46585d777837395f760cb6c2",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -24481,6 +24481,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An unqualified ordinal origin lacks a lower bound"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-total-enum-mapping": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "from enum import StrEnum\nfrom typing import Final, Literal\n\n\nclass Acceptance(StrEnum):\n    JOINED = \"joined\"\n    MEMBER = \"member\"\n    CLOSED = \"closed\"\n\n\nSTATUS: Final[dict[Acceptance, str]] = {\n    Acceptance.JOINED: \"added\",\n    Acceptance.MEMBER: \"already a member\",\n}\n\n\ndef status(acceptance: Acceptance) -> str:\n    return STATUS[acceptance]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "missing-acceptance",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A dispatch table omits an acceptance status"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "from enum import StrEnum\nfrom typing import Final, Literal\n\n\nclass Acceptance(StrEnum):\n    JOINED = \"joined\"\n    MEMBER = \"member\"\n    CLOSED = \"closed\"\n\n\ntype AutoAcceptance = Literal[Acceptance.JOINED, Acceptance.MEMBER]\nSTATUS: Final[dict[AutoAcceptance, str]] = {\n    Acceptance.JOINED: \"added\",\n    Acceptance.MEMBER: \"already a member\",\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "narrow-acceptance-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A Literal alias documents the covered members"
         }
       ],
       "optionsSchemaSource": null

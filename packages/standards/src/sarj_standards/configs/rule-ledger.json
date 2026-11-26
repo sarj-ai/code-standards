@@ -257,6 +257,7 @@
       "require-pydantic-for-mapping-shape",
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
+      "require-total-enum-mapping",
       "restated-test-docstring",
       "server-proxied-file-upload",
       "service-singleton-delegates-to-bulk",
@@ -779,7 +780,8 @@
       "SARJ594",
       "SARJ597",
       "SARJ598",
-      "SARJ599"
+      "SARJ599",
+      "SARJ600"
     ],
     "sql": [
       "SARJ101",
