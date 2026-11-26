@@ -1489,7 +1489,7 @@
       "family": "text",
       "ruleId": "agent-instruction-budget",
       "state": "pending",
-      "evidence": "Executable examples and focused tests cover AGENTS.md, nested CLAUDE.md and SKILL.md over budget, the exact 1,000-word boundary and unrelated Markdown. On the default branches of four Sarj repositories, 55 AGENTS.md, CLAUDE.md and SKILL.md files ranged up to 2,183 words; only one discoverable file (1,811 words) exceeds the budget. Installed skill payloads under .agents/skills and .claude/skills stay outside source discovery. Broader field calibration remains pending.",
+      "evidence": "Executable examples and focused tests cover AGENTS.md, nested CLAUDE.md and SKILL.md over budget, the exact 1,000-word boundary and unrelated Markdown. On the default branches of four Sarj repositories, 55 AGENTS.md, CLAUDE.md and SKILL.md files ranged up to 2,183 words; only one discoverable file (1,811 words) exceeds the budget. Authored skill SKILL.md files are discovered from 9.111.0: on the same repositories 28 are routed (vendored repo-standards merge-risk is skipped) and one more exceeds the budget (platform .claude/skills/setup-release/SKILL.md, 1,964 words); no false positives were found. Broader field calibration remains pending.",
       "outcome": "Warn when AGENTS.md, CLAUDE.md or SKILL.md exceeds 1,000 whitespace-separated words. The message carries the exact count, so a baselined finding stops matching when the count changes. No autofix; promotion to error is a separate change."
     },
     {
