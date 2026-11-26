@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-nominal-rebrand"),
+        module="sarj_python_lint.rules.no_nominal_rebrand",
+        class_name="NoNominalRebrand",
+        code="SARJ608",
+        description="Preserve NewType identity across constructor calls.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-frozen-dataclass"),
         module="sarj_python_lint.rules.prefer_frozen_dataclass",
         class_name="PreferFrozenDataclass",
@@ -768,7 +777,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_contradictory_type_guard",
         class_name="NoContradictoryTypeGuard",
         code="SARJ513",
-        description="Primitive type guards must agree with the builtin predicate they return.",
+        description="Type guards must agree with the predicate they return.",
         aliases=(),
         enabled_by_default=True,
     ),

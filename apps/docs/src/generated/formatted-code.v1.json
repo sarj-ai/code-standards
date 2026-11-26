@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4699de4b03a0f79fb274d22550339801d622ff56e5f4d2a6d48ab1b238849e38",
-  "cliSha256": "bda3edc18daa338c31b5f9214970a1f9c556b95214c8faf4c4cf1eb73d70c28c",
+  "catalogSha256": "be397a0b67fd6fd63b2fb58a6d749c89beb86ad5eeec69abc96e3aad63bc73b3",
+  "cliSha256": "3a24ec032d5b03dc328b6b03510cbd995da665feae0a06bf921d0b875b732ad9",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -13555,6 +13555,21 @@
           "files": [
             {
               "path": "app/guards.py",
+              "source": "from typing import TypeIs\n\n\nclass User:\n    pass\n\n\ndef is_user(value: object) -> TypeIs[User]:\n    return True\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "constant-true-claims-class",
+          "outcome": "reject",
+          "scenarioId": "class-predicate",
+          "title": "An unconditional result does not identify a user"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
               "source": "from typing import TypeGuard\n\n\ndef is_text(value: object) -> TypeGuard[str]:\n    return True\n"
             }
           ],
@@ -13564,6 +13579,21 @@
           "outcome": "reject",
           "scenarioId": "constant-predicate",
           "title": "A constant result does not prove a primitive type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypeIs\n\n\nclass User:\n    pass\n\n\ndef is_user(value: object) -> TypeIs[User]:\n    return isinstance(value, User)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "runtime-test-identifies-class",
+          "outcome": "accept",
+          "scenarioId": "class-predicate",
+          "title": "Check the value's class before narrowing"
         },
         {
           "expectedCount": 1,
@@ -15896,6 +15926,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validator belongs to the model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-nominal-rebrand": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/identities.py",
+              "source": "from typing import NewType\n\nUserId = NewType(\"UserId\", str)\nOrgId = NewType(\"OrgId\", str)\n\n\ndef user_key(organization: OrgId) -> UserId:\n    return UserId(organization)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/identities.py",
+          "id": "organization-key-is-used-as-user-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep organization and user keys distinct"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/identities.py",
+              "source": "from typing import NewType\n\nUserId = NewType(\"UserId\", str)\nOrgId = NewType(\"OrgId\", str)\n\n\ndef user_key(organization: str) -> UserId:\n    return UserId(organization)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/identities.py",
+          "id": "user-key-is-created-from-raw-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Introduce a user key from its raw carrier"
         }
       ],
       "optionsSchemaSource": null
