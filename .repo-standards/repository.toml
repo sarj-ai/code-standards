@@ -3,6 +3,9 @@ enabled_rules = [
   "repository/artifacts/makefile-growth",
   "repository/artifacts/untyped-javascript",
   "repository/artifacts/local-residue",
+  "repository/documentation/generated-sources",
+  "repository/documentation/local-links",
+  "repository/documentation/make-targets",
   "repository/documentation/markdown-word-growth",
 ]
 components = []
@@ -136,3 +139,63 @@ addition_exemptions = [
   ".claude/skills/test-value/SKILL.md",
 ]
 entrypoints = ["README.md"]
+
+[[documentation.generated]]
+path = ".github/SECURITY.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/bootstrap/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/contracts/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/iac/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/python/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/sql/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/standards/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/standards-compat/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/tsconfig/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "packages/typescript/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"
+
+[[documentation.generated]]
+path = "plugins/sarj-skills/README.md"
+source = "packages"
+command = "uv run --project packages/standards --frozen code-standards maintain docs sync"

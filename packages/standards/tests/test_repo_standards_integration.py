@@ -44,6 +44,7 @@ _MIGRATION_CONSOLIDATION_RULE = "repository/artifacts/migration-consolidation"
 _COMPARISON_RULES = (
     _MAKEFILE_GROWTH_RULE,
     _MIGRATION_CONSOLIDATION_RULE,
+    "repository/documentation/generated-sources",
     "repository/documentation/markdown-word-growth",
 )
 
