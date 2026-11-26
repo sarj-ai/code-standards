@@ -145,6 +145,8 @@ _MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
 _MAX_MARKDOWN_FILE_BYTES = 16 * 1024 * 1024
 _IGNORED_DISCOVERED_FILES = frozenset({".env", ".env.mcp"})
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
+_VENDORED_SKILL_MARKERS = ("LICENSE", "source.json")
+SKILL_TEXT_RULES = frozenset({"agent-instruction-budget"})
 _PYTHON_NOISE_RULES = frozenset(
     {
         "docstring-args-restate-signature",
@@ -177,6 +179,7 @@ class GroupedPaths:
     shellcheck: list[str] = field(default_factory=list)
     unsupported_shell: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
+    skills: list[str] = field(default_factory=list)
     swift: list[str] = field(default_factory=list)
     typescript: list[str] = field(default_factory=list)
     css: list[str] = field(default_factory=list)
@@ -211,6 +214,8 @@ def run(
     ]
     if grouped.text:
         statuses.append(textlint.run(grouped.text))
+    if grouped.skills:
+        statuses.append(textlint.run(grouped.skills, rule_ids=SKILL_TEXT_RULES))
     return max(statuses)
 
 
@@ -339,7 +344,7 @@ def _validated_inputs(
         if not path.exists():
             msg = f"input does not exist: {raw_path}"
             raise ValueError(msg)
-        if _is_skill_artifact(path):
+        if _is_skill_payload(path):
             continue
         if not _routable_input(path, raw_path, policy=policy, validate_sources=validate_sources):
             continue
@@ -361,7 +366,7 @@ def _routable_input(path: Path, display: str, *, policy: Policy | None, validate
 def accepts_hook_path(path: Path, *, root: Path | None = None) -> bool:
     return (
         (_owns_path(path) or (root is not None and library_policy.accepts_path(path, root)))
-        and not _is_skill_artifact(path)
+        and not _is_skill_payload(path)
         and not _is_ignored_path(path, root=root)
         and not _is_conventionally_generated(path)
         and not _has_generated_header(path)
@@ -412,9 +417,7 @@ def _directory_files(path: Path, *, policy: Policy | None) -> Iterator[Path]:
             continue
         directories: list[Path] = []
         for entry in ordered:
-            if entry.name.casefold() in _IGNORED_DIRS or (
-                base.name in _SKILL_ARTIFACT_ROOTS and entry.name == "skills"
-            ):
+            if entry.name.casefold() in _IGNORED_DIRS:
                 continue
             child = base / entry.name
             try:
@@ -424,11 +427,17 @@ def _directory_files(path: Path, *, policy: Policy | None) -> Iterator[Path]:
             except OSError as error:
                 _discovery_error(error, path=child, policy=policy)
                 continue
-            if directory:
+            if directory and base.name in _SKILL_ARTIFACT_ROOTS and entry.name == "skills":
+                yield from _authored_skill_instructions(child)
+            elif directory:
                 directories.append(child)
             elif entry.name not in _IGNORED_DISCOVERED_FILES:
                 yield child
         pending.extend(reversed(directories))
+
+
+def _authored_skill_instructions(skills: Path) -> Iterator[Path]:
+    return (path for path in sorted(skills.glob("*/SKILL.md")) if not _is_skill_payload(path))
 
 
 def _discovery_error(error: OSError, *, path: Path, policy: Policy | None) -> None:
@@ -531,6 +540,14 @@ def _is_skill_artifact(path: Path) -> bool:
     return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(parts))
 
 
+def _is_skill_payload(path: Path) -> bool:
+    return _is_skill_artifact(path) and (
+        path.name != "SKILL.md"
+        or path.parent.is_symlink()
+        or any((path.parent / marker).exists() for marker in _VENDORED_SKILL_MARKERS)
+    )
+
+
 def _has_generated_header(path: Path) -> bool:
     try:
         with path.open("rb") as stream:
@@ -581,6 +598,9 @@ def _path_key(path: Path) -> Path:
 
 
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
+    if _is_skill_artifact(path):
+        grouped.skills.append(raw_path)
+        return
     tool = (
         _Tool.IAC
         if path.name.casefold().endswith(_TERRAFORM_SOURCE_SUFFIXES)

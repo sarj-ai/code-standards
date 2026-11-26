@@ -1273,6 +1273,7 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
         routed.update(grouped.iac)
     if RuleEngine.TEXT in engines:
         routed.update(grouped.text)
+        routed.update(grouped.skills)
     if RuleEngine.OXLINT in engines:
         routed.update(grouped.typescript)
     if selected is None:

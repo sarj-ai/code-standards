@@ -48,7 +48,7 @@ class AgentInstructionBudget(Rule):
             ),
         ),
         limitations=(
-            "Counts whitespace-separated words in the whole file, like `wc -w`, including front matter and code fences; other Markdown is out of scope. Installed skill payloads under `.agents/skills` and `.claude/skills` are outside source discovery.",
+            "Counts whitespace-separated words in the whole file, like `wc -w`, including front matter and code fences; other Markdown is out of scope. Under `.agents/skills` and `.claude/skills` only `<skill>/SKILL.md` is checked, and not when the skill directory has a `LICENSE` or `source.json` vendoring marker; exclude other installed skills with `[exclude] paths`.",
             "The message states the current count, so a baselined finding stops matching whenever the file's word count changes; refresh the baseline when trimming.",
         ),
     )

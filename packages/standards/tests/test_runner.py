@@ -11,6 +11,7 @@ import pytest
 
 from sarj_standards.api import Standards
 from sarj_standards.libs.linting import runner
+from sarj_standards.libs.linting.analysis import analyze
 
 
 if TYPE_CHECKING:
@@ -264,6 +265,24 @@ def test_skill_payloads_are_excluded_but_agent_tools_remain_owned(tmp_path: Path
     assert runner.group_paths([str(skill.parents[1])]).python == []
     assert not runner.accepts_hook_path(skill)
     assert runner.accepts_hook_path(tool)
+
+
+def test_only_authored_skill_instructions_route_to_skill_text_rules(tmp_path: Path) -> None:
+    authored = tmp_path / ".claude" / "skills" / "release" / "SKILL.md"
+    reference = authored.parent / "references" / "notes.md"
+    vendored = tmp_path / ".agents" / "skills" / "merge-risk" / "SKILL.md"
+    for path in (authored, reference, vendored):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<!-- hidden -->\n" + "word\n" * 1_001, encoding="utf-8")
+    (vendored.parent / "source.json").write_text("{}\n", encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]) == runner.GroupedPaths(skills=[str(authored)])
+    [report] = [tool for tool in analyze([str(tmp_path)], root=tmp_path).tools if tool.name == "sarj-text-lint"]
+    assert [item.rule_id for item in report.diagnostics] == ["agent-instruction-budget"]
+    assert runner.group_paths([str(authored)]) == runner.GroupedPaths(skills=[str(authored)])
+    assert runner.accepts_hook_path(authored)
+    assert not runner.accepts_hook_path(reference)
+    assert not runner.accepts_hook_path(vendored)
 
 
 def test_directory_walk_rejects_oversized_discovered_files_truthfully(tmp_path: Path) -> None:
