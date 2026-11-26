@@ -282,6 +282,7 @@ from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscri
 from sarj_python_lint.rules.prefer_exception_propagation import PreferExceptionPropagation
 from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
 from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
+from sarj_python_lint.rules.prefer_frozen_dataclass import PreferFrozenDataclass
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
 from sarj_python_lint.rules.prefer_match_none_check import PreferMatchNoneCheck
 from sarj_python_lint.rules.prefer_named_literal_alias import PreferNamedLiteralAlias
@@ -321,6 +322,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferFrozenDataclass.id: PreferFrozenDataclass,
         RequireTotalEnumMapping.id: RequireTotalEnumMapping,
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,

@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-frozen-dataclass"),
+        module="sarj_python_lint.rules.prefer_frozen_dataclass",
+        class_name="PreferFrozenDataclass",
+        code="SARJ607",
+        description="Freeze dataclass fields when their bindings are never reassigned.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("require-total-enum-mapping"),
         module="sarj_python_lint.rules.require_total_enum_mapping",
         class_name="RequireTotalEnumMapping",

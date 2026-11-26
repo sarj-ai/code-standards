@@ -1481,6 +1481,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ528": _declared_contract_fix,
     "SARJ531": _alias_fix,
     "SARJ567": _native_fix,
+    "SARJ607": _native_fix,
     "SARJ477": _parameter_fix,
     "SARJ488": _exception_fix,
     "SARJ504": _jwt_fix,

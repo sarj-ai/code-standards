@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "72b804258835118f1dfc896ec98376bd6fd1684119770522cfe633aeb2d76d16",
-  "cliSha256": "741aadbf75b6275595b6d1b338c466119e6a70f13afc3e407b6b4998e54fe39f",
+  "catalogSha256": "4699de4b03a0f79fb274d22550339801d622ff56e5f4d2a6d48ab1b238849e38",
+  "cliSha256": "bda3edc18daa338c31b5f9214970a1f9c556b95214c8faf4c4cf1eb73d70c28c",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19484,6 +19484,46 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Post-initialization repeats a field contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-frozen-dataclass": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "media/__init__.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, eq=False)\nclass _CallMedia:\n    audio_input_enabled: bool\n    audio_output_enabled: bool\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "media/__init__.py",
+          "id": "frozen-media-configuration",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A frozen media configuration preserves its field bindings"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "media/__init__.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(eq=False)\nclass _CallMedia:\n    audio_input_enabled: bool\n    audio_output_enabled: bool\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "media/__init__.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, eq=False)\nclass _CallMedia:\n    audio_input_enabled: bool\n    audio_output_enabled: bool\n"
+            }
+          ],
+          "focusPath": "media/__init__.py",
+          "id": "mutable-media-configuration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A media configuration leaves its fields writable"
         }
       ],
       "optionsSchemaSource": null

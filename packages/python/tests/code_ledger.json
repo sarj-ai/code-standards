@@ -389,5 +389,6 @@
   "SARJ597": "no-swallowed-exception",
   "SARJ598": "no-gather-first-exception-reraise",
   "SARJ599": "no-injected-dependency-close",
-  "SARJ600": "require-total-enum-mapping"
+  "SARJ600": "require-total-enum-mapping",
+  "SARJ607": "prefer-frozen-dataclass"
 }
