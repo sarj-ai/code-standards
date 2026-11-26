@@ -260,6 +260,7 @@
       "require-pydantic-for-mapping-shape",
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
+      "require-strict-pydantic-model",
       "require-total-enum-mapping",
       "restated-test-docstring",
       "server-proxied-file-upload",
@@ -779,7 +780,8 @@
       "SARJ605",
       "SARJ606",
       "SARJ607",
-      "SARJ608"
+      "SARJ608",
+      "SARJ609"
     ],
     "sql": [
       "SARJ101",

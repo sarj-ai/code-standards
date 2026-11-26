@@ -3911,6 +3911,14 @@
       "state": "pending",
       "evidence": "An immutable baseline of 1,371 Python files produced 2 findings, all inspected as true positives, with zero inspected false positives. Across 52 labeled files this rule yielded 4 TP, 0 FP, 0 FN and 48 TN, with zero duplicate findings. Immutable corpus evaluation took 30.931s and the 52-file labeled evaluation 2.921s. Three alternating fresh-process pairs on six representative files compared one unchanged control rule with and without both additions: first-analysis medians 0.180/0.463s, repeated-analysis medians 0.135/0.429s, and median process peaks 42.9/45.7 MiB. These selected-rule shared-host measurements do not establish whole-repository or fleet performance.",
       "outcome": "Ship at WARNING without autofix. Prefer direct value iteration when every index read is the exact sequence subscript. Retain mutation, rebinding, arithmetic, additional index uses, shadowed builtins and nested-capture boundaries; review custom indexing semantics. Consumer field calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/require-strict-pydantic-model",
+      "family": "python",
+      "ruleId": "require-strict-pydantic-model",
+      "state": "pending",
+      "evidence": "Pydantic 2.14.4 confirms that lax validation coerces an integer string, class keywords override the config dictionary, and the rightmost base with a strict setting wins. Focused tests and executable examples cover config forms, inheritance, import aliases, uncertainty, test and generated exclusions, and exact suppressions.",
+      "outcome": "Ship at WARNING without autofix. Strict Python-mode validation requires UUID and datetime instances, while strict JSON-mode validation accepts their string representations. Broader consumer calibration remains pending before error promotion."
     }
   ]
 }
