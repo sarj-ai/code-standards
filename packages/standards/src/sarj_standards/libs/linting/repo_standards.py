@@ -62,6 +62,7 @@ _COMPARISON_RULES = frozenset(
     {
         _MAKEFILE_GROWTH_RULE,
         "repository/artifacts/migration-consolidation",
+        "repository/documentation/generated-sources",
         "repository/documentation/markdown-word-growth",
     }
 )
