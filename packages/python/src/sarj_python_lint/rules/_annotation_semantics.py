@@ -6,10 +6,9 @@ from types import MappingProxyType
 from typing import NamedTuple, Self
 from weakref import WeakKeyDictionary
 
-from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._imports import TYPING_SOURCES, ImportIndex
 
 
-_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _TRANSPARENT_WRAPPERS = frozenset({"Annotated", "ClassVar", "Final", "NotRequired", "Optional", "ReadOnly", "Required"})
 
 
@@ -23,6 +22,24 @@ def bit_or_members(expression: ast.expr) -> list[ast.expr]:
         else:
             members.append(member)
     return members
+
+
+def union_members(node: ast.expr, imports: ImportIndex) -> list[ast.expr] | None:
+    match node:
+        case ast.BinOp(op=ast.BitOr()):
+            return bit_or_members(node)
+        case ast.Subscript(value=wrapper, slice=item):
+            match imports.resolved_symbol(wrapper, sources=TYPING_SOURCES), item:
+                case "Optional", _:
+                    return [item, ast.Constant(value=None)]
+                case "Union", ast.Tuple(elts=items):
+                    return items
+                case "Union", _:
+                    return [item]
+                case _:
+                    return None
+        case _:
+            return None
 
 
 class _AnnotationMember(NamedTuple):
@@ -50,8 +67,7 @@ class AnnotationSemantics:
                 case ast.TypeAlias(name=ast.Name(id=alias), value=alias_value, type_params=[]):
                     name, value = alias, alias_value
                 case ast.AnnAssign(target=ast.Name(id=alias), annotation=annotation, value=alias_value) if (
-                    alias_value is not None
-                    and imports.resolves(annotation, sources=_TYPING_SOURCES, symbol="TypeAlias")
+                    alias_value is not None and imports.resolves(annotation, sources=TYPING_SOURCES, symbol="TypeAlias")
                 ):
                     name, value = alias, alias_value
                 case _:
@@ -128,7 +144,7 @@ class AnnotationSemantics:
             return bit_or_members(node)
         if not isinstance(node, ast.Subscript):
             return None
-        wrapper = self.imports.resolved_symbol(node.value, sources=_TYPING_SOURCES)
+        wrapper = self.imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
         if wrapper == "Union":
             return list(node.slice.elts) if isinstance(node.slice, ast.Tuple) else [node.slice]
         if wrapper not in _TRANSPARENT_WRAPPERS:

@@ -80,6 +80,7 @@
       "no-dynamic-builtins",
       "no-exception-text-in-500-detail",
       "no-excessive-cognitive-complexity",
+      "no-failure-conflated-with-absence",
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
       "no-first-party-private-import",
@@ -772,6 +773,7 @@
       "SARJ598",
       "SARJ599",
       "SARJ600",
+      "SARJ601",
       "SARJ607",
       "SARJ608"
     ],

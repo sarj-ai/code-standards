@@ -17,6 +17,15 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
+        rule_id=RuleId("no-failure-conflated-with-absence"),
+        module="sarj_python_lint.rules.no_failure_conflated_with_absence",
+        class_name="NoFailureConflatedWithAbsence",
+        code="SARJ601",
+        description="Distinguish a caught failure from a missing result.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-frozen-dataclass"),
         module="sarj_python_lint.rules.prefer_frozen_dataclass",
         class_name="PreferFrozenDataclass",

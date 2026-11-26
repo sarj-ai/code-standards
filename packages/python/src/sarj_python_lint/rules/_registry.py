@@ -248,6 +248,7 @@ from sarj_python_lint.rules.no_discarded_tagged_outcome import NoDiscardedTagged
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
 from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
+from sarj_python_lint.rules.no_failure_conflated_with_absence import NoFailureConflatedWithAbsence
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
@@ -324,6 +325,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoNominalRebrand.id: NoNominalRebrand,
+        NoFailureConflatedWithAbsence.id: NoFailureConflatedWithAbsence,
         PreferFrozenDataclass.id: PreferFrozenDataclass,
         RequireTotalEnumMapping.id: RequireTotalEnumMapping,
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,

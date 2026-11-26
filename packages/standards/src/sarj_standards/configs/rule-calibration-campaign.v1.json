@@ -3777,6 +3777,14 @@
       "outcome": "Stage SARJ587 at WARNING without autofix: split long or branching collected tests and parametrize per-case logic. Promotion requires a separate change and an integration-test exemption decision."
     },
     {
+      "task": "rule-audit/python/no-failure-conflated-with-absence",
+      "family": "python",
+      "ruleId": "no-failure-conflated-with-absence",
+      "state": "pending",
+      "evidence": "Native cases cover stored-record corruption versus absence, normalized exception bindings, nullable aliases, explicit and implicit normal None, inherited contracts, scope and reachability boundaries, and exact suppressions. The pinned 2,946-file consumer scan found 40 handlers. Review found 15 distinct failure and absence outcomes, 18 intentional shared outcomes and 7 cases requiring caller context. The three existing-owner findings matched across runs.",
+      "outcome": "Ship SARJ601 at WARNING without autofix. Review whether the caller needs a distinct failure outcome when a handler and a normal path both return None."
+    },
+    {
       "task": "rule-audit/python/no-swallowed-exception",
       "family": "python",
       "ruleId": "no-swallowed-exception",
