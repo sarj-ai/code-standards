@@ -71,9 +71,26 @@ def test_binary_match_prefers_an_identity_check(fallback: str, captured: bool) -
     )
     [finding] = _check(source)
     assert finding.severity is Severity.ERROR
-    assert "if value is not None" in finding.message
+    assert "guard clause" in finding.message
     assert ("binding of `selected` on the present path" in finding.message) is captured
     assert fix_source(Path("app/service.py"), source, rule_ids=["prefer-match-none-check"]) == source
+
+
+@pytest.mark.parametrize(
+    ("absent", "present", "advice"),
+    [
+        ("return 'missing'", "return 'present'", "guard clause, `if (value := ...) is None:`"),
+        ("raise LookupError", "pass", "guard clause, `if (value := ...) is None:`"),
+        ("log()", "pass", "`if (value := ...) is None:` for the absence branch, without `else:`"),
+        ("pass", "use(value)", "`if (value := ...) is not None:` for the present branch, without `else:`"),
+        ("chosen = 'missing'", "chosen = value", "`if value is not None:` for the present case and `else:`"),
+    ],
+    ids=("returning-absence", "raising-absence", "pass-present", "pass-absence", "two-way"),
+)
+def test_binary_match_advice_follows_the_arm_shapes(absent: str, present: str, advice: str) -> None:
+    source = f"def render(value):\n    match value:\n        case None: {absent}\n        case _: {present}\n"
+    [finding] = _check(source)
+    assert advice in finding.message
 
 
 @pytest.mark.parametrize(
@@ -121,7 +138,7 @@ def test_guarded_wildcard_can_check_the_existing_plain_subject() -> None:
     )
     [finding] = _check(source)
     assert finding.severity is Severity.ERROR
-    assert "if value is not None" in finding.message
+    assert "`if (value := ...) is None:`" in finding.message
     assert _check(source.replace("match value:", "match value.property:")) == []
 
 
