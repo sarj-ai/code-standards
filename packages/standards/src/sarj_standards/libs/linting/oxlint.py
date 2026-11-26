@@ -119,7 +119,7 @@ REQUIRED_RULES: Final[Mapping[str, JsonValue]] = MappingProxyType(
                 "ts-expect-error": "allow-with-description",
                 "ts-ignore": True,
                 "ts-nocheck": True,
-                "minimumDescriptionLength": 3,
+                "minimumDescriptionLength": 10,
             },
         ],
     }

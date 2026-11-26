@@ -213,6 +213,7 @@
   "typescript/consistent-type-exports": "Enforce consistent usage of type exports",
   "typescript/consistent-type-imports": "Enforce consistent usage of type imports",
   "typescript/dot-notation": "Enforce dot notation whenever possible",
+  "typescript/method-signature-style": "Use function properties to preserve strict parameter checking",
   "typescript/no-array-delete": "Disallow using the `delete` operator on array values",
   "typescript/no-base-to-string": "Require `.toString()` and `.toLocaleString()` to only be called on objects which provide useful information when stringified",
   "typescript/no-confusing-non-null-assertion": "Disallow non-null assertion in locations that may be confusing",
