@@ -121,7 +121,7 @@ def _following_return(node: ast.If, context: PythonFileContext) -> ast.Return | 
 def _productive_partition(node: ast.If, context: PythonFileContext) -> bool:
     following = _following_return(node, context)
     fallback: list[ast.stmt] = node.orelse or ([following] if following is not None else [])
-    return _rejecting_body(node.body, node, context) is False and _rejecting_body(fallback, node, context) is False
+    return rejecting_body(node.body, node, context) is False and rejecting_body(fallback, node, context) is False
 
 
 def _selected_values(test: ast.expr) -> frozenset[_FiniteValue] | None:
@@ -392,7 +392,7 @@ def _implicit_match_values(node: ast.Match, values: frozenset[_FiniteValue], con
         if case.guard is not None:
             return False
         if _catchall(case):
-            if _rejecting_body(case.body, case, context) is not False:
+            if rejecting_body(case.body, case, context) is not False:
                 return False
             return bool(explicit & values) and not values.issubset(explicit)
         selected = _pattern_values(case.pattern)
@@ -402,7 +402,7 @@ def _implicit_match_values(node: ast.Match, values: frozenset[_FiniteValue], con
     return False
 
 
-def _rejecting_body(body: list[ast.stmt], boundary: ast.AST, context: PythonFileContext, depth: int = 0) -> bool | None:
+def rejecting_body(body: list[ast.stmt], boundary: ast.AST, context: PythonFileContext, depth: int = 0) -> bool | None:
     if depth >= _MAX_REJECTION_DEPTH:
         return None
     decisions = [_rejection_statement(statement, context, depth) for statement in body]
@@ -493,7 +493,7 @@ def _rejection_statement(node: ast.AST, context: PythonFileContext, depth: int =
         case ast.If():
             return None if _eager_rejection(node.test, context) else _rejecting_if(node, context, depth)
         case ast.Try(finalbody=finalizer) | ast.TryStar(finalbody=finalizer) if finalizer:
-            rejects = _rejecting_body(finalizer, node, context, depth + 1)
+            rejects = rejecting_body(finalizer, node, context, depth + 1)
             if rejects is True or (rejects is False and isinstance(finalizer[-1], ast.Return | ast.Raise)):
                 return rejects
             return None
@@ -547,7 +547,7 @@ def _rejecting_if(node: ast.If, context: PythonFileContext, depth: int) -> bool 
             bodies = (node.orelse,)
         case None:
             bodies = node.body, node.orelse
-    branches = [_rejecting_body(body, node, context, depth + 1) for body in bodies]
+    branches = [rejecting_body(body, node, context, depth + 1) for body in bodies]
     return None if None in branches else all(branches)
 
 
@@ -755,7 +755,7 @@ def _prefix_rejection(node: ast.AST, parent: ast.AST, context: PythonFileContext
     if not isinstance(node, ast.stmt):
         return False
     prefix = previous_statements(node, parent)
-    return _rejecting_body(list(prefix), parent, context, depth + 1) if prefix else False
+    return rejecting_body(list(prefix), parent, context, depth + 1) if prefix else False
 
 
 def _empty_delegation(node: ast.AST) -> bool:
@@ -950,8 +950,7 @@ def _typing_provider(context: PythonFileContext, qualified: str | None) -> bool:
 
 
 def _alias_value(context: PythonFileContext, binding: ast.Name) -> ast.expr | None:
-    explicit = context.annotation_semantics.aliases.get(binding.id)
-    if explicit is not None:
+    if (explicit := context.annotation_semantics.aliases.get(binding.id)) is not None:
         return explicit
     parent = context.parents.get(binding)
     if (

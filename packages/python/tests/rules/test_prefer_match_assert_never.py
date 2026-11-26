@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 
 
@@ -90,13 +91,34 @@ def handle(status: Status) -> None:
     [
         "raise ValueError(status)",
         "assert_never(status)",
-        "return False",
-        "return default",
-        "log.warning('unknown', status=status)",
-        "handled = False",
+        "return reject(status)",
     ],
 )
-def test_allows_loud_or_value_producing_match_catch_all(fallthrough: str) -> None:
+def test_allows_rejecting_match_catch_all(fallthrough: str) -> None:
+    source = f"""{_ENUM_PREAMBLE}
+from typing import assert_never
+from typing_extensions import assert_never as reject
+
+def handle(status: Status):
+    match status:
+        case Status.OPEN | Status.CLOSED:
+            return True
+        case _:
+            {fallthrough}
+"""
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "fallthrough",
+    [
+        "return False",
+        "handled = False",
+        "assert_never(status)",
+    ],
+)
+def test_names_single_member_in_a_defaulting_match(fallthrough: str) -> None:
     source = f"""{_ENUM_PREAMBLE}
 def handle(status: Status):
     match status:
@@ -108,7 +130,125 @@ def handle(status: Status):
             {fallthrough}
 """
 
+    [finding] = _check(source)
+
+    assert finding.severity.value == "warning"
+    assert "`Status.FAILED`" in finding.message
+    assert "Add an explicit arm" in finding.message
+
+
+def test_imported_enum_match_on_attribute(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "dispatch"\nversion = "1.0.0"\n', encoding="utf-8")
+    (tmp_path / "states.py").write_text(_ENUM_PREAMBLE + '    CANCELLED = "cancelled"\n', encoding="utf-8")
+    (tmp_path / "facade.py").write_text("from states import Status as Status\n", encoding="utf-8")
+    source = """from facade import Status as State
+import states
+
+def label(error):
+    match error.reason:
+        case State.OPEN | states.Status.CLOSED:
+            return "active"
+        case default:
+            return default.value
+"""
+    path = tmp_path / "dispatch.py"
+    path.write_text(source, encoding="utf-8")
+
+    [finding] = analyze([PreferMatchAssertNever.id], [path], jobs=1)
+
+    assert finding.severity.value == "warning"
+    assert finding.line == 8
+    assert "`Status.CANCELLED`, `Status.FAILED`" in finding.message
+
+    path.write_text(source.replace("def label(error)", "def label(error, State)"), encoding="utf-8")
+
+    assert analyze([PreferMatchAssertNever.id], [path], jobs=1) == []
+
+
+def test_single_enum_comparison_is_a_predicate() -> None:
+    source = f"""{_ENUM_PREAMBLE}
+def phase(self):
+    if self.status in (Status.OPEN, Status.CLOSED):
+        phase = "active"
+    else:
+        phase = "failed"
+    return phase
+"""
+
     assert _check(source) == []
+
+
+def test_allows_default_for_the_remaining_union_variant() -> None:
+    source = f"""{_ENUM_PREAMBLE}
+class Success: ...
+
+def handle(value: Success | Status):
+    match value:
+        case Status.OPEN | Status.CLOSED | Status.FAILED:
+            return "failure"
+        case success:
+            return success
+"""
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "preamble",
+    [
+        _ENUM_PREAMBLE + "\n    def _missing_(cls, value):\n        return cls.OPEN\n",
+        _ENUM_PREAMBLE + "\n    EXTRA = make_member()\n",
+        _ENUM_PREAMBLE + '\n    ALIAS = "open"\n',
+        _ENUM_PREAMBLE.replace("StrEnum", "Flag")
+        .replace('"open"', "1")
+        .replace('"closed"', "2")
+        .replace('"failed"', "4"),
+    ],
+    ids=["missing-hook", "dynamic-value", "alias", "flag"],
+)
+def test_allows_default_when_the_enum_members_are_not_proven(preamble: str) -> None:
+    source = f"""{preamble}
+def handle(status: Status):
+    match status:
+        case Status.OPEN:
+            return 1
+        case _:
+            return 0
+"""
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("test", "default", "expected"),
+    [
+        ("Status.OPEN == self.status", "phase = 'finished'", 1),
+        ("self.status in (Status.OPEN,)", "phase = 'finished'", 1),
+        ("self.status is Status.OPEN", "raise ValueError(self.status)", 0),
+        ("self.status is Status.OPEN", "return assert_never(self.status)", 0),
+        ("self.status is Status.OPEN and ready", "phase = 'finished'", 0),
+        ("other.status is Status.OPEN", "phase = 'finished'", 0),
+    ],
+)
+def test_enum_comparison_chain_on_attribute(test: str, default: str, expected: int) -> None:
+    source = f"""{_ENUM_PREAMBLE}
+from typing import assert_never
+
+def phase(self, other):
+    if {test}:
+        phase = "queued"
+    elif self.status is Status.CLOSED:
+        phase = "executing"
+    else:
+        {default}
+    return phase
+"""
+
+    findings = _check(source)
+
+    assert [finding.message for finding in findings] == [
+        "Enum dispatch routes `Status.FAILED` through the catch-all. Add an explicit arm for it."
+    ] * expected
 
 
 def test_allows_guarded_member_arm() -> None:
@@ -120,7 +260,7 @@ def handle(status: Status) -> None:
         case Status.CLOSED:
             close_it()
         case _:
-            pass
+            return False
 """
 
     assert _check(source) == []

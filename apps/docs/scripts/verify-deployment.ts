@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { hash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { URL } from "node:url";
 
 import { parseCatalog } from "../src/lib/third-party-catalog.ts";
@@ -246,8 +247,7 @@ for (let attempt = 1; attempt <= 10; attempt += 1) {
     process.stderr.write(
       `deployment verification attempt ${String(attempt)} failed: ${String(error)}\n`,
     );
-    if (attempt < 10)
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 3_000));
+    if (attempt < 10) await sleep(3_000);
   }
 }
 if (lastError !== undefined) throw lastError;
