@@ -1992,7 +1992,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_redundant_literal_description",
         class_name="NoRedundantLiteralDescription",
         code="SARJ423",
-        description="Do not restate a string Literal or local string Enum domain in its Pydantic description.",
+        description="Do not restate a field's names or its string Literal or local string Enum domain in its Pydantic description.",
         aliases=("no-redundant-literal-description",),
         enabled_by_default=True,
     ),

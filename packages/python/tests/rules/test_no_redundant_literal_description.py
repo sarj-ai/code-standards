@@ -285,3 +285,28 @@ def test_module_field_rebinding_abstains() -> None:
         )
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        pytest.param("id: str = Field(description='Call ID.')", id="model-and-field"),
+        pytest.param("ended_at: datetime = Field(description='Ended at.')", id="field-only"),
+        pytest.param("caller: Annotated[CallerDetails, Field(description='Caller details')]", id="annotated-type"),
+    ],
+)
+def test_warns_on_name_only_descriptions(field: str) -> None:
+    source = (
+        f"from typing import Annotated\nfrom pydantic import BaseModel, Field\nclass Call(BaseModel):\n    {field}\n"
+    )
+    findings = _check(source)
+    assert [(finding.code, finding.severity) for finding in findings] == [("SARJ423", Severity.WARNING)]
+
+
+@pytest.mark.parametrize(
+    "description",
+    ["Call ID assigned by the carrier.", "Rating from 1 to 5.", "Required as true when retrying the call."],
+)
+def test_keeps_descriptions_that_add_meaning(description: str) -> None:
+    source = f"from pydantic import BaseModel, Field\nclass Call(BaseModel):\n    id: str = Field(description={description!r})\n"
+    assert _check(source) == []
