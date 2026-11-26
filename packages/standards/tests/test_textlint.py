@@ -1617,6 +1617,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "hidden-markdown-heading",
     }
     assert set(textlint.REGISTRY) == {
+        "agent-instruction-budget",
         "commented-out-config",
         "cloudbuild-contract",
         "concise-shell-prose",

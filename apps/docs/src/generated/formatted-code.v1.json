@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a95d8837dd0bb2d29b9cb454c1fd1e078a711da085cd05f3dad17d2b19101fa5",
-  "cliSha256": "ce7ddb92abd63f5dd60545139a0c69eb559e1fa6c4829db3d000836f9c91e24a",
+  "catalogSha256": "dd87ea50eac24d2736da0237969cd722707c204d93459e257b5c7d8b863d3481",
+  "cliSha256": "e2197de345a9f1586a09c4620198437efec4da118e153a4a66fd5bc78cd714c8",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -26982,6 +26982,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Foreign key without a child-table index"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:agent-instruction-budget": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "AGENTS.md",
+              "source": "# Rules\n\nRun `make verify` before review.\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "AGENTS.md",
+          "id": "concise-instructions",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Concise instructions remain within budget"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "AGENTS.md",
+              "source": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "AGENTS.md",
+          "id": "oversized-instructions",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Instructions over the word budget are rejected"
         }
       ],
       "optionsSchemaSource": null

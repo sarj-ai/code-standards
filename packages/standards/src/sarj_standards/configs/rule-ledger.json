@@ -513,6 +513,7 @@
       "test-phase-label-comment"
     ],
     "text": [
+      "agent-instruction-budget",
       "cloudbuild-contract",
       "commented-out-config",
       "concise-shell-prose",
@@ -851,7 +852,8 @@
       "SARJ311",
       "SARJ315",
       "SARJ316",
-      "SARJ317"
+      "SARJ317",
+      "SARJ318"
     ]
   },
   "retired": [
