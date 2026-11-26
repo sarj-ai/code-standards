@@ -44,9 +44,9 @@ class PreferMatchNoneCheck(Rule):
         ),
         remediation=(
             "Move the unconditional `case None:` below the concrete value cases while keeping a final catchall "
-            "last. For a two-way choice, prefer `if value is not None:` with an `else` for absence. Bind a lookup "
-            "once with `if (value := lookup()) is not None:` when the branch uses it. An existing guard clause "
-            "can keep its natural exit direction."
+            "last. When absence exits early or the present arm is `pass`, use a guard clause such as "
+            "`if (value := lookup()) is None: raise ...`; when absence is `pass`, use `if (value := lookup()) is not None:`. "
+            "Otherwise prefer `if value is not None:` with an `else` for absence."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SAFE,
@@ -261,10 +261,7 @@ def _order_message(statement: ast.Match, cases: list[ast.match_case], proven: fr
     if len(statement.cases) == _BINARY_CASES and (
         _catchall(following[0]) or _guards_presence(following[0], statement.subject, bind_on_present=True)
     ):
-        message = (
-            "Use `if value is not None:` for the present case and `else:` for absence. "
-            "Bind a lookup once with a walrus when needed."
-        )
+        message = _binary_message(absent, following[0])
         if isinstance(capture := following[0].pattern, ast.MatchAs) and capture.name is not None:
             return f"{message} Preserve the binding of `{capture.name}` on the present path."
         return message
@@ -275,6 +272,24 @@ def _order_message(statement: ast.Match, cases: list[ast.match_case], proven: fr
     ):
         return "Place the present value arms before `case None:`. Keep their relative order, any capture bindings and the final catchall."
     return None
+
+
+def _binary_message(absent: ast.match_case, present: ast.match_case) -> str:
+    match absent.body[-1], present.body:
+        case ast.Return() | ast.Raise() | ast.Continue() | ast.Break(), _:
+            return (
+                "Use a guard clause, `if (value := ...) is None:` followed by the exit, then continue "
+                "with the present value. Do not use `case None:` for an early exit."
+            )
+        case _, [ast.Pass()]:
+            return "Use `if (value := ...) is None:` for the absence branch, without `else:`."
+        case ast.Pass(), _:
+            return "Use `if (value := ...) is not None:` for the present branch, without `else:`."
+        case _:
+            return (
+                "Use `if value is not None:` for the present case and `else:` for absence. "
+                "Bind a lookup once with a walrus when needed."
+            )
 
 
 def _guards_presence(case: ast.match_case, subject: ast.expr, *, bind_on_present: bool = False) -> bool:
