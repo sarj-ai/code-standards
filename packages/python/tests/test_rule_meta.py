@@ -39,6 +39,7 @@ _AUTHORED_EXAMPLES = tuple(
 )
 
 _PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
+    ("prefer-discriminated-model-union", "producer-dependent-payload"): Severity.WARNING,
     ("prefer-match-assert-never", "defaulting-enum-wildcard"): Severity.WARNING,
     ("prefer-match-none-check", "consumed-lookup-binding"): Severity.WARNING,
     ("prefer-match-value-dispatch", "finite-format-partition"): Severity.WARNING,
