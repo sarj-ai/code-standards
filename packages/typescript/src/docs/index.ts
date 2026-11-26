@@ -150,6 +150,7 @@ import { PREFER_SHADCN_PRIMITIVES_DOCUMENTATION } from "./prefer-shadcn-primitiv
 import { PREFER_SHARED_ZOD_ENUM_DOCUMENTATION } from "./prefer-shared-zod-enum.js";
 import { PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION } from "./prefer-switch-for-repeated-equality.js";
 import { PREFER_TEST_FIXTURE_REUSE_DOCUMENTATION } from "./prefer-test-fixture-reuse.js";
+import { PREFER_TOTAL_UNION_RECORD_DOCUMENTATION } from "./prefer-total-union-record.js";
 import { PREFER_TYPED_CLI_DOCUMENTATION } from "./prefer-typed-cli.js";
 import { PREFER_TYPED_REFLECTION_DOCUMENTATION } from "./prefer-typed-reflection.js";
 import { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "./prefer-whole-object-assertion.js";
@@ -332,6 +333,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-shared-zod-enum": PREFER_SHARED_ZOD_ENUM_DOCUMENTATION,
   "prefer-switch-for-repeated-equality": PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION,
   "prefer-test-fixture-reuse": PREFER_TEST_FIXTURE_REUSE_DOCUMENTATION,
+  "prefer-total-union-record": PREFER_TOTAL_UNION_RECORD_DOCUMENTATION,
   "prefer-typed-cli": PREFER_TYPED_CLI_DOCUMENTATION,
   "prefer-typed-reflection": PREFER_TYPED_REFLECTION_DOCUMENTATION,
   "prefer-whole-object-assertion": PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION,

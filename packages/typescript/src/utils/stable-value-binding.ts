@@ -128,6 +128,7 @@ export function writtenMember(node: ESTree.MemberExpression): boolean {
 /** The member or pattern that writing `current` also writes, or null when `current` is the whole target. */
 function enclosingTarget(current: Node, parent: Node): Node | null {
   if (parent.type === "MemberExpression" && parent.object === current ||
+    parent.type === "ChainExpression" && parent.expression === current ||
     parent.type === "ArrayPattern" || parent.type === "RestElement" ||
     parent.type === "AssignmentPattern" && parent.left === current) return outerExpression(parent);
   const pattern = parent.type === "Property" && parent.value === current ? parentOf(parent) : null;

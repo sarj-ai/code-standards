@@ -48,7 +48,7 @@ function erasesContract(type: Type, native: NativeTypes): boolean {
     indexes.every((index) => (index.valueType.flags & flags.Unknown) !== 0);
 }
 
-function hasUnknownContract(type: Type, native: NativeTypes): boolean {
+export function hasUnknownContract(type: Type, native: NativeTypes): boolean {
   const flags = native.sync.TypeFlags;
   if (type.isUnionType() || type.isIntersectionType()) return type.getTypes().some((part) => hasUnknownContract(part, native));
   return (type.flags & (flags.Any | flags.Unknown | flags.Never | flags.TypeParameter | flags.Conditional | flags.IndexedAccess | flags.Substitution)) !== 0 ||
@@ -138,25 +138,35 @@ function receiverIsUnobserved(symbol: TsSymbol, native: NativeTypes): boolean {
   return inspect(symbol);
 }
 
-function closedRegistry(node: ESTree.VariableDeclarator, source: SourceCode, sourceType: Type, targetType: Type, native: NativeTypes): boolean {
-  const { checker } = native;
+export function closedRegistryMembers(node: ESTree.VariableDeclarator, source: SourceCode, allowTypeQueries = false): readonly ESTree.MemberExpression[] | undefined {
   if (node.id.type !== "Identifier" || node.init?.type !== "ObjectExpression" ||
     node.init.properties.length === 0 || node.init.properties.some((property) =>
-      property.type !== "Property" || property.computed || property.kind !== "init")) return false;
-  const indexes = checker.getIndexInfosOfType(targetType);
-  if (targetType.getProperties().length > 0 || indexes.length === 0 ||
-    indexes.some((index) => hasUnknownContract(index.valueType, native))) return false;
+      property.type !== "Property" || property.computed || property.kind !== "init") ||
+    hasIdentifierNamed(source, "eval")) return undefined;
   const identifier = node.id;
   const found = source.getDeclaredVariables(node).find((candidate) => candidate.identifiers.includes(identifier));
   const variable = found === undefined ? undefined : tsVariable(found);
   if (variable === undefined || variable.scope.type === "global" || !stableValueBinding(variable) ||
-    !variable.references.some((reference) => reference.isRead() || typeOnlyReference(reference))) return false;
-  return variable.references.every((reference) => {
-    if (reference.init === true || typeOnlyReference(reference)) return true;
+    !variable.references.some((reference) => reference.isRead() || typeOnlyReference(reference))) return undefined;
+  const members = [];
+  for (const reference of variable.references) {
+    if (reference.init === true || allowTypeQueries && typeOnlyReference(reference)) continue;
     const value = outerExpression(reference.identifier);
     const member = parentOf(value);
-    if (member === null) return false;
-    if (member.type !== "MemberExpression" || member.object !== value || writtenMember(member)) return false;
+    if (member?.type !== "MemberExpression" || member.object !== value || writtenMember(member)) return undefined;
+    members.push(member);
+  }
+  return members;
+}
+
+function closedRegistry(node: ESTree.VariableDeclarator, source: SourceCode, sourceType: Type, targetType: Type, native: NativeTypes): boolean {
+  const members = closedRegistryMembers(node, source, true);
+  if (members === undefined) return false;
+  const { checker } = native;
+  const indexes = checker.getIndexInfosOfType(targetType);
+  if (targetType.getProperties().length > 0 || indexes.length === 0 ||
+    indexes.some((index) => hasUnknownContract(index.valueType, native))) return false;
+  return members.every((member) => {
     const key = getPropertyName(member);
     if (key === null) return false;
     const outer = outerExpression(member);
@@ -269,7 +279,7 @@ export default defineRule({
       const { source, target, targetNode } = types;
       if (hasUnknownContract(source, native)) return undefined;
       const erased = erasesContract(target, native) && !computedContract(targetNode, native) && independentInitializer(node.init, native);
-      const registry = !erased && !hasIdentifierNamed(sourceCode, "eval") && closedRegistry(node, sourceCode, source, target, native);
+      const registry = !erased && closedRegistry(node, sourceCode, source, target, native);
       if (!erased && !registry) return undefined;
       const canFix = erased && node.init.type === "Identifier" &&
         isUnusedPrivateBinding(sourceCode, node, node.id, context.filename) &&

@@ -154,6 +154,7 @@ import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferSharedZodEnum from "./rules/prefer-shared-zod-enum.js";
 import preferSwitchForRepeatedEquality from "./rules/prefer-switch-for-repeated-equality.js";
 import preferTestFixtureReuse from "./rules/prefer-test-fixture-reuse.js";
+import preferTotalUnionRecord from "./rules/prefer-total-union-record.js";
 import preferTypedCli from "./rules/prefer-typed-cli.js";
 import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
@@ -336,6 +337,7 @@ const RULES = {
   "prefer-shared-zod-enum": preferSharedZodEnum,
   "prefer-switch-for-repeated-equality": preferSwitchForRepeatedEquality,
   "prefer-test-fixture-reuse": preferTestFixtureReuse,
+  "prefer-total-union-record": preferTotalUnionRecord,
   "prefer-typed-cli": preferTypedCli,
   "prefer-typed-reflection": preferTypedReflection,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,

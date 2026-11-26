@@ -1010,6 +1010,7 @@ const RULES = {
   "@sarj/prefer-shared-zod-enum": "warn",
   "@sarj/prefer-switch-for-repeated-equality": "error",
   "@sarj/prefer-test-fixture-reuse": "warn",
+  "@sarj/prefer-total-union-record": "warn",
   "@sarj/prefer-typed-cli": "warn",
   "@sarj/prefer-typed-reflection": "error",
   "@sarj/prefer-whole-object-assertion": "warn",
