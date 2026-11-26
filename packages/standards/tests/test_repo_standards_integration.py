@@ -41,7 +41,11 @@ if TYPE_CHECKING:
 
 _MAKEFILE_GROWTH_RULE = "repository/artifacts/makefile-growth"
 _MIGRATION_CONSOLIDATION_RULE = "repository/artifacts/migration-consolidation"
-_COMPARISON_RULES = (_MAKEFILE_GROWTH_RULE, _MIGRATION_CONSOLIDATION_RULE)
+_COMPARISON_RULES = (
+    _MAKEFILE_GROWTH_RULE,
+    _MIGRATION_CONSOLIDATION_RULE,
+    "repository/documentation/markdown-word-growth",
+)
 
 
 def _makefile_severity() -> str:

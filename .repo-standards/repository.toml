@@ -1,5 +1,10 @@
 repository_id = "code-standards"
-enabled_rules = ["repository/artifacts/makefile-growth", "repository/artifacts/untyped-javascript", "repository/artifacts/local-residue"]
+enabled_rules = [
+  "repository/artifacts/makefile-growth",
+  "repository/artifacts/untyped-javascript",
+  "repository/artifacts/local-residue",
+  "repository/documentation/markdown-word-growth",
+]
 components = []
 
 [[javascript.artifacts]]
