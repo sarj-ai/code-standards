@@ -63,14 +63,15 @@ def test_python_scaffold_reserves_both_code_ledgers(tmp_path: Path) -> None:
     assert '"SARJ400"' in (tmp_path / rule_registration.LEDGER).read_text()
 
 
-def test_python_allocator_keeps_legacy_reserved_codes_burned(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("reserved", "available"), [("SARJ450", "SARJ451"), ("SARJ599", "SARJ600")])
+def test_python_allocator_keeps_legacy_reserved_codes_burned(tmp_path: Path, reserved: str, available: str) -> None:
     history = tmp_path / "packages/python/tests/code_ledger.json"
     history.parent.mkdir(parents=True)
-    history.write_text('{"SARJ450": null}\n')
+    history.write_text(f'{{"{reserved}": null}}\n')
     plan = rule_authoring.plan_new(
         tmp_path, RuleSelector.parse("python:explicit-clock"), category="testing", summary="Require a clock."
     )
-    assert plan.code == "SARJ451"
+    assert plan.code == available
 
 
 def test_concurrent_python_code_ledger_change_rolls_back_scaffold(tmp_path: Path) -> None:

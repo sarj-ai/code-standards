@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("require-total-enum-mapping"),
+        module="sarj_python_lint.rules.require_total_enum_mapping",
+        class_name="RequireTotalEnumMapping",
+        code="SARJ600",
+        description="Cover every member of the declared key type in a constant dispatch mapping.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-injected-dependency-close"),
         module="sarj_python_lint.rules.no_injected_dependency_close",
         class_name="NoInjectedDependencyClose",

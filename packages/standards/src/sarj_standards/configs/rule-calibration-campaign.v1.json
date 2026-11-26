@@ -3935,6 +3935,14 @@
       "state": "pending",
       "evidence": "Forty-six focused tests cover import-time and class-body resolution, twelve long-lived store shapes, five memoiser forms, configured startup functions, ten allowed shapes, inactive configurations and option validation; five executable documentation examples pass. Without a manifest table the rule reports nothing, so the bundled corpus and every current consumer are unaffected. One maintained service repository (2,790 Python files, 42 naming the configured modules) was checked with a matching table: two findings, both inspected as flag reads in configured process-start functions, with zero known false positives; four violations seeded into a scratch copy were reported and a fifth, a store through a subscripted application object, was missed and is documented as a limitation. Private source, paths and identifying hashes remain local.",
       "outcome": "Introduce SARJ594 at WARNING without autofix. The rule is opt-in through [python.no-retained-feature-flag] and reports nothing elsewhere. Resolver methods match by name, wrapped values and mutating calls are not modeled; broader field calibration remains pending before any error promotion."
+    },
+    {
+      "task": "rule-audit/python/require-total-enum-mapping",
+      "family": "python",
+      "ruleId": "require-total-enum-mapping",
+      "state": "pending",
+      "evidence": "The isolated scan of 1,561 application Python files found nine incomplete dispatch tables, each subscripted in its declaring module. The scan excluded three inspected guarded or enumeration-only tables and found no same-location overlap with the nearest dispatch, dependency, or mapping-read rules. Focused cases cover first-party binding resolution, enum aliases, narrowed key types, mutations and suppression.",
+      "outcome": "Introduce SARJ600 at WARNING without autofix. Require complete coverage of statically resolved enum and string Literal keys in constant dispatch tables. Report the missing keys so callers can complete the table or narrow the key type. Broader calibration remains pending."
     }
   ]
 }

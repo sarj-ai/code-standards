@@ -311,6 +311,7 @@ from sarj_python_lint.rules.redundant_test_constructor_forwarder import Redundan
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
 from sarj_python_lint.rules.require_hidden_settings_input import RequireHiddenSettingsInput
+from sarj_python_lint.rules.require_total_enum_mapping import RequireTotalEnumMapping
 from sarj_python_lint.rules.server_proxied_file_upload import ServerProxiedFileUpload
 from sarj_python_lint.rules.service_singleton_delegates_to_bulk import ServiceSingletonDelegatesToBulk
 from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
@@ -323,6 +324,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        RequireTotalEnumMapping.id: RequireTotalEnumMapping,
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,
         NoSwallowedException.id: NoSwallowedException,

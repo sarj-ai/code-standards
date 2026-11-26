@@ -388,5 +388,6 @@
   "SARJ594": "no-retained-feature-flag",
   "SARJ597": "no-swallowed-exception",
   "SARJ598": "no-gather-first-exception-reraise",
-  "SARJ599": "no-injected-dependency-close"
+  "SARJ599": "no-injected-dependency-close",
+  "SARJ600": "require-total-enum-mapping"
 }
