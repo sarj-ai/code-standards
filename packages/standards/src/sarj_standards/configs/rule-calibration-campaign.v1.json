@@ -1485,6 +1485,14 @@
       "outcome": "Kept SARJ301 and its canonical name stable, clarified its summary and executable UI examples, and retained warning severity. Analysis now requires two same-indent entries or an immediately adjacent same-key active alternative in YAML, TOML, or JSONC. Explanatory blocks, protected references, exact suppressions, and multiline scalar payloads are preserved. Ambiguous reference-config and shell dialects are out of scope; YAML sequence and collection-valued mappings remain conservative false negatives. No autofix or SARJ420 changes."
     },
     {
+      "task": "rule-audit/text/agent-instruction-budget",
+      "family": "text",
+      "ruleId": "agent-instruction-budget",
+      "state": "pending",
+      "evidence": "Executable examples and focused tests cover AGENTS.md, nested CLAUDE.md and SKILL.md over budget, the exact 1,000-word boundary and unrelated Markdown. On the default branches of four Sarj repositories, 55 AGENTS.md, CLAUDE.md and SKILL.md files ranged up to 2,183 words; only one discoverable file (1,811 words) exceeds the budget. Installed skill payloads under .agents/skills and .claude/skills stay outside source discovery. Broader field calibration remains pending.",
+      "outcome": "Warn when AGENTS.md, CLAUDE.md or SKILL.md exceeds 1,000 whitespace-separated words. The message carries the exact count, so a baselined finding stops matching when the count changes. No autofix; promotion to error is a separate change."
+    },
+    {
       "task": "rule-audit/text/concise-shell-prose",
       "family": "text",
       "ruleId": "concise-shell-prose",
