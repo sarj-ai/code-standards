@@ -55,6 +55,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/typescript/prefer-total-union-record",
+      "family": "typescript",
+      "ruleId": "prefer-total-union-record",
+      "state": "pending",
+      "evidence": "Isolated native checks over 1,330 immutable production TypeScript files found one reviewed finite-union registry and preserved the existing widening finding. The seven labeled live sites yielded one true positive and six true negatives. On 34 candidate-bearing files, three alternating baseline/candidate pairs measured median first runs of 0.708/0.704 seconds, median repeat runs of 0.673/0.716 seconds, and peak child RSS of 139,912/140,468 KiB.",
+      "outcome": "Ship at WARNING. Share the existing closure proof and suggest a total record for the proven key domain. Review fallback and public contract changes manually. Broader calibration remains pending."
+    },
+    {
       "task": "rule-audit/python/no-nonlocal-statement",
       "family": "python",
       "ruleId": "no-nonlocal-statement",

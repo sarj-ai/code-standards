@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4f201f9110f37292efd7f76bc19faad8a2dc5ff35d7616963463a87f0702636b",
-  "cliSha256": "bb0624ed5c92930986a1eeb21d19b92066421af4a8cd9a3e8c4f387347fe8413",
+  "catalogSha256": "05b96d0f6c423db8d256eb1eb3161022fd2f4fef68a26d01c9e96118cefd83db",
+  "cliSha256": "224d20ed88c8ca9699e209f4a01f340e51f46a69d242ebb7d50011daec47fcda",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -10472,6 +10472,49 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Request and use the store fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-total-union-record": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "label.ts",
+              "source": "import type { State } from \"./states.js\";\nconst LABELS = {\n  failed: \"Failed\",\n  passed: \"Passed\",\n  running: \"Pending\",\n} as const satisfies Record<State, string>;\nexport const label = (state: State) => LABELS[state];\n"
+            },
+            {
+              "path": "states.ts",
+              "source": "export type State = \"failed\" | \"passed\" | \"running\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "label.ts",
+          "id": "total-record-after",
+          "outcome": "accept",
+          "scenarioId": "total-record",
+          "title": "A total record requires every state"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "label.ts",
+              "source": "import type { State } from \"./states.js\";\nconst LABELS: Record<string, string> = { failed: \"Failed\", passed: \"Passed\" };\nexport const label = (state: State) => LABELS[state] ?? \"Pending\";\n"
+            },
+            {
+              "path": "states.ts",
+              "source": "export type State = \"failed\" | \"passed\" | \"running\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "label.ts",
+          "id": "total-record-before",
+          "outcome": "reject",
+          "scenarioId": "total-record",
+          "title": "A string index permits a missing state"
         }
       ],
       "optionsSchemaSource": null

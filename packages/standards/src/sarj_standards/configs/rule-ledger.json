@@ -477,6 +477,7 @@
       "prefer-shared-zod-enum",
       "prefer-switch-for-repeated-equality",
       "prefer-test-fixture-reuse",
+      "prefer-total-union-record",
       "prefer-typed-cli",
       "prefer-typed-reflection",
       "prefer-whole-object-assertion",
