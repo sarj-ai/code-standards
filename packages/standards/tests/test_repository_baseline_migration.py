@@ -156,7 +156,7 @@ def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before
 @pytest.mark.parametrize("include_warnings", [None, False, True])
 @pytest.mark.parametrize(
     ("before", "after"),
-    [(27, 28), (35, 36), (36, 37), (37, 38), (38, 39), (36, 39), (35, 39), (39, 40), (36, 40), (40, 41)],
+    [(27, 28), (35, 36), (36, 37), (37, 38), (38, 39), (36, 39), (35, 39), (39, 40), (36, 40), (40, 41), (41, 42)],
 )
 def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_warning_choice(
     before: int,
@@ -208,7 +208,7 @@ def test_local_residue_error_policy_preserves_rejection_of_existing_debt(
         (26, 29),
         (25, 30),
         (26, 30),
-        (41, 42),
+        (42, 43),
     ],
 )
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:

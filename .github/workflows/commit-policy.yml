@@ -29,4 +29,4 @@ jobs:
           ref: ${{ github.event.pull_request.merged && github.event.pull_request.head.sha || '' }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@0d7adb57a1f4eeeee946288524f90cc97f36b049 # v8.7.0
+      - uses: sarj-ai/repo-standards/pull-request-commits@2f3b5aabceaa7ec6b605bf10d718bf9eff2c9e10 # v8.8.0
