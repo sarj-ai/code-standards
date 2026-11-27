@@ -324,6 +324,7 @@
       "no-project-secret-access-for-service-account",
       "no-redundant-variable-validation",
       "no-restated-comment",
+      "no-sensitive-instance-metadata",
       "no-terraform-comments",
       "no-terraform-data-condition",
       "no-terraform-guard-blocks",
@@ -836,7 +837,8 @@
       "SARJ222",
       "SARJ223",
       "SARJ224",
-      "SARJ225"
+      "SARJ225",
+      "SARJ226"
     ],
     "text": [
       "SARJ300",

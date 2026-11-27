@@ -2949,6 +2949,14 @@
       "outcome": "Promote to ERROR under the reviewed source policy. Enforce the existing least-privilege and secret-reference policies within statically resolved Terraform resource blocks. No IAM or secret-reference rewrite is automatic. Broader field calibration retains its existing state."
     },
     {
+      "task": "rule-audit/iac/no-sensitive-instance-metadata",
+      "family": "iac",
+      "ruleId": "no-sensitive-instance-metadata",
+      "state": "pending",
+      "evidence": "Focused cases cover a sensitive variable and a Secret Manager payload in instance metadata and a secret-ID-only map. Live scans of six private infrastructure repositories reported 3 true positives in two of them and no false positives; the public corpus reported none.",
+      "outcome": "Keep the rule warning-only without autofix; promote after the affected repositories adopt secret-ID metadata."
+    },
+    {
       "task": "rule-audit/typescript/prefer-native-fetch-in-server-actions",
       "family": "typescript",
       "ruleId": "prefer-native-fetch-in-server-actions",

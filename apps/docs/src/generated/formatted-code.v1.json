@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0c1bb86a25d9c5689f0820cc42732631a1950bc92019d6e6549728547a9d2e77",
-  "cliSha256": "bff8936a463b2ddd5440d4a23272b2cf899815fffd8b0977481837352d7d0d71",
+  "catalogSha256": "9fb50f5863219b546da1dfe91a3588c365171fe78b303290c07f602908053668",
+  "cliSha256": "5b19203fb2a08c05725b3319fc4d0c07f814b20dc86c0dde77643f8d59290b82",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -1412,6 +1412,41 @@
           "outcome": "reject",
           "scenarioId": "sibling-group",
           "title": "Comment repeats one declaration label"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-sensitive-instance-metadata": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"domain\" {\n  type = string\n}\n\nresource \"google_compute_instance\" \"vm\" {\n  metadata = {\n    db-password-secret-id = \"db-password\"\n    domain                = var.domain\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "secret-id",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The VM receives only the secret ID"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"db_password\" {\n  type      = string\n  sensitive = true\n}\n\nresource \"google_compute_instance\" \"vm\" {\n  metadata = {\n    db-password = var.db_password\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "sensitive-variable",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A sensitive password is copied into instance metadata"
         }
       ],
       "optionsSchemaSource": null

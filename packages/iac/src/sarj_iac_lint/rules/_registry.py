@@ -20,6 +20,7 @@ from sarj_iac_lint.rules.no_project_basic_privilege import NoProjectBasicPrivile
 from sarj_iac_lint.rules.no_project_secret_access_for_service_account import NoProjectSecretAccessForServiceAccount
 from sarj_iac_lint.rules.no_redundant_variable_validation import NoRedundantVariableValidation
 from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
+from sarj_iac_lint.rules.no_sensitive_instance_metadata import NoSensitiveInstanceMetadata
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 from sarj_iac_lint.rules.no_terraform_data_condition import NoTerraformDataCondition
 from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoSensitiveInstanceMetadata.id: NoSensitiveInstanceMetadata,
         NoUnusedModuleInputs.id: NoUnusedModuleInputs,
         CanonicalTerraformDeclarations.id: CanonicalTerraformDeclarations,
         NoUnusedModuleOutputs.id: NoUnusedModuleOutputs,
