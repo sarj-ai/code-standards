@@ -7,6 +7,8 @@
 
 import { posix, win32 } from "node:path";
 
+import type { SourceCode } from "../types.js";
+
 const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/u;
 
 const SCRIPT_FILE_RE = /(?:^|[\\/])scripts[\\/]|\.mjs$/;
@@ -140,6 +142,13 @@ function leadingCommentBodies(sourceText: string): string[] {
 
 export function isScriptFile(filename: FilePath): boolean {
   return SCRIPT_FILE_RE.test(scopedFilename(filename));
+}
+
+export function hasNodeRuntimeProof(sourceCode: Readonly<SourceCode>): boolean {
+  return /^#![^\n\r]*\bnode\b/.test(sourceCode.text) || sourceCode.ast.body.some((statement) =>
+    statement.type === "ImportDeclaration" && statement.importKind !== "type" &&
+    typeof statement.source.value === "string" && statement.source.value.startsWith("node:")
+  );
 }
 
 /** Keep checkout ancestors outside path-based source ownership decisions. */

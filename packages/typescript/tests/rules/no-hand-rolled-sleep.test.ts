@@ -185,6 +185,18 @@ RULE_TESTER.run("no-hand-rolled-sleep", rule, {
       code: "while (!done) { await sleep(50); }",
       filename: SERVER,
     },
+    {"name": "ignores scripts with only a type import", "code": "import type { Stats } from \"node:fs\";\nawait new Promise((resolve) => setTimeout(resolve, 60));", "filename": "/repo/scripts/seed.ts"},
+    {"name": "ignores Bun scripts", "code": "#!/usr/bin/env bun\nawait new Promise((resolve) => setTimeout(resolve, 70));", "filename": "/repo/scripts/seed.mjs"},
+    {"name": "ignores Deno scripts", "code": "#!/usr/bin/env deno\nawait new Promise((resolve) => setTimeout(resolve, 70));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "preserves zero-delay yields in Node scripts", "code": "import process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 0));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "preserves timer fulfillment values in Node scripts", "code": "import process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100, 42));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "preserves injected timers in Node scripts", "code": "import process from \"node:process\";\nfunction wait(setTimeout) { return new Promise(resolve => setTimeout(resolve, 100)); }", "filename": "/repo/scripts/poll.mts"},
+    {"name": "preserves shadowed timers in Node scripts", "code": "import process from \"node:process\";\nconst setTimeout = timer; await new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "ignores Node script tests", "code": "import process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/poll.test.mts"},
+    {"name": "ignores generated Node script paths", "code": "import process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/generated/poll.mts"},
+    {"name": "ignores generated Node script markers", "code": "/* @generated */\nimport process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "honors allowIn for Node scripts", "code": "import process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/poll.mts", "options": [{"allowIn": ["**/scripts/poll.mts"]}]},
+    {"name": "ignores Node scripts with client directives", "code": "\"use client\";\nimport process from \"node:process\";\nawait new Promise(resolve => setTimeout(resolve, 100));", "filename": "/repo/scripts/poll.mts"},
   ],
 
   invalid: [
@@ -297,5 +309,7 @@ RULE_TESTER.run("no-hand-rolled-sleep", rule, {
       filename: "/repo/src/components/Panel.tsx",
       errors: [{ messageId: "handRolledTimeoutRace" }],
     },
+    {"name": "reports a typed sleep in a Node-importing script", "code": "import process from \"node:process\";\nconst pause = (delay: number) => new Promise<void>((resolve) => { setTimeout(resolve, delay); });\nprocess.exitCode = 0;", "filename": "/repo/.github/scripts/poll-status.mts", "errors": [{"messageId": "handRolledSleep"}]},
+    {"name": "reports a sleep in a Node-shebang script", "code": "#!/usr/bin/env node\nawait new Promise((resolve) => setTimeout(resolve, 400));", "filename": "/repo/scripts/render.mjs", "errors": [{"messageId": "handRolledSleep"}]},
   ],
 });

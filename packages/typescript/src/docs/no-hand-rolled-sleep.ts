@@ -10,7 +10,7 @@ export const NO_HAND_ROLLED_SLEEP_DOCUMENTATION = {
     "Use `node:timers/promises` with an abort signal for delays, or pass `AbortSignal.timeout(...)` to the timed operation.",
   category: "correctness",
   limitations: [
-    "The rule skips tests, scripts, generated files, and client modules by default, and supports explicit path exemptions.",
+    "The rule skips tests, scripts without a Node shebang or `node:` import, generated files, and client modules by default, and supports explicit path exemptions.",
     "Locally shadowed constructors/timers and value-returning timers are excluded. Only recognized browser markers are excluded; choose a runtime-compatible cancellation API for other browser modules.",
   ],
   examples: [

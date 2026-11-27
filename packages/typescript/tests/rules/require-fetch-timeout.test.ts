@@ -254,6 +254,15 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
       options: [{ allowIn: ["**/http-client.ts"] }],
       filename: "/repo/src/lib/http-client.ts",
     },
+    {"name": "accepts a signal in a Node-importing script", "code": "import { readFile } from \"node:fs/promises\";\nawait fetch(url, { signal: AbortSignal.timeout(1500) });", "filename": "/repo/scripts/smoke.mjs"},
+    {"name": "ignores scripts with only a type import", "code": "import type { Stats } from \"node:fs\";\nawait fetch(\"/x\");", "filename": "/repo/scripts/seed.ts"},
+    {"name": "ignores Bun scripts", "code": "#!/usr/bin/env bun\nawait fetch(\"/x\");", "filename": "/repo/scripts/smoke.mjs"},
+    {"name": "ignores Deno scripts", "code": "#!/usr/bin/env deno\nawait fetch(\"/x\");", "filename": "/repo/scripts/poll.mts"},
+    {"name": "allows unknown spreads in Node scripts", "code": "import process from \"node:process\";\nawait fetch(\"/x\", { ...options });", "filename": "/repo/scripts/poll.mts"},
+    {"name": "allows opaque inits in Node scripts", "code": "import process from \"node:process\";\nawait fetch(\"/x\", options);", "filename": "/repo/scripts/poll.mts"},
+    {"name": "allows forwarded Requests in Node scripts", "code": "import process from \"node:process\";\nawait fetch(new Request(\"/x\"));", "filename": "/repo/scripts/poll.mts"},
+    {"name": "ignores Node script tests", "code": "import process from \"node:process\";\nawait fetch(\"/x\");", "filename": "/repo/scripts/poll.test.mts"},
+    {"name": "honors allowIn for Node scripts", "code": "import process from \"node:process\";\nawait fetch(\"/x\");", "filename": "/repo/scripts/poll.mts", "options": [{"allowIn": ["**/scripts/poll.mts"]}]},
   ],
   invalid: [
     ...([
@@ -439,6 +448,8 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
       filename: "/repo/src/routes/page.ts",
       errors: [{ messageId: "missingSignal" }],
     },
+    {"name": "reports an unbounded fetch in a Node-importing script", "code": "import process from \"node:process\";\nawait fetch(`https://api.example.com/repos/${process.env.REPO}/comments`, { method: \"POST\", body: \"{}\" });", "filename": "/repo/.github/scripts/comment-preview.mts", "errors": [{"messageId": "missingSignal"}]},
+    {"name": "reports an unbounded fetch in a Node-shebang script", "code": "#!/usr/bin/env node\nawait fetch(\"https://api.example.com/marker\", { method: \"POST\" });", "filename": "/repo/.github/scripts/record-baseline.mjs", "errors": [{"messageId": "missingSignal"}]},
   ],
 });
 

@@ -8,7 +8,7 @@
 import { defineRule, type ESTree, type Node } from "../types.js";
 import { parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
-import { isGeneratedFile, isScriptFile, isTestFile, matchesAnyPattern } from "../utils/paths.js";
+import { hasNodeRuntimeProof, isGeneratedFile, isScriptFile, isTestFile, matchesAnyPattern } from "../utils/paths.js";
 import { findVariable } from "../utils/static-string.js";
 
 const NAME = "no-hand-rolled-sleep";
@@ -217,7 +217,7 @@ export default defineRule({
       before() {
         filename = context.filename;
         const file = { filename, cwd: context.cwd };
-        if (isTestFile(file) || isScriptFile(file) || isGeneratedFile(file, context.sourceCode.getText())) return false;
+        if (isTestFile(file) || (isScriptFile(file) && !hasNodeRuntimeProof(context.sourceCode)) || isGeneratedFile(file, context.sourceCode.getText())) return false;
         const options = context.options[0] as Options | undefined;
         const allowIn = options?.allowIn ?? [];
         if (allowIn.length > 0 && matchesAnyPattern(filename, allowIn)) return false;
