@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5c2b1a9ab3e94fef255b45e1c5ef4e47a330d26352e9d47bf9a980f56aefa74a",
-  "cliSha256": "f702d47fccb34ade903f43977ca8d9695f66ac4922fb8906b0543a5440bf4257",
+  "catalogSha256": "a6f9faf0177120498d2c57d61aab5532804f357708e9a4f693068b05dc5cc592",
+  "cliSha256": "5ad02b077f68ff40e0bcf70498c8e4d2285faf03b5fa13e3e7d1ec404c1be40a",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19976,6 +19976,21 @@
     "python:prefer-match-assert-never": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "dispatch.py",
+              "source": "from enum import StrEnum\n\n\nclass Job(StrEnum):\n    CALLER_EXPERIENCE = \"caller_experience\"\n    JUDGE = \"judge\"\n    TRANSCRIPT = \"transcript\"\n    REPORT = \"report\"\n\n\ndef max_output_tokens(job: Job) -> int:\n    match job:\n        case Job.CALLER_EXPERIENCE:\n            return 4_000\n        case Job.JUDGE:\n            return 8_000\n        case _:\n            return 2_000\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dispatch.py",
+          "id": "defaulting-enum-wildcard",
+          "outcome": "reject",
+          "scenarioId": "explicit-enum-default",
+          "title": "An enum wildcard hides the members that share a default"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -19989,6 +20004,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Closed-set match rejects an unhandled variant"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "dispatch.py",
+              "source": "from enum import StrEnum\nfrom typing import assert_never\n\n\nclass Job(StrEnum):\n    CALLER_EXPERIENCE = \"caller_experience\"\n    JUDGE = \"judge\"\n    TRANSCRIPT = \"transcript\"\n    REPORT = \"report\"\n\n\ndef max_output_tokens(job: Job) -> int:\n    match job:\n        case Job.CALLER_EXPERIENCE:\n            return 4_000\n        case Job.JUDGE:\n            return 8_000\n        case Job.TRANSCRIPT | Job.REPORT:\n            return 2_000\n        case _ as unreachable:\n            assert_never(unreachable)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dispatch.py",
+          "id": "explicit-enum-default",
+          "outcome": "accept",
+          "scenarioId": "explicit-enum-default",
+          "title": "Group enum members that share a default"
         },
         {
           "expectedCount": 1,
