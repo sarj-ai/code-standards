@@ -17,6 +17,33 @@ _BASE = "from typing import TypeGuard\ndef is_mapping(value: object) -> TypeGuar
 _CASES = (
     EvaluationCase("dictionary-keys", Language.PYTHON, _BASE, ExpectedOutcome.MATCH),
     EvaluationCase(
+        "json-value-dictionary-slot",
+        Language.PYTHON,
+        "from pydantic import JsonValue\n" + _BASE.replace("dict[str, object]", "dict[str, JsonValue]"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "json-value-list-slot",
+        Language.PYTHON,
+        "from pydantic import JsonValue\n"
+        + _BASE.replace("dict[str, object]", "list[JsonValue]").replace("value, dict", "value, list"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "json-value-input-and-slot",
+        Language.PYTHON,
+        "from pydantic import JsonValue\n"
+        + _BASE.replace("value: object", "value: JsonValue").replace("dict[str, object]", "dict[str, JsonValue]"),
+    ),
+    EvaluationCase(
+        "unimported-json-value-slot", Language.PYTHON, _BASE.replace("dict[str, object]", "dict[str, JsonValue]")
+    ),
+    EvaluationCase(
+        "foreign-json-value-slot",
+        Language.PYTHON,
+        "from custom import JsonValue\n" + _BASE.replace("dict[str, object]", "dict[str, JsonValue]"),
+    ),
+    EvaluationCase(
         "dictionary-values",
         Language.PYTHON,
         _BASE.replace("dict[str, object]", "dict[object, int]"),

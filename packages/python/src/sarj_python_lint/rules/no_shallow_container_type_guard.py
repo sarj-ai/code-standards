@@ -50,7 +50,7 @@ class NoShallowContainerTypeGuard(Rule):
         limitations=(
             "Checks top-level, undecorated, non-generic synchronous functions with one positional parameter proven to be builtin object and a single return isinstance(parameter, builtin_container), optionally after a docstring.",
             "Repeated module-level function names abstain: an overload's public input contract can be narrower than the implementation annotation.",
-            "The TypeGuard or TypeIs target must be a matching builtin dict, list, or set whose slots all resolve to object, str, int, bool, float, or bytes; at least one slot must be narrower than object.",
+            "The TypeGuard or TypeIs target must be a matching builtin dict, list, or set whose slots all resolve to object, str, int, bool, float, or bytes, or import-proven pydantic.JsonValue; at least one slot must be narrower than object.",
             "Includes authored tests; generated and vendor source is excluded. String annotations, constrained input types, unions, Any, TypeVars, Protocols, assignment aliases, nested definitions, and content validators are not inferred.",
             "Annotation imports include TYPE_CHECKING imports. Runtime imports use conservative file-wide shadow facts, so unrelated local rebinding can cause false negatives. Wildcard imports, explicit writes to relevant builtin or typing attributes, and exception, pattern or walrus bindings that shadow relevant names or imported aliases exclude the file; dynamic namespace mutation is not inferred.",
             "Relative or conditional imports that replace relevant builtin or typing names exclude the file unless the import proves the same canonical symbol. Unrelated relative imports remain in scope.",
@@ -163,10 +163,16 @@ def _guarded_container(annotation: ast.expr | None, imports: ImportIndex) -> str
     if name not in _CONTAINERS:
         return None
     slots = container.slice.elts if isinstance(container.slice, ast.Tuple) else [container.slice]
-    kinds = [_builtin_symbol(slot, imports) for slot in slots]
+    json_value = "pydantic.JsonValue"
+    kinds = [
+        json_value
+        if imports.resolves(slot, sources=frozenset({"pydantic"}), symbol="JsonValue")
+        else _builtin_symbol(slot, imports)
+        for slot in slots
+    ]
     if (
         len(kinds) != (_MAPPING_SLOTS if name == "dict" else 1)
-        or any(kind not in _SLOTS for kind in kinds)
+        or any(kind not in _SLOTS and kind != json_value for kind in kinds)
         or all(kind == "object" for kind in kinds)
     ):
         return None

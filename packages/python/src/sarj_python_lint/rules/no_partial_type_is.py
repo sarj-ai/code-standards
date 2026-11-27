@@ -25,6 +25,8 @@ from sarj_python_lint.rules._type_guard_symbols import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._imports import ImportIndex
 
@@ -65,10 +67,10 @@ class NoPartialTypeIs(Rule):
         limitations=(
             "Checks undecorated, non-generic module functions with one parameter and one return, optionally after a docstring.",
             "Requires an import-proven TypeIs target and a concrete builtin member demonstrably rejected by a direct predicate or by a builtin isinstance check followed by one predicate.",
-            "Targets are builtin int, str, bytes, bool and parameterized list, dict or set. Scalar comparisons use same-kind literals; length comparisons prove rejection of the valid empty member only.",
+            "Targets are builtin int, str, bytes, bool and parameterized list, dict or set. Scalar comparisons use same-kind literals; length comparisons prove rejection of the valid empty member only. A conjunct not isinstance(parameter, bool) is reported for a builtin int target or a union with a builtin int member because it rejects True.",
             "Direct bool conversion rejects the valid falsey member. Unary not is checked only for scalar targets with an inhabited truthy member. Direct ordering or length comparisons require an exact matching builtin input annotation; equality comparisons use a concrete same-kind witness. Raw parameter returns are checked only when proven bool.",
             "Also checks bounded, import-proven string Literal targets with exact builtin str or object input: a bool constant or equality/inequality comparison must reject an actual declared literal. Single-literal total equality predicates remain valid.",
-            "Input union analysis is iterative and bounded to 256 nodes. Constrained inputs, target unions, aliases, subclasses, custom refinements, helper calls, decorated functions and complex predicates are not inferred. TypeGuard may intentionally be partial and is excluded.",
+            "Input union analysis is iterative and bounded to 256 nodes. Constrained inputs, other target unions, aliases, subclasses, custom refinements, helper calls, decorated functions and complex predicates are not inferred. TypeGuard may intentionally be partial and is excluded.",
             "Visible shadowing, wildcard imports and namespace mutation abstain conservatively. There is no autofix because changing TypeIs affects both branches at callers.",
             "Repeated top-level function definition names are excluded because overloads can expose a more constrained public input than the implementation annotation.",
         ),
@@ -185,25 +187,40 @@ class NoPartialTypeIs(Rule):
 
 
 def _partial_return(function: ast.FunctionDef, context: PythonFileContext) -> ast.Return | None:
-    args = function.args
-    positional = (*args.posonlyargs, *args.args)
-    if function.decorator_list or function.type_params or len(positional) != 1:
-        return None
-    if args.kwonlyargs or args.vararg is not None or args.kwarg is not None:
-        return None
+    match function, (*function.args.posonlyargs, *function.args.args):
+        case ast.FunctionDef(
+            decorator_list=[], type_params=[], args=ast.arguments(kwonlyargs=[], vararg=None, kwarg=None)
+        ), (parameter,):
+            pass
+        case _:
+            return None
     annotation = function.returns
     if not isinstance(annotation, ast.Subscript) or not context.module_imports.resolves(
         annotation.value, sources=TYPING_SOURCES, symbol="TypeIs"
     ):
         return None
-    parameter = positional[0]
     statement = _single_return(function)
     if statement is None:
         return None
-    literals = _string_literal_domain(annotation.slice, context.module_imports)
-    if literals is not None:
-        rejected = _partial_literal_expression(statement.value, parameter, literals, context)
-        return statement if rejected else None
+    if (literals := _string_literal_domain(annotation.slice, context.module_imports)) is not None:
+        return statement if _partial_literal_expression(statement.value, parameter, literals, context) else None
+    match statement.value:
+        case ast.BoolOp(op=ast.And(), values=values) if (
+            _input_admits(parameter.annotation, "int", context.module_imports)
+            and any(
+                isinstance(value, ast.UnaryOp)
+                and isinstance(value.op, ast.Not)
+                and _checks_target(value.operand, parameter.arg, "bool", context.imports)
+                for value in values
+            )
+            and any(
+                builtin_guard_symbol(member, context.module_imports, _BUILTINS) == "int"
+                for member in _union_members(annotation.slice)
+            )
+        ):
+            return statement
+        case _:
+            pass
     kind = _target_kind(annotation.slice, context.module_imports)
     if kind is None or not _input_admits(parameter.annotation, kind, context.module_imports):
         return None
@@ -274,18 +291,23 @@ def _target_kind(node: ast.expr | None, imports: ImportIndex) -> str | None:
 
 
 def _input_admits(node: ast.expr | None, kind: str, imports: ImportIndex) -> bool:
+    return any(
+        builtin_guard_symbol(current, imports, _BUILTINS) == "object" or _target_kind(current, imports) == kind
+        for current in _union_members(node)
+    )
+
+
+def _union_members(node: ast.expr | None) -> Iterator[ast.expr]:
     pending = [node] if node is not None else []
     inspected = 0
-    while pending:
-        if inspected >= _MAX_INPUT_NODES:
-            return False
+    while pending and inspected < _MAX_INPUT_NODES:
         current = pending.pop()
         inspected += 1
-        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.BitOr):
-            pending.extend((current.right, current.left))
-        elif builtin_guard_symbol(current, imports, _BUILTINS) == "object" or _target_kind(current, imports) == kind:
-            return True
-    return False
+        match current:
+            case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+                pending.extend((right, left))
+            case _:
+                yield current
 
 
 def _checks_target(node: ast.expr, parameter: str, kind: str, imports: ImportIndex) -> bool:
