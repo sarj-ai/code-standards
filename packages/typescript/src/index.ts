@@ -165,6 +165,7 @@ import productionDerivedTestCases from "./rules/production-derived-test-cases.js
 import reactPreferUpdaterFunction from "./rules/react-prefer-updater-function.js";
 import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import requireAssertNever from "./rules/require-assert-never.js";
+import requireBrandedIdSchema from "./rules/require-branded-id-schema.js";
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
 import requireCamelcaseProperties from "./rules/require-camelcase-properties.js";
 import requireConstrainedSchemaInteger from "./rules/require-constrained-schema-integer.js";
@@ -346,6 +347,7 @@ const RULES = {
   "react-prefer-updater-function": reactPreferUpdaterFunction,
   "repeated-static-call-cases": repeatedStaticCallCases,
   "require-assert-never": requireAssertNever,
+  "require-branded-id-schema": requireBrandedIdSchema,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-camelcase-properties": requireCamelcaseProperties,
   "require-constrained-schema-integer": requireConstrainedSchemaInteger,
