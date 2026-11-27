@@ -50,7 +50,7 @@ queued: asyncio.Queue[_Playback] = asyncio.Queue()
         encoding="utf-8",
     )
     (finding,) = analyze([_RULE], [module])
-    assert (finding.line, finding.severity, finding.fixes) == (6, Severity.WARNING, ())
+    assert (finding.line, finding.severity, finding.fixes) == (6, Severity.ERROR, ())
 
 
 @pytest.mark.parametrize(

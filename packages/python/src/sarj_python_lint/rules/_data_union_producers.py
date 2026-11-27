@@ -62,7 +62,7 @@ class ProducerCorrelations:
         if unit is None or unit.module is None or unit.source != context.source:
             return []
         return [
-            Diagnostic(context.path, model.lineno, model.col_offset + 1, code, message, severity=Severity.WARNING)
+            Diagnostic(context.path, model.lineno, model.col_offset + 1, code, message, severity=Severity.ERROR)
             for model, message in self._findings.get(unit.module, ())
             if not context.suppressions.is_suppressed(model.lineno, code)
         ]
