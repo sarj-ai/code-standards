@@ -147,8 +147,7 @@ def _check(
         else _load_python_sources(expanded, sources, source_inputs=source_inputs)
     )
     _prepare_project(rules, expanded, loaded, session, source_inputs=source_inputs)
-    parallel = _parallel_diagnostics(rules, loaded, session, jobs=jobs, source_inputs=source_inputs)
-    if parallel is not None:
+    if (parallel := _parallel_diagnostics(rules, loaded, session, jobs=jobs, source_inputs=source_inputs)) is not None:
         return parallel
     diags: list[Diagnostic] = []
     pending = list(loaded.items())
@@ -314,7 +313,6 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ457": frozenset({"SARJ045", "SARJ526"}),
         "SARJ465": frozenset({"SARJ071", "SARJ569"}),
         "SARJ491": frozenset({"SARJ400"}),
-        "SARJ518": frozenset({"SARJ560"}),
         "SARJ573": frozenset({"SARJ530"}),
         "SARJ584": frozenset({"SARJ468"}),
     }
