@@ -123,7 +123,7 @@ class PreferDiscriminatedModelUnion(ProjectRule):
             "Unsupported Field validation constraints cannot prove non-null payload inhabitance; defaults, aliases and passive metadata remain eligible. Literal exception messages or local assignments of those messages are supported with import-proven builtin rejection types.",
             "Opaque helpers, effectful validators, inherited models, model mutation or escape, ambiguous namespaces, tests and generated files are excluded. The analyzer bounds validator nodes, Boolean depth, paths and rejection regions; complex forms abstain.",
             "This error requires explicit data modeling; it does not require absent payloads in other variants or change external compatibility automatically.",
-            "A separate warning checks direct record constructors with finite Literal, bool or source-resolved Enum/StrEnum tags. A nullable field with a None default (or an omittable TypedDict key) must be consistently supplied with visibly non-null expressions for some observed tags and omitted or passed None for the others.",
+            "A separate check inspects direct record constructors with finite Literal, bool or source-resolved Enum/StrEnum tags. A nullable field with a None default (or an omittable TypedDict key) must be consistently supplied with visibly non-null expressions for some observed tags and omitted or passed None for the others.",
             "Constructor evidence is limited to indexed first-party production code. Ambiguous references, class escapes, subclasses, alternative construction or replacement, positional arguments and keyword unpacking abstain. Only passive record definitions are eligible. Opaque expressions, including bare names and calls of unknown return type, do not establish presence. External callers, structural TypedDict writes and unobserved tag values are outside the proof.",
         ),
         examples=(
@@ -334,7 +334,7 @@ class PreferDiscriminatedModelUnion(ProjectRule):
         if is_test_path(context.path):
             return []
         diagnostics = data_union_diagnostics(context, self.code)
-        diagnostics.extend(self._constructor_warnings(context))
+        diagnostics.extend(self._constructor_diagnostics(context))
         if "None" not in context.symbol_source or "model_validator" not in context.symbol_source:
             return diagnostics
         provenance = context.static_resource_provenance
@@ -361,7 +361,7 @@ class PreferDiscriminatedModelUnion(ProjectRule):
             )
         return diagnostics
 
-    def _constructor_warnings(self, context: PythonFileContext) -> list[Diagnostic]:
+    def _constructor_diagnostics(self, context: PythonFileContext) -> list[Diagnostic]:
         tree = context.tree
         if tree is None or not ("None" in context.symbol_source or "TypedDict" in context.symbol_source):
             return []

@@ -80,7 +80,7 @@ class PreferFrozenDataclass(ProjectRule):
     id = "prefer-frozen-dataclass"
     code = "SARJ607"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Freeze dataclass fields when their bindings are never reassigned.",
         rationale="A mutable record permits replacing one field after construction and invalidating its relationship to the other fields.",
         remediation="Set frozen=True on the dataclass and construct a replacement when its fields need to change.",
@@ -179,7 +179,7 @@ class PreferFrozenDataclass(ProjectRule):
                     node.col_offset + 1,
                     self.code,
                     f"Set frozen=True on {node.name} to protect its field bindings after construction.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     fixes=() if writes else _fixes(node, decorator, context),
                 )
             )

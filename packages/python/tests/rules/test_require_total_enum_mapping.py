@@ -32,7 +32,7 @@ def test_imported_invite_enum_and_literal_narrowing(tmp_path: Path) -> None:
     )
     [finding] = analyze([RequireTotalEnumMapping.id], [path, states])
 
-    assert (finding.path, finding.line, finding.col, finding.severity) == (path, 4, 8, Severity.WARNING)
+    assert (finding.path, finding.line, finding.col, finding.severity) == (path, 4, 8, Severity.ERROR)
     assert "CLOSED" in finding.message
     assert "subscript read" in finding.message
 

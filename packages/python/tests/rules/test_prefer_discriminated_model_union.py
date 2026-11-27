@@ -55,7 +55,7 @@ class Batch(BaseModel):
 _CONSTRUCTORS = "Batch(phase='stopped')\nBatch(phase='completed', items=[1])\n"
 
 
-def test_constructor_warning_lists_each_correlated_payload() -> None:
+def test_constructor_finding_lists_each_correlated_payload() -> None:
     source = next(
         example.focus_file.source
         for example in PreferDiscriminatedModelUnion.public_examples()
@@ -63,13 +63,13 @@ def test_constructor_warning_lists_each_correlated_payload() -> None:
     )
     [finding] = _check(source)
     assert finding.line == 3
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert "`unavailable_part` with `reason` in {'availability'}" in finding.message
     assert "`byte_limit` with `reason` in {'download_limit'}" in finding.message
 
 
 @pytest.mark.parametrize("ambiguous", ["", "import models\nmodels.Check = alternate\n", "from models import *\n"])
-def test_constructor_warning_resolves_imported_enum_and_cross_module_producers(tmp_path: Path, ambiguous: str) -> None:
+def test_constructor_finding_resolves_imported_enum_and_cross_module_producers(tmp_path: Path, ambiguous: str) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'app'\nversion = '0.0.0'\n")
     (tmp_path / "status.py").write_text(
         "from enum import StrEnum\nclass State(StrEnum):\n    READY = 'r'\n    WAITING = 'w'\n    PAUSED = 'p'\n"
@@ -174,14 +174,14 @@ def test_outcome_owner_takes_precedence(*, owner_first: bool) -> None:
     assert [finding.code for finding in check_source(rules, Path("app/canary.py"), source)] == ["SARJ571"]
 
 
-def test_validator_error_takes_precedence_over_constructor_warning() -> None:
+def test_validator_error_takes_precedence_over_constructor_finding() -> None:
     source = _BASE + "Delivery(kind='email', address='person@example.com')\nDelivery(kind='pickup')\n"
     [finding] = _check(source)
     assert finding.severity is Severity.ERROR
     assert finding.line == 8
 
 
-def test_constructor_warning_respects_suppression_on_record() -> None:
+def test_constructor_finding_respects_suppression_on_record() -> None:
     source = _CONSTRUCTOR_MODEL.replace(
         "class Batch(BaseModel):", "class Batch(BaseModel):  # sarj-noqa: SARJ510 -- Public batch wire format."
     )

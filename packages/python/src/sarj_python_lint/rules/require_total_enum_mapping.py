@@ -59,7 +59,7 @@ class RequireTotalEnumMapping(ProjectRule):
     id = "require-total-enum-mapping"
     code = "SARJ600"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Cover every member of the declared key type in a constant dispatch mapping.",
         rationale="A dispatch mapping with an omitted key can raise KeyError even when the lookup key satisfies its annotation.",
         remediation="Add the missing entries or narrow the key type to a Literal alias of the covered keys.",
@@ -158,7 +158,7 @@ def _finding(node: ast.AnnAssign, facts: AnnotationOrigins) -> Diagnostic | None
         col=node.annotation.col_offset + 1,
         code=RequireTotalEnumMapping.code,
         message=f"Mapping {target.id!r} omits declared keys {', '.join(missing)}. Add entries or narrow the key type.{use}",
-        severity=Severity.WARNING,
+        severity=Severity.ERROR,
     )
 
 
