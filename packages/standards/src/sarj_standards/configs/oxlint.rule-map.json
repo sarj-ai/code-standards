@@ -1,7 +1,7 @@
 {
   "@eslint-community/eslint-comments/disable-enable-pair": {
     "kind": "replaced",
-    "oxlintId": "@sarj/directive-disable-enable-pair",
+    "oxlintId": "@sarj/directive-no-use",
     "contexts": {
       "source-ts": "error",
       "source-tsx": "error",
@@ -22,7 +22,7 @@
   },
   "@eslint-community/eslint-comments/no-aggregating-enable": {
     "kind": "replaced",
-    "oxlintId": "@sarj/directive-no-aggregating-enable",
+    "oxlintId": "@sarj/directive-no-use",
     "contexts": {
       "source-ts": "error",
       "source-tsx": "error",
@@ -91,7 +91,7 @@
   },
   "@eslint-community/eslint-comments/no-unused-enable": {
     "kind": "replaced",
-    "oxlintId": "@sarj/directive-no-unused-enable",
+    "oxlintId": "@sarj/directive-no-use",
     "contexts": {
       "source-ts": "error",
       "source-tsx": "error",

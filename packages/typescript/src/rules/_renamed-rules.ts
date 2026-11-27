@@ -7,6 +7,9 @@
 
 export const RENAMED_RULES = {
   "no-type-member-comment-wall": "no-declaration-comment-wall",
+  "directive-disable-enable-pair": "directive-no-use",
+  "directive-no-aggregating-enable": "directive-no-use",
+  "directive-no-unused-enable": "directive-no-use",
   "jsdoc-restates-signature": "no-restated-jsdoc",
   "zod-naming-convention": "require-pascal-case-zod-schema-name",
   "require-interface-for-exported-class": "require-port-for-service",

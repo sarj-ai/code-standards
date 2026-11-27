@@ -170,10 +170,14 @@ def test_plan_keeps_a_partly_unused_block_pair_closed(tmp_path: Path, decoy: str
     assert (root / "src/a.ts").read_text(encoding="utf-8") == (
         f"/* eslint-disable no-console -- pair */\nconsole.info(1);\n{decoy}/* eslint-enable no-console -- pair */\ndebugger;\n"
     )
-    rules = {item.rule_id for item in analyze(root, oxlint.OxlintRequest(), "src").diagnostics}
+    diagnostics = analyze(root, oxlint.OxlintRequest(), "src").diagnostics
+    rules = {item.rule_id for item in diagnostics}
     # The debugger after the pair is reported again, so no disable is left open.
     assert "no-debugger" in rules
-    assert "@sarj/directive-disable-enable-pair" not in rules
+    assert not any(
+        item.rule_id == "@sarj/directive-no-use" and item.message.startswith("Requires 'eslint-enable' directive")
+        for item in diagnostics
+    )
 
 
 def test_plan_refuses_sources_oxlint_cannot_finish(tmp_path: Path) -> None:
