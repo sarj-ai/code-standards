@@ -102,7 +102,6 @@ import { NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION } from "./no-string-concat-in-lo
 import { NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION } from "./no-tautological-expect.js";
 import { NO_TEST_COMMENTS_DOCUMENTATION } from "./no-test-comments.js";
 import { NO_TRAILING_VALUE_NARRATION_DOCUMENTATION } from "./no-trailing-value-narration.js";
-import { NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION } from "./no-type-member-comment-wall.js";
 import { NO_TYPED_DOC_SECTIONS_DOCUMENTATION } from "./no-typed-doc-sections.js";
 import { NO_UNION_IN_COMMENT_DOCUMENTATION } from "./no-union-in-comment.js";
 import { NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION } from "./no-unlocalized-jsx-attributes.js";
@@ -285,7 +284,6 @@ export const RULE_DOCUMENTATION = {
   "no-tautological-expect": NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
   "no-test-comments": NO_TEST_COMMENTS_DOCUMENTATION,
   "no-trailing-value-narration": NO_TRAILING_VALUE_NARRATION_DOCUMENTATION,
-  "no-type-member-comment-wall": NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
   "no-typed-doc-sections": NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
   "no-union-in-comment": NO_UNION_IN_COMMENT_DOCUMENTATION,
   "no-unlocalized-jsx-attributes": NO_UNLOCALIZED_JSX_ATTRIBUTES_DOCUMENTATION,

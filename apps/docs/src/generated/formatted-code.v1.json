@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "712e29a26cb800f1c15d508f9465471e22baf7bf8371adcb02ce587d8434a8f3",
-  "cliSha256": "ccd5cb750885481b1f8d067d2da74c751ef8a222e3059a3412cd94f65cd43f2f",
+  "catalogSha256": "f8f52cad2af02ec3e92d6c98012aa7be910c3ac770658c3360abe17b82543d78",
+  "cliSha256": "70f3fdb06d95392d2cca2740dce428386c63a168393a4940585598efd34951d6",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -7828,41 +7828,6 @@
         }
       ],
       "optionsSchemaSource": null
-    },
-    "oxlint:no-type-member-comment-wall": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/credentials.ts",
-              "source": "interface Credentials {\n  // Database host.\n  host?: string;\n  // Database host port.\n  port?: number;\n  // Database username.\n  username?: string;\n  // Database password.\n  password?: string;\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/credentials.ts",
-          "id": "restated-type-members",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not restate member names and types"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/credentials.ts",
-              "source": "interface Credentials {\n  host?: string;\n  port?: number;\n  username?: string;\n  password?: string;\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/credentials.ts",
-          "id": "uncommented-members",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Let clear member names and types stand alone"
-        }
-      ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"maxNovelWords\": {\n      \"description\": \"Most content words a comment may add beyond its member's own source and still count as a restatement.\",\n      \"minimum\": 0,\n      \"type\": \"integer\"\n    },\n    \"minCommentedMembers\": {\n      \"description\": \"Fewest commented members that can count as a wall.\",\n      \"minimum\": 2,\n      \"type\": \"integer\"\n    },\n    \"minCommentedRatio\": {\n      \"description\": \"Least share of the members that must be commented; below it the comments are group labels.\",\n      \"maximum\": 1,\n      \"minimum\": 0,\n      \"type\": \"number\"\n    },\n    \"minRestatedRatio\": {\n      \"description\": \"Least share of the member comments that must be restatements.\",\n      \"maximum\": 1,\n      \"minimum\": 0,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "oxlint:no-typed-doc-sections": {
       "examples": [

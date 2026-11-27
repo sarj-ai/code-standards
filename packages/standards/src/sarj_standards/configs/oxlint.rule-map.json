@@ -1664,29 +1664,6 @@
       "design-system-tsx": "error"
     }
   },
-  "@sarj/no-type-member-comment-wall": {
-    "kind": "js-alias",
-    "oxlintId": "@sarj/no-type-member-comment-wall",
-    "contexts": {
-      "source-ts": "error",
-      "source-tsx": "error",
-      "source-js": "error",
-      "source-jsx": "error",
-      "test-ts": "error",
-      "test-bun-ts": "error",
-      "test-playwright-ts": "error",
-      "config-ts": "error",
-      "design-system-tsx": "error"
-    },
-    "options": [
-      {
-        "minCommentedMembers": 3,
-        "minCommentedRatio": 0.6,
-        "minRestatedRatio": 0.75,
-        "maxNovelWords": 1
-      }
-    ]
-  },
   "@sarj/no-typed-doc-sections": {
     "kind": "js-alias",
     "oxlintId": "@sarj/no-typed-doc-sections",

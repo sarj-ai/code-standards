@@ -1973,14 +1973,6 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Remove narration only for a matching literal numeric initializer and same-unit aliases; preserve cross-unit explanations, computed targets, expressions, calls, operators, Unicode and meaningful prose. No numeric evaluation or unit conversion is inferred."
     },
     {
-      "task": "rule-audit/typescript/no-type-member-comment-wall",
-      "family": "typescript",
-      "ruleId": "no-type-member-comment-wall",
-      "state": "complete",
-      "evidence": "Three independent reviews accepted preservation of negation, modal requirements, conditions and fixed-value contracts. The four comment-owner suites pass 219 focused tests; zero findings for this owner in the eight-source pinned corpus do not establish promotion readiness.",
-      "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Without autofix, Retain the selector and configured density thresholds while describing apparent repetition as a review heuristic, not proof that comments carry no contract."
-    },
-    {
       "task": "rule-audit/typescript/no-typed-doc-sections",
       "family": "typescript",
       "ruleId": "no-typed-doc-sections",
