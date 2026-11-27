@@ -3967,6 +3967,14 @@
       "state": "pending",
       "evidence": "Across an 83-file sample from five pinned Python source snapshots, the isolated replay found 11 of 12 labelled positives and left all four labelled near misses unreported. The missed comparison used an inferred local type. Existing enum controls had no overlapping findings. Three paired runs with project indexing in both configurations measured median process times of 13.68 s and 16.52 s before and after adding the rule.",
       "outcome": "Introduce SARJ612 at WARNING without autofix. Resolve declared enum types and named enum member values before reporting raw comparisons. Leave generated code, custom equality, and opaque SQL-style expressions outside the rule's scope."
+    },
+    {
+      "task": "rule-audit/python/prefer-secret-field-type",
+      "family": "python",
+      "ruleId": "prefer-secret-field-type",
+      "state": "pending",
+      "evidence": "A runtime check reproduced plain-value exposure in Pydantic model representations and masking with SecretStr. An isolated comparison across 64 files at six pinned revisions added 103 warnings and detected all nine existing settings-exposure cases. The rule can also match public values, digests and secret references. Broader consumer calibration remains pending.",
+      "outcome": "Ship SARJ613 at WARNING. Use SecretStr or SecretBytes where credential masking fits the model contract and keep intentional raw serialization explicit."
     }
   ]
 }

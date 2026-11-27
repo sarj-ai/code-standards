@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-secret-field-type"),
+        module="sarj_python_lint.rules.prefer_secret_field_type",
+        class_name="PreferSecretFieldType",
+        code="SARJ613",
+        description="Use Pydantic secret types for credential fields.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-enum-literal-comparison"),
         module="sarj_python_lint.rules.no_enum_literal_comparison",
         class_name="NoEnumLiteralComparison",

@@ -55,6 +55,7 @@ _INNOCUOUS_WORDS = frozenset(
 )
 
 _FLAG_PREFIXES = frozenset({"is", "has", "was", "are", "can", "should"})
+_PAGINATION_WORDS = frozenset({"page", "cursor"})
 
 _CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
@@ -83,6 +84,12 @@ def leading_word(identifier: str) -> str | None:
 def is_secret_name(identifier: str) -> bool:
     tokens = identifier_tokens(identifier)
     if tokens and tokens[-1] in _INNOCUOUS_WORDS:
+        return False
+    if (
+        tokens
+        and tokens[-1] == "token"
+        and any(qualifier in _PAGINATION_WORDS and noun == "token" for qualifier, noun in pairwise(tokens))
+    ):
         return False
     if leading_word(identifier) in _FLAG_PREFIXES:
         return False

@@ -217,6 +217,7 @@
       "prefer-required-prerequisite",
       "prefer-result-over-nullable-exception",
       "prefer-runtime-validation",
+      "prefer-secret-field-type",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-semantic-temporal-types",
@@ -790,7 +791,8 @@
       "SARJ609",
       "SARJ610",
       "SARJ611",
-      "SARJ612"
+      "SARJ612",
+      "SARJ613"
     ],
     "sql": [
       "SARJ101",
