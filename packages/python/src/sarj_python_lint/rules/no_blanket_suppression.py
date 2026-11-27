@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -29,7 +30,19 @@ _SCOPED_IGNORE = re.compile(r"^ignore\s*\[\s*report[A-Za-z]+(?:\s*,\s*report[A-Z
 _DIAGNOSTIC = re.compile(r"^report[A-Z][A-Za-z]+$")
 _WEAKENED = frozenset({"false", "none", "warning", "information", "hint"})
 _WEAKER_MODES = frozenset({"basic", "standard"})
-_DISABLED_CHECKS = frozenset({"analyzeUnannotatedFunctions", "disableBytesTypePromotions", "strictParameterNoneValue"})
+_WEAKENING_SWITCHES = MappingProxyType(
+    {
+        "analyzeUnannotatedFunctions": "false",
+        "deprecateTypingAliases": "false",
+        "disableBytesTypePromotions": "false",
+        "enableExperimentalFeatures": "true",
+        "strictDictionaryInference": "false",
+        "strictGenericNarrowing": "false",
+        "strictListInference": "false",
+        "strictParameterNoneValue": "false",
+        "strictSetInference": "false",
+    }
+)
 _RUFF_BROAD = re.compile(
     r"^ruff:\s*(?:file-ignore\s*\[(?P<file>[^\]]+)\]|noqa\s*:\s*(?P<codes>[A-Za-z0-9_, ]+)|disable\s*\[[^\]]+\])",
     re.IGNORECASE,
@@ -53,7 +66,16 @@ class NoBlanketSuppression(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks actual Python comment tokens for bare or empty sarj-noqa, unscoped pyright: ignore, basic/standard Pyright modes, report* downgrades below error, analyzeUnannotatedFunctions/disableBytesTypePromotions/strictParameterNoneValue=false and scoped Ruff/Flake8 file or Ruff range disables. SARJ054 retains precedence for Ruff banned-api file directives.",
+            (
+                "Checks actual Python comment tokens for bare or empty sarj-noqa, unscoped pyright: ignore, "
+                "basic/standard Pyright modes, report* downgrades below error and scoped Ruff/Flake8 file or Ruff range "
+                "disables. SARJ054 retains precedence for Ruff banned-api file directives."
+            ),
+            (
+                "Reports enableExperimentalFeatures=true and false values for analyzeUnannotatedFunctions, "
+                "deprecateTypingAliases, disableBytesTypePromotions, strictDictionaryInference, strictGenericNarrowing "
+                "(BasedPyright), strictListInference, strictParameterNoneValue and strictSetInference."
+            ),
             "Ruff owns blanket noqa and type: ignore through PGH004 and PGH003. Exact local exceptions remain available; this rule does not judge whether their explanations justify the exception.",
             "Directive examples inside strings and unrelated Pyright feature flags are excluded. Source-generated markers cannot waive accountability; use explicit whole-path exclusions for generated/vendor code. Consumer type-checker configuration remains outside this source rule.",
             "The full Standards gate protects this rule and the existing suppression-accountability checks from inline waivers, rule exclusions and diagnostic baselines. Explicitly selected partial checks remain scoped.",
@@ -126,9 +148,11 @@ def _broad_pyright(tail: str, *, configuration: bool) -> bool:
         option = raw.strip()
         if option in _WEAKER_MODES:
             return True
-        name, separator, value = option.partition("=")
-        if separator and name.strip() in _DISABLED_CHECKS and value.strip() == "false":
+        name, _, value = option.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if _WEAKENING_SWITCHES.get(name) == value:
             return True
-        if separator and _DIAGNOSTIC.fullmatch(name.strip()) and value.strip() in _WEAKENED:
+        if _DIAGNOSTIC.fullmatch(name) and value in _WEAKENED:
             return True
     return False
