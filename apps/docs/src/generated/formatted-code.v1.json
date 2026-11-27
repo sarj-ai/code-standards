@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f8f52cad2af02ec3e92d6c98012aa7be910c3ac770658c3360abe17b82543d78",
-  "cliSha256": "70f3fdb06d95392d2cca2740dce428386c63a168393a4940585598efd34951d6",
+  "catalogSha256": "4e9fb0c855de7ebe65b35c7917dbaf650171dcdd14665a19b60611a56b2b35b9",
+  "cliSha256": "ca8e7d45bbc0e68439e7ed21ad0f81324de927ce7df8424bdfdc35fe4d7276ff",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -16393,6 +16393,21 @@
     "python:no-psycopg-execution-in-loop": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    await cursor.executemany(\n        \"INSERT INTO users (id) VALUES (%s)\", [(row.id,) for row in rows]\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "batch-execute",
+          "outcome": "accept",
+          "scenarioId": "executemany",
+          "title": "Use the cursor's batch API"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -16406,6 +16421,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A connection executes once per item"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    for row in rows:\n        await cursor.execute(\"INSERT INTO users (id) VALUES (%s)\", (row.id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "serial-execute",
+          "outcome": "reject",
+          "scenarioId": "executemany",
+          "title": "Batch the same parameterized statement"
         },
         {
           "expectedCount": 0,
@@ -21187,41 +21217,6 @@
           "outcome": "reject",
           "scenarioId": "private-literal-truthiness",
           "title": "Existing source proof permits a narrow convergent fix"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-psycopg-executemany": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/user_store.py",
-              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    await cursor.executemany(\n        \"INSERT INTO users (id) VALUES (%s)\", [(row.id,) for row in rows]\n    )\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/user_store.py",
-          "id": "batch-execute",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Use the cursor's batch API"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/user_store.py",
-              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    for row in rows:\n        await cursor.execute(\"INSERT INTO users (id) VALUES (%s)\", (row.id,))\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/user_store.py",
-          "id": "serial-execute",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Batch the same parameterized statement"
         }
       ],
       "optionsSchemaSource": null

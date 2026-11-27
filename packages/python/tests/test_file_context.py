@@ -241,7 +241,7 @@ def test_shared_facts_preserve_findings_and_rule_order() -> None:
         "no-broad-keyword-capture",
         "require-pydantic-for-mapping-shape",
         "prefer-pydantic-json-value",
-        "prefer-psycopg-executemany",
+        "no-psycopg-execution-in-loop",
         "no-discarded-validation-result",
         "no-mutating-container-transform",
         "prefer-declarative-batch-validation",

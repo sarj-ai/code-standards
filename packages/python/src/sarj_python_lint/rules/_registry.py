@@ -291,7 +291,6 @@ from sarj_python_lint.rules.prefer_nominal_mapping_keys import PreferNominalMapp
 from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
 from sarj_python_lint.rules.prefer_outcome_variants import PreferOutcomeVariants
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
-from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.prefer_pydantic_field_bounds import PreferPydanticFieldBounds
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
@@ -393,7 +392,6 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferPydanticModelAssertion.id: PreferPydanticModelAssertion,
         PreferPytestDependencyFixtures.id: PreferPytestDependencyFixtures,
         PreferBulkUpsert.id: PreferBulkUpsert,
-        PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
         StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
         DeleteRouteReturnsNoContent.id: DeleteRouteReturnsNoContent,
         NoExceptionTextIn500Detail.id: NoExceptionTextIn500Detail,

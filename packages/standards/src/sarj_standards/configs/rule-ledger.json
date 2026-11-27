@@ -199,7 +199,6 @@
       "prefer-or-pattern",
       "prefer-outcome-variants",
       "prefer-precise-object-contract",
-      "prefer-psycopg-executemany",
       "prefer-pydantic-field-bounds",
       "prefer-pydantic-json-value",
       "prefer-pydantic-model-assertion",
@@ -701,7 +700,6 @@
       "SARJ515",
       "SARJ516",
       "SARJ517",
-      "SARJ518",
       "SARJ519",
       "SARJ520",
       "SARJ521",
@@ -1294,6 +1292,13 @@
       "note": "Removed in sarj-python-lint 0.88.0: preserve raw wire-contract assertions; model validation can hide missing fields, coercion, and unexpected fields. Remove this rule from explicit selections."
     },
     {
+      "id": "SARJ518",
+      "kind": "code",
+      "status": "renamed",
+      "replacement": "SARJ560",
+      "note": "Replace SARJ518 suppressions and baselines with SARJ560; no-psycopg-execution-in-loop owns the same findings."
+    },
+    {
       "id": "SARJ581",
       "kind": "code",
       "status": "removed",
@@ -1733,6 +1738,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove prefer-one-for-required-row from custom rule configuration. Ruff S101 already reports the unsafe assertion, and no universal one(row) helper contract exists."
+    },
+    {
+      "id": "prefer-psycopg-executemany",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-psycopg-execution-in-loop",
+      "note": "Replace sarj-prefer-psycopg-executemany with sarj-no-psycopg-execution-in-loop before upgrading."
     },
     {
       "id": "prefer-pytest-case-table",
