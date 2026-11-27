@@ -222,9 +222,7 @@ function isProse(text: string): boolean {
 function isRedundantNarration(
   body: string,
   statementBelow: string | null,
-  standalone: boolean,
-  isolatedEnumeration: boolean,
-  nested: boolean,
+  { standalone, isolatedEnumeration, nested }: { standalone: boolean; isolatedEnumeration: boolean; nested: boolean },
 ): boolean {
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
@@ -512,8 +510,7 @@ function isPureBannerComment(comment: Comment): boolean {
 
 function hasCommentedOutCode(
   texts: readonly string[],
-  precedingProse: boolean,
-  allowCall: boolean,
+  { precedingProse, allowCall }: { precedingProse: boolean; allowCall: boolean },
 ): boolean {
   for (let i = 0;i < texts.length;i++) {
     const line = texts[i];
@@ -784,7 +781,7 @@ export default defineRule({
         /** Code-shaped lines that no prose lead-in or HTTP contract example introduces. */
         function isCommentedOutCode(comment: Comment, texts: readonly string[], i: number, container: Node | null): boolean {
           const inTypeMembers = container !== null && TYPE_MEMBER_CONTAINERS.has(container.type);
-          return hasCommentedOutCode(texts, followsProseLine(comments, i, comment), !inTypeMembers) &&
+          return hasCommentedOutCode(texts, { precedingProse: followsProseLine(comments, i, comment), allowCall: !inTypeMembers }) &&
             !hasIllustrationLeadInAbove(comments, i) &&
             !runDocumentsHttpContract(comments, i);
         }
@@ -800,7 +797,7 @@ export default defineRule({
             if (
               body !== undefined &&
               !runCitesAReference(comments, i) &&
-              isRedundantNarration(body, statement, standalone, enumerated.length === 1, nested)
+              isRedundantNarration(body, statement, { standalone, isolatedEnumeration: enumerated.length === 1, nested })
             ) {
               context.report({ node: comment, messageId: "redundantNarration" });
             }

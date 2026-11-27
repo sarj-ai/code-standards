@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d40314357e77cca284483d8f9f3a6d59524f1426cb8978d1da42e1b5e505fc34",
-  "cliSha256": "fd9dc39ee91f944982ff49439adc9f87a1d8ff1a1a1b67595f2b59a9ff264cfb",
+  "catalogSha256": "9e6b91d6b98768268128fce75d93a8c147719a0b16c27837ad6fe477a17e6d62",
+  "cliSha256": "e1c6a5ea0ea6bcd5935edc9f9bbdc0368c82d9a938aad718894973f24c1447dc",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -2407,6 +2407,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Reference the named child contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:no-adjacent-boolean-parameters": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "range.ts",
+              "source": "declare function checkRange(\n  min: number,\n  max: number,\n  options: { excludeMin: boolean; excludeMax: boolean },\n): void;\ncheckRange(1, 4, { excludeMin: false, excludeMax: true });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "range.ts",
+          "id": "named-options",
+          "outcome": "accept",
+          "scenarioId": "named-flags",
+          "title": "Name each flag at the call site"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "range.ts",
+              "source": "declare function checkRange(\n  min: number,\n  excludeMin: boolean,\n  max: number,\n  excludeMax: boolean,\n): void;\ncheckRange(1, false, 4, true);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "range.ts",
+          "id": "positional-flags",
+          "outcome": "reject",
+          "scenarioId": "named-flags",
+          "title": "Positional flags can be reversed"
         }
       ],
       "optionsSchemaSource": null

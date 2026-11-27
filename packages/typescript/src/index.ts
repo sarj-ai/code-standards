@@ -19,6 +19,7 @@ import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
 import jsxNoForbiddenNesting from "./rules/jsx-no-forbidden-nesting.js";
 import namedChildSchemaType from "./rules/named-child-schema-type.js";
+import noAdjacentBooleanParameters from "./rules/no-adjacent-boolean-parameters.js";
 import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
 import noBespokeApiCaseConversion from "./rules/no-bespoke-api-case-conversion.js";
 import noBlockedInputPaste from "./rules/no-blocked-input-paste.js";
@@ -197,6 +198,7 @@ const RULES = {
   "interface-contract-members-private": interfaceContractMembersPrivate,
   "jsx-no-forbidden-nesting": jsxNoForbiddenNesting,
   "named-child-schema-type": namedChildSchemaType,
+  "no-adjacent-boolean-parameters": noAdjacentBooleanParameters,
   "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
   "no-bespoke-api-case-conversion": noBespokeApiCaseConversion,
   "no-blocked-input-paste": noBlockedInputPaste,

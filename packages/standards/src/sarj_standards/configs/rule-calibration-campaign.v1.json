@@ -263,6 +263,14 @@
       "outcome": "Ship SARJ522 at WARNING without autofix. Normalize known model input and read typed attributes when a closed private accessor erases the field contract, including standard Mapping branches, reordered parameters and stable literal selector aliases. Preserve opaque boundaries, dynamic keys, class metadata and unproved/imported/inherited models. Native Ruff owns direct casts; binding-proven indirect source facts close demonstrated wildcard/reflection gaps. Active cast findings cannot be waived by source comments, consumer Ruff configuration, manifest rule exceptions or diagnostic baselines. New advisory promotion requires a warning release and separate metadata change. Finite calibration and a bounded combined-run performance sample do not establish universal precision, recall or full-corpus combined overhead."
     },
     {
+      "task": "rule-audit/typescript/no-adjacent-boolean-parameters",
+      "family": "typescript",
+      "ruleId": "no-adjacent-boolean-parameters",
+      "state": "pending",
+      "evidence": "Pinned Oxlint cases cover positional booleans, optional annotations, literal defaults, overloads, generated files and direct callback arguments. The original and swapped calls both type-check and produce different results. Three paired runs over 9,206 immutable files found 53 warnings, with zero duplicate locations and the same four parser diagnostics. Fifteen sampled findings included twelve direct signature cases and three low-impact presentation helpers. Broader precision and recall remain unmeasured.",
+      "outcome": "Ship as a warning without autofix. Report the second eligible parameter and recommend an options object or literal-union parameter. Field calibration remains pending."
+    },
+    {
       "task": "rule-audit/typescript/no-boolean-selector-parameter",
       "family": "typescript",
       "ruleId": "no-boolean-selector-parameter",

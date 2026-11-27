@@ -867,6 +867,7 @@ const RULES = {
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/named-child-schema-type": "error",
+  "@sarj/no-adjacent-boolean-parameters": "warn",
   "@sarj/no-bare-return-from-test-catch": "error",
   "@sarj/no-bespoke-api-case-conversion": "warn",
   "@sarj/no-boolean-selector-parameter": "warn",

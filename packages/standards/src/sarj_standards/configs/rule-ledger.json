@@ -346,6 +346,7 @@
       "interface-contract-members-private",
       "jsx-no-forbidden-nesting",
       "named-child-schema-type",
+      "no-adjacent-boolean-parameters",
       "no-bare-return-from-test-catch",
       "no-bespoke-api-case-conversion",
       "no-blocked-input-paste",
