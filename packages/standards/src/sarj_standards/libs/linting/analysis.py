@@ -65,6 +65,7 @@ _EXCEPTION_PROPAGATION_FINGERPRINT_ANCHOR = (
     "This handler only copies the caught message into a generic error; review letting the original "
     "exception propagate while preserving intentional boundary contracts."
 )
+_AGENT_INSTRUCTION_BUDGET_FINGERPRINT_ANCHOR = "Keep agent instructions within 1,000 words."
 _IAC_PROJECT_RULES = frozenset({"no-unused-module-outputs", "no-unused-module-inputs", "no-dead-environment-input"})
 
 
@@ -314,6 +315,8 @@ def _fingerprint_anchor(diagnostic: Diagnostic) -> str:
         return _POST_CREATE_FINGERPRINT_ANCHOR
     if diagnostic.source == "sarj-python-lint" and diagnostic.rule_id == "prefer-exception-propagation":
         return _EXCEPTION_PROPAGATION_FINGERPRINT_ANCHOR
+    if diagnostic.source == "sarj-text-lint" and diagnostic.rule_id == "agent-instruction-budget":
+        return _AGENT_INSTRUCTION_BUDGET_FINGERPRINT_ANCHOR
     return diagnostic.message
 
 

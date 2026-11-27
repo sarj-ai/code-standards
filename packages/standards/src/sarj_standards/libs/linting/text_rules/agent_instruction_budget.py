@@ -20,7 +20,7 @@ class AgentInstructionBudget(Rule):
     id = "agent-instruction-budget"
     documentation = RuleMeta(
         code="SARJ318",
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep AGENTS.md, CLAUDE.md and SKILL.md within 1,000 words.",
         rationale="Agents load these files into every relevant context. Oversized instructions dilute the constraints that matter and accumulate stale or redundant guidance.",
         remediation="Delete stale, redundant or default-behavior guidance, link one canonical document, or move machine-checkable prose into a lint rule.",
@@ -49,7 +49,6 @@ class AgentInstructionBudget(Rule):
         ),
         limitations=(
             "Counts whitespace-separated words in the whole file, like `wc -w`, including front matter and code fences; other Markdown is out of scope. Under `.agents/skills` and `.claude/skills` only `<skill>/SKILL.md` is checked, and not when the skill directory has a `LICENSE` or `source.json` vendoring marker; exclude other installed skills with `[exclude] paths`.",
-            "The message states the current count, so a baselined finding stops matching whenever the file's word count changes; refresh the baseline when trimming.",
         ),
     )
 
