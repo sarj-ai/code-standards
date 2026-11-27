@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("require-strict-pydantic-model"),
+        module="sarj_python_lint.rules.require_strict_pydantic_model",
+        class_name="RequireStrictPydanticModel",
+        code="SARJ609",
+        description="Require strict validation on Pydantic models.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-nominal-rebrand"),
         module="sarj_python_lint.rules.no_nominal_rebrand",
         class_name="NoNominalRebrand",
