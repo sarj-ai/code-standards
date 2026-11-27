@@ -61,7 +61,7 @@ class PythonFileContext:
 
     @cached_property
     def generated(self) -> bool:
-        return is_generated(self.path, self.source)
+        return is_generated(self.path, self.source, facts=self.session.generated_paths)
 
     @cached_property
     def _shared_module(self) -> SharedModule:

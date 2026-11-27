@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -12,14 +13,15 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from sarj_python_lint._source import read_python_source
-from sarj_python_lint.rules._ast_index import NodeIndex, walk as walk_ast
+from sarj_python_lint.rules._ast_index import NodeIndex, import_statements
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._paths import GeneratedPathFacts
 from sarj_python_lint.rules._project_index import ProjectIndexSet, parsed_tree
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from typing import Never
 
     from sarj_python_lint.rules._first_party import FirstPartyFacts
@@ -39,6 +41,12 @@ class NominalSource:
     parsed: ast.Module | None = field(default=None, compare=False, repr=False)
 
     @cached_property
+    def constructor_names(self) -> frozenset[str]:
+        if "NewType" not in self.text or (tree := self._parse_tree()) is None:
+            return frozenset()
+        return nominal_constructor_names(tree)
+
+    @cached_property
     def node_index(self) -> NodeIndex | None:
         tree = self.tree
         if tree is None:
@@ -48,18 +56,21 @@ class NominalSource:
 
     @cached_property
     def tree(self) -> ast.Module | None:
-        tree = self.parsed
-        if tree is None:
-            try:
-                tree = ast.parse(self.text, filename=str(self.path))
-            except SyntaxError:
-                return None
-        if any(
+        tree = self._parse_tree()
+        if tree is None or any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-            for node in walk_ast(tree)
+            for node in import_statements(tree)
         ):
             return None
         return tree
+
+    def _parse_tree(self) -> ast.Module | None:
+        if self.parsed is not None:
+            return self.parsed
+        try:
+            return ast.parse(self.text, filename=str(self.path))
+        except SyntaxError:
+            return None
 
     @cached_property
     def imports(self) -> ImportIndex:
@@ -77,6 +88,109 @@ class NominalSource:
             MappingProxyType({name: target for name, target in imports.bindings.items() if name not in mutated}),
             imports.shadowed_names | mutated,
         )
+
+
+def nominal_constructor_names(tree: ast.Module) -> frozenset[str]:
+    names: set[str] = set()
+    for statement in tree.body:
+        if (declaration := nominal_factory_call(statement)) is not None:
+            target, _, _ = declaration
+            names.add(target.id)
+    return frozenset(names)
+
+
+def nominal_factory_call(statement: ast.AST) -> tuple[ast.Name, ast.expr, ast.expr] | None:
+    match statement:
+        case ast.Assign(
+            targets=[ast.Name(id=name) as target],
+            value=ast.Call(func=factory, args=[ast.Constant(value=title), carrier], keywords=[]),
+        ) if title == name:
+            return target, factory, carrier
+        case _:
+            return None
+
+
+def _unique_source(candidates: Iterable[NominalSource | None]) -> NominalSource | None:
+    source = None
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if source is not None:
+            return None
+        source = candidate
+    return source
+
+
+@final
+class _DistributionSources:
+    def __init__(
+        self, entries: list[tuple[str, NominalSource]], generated_paths: GeneratedPathFacts, *, include_generated: bool
+    ) -> None:
+        self._entries = entries
+        self._generated_paths = generated_paths
+        self._include_generated = include_generated
+        self._modules: dict[str, list[NominalSource]] = defaultdict(list)
+        self._resolved: dict[str, NominalSource | None] = {}
+        for module, source in entries:
+            self._modules[module].append(source)
+
+    @cached_property
+    def nominal_modules(self) -> frozenset[str]:
+        return frozenset(module for module, source in self._entries if "NewType" in source.text)
+
+    @cached_property
+    def paths(self) -> dict[Path, str]:
+        return {source.path: module for module, source in self._entries}
+
+    def get(self, module: str) -> NominalSource | None:
+        if module not in self._resolved:
+            self._resolved[module] = _unique_source(
+                source
+                for source in self._modules.get(module, ())
+                if self._include_generated or not self._generated_paths.is_generated(source.path, source.text)
+            )
+        return self._resolved[module]
+
+    @cached_property
+    def sources(self) -> dict[str, NominalSource]:
+        return {module: source for module, source in self._entries if self.get(module) is source}
+
+
+@final
+class NominalScope:
+    def __init__(self, distributions: tuple[_DistributionSources, ...]) -> None:
+        self._distributions = distributions
+        self._resolved: dict[str, NominalSource | None] = {}
+
+    def get(self, module: str) -> NominalSource | None:
+        if module not in self._resolved:
+            self._resolved[module] = _unique_source(distribution.get(module) for distribution in self._distributions)
+        return self._resolved[module]
+
+    def module_for(self, path: Path) -> str | None:
+        for distribution in self._distributions:
+            if (module := distribution.paths.get(path)) is None:
+                continue
+            source = self.get(module)
+            if source is not None and source.path == path:
+                return module
+        return None
+
+    @cached_property
+    def constructor_names(self) -> frozenset[str]:
+        modules = {module for distribution in self._distributions for module in distribution.nominal_modules}
+        return frozenset(
+            name for module in modules if (source := self.get(module)) is not None for name in source.constructor_names
+        )
+
+    @cached_property
+    def sources(self) -> dict[str, NominalSource]:
+        return {
+            module: source
+            for distribution in self._distributions
+            for module, source in distribution.sources.items()
+            if self.get(module) is source
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,10 +220,13 @@ class _Distribution:
 
 @final
 class NominalProjectFacts:
-    def __init__(self) -> None:
+    def __init__(self, generated_paths: GeneratedPathFacts | None = None) -> None:
+        self._generated_paths = generated_paths if generated_paths is not None else GeneratedPathFacts()
         self._distributions: dict[Path, tuple[_Distribution, ...]] = {}
-        self._sources: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
-        self._scopes: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
+        self._entries: dict[Path, list[tuple[str, NominalSource]]] = {}
+        self._sources: dict[tuple[Path, bool], _DistributionSources] = {}
+        self._scopes: dict[tuple[Path, bool], NominalScope] = {}
+        self._directory_scopes: dict[tuple[Path, bool], NominalScope] = {}
 
     def sources(
         self,
@@ -119,17 +236,46 @@ class NominalProjectFacts:
         include_generated: bool = False,
         project: ProjectIndexSet | None = None,
     ) -> dict[str, NominalSource]:
+        return self.scope(path, first_party, include_generated=include_generated, project=project).sources
+
+    def scope(
+        self,
+        path: Path,
+        first_party: FirstPartyFacts,
+        *,
+        include_generated: bool = False,
+        project: ProjectIndexSet | None = None,
+    ) -> NominalScope:
+        try:
+            path = path.resolve()
+        except OSError:
+            return NominalScope(())
+        key = (path.parent, include_generated)
+        if key not in self._directory_scopes:
+            self._directory_scopes[key] = self._scope(
+                path, first_party, include_generated=include_generated, project=project
+            )
+        return self._directory_scopes[key]
+
+    def _scope(
+        self, path: Path, first_party: FirstPartyFacts, *, include_generated: bool, project: ProjectIndexSet | None
+    ) -> NominalScope:
         owner = distribution_root(path, facts=first_party)
         root = first_party.project_root(path)
         if owner is None or root is None:
-            return {}
+            return NominalScope(())
         key = (owner, include_generated)
         if key in self._scopes:
             return self._scopes[key]
         distributions = self._accessible_distributions(owner, root)
-        sources = self._merge_sources(distributions, include_generated=include_generated, project=project)
-        self._scopes[key] = sources
-        return sources
+        scope = NominalScope(
+            tuple(
+                self._distribution_sources(distribution.root, project, include_generated=include_generated)
+                for distribution in distributions
+            )
+        )
+        self._scopes[key] = scope
+        return scope
 
     def owns_source(self, path: Path, source: Path, first_party: FirstPartyFacts) -> bool:
         owner = distribution_root(path, facts=first_party)
@@ -168,24 +314,17 @@ class NominalProjectFacts:
             )
         )
 
-    def _merge_sources(
-        self,
-        distributions: tuple[_Distribution, ...],
-        *,
-        include_generated: bool = False,
-        project: ProjectIndexSet | None = None,
-    ) -> dict[str, NominalSource]:
-        sources: dict[str, NominalSource] = {}
-        ambiguous: set[str] = set()
-        for distribution in distributions:
-            key = (distribution.root, include_generated)
-            if key not in self._sources:
-                self._sources[key] = _sources(distribution.root, include_generated=include_generated, project=project)
-            for module, source in self._sources[key].items():
-                if module in sources:
-                    ambiguous.add(module)
-                sources[module] = source
-        return {module: source for module, source in sources.items() if module not in ambiguous}
+    def _distribution_sources(
+        self, root: Path, project: ProjectIndexSet | None, *, include_generated: bool
+    ) -> _DistributionSources:
+        key = (root, include_generated)
+        if key not in self._sources:
+            if root not in self._entries:
+                self._entries[root] = _source_entries(root, project)
+            self._sources[key] = _DistributionSources(
+                self._entries[root], self._generated_paths, include_generated=include_generated
+            )
+        return self._sources[key]
 
 
 def _workspace_distributions(distributions: tuple[_Distribution, ...], owner: Path) -> tuple[_Distribution, ...]:
@@ -273,50 +412,55 @@ def _files(root: Path, pattern: str) -> list[Path]:
     return found
 
 
-def _sources(
-    root: Path, *, include_generated: bool = False, project: ProjectIndexSet | None = None
-) -> dict[str, NominalSource]:
-    sources: dict[str, NominalSource] = {}
-    ambiguous: set[str] = set()
+def _source_entries(root: Path, project: ProjectIndexSet | None) -> list[tuple[str, NominalSource]]:
+    sources: list[tuple[str, NominalSource]] = []
+    owned_directories: dict[Path, bool] = {}
     total_bytes = 0
     for path in _files(root, "*.py"):
         try:
-            total_bytes += path.stat().st_size
+            size = path.stat().st_size
         except OSError:
             continue
+        total_bytes += size
         if total_bytes > _MAX_TOTAL_BYTES:
-            return {}
-        module = _module_name(root, path)
+            return []
+        if size > _MAX_BYTES:
+            continue
+        module = _module_name(root, path, owned_directories)
         if not module:
             continue
-        source = _source(path, include_generated=include_generated, project=project)
+        source = _source(path, project)
         if source is None:
             continue
-        if module in sources:
-            ambiguous.add(module)
-        sources[module] = source
-    return {module: source for module, source in sources.items() if module not in ambiguous}
+        sources.append((module, source))
+    return sources
 
 
-def _module_name(root: Path, path: Path) -> str | None:
-    if any(
-        (parent / "pyproject.toml").is_file() for parent in path.parents if parent != root and root in parent.parents
-    ):
+def _module_name(root: Path, path: Path, owned_directories: dict[Path, bool]) -> str | None:
+    directory = path.parent
+    if directory not in owned_directories:
+        owned_directories[directory] = _owns_directory(root, directory)
+    if not owned_directories[directory]:
         return None
     relative = path.relative_to(root)
     parts = relative.parts[1:] if relative.parts[0] == "src" else relative.parts
     return ".".join(parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], path.stem)) or None
 
 
-def _source(
-    path: Path, *, include_generated: bool = False, project: ProjectIndexSet | None = None
-) -> NominalSource | None:
+def _owns_directory(root: Path, directory: Path) -> bool:
+    for ancestor in (directory, *directory.parents):
+        if ancestor == root:
+            return True
+        if (ancestor / "pyproject.toml").is_file():
+            return False
+    return False
+
+
+def _source(path: Path, project: ProjectIndexSet | None) -> NominalSource | None:
     try:
-        if path.is_symlink() or path.stat().st_size > _MAX_BYTES:
+        if path.is_symlink():
             return None
         text = read_python_source(path)
-        if not include_generated and is_generated(path, text):
-            return None
     except OSError, UnicodeError, SyntaxError:
         return None
     return NominalSource(path, text, parsed_tree(project, path, text) if project is not None else None)

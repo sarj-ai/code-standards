@@ -168,7 +168,7 @@ class NoContradictoryTypeGuard(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or not any(symbol in context.symbol_source for symbol in ("TypeGuard", "TypeIs")):
             return []
-        if context.tree is None or guard_symbols_ambiguous(context, _BUILTINS):
+        if context.tree is None:
             return []
         findings: list[Diagnostic] = []
         unique_names = unique_guard_function_names(context)
@@ -191,6 +191,8 @@ class NoContradictoryTypeGuard(Rule):
                     severity=Severity.ERROR,
                 )
             )
+        if findings and guard_symbols_ambiguous(context, _BUILTINS):
+            return []
         return findings
 
 

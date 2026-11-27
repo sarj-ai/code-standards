@@ -42,6 +42,19 @@ def statement_blocks(statements: list[ast.stmt]) -> Iterator[list[ast.stmt]]:
             pending.extend(reversed(nested))
 
 
+def import_statements(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
+    queue: list[ast.AST] = [tree]
+    offset = 0
+    while offset < len(queue):
+        current = queue[offset]
+        offset += 1
+        if isinstance(current, ast.Import | ast.ImportFrom):
+            yield current
+        queue.extend(
+            child for child in children(current) if isinstance(child, ast.stmt | ast.ExceptHandler | ast.match_case)
+        )
+
+
 def object_list(value: object) -> TypeIs[list[object]]:  # sarj-noqa: SARJ528 -- narrows opaque AST fields.
     return isinstance(value, list)
 
@@ -185,8 +198,7 @@ class NodeIndex:
         return found if found is not None else children(node)
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
-        hit = self._queries.get(types)
-        if hit is not None:
+        if (hit := self._queries.get(types)) is not None:
             return hit
         matched = frozenset(cls for cls in self._buckets if issubclass(cls, types))
         if len(matched) == 1:

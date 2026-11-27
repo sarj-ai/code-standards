@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import ast
+from functools import cache
 from io import StringIO
+from itertools import chain
 import re
 import tokenize
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, final
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
 
@@ -93,14 +96,40 @@ def _leading_header_bodies(source: str) -> list[str]:
 
 
 def is_generated_path(path: Path) -> bool:
-    if any(part.lower() in _GENERATED_DIR_NAMES for part in path.parts):
-        return True
-    for depth, ancestor in enumerate(path.parents):
+    return _generated_path_name(path) or _has_codegen_ancestor(path.parents, _is_repo_root, _is_codegen_root)
+
+
+@final
+class GeneratedPathFacts:
+    def __init__(self) -> None:
+        self._is_repo_root = cache(_is_repo_root)
+        self._is_codegen_root = cache(_is_codegen_root)
+        self._generated_parents: dict[Path, bool] = {}
+
+    def is_generated(self, path: Path, source: str) -> bool:
+        return is_generated_source(source) or _generated_path_name(path) or self._has_codegen_parent(path.parent)
+
+    def _has_codegen_parent(self, directory: Path) -> bool:
+        if directory not in self._generated_parents:
+            self._generated_parents[directory] = _has_codegen_ancestor(
+                chain((directory,), directory.parents), self._is_repo_root, self._is_codegen_root
+            )
+        return self._generated_parents[directory]
+
+
+def _generated_path_name(path: Path) -> bool:
+    return any(part.lower() in _GENERATED_DIR_NAMES for part in path.parts)
+
+
+def _has_codegen_ancestor(
+    ancestors: Iterable[Path], is_repo_root: Callable[[Path], bool], is_codegen_root: Callable[[Path], bool]
+) -> bool:
+    for depth, ancestor in enumerate(ancestors):
         if depth >= _MAX_ANCESTOR_DEPTH:
             break
-        if _is_repo_root(ancestor):
+        if is_repo_root(ancestor):
             break
-        if depth and _is_codegen_root(ancestor):
+        if depth and is_codegen_root(ancestor):
             return True
     return False
 
@@ -114,10 +143,12 @@ def _is_repo_root(directory: Path) -> bool:
 
 
 def clear_path_caches() -> None:
-    """Compatibility no-op; path topology is intentionally observed fresh."""
+    """Compatibility no-op. Cached path facts belong to an analysis session."""
 
 
-def is_generated(path: Path, source: str) -> bool:
+def is_generated(path: Path, source: str, *, facts: GeneratedPathFacts | None = None) -> bool:
+    if facts is not None:
+        return facts.is_generated(path, source)
     return is_generated_source(source) or is_generated_path(path)
 
 
