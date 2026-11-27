@@ -3871,6 +3871,14 @@
       "state": "pending",
       "evidence": "The isolated scan of 1,561 application Python files found nine incomplete dispatch tables, each subscripted in its declaring module. The scan excluded three inspected guarded or enumeration-only tables and found no same-location overlap with the nearest dispatch, dependency, or mapping-read rules. Focused cases cover first-party binding resolution, enum aliases, narrowed key types, mutations and suppression.",
       "outcome": "Introduce SARJ600 at WARNING without autofix. Require complete coverage of statically resolved enum and string Literal keys in constant dispatch tables. Report the missing keys so callers can complete the table or narrow the key type. Broader calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/prefer-frozen-dataclass",
+      "family": "python",
+      "ruleId": "prefer-frozen-dataclass",
+      "state": "pending",
+      "evidence": "An isolated scan of 1,107 Python files from a pinned application snapshot found one true positive and zero observed false positives. Focused cases cover matching writes, reflection, mutable fields, inheritance, suppression, and fix convergence. Three paired runs on 101 files preserved eight existing findings and added the one new warning. Fresh and repeated analysis medians were 7.70/7.68 s before and 8.27/8.53 s after, with median peak RSS of 459,336 and 464,716 KiB.",
+      "outcome": "Stage SARJ607 at WARNING for plain dataclasses with no observed field writes. Keep public records manual and offer fixes for private classes only where the hash and pickle protocols remain stable. Matching writes on unrelated receivers and reflective access can suppress valid candidates."
     }
   ]
 }

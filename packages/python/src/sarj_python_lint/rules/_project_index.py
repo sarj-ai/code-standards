@@ -74,6 +74,7 @@ _TRANSFERABLE_FACTS = (
     "_constructor_consumers",
     "_constructor_operations",
     "_direct_subclasses",
+    "_potential_bases",
     "_typed_class_consumers",
     "_mock_specs",
 )
@@ -894,6 +895,25 @@ class ProjectIndexSet:
             return frozenset()
         return self._direct_subclasses.get(SymbolRef(unit.module, name), frozenset())
 
+    def may_be_subclassed(self, unit: SourceUnit, name: str) -> bool:
+        if unit.module is None:
+            return True
+        return SymbolRef(unit.module, name) in self._potential_bases or not self.value_origins_complete
+
+    @cached_property
+    def _potential_bases(self) -> frozenset[SymbolRef]:
+        bases: set[SymbolRef] = set()
+        for unit in self.source_units:
+            if unit.tree is None:
+                continue
+            imports = _runtime_import_origins(unit) if unit.module is None else self._runtime_origins[unit.module]
+            for reference in _potential_base_references(unit.tree):
+                for origin in _possible_class_symbols(unit, reference, imports):
+                    bases.update(self._classes.keys() & self._canonical_value_symbols(origin))
+            if not self.value_origins_complete:
+                return frozenset()
+        return frozenset(bases)
+
     @cached_property
     def _direct_subclasses(self) -> Mapping[SymbolRef, frozenset[tuple[Path, str]]]:
         subclasses: dict[SymbolRef, set[tuple[Path, str]]] = {}
@@ -1169,6 +1189,21 @@ def _qualified_symbol(symbol: SymbolRef) -> str:
     return f"{symbol.module}.{symbol.name}" if symbol.name else symbol.module
 
 
+def _potential_base_references(tree: ast.Module) -> Iterator[ast.Name | ast.Attribute]:
+    for node in walk_ast(tree):
+        match node:
+            case ast.ClassDef(bases=bases):
+                expressions = bases
+            case ast.Assign(value=value) | ast.AnnAssign(value=ast.expr() as value):
+                expressions = [value]
+            case _:
+                continue
+        for expression in expressions:
+            reference = expression.value if isinstance(expression, ast.Subscript) else expression
+            if isinstance(reference, ast.Name | ast.Attribute):
+                yield reference
+
+
 def _runtime_class_value_uses(
     tree: ast.Module,
     *,
@@ -1374,6 +1409,8 @@ def _is_index_candidate(source: str) -> bool:
         or "NewType" in source
         or "class" in source
         or "spec" in source
+        or "." in source
+        or any(name in source for name in ("setattr", "delattr", "vars"))
         or ("match" in source and "str" in source)
     )
 
