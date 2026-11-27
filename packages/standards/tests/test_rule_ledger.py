@@ -147,6 +147,15 @@ def test_sarj208_retirement_points_to_live_general_rule(shipped: ledger.Ledger) 
     assert retired["no-environment-derived-access-grant"].replacement == "no-environment-conditional"
 
 
+def test_sarj115_retirement_points_to_live_general_rule(shipped: ledger.Ledger) -> None:
+    retired = {entry.id: entry for entry in shipped.retired}
+
+    assert retired["SARJ115"].status is ledger.Status.RENAMED
+    assert retired["SARJ115"].replacement == "SARJ113"
+    assert retired["no-long-migration-narration"].status is ledger.Status.RENAMED
+    assert retired["no-long-migration-narration"].replacement == "no-migration-comment-cruft"
+
+
 def test_doctor_finds_retired_iac_suppression_and_manifest_selector(tmp_path: Path) -> None:
     (tmp_path / "main.tf").write_text(
         "groups = local.groups # sarj-noqa: SARJ208 -- legacy exception\n",

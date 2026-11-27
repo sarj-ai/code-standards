@@ -7,7 +7,6 @@ from sarj_sql_lint.rules.add_constraint_requires_not_valid import AddConstraintR
 from sarj_sql_lint.rules.combine_alter_table import CombineAlterTable
 from sarj_sql_lint.rules.declared_column_bounds import DeclaredColumnBounds
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
-from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.index_budget import IndexBudget
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
@@ -55,7 +54,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NewTableInlineConstraints.id: NewTableInlineConstraints,
         NoAnalyticalQueriesInTransactionalDb.id: NoAnalyticalQueriesInTransactionalDb,
         NoDatabaseFunctions.id: NoDatabaseFunctions,
-        ExcessiveCommentary.id: ExcessiveCommentary,
         EnforceTimestamptz.id: EnforceTimestamptz,
         IdempotentDdl.id: IdempotentDdl,
         NoPgEnum.id: NoPgEnum,

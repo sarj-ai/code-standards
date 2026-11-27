@@ -288,7 +288,6 @@
       "no-database-functions",
       "no-database-triggers",
       "no-duplicate-index",
-      "no-long-migration-narration",
       "no-migration-comment-cruft",
       "no-migration-comments",
       "no-noop-migration-down",
@@ -789,7 +788,6 @@
       "SARJ112",
       "SARJ113",
       "SARJ114",
-      "SARJ115",
       "SARJ116",
       "SARJ117",
       "SARJ118",
@@ -1231,6 +1229,13 @@
       "note": "Removed the per-migration timeout requirement; configure execution timeouts at the migration runner or database session boundary when needed."
     },
     {
+      "id": "SARJ115",
+      "kind": "code",
+      "status": "renamed",
+      "replacement": "SARJ113",
+      "note": "Replace SARJ115 suppressions and baselines with SARJ113; no-migration-comment-cruft owns the same findings."
+    },
+    {
       "id": "SARJ131",
       "kind": "code",
       "status": "removed",
@@ -1395,8 +1400,8 @@
       "id": "excessive-commentary",
       "kind": "sql",
       "status": "renamed",
-      "replacement": "no-long-migration-narration",
-      "note": "Replace sarj-excessive-commentary with sarj-no-long-migration-narration before upgrading."
+      "replacement": "no-migration-comment-cruft",
+      "note": "Replace sarj-excessive-commentary with sarj-no-migration-comment-cruft before upgrading."
     },
     {
       "id": "existing-table-check-or-fk-requires-not-valid",
@@ -1614,6 +1619,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this pre-commit hook. It inspected only selected docstrings, missed actual long comments, and could be defeated by a blank line or technical token; use narrower semantic comment and docstring rules."
+    },
+    {
+      "id": "no-long-migration-narration",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "no-migration-comment-cruft",
+      "note": "Replace sarj-no-long-migration-narration with sarj-no-migration-comment-cruft before upgrading."
     },
     {
       "id": "no-optional-tenant-predicate",

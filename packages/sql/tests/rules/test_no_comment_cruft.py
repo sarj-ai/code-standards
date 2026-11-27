@@ -2,14 +2,20 @@ from pathlib import Path
 
 import pytest
 
-from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
+from sarj_sql_lint.rules._migration_narration import migration_narration
+from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft, comment_cruft
 
 
 _DEBT_MARKER = "TO" + "DO"
 
 
+@pytest.fixture
+def rule() -> NoCommentCruft:
+    return NoCommentCruft()
+
+
 def _check(source: str, name: str = "migration.sql"):
-    return NoCommentCruft().check(Path(name), source)
+    return comment_cruft(Path(name), source)
 
 
 @pytest.mark.parametrize(
@@ -340,6 +346,251 @@ def test_preserves_explicit_rollback_instructions(source: str) -> None:
     assert _check(source) == []
 
 
-def test_public_examples_execute() -> None:
+def test_public_examples_execute(rule: NoCommentCruft) -> None:
     examples = NoCommentCruft.public_examples()
-    assert [len(_check(example.focus_file.source)) for example in examples] == [1, 0]
+    findings = [rule.check(Path(example.focus_file.path), example.focus_file.source) for example in examples]
+    assert [len(items) for items in findings] == [1, 0, 2, 0, 1, 0]
+
+
+def _narration(source: str, name: str):
+    return migration_narration(Path(name), source, "SARJ113")
+
+
+def test_dump_and_non_migration_sources_are_excluded() -> None:
+    prose = "\n".join(f"-- Narrative sentence number {index} explains the next statement." for index in range(5))
+    assert _narration(f"-- PostgreSQL database dump\n{prose}\n", "schema.sql") == []
+    assert _narration(f"{prose}\nSELECT 1;\n", "queries/report.sql") == []
+
+
+def test_operational_constraint_is_preserved() -> None:
+    source = """-- This backfill processes 1000 rows per transaction.
+-- Keep lock_timeout at 3 seconds while API-812 writes continue.
+-- Roll back by restoring the snapshot before dropping the column.
+-- Security review requires the permission change to remain atomic.
+SELECT 1;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_identifier_and_bare_modal_do_not_exempt_narration() -> None:
+    source = """-- Create the custom_integration table used by the application.
+-- The table must store each configured integration for an organization.
+-- The next statement defines its identifier and display name.
+-- The final statement creates those columns in the database.
+CREATE TABLE custom_integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    findings = _narration(source, "migrations/001.sql")
+    assert [(finding.line, finding.col) for finding in findings] == [(1, 1)]
+
+
+def test_directive_does_not_exempt_adjacent_narration() -> None:
+    source = """-- migrate:up
+-- Create the integration table used by the application.
+-- The table stores each configured integration for an organization.
+-- The next statement defines its identifier and display name.
+-- The final statement creates those columns in the database.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    findings = _narration(source, "migrations/001.sql")
+    assert [(finding.line, finding.col) for finding in findings] == [(2, 1)]
+
+
+def test_directive_and_reference_lines_do_not_split_adjacent_narration() -> None:
+    source = """-- This table creates the application integration records.
+-- The table stores the names shown to application users.
+-- sqlfluff: disable=L001
+-- See API-812 for the separately owned deployment procedure.
+-- The next statement defines identifiers and display names for integrations.
+-- The final statement creates those columns in the database schema.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    findings = _narration(source, "migrations/001.sql")
+    assert [(finding.line, finding.col) for finding in findings] == [(1, 1)]
+
+
+def test_lowercase_hyphenated_words_are_not_treated_as_project_tickets() -> None:
+    source = """-- Create the phase-2 table used by the application service.
+-- The table stores the number-1 record selected by the caller.
+-- The next statement defines identifiers and display names for integrations.
+-- The final statement creates those columns in the database schema.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    assert len(_narration(source, "migrations/001.sql")) == 1
+
+
+def test_pronoun_led_and_wrapped_narration_is_reported() -> None:
+    source = """-- We create the integration table for records configured by administrators.
+-- It stores the name shown across the application and the stable identifier
+-- used by each caller when selecting an integration from the available options.
+-- Finally, this adds the remaining columns already visible in the declaration.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    assert len(_narration(source, "migrations/001.sql")) == 1
+
+
+def test_inline_comments_on_separate_statements_are_not_grouped() -> None:
+    source = """ALTER TABLE integration ADD COLUMN one TEXT; -- This statement adds the first application field.
+ALTER TABLE integration ADD COLUMN two TEXT; -- This statement adds the second application field.
+ALTER TABLE integration ADD COLUMN three TEXT; -- This statement adds the third application field.
+ALTER TABLE integration ADD COLUMN four TEXT; -- This statement adds the fourth application field.
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_generated_migration_is_excluded() -> None:
+    source = """-- This file was generated by Drizzle. Do not edit manually.
+--> statement-breakpoint
+-- Create the integration table used by the application.
+-- The table stores each configured integration for an organization.
+-- The next statement defines its identifier and display name.
+-- The final statement creates those columns in the database.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    assert _narration(source, "drizzle/0001_create.sql") == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/migrations/001.sql",
+        "__tests__/migrations/001.sql",
+        "generated/migrations/001.sql",
+        "test/migrations/001.sql",
+        "testing/migrations/001.sql",
+        "fixture/migrations/001.sql",
+        "fixtures/migrations/001.sql",
+        "snapshot/migrations/001.sql",
+        "snapshots/migrations/001.sql",
+        "gen/migrations/001.sql",
+    ],
+)
+def test_test_and_generated_migration_paths_are_excluded(path: str) -> None:
+    source = """-- Create the integration table used by the application.
+-- The table stores each configured integration for an organization.
+-- The next statement defines its identifier and display name.
+-- The final statement creates those columns in the database.
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    assert _narration(source, path) == []
+
+
+def test_comments_in_dollar_quoted_function_body_are_excluded() -> None:
+    source = """CREATE FUNCTION migrate_integration() RETURNS void AS $fn$
+BEGIN
+    -- Create the integration table used by the application.
+    -- The table stores each configured integration for an organization.
+    -- The next statement defines its identifier and display name.
+    -- The final statement creates those columns in the database.
+    PERFORM 1;
+END;
+$fn$ LANGUAGE plpgsql;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_blank_line_splits_standalone_comment_groups() -> None:
+    source = """-- This comment explains the first application statement in detail.
+-- It gives readers some additional context about that statement.
+
+-- This comment explains the second application statement in detail.
+-- It gives readers some additional context about that statement.
+SELECT 1;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_multiline_block_comment_narration_is_reported_at_the_comment() -> None:
+    source = """/* Create the integration table used by the application.
+ * The table stores each configured integration for an organization.
+ * The next statement defines its identifier and display name.
+ * The final statement creates those columns in the database.
+ */
+CREATE TABLE integration (id BIGINT PRIMARY KEY, name TEXT);
+"""
+    findings = _narration(source, "migrations/001.sql")
+    assert [(finding.line, finding.col) for finding in findings] == [(1, 1)]
+
+
+@pytest.mark.parametrize(
+    ("line_count", "word_count"),
+    [(3, 30), (4, 27)],
+)
+def test_narration_below_either_threshold_is_preserved(line_count: int, word_count: int) -> None:
+    words_per_line, remainder = divmod(word_count, line_count)
+    lines = [
+        "-- Create " + " ".join(f"detail{word}" for word in range(words_per_line - 1 + (index < remainder)))
+        for index in range(line_count)
+    ]
+    source = "\n".join(lines) + "\nSELECT 1;\n"
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_long_operational_constraints_remain_excluded() -> None:
+    source = """-- Backfill no more than 1000 rows per transaction to bound write amplification.
+-- Keep lock_timeout at 3 seconds while API-812 writes continue during deployment.
+-- Wait for replica lag to return below 500 ms before starting another batch.
+-- Roll back by restoring the snapshot and dropping the new index concurrently.
+-- Preserve compatibility with the previous writer until the staged deployment completes.
+-- The security constraint requires the permission change to remain atomic for callers.
+-- Stop the backfill if a deadlock occurs and investigate before allowing a retry.
+-- Keep each transaction below 30 seconds so replicas can continue applying changes.
+-- Restore the prior permission grants during rollback before serving application traffic.
+-- Record any data-loss exception in API-812 before resuming the migration process.
+SELECT 1;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_list_and_durable_reference_blocks_are_preserved() -> None:
+    source = """-- API-812 owns the rollout sequence for this schema change.
+-- https://docs.example.com/database/runbook records the recovery procedure.
+-- - Apply the first independently reviewed operation from the runbook.
+-- - Verify the second independently reviewed operation from the runbook.
+-- - Record the third independently reviewed operation in the change log.
+-- - Escalate the fourth independently reviewed operation to the owner.
+SELECT 1;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_temporal_cutover_constraints_are_preserved() -> None:
+    source = """-- Create the shadow table only after the old writer has stopped sending traffic.
+-- Historical clients can still read the old representation during the transition period.
+-- Add the new column once the external coordinator confirms every writer has drained.
+-- Operators verify the old representation remains readable throughout this manual transition.
+SELECT 1;
+"""
+    assert _narration(source, "migrations/001.sql") == []
+
+
+def test_rule_reports_cruft_and_narration_under_one_code(rule: NoCommentCruft) -> None:
+    source = "".join(f"-- CREATE TABLE t{i} (id BIGINT PRIMARY KEY, name TEXT);\n" for i in range(4))
+    findings = rule.check(Path("migrations/001.sql"), source)
+    assert [(f.code, f.line, f.col) for f in findings] == [("SARJ113", 1, 1), ("SARJ113", 1, 1)]
+    assert findings[0].message.startswith("Commented-out SQL")
+    assert findings[1].message.startswith("Narrative migration comment repeats implementation across 4 lines/")
+
+
+def test_rule_preserves_operational_constraints_and_test_narration(rule: NoCommentCruft) -> None:
+    examples = {example.example_id: example.focus_file.source for example in NoCommentCruft.public_examples()}
+    assert rule.check(Path("migrations/001.sql"), examples["rollback-constraint"]) == []
+    assert rule.check(Path("tests/migrations/001.sql"), examples["ddl-narration"]) == []
+
+
+@pytest.mark.parametrize("name", ["testing", "__tests__", "gen"])
+def test_cruft_and_narration_keep_distinct_path_guards(name: str) -> None:
+    path = f"{name}/migrations/001.sql"
+    narration = next(e.focus_file.source for e in NoCommentCruft.public_examples() if e.example_id == "ddl-narration")
+    assert len(_check("-- ===== legacy =====\nSELECT 1;\n", path)) == 1
+    assert _narration(narration, path) == []
+
+
+def test_long_comments_below_narration_cue_threshold_are_preserved() -> None:
+    source = (
+        "-- This table stores the names shown across the application.\n"
+        "-- Names are visible in several places across the application.\n"
+        "-- Identifiers appear beside names in several application screens.\n"
+        "-- Every caller receives these details in the returned response.\n"
+        "SELECT 1;\n"
+    )
+    assert _narration(source, "migrations/001.sql") == []

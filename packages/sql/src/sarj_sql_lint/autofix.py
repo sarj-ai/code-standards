@@ -27,12 +27,14 @@ from sarj_sql_lint.rule_base import (
 )
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules._copy_input import sql_before_copy_input
+from sarj_sql_lint.rules._migration_narration import migration_narration
 from sarj_sql_lint.rules.combine_alter_table import combine_alter_table
 from sarj_sql_lint.rules.idempotent_ddl import ddl_checks
 from sarj_sql_lint.rules.no_comment_cruft import (
     COMMENT_DIRECTIVE_RE,
     COMMENT_REFERENCE_RE,
     ROLLBACK_CONTEXT_RE,
+    comment_cruft,
     is_decorative_banner,
     is_supported_disabled_statement,
     split_disabled_statements,
@@ -86,7 +88,6 @@ def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list
             "idempotent-ddl",
             "no-migration-comment-cruft",
             "no-migration-comments",
-            "no-long-migration-narration",
             "prefer-text-over-varchar",
             "prefer-jsonb",
             "enforce-timestamptz",
@@ -99,8 +100,12 @@ def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list
         ]
         if rule_id == "idempotent-ddl" and not (is_mysql(source) or is_sqlite(source)):
             edits.extend(_existence_guards(source, diagnostics))
-        elif rule_id in {"no-migration-comment-cruft", "no-long-migration-narration"}:
-            edits.extend(_comment_edits(source, diagnostics, banners=rule_id == "no-migration-comment-cruft"))
+        elif rule_id == "no-migration-comment-cruft":
+            for findings, banners in (
+                (comment_cruft(path, source), True),
+                (migration_narration(path, source, "SARJ113"), False),
+            ):
+                edits.extend(_comment_edits(source, findings, banners=banners))
         elif rule_id == "no-migration-comments":
             edits.extend(_migration_comment_edits(path, source, diagnostics))
         else:
@@ -120,7 +125,7 @@ def _migration_comment_edits(path: Path, source: str, diagnostics: Sequence[Diag
     locations = {(item.line, item.col) for item in diagnostics}
     proven = [
         item
-        for item in REGISTRY["no-migration-comment-cruft"]().check(path, source)
+        for item in comment_cruft(path, source)
         if (item.line, item.col) in locations and not is_suppressed(source, item.line, item.code)
     ]
     edits = _comment_edits(source, proven, banners=True)
@@ -221,7 +226,7 @@ def _comment_edits(source: str, diagnostics: Sequence[Diagnostic], *, banners: b
     for line in lines:
         offsets.append(offsets[-1] + len(line))
     for diagnostic in diagnostics:
-        if diagnostic.line - 1 not in standalone:
+        if is_suppressed(source, diagnostic.line, diagnostic.code) or diagnostic.line - 1 not in standalone:
             continue
         first = diagnostic.line - 1
         last = first + 1
