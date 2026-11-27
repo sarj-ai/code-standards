@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "17a17a4642366122b30d4208c04448566d109af96b01896818f9c03aeca7db1c",
-  "cliSha256": "78bd77a0fdecd0d9180e487ad434d306bd070140e55ea222d1eb5febc7b7dd1a",
+  "catalogSha256": "0c1bb86a25d9c5689f0820cc42732631a1950bc92019d6e6549728547a9d2e77",
+  "cliSha256": "bff8936a463b2ddd5440d4a23272b2cf899815fffd8b0977481837352d7d0d71",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -22222,6 +22222,21 @@
           "title": "A native settings model retains an epoch integer"
         },
         {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass CacheEntry(BaseModel):\n    queued_at: str\n\n\ndef flush(timeout_seconds: float | None) -> None:\n    pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "primitive-temporal-boundaries",
+          "outcome": "reject",
+          "scenarioId": "temporal-boundaries",
+          "title": "A model instant and a function timeout use primitives"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -22235,6 +22250,21 @@
           "outcome": "accept",
           "scenarioId": "settings-provider",
           "title": "The native settings model declares an aware instant"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from datetime import timedelta\nfrom pydantic import AwareDatetime, BaseModel\n\n\nclass CacheEntry(BaseModel):\n    queued_at: AwareDatetime\n\n\ndef flush(timeout: timedelta | None) -> None:\n    pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "typed-temporal-boundaries",
+          "outcome": "accept",
+          "scenarioId": "temporal-boundaries",
+          "title": "A model instant and a function timeout retain their types"
         },
         {
           "expectedCount": 0,

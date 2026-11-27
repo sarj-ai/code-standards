@@ -15,10 +15,19 @@ _DATACLASSES = frozenset({"dataclasses", "pydantic.dataclasses", "pydantic.v1.da
 _MODELS = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
 _SETTINGS = frozenset({"pydantic_settings", "pydantic_settings.main", "pydantic.v1", "pydantic.v1.env_settings"})
 _TYPING = frozenset({"typing", "typing_extensions"})
+_TYPING_RECORDS = frozenset({"TypedDict", "NamedTuple"})
+_TYPING_RECORD_OPTIONS = frozenset({"total", "closed", "extra_items"})
 _MAX_ANCESTORS = 32
 
 
-def value_model(model: DeclaredClass, contracts: DeclaredContracts, *, include_settings: bool = False) -> bool:
+def value_model(
+    model: DeclaredClass,
+    contracts: DeclaredContracts,
+    *,
+    include_settings: bool = False,
+    include_dataclasses: bool = True,
+    include_typing_records: bool = False,
+) -> bool:
     pending = [model]
     seen: set[ast.ClassDef] = set()
     while pending and len(seen) < _MAX_ANCESTORS:
@@ -27,9 +36,13 @@ def value_model(model: DeclaredClass, contracts: DeclaredContracts, *, include_s
         if owner in seen:
             continue
         seen.add(owner)
+        if include_typing_records and _native_typing_record(current, contracts):
+            return True
         if not _supported_declaration(current, contracts):
             continue
-        if _native_value_identity(current, contracts, include_settings=include_settings):
+        if _native_value_identity(
+            current, contracts, include_settings=include_settings, include_dataclasses=include_dataclasses
+        ):
             return True
         for base in owner.bases:
             parent = contracts.class_type(base, current.unit)
@@ -55,13 +68,34 @@ def _identity_decorator(decorator: ast.expr, model: DeclaredClass, imports: Impo
     )
 
 
-def _native_value_identity(model: DeclaredClass, contracts: DeclaredContracts, *, include_settings: bool) -> bool:
+def _native_value_identity(
+    model: DeclaredClass, contracts: DeclaredContracts, *, include_settings: bool, include_dataclasses: bool
+) -> bool:
     imports = contracts.imports_for(model.unit)
     decorators = [node.func if isinstance(node, ast.Call) else node for node in model.declaration.decorator_list]
-    if any(imports.resolves(node, sources=_DATACLASSES, symbol="dataclass") for node in decorators):
+    if include_dataclasses and any(
+        imports.resolves(node, sources=_DATACLASSES, symbol="dataclass") for node in decorators
+    ):
         return True
     return any(
         _native_model_base(base, model, imports, include_settings=include_settings) for base in model.declaration.bases
+    )
+
+
+def _native_typing_record(model: DeclaredClass, contracts: DeclaredContracts) -> bool:
+    tree = model.unit.tree
+    owner = model.declaration
+    if (
+        tree is None
+        or owner.type_params
+        or _wildcard(tree)
+        or any(keyword.arg not in _TYPING_RECORD_OPTIONS for keyword in owner.keywords)
+    ):
+        return False
+    imports = contracts.imports_for(model.unit)
+    return all(_identity_decorator(node, model, imports) for node in owner.decorator_list) and any(
+        stable_native(base, model) and imports.resolved_symbol(base, sources=_TYPING) in _TYPING_RECORDS
+        for base in owner.bases
     )
 
 

@@ -30,7 +30,11 @@ _UNITS = frozenset(
 )
 _INSTANTS = frozenset({"created", "updated", "expires", "expired", "deleted", "received", "sent", "timestamp"})
 _DURATIONS = frozenset({"ttl", "duration", "timeout", "elapsed", "delay", "interval", "latency"})
+_NUMERIC_TYPES = frozenset({"int", "float"})
+_STRING_TYPE = frozenset({"str"})
+_STRING_INSTANT_SUFFIXES = ("_at", "_timestamp")
 _HEADER = "from pydantic import BaseModel\nclass CacheEntry(BaseModel):\n"
+_SUMMARY = "Use semantic types for temporal fields and function boundaries."
 
 
 @final
@@ -39,18 +43,48 @@ class PreferSemanticTemporalTypes(ProjectRule):
     code = "SARJ573"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Use temporal types for model instants and durations with explicit units.",
-        rationale="Primitive model numbers erase whether a value is an instant or an elapsed duration and allow accidental mixing of seconds and milliseconds.",
-        remediation="Represent instants with datetime, or Pydantic AwareDatetime when timezone awareness is required; represent durations and TTLs with timedelta. Convert explicit epoch units at serialization and storage boundaries while preserving the wire contract.",
+        summary=_SUMMARY,
+        rationale="Primitive numbers erase the distinction between instants and durations and allow accidental mixing of units. Strings leave Pydantic instant fields unparsed.",
+        remediation="Represent instants with datetime, or Pydantic AwareDatetime when timezone awareness is required. Represent durations and TTLs with timedelta. Convert explicit units at boundaries and preserve the serialized contract.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This warning uses an explicitly requested naming heuristic only within import-proven dataclass/BaseModel/BaseSettings fields: a temporal role token plus an explicit numeric unit suffix. Names are evidence for review, not proof of the domain. Settings bases require stable native pydantic_settings or pydantic.v1 provider identity; rebound names, mutated modules, generic shadows and unknown class decorators are excluded.",
-            "Created/updated/expires and timestamp instants receive datetime advice; duration/TTL/timeout values receive timedelta advice. Ambiguous or conflicting role names, bare names without units, signed sentinel defaults, plain function annotations, metadata and generated files are excluded.",
-            "Only primitive int/float annotations, including transparent Optional/Annotated forms, are inspected. Existing temporal/domain types are preserved. Epoch integers required by external protocols need an explained local exception or conversion at the boundary; no automatic fix changes accepted values, timezone semantics or JSON representation.",
+            "Numeric annotations require both a temporal role token and an explicit unit suffix. The rule checks parameters, return annotations using the function name, and annotated fields of import-proven dataclasses, Pydantic models and settings, TypedDicts, and NamedTuples.",
+            "String fields ending in _at or _timestamp receive ISO datetime advice only on import-proven Pydantic models and settings. Names identify candidates for review. The rule supports transparent Optional and Annotated forms and excludes class metadata, generated files, and signed numeric defaults.",
+            "Convert numeric or ISO datetime values at external boundaries or use an explained local exception where the primitive is required. The warning has no autofix because a change can affect accepted values, timezone semantics, or JSON representation.",
             "When selected together, this temporal advice supersedes the generic SARJ530 numeric-domain warning at the same field. Exact-code suppressions retain the generic warning when temporal advice is suppressed.",
         ),
         examples=(
+            RuleExample(
+                example_id="primitive-temporal-boundaries",
+                scenario="temporal-boundaries",
+                title="A model instant and a function timeout use primitives",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        _HEADER + "    queued_at: str\n\ndef flush(timeout_seconds: float | None) -> None:\n    pass\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-temporal-boundaries",
+                scenario="temporal-boundaries",
+                title="A model instant and a function timeout retain their types",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from datetime import timedelta\nfrom pydantic import AwareDatetime, BaseModel\nclass CacheEntry(BaseModel):\n    queued_at: AwareDatetime\n\ndef flush(timeout: timedelta | None) -> None:\n    pass\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="epoch-instant",
                 title="An epoch instant erases its temporal type",
@@ -114,21 +148,69 @@ class PreferSemanticTemporalTypes(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.tree is None or context.generated:
             return []
-        if not any(
-            isinstance(field.target, ast.Name) and _temporal_kind(field.target.id) is not None
+        functions = _function_temporal_annotations(context)
+        has_field_candidates = any(
+            isinstance(field.target, ast.Name)
+            and (_temporal_kind(field.target.id) is not None or _string_instant_name(field.target.id))
             for field in context.nodes(ast.AnnAssign)
-        ):
+        )
+        if not functions and not has_field_candidates:
             return []
-        contracts = DeclaredContracts(context)
         facts = AnnotationOrigins(context)
-        findings: list[Diagnostic] = []
-        for model in _temporal_models(context.tree, contracts):
-            for field in contracts.model_fields(model).values():
-                kind = _field_temporal_kind(field, context, facts)
-                if kind is None or context.suppressions.is_suppressed(field.lineno, self.code):
-                    continue
-                findings.append(_temporal_diagnostic(field, kind, context, self.code))
+        findings = [
+            _temporal_diagnostic(annotation, kind, context, self.code)
+            for annotation, kind in functions.items()
+            if not context.suppressions.is_suppressed(annotation.lineno, self.code)
+            and _annotation_uses_builtin(annotation, _NUMERIC_TYPES, facts)
+        ]
+        if has_field_candidates:
+            findings.extend(_field_findings(context.tree, facts, self.code))
         return findings
+
+
+def _function_temporal_annotations(context: PythonFileContext) -> dict[ast.expr, str]:
+    annotations: dict[ast.expr, str] = {}
+    for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        for parameter, default in _parameter_defaults(function.args).items():
+            if (
+                parameter.annotation is not None
+                and (kind := _temporal_kind(parameter.arg)) is not None
+                and not _negative_default(default)
+            ):
+                annotations[parameter.annotation] = kind
+        if function.returns is not None and (kind := _temporal_kind(function.name)) is not None:
+            annotations[function.returns] = kind
+    return annotations
+
+
+def _parameter_defaults(arguments: ast.arguments) -> dict[ast.arg, ast.expr | None]:
+    positional = [*arguments.posonlyargs, *arguments.args]
+    defaults: list[ast.expr | None] = [None] * (len(positional) - len(arguments.defaults))
+    defaults.extend(arguments.defaults)
+    defaults_by_parameter = dict(zip(positional, defaults, strict=True))
+    if arguments.vararg is not None:
+        defaults_by_parameter[arguments.vararg] = None
+    defaults_by_parameter.update(zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True))
+    if arguments.kwarg is not None:
+        defaults_by_parameter[arguments.kwarg] = None
+    return defaults_by_parameter
+
+
+def _field_findings(tree: ast.Module, facts: AnnotationOrigins, code: str) -> Iterator[Diagnostic]:
+    context = facts.context
+    contracts = DeclaredContracts(context)
+    for model in _temporal_models(tree, contracts):
+        for field in contracts.model_fields(model).values():
+            if context.suppressions.is_suppressed(field.lineno, code):
+                continue
+            kind = _field_temporal_kind(field, facts)
+            if kind is None:
+                continue
+            if kind == "string-instant" and not value_model(
+                model, contracts, include_settings=True, include_dataclasses=False
+            ):
+                continue
+            yield _temporal_diagnostic(field, kind, context, code)
 
 
 def _temporal_models(tree: ast.Module, contracts: DeclaredContracts) -> Iterator[DeclaredClass]:
@@ -138,33 +220,51 @@ def _temporal_models(tree: ast.Module, contracts: DeclaredContracts) -> Iterator
         if not isinstance(declaration, ast.ClassDef):
             continue
         model = DeclaredClass(contracts.unit, declaration)
-        if value_model(model, contracts, include_settings=True):
+        if value_model(model, contracts, include_settings=True, include_typing_records=True):
             yield model
 
 
-def _field_temporal_kind(field: ast.AnnAssign, context: PythonFileContext, facts: AnnotationOrigins) -> str | None:
-    if not isinstance(field.target, ast.Name) or (kind := _temporal_kind(field.target.id)) is None:
+def _field_temporal_kind(field: ast.AnnAssign, facts: AnnotationOrigins) -> str | None:
+    if not isinstance(field.target, ast.Name):
         return None
-    members = context.annotation_semantics.transparent_members(field.annotation)
-    numeric = any(
-        isinstance(member, ast.Name)
-        and member.id in {"int", "float"}
-        and facts.builtin(member, member.id, field.annotation)
-        for member in members
-    )
-    return kind if numeric and not _negative_default(field.value) else None
+    name = field.target.id
+    if (kind := _temporal_kind(name)) is not None:
+        if not _negative_default(field.value) and _annotation_uses_builtin(field.annotation, _NUMERIC_TYPES, facts):
+            return kind
+    elif _string_instant_name(name) and _annotation_uses_builtin(field.annotation, _STRING_TYPE, facts):
+        return "string-instant"
+    return None
 
 
-def _temporal_diagnostic(field: ast.AnnAssign, kind: str, context: PythonFileContext, code: str) -> Diagnostic:
-    preferred = (
-        "datetime or Pydantic AwareDatetime for this instant" if kind == "instant" else "timedelta for this duration"
+def _string_instant_name(name: str) -> bool:
+    return name.lower().endswith(_STRING_INSTANT_SUFFIXES)
+
+
+def _annotation_uses_builtin(annotation: ast.expr, names: frozenset[str], facts: AnnotationOrigins) -> bool:
+    return any(
+        isinstance(member, ast.Name) and member.id in names and facts.builtin(member, member.id, annotation)
+        for member in facts.context.annotation_semantics.transparent_members(annotation)
     )
+
+
+def _temporal_diagnostic(
+    node: ast.AnnAssign | ast.expr, kind: str, context: PythonFileContext, code: str
+) -> Diagnostic:
+    if kind == "string-instant":
+        message = "Use datetime or Pydantic AwareDatetime for this ISO datetime field. Preserve the accepted string format at the serialization boundary."
+    else:
+        preferred = (
+            "datetime or Pydantic AwareDatetime for this instant"
+            if kind == "instant"
+            else "timedelta for this duration"
+        )
+        message = f"Use {preferred}; convert explicit epoch or duration units at the boundary and preserve serialized contracts."
     return Diagnostic(
         context.path,
-        field.lineno,
-        field.col_offset + 1,
+        node.lineno,
+        node.col_offset + 1,
         code,
-        f"Use {preferred}; convert explicit epoch or duration units at the boundary and preserve serialized contracts.",
+        message,
         severity=Severity.WARNING,
     )
 
