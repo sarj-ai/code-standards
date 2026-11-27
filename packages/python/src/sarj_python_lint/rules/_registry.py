@@ -279,6 +279,7 @@ from sarj_python_lint.rules.numeric_literal_separators import NumericLiteralSepa
 from sarj_python_lint.rules.prefer_application_model_joins import PreferApplicationModelJoins
 from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_coordinated_state_owner import PreferCoordinatedStateOwner
+from sarj_python_lint.rules.prefer_decimal_money import PreferDecimalMoney
 from sarj_python_lint.rules.prefer_defaultdict import PreferDefaultdict
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
 from sarj_python_lint.rules.prefer_direct_iteration import PreferDirectIteration
@@ -328,6 +329,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferDecimalMoney.id: PreferDecimalMoney,
         NoHttpExceptionInServices.id: NoHttpExceptionInServices,
         RequireStrictPydanticModel.id: RequireStrictPydanticModel,
         NoNominalRebrand.id: NoNominalRebrand,

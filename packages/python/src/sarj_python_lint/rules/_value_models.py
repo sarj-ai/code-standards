@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 _DATACLASSES = frozenset({"dataclasses", "pydantic.dataclasses", "pydantic.v1.dataclasses"})
 _MODELS = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
+_MODEL_CONFIG = frozenset({"pydantic", "pydantic.config"})
 _SETTINGS = frozenset({"pydantic_settings", "pydantic_settings.main", "pydantic.v1", "pydantic.v1.env_settings"})
 _TYPING = frozenset({"typing", "typing_extensions"})
 _TYPING_RECORDS = frozenset({"TypedDict", "NamedTuple"})
@@ -27,6 +28,7 @@ def value_model(
     include_settings: bool = False,
     include_dataclasses: bool = True,
     include_typing_records: bool = False,
+    include_typed_dict: bool = False,
 ) -> bool:
     pending = [model]
     seen: set[ast.ClassDef] = set()
@@ -36,9 +38,13 @@ def value_model(
         if owner in seen:
             continue
         seen.add(owner)
-        if include_typing_records and _native_typing_record(current, contracts):
+        if (include_typing_records or include_typed_dict) and _native_typing_record(
+            current, contracts, typed_dict_only=not include_typing_records
+        ):
             return True
-        if not _supported_declaration(current, contracts):
+        if not _supported_declaration(
+            current, contracts, allow_record_options=include_typed_dict, allow_model_config=include_typed_dict
+        ):
             continue
         if _native_value_identity(
             current, contracts, include_settings=include_settings, include_dataclasses=include_dataclasses
@@ -51,20 +57,36 @@ def value_model(
     return False
 
 
-def _supported_declaration(model: DeclaredClass, contracts: DeclaredContracts) -> bool:
+def _supported_declaration(
+    model: DeclaredClass,
+    contracts: DeclaredContracts,
+    *,
+    allow_record_options: bool = False,
+    allow_model_config: bool = False,
+) -> bool:
     owner = model.declaration
     tree = model.unit.tree
-    if owner.keywords or owner.type_params or tree is None or _wildcard(tree):
+    if owner.type_params or tree is None or _wildcard(tree):
+        return False
+    if owner.keywords and (
+        not allow_record_options or any(keyword.arg not in _TYPING_RECORD_OPTIONS for keyword in owner.keywords)
+    ):
         return False
     imports = contracts.imports_for(model.unit)
-    return all(_identity_decorator(node, model, imports) for node in owner.decorator_list)
+    return all(
+        _identity_decorator(node, model, imports, allow_model_config=allow_model_config)
+        for node in owner.decorator_list
+    )
 
 
-def _identity_decorator(decorator: ast.expr, model: DeclaredClass, imports: ImportIndex) -> bool:
+def _identity_decorator(
+    decorator: ast.expr, model: DeclaredClass, imports: ImportIndex, *, allow_model_config: bool
+) -> bool:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     return stable_native(target, model) and (
         imports.resolves(target, sources=_DATACLASSES, symbol="dataclass")
         or imports.resolves(target, sources=_TYPING, symbol="final")
+        or (allow_model_config and imports.resolves(target, sources=_MODEL_CONFIG, symbol="with_config"))
     )
 
 
@@ -82,20 +104,14 @@ def _native_value_identity(
     )
 
 
-def _native_typing_record(model: DeclaredClass, contracts: DeclaredContracts) -> bool:
-    tree = model.unit.tree
-    owner = model.declaration
-    if (
-        tree is None
-        or owner.type_params
-        or _wildcard(tree)
-        or any(keyword.arg not in _TYPING_RECORD_OPTIONS for keyword in owner.keywords)
-    ):
+def _native_typing_record(model: DeclaredClass, contracts: DeclaredContracts, *, typed_dict_only: bool) -> bool:
+    if not _supported_declaration(model, contracts, allow_record_options=True, allow_model_config=typed_dict_only):
         return False
     imports = contracts.imports_for(model.unit)
-    return all(_identity_decorator(node, model, imports) for node in owner.decorator_list) and any(
-        stable_native(base, model) and imports.resolved_symbol(base, sources=_TYPING) in _TYPING_RECORDS
-        for base in owner.bases
+    allowed = ("TypedDict",) if typed_dict_only else _TYPING_RECORDS
+    return any(
+        stable_native(base, model) and imports.resolved_symbol(base, sources=_TYPING) in allowed
+        for base in model.declaration.bases
     )
 
 
