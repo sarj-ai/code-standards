@@ -3,7 +3,7 @@
   "ktlint": "1.8.0",
   "mint": "0.18.0",
   "mobsfscan": "1.2.0",
-  "semgrep": "1.186.0",
+  "semgrep": "1.187.0",
   "swiftformat": "0.64.7",
   "swiftformat_commit": "d5ca3e440886ea8b3d5b405928b1dae5e80d7ce2",
   "swiftlint": "0.65.1",

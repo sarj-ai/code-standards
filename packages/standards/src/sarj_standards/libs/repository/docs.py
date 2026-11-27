@@ -134,7 +134,7 @@ def _root_readme(
         ),
         (
             "## Contributing\n\n"
-            "Install uv 0.13.9, Python 3.15, Node 26.13, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "Install uv 0.13.10, Python 3.15, Node 26.13, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
             "\n\nRun independent package suites with `make test -j4`, or focus on the fresh Standards wheel "
             "with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests "

@@ -76,7 +76,7 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
     assert process.returncode == 0, process.stderr
     report = parse_json(process.stdout)
     assert isinstance(report, dict)
-    assert report["version"] == "1.186.0"
+    assert report["version"] == "1.187.0"
     assert report["errors"] == []
     paths = report["paths"]
     assert isinstance(paths, dict)

@@ -24,7 +24,7 @@ _HASH_CHUNK_KIB = 64
 _BYTES_PER_KIB = 1024
 
 
-_VERSION: Final = "2.2.3"
+_VERSION: Final = "2.2.4"
 _CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
 _LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
 _DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)

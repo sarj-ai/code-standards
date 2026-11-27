@@ -139,8 +139,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
             if workflow.name == "release-tags.yml" and "version-file: packages/standards/uv.toml" in following:
                 assert text.count("uses: astral-sh/setup-uv@") == 2
                 continue
-            if "version: '0.13.9'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.13.9 in {workflow}")
+            if "version: '0.13.10'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.13.10 in {workflow}")
     assert violations == []
 
 
