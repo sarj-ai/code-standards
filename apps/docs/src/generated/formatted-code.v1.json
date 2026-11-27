@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e5e22302c2b2b1f93ac7215f114152473c6a1d09f629a1e82ff5f984b96cd558",
-  "cliSha256": "c31d5c862453e85039dbb45583ffc395da561c55ea12ef0527a8a4b375bcad45",
+  "catalogSha256": "896346e93ee1fc071f3a0202691ec7253e76708daa8f1456d7b417093ad923d6",
+  "cliSha256": "5c6eb91173a5f46af087757202497029ca174b14c9de26e765f3574c10fcfbfc",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -9686,6 +9686,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Name a multi-state result"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-named-literal-union": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/drafts.ts",
+              "source": "interface Draft {\n  state: \"queued\" | \"running\" | \"done\";\n  previousState: \"queued\" | \"running\" | \"done\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/drafts.ts",
+          "id": "name-repeated-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name the shared draft state"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/drafts.ts",
+              "source": "type DraftState = \"queued\" | \"running\" | \"done\";\ninterface Draft {\n  state: DraftState;\n  previousState: DraftState;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/drafts.ts",
+          "id": "use-named-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use one state alias"
         }
       ],
       "optionsSchemaSource": null

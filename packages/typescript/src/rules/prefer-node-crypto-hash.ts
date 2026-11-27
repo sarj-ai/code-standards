@@ -26,6 +26,7 @@ const NAME = "prefer-node-crypto-hash";
 type ScopeVariable = TsVariable;
 type Identifier = Extract<Node, { type: "Identifier" }>;
 type Resolve = (identifier: Identifier) => ScopeVariable | null;
+type BuiltinModule = "crypto" | "module";
 const UNSAFE_NAMESPACE_METHODS: ReadonlySet<string> = new Set(["__defineGetter__", "__defineSetter__", "valueOf"]);
 const UNSAFE_AUTHORITY_IDENTIFIERS: readonly string[] = [
   "eval", "Object", "Reflect", "Function", "require", "process", "globalThis", "global", "vi", "jest", "mock", "doMock",
@@ -92,7 +93,7 @@ function namespaceDefaultMayEscape(variable: ScopeVariable): boolean {
 function isBuiltinLoader(
   node: Node,
   resolve: Resolve,
-  builtin: "crypto" | "module" = "crypto",
+  builtin: BuiltinModule = "crypto",
 ): boolean {
   if (node.type !== "CallExpression" || node.arguments.length !== 1) return false;
   const [argument] = node.arguments;
@@ -119,7 +120,7 @@ function isBuiltinLoader(
   );
 }
 
-function isBuiltinSpecifier(node: Node, builtin: "crypto" | "module"): boolean {
+function isBuiltinSpecifier(node: Node, builtin: BuiltinModule): boolean {
   return (
     node.type === "Literal" &&
     (node.value === builtin || node.value === `node:${builtin}`)
@@ -381,7 +382,7 @@ function builtinCallProvider(
   namespaceBindings: ReadonlySet<ScopeVariable>,
   sharedBindings: ReadonlySet<ScopeVariable>,
   resolve: Resolve,
-  builtin: "crypto" | "module" = "crypto",
+  builtin: BuiltinModule = "crypto",
 ): "shared" | "snapshot" | null {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
   if (unwrappedNodeCallee.type === "Identifier") {

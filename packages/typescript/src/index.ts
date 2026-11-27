@@ -136,6 +136,7 @@ import preferMonotonicForElapsedTime from "./rules/prefer-monotonic-for-elapsed-
 import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
 import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
+import preferNamedLiteralUnion from "./rules/prefer-named-literal-union.js";
 import preferNativeFetchInServerActions from "./rules/prefer-native-fetch-in-server-actions.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNodeCryptoHash from "./rules/prefer-node-crypto-hash.js";
@@ -316,6 +317,7 @@ const RULES = {
   "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
   "prefer-named-callback-domain": preferNamedCallbackDomain,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
+  "prefer-named-literal-union": preferNamedLiteralUnion,
   "prefer-native-fetch-in-server-actions": preferNativeFetchInServerActions,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,

@@ -5,9 +5,13 @@ import { tsReference, tsVariable } from "../types.js";
 import { parentOf } from "./ast.js";
 
 export function typeBinding(source: SourceCode, identifier: Node & { name: string }): TsVariable | null {
-  let scope: Scope | null = source.getScope(identifier);
+  return findTypeBinding(source.getScope(identifier), identifier.name);
+}
+
+export function findTypeBinding(initialScope: Scope, name: string): TsVariable | null {
+  let scope: Scope | null = initialScope;
   while (scope !== null) {
-    const found = scope.set.get(identifier.name);
+    const found = scope.set.get(name);
     if (found !== undefined) {
       const variable = tsVariable(found);
       if (variable.isTypeVariable || variable.defs.some((definition) => definition.isTypeDefinition)) return variable;
