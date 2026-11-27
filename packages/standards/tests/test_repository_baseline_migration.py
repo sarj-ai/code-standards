@@ -170,6 +170,8 @@ def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before
         (41, 42),
         (42, 49),
         (41, 49),
+        (49, 53),
+        (42, 53),
     ],
 )
 def test_fingerprint_changing_policy_migrates_empty_baselines_without_changing_warning_choice(
@@ -222,7 +224,7 @@ def test_local_residue_error_policy_preserves_rejection_of_existing_debt(
         (26, 29),
         (25, 30),
         (26, 30),
-        (49, 50),
+        (53, 54),
     ],
 )
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:
