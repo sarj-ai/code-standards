@@ -10,6 +10,7 @@ from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -59,6 +60,9 @@ class _Model:
     fields: dict[str, _Field]
 
 
+type _BypassTarget = tuple[_Model, dict[str, ast.expr] | None, bool]
+
+
 @final
 class NoInvalidPydanticBypass(Rule):
     id = "no-invalid-pydantic-bypass"
@@ -69,7 +73,8 @@ class NoInvalidPydanticBypass(Rule):
         rationale=(
             "model_construct and model_copy(update=...) store supplied values without validation. A contradictory "
             "literal or an omitted required construction field can therefore invalidate a model's declared type "
-            "while the permissive bypass signatures still pass static checking."
+            "while the permissive bypass signatures still pass static checking. Unpacked construction inputs and "
+            "nonliteral copy updates warrant review because their field values are unknown at the bypass call."
         ),
         remediation=(
             "Supply values satisfying the model contract and every required field, or validate a complete input "
@@ -81,9 +86,9 @@ class NoInvalidPydanticBypass(Rule):
         limitations=(
             "Only plain, direct, module-level Pydantic BaseModel or Pydantic Settings BaseSettings subclasses with supported built-in and typing field annotations are inspected; hooks, inheritance, class decorators and custom methods are excluded.",
             "Checks explicit None conflicts, closed string Literal domains, and bounded side-effect-free literal values contradicting builtin primitive or container field contracts. Coercible input is not assumed to be validated stored output.",
-            "Container literals preserve their actual construction semantics, including last-wins dictionary keys. Unpacking, calls, unhashable literal containers, opaque values, numeric Literal domains, bounds, aliases and custom field types are not inferred. Bool remains an int subtype, and numeric int-to-float/complex assignability is preserved.",
-            "model_construct must use explicit keywords; omitted required fields are checked only when no unpacking or positional argument can supply them. Literal Ellipsis and the source-proven unshadowed bare builtin Ellipsis are equivalent required-field defaults; imported, assigned and shadowed aliases remain opaque.",
-            "model_copy requires a fresh exact constructor or a stable unescaped local constructor binding, plus a plain literal update dictionary. Arbitrary annotated receivers and overridden methods are excluded.",
+            "Container literals preserve their actual construction semantics, including last-wins dictionary keys. Calls, unhashable literal containers, opaque field values, numeric Literal domains, bounds, aliases and custom field types are not inferred. Bool remains an int subtype, and numeric int-to-float/complex assignability is preserved.",
+            "model_construct warns once per call with unpacked keywords. Omitted required fields and invalid literals are checked for explicit keyword-only calls. Literal Ellipsis and the source-proven unshadowed bare builtin Ellipsis are equivalent required-field defaults; imported, assigned and shadowed aliases remain opaque.",
+            "model_copy requires a fresh exact constructor or a stable unescaped local constructor binding. A nonliteral update payload produces a warning. Copy calls with no update or update=None are accepted. Update dictionary literals containing unpacking, computed keys or duplicate keys remain outside literal analysis. Arbitrary annotated receivers and overridden methods are excluded.",
             "Field aliases, non-passive model configuration, class or instance mutation and escape, ambiguous namespaces, tests and generated files are excluded. Source-proven ClassVar annotations remain class metadata through bounded transparent Annotated wrappers.",
             "Settings support is limited to the same passive shared Pydantic configuration options as models. SettingsConfigDict calls, env/CLI/source options and custom settings sources remain excluded; no environment loading or settings validation is inferred from a bypass call.",
             "Direct model field annotations exceeding a bounded depth or node budget exclude the file rather than risking recursive analysis failure. Literal analysis also bounds the value tree and combined string/bytes content to avoid excessive witness work.",
@@ -153,6 +158,38 @@ class NoInvalidPydanticBypass(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="unchecked-mapping-payloads",
+                scenario="mapping-validation-boundary",
+                title="Unpacked construction and opaque copy updates bypass validation",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\nclass Job(BaseModel):\n    name: str\n"
+                        "job = Job.model_construct(**row)\nupdated = Job(name='draft').model_copy(update=changes)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="validated-mapping-payload",
+                scenario="mapping-validation-boundary",
+                title="Validate the complete mapping before storing field values",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\nclass Job(BaseModel):\n    name: str\n"
+                        "job = Job.model_validate(row)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="construct-invalid-list-member",
                 scenario="stored-literal-contract",
                 title="Unchecked list elements must satisfy the stored field type",
@@ -205,7 +242,18 @@ class NoInvalidPydanticBypass(Rule):
             if target is None:
                 continue
             model, values, construction = target
-            diagnostics.extend(_invalid_values(call, model, values, construction=construction, context=context))
+            if values is None:
+                method = "model_construct" if construction else "model_copy"
+                diagnostics.append(
+                    _diagnostic(
+                        call,
+                        context,
+                        f"`{model.node.name}.{method}` bypasses validation for an unchecked payload. Validate a complete input mapping with the normal constructor or `model_validate`.",
+                        severity=Severity.WARNING,
+                    )
+                )
+            else:
+                diagnostics.extend(_invalid_values(call, model, values, construction=construction, context=context))
         return [finding for finding in diagnostics if not context.suppressions.is_suppressed(finding.line, self.code)]
 
 
@@ -441,7 +489,7 @@ def _annotated_fields(annotation: ast.expr, context: PythonFileContext) -> list[
 
 def _bypass_target(
     call: ast.Call, models: dict[ast.ClassDef, _Model], provenance: ResourceProvenance
-) -> tuple[_Model, dict[str, ast.expr], bool] | None:
+) -> _BypassTarget | None:
     if not isinstance(call.func, ast.Attribute) or call.args:
         return None
     if call.func.attr == "model_construct":
@@ -453,17 +501,19 @@ def _bypass_target(
 
 def _construction_target(
     call: ast.Call, receiver: ast.expr, models: dict[ast.ClassDef, _Model], provenance: ResourceProvenance
-) -> tuple[_Model, dict[str, ast.expr], bool] | None:
+) -> _BypassTarget | None:
     model = _named_model(receiver, models, provenance)
-    if model is None or any(keyword.arg is None for keyword in call.keywords):
+    if model is None:
         return None
+    if any(keyword.arg is None for keyword in call.keywords):
+        return model, None, True
     values = {keyword.arg: keyword.value for keyword in call.keywords if keyword.arg is not None}
     return model, values, True
 
 
 def _copy_target(
     call: ast.Call, receiver: ast.expr, models: dict[ast.ClassDef, _Model], provenance: ResourceProvenance
-) -> tuple[_Model, dict[str, ast.expr], bool] | None:
+) -> _BypassTarget | None:
     constructor = _copy_constructor(receiver, call, provenance)
     if not isinstance(constructor, ast.Call):
         return None
@@ -471,9 +521,14 @@ def _copy_target(
     if model is None or any(keyword.arg not in {"update", "deep"} for keyword in call.keywords):
         return None
     updates = [keyword.value for keyword in call.keywords if keyword.arg == "update"]
-    if len(updates) != 1 or not isinstance(updates[0], ast.Dict):
+    if len(updates) != 1:
         return None
-    values = _dict_values(updates[0])
+    update = updates[0]
+    if isinstance(update, ast.Constant) and update.value is None:
+        return None
+    if not isinstance(update, ast.Dict):
+        return model, None, False
+    values = _dict_values(update)
     return None if values is None else (model, values, False)
 
 
@@ -725,7 +780,9 @@ def _excludes_none(annotation: ast.expr, context: PythonFileContext) -> bool:
     return False
 
 
-def _diagnostic(node: ast.expr, context: PythonFileContext, message: str) -> Diagnostic:
+def _diagnostic(
+    node: ast.expr, context: PythonFileContext, message: str, *, severity: DiagnosticSeverity = Severity.ERROR
+) -> Diagnostic:
     return Diagnostic(
-        context.path, node.lineno, node.col_offset + 1, NoInvalidPydanticBypass.code, message, severity=Severity.ERROR
+        context.path, node.lineno, node.col_offset + 1, NoInvalidPydanticBypass.code, message, severity=severity
     )

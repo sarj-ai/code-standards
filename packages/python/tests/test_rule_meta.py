@@ -39,6 +39,7 @@ _AUTHORED_EXAMPLES = tuple(
 )
 
 _PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
+    ("no-invalid-pydantic-bypass", "unchecked-mapping-payloads"): Severity.WARNING,
     ("prefer-match-none-check", "consumed-lookup-binding"): Severity.WARNING,
     ("prefer-match-value-dispatch", "finite-format-partition"): Severity.WARNING,
     ("prefer-match-type-dispatch", "reuse-or-construct-normalization"): Severity.WARNING,
