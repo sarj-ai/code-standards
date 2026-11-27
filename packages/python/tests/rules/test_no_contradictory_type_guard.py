@@ -326,6 +326,52 @@ def test_constants_and_negation_preserve_uninhabited_or_opaque_inputs(annotation
     assert _check(source.replace("isinstance(value, int)", predicate)) == []
 
 
+@pytest.mark.parametrize(
+    ("guard", "input_type", "target", "predicate", "expected"),
+    [
+        ("TypeIs", "object", "User", "True", 1),
+        ("TypeIs", "User | str", "User", "False", 1),
+        ("TypeGuard", "object", "list[User]", "True", 1),
+        ("TypeGuard", "object", "User", "False", 0),
+        ("TypeIs", "object", "object", "True", 0),
+        ("TypeIs", "object", "Never", "False", 0),
+        ("TypeIs", "User", "User", "True", 0),
+        ("TypeIs", "object", "User", "isinstance(value, User)", 0),
+    ],
+)
+def test_constant_results_for_nonprimitive_targets(
+    guard: str, input_type: str, target: str, predicate: str, expected: int
+) -> None:
+    source = "class User: pass\nfrom typing import Never\n" + _source(target, guard=guard, input_type=input_type)
+    findings = _check(source.replace("isinstance(value, int)", predicate))
+    assert len(findings) == expected
+    assert all(finding.code == "SARJ513" and finding.severity is Severity.ERROR for finding in findings)
+
+
+def test_class_constant_still_requires_a_nongeneric_module_function() -> None:
+    source = "from typing import TypeIs\nclass User: pass\n"
+    assert _check(source + "def guard[T](value: object) -> TypeIs[User]:\n    return True\n") == []
+    assert _check(source + "class Guards:\n    def guard(value: object) -> TypeIs[User]:\n        return True\n") == []
+    assert (
+        _check(
+            source
+            + "def guard(value: object) -> TypeIs[User]:\n    return True  # sarj-noqa: SARJ513 -- reviewed fixture\n"
+        )
+        == []
+    )
+
+
+def test_legacy_type_parameters_exclude_only_the_guard_that_uses_them() -> None:
+    source = (
+        "from collections.abc import Sequence\n"
+        "from typing import TypeGuard, TypeVar as Parameter\n"
+        'T = Parameter("T")\n'
+        "def accepts_list(values: list[T]) -> TypeGuard[Sequence[T]]:\n    return True\n"
+        "def accepts_anything(value: object) -> TypeGuard[list[str]]:\n    return True\n"
+    )
+    assert [finding.line for finding in _check(source)] == [7]
+
+
 def _claims_everything_is_text(_value: object) -> TypeGuard[str]:
     return True  # sarj-noqa: SARJ513 -- demonstrate a constant predicate's invalid true branch
 

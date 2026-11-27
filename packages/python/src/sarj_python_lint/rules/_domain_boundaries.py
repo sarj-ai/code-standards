@@ -18,7 +18,7 @@ _PRIMITIVES = frozenset({"str", "int", "float", "bool", "bytes"})
 _ENUMS = frozenset({"enum.Enum", "enum.StrEnum", "enum.IntEnum"})
 _WRAPPERS = frozenset(f"{module}.{name}" for module in _TYPING for name in ("Optional", "Annotated"))
 _LITERALS = frozenset(f"{module}.Literal" for module in _TYPING)
-_NEW_TYPES = frozenset(f"{module}.NewType" for module in _TYPING)
+NEW_TYPE_ORIGINS = frozenset(f"{module}.NewType" for module in _TYPING)
 type Function = ast.FunctionDef | ast.AsyncFunctionDef
 
 
@@ -72,7 +72,7 @@ class DomainBoundaries:
         match value:
             case ast.Subscript() if self.origins.qualified(value.value, value) in _LITERALS:
                 carrier = _literal_carrier(value)
-            case ast.Call() if self.origins.qualified(value.func, value) in _NEW_TYPES:
+            case ast.Call() if self.origins.qualified(value.func, value) in NEW_TYPE_ORIGINS:
                 carrier = self._newtype_carrier(value, binding.id)
             case _:
                 return self.domain(value, depth=depth + 1)

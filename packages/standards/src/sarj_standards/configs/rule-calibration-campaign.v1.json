@@ -3879,6 +3879,14 @@
       "state": "pending",
       "evidence": "An isolated scan of 1,107 Python files from a pinned application snapshot found one true positive and zero observed false positives. Focused cases cover matching writes, reflection, mutable fields, inheritance, suppression, and fix convergence. Three paired runs on 101 files preserved eight existing findings and added the one new warning. Fresh and repeated analysis medians were 7.70/7.68 s before and 8.27/8.53 s after, with median peak RSS of 459,336 and 464,716 KiB.",
       "outcome": "Stage SARJ607 at WARNING for plain dataclasses with no observed field writes. Keep public records manual and offer fixes for private classes only where the hash and pickle protocols remain stable. Matching writes on unrelated receivers and reflective access can suppress valid candidates."
+    },
+    {
+      "task": "rule-audit/python/no-nominal-rebrand",
+      "family": "python",
+      "ruleId": "no-nominal-rebrand",
+      "state": "pending",
+      "evidence": "Pinned BasedPyright 1.40.2 and the existing lint rules accept the reproduced cross-brand conversion. The candidate reports it and passes focused parameter, local, class field, first-party import, rebound binding and suppression cases. The isolated 1,371-file repository snapshot yielded one warning on an intentional catalog-to-display conversion. Paired cold medians for the existing guard rule and both candidate rules were 8.7 and 26.8 seconds.",
+      "outcome": "Introduce a warning without autofix. Require distinct source-proven NewType declarations and a shared carrier. Intentional conversions between internal and display values can also match, so broader field calibration remains pending before promotion."
     }
   ]
 }
