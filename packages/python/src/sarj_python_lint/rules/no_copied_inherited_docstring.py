@@ -15,12 +15,14 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._imports import ABC_SOURCES
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 type _Func = ast.FunctionDef | ast.AsyncFunctionDef
@@ -126,7 +128,7 @@ class NoCopiedInheritedDocstring(Rule):
         _collect_local_bases(tree, graph)
         diags: list[Diagnostic] = []
         for node in graph:
-            self._compare(node, _inherited_methods(node, graph), path, diags)
+            self._compare(node, _inherited_methods(node, graph), path, diags, context.imports)
         return sorted(diags, key=lambda d: d.line)
 
     def _compare(
@@ -135,13 +137,17 @@ class NoCopiedInheritedDocstring(Rule):
         inherited: dict[str, _InheritedMethod],
         path: Path,
         diags: list[Diagnostic],
+        imports: ImportIndex,
     ) -> None:
         for name, child in _methods(node).items():
             resolved = inherited.get(name)
             if resolved is None:
                 continue
             parent, base_method = resolved
-            if child.decorator_list or base_method.decorator_list:
+            if child.decorator_list or any(
+                not imports.resolves(decorator, sources=ABC_SOURCES, symbol="abstractmethod")
+                for decorator in base_method.decorator_list
+            ):
                 continue
             if len(child.body) == 1:
                 continue

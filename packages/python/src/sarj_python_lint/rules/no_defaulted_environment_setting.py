@@ -9,13 +9,14 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
     Severity,
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
+from sarj_python_lint.rules._declared_contracts import SETTINGS_BASES, DeclaredContracts
 from sarj_python_lint.rules._pydantic_field_contract import model_namespace_hazards, required_default_sentinel
 
 
@@ -42,7 +43,7 @@ _ENVIRONMENT = "environment"
 
 
 @final
-class NoDefaultedEnvironmentSetting(Rule):
+class NoDefaultedEnvironmentSetting(ProjectRule):
     id = "no-defaulted-environment-setting"
     code = "SARJ497"
     documentation = RuleDocumentation(
@@ -59,7 +60,7 @@ class NoDefaultedEnvironmentSetting(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only classes deriving from pydantic-settings BaseSettings directly or through a class in the same file are checked.",
+            "Only classes deriving from pydantic-settings BaseSettings directly, through a class in the same file, or through a directly imported first-party class whose scanned declaration inherits BaseSettings are checked.",
             "A field qualifies when its name or literal alias is `environment` in any letter case.",
             "Other environment-isolating settings, such as resource-name prefixes, have no stable name and are not checked.",
             "Source-proven Annotated Field metadata and assignment defaults are merged in order; literal Ellipsis and the proven unshadowed bare builtin Ellipsis are equivalent required markers. Field Ellipsis retains an earlier default, bare Ellipsis resets it and default_factory=None clears an earlier factory. Only literal input aliases are followed; private fields, model_config, ClassVar/Final metadata and opaque Annotated metadata are excluded. Namespace mutation/escape, ambiguous imports and bounded metadata overflow abstain.",
@@ -138,15 +139,20 @@ class NoDefaultedEnvironmentSetting(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         tree = context.tree
-        if tree is None or context.generated or "BaseSettings" not in context.symbol_source:
+        if (
+            tree is None
+            or context.generated
+            or ("BaseSettings" not in context.symbol_source and "environment" not in context.symbol_source.casefold())
+        ):
             return []
         if model_namespace_hazards(context, include_settings=True, escape_symbols=_NATIVE_PROVIDERS):
             return []
         facts = AnnotationOrigins(context)
+        contracts = DeclaredContracts(context)
         settings_classes: set[ast.ClassDef] = set()
         diagnostics: list[Diagnostic] = []
         for model in tree.body:
-            if not isinstance(model, ast.ClassDef) or not _is_settings_class(model, settings_classes, facts):
+            if not isinstance(model, ast.ClassDef) or not _is_settings_class(model, settings_classes, facts, contracts):
                 continue
             settings_classes.add(model)
             diagnostics.extend(
@@ -165,10 +171,22 @@ class NoDefaultedEnvironmentSetting(Rule):
         return diagnostics
 
 
-def _is_settings_class(model: ast.ClassDef, known: set[ast.ClassDef], facts: AnnotationOrigins) -> bool:
-    return any(
+def _is_settings_class(
+    model: ast.ClassDef, known: set[ast.ClassDef], facts: AnnotationOrigins, contracts: DeclaredContracts
+) -> bool:
+    if any(
         facts.qualified(base, base) in _SETTINGS_BASES
         or (isinstance(base, ast.Name) and facts.provenance.binding(base.id, base) in known)
+        for base in model.bases
+    ):
+        return True
+    if not any(isinstance(field, ast.AnnAssign) and _is_defaulted_environment(field, facts) for field in model.body):
+        return False
+    return any(
+        isinstance(base, ast.Name)
+        and isinstance(facts.provenance.binding(base.id, base), ast.alias)
+        and (declared := contracts.class_type(base, at=base)) is not None
+        and contracts.inherits(declared, SETTINGS_BASES)
         for base in model.bases
     )
 

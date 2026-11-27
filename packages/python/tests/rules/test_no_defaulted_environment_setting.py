@@ -6,6 +6,8 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
 
 
@@ -42,6 +44,59 @@ def test_reports_defaulted_environment(field: str) -> None:
 def test_reports_subclass_of_same_file_settings_class() -> None:
     source = _PRELUDE + "    debug: bool = False\n\nclass Agent(Settings):\n    environment: str = 'local'\n"
     assert _lines(source) == [8]
+
+
+@pytest.mark.parametrize(
+    ("provider", "imports", "base_name", "field", "expected"),
+    [
+        ("pydantic_settings.BaseSettings", "from app.base import Grouped", "Grouped", "default='local', ", [5]),
+        ("pydantic_settings.BaseSettings", "from app.base import Grouped", "Grouped", "", []),
+        ("pydantic_settings.BaseSettings", "from app.base import Grouped", "Grouped", "default=None, ", []),
+        ("pydantic.BaseModel", "from app.base import Grouped", "Grouped", "default='local', ", []),
+        ("pydantic_settings.BaseSettings", "from vendor.base import Grouped", "Grouped", "default='local', ", []),
+        ("pydantic_settings.BaseSettings", "import app.base", "app.base.Grouped", "default='local', ", []),
+        (
+            "pydantic_settings.BaseSettings",
+            "from app.base import Grouped\nGrouped = unknown",
+            "Grouped",
+            "default='local', ",
+            [],
+        ),
+    ],
+)
+def test_imported_settings_base_is_resolved_in_the_project(
+    tmp_path: Path, *, provider: str, imports: str, base_name: str, field: str, expected: list[int]
+) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    init = package / "__init__.py"
+    init.write_text("")
+    base = package / "base.py"
+    module, _, name = provider.rpartition(".")
+    base.write_text(f"from {module} import {name}\nclass Grouped({name}):\n    debug: bool = False\n")
+    settings = package / "settings.py"
+    settings.write_text(
+        f"from pydantic import Field\n{imports}\n\nclass ServiceSettings({base_name}):\n"
+        f"    environment: str = Field({field}alias='ENVIRONMENT')\n"
+    )
+    sources = {path: path.read_text() for path in (init, base, settings)}
+    rule = NoDefaultedEnvironmentSetting()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    findings = rule.check(settings, sources[settings])
+    assert [(finding.code, finding.line, finding.severity) for finding in findings] == [
+        ("SARJ497", line, Severity.ERROR) for line in expected
+    ]
+
+
+def test_rebound_imported_settings_base_abstains() -> None:
+    assert (
+        _lines(
+            "from pydantic import Field\nfrom app.base import Grouped\nGrouped = unknown\n"
+            "class ServiceSettings(Grouped):\n    environment: str = Field(default='local')\n"
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(

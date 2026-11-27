@@ -46,6 +46,71 @@ def test_flags_a_verbatim_copy():
     assert "Store.get" in diags[0].message
 
 
+_ABSTRACT_PAIR = (
+    "from abc import ABC, abstractmethod\n\n"
+    "class Cache(ABC):\n"
+    "    @abstractmethod\n"
+    "    def set(self, key: str) -> None:\n"
+    '        """Set a value."""\n\n'
+    "class MemoryCache(Cache):\n"
+    "    def set(self, key: str) -> None:\n"
+    '        """Set a value."""\n'
+    "        self.values[key] = 1\n"
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _ABSTRACT_PAIR,
+        _ABSTRACT_PAIR.replace("from abc import ABC, abstractmethod", "import abc")
+        .replace("Cache(ABC)", "Cache(abc.ABC)")
+        .replace("@abstractmethod", "@abc.abstractmethod"),
+    ],
+    ids=["imported-abstractmethod", "qualified-abstractmethod"],
+)
+def test_copied_abstract_base_docstring_is_reported(source: str) -> None:
+    [finding] = _check(source)
+    assert (finding.code, finding.line, finding.severity) == ("SARJ084", 10, Severity.ERROR)
+    assert "Cache.set" in finding.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _ABSTRACT_PAIR.replace("from abc import ABC, abstractmethod\n", ""),
+        _ABSTRACT_PAIR.replace("@abstractmethod", "@abstractmethod\n    @property"),
+        _ABSTRACT_PAIR.replace("from abc import ABC, abstractmethod", "import other").replace(
+            "@abstractmethod", "@other.abstractmethod"
+        ),
+        _ABSTRACT_PAIR.replace(
+            '"""Set a value."""\n        self.values',
+            '"""Store a value in process memory."""\n        self.values',
+        ),
+        _ABSTRACT_PAIR.replace("class Cache(ABC):", "abstractmethod = unknown\nclass Cache(ABC):"),
+        _ABSTRACT_PAIR.replace("    @abstractmethod", "    @property"),
+        _ABSTRACT_PAIR.replace("    @abstractmethod", "    @classmethod"),
+        _ABSTRACT_PAIR.replace("    @abstractmethod", "    @contextmanager"),
+        _ABSTRACT_PAIR.replace("class MemoryCache(Cache):", "class MemoryCache(Cache):\n    @abstractmethod"),
+        _ABSTRACT_PAIR.replace("        self.values[key] = 1\n", ""),
+    ],
+    ids=[
+        "unimported-abstractmethod",
+        "abstract-property",
+        "other-module-abstractmethod",
+        "reworded-docstring",
+        "rebound-abstractmethod",
+        "property",
+        "classmethod",
+        "contextmanager",
+        "decorated-override",
+        "docstring-only-override",
+    ],
+)
+def test_abstract_base_docstring_near_misses_stay_allowed(source: str) -> None:
+    assert _check(source) == []
+
+
 def test_flags_an_async_override():
     src = (
         "class Store:\n"
