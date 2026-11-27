@@ -26,23 +26,18 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._imports import ImportIndex
 
 _RUFF_OWNED_BROAD_HANDLERS = frozenset({"Exception", "BaseException"})
-_DELIBERATE_CONTROL_SIGNALS = frozenset(
-    {
-        "AttributeError",
-        "FileExistsError",
-        "FileNotFoundError",
-        "GeneratorExit",
-        "ImportError",
-        "IndexError",
-        "KeyError",
-        "KeyboardInterrupt",
-        "LookupError",
-        "ModuleNotFoundError",
-        "StopAsyncIteration",
-        "StopIteration",
-        "SystemExit",
-    }
+LOOKUP_EXCEPTIONS = frozenset(
+    {"AttributeError", "FileNotFoundError", "IndexError", "KeyError", "LookupError", "StopIteration"}
 )
+_DELIBERATE_CONTROL_SIGNALS = LOOKUP_EXCEPTIONS | {
+    "FileExistsError",
+    "GeneratorExit",
+    "ImportError",
+    "KeyboardInterrupt",
+    "ModuleNotFoundError",
+    "StopAsyncIteration",
+    "SystemExit",
+}
 
 
 def _builtin_exception_names(root: type[BaseException]) -> Iterator[str]:
@@ -52,7 +47,7 @@ def _builtin_exception_names(root: type[BaseException]) -> Iterator[str]:
             yield from _builtin_exception_names(child)
 
 
-_BUILTIN_EXCEPTIONS = frozenset(_builtin_exception_names(BaseException))
+BUILTIN_EXCEPTIONS = frozenset(_builtin_exception_names(BaseException))
 _HIDDEN_LEVELS = frozenset({"debug", "trace"})
 _MESSAGE = (
     "This handler records {caught} only at debug level and continues; let it propagate, return a typed failure, "
@@ -221,7 +216,7 @@ def _operational_failure(expression: ast.expr, imports: ImportIndex, local_class
     ignored = _RUFF_OWNED_BROAD_HANDLERS | _DELIBERATE_CONTROL_SIGNALS
     match expression:
         case ast.Name(id=name) if imports.builtin_is_unshadowed(name):
-            return None if name in ignored or name not in _BUILTIN_EXCEPTIONS else name
+            return None if name in ignored or name not in BUILTIN_EXCEPTIONS else name
         case ast.Name(id=name) if name in local_classes:
             return None
         case _:

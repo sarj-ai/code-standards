@@ -15,14 +15,13 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._annotation_semantics import bit_or_members
+from sarj_python_lint.rules._annotation_semantics import union_members
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._imports import ImportIndex
 
 
 def _builtin_exception_names() -> frozenset[str]:
@@ -37,7 +36,6 @@ def _builtin_exception_names() -> frozenset[str]:
 
 
 _BUILTIN_EXCEPTIONS = _builtin_exception_names()
-_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _BAD = (
     "class ParsingError(Exception):\n    pass\n\n"
     "def validate(row: dict[str, str]) -> ParsingError | None:\n"
@@ -161,7 +159,7 @@ def _nullable_exception(annotation: ast.expr, context: PythonFileContext, proof:
             continue
         if parsed is None:
             continue
-        members = _union_members(parsed, context.imports)
+        members = union_members(parsed, context.imports)
         if members is not None and _nullable_union(members, proof):
             return parsed
         pending.extend((child, seen) for child in (members if members is not None else _type_arguments(parsed)))
@@ -182,19 +180,6 @@ def _type_arguments(node: ast.expr) -> list[ast.expr]:
             return elements
         case _:
             return []
-
-
-def _union_members(node: ast.expr, imports: ImportIndex) -> list[ast.expr] | None:
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return bit_or_members(node)
-    if not isinstance(node, ast.Subscript):
-        return None
-    wrapper = imports.resolved_symbol(node.value, sources=_TYPING_SOURCES)
-    if wrapper == "Optional":
-        return [node.slice, ast.Constant(value=None)]
-    if wrapper == "Union":
-        return list(node.slice.elts) if isinstance(node.slice, ast.Tuple) else [node.slice]
-    return None
 
 
 def _is_none(node: ast.expr) -> bool:

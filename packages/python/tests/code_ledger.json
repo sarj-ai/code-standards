@@ -390,6 +390,7 @@
   "SARJ598": "no-gather-first-exception-reraise",
   "SARJ599": "no-injected-dependency-close",
   "SARJ600": "require-total-enum-mapping",
+  "SARJ601": "no-failure-conflated-with-absence",
   "SARJ607": "prefer-frozen-dataclass",
   "SARJ608": "no-nominal-rebrand"
 }

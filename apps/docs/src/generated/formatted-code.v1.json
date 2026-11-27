@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "be397a0b67fd6fd63b2fb58a6d749c89beb86ad5eeec69abc96e3aad63bc73b3",
-  "cliSha256": "3a24ec032d5b03dc328b6b03510cbd995da665feae0a06bf921d0b875b732ad9",
+  "catalogSha256": "e579177ca60d67e9852a13b0e568195ecda8e10461e65cd5501347dd7112e799",
+  "cliSha256": "5f4028915252fc355798b80d63450be9ec7bf50d82ac8364b49fe3b76fb7a670",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -14734,6 +14734,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Six nested decisions require a review"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-failure-conflated-with-absence": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/scores.py",
+              "source": "from pathlib import Path\n\nfrom app.outcomes import MissingScore, ReadFailure, Score\n\n\ndef read_score(path: Path, enabled: bool) -> Score | MissingScore | ReadFailure:\n    if not enabled:\n        return MissingScore()\n    try:\n        return Score(int(path.read_text()))\n    except (OSError, ValueError) as error:\n        return ReadFailure(error)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scores.py",
+          "id": "distinct-read-outcomes",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Missing scores and failed reads have distinct outcomes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/scores.py",
+              "source": "from pathlib import Path\n\n\ndef read_score(path: Path, enabled: bool) -> int | None:\n    if not enabled:\n        return None\n    try:\n        return int(path.read_text())\n    except (OSError, ValueError):\n        return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scores.py",
+          "id": "failure-as-absence",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A failed read looks like a missing score"
         }
       ],
       "optionsSchemaSource": null
